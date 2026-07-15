@@ -77,6 +77,33 @@ export function onSpaceChanged(cb: () => void): () => void {
   return () => bus.off('space-changed', handler)
 }
 
+/**
+ * Subscribe to the host's "NavRail entry activated" broadcast, filtered to one menu id.
+ *
+ * apps/web Pages/Main `onMenuClick` emits `WKApp.mittBus.emit('wk:nav-menu-activated', { menuId })`
+ * on every NavRail click. This matters for docs because MainContentLeft keeps every visited route
+ * mounted and only toggles `display` (comment in Pages/Main/index.tsx: "切回某个菜单时组件不会重新
+ * mount") — so returning to `/docs` via the nav icon does NOT remount DocsHome and its mount-only
+ * effects never re-run. Meanwhile `onMenuClick` calls `WKApp.routeRight.popToRoot()` for a non-chat
+ * menu, emptying the shared right pane. Without reacting to this event the right pane is left empty
+ * on a return visit (the host chat placeholder shows through), so the nav entry diverges from a
+ * fresh `/docs` load. DocsHome listens here to re-assert its right pane, mirroring the
+ * summary/todo/contacts modules which subscribe to the same signal.
+ *
+ * Returns an unsubscribe function. No-op when no bus is available (older test mock / non-browser).
+ */
+export function onNavMenuActivated(menuId: string, cb: () => void): () => void {
+  const bus: MittBusLite | undefined = override
+    ? override.mittBus
+    : (WKApp as unknown as { mittBus?: MittBusLite }).mittBus
+  if (!bus) return () => {}
+  const handler = (payload: { menuId: string }) => {
+    if (payload?.menuId === menuId) cb()
+  }
+  bus.on('wk:nav-menu-activated', handler)
+  return () => bus.off('wk:nav-menu-activated', handler)
+}
+
 /** Page size for space-member fetches — mirrors the host useMemberList pattern (default 50). */
 const SPACE_MEMBERS_PAGE_SIZE = 50
 /** Cap total pages so an unexpectedly huge space can't loop unbounded (1000 members). */

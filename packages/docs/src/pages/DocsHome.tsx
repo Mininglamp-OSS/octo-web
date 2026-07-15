@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { getWKApp, getRouteRight, onSpaceChanged, t } from '../octoweb/index.ts'
+import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
@@ -908,6 +908,13 @@ export function DocsHome() {
   useEffect(() => {
     selectedDocIdRef.current = selectedDocId
   }, [selectedDocId])
+  // Companion live mirror of the open doc's KIND, read by the nav-reactivation handler below so it
+  // re-pushes the right shell (editor vs board vs sheet) without a stale closure — same reason
+  // selectedDocIdRef exists.
+  const selectedDocTypeRef = useRef<string | undefined>(selectedDocType)
+  useEffect(() => {
+    selectedDocTypeRef.current = selectedDocType
+  }, [selectedDocType])
 
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
@@ -1220,6 +1227,46 @@ export function DocsHome() {
       openDoc(initialTarget.current!.docId, undefined)
     }
     // Only on mount: subsequent selections are pushed by openDoc / backToList.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Re-assert docs' ownership of the right pane whenever the user RE-ENTERS via the NavRail
+  // "文档" icon. This is what makes the nav-icon entry render identically to a direct/refresh
+  // `/docs` load (XIN-1165). The mechanism it repairs:
+  //   - apps/web Pages/Main `onMenuClick` calls `WKApp.routeRight.popToRoot()` for a non-chat
+  //     menu, EMPTYING the shared right pane on every docs nav click;
+  //   - but MainContentLeft keeps `/docs` mounted and only toggles `display`, so DocsHome does
+  //     NOT remount and the mount-only effect above never re-runs to refill the pane;
+  //   - the deep-link / hard-load activation path (MainVM.didMount / activatePendingRouteMenu)
+  //     deliberately does NOT popToRoot, so a direct `/docs` always keeps the pane full.
+  // Net effect before this fix: nav-icon return left the right pane empty → the host chat
+  // placeholder (the always-present base layer of the right viewqueue) showed through, so the
+  // two entries diverged and "开文档→返回/reload" appeared to fall back. We re-push exactly what
+  // the mount effect would: the open doc's shell if one is selected (its React state survives the
+  // display-toggle), otherwise the docs empty state — never leaving the queue empty. Refs keep the
+  // handler reading the CURRENT selection AND the CURRENT buildRightPane (which is re-created on a
+  // Space switch / member-name resolve) so a re-push never rebuilds the editor against a stale
+  // Space (the cross-Space session leak reconciled in XIN-448).
+  const buildRightPaneRef = useRef(buildRightPane)
+  useEffect(() => {
+    buildRightPaneRef.current = buildRightPane
+  }, [buildRightPane])
+  useEffect(() => {
+    if (!routeRight) return
+    return onNavMenuActivated('docs', () => {
+      try {
+        const id = selectedDocIdRef.current
+        if (id) {
+          routeRight.replaceToRoot(buildRightPaneRef.current(id, selectedDocTypeRef.current) as unknown)
+        } else {
+          routeRight.replaceToRoot(buildEmptyState() as unknown)
+        }
+      } catch {
+        // ignore — right pane unavailable
+      }
+    })
+    // routeRight + buildEmptyState are stable (singleton + []-dep useCallback); buildRightPane is
+    // read through a ref so the subscription stays mounted for the component's life.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

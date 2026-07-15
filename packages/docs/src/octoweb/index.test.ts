@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { apiClient, wrapHostClient, setWKApp } from './index.ts'
+import { apiClient, wrapHostClient, setWKApp, onNavMenuActivated } from './index.ts'
 import { createMockWKApp } from './mock.ts'
 import type { APIClient } from './types.ts'
 
@@ -111,5 +111,46 @@ describe('octoweb apiClient seam', () => {
     for (const verb of ['get', 'post', 'put', 'patch', 'delete']) {
       expect(typeof proto[verb], `host APIClient.${verb}`).toBe('function')
     }
+  })
+})
+
+// XIN-1165: the docs NavRail entry must re-render like a direct `/docs` load. The host emits
+// `wk:nav-menu-activated` on every NavRail click; DocsHome subscribes through this seam to
+// re-assert its right pane after `onMenuClick` popToRoot()'d it (a return visit does not remount
+// DocsHome). The seam must fire ONLY for the docs menu and clean up on unsubscribe.
+describe('onNavMenuActivated seam', () => {
+  it('invokes the callback only when the docs menu is activated, and unsubscribes cleanly', () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+
+    let hits = 0
+    const off = onNavMenuActivated('docs', () => {
+      hits += 1
+    })
+    expect(wk.mockMittBus.navMenuActivatedListenerCount()).toBe(1)
+
+    // A different menu's activation must NOT trigger the docs callback.
+    wk.mockMittBus.emitNavMenuActivated('chat')
+    expect(hits).toBe(0)
+
+    // The docs menu's activation does.
+    wk.mockMittBus.emitNavMenuActivated('docs')
+    wk.mockMittBus.emitNavMenuActivated('docs')
+    expect(hits).toBe(2)
+
+    // After unsubscribe, no more listeners and no more callbacks.
+    off()
+    expect(wk.mockMittBus.navMenuActivatedListenerCount()).toBe(0)
+    wk.mockMittBus.emitNavMenuActivated('docs')
+    expect(hits).toBe(2)
+  })
+
+  it('returns a no-op unsubscribe when the host exposes no event bus', () => {
+    // Bus-less shape: getWKApp() falls back to it, mittBus is undefined → no throw, no listener.
+    setWKApp({ mittBus: undefined } as unknown as Parameters<typeof setWKApp>[0])
+    const off = onNavMenuActivated('docs', () => {
+      throw new Error('should never fire without a bus')
+    })
+    expect(() => off()).not.toThrow()
   })
 })

@@ -280,4 +280,11 @@ export interface RouteRight {
 export interface MittBusLite {
   on(type: 'space-changed', handler: (payload?: unknown) => void): void
   off(type: 'space-changed', handler: (payload?: unknown) => void): void
+  // Emitted by apps/web Pages/Main `onMenuClick` every time the user clicks a NavRail entry
+  // (`WKApp.mittBus.emit('wk:nav-menu-activated', { menuId })`). Because MainContentLeft keeps
+  // every visited route mounted and only toggles `display`, a return visit does NOT remount the
+  // route component — so modules that must refresh on re-activation subscribe to this instead of
+  // relying on a fresh mount (same signal the summary/todo/contacts modules use).
+  on(type: 'wk:nav-menu-activated', handler: (payload: { menuId: string }) => void): void
+  off(type: 'wk:nav-menu-activated', handler: (payload: { menuId: string }) => void): void
 }

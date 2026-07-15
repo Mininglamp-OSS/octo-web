@@ -77,21 +77,37 @@ export class MockRouteManager implements RouteManager {
  */
 export class MockMittBus {
   private spaceChangedListeners: Array<(payload?: unknown) => void> = []
-  on(type: 'space-changed', handler: (payload?: unknown) => void): void {
+  private navMenuActivatedListeners: Array<(payload: { menuId: string }) => void> = []
+  on(type: 'space-changed', handler: (payload?: unknown) => void): void
+  on(type: 'wk:nav-menu-activated', handler: (payload: { menuId: string }) => void): void
+  on(type: string, handler: (payload?: any) => void): void {
     if (type === 'space-changed') this.spaceChangedListeners.push(handler)
+    else if (type === 'wk:nav-menu-activated') this.navMenuActivatedListeners.push(handler)
   }
-  off(type: 'space-changed', handler: (payload?: unknown) => void): void {
+  off(type: 'space-changed', handler: (payload?: unknown) => void): void
+  off(type: 'wk:nav-menu-activated', handler: (payload: { menuId: string }) => void): void
+  off(type: string, handler: (payload?: any) => void): void {
     if (type === 'space-changed') {
       this.spaceChangedListeners = this.spaceChangedListeners.filter((l) => l !== handler)
+    } else if (type === 'wk:nav-menu-activated') {
+      this.navMenuActivatedListeners = this.navMenuActivatedListeners.filter((l) => l !== handler)
     }
   }
   /** Number of space-changed listeners currently registered (leak / idempotency checks). */
   spaceChangedListenerCount(): number {
     return this.spaceChangedListeners.length
   }
+  /** Number of nav-menu-activated listeners currently registered (leak checks). */
+  navMenuActivatedListenerCount(): number {
+    return this.navMenuActivatedListeners.length
+  }
   /** Simulate the host broadcasting a Space switch. */
   emitSpaceChanged(payload?: unknown): void {
     for (const l of [...this.spaceChangedListeners]) l(payload)
+  }
+  /** Simulate the host broadcasting a NavRail entry activation (menu click). */
+  emitNavMenuActivated(menuId: string): void {
+    for (const l of [...this.navMenuActivatedListeners]) l({ menuId })
   }
 }
 
