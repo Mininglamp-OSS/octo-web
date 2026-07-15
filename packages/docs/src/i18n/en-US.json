@@ -454,7 +454,50 @@
       "changed": "Changed",
       "emptyCell": "(empty)",
       "emptyGrid": "(empty sheet)"
-    }
+    },
+    "fontLabels": {
+      "pingfang": "PingFang SC",
+      "hiraginoSansGB": "Hiragino Sans GB",
+      "stxihei": "STXihei",
+      "yuanti": "Yuanti SC",
+      "hannotate": "Hannotate SC",
+      "hanzipen": "HanziPen SC",
+      "wawati": "Wawati SC"
+    },
+    "formula": {
+      "insert": "Insert formula",
+      "circleArea": "Area of a circle",
+      "binomial": "Binomial theorem",
+      "sumExpansion": "Sum expansion",
+      "fourier": "Fourier series",
+      "pythagorean": "Pythagorean theorem",
+      "quadratic": "Quadratic formula",
+      "taylor": "Taylor expansion",
+      "trig1": "Trig identity 1",
+      "trig2": "Trig identity 2",
+      "newFormula": "New formula",
+      "latex": "LaTeX formula",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "menu": "Formula",
+      "paletteStructure": "Structures",
+      "paletteBracket": "Brackets / Matrices",
+      "paletteOperator": "Operators / Relations",
+      "paletteGreek": "Greek letters",
+      "paletteArrow": "Arrows / Functions",
+      "matrix": "Matrix",
+      "pmatrix": "(Matrix)",
+      "determinant": "|Determinant|",
+      "cases": "Cases"
+    },
+    "info": {
+      "error": "Error",
+      "forceStringInfo": "Number stored as text"
+    },
+    "latexTitle": "Insert formula",
+    "latexPreview": "Preview",
+    "formulaEditorCancel": "Cancel",
+    "formulaEditorOk": "OK"
   },
   "error": {
     "permission": {

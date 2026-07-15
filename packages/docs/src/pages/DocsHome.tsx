@@ -29,11 +29,13 @@ export interface DocTarget {
 }
 
 /**
- * Excel import is temporarily HIDDEN for this release (owner request — ships next week). The
- * import machinery (parse + float-image support) is complete and left intact; only the entry
- * button is gated. Flip this to `true` to restore the "导入" button.
+ * Excel import entry visibility. #583 originally hid this per owner request ("ships next week").
+ * The owner (李庆祥) has since asked in this PR (#737, §5) for the entry to be re-enabled, so the
+ * flag is ON — but a formal owner sign-off ON THIS PR is still PENDING and the `needs-human-review`
+ * label ensures a human maintainer confirms it before merge. Kept as a flag so it can be toggled
+ * per release. Import machinery (parse + float-image + hyperlink) lives in xlsxImport/CollabSheet.
  */
-const IMPORT_ENABLED = false
+const IMPORT_ENABLED = true
 
 /**
  * A dropdown menu rendered in a body portal at fixed coords, so it is never clipped by an
@@ -559,7 +561,7 @@ function DocsList({
             </button>
           </PortalMenu>
         )}
-        {/* Import entry hidden for this release — re-enable by flipping IMPORT_ENABLED. */}
+        {/* Import entry — flag ON; formal owner sign-off on this PR still PENDING, gated by needs-human-review (was hidden in #583). Toggle via IMPORT_ENABLED. */}
         {IMPORT_ENABLED && (
           <>
         <button

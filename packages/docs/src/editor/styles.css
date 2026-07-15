@@ -2981,3 +2981,79 @@
   justify-content: flex-start !important;
 }
 
+/* Sheet font aliases (cross-platform rendering).
+ *
+ * Univer's built-in font list (DEFAULT_FONT_LIST) uses WINDOWS PostScript names
+ * (SimSun / SimHei / Microsoft YaHei / NSimSun ...). The cell font value (`ff`) is
+ * stored/exported verbatim as that name, and Univer's canvas renderer resolves it
+ * against the *client machine's* installed fonts. On macOS those Windows fonts don't
+ * exist under those names — the OS ships the same typefaces under DIFFERENT names
+ * (宋体 → "Songti SC", 黑体 → "Heiti SC", etc.) — so the browser can't match and the
+ * text falls back to a default face (and Univer flags the font with a "not installed"
+ * ⓘ hint).
+ *
+ * NOTE: "Microsoft YaHei" is deliberately NOT aliased here — Chromium reserves that name
+ * and ignores any @font-face for it, so it can't be rescued via CSS. It's instead removed
+ * from the font picker entirely (see CollabSheet.ts, IFontService.removeFont).
+ *
+ * These @font-face rules define each Windows-named family with a `src` of `local()`
+ * fallbacks only — NO downloaded font files. The browser picks the FIRST locally
+ * installed candidate: the real Windows font on Windows, the macOS equivalent on Mac.
+ * This touches ONLY how glyphs are drawn on screen: `ff` still stores/exports the
+ * clean single canonical name (see SheetView.tsx `font: { name: s.ff }`), so import/
+ * export is unaffected. `font-weight: 100 900` keeps bold cells on the aliased face
+ * (otherwise a bold request wouldn't match this face and would fall back).
+ *
+ * Global scope note: @font-face families are page-global, but these Windows font
+ * names are used NOWHERE else in the app (only Univer's list references them), so
+ * aliasing them has no side effects outside the sheet.
+ */
+@font-face {
+  font-family: "SimSun";
+  src: local("SimSun"), local("Songti SC"), local("STSong"), local("Songti TC");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "NSimSun";
+  src: local("NSimSun"), local("SimSun"), local("Songti SC"), local("STSong");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "SimHei";
+  src: local("SimHei"), local("Heiti SC"), local("STHeiti"), local("PingFang SC");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Kaiti";
+  src: local("Kaiti"), local("KaiTi"), local("Kaiti SC"), local("STKaiti");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "FangSong";
+  src: local("FangSong"), local("STFangsong"), local("FangSong SC");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "STXinwei";
+  src: local("STXinwei"), local("Weibei SC Bold"), local("WeibeiSC-Bold"), local("Weibei SC"), local("魏碑-简 粗体"), local("魏碑-简");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "STXingkai";
+  src: local("STXingkai"), local("Xingkai SC Bold"), local("XingkaiSC-Bold"), local("Xingkai SC"), local("行楷-简 粗体"), local("行楷-简");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "STLiti";
+  src: local("STLiti"), local("Baoli SC Regular"), local("BaoliSC-Regular"), local("Baoli SC"), local("隶变-简 常规体"), local("隶变-简");
+  font-weight: 100 900;
+  font-style: normal;
+}
+

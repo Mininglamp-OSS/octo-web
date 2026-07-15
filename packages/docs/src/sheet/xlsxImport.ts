@@ -11,6 +11,8 @@
 // back on read) — ExcelJS reads full cell styles (font / fill / alignment), so imported
 // formatting (bold, color, size, background, alignment) survives, mirroring exportXlsx.
 
+import { sanitizeLinkHref } from '../editor/sanitize.ts'
+
 export type ImportCell = { v?: unknown; f?: string; s?: Record<string, unknown> } | null
 
 /**
@@ -40,12 +42,29 @@ export interface ParsedDrawing {
   row: number
 }
 
-/** One parsed worksheet: its name + cell grid + merged ranges + floating images. */
+/** A parsed hyperlink on a cell (0-based row/col). `display` is the cell's shown text. */
+export interface ParsedHyperLink {
+  row: number
+  col: number
+  url: string
+  display?: string
+}
+
+/** A parsed WPS cell image (=DISPIMG) — imported as a native Univer cell image at (row,col). */
+export interface ParsedCellImage {
+  row: number
+  col: number
+  source: string
+}
+
+/** One parsed worksheet: cells + merges + floating images + cell images + hyperlinks. */
 export interface ParsedSheet {
   name: string
   matrix: ImportCell[][]
   merges: MergeRange[]
   drawings?: ParsedDrawing[]
+  cellImages?: ParsedCellImage[]
+  hyperlinks?: ParsedHyperLink[]
 }
 
 /** The full parsed payload for an imported workbook: every VISIBLE worksheet. */
@@ -101,6 +120,10 @@ function argbToHex(argb?: string): string | undefined {
 interface XlsxCell {
   value: unknown
   text?: string
+  /** Formula string when the cell is a formula (used to detect WPS =DISPIMG cell images). */
+  formula?: string
+  /** Hyperlink target when the cell is a link (ExcelJS exposes it here + a {text,hyperlink} value). */
+  hyperlink?: string
   // merged cells: every cell in a merge range reports the MASTER's value on read, so we
   // write the value only for the master and skip the slaves (else a merged title/label
   // repeats across its whole span).
@@ -185,6 +208,63 @@ function mediaToDataUrl(media: { extension?: string; buffer?: unknown; base64?: 
     return `data:image/${ext};base64,${bytesToBase64(buf as Uint8Array)}`
   }
   return null
+}
+
+/** Extract the DISPIMG id from a WPS cell-image formula `=DISPIMG("ID_xxx", n)`, or null. */
+export function extractDispImgId(formula: string | undefined): string | null {
+  if (!formula) return null
+  const m = /DISPIMG\(\s*"([^"]+)"/i.exec(formula)
+  return m ? m[1] : null
+}
+
+/**
+ * Parse WPS's proprietary cell-image parts to a map `DISPIMG id -> base64 data URL`. WPS stores
+ * cell images as a `=DISPIMG("ID_…",n)` formula whose ID resolves through `xl/cellimages.xml`
+ * (id → embed rel) + `xl/_rels/cellimages.xml.rels` (rel → media) + `xl/media/*`. ExcelJS can't
+ * read these (not OpenXML), so we crack the zip ourselves. Regex over the (controlled, machine-
+ * generated) XML — a full DOM parse buys little here. Empty map on any miss (no cell images).
+ */
+async function parseWpsCellImages(data: ArrayBuffer): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  try {
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(data)
+    const ciFile = zip.file('xl/cellimages.xml')
+    if (!ciFile) return out
+    const ci = await ciFile.async('string')
+    const relsFile = zip.file('xl/_rels/cellimages.xml.rels')
+    const relsXml = relsFile ? await relsFile.async('string') : ''
+
+    // rId -> media path (relative to xl/). Handle Id/Target in either attribute order.
+    const norm = (t: string) => t.replace(/^\/+/, '').replace(/^xl\//, '').replace(/^\.\.\//, '')
+    const relMap = new Map<string, string>()
+    for (const m of relsXml.matchAll(/<Relationship\b[^>]*>/g)) {
+      const tag = m[0]
+      const id = /Id="([^"]+)"/.exec(tag)?.[1]
+      const target = /Target="([^"]+)"/.exec(tag)?.[1]
+      if (id && target) relMap.set(id, norm(target))
+    }
+
+    // Pair each cell image's DISPIMG id (cNvPr@name, "ID_…") with its media embed (blip@r:embed),
+    // in document order — WPS emits one name + one embed per <etc:cellImage>.
+    const names = [...ci.matchAll(/name="(ID_[^"]+)"/g)].map((x) => x[1])
+    const embeds = [...ci.matchAll(/embed="([^"]+)"/g)].map((x) => x[1])
+    const n = Math.min(names.length, embeds.length)
+    for (let i = 0; i < n; i++) {
+      const target = relMap.get(embeds[i])
+      if (!target) continue
+      const path = `xl/${target}`
+      const mf = zip.file(path) ?? zip.file(target)
+      if (!mf) continue
+      const bytes = await mf.async('uint8array')
+      const rawExt = (target.split('.').pop() || 'png').toLowerCase()
+      const ext = rawExt === 'jpg' ? 'jpeg' : rawExt
+      out.set(names[i], `data:image/${ext};base64,${bytesToBase64(bytes)}`)
+    }
+  } catch {
+    // no cell images / unreadable — import the rest without them
+  }
+  return out
 }
 
 /** Map an ExcelJS cell to a Univer ICellData (value / formula + resolved style). */
@@ -310,6 +390,9 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
         model?: { merges?: string[] }
       }>
     })()
+    // Clone the buffer for our own zip read BEFORE ExcelJS consumes `data` (some builds detach the
+    // ArrayBuffer during load, which would leave JSZip nothing to read).
+    const rawForCellImages = data.slice(0)
     await wb.xlsx.load(data)
     // Import EVERY visible worksheet (each becomes a sheet tab in the workbook). Hidden /
     // very-hidden sheets are skipped — not user content, and previously the source of the
@@ -318,6 +401,9 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
     // sheet to the collaborative grid bounds (never build a giant dense matrix / OOM).
     const sheets: ParsedSheet[] = []
     let truncated = false
+    // WPS cell images (=DISPIMG) — resolved from the zip's private cellimages parts (ExcelJS can't
+    // read them). Map is shared across sheets; DISPIMG ids are unique per workbook.
+    const dispImgMap = await parseWpsCellImages(rawForCellImages)
     wb.worksheets.forEach((ws, i) => {
       if (ws.state && ws.state !== 'visible') return
       const rawRows = ws.rowCount
@@ -327,9 +413,33 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
       const cols = Math.min(rawCols, MAX_IMPORT_COLS)
       if (rawRows > MAX_IMPORT_ROWS || rawCols > MAX_IMPORT_COLS) truncated = true
       const matrix: ImportCell[][] = []
+      const hyperlinks: ParsedHyperLink[] = []
+      // Floating images (below). WPS cell images go to cellImages (imported as native cell images).
+      const drawings: ParsedDrawing[] = []
+      const cellImages: ParsedCellImage[] = []
       for (let r = 1; r <= rows; r++) {
         const row: ImportCell[] = []
-        for (let c = 1; c <= cols; c++) row.push(exceljsCellToUniver(ws.getCell(r, c)))
+        for (let c = 1; c <= cols; c++) {
+          const xc = ws.getCell(r, c)
+          row.push(exceljsCellToUniver(xc))
+          // Hyperlinks live outside cell data in Univer, so collect them separately (applied via the
+          // HyperLinkModel after import). The cell's display text is already captured in the matrix.
+          // Sanitize at the import boundary: an .xlsx cell hyperlink is untrusted input, so it must
+          // pass the app's link-scheme whitelist (http/https/mailto) — the same rule the editor
+          // enforces at both parse and render (editor/sanitize.ts). Drop javascript:/data:/vbscript:
+          // etc. so a crafted workbook can't seed a pseudo-scheme link into the sheet model.
+          const rawUrl = typeof xc.hyperlink === 'string' ? xc.hyperlink : undefined
+          const url = sanitizeLinkHref(rawUrl) ?? undefined
+          if (url) {
+            hyperlinks.push({ row: r - 1, col: c - 1, url, display: typeof xc.text === 'string' ? xc.text : undefined })
+          }
+          // WPS cell image: the cell holds a =DISPIMG("ID",n) formula (exceljsCellToUniver blanked
+          // it). If we resolved that ID's binary, import it as a NATIVE Univer cell image at the
+          // cell (fits the cell, moves with it) — matching the source (not a floating object).
+          const dispId = extractDispImgId(xc.formula ?? (xc.value as { formula?: string } | null)?.formula)
+          const dispSrc = dispId ? dispImgMap.get(dispId) : undefined
+          if (dispSrc) cellImages.push({ row: r - 1, col: c - 1, source: dispSrc })
+        }
         matrix.push(row)
       }
       const merges: MergeRange[] = []
@@ -347,7 +457,7 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
       // Floating images (standard xlsx drawings): ExcelJS exposes them per-sheet with an
       // imageId into the workbook media. Convert each to a base64 data URL anchored at its
       // top-left cell. Wrapped defensively — a missing/odd image layer must not fail the import.
-      const drawings: ParsedDrawing[] = []
+      // (Appends to `drawings`, which already holds any WPS cell images found above.)
       try {
         for (const im of ws.getImages?.() ?? []) {
           const media = wb.getImage?.(Number(im.imageId))
@@ -364,7 +474,7 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
       } catch {
         // image layer unreadable — import cells/merges without images
       }
-      sheets.push({ name: ws.name ?? `Sheet${i + 1}`, matrix, merges, drawings })
+      sheets.push({ name: ws.name ?? `Sheet${i + 1}`, matrix, merges, drawings, cellImages, hyperlinks })
     })
     if (sheets.length === 0) return { ok: false, reason: 'empty' }
     return { ok: true, data: { sheets, truncated } }

@@ -454,7 +454,50 @@
       "changed": "修改",
       "emptyCell": "（空）",
       "emptyGrid": "（空表格）"
-    }
+    },
+    "fontLabels": {
+      "pingfang": "苹方",
+      "hiraginoSansGB": "冬青黑体",
+      "stxihei": "华文细黑",
+      "yuanti": "圆体",
+      "hannotate": "手札体",
+      "hanzipen": "翩翩体",
+      "wawati": "娃娃体"
+    },
+    "formula": {
+      "insert": "插入公式",
+      "circleArea": "圆的面积",
+      "binomial": "二项式定理",
+      "sumExpansion": "和的展开式",
+      "fourier": "傅里叶级数",
+      "pythagorean": "勾股定理",
+      "quadratic": "二次公式",
+      "taylor": "泰勒展开式",
+      "trig1": "三角恒等式 1",
+      "trig2": "三角恒等式 2",
+      "newFormula": "插入新公式",
+      "latex": "LaTeX 公式",
+      "zoomIn": "放大",
+      "zoomOut": "缩小",
+      "menu": "公式",
+      "paletteStructure": "结构",
+      "paletteBracket": "括号 / 矩阵",
+      "paletteOperator": "运算 / 关系",
+      "paletteGreek": "希腊字母",
+      "paletteArrow": "箭头 / 函数",
+      "matrix": "矩阵",
+      "pmatrix": "(矩阵)",
+      "determinant": "|行列式|",
+      "cases": "分段"
+    },
+    "info": {
+      "error": "错误",
+      "forceStringInfo": "以文本形式存储的数字"
+    },
+    "latexTitle": "插入公式",
+    "latexPreview": "预览",
+    "formulaEditorCancel": "取消",
+    "formulaEditorOk": "确定"
   },
   "error": {
     "permission": {
