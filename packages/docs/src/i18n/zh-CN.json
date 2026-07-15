@@ -12,7 +12,12 @@
     "kindDoc": "文档",
     "kindBoard": "画板",
     "back": "全部文档",
-    "updatedAt": "更新于"
+    "updatedAt": "更新于",
+    "viewedAt": "查看于",
+    "loadingMore": "加载中…",
+    "end": "没有更多了",
+    "loadMoreFailed": "加载更多失败",
+    "retry": "重试"
   },
   "board": {
     "readOnly": "只读",
@@ -527,5 +532,28 @@
     "pendingError": "加载待审批申请失败。",
     "approve": "同意",
     "deny": "拒绝"
+  },
+  "tab": {
+    "recent": "最近查看",
+    "mine": "我的文档"
+  },
+  "search": {
+    "placeholder": "按文件名搜索"
+  },
+  "filter": {
+    "creator": "创建者",
+    "clearAll": "清除全部",
+    "noCreators": "暂无创建者"
+  },
+  "empty": {
+    "recentNone": "你还没查看过任何文档",
+    "recentNoneCta": "去打开一篇文档",
+    "myDocsNone": "你还没有创建文档",
+    "myDocsNoneCta": "新建文档",
+    "searchNone": "没有匹配 “{{kw}}” 的文档",
+    "searchNoneCta": "清空搜索",
+    "filterNone": "所选创建者下没有你查看过的文档",
+    "filterNoneCta": "清除过滤",
+    "combinedNone": "无匹配结果"
   }
 }

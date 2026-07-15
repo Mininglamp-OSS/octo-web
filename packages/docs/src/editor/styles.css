@@ -2494,6 +2494,216 @@
   color: inherit;
 }
 
+/* ── FEAT-B: tabs + toolbar (search / creator filter) + infinite-scroll footer + empty states ──
+   Reuses the existing octo-docs list visual language (borders / radii / muted text colours); no
+   control library is introduced (frontend-design §4 / §5). */
+.octo-docs-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 4px;
+  margin-bottom: 8px;
+}
+.octo-docs-tab {
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--octo-fg-3, #86909c);
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.octo-docs-tab:hover {
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-tab-active {
+  color: var(--octo-active-fg, #1664ff);
+  border-bottom-color: var(--octo-active-fg, #1664ff);
+}
+
+.octo-docs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.octo-docs-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 160px;
+  min-width: 120px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--octo-bg, #fff);
+}
+.octo-docs-search-icon {
+  display: inline-flex;
+  color: var(--octo-fg-3, #86909c);
+}
+.octo-docs-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-search-clear {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--octo-fg-3, #86909c);
+  padding: 0 2px;
+}
+.octo-docs-search-clear:hover {
+  color: var(--octo-fg, #1f2329);
+}
+
+.octo-docs-filter {
+  position: relative;
+  flex: 0 0 auto;
+}
+.octo-docs-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  background: var(--octo-bg, #fff);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-filter-btn:hover {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+.octo-docs-filter-btn-active {
+  border-color: var(--octo-active-fg, #1664ff);
+  color: var(--octo-active-fg, #1664ff);
+}
+.octo-docs-filter-caret {
+  font-size: 9px;
+  opacity: 0.9;
+}
+.octo-docs-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--octo-fg, #1f2329);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.octo-docs-filter-option:hover {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+.octo-docs-filter-option-empty {
+  color: var(--octo-fg-3, #86909c);
+  cursor: default;
+}
+.octo-docs-filter-option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.octo-docs-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  margin-bottom: 8px;
+}
+.octo-docs-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--octo-active-bg, #e8f3ff);
+  color: var(--octo-active-fg, #1664ff);
+  border-radius: 12px;
+  padding: 2px 6px 2px 10px;
+  font-size: 12px;
+}
+.octo-docs-filter-chip-x {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.octo-docs-filter-clear {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--octo-fg-3, #86909c);
+  text-decoration: underline;
+}
+.octo-docs-filter-clear:hover {
+  color: var(--octo-fg, #1f2329);
+}
+
+/* Infinite-scroll footer (sentinel row): loading / end / retry. No Suspense. */
+.octo-docs-list-more,
+.octo-docs-list-end {
+  list-style: none;
+  text-align: center;
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--octo-fg-3, #86909c);
+}
+.octo-docs-list-more-error {
+  color: var(--octo-danger, #f53f3f);
+}
+.octo-docs-list-more-btn {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: inherit;
+}
+
+/* Empty states A–E: title + CTA button(s). */
+.octo-docs-empty-title {
+  margin: 0 0 12px;
+  color: var(--octo-fg-2, #4e5969);
+  font-size: 14px;
+}
+.octo-docs-empty-cta {
+  border: 1px solid var(--octo-active-fg, #1664ff);
+  background: transparent;
+  color: var(--octo-active-fg, #1664ff);
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.octo-docs-empty-cta:hover {
+  background: var(--octo-active-bg, #e8f3ff);
+}
+.octo-docs-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+
 /* ─────────────────────────────────────────────────────────────────────────
    Batch-3 schema toolbar items (SCHEMA_VERSION 5–13)
    ───────────────────────────────────────────────────────────────────────── */
