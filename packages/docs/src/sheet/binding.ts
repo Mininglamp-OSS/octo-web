@@ -38,6 +38,11 @@ import * as Y from 'yjs'
 import '@univerjs/preset-sheets-core'
 import type { FUniver } from '@univerjs/core/lib/facade'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
+// A hyperlink renders ONLY from a HYPERLINK custom range in the cell's rich text
+// (cell.p); HyperLinkModel is just an index and drives no rendering. So we apply
+// restored links via these commands (which write cell.p via SetRangeValuesMutation),
+// NOT model.addHyperLink — otherwise the cell stays plain text.
+import { AddHyperLinkCommand, CancelHyperLinkCommand } from '@univerjs/preset-sheets-hyper-link'
 
 /** Cell value/style commands we sync (see V1 note — diff is the source of truth). */
 const TRIGGER_IDS = new Set<string>([
@@ -1175,31 +1180,53 @@ export class UniverYjsBinding {
         const stored = this.hyperLinkMap.get(key) ?? null
         try {
           if (stored) {
-            // Remote-apply boundary: a peer could have written an unsanitized payload before this
-            // guard existed (or via a non-import path), so re-check the scheme here too — the
-            // editor's rule is to sanitize at BOTH the parse and the apply boundary.
+            // Re-sanitize at the apply boundary (a peer could have written an
+            // unsanitized payload before this guard existed / via a non-import path).
             const safePayload = sanitizeLinkHref(stored.payload)
             if (!safePayload) {
-              // Drop a pseudo-scheme link rather than replicate it; remove any stale local copy.
-              if (model.getHyperLink(unitId, localId, id)) model.removeHyperLink(unitId, localId, id)
+              // Pseudo-scheme link: drop it (cancel any local copy) rather than replicate.
+              const prev = this.lastSeenLinks.get(key) ?? stored
+              this.univerAPI.syncExecuteCommand(CancelHyperLinkCommand.id, {
+                unitId,
+                subUnitId: localId,
+                id,
+                row: prev.row,
+                column: prev.column,
+              })
               this.lastSeenLinks.set(key, stored)
               continue
             }
-            const existing = model.getHyperLink(unitId, localId, id)
-            if (existing) {
-              model.updateHyperLink(unitId, localId, id, { payload: safePayload, display: stored.display }, true)
-            } else {
-              model.addHyperLink(unitId, localId, {
+            // Apply via AddHyperLinkCommand (writes the cell's HYPERLINK custom range
+            // through SetRangeValuesMutation → the cell actually renders as a link).
+            // The command is overwrite-safe (replaces an existing link on the same
+            // cell), so a single Add covers both insert and update. This runs inside
+            // the applyingRemote=true window and the mutation fires synchronously, so
+            // onCommandExecuted's guard suppresses the write-back (no Yjs echo loop).
+            this.univerAPI.syncExecuteCommand(AddHyperLinkCommand.id, {
+              unitId,
+              subUnitId: localId,
+              link: {
                 id: stored.id,
                 row: stored.row,
                 column: stored.column,
                 payload: safePayload,
                 ...(stored.display !== undefined ? { display: stored.display } : {}),
-              })
-            }
+              },
+            })
             this.lastSeenLinks.set(key, stored)
           } else {
-            if (model.getHyperLink(unitId, localId, id)) model.removeHyperLink(unitId, localId, id)
+            // Deletion: CancelHyperLinkCommand needs the cell coords; take them from
+            // the last-seen copy (the Y.Map entry is already gone).
+            const prev = this.lastSeenLinks.get(key)
+            if (prev) {
+              this.univerAPI.syncExecuteCommand(CancelHyperLinkCommand.id, {
+                unitId,
+                subUnitId: localId,
+                id,
+                row: prev.row,
+                column: prev.column,
+              })
+            }
             this.lastSeenLinks.delete(key)
           }
         } catch {
