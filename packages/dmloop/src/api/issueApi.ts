@@ -15,6 +15,7 @@ import type {
 } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
 import { ensureDirectory, actorName, actorAvatar, listAssigneeCandidates as dirCandidates } from "./directory";
+import { arrayFilterQuery } from "./issueFilterQuery";
 
 // enrich 的同步核心:调用方已拿到 directory 时复用,避免每组重复 ensureDirectory。
 function enrichWith(dir: Awaited<ReturnType<typeof ensureDirectory>>, issues: Issue[]): Issue[] {
@@ -47,6 +48,7 @@ export function listIssues(params?: ListParams): Promise<{ issues: Issue[]; tota
     assignee_id: params?.assignee_id,
     creator_id: params?.creator_id,
     project_id: params?.project_id,
+    ...arrayFilterQuery(params ?? {}),
     date_field: params?.date_field,
     date_start: params?.date_start,
     date_end: params?.date_end,
@@ -106,15 +108,11 @@ export async function listGroupedIssues(params: GroupedParams): Promise<IssueGro
   const dir = await ensureDirectory();
   const data = await httpGet<{ groups?: IssueGroup[] }>("/issues/grouped", {
     group_by: "assignee",
-    statuses: params.statuses?.join(","),
-    priorities: params.priorities?.join(","),
-    assignee_types: params.assignee_types?.join(","),
+    ...arrayFilterQuery(params),
     assignee_id: params.assignee_id,
     involves_user_id: params.involves_user_id,
     creator_id: params.creator_id,
     project_id: params.project_id,
-    project_ids: params.project_ids?.join(","),
-    include_no_project: params.include_no_project ? "true" : undefined,
     date_field: params.date_field,
     date_start: params.date_start,
     date_end: params.date_end,

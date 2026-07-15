@@ -145,8 +145,10 @@
     "assignee": "负责人",
     "creator": "创建者",
     "project": "项目",
+    "label": "标签",
     "dateRange": "时间范围",
-    "noProject": "含无项目"
+    "noProject": "含无项目",
+    "noAssignee": "含无负责人"
   },
   "dateField": {
     "created_at": "创建时间",
@@ -465,7 +467,7 @@
   },
   "mention": {
     "groupUsers": "用户",
-    "groupIssues": "事项",
+    "groupIssues": "回路",
     "allMembers": "所有成员"
   },
   "agent": {

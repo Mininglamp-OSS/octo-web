@@ -67,6 +67,17 @@ export interface ListParams {
   assignee_id?: string;
   creator_id?: string;
   project_id?: string;
+  // 统一多选筛选(后端数组参,与看板/列表/分组共用)。空数组 = 不发。数组与同维单值
+  // 互斥使用:issue 列表发数组,单值字段留给其它复用 ListParams 的 list 端点。
+  statuses?: IssueStatus[];
+  priorities?: IssuePriority[];
+  assignee_ids?: string[];
+  assignee_types?: AssigneeType[];
+  include_no_assignee?: boolean;
+  creator_ids?: string[];
+  project_ids?: string[];
+  include_no_project?: boolean;
+  label_ids?: string[];
   // 时间范围筛选:date_field(仅 created_at|updated_at)+ date_start + date_end 必须同时给,
   // 值为 RFC3339;后端要求 start 严格早于 end。
   date_field?: IssueDateField;
@@ -90,13 +101,16 @@ export interface GroupedParams {
   priorities?: IssuePriority[];
   assignee_types?: AssigneeType[];
   assignee_id?: string;
+  assignee_ids?: string[];
+  include_no_assignee?: boolean;
   involves_user_id?: string;
   creator_id?: string;
+  creator_ids?: string[];
   project_id?: string;
   project_ids?: string[];
   // 纳入无项目的 issue(后端 include_no_project)。与项目多选配对 = 所选项目 ∪ 无项目。
-  // (未加 include_no_assignee:仅与 assignee_filters 配对有意义,本 UI 用 assignee_types/involves。)
   include_no_project?: boolean;
+  label_ids?: string[];
   date_field?: IssueDateField;
   date_start?: string;
   date_end?: string;

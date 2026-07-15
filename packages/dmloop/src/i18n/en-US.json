@@ -145,8 +145,10 @@
     "assignee": "Assignee",
     "creator": "Creator",
     "project": "Project",
+    "label": "Label",
     "dateRange": "Date range",
-    "noProject": "Incl. no project"
+    "noProject": "Incl. no project",
+    "noAssignee": "Incl. no assignee"
   },
   "dateField": {
     "created_at": "Created",
@@ -465,7 +467,7 @@
   },
   "mention": {
     "groupUsers": "Users",
-    "groupIssues": "Issues",
+    "groupIssues": "Loops",
     "allMembers": "All members"
   },
   "agent": {

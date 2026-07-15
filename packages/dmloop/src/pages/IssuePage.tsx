@@ -21,10 +21,12 @@ import type {
   IssuePriority,
   IssueSortField,
   IssueDateField,
+  IssueLabel,
 } from "../api/types";
 import { ISSUE_SORT_FIELDS, ISSUE_DATE_FIELDS } from "../api/types";
 import { listIssues, searchIssues, listGroupedIssues, listMyGroupedIssues, getAgentTaskSnapshot } from "../api/issueApi";
 import { listProjectOptions } from "../api/directory";
+import { listLabels } from "../api/labelApi";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import { ISSUE_STATUS_ORDER, PRIORITY_ORDER, isActiveRun } from "../ui/meta";
 import IssueBoard from "../panel/IssueBoard";
@@ -36,28 +38,26 @@ import { readView, writeView } from "../ui/viewMode";
 
 type ViewMode = "board" | "grouped" | "list";
 
-// scope pill → assignee_types 过滤(仅 /grouped 支持;all/involves 不按类型收窄)。
+// scope pill → assignee_types 过滤(看板/列表/分组统一走后端 assignee_types)。
+// all / involves 不按类型收窄(involves 走用户关系并集,见 reload)。
 function scopeToAssigneeTypes(scope: IssueScope): ("member" | "agent" | "squad")[] | undefined {
   if (scope === "members") return ["member"];
   if (scope === "agents") return ["agent", "squad"];
   return undefined;
 }
 
+// 统一筛选:全维度数组多选 + 正交的「无负责人 / 无项目」布尔,同一套应用到看板/列表/分组
+// 三视图。keyword 走独立全文搜索端点,故与其它维度不并存于同一请求。
 interface Filters {
   keyword: string;
-  status?: IssueStatus;        // board/list 单选
-  priority?: IssuePriority;    // board/list 单选
-  assignee?: string;
-  creator?: string;
-  project?: string;            // board/list 单选
-  // 分组板专属多选 + no-project(仅 /grouped 支持 statuses[]/priorities[]/project_ids[]/include_no_project)。
-  // 注:无 include_no_assignee —— scope pill 用 assignee_types(类型级、顶层 AND),后端
-  // include_no_assignee 只与 assignee_filters(具体 actor)配对才是「含」语义;与 assignee_types/
-  // involves 的 assignee_id 腿 AND 会矛盾成空。grouped 在 scope=all 下本就显示未指派组。
-  gStatuses: IssueStatus[];
-  gPriorities: IssuePriority[];
-  gProjectIds: string[];
+  statuses: IssueStatus[];
+  priorities: IssuePriority[];
+  assigneeIds: string[];
+  noAssignee: boolean;
+  creatorIds: string[];
+  projectIds: string[];
   noProject: boolean;
+  labelIds: string[];
   dateField: IssueDateField; // 时间范围筛选的列(created_at|updated_at)
   dateRange?: Date[];        // [start, end];为空则不按时间筛选
   sortBy: IssueSortField;
@@ -80,15 +80,20 @@ interface IssuePageProps {
 
 export default function IssuePage({ defaultScope, defaultView, viewKey }: IssuePageProps = {}) {
   const { t } = useI18n();
+  // 「我的回路」= involves:只有分组视图能表达「指派/创建/关联」三路并集(listMyGroupedIssues 扇出),
+  // 看板/列表无对应查询会退化成显示全工作区 → 该页锁死分组、不给切视图。
+  const isMyLoop = defaultScope === "involves";
   const [issues, setIssues] = useState<Issue[]>([]);
   const [groups, setGroups] = useState<IssueGroup[]>([]);
   const [running, setRunning] = useState<ReadonlySet<string>>(new Set());
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<ViewMode>(() => viewKey ? readView(viewKey, ["board", "grouped", "list"], defaultView ?? "board") : (defaultView ?? "board"));
+  const [view, setView] = useState<ViewMode>(() => isMyLoop ? "grouped" : (viewKey ? readView(viewKey, ["board", "grouped", "list"], defaultView ?? "board") : (defaultView ?? "board")));
   const [scope, setScope] = useState<IssueScope>(defaultScope ?? "all");
-  const [f, setF] = useState<Filters>({ keyword: "", gStatuses: [], gPriorities: [], gProjectIds: [], noProject: false, sortBy: "position", sortDir: "desc", dateField: "created_at" });
+  const [f, setF] = useState<Filters>({ keyword: "", statuses: [], priorities: [], assigneeIds: [], noAssignee: false, creatorIds: [], projectIds: [], noProject: false, labelIds: [], sortBy: "position", sortDir: "desc", dateField: "created_at" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
+  // 「无负责人」仅在 scope=全部 时有效(与 assignee_types 组合恒空)。单一来源:发送/勾选态/计数共用,防漂移。
+  const noAssigneeActive = scope === "all" && f.noAssignee;
   // 筛选/显示 面板受控可见:不用 clickToHide(它会在点击内部 Select/DatePicker/Checkbox
   // 时冒泡关闭,且这些控件的 portal 选项面板点击也会误触发关闭),改为显式
   // onVisibleChange —— 仅外部点击关闭,内部多字段交互保持面板打开。
@@ -103,51 +108,67 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   }, [cands]);
   // 项目下拉复用 directory 已缓存的 /projects(避免重复请求);随 workspace 切换整页重挂而刷新。
   const [projects, setProjects] = useState<Array<{ id: string; title: string }>>([]);
+  const [labels, setLabels] = useState<IssueLabel[]>([]);
   const seq = useRef(0); // 请求序号：只应用最新一次的响应，防并发乱序覆盖
 
   useEffect(() => {
     listProjectOptions().then(setProjects).catch(() => {});
+    listLabels().then(setLabels).catch(() => {});
   }, []);
 
   const reload = useCallback(() => {
     const my = ++seq.current;
     setLoading(true);
+    // 请求失败(网络/权限/500):清空结果集 + 提示。不保留旧行——否则旧数据会残留在新筛选态下,
+    // 且列表勾选态仍指向陈旧行,可能被批量删改误作用。seq 守卫:仅最新一次在途请求可清。
+    const onErr = () => {
+      if (my !== seq.current) return;
+      setIssues([]); setGroups([]); setTotal(0);
+      Toast.error(t("loop.toast.loadFailed"));
+    };
     // 时间范围:三参数须同时给且 start<end。onChange 已把 dateRange 归一为 undefined|[起,止]。
     // 止端 +1 日历日 → 半开区间,既含止日当天、又保证 start<end;setDate 处理 DST。
     const dr = f.dateRange;
     const endExclusive = dr && new Date(dr[1]);
     if (endExclusive) endExclusive.setDate(endExclusive.getDate() + 1);
 
-    // 分组板:走 /issues/grouped(按负责人);scope pill 收窄 assignee_types。
-    // grouped 不吃关键词/排序,故这两项在分组视图隐藏。
+    // 统一多选筛选:同一套数组/布尔应用到三视图(空数组/未选 → 不发)。keyword 走独立
+    // 全文搜索端点(不吃其它筛选),故不并入 common。
+    const common = {
+      statuses: f.statuses.length ? f.statuses : undefined,
+      priorities: f.priorities.length ? f.priorities : undefined,
+      assignee_ids: f.assigneeIds.length ? f.assigneeIds : undefined,
+      // 无负责人仅在 scope=全部 时生效:成员/AI 用 assignee_types 收窄(顶层 AND),
+      // 未指派项 assignee_type 为空、不满足类型谓词,二者组合恒空 → 只在 all 下发,面板亦禁用。
+      include_no_assignee: noAssigneeActive || undefined,
+      creator_ids: f.creatorIds.length ? f.creatorIds : undefined,
+      project_ids: f.projectIds.length ? f.projectIds : undefined,
+      include_no_project: f.noProject || undefined,
+      label_ids: f.labelIds.length ? f.labelIds : undefined,
+      date_field: dr ? f.dateField : undefined,
+      date_start: dr ? dr[0].toISOString() : undefined,
+      date_end: endExclusive ? endExclusive.toISOString() : undefined,
+    };
+
+    // 分组板:走 /issues/grouped(按负责人);grouped 不吃关键词/排序,故在分组视图隐藏。
     if (view === "grouped") {
-      const gp = {
-        // 分组板多选:空数组 → 不发(不收窄)。
-        statuses: f.gStatuses.length ? f.gStatuses : undefined,
-        priorities: f.gPriorities.length ? f.gPriorities : undefined,
-        project_ids: f.gProjectIds.length ? f.gProjectIds : undefined,
-        include_no_project: f.noProject || undefined,
-        creator_id: f.creator,
-        date_field: dr ? f.dateField : undefined,
-        date_start: dr ? dr[0].toISOString() : undefined,
-        date_end: endExclusive ? endExclusive.toISOString() : undefined,
-        // ponytail: 每组取后端上限 100；超量请用筛选。
-        limit: 100,
-      };
-      // 「与我相关」= 指派给我 ∪ 我创建 ∪ 间接关联(后端三过滤并集,fan-out 合并);
-      // 其余 scope 单发一次、按 assignee_types 收窄。
-      // scope=involves 需当前成员的后端 id;未解析出时**不回退成无 scope 全量**(否则「与我相关」
-      // 会错显全部)。清空并结束——myMemberId 在 reload 依赖里,解析后会自动重取。
-      if (scope === "involves" && !myMemberId) {
-        if (my === seq.current) { setGroups([]); setLoading(false); }
+      // 「与我相关」(仅「我的回路」页)= 指派给我 ∪ 我创建 ∪ 间接关联的并集扇出;需当前成员
+      // 后端 id,未解析出则清空并等待(不回退成无 scope 全量)。myMemberId 在依赖里,解析后自动重取。
+      if (scope === "involves") {
+        if (!myMemberId) {
+          if (my === seq.current) { setGroups([]); setLoading(false); }
+          return;
+        }
+        listMyGroupedIssues(myMemberId, { ...common, limit: 100 })
+          .then((gs) => { if (my === seq.current) setGroups(gs); })
+          .catch(onErr)
+          .finally(() => { if (my === seq.current) setLoading(false); });
         return;
       }
-      const req =
-        scope === "involves"
-          ? listMyGroupedIssues(myMemberId!, gp) // 上方守卫已保证 myMemberId 存在
-          : listGroupedIssues({ ...gp, assignee_types: scopeToAssigneeTypes(scope) });
-      req
+      // ponytail: 每组取后端上限 100；超量请用筛选。
+      listGroupedIssues({ ...common, assignee_types: scopeToAssigneeTypes(scope), limit: 100 })
         .then((gs) => { if (my === seq.current) setGroups(gs); })
+        .catch(onErr)
         .finally(() => { if (my === seq.current) setLoading(false); });
       return;
     }
@@ -158,14 +179,8 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     const req = kw
       ? searchIssues(kw, { limit: paged ? PAGE_SIZE : 50, offset: paged ? page * PAGE_SIZE : 0 })
       : listIssues({
-          status: f.status,
-          priority: f.priority,
-          assignee_id: f.assignee,
-          creator_id: f.creator,
-          project_id: f.project,
-          date_field: dr ? f.dateField : undefined,
-          date_start: dr ? dr[0].toISOString() : undefined,
-          date_end: endExclusive ? endExclusive.toISOString() : undefined,
+          ...common,
+          assignee_types: scopeToAssigneeTypes(scope),
           // 排序仅用于列表视图;看板按 status 分列 + 100 上限,叠加全局排序会把某状态整列截没,故看板固定后端默认(position)。
           sort_by: paged ? f.sortBy : undefined,
           sort_direction: paged ? f.sortDir : undefined,
@@ -184,8 +199,9 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
         setIssues(issues);
         setTotal(total);
       })
+      .catch(onErr)
       .finally(() => { if (my === seq.current) setLoading(false); });
-  }, [f, view, page, scope, myMemberId]);
+  }, [f, view, page, scope, myMemberId, noAssigneeActive]);
 
   useEffect(reload, [reload]);
 
@@ -220,7 +236,8 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
   // 改任一筛选/搜索都回到第一页，避免停在越界的 offset（此规则只此一处表达）。
   const update = (p: Partial<Filters>) => { setF((prev) => ({ ...prev, ...p })); setPage(0); };
-  const switchView = (v: ViewMode) => { setView(v); setPage(0); if (viewKey) writeView(viewKey, v); };
+  // 切视图后关闭「显示」面板;但列表视图会露出「升/降序」子选项,保持面板打开让用户接着选。
+  const switchView = (v: ViewMode) => { setView(v); setPage(0); if (viewKey) writeView(viewKey, v); if (v !== "list") setShowOpen(false); };
 
   // 点击 Issue → 跳转独立详情页（push 到右主栏，返回可 pop）。
   // key=id:issueId 变化即整体重挂载 → 详情页所有异步状态从零开始,结构性杜绝跨 issue 陈旧写入
@@ -231,12 +248,12 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
   const [createOpen, setCreateOpen] = useState(false);
 
-  // 新建回路 → 唤起统一建单弹窗（对齐 multica，不再拉起独立 AI 页）。创建成功后刷新列表。
+  // 新建回路 → 唤起统一建单弹窗(不再拉起独立 AI 页)。创建成功后刷新列表。
   const openNewLoop = () => setCreateOpen(true);
 
   const isEmpty = view === "grouped" ? groups.every((g) => g.issues.length === 0) : total === 0;
 
-  // 状态/优先级/项目的选项列表:单选与多选两个分支共用(避免重复 map)。
+  // 选项列表(多选共用,避免重复 map)。
   const statusOpts = ISSUE_STATUS_ORDER.map((s) => (
     <Select.Option key={s} value={s}>{t(`loop.status.${s}`)}</Select.Option>
   ));
@@ -246,6 +263,9 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   const projectOpts = projects.map((p) => (
     <Select.Option key={p.id} value={p.id}>{p.title}</Select.Option>
   ));
+  const labelOpts = labels.map((l) => (
+    <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
+  ));
 
   const title = defaultScope === "involves" ? t("loop.nav.myloop") : t("loop.nav.issue");
 
@@ -253,21 +273,39 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   // 避免它们「看起来生效、实际被忽略」的误导(grouped 视图隐藏关键词,故 searching 恒 false)。
   const searching = view !== "grouped" && !!f.keyword.trim();
 
-  // 「筛选」按钮上的激活计数(仅计当前视图会生效的维度)。
+  // 「筛选」按钮上的激活计数(每个非空维度记 1;keyword 仅在其生效的视图计)。
   const activeFilters =
-    (view === "grouped"
-      ? f.gStatuses.length + f.gPriorities.length + f.gProjectIds.length + (f.noProject ? 1 : 0)
-      : (f.status ? 1 : 0) + (f.priority ? 1 : 0) + (f.assignee ? 1 : 0) + (f.project ? 1 : 0) + (f.keyword.trim() ? 1 : 0)) +
-    (f.creator ? 1 : 0) +
-    (f.dateRange ? 1 : 0);
+    (f.statuses.length ? 1 : 0) +
+    (f.priorities.length ? 1 : 0) +
+    (f.assigneeIds.length || noAssigneeActive ? 1 : 0) +
+    (f.creatorIds.length ? 1 : 0) +
+    (f.projectIds.length || f.noProject ? 1 : 0) +
+    (f.labelIds.length ? 1 : 0) +
+    (f.dateRange ? 1 : 0) +
+    (view !== "grouped" && f.keyword.trim() ? 1 : 0);
 
   const clearFilters = () =>
     update({
-      keyword: "", status: undefined, priority: undefined, assignee: undefined, creator: undefined, project: undefined,
-      gStatuses: [], gPriorities: [], gProjectIds: [], noProject: false, dateRange: undefined,
+      keyword: "", statuses: [], priorities: [], assigneeIds: [], noAssignee: false,
+      creatorIds: [], projectIds: [], noProject: false, labelIds: [], dateRange: undefined,
     });
 
-  // 「筛选」面板：把原工具栏散落的下拉收进一个面板（对齐产品设计 的筛选框）。维度按视图切换单选/多选。
+  // 一行多选筛选(标签 + Select multiple)。各维度只差 options / filter / maxTagCount,收进一个函数。
+  const filterSelect = (
+    label: string,
+    value: string[],
+    onChange: (v: string[]) => void,
+    children: React.ReactNode,
+    opts?: { filter?: boolean; maxTagCount?: number },
+  ) => (
+    <div className="loop-fields__row">
+      <div className="loop-fields__label">{label}</div>
+      <Select multiple value={value} onChange={(v) => onChange((v ?? []) as string[])} showClear filter={opts?.filter} disabled={searching} maxTagCount={opts?.maxTagCount ?? 1} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={label}>
+        {children}
+      </Select>
+    </div>
+  );
+
   const filterPanel = (
     <div className="loop-fields loop-filter-panel">
       <div className="loop-filter-panel__head">
@@ -276,56 +314,18 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
           <button type="button" className="loop-filter-panel__clear" onClick={clearFilters}>{t("loop.action.clearFilters")}</button>
         )}
       </div>
+      {filterSelect(t("loop.filter.status"), f.statuses, (v) => update({ statuses: v as IssueStatus[] }), statusOpts, { maxTagCount: 2 })}
+      {filterSelect(t("loop.filter.priority"), f.priorities, (v) => update({ priorities: v as IssuePriority[] }), priorityOpts, { maxTagCount: 2 })}
+      {filterSelect(t("loop.filter.assignee"), f.assigneeIds, (v) => update({ assigneeIds: v }), cands.map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)), { filter: true })}
       <div className="loop-fields__row">
-        <div className="loop-fields__label">{t("loop.filter.status")}</div>
-        {view === "grouped" ? (
-          <Select multiple value={f.gStatuses} onChange={(v) => update({ gStatuses: (v ?? []) as IssueStatus[] })} showClear maxTagCount={2} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.status")}>{statusOpts}</Select>
-        ) : (
-          <Select value={f.status} onChange={(v) => update({ status: v as IssueStatus | undefined })} showClear disabled={searching} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.status")}>{statusOpts}</Select>
-        )}
+        <Checkbox className="loop-nofilter" checked={noAssigneeActive} onChange={(e) => update({ noAssignee: !!e.target.checked })} disabled={searching || scope !== "all"}>{t("loop.filter.noAssignee")}</Checkbox>
       </div>
+      {filterSelect(t("loop.filter.creator"), f.creatorIds, (v) => update({ creatorIds: v }), cands.filter((c) => c.type === "member").map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)), { filter: true })}
+      {projects.length > 0 && filterSelect(t("loop.filter.project"), f.projectIds, (v) => update({ projectIds: v }), projectOpts, { filter: true })}
       <div className="loop-fields__row">
-        <div className="loop-fields__label">{t("loop.filter.priority")}</div>
-        {view === "grouped" ? (
-          <Select multiple value={f.gPriorities} onChange={(v) => update({ gPriorities: (v ?? []) as IssuePriority[] })} showClear maxTagCount={2} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.priority")}>{priorityOpts}</Select>
-        ) : (
-          <Select value={f.priority} onChange={(v) => update({ priority: v as IssuePriority | undefined })} showClear disabled={searching} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.priority")}>{priorityOpts}</Select>
-        )}
+        <Checkbox className="loop-nofilter" checked={f.noProject} onChange={(e) => update({ noProject: !!e.target.checked })} disabled={searching}>{t("loop.filter.noProject")}</Checkbox>
       </div>
-      {/* assignee 单选仅扁平列表/看板(grouped 用 scope 按类型收窄)。 */}
-      {view !== "grouped" && (
-        <div className="loop-fields__row">
-          <div className="loop-fields__label">{t("loop.filter.assignee")}</div>
-          <Select value={f.assignee} onChange={(v) => update({ assignee: v as string | undefined })} showClear filter disabled={searching} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.assignee")}>
-            {cands.map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>))}
-          </Select>
-        </div>
-      )}
-      {/* 「与我相关」自带 creator=我 并集腿,creator 下拉对它无效 → 隐藏。 */}
-      {!(view === "grouped" && scope === "involves") && (
-        <div className="loop-fields__row">
-          <div className="loop-fields__label">{t("loop.filter.creator")}</div>
-          <Select value={f.creator} onChange={(v) => update({ creator: v as string | undefined })} showClear filter disabled={searching} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.creator")}>
-            {cands.filter((c) => c.type === "member").map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>))}
-          </Select>
-        </div>
-      )}
-      {projects.length > 0 && (
-        <div className="loop-fields__row">
-          <div className="loop-fields__label">{t("loop.filter.project")}</div>
-          {view === "grouped" ? (
-            <Select multiple value={f.gProjectIds} onChange={(v) => update({ gProjectIds: (v ?? []) as string[] })} showClear filter maxTagCount={1} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.project")}>{projectOpts}</Select>
-          ) : (
-            <Select value={f.project} onChange={(v) => update({ project: v as string | undefined })} showClear filter disabled={searching} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.project")}>{projectOpts}</Select>
-          )}
-        </div>
-      )}
-      {/* no-project:仅分组板(后端 include_no_project 仅 /grouped 支持)。 */}
-      {view === "grouped" && (
-        <div className="loop-fields__row">
-          <Checkbox className="loop-nofilter" checked={f.noProject} onChange={(e) => update({ noProject: !!e.target.checked })}>{t("loop.filter.noProject")}</Checkbox>
-        </div>
-      )}
+      {labels.length > 0 && filterSelect(t("loop.filter.label"), f.labelIds, (v) => update({ labelIds: v }), labelOpts, { filter: true })}
       <div className="loop-fields__row">
         <div className="loop-fields__label">{t("loop.filter.dateRange")}</div>
         <div className="loop-fields__inline">
@@ -381,20 +381,23 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
           <h2 className="loop-page__title">{title}</h2>
         </div>
         <div className="loop-page__toolbar">
-          {/* 作用域文字 tab —— grouped 视图按负责人类型收窄(all/成员/AI/与我相关)。 */}
-          {view === "grouped" && (
+          {/* 作用域 tab:全部/成员/AI,贯三视图,走后端 assignee_types。
+              「我的回路」锁定 involves、不给切 scope(否则点「全部」会显示全工作区),故不渲染。 */}
+          {!isMyLoop && (
             <div className="loop-agent-scope" role="tablist">
-              {(["all", "members", "agents", "involves"] as IssueScope[]).map((s) => {
-                const disabled = s === "involves" && !myMemberId;
+              {(["all", "members", "agents"] as IssueScope[]).map((s) => {
+                // 搜索激活时 scope 不参与(searchIssues 不吃 scope):既禁用、也不显选中态,
+                // 免得高亮的 tab 暗示"结果已按此 scope 收窄"。scope 状态保留,清空搜索后恢复。
+                const active = !searching && scope === s;
                 return (
                   <button
                     key={s}
                     type="button"
                     role="tab"
-                    aria-selected={scope === s}
-                    disabled={disabled}
-                    className={`loop-agent-scope__btn${scope === s ? " is-active" : ""}`}
-                    onClick={() => setScope(s)}
+                    aria-selected={active}
+                    disabled={searching}
+                    className={`loop-agent-scope__btn${active ? " is-active" : ""}`}
+                    onClick={() => { setScope(s); setPage(0); }}
                   >
                     {t(`loop.scope.${s}`)}
                   </button>
@@ -410,12 +413,15 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
               {activeFilters > 0 && <span className="loop-toolbtn__badge">{activeFilters}</span>}
             </button>
           </Dropdown>
-          <Dropdown trigger="click" visible={showOpen} onVisibleChange={setShowOpen} position="bottomRight" render={showPanel}>
-            <button className="loop-toolbtn">
-              <SlidersHorizontal size={14} />
-              {t("loop.action.show")}
-            </button>
-          </Dropdown>
+          {/* 「我的回路」锁死分组视图,不给切视图/排序 → 隐藏「显示」入口。 */}
+          {!isMyLoop && (
+            <Dropdown trigger="click" visible={showOpen} onVisibleChange={setShowOpen} position="bottomRight" render={showPanel}>
+              <button className="loop-toolbtn">
+                <SlidersHorizontal size={14} />
+                {t("loop.action.show")}
+              </button>
+            </Dropdown>
+          )}
           <LoopButton icon={<Plus size={14} />} onClick={openNewLoop}>
             {t("loop.action.newIssue")}
           </LoopButton>
