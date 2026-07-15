@@ -37,6 +37,8 @@ function openAegisRegister(registerUrl: string | undefined) {
 
 const LoginLanguageSwitcher: React.FC = () => {
     const { locale, setLocale, t } = useI18n()
+    const languageContainerRef = useRef<HTMLDivElement>(null)
+    const pointerLanguageSelectionRef = useRef(false)
     const nextLocale = getNextLocale(locale)
     const title = t(nextLocale === "en-US"
         ? "base.navRail.language.switchToEnglish"
@@ -49,10 +51,31 @@ const LoginLanguageSwitcher: React.FC = () => {
     const handleSelect = (next: unknown) => {
         if (next !== "zh-CN" && next !== "en-US") return
         setLocale(next)
+        if (!pointerLanguageSelectionRef.current) return
+        pointerLanguageSelectionRef.current = false
+        requestAnimationFrame(() => {
+            const activeElement = document.activeElement
+            if (
+                activeElement instanceof HTMLElement &&
+                languageContainerRef.current?.contains(activeElement)
+            ) {
+                activeElement.blur()
+            }
+        })
     }
 
     return (
-        <div className="wk-login-language" title={title}>
+        <div
+            ref={languageContainerRef}
+            className="wk-login-language"
+            title={title}
+            onPointerDownCapture={() => {
+                pointerLanguageSelectionRef.current = true
+            }}
+            onKeyDownCapture={() => {
+                pointerLanguageSelectionRef.current = false
+            }}
+        >
             <Select
                 className="wk-login-language-select"
                 size="small"

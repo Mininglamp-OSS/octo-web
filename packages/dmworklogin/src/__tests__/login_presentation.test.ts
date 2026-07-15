@@ -152,10 +152,14 @@ describe("login page presentation", () => {
     expect(source).not.toContain("base.navRail.language.name.en");
   });
 
-  it("keeps keyboard focus available after switching languages", () => {
+  it("releases pointer focus after switching languages but keeps keyboard focus", () => {
     const source = readRepoFile("packages/dmworklogin/src/login.tsx");
 
-    expect(source).not.toContain("blurActiveElementAfterLocaleChange");
+    expect(source).toContain("pointerLanguageSelectionRef");
+    expect(source).toContain("onPointerDownCapture");
+    expect(source).toContain("onKeyDownCapture");
+    expect(source).toContain("if (!pointerLanguageSelectionRef.current) return");
+    expect(source).toContain("activeElement.blur()");
     expect(source).not.toContain("document.activeElement.blur()");
   });
 
