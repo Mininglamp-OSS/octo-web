@@ -160,7 +160,7 @@ export function MemberPicker({
             </option>
           ))}
         </select>
-        <button type="button" className="octo-tb-btn" disabled={count === 0 || busy} onClick={add}>
+        <button type="button" className="octo-member-add-btn" disabled={count === 0 || busy} onClick={add}>
           {count > 1 ? t('docs.member.addCount', { values: { count } }) : t('docs.member.add')}
         </button>
       </div>

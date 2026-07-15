@@ -1193,6 +1193,24 @@
   color: var(--octo-fg, #1f2329);
   font-size: 13px;
 }
+.octo-member-add-btn {
+  border: none;
+  background: var(--wk-brand-primary, #7c5cfc);
+  color: #fff;
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+.octo-member-add-btn:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+.octo-member-add-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 /* Multi-select checkbox indicator (#A2). */
 .octo-member-picker-check {
