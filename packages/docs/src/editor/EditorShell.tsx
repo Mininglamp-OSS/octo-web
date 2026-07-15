@@ -288,15 +288,33 @@ export function EditorShell(props: EditorShellProps) {
   const [shareSeed, setShareSeed] = useState<{ shareScope?: string; shareRole?: string } | undefined>(
     undefined,
   )
+  // XIN-1186 (#788 review-3 B1): `shareSeed` has two async writers — the one-shot page-load getDoc
+  // below (Writer A) and the panel commit callback `onShareCommitted` (Writer B) — and nothing
+  // ordered them. A SLOW getDoc could resolve AFTER a commit and clobber the just-committed scope
+  // back to its stale pre-edit value; reopening the panel then re-adopts this stale seed and
+  // confidently shows "Restricted" for a doc that is actually Anyone-in-Space. Guard the source of
+  // truth with a monotonic write version: every commit bumps it, and the page-load getDoc only
+  // lands its value while no newer (commit) write has arrived. A version (vs. a bare boolean flag)
+  // stays correct across repeated commits — each bump invalidates any getDoc still in flight from
+  // before it. The prior panel-side authoritativeRef fix (XIN-1175) stays; this closes the same
+  // stale-display class one layer up, at the seed's own writers.
+  const shareSeedVersionRef = useRef(0)
   useEffect(() => {
     let cancelled = false
+    // The page-load read is authoritative only while no commit has bumped the version past this
+    // snapshot; a commit landing mid-flight makes this getDoc stale and it must not write.
+    const versionAtLoad = shareSeedVersionRef.current
     getDoc(docId)
       .then((meta) => {
         if (cancelled) return
         if (typeof meta?.ownerId === 'string' && meta.ownerId) setOwnerId(meta.ownerId)
         if (typeof meta?.createdAt === 'string' && meta.createdAt) setCreatedAt(meta.createdAt)
         if (meta?.shareScope != null || meta?.shareRole != null) {
-          setShareSeed({ shareScope: meta.shareScope, shareRole: meta.shareRole })
+          // Skip if a commit (Writer B) landed since this read began — its value is newer and
+          // authoritative; re-adopting the page-load meta would revert to a stale scope.
+          if (shareSeedVersionRef.current === versionAtLoad) {
+            setShareSeed({ shareScope: meta.shareScope, shareRole: meta.shareRole })
+          }
         }
       })
       .catch(() => {
@@ -791,9 +809,12 @@ export function EditorShell(props: EditorShellProps) {
               ownerId={ownerId}
               accessRequests={pendingAccess}
               shareSeed={shareSeed}
-              onShareCommitted={(next) =>
+              onShareCommitted={(next) => {
+                // Writer B: bump the write version so any page-load getDoc still in flight is
+                // treated as stale and cannot clobber this committed value (XIN-1186).
+                shareSeedVersionRef.current += 1
                 setShareSeed({ shareScope: next.shareScope, shareRole: next.shareRole })
-              }
+              }}
               onClose={closePanel}
             />
           </div>
