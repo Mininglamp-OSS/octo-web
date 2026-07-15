@@ -111,7 +111,7 @@
     "copyInstall": "复制安装指令",
     "installHint": "把这段指令复制给 Bot 执行（含一次性认证凭证，请勿外传）：",
     "installTokenPlaceholder": "<点击「复制安装指令」时生成>",
-    "installPrompt": "请在这台电脑上安装并配置 octo-daemon 运行时，依次执行：\n\n1. 安装：\n{{install}}\n\n2. 配置权限（登录认证）：\n{{auth}}\n\n3. 启动 / 重启使其生效：\n{{start}}\n\n完成后请确认该 daemon 在运行时列表中显示为在线。",
+    "installPrompt": "请在这台电脑上安装并配置 octo-daemon 运行时，依次执行：\n\n1. 安装：\n{{install}}\n\n2. 配置权限（登录认证）：\n{{auth}}\n\n3. 启动 / 重启使其生效：\n{{start}}\n\n4. 参考 octo-daemon --help 安装内置的 skills。\n\n完成后请确认该 daemon 在运行时列表中显示为在线。",
     "headlessNoBackend": "管理员未配置后端公开地址，无法生成安装指令",
     "headlessFailed": "生成安装指令失败，请重试"
   },

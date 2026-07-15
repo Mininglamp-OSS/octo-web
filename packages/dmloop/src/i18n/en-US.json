@@ -111,7 +111,7 @@
     "copyInstall": "Copy install instructions",
     "installHint": "Copy these instructions to your Bot to run (contains a one-time credential — do not share):",
     "installTokenPlaceholder": "<generated when you click Copy>",
-    "installPrompt": "Please install and configure the octo-daemon runtime on this machine. Run these steps in order:\n\n1. Install:\n{{install}}\n\n2. Configure permissions (login):\n{{auth}}\n\n3. Start / restart to apply:\n{{start}}\n\nWhen done, confirm the daemon shows as online in the runtime list.",
+    "installPrompt": "Please install and configure the octo-daemon runtime on this machine. Run these steps in order:\n\n1. Install:\n{{install}}\n\n2. Configure permissions (login):\n{{auth}}\n\n3. Start / restart to apply:\n{{start}}\n\n4. Refer to octo-daemon --help to install the built-in skills.\n\nWhen done, confirm the daemon shows as online in the runtime list.",
     "headlessNoBackend": "The administrator has not configured a public backend URL; install instructions unavailable",
     "headlessFailed": "Failed to generate install instructions, please retry"
   },
