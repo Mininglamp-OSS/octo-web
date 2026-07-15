@@ -2413,6 +2413,11 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  /* Establish an inline-size container so the toolbar can compact its filter
+     buttons based on the list's own width (it may render in a narrow panel,
+     not just the full viewport). Width is parent-driven, so this is layout-safe. */
+  container-type: inline-size;
+  container-name: octo-docs-list;
 }
 .octo-docs-list-header {
   display: flex;
@@ -2663,8 +2668,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1 1 160px;
-  min-width: 120px;
+  flex: 1 1 140px;
+  min-width: 96px;
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 6px;
   padding: 4px 8px;
@@ -2696,6 +2701,12 @@
   color: var(--octo-fg, #1f2329);
 }
 
+.octo-docs-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
 .octo-docs-filter {
   position: relative;
   flex: 0 0 auto;
@@ -2718,6 +2729,14 @@
 .octo-docs-filter-btn-active {
   border-color: var(--octo-active-fg, #1664ff);
   color: var(--octo-active-fg, #1664ff);
+}
+/* Narrow tier: tighten the filter buttons so search + both filters hold one
+   more width step before the filter group wraps to a second row. */
+@container octo-docs-list (max-width: 340px) {
+  .octo-docs-filter-btn {
+    padding: 4px 8px;
+    gap: 3px;
+  }
 }
 .octo-docs-filter-caret {
   font-size: 9px;

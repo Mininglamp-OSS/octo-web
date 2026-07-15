@@ -816,17 +816,22 @@ function DocsList({
       <DocsTabs active={activeView} onChange={onTab} />
       <div className="octo-docs-toolbar">
         <SearchBox value={view.q} onSearch={view.setQuery} onClear={view.clearQuery} />
-        {activeView === 'recent' && (
-          <CreatorFilter
-            options={recentView.creatorOptions}
-            selected={recentView.creators}
-            onToggle={recentView.toggleCreator}
-            nameFallback={nameFallback}
-          />
-        )}
-        {/* Type filter lives on BOTH tabs (creator is recent-only). Uses the active view's per-tab
-            types state so each tab remembers its own selection across switches. */}
-        <TypeFilter selected={view.types} onToggle={view.toggleType} />
+        {/* Creator + Type wrap together as one unit so a narrow toolbar drops the whole
+            group to a second row (search stays on row 1) instead of stranding Type alone.
+            On the my-docs tab the group holds only the Type filter and still lays out fine. */}
+        <div className="octo-docs-filter-group">
+          {activeView === 'recent' && (
+            <CreatorFilter
+              options={recentView.creatorOptions}
+              selected={recentView.creators}
+              onToggle={recentView.toggleCreator}
+              nameFallback={nameFallback}
+            />
+          )}
+          {/* Type filter lives on BOTH tabs (creator is recent-only). Uses the active view's per-tab
+              types state so each tab remembers its own selection across switches. */}
+          <TypeFilter selected={view.types} onToggle={view.toggleType} />
+        </div>
       </div>
       {activeView === 'recent' && (
         <CreatorChips
