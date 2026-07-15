@@ -230,7 +230,15 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // self-built NodeView (TableCellView) that gives ProseMirror explicit
     // ignoreMutation/stopEvent rules so resize/remote DOM writes don't desync
     // collaborative cursors (§3.2 requirement).
-    Table.configure({ resizable: true }),
+    // #749: the default prosemirror-tables `handleWidth` (5px) only arms a ~10px band
+    // straddling each column border, and the LAST column's right border sits flush with
+    // the visible edge so its arm zone is effectively unreachable — dragging it did
+    // nothing. Widen the arm band to 12px so every border, including the last column's
+    // right edge, has a comfortable grab zone. `cellMinWidth` is pinned to prosemirror's
+    // default (25) — kept explicit because it must stay >= handleWidth * 2 so adjacent
+    // borders' arm bands never overlap on the narrowest columns (which would make a small
+    // column impossible to grab/shrink).
+    Table.configure({ resizable: true, handleWidth: 12, cellMinWidth: 25 }),
     TableRow,
     TableHeader.extend({
       addNodeView() {

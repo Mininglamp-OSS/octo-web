@@ -1919,15 +1919,37 @@
   opacity: 0.12;
   pointer-events: none;
 }
+/* #749: the resize handle is the visible drag affordance. Keep the coloured bar thin
+   (2px) but stretch the interactive box to ~10px via a transparent hit area straddling
+   the border, so the pointer grabs the border comfortably instead of needing pixel-exact
+   aim. The visible bar is painted by the ::before pseudo-element; the element itself is
+   transparent padding. right:-5px centres the 10px box on the cell border (last column's
+   right edge included). z-index is intentionally NOT set here — the #755 freeze feature
+   owns lifting this handle above sticky frozen cells. */
 .octo-prose table .column-resize-handle {
   position: absolute;
-  right: -2px;
+  right: -5px;
   top: 0;
   bottom: 0;
-  width: 4px;
-  background: var(--octo-accent);
+  width: 10px;
+  background: transparent;
   cursor: col-resize;
   user-select: none;
+}
+.octo-prose table .column-resize-handle::before {
+  content: '';
+  position: absolute;
+  right: 3px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--octo-accent);
+}
+/* prosemirror-tables toggles `resize-cursor` on the editor root while the pointer is
+   armed over a column border. Without an explicit rule the col-resize cursor feedback
+   was missing, so users had no signal where the grab zone was (#749). */
+.octo-prose .ProseMirror.resize-cursor {
+  cursor: col-resize;
 }
 .octo-prose .tableWrapper {
   overflow-x: auto;
