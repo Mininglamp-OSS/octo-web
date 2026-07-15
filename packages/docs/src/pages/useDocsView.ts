@@ -140,7 +140,7 @@ export function useDocsView(
   const loadingMoreRef = useRef(false)
 
   const fetchFirst = useCallback(
-    (nextQ: string, nextCreators: string[], nextTypes: DocType[]) => {
+    (nextQ: string, nextCreators: string[], nextTypes: DocType[], refreshCreatorFacet = true) => {
       const seq = ++seqRef.current
       cursorRef.current = null
       pageRef.current = 1
@@ -170,14 +170,22 @@ export function useDocsView(
       }
 
       if (kind === 'recent') {
-        // Refresh the creator candidates for this new result set (candidates track `q`, but are
-        // independent of the selected creators/types and pagination — §3.5). Fire in parallel; drop
+        // Refresh the creator candidates only when `q` actually changed (or on a full reconcile:
+        // mount / space / folder / reload / retry) — candidates track `q` and are independent of the
+        // selected creators/types and pagination (§3.5). Selection toggles keep the SAME `q`, so they
+        // pass refreshCreatorFacet=false: this aligns the creator filter's selection behaviour with
+        // the type filter (whose candidate set is a fixed enum and never reloads mid-select), keeping
+        // the open dropdown's candidate list stable while multi-selecting instead of re-fetching and
+        // reordering it on every checkbox click. The server-facet source and `q`-tracking semantics
+        // are unchanged — only the redundant refetch on selection is dropped. Fire in parallel; drop
         // if superseded. name resolution failures just yield fewer / uid-labelled options.
-        void listRecentCreators(nextQ)
-          .then((opts) => {
-            if (seq === seqRef.current) setCreatorOptions(opts)
-          })
-          .catch(() => {})
+        if (refreshCreatorFacet) {
+          void listRecentCreators(nextQ)
+            .then((opts) => {
+              if (seq === seqRef.current) setCreatorOptions(opts)
+            })
+            .catch(() => {})
+        }
         listRecentDocs({ q: nextQ, creators: nextCreators, types: nextTypes, cursor: null, pageSize: PAGE_SIZE })
           .then((res) => {
             cursorRef.current = res.nextCursor
@@ -282,28 +290,30 @@ export function useDocsView(
         ? creators.filter((u) => u !== uid)
         : [...creators, uid]
       setCreators(next)
-      fetchFirst(q, next, types)
+      // Selection toggle keeps `q` — don't reload the creator facet candidates (aligns with the
+      // type filter's stable candidate set; see fetchFirst's recent branch).
+      fetchFirst(q, next, types, false)
     },
     [creators, q, types, fetchFirst],
   )
 
   const clearCreators = useCallback(() => {
     setCreators([])
-    fetchFirst(q, [], types)
+    fetchFirst(q, [], types, false)
   }, [q, types, fetchFirst])
 
   const toggleType = useCallback(
     (ty: DocType) => {
       const next = types.includes(ty) ? types.filter((x) => x !== ty) : [...types, ty]
       setTypes(next)
-      fetchFirst(q, creators, next)
+      fetchFirst(q, creators, next, false)
     },
     [types, q, creators, fetchFirst],
   )
 
   const clearTypes = useCallback(() => {
     setTypes([])
-    fetchFirst(q, creators, [])
+    fetchFirst(q, creators, [], false)
   }, [q, creators, fetchFirst])
 
   const retry = useCallback(() => {

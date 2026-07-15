@@ -150,3 +150,47 @@ describe('useDocsView — type filter (XIN-1188, multi-select OR, both tabs)', (
     await waitFor(() => expect(result.current.empty).toBe('E'))
   })
 })
+
+describe('useDocsView — creator facet candidates stay stable during selection (align with type filter)', () => {
+  it('does NOT reload the creator facet on a selection toggle (creator or type), only on a q change', async () => {
+    recentMock.mockResolvedValue({ total: 0, items: [], nextCursor: null })
+    creatorsMock.mockResolvedValue([{ uid: 'u1', name: 'Alice' }])
+    const { result } = renderHook(() => useDocsView('recent', 'space', 'folder', 0))
+    await waitFor(() => expect(result.current.phase).toBe('ready'))
+
+    // Initial load fetched the facet once (candidates track `q`, here empty).
+    await waitFor(() => expect(creatorsMock).toHaveBeenCalledTimes(1))
+
+    // Toggling a creator keeps `q`, so the open dropdown's candidate list must NOT churn — matching
+    // the type filter, whose candidate set is a fixed enum that never reloads mid-select.
+    await act(async () => {
+      result.current.toggleCreator('u1')
+    })
+    expect(creatorsMock).toHaveBeenCalledTimes(1)
+
+    // Toggling a type on the recent tab must not reload the creator facet either.
+    await act(async () => {
+      result.current.toggleType('doc')
+    })
+    expect(creatorsMock).toHaveBeenCalledTimes(1)
+
+    // Clearing selections keeps `q` → still no facet reload.
+    await act(async () => {
+      result.current.clearCreators()
+    })
+    await act(async () => {
+      result.current.clearTypes()
+    })
+    expect(creatorsMock).toHaveBeenCalledTimes(1)
+
+    // A real `q` change DOES refresh the candidate set (the preserved facet semantic).
+    await act(async () => {
+      result.current.setQuery('plan')
+    })
+    await waitFor(() => expect(creatorsMock).toHaveBeenCalledTimes(2))
+    expect(creatorsMock).toHaveBeenLastCalledWith('plan')
+
+    // Selections still refetch the DOCUMENT list (only the facet fetch is decoupled).
+    expect(recentMock).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'plan' }))
+  })
+})
