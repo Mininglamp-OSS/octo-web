@@ -138,6 +138,8 @@
     "highlight": "高亮",
     "textColor": "文字颜色",
     "customColor": "自定义颜色",
+    "hexInput": "十六进制颜色",
+    "hexPlaceholder": "#rrggbb",
     "table": "表格",
     "image": "图片",
     "file": "文件",

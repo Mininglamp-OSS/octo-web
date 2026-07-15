@@ -366,6 +366,34 @@
   opacity: 0;
   cursor: pointer;
 }
+/* Inline hex entry (#719): an OS-independent way to type/paste an arbitrary #rrggbb alongside the
+   preset swatches and the native wheel. Sized to sit inline in the popover row; the invalid state
+   flags a hex that failed to parse (see normalizeHexColor) so it reads before the user hits Enter. */
+.octo-color-hex {
+  width: 74px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--octo-fg);
+  background: var(--octo-bg);
+  border: 1px solid var(--octo-border);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.octo-color-hex:focus {
+  outline: none;
+  border-color: var(--octo-accent);
+}
+/* Reuse the same invalid-input red the link field uses, so a rejected value reads consistently
+   across the toolbar. It is an intentional literal signal colour, not a themeable UI token —
+   declared as an exception to the hardcoded-colour policy (stylelint.ci.config.mjs → color-no-hex),
+   matching .octo-link-field.is-invalid. */
+/* stylelint-disable color-no-hex */
+.octo-color-hex-invalid,
+.octo-color-hex-invalid:focus {
+  border-color: #eb5757;
+}
+/* stylelint-enable color-no-hex */
 .octo-code-lang {
   border: 1px solid var(--octo-border);
   border-radius: 6px;

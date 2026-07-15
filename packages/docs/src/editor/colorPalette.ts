@@ -39,6 +39,24 @@ export function toHighlightTint(hex: string, amount: number = HIGHLIGHT_TINT): s
 }
 
 /**
+ * Normalise a user-typed hex string to a canonical lowercase `#rrggbb`, or return null if it is not
+ * a valid 3- or 6-digit hex colour. Accepts an optional leading `#`, surrounding whitespace, and any
+ * case; expands the 3-digit shorthand (`#f00` → `#ff0000`). This is the input-side counterpart to the
+ * preset swatches: it lets the font-colour popover accept an arbitrary hex typed/pasted directly
+ * (the "hex 输入" path in #719), OS-dialog-independent, and emits the same `#rrggbb` shape the presets
+ * use — so setColor stays lossless through Yjs collaboration and the DOCX/Markdown exporters.
+ */
+export function normalizeHexColor(raw: string): string | null {
+  const s = raw.trim().replace(/^#/, '')
+  if (/^[0-9a-fA-F]{3}$/.test(s)) {
+    const [r, g, b] = s
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase()
+  }
+  if (/^[0-9a-fA-F]{6}$/.test(s)) return `#${s}`.toLowerCase()
+  return null
+}
+
+/**
  * Shared hue base. `text` is the saturated foreground colour; the matching highlight background is
  * derived from it. Ordered neutrals-first (ink, grey) then warm→cool, mirroring the established
  * font-colour identity set so the text picker keeps its familiar swatches.

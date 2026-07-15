@@ -5,6 +5,7 @@ import {
   HIGHLIGHT_COLORS,
   HIGHLIGHT_TINT,
   toHighlightTint,
+  normalizeHexColor,
 } from './colorPalette.ts'
 
 // Plan A: the highlight and font-colour presets are DERIVED from one shared hue base so the two
@@ -62,5 +63,37 @@ describe('colorPalette — toHighlightTint', () => {
   it('rejects a non-#rrggbb input rather than emit a broken swatch', () => {
     expect(() => toHighlightTint('red')).toThrow()
     expect(() => toHighlightTint('#fff')).toThrow()
+  })
+})
+
+describe('colorPalette — normalizeHexColor', () => {
+  it('accepts a 6-digit hex with or without the leading # and lowercases it', () => {
+    expect(normalizeHexColor('#3370FF')).toBe('#3370ff')
+    expect(normalizeHexColor('3370ff')).toBe('#3370ff')
+  })
+
+  it('expands the 3-digit shorthand to #rrggbb', () => {
+    expect(normalizeHexColor('#f00')).toBe('#ff0000')
+    expect(normalizeHexColor('abc')).toBe('#aabbcc')
+  })
+
+  it('trims surrounding whitespace before parsing', () => {
+    expect(normalizeHexColor('  #1971c2  ')).toBe('#1971c2')
+  })
+
+  it('emits the same #rrggbb shape as the presets so it round-trips losslessly', () => {
+    TEXT_COLORS.forEach((c) => {
+      expect(normalizeHexColor(c)).toBe(c)
+      expect(normalizeHexColor(c)).toMatch(/^#[0-9a-f]{6}$/)
+    })
+  })
+
+  it('returns null for anything that is not a 3-/6-digit hex', () => {
+    expect(normalizeHexColor('')).toBeNull()
+    expect(normalizeHexColor('#ff')).toBeNull()
+    expect(normalizeHexColor('#ffff')).toBeNull()
+    expect(normalizeHexColor('#gggggg')).toBeNull()
+    expect(normalizeHexColor('rgb(0,0,0)')).toBeNull()
+    expect(normalizeHexColor('red')).toBeNull()
   })
 })

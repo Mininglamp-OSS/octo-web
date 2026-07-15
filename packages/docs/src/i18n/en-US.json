@@ -138,6 +138,8 @@
     "highlight": "Highlight",
     "textColor": "Text color",
     "customColor": "Custom color",
+    "hexInput": "Hex color",
+    "hexPlaceholder": "#rrggbb",
     "table": "Table",
     "image": "Image",
     "file": "File",

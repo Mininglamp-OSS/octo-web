@@ -111,6 +111,46 @@ describe('Toolbar — batch 7 quote/code/link/highlight/colour tooltips', () => 
   })
 })
 
+describe('Toolbar — font-colour inline hex input (#719)', () => {
+  function openTextColor() {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().selectAll().run()
+    fireEvent.click(titleBtn('docs.toolbar.textColor'))
+    const input = document.querySelector<HTMLInputElement>('.octo-text-color-popover .octo-color-hex')
+    if (!input) throw new Error('no hex input in the text-colour popover')
+    return input
+  }
+
+  it('applies a typed hex to the selection and persists it as a colour mark', () => {
+    const input = openTextColor()
+    fireEvent.change(input, { target: { value: '#1971c2' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    // The colour lands on the textStyle mark's `color` attr — the content-model value, same as a
+    // preset swatch (getHTML serialises it to rgb() via the DOM, but the stored attr is the hex).
+    expect(editor!.getAttributes('textStyle').color).toBe('#1971c2')
+    // A valid pick collapses the popover, like the preset swatches.
+    expect(document.querySelector('.octo-text-color-popover')).toBeNull()
+  })
+
+  it('normalises a 3-digit shorthand entered without the leading #', () => {
+    const input = openTextColor()
+    fireEvent.change(input, { target: { value: 'f00' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(editor!.getAttributes('textStyle').color).toBe('#ff0000')
+  })
+
+  it('flags an invalid hex and leaves the document untouched', () => {
+    const input = openTextColor()
+    fireEvent.change(input, { target: { value: 'nothex' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(input.className).toContain('octo-color-hex-invalid')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    // No colour mark was written, and the popover stays open so the user can correct it in place.
+    expect(editor!.getAttributes('textStyle').color).toBeUndefined()
+    expect(document.querySelector('.octo-text-color-popover')).toBeTruthy()
+  })
+})
+
 describe('Toolbar — batch 7 floating link popover (item 5)', () => {
   it('opens a floating popover (not an inline toolbar widget) with stacked fields', () => {
     render(<Toolbar editor={editor!} />)
