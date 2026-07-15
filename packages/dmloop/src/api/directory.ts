@@ -30,7 +30,10 @@ async function build(): Promise<Directory> {
   const wsId = currentWorkspaceId();
   const [members, agents, squads, projectsResp] = await Promise.all([
     wsId ? httpGet<Array<{ user_id: string; name: string; octo_uid?: string | null }>>(`/workspaces/${wsId}/members`).catch(() => []) : Promise.resolve([]),
-    httpGet<Array<{ id: string; name: string }>>("/agents").catch(() => []),
+    // include_archived: resolve names for archived (soft-deleted) agents too, so issues/comments/
+    // timeline referencing a deleted AI teammate show its name, not a raw id. Archived entries feed
+    // the name map only; the assignee picker (candidates) stays active-only.
+    httpGet<Array<{ id: string; name: string; archived_at?: string | null }>>("/agents", { include_archived: true }).catch(() => []),
     httpGet<Array<{ id: string; name: string }>>("/squads").catch(() => []),
     httpGet<{ projects: Array<{ id: string; title: string }> }>("/projects").catch(() => ({ projects: [] })),
   ]);
@@ -54,8 +57,8 @@ async function build(): Promise<Directory> {
   }
   const agentName = new Map<string, string>();
   for (const a of agents) {
-    agentName.set(a.id, a.name);
-    candidates.push({ id: a.id, type: "agent", name: a.name });
+    agentName.set(a.id, a.name); // resolve names incl. archived (for display)
+    if (!a.archived_at) candidates.push({ id: a.id, type: "agent", name: a.name }); // picker: active only
   }
   const squadName = new Map<string, string>();
   for (const s of squads) {
