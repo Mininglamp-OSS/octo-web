@@ -21,13 +21,13 @@ import './DocPreviewPane.css'
  * comment WITHOUT leaving the conversation, instead of opening a new browser page.
  *
  * The host (dmworkbase ChatContentPage) mounts this via the `chatDocPreviewPane` endpoint and owns
- * the panel shell (the reused `wk-thread-panel` right-side slot). This component adds only the two
- * sidebar affordances on top of the reused editor:
+ * the panel shell (the reused `wk-thread-panel` right-side slot). This component adds a slim top bar
+ * with the two sidebar affordances above the reused editor, in EVERY state (loading / terminal /
+ * sheet / board / document):
  *   - 展开为整页 (onExpandFullPage): the host opens the standalone `/d/:docId?sp=` route in a new tab.
  *   - 关闭 (onClose): the host closes the sidebar slot.
- * For a document the controls are injected into the editor's own header (single header, no stacking);
- * for the loading / terminal / sheet / board states — which have no EditorShell header to host them —
- * a slim top bar carries the same two controls so they stay reachable in every state.
+ * The bar is host-owned (not injected into EditorShell's header), so close stays reachable even when
+ * the inner editor is on its terminal / loading path and renders no header.
  *
  * Entry is role-driven (writer/admin edit, reader read-only), exactly like the standalone page: the
  * collab token resolves the role and EditorShell renders editable or read-only accordingly, and the
@@ -191,22 +191,24 @@ export function DocPreviewPane({ docId, space, onClose, onExpandFullPage }: DocP
     )
   }
 
-  // Document (the WS-17 target case): inject the two controls into the editor's own header so the
-  // sidebar has a single header, and the 展开为整页 button sits at the top exactly as designed.
-  return (
-    <div className="octo-doc-sidebar octo-doc-sidebar--editor">
-      <EditorShell
-        key={editorDocId}
-        docId={editorDocId}
-        title={meta.title || t('docs.state.untitled')}
-        uid={uid}
-        space={addressing.space}
-        folder={addressing.folder}
-        doc={addressing.doc}
-        user={{ id: uid, name: names.get(uid) || uid }}
-        headerRight={actions}
-        creatorNicknameOnly
-      />
-    </div>
+  // Document (the WS-17 target case). Route through the slim top bar like every other state rather
+  // than injecting the controls into EditorShell's own header: EditorShell renders `headerRight`
+  // ONLY on its healthy editor path and skips it on its terminal (forbidden / expired / network) and
+  // loading (`!instance`) early-returns — which are reached independently of this pane's own getDoc
+  // preflight (e.g. the collab connection fails after preflight passed). Keeping close + 展开 in the
+  // host-owned bar guarantees they are always reachable, so the pane can never get stuck open.
+  return withBar(
+    <EditorShell
+      key={editorDocId}
+      docId={editorDocId}
+      title={meta.title || t('docs.state.untitled')}
+      uid={uid}
+      space={addressing.space}
+      folder={addressing.folder}
+      doc={addressing.doc}
+      user={{ id: uid, name: names.get(uid) || uid }}
+      onOpenInNewPage={onExpandFullPage}
+      creatorNicknameOnly
+    />,
   )
 }

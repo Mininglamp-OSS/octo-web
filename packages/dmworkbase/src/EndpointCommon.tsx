@@ -422,6 +422,16 @@ export class EndpointCommon {
     return EndpointManager.shared.invoke(EndpointCategory.chatDocPreviewPane, opts);
   }
 
+  /**
+   * Whether the docs module has registered the `chatDocPreviewPane` endpoint (WS-17). The in-chat
+   * `/d/<docId>` link interception gates on this so a host that mounts the chat but NOT the docs
+   * module (e.g. the extension side panel) never intercepts a doc link into an empty, uncloseable
+   * panel — it falls through to opening the standalone page instead.
+   */
+  hasChatDocPreviewPane(): boolean {
+    return !!EndpointManager.shared.get(EndpointCategory.chatDocPreviewPane)?.handler;
+  }
+
   registerChatDocPreviewPane(
     sid: string,
     callback: (param: any) => JSX.Element | undefined

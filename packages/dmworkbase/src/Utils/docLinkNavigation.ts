@@ -19,6 +19,10 @@ export function tryOpenDocLinkInSidebar(href: string | undefined): boolean {
   if (!open) return false;
   const parsed = parseDocLink(href);
   if (!parsed) return false;
+  // Only intercept when the docs pane can actually render (docs module registered). A host that
+  // mounts the chat but not the docs module (e.g. the extension side panel) would otherwise swallow
+  // the link into an empty, uncloseable panel; fall through so it opens the standalone page instead.
+  if (!WKApp.endpoints?.hasChatDocPreviewPane?.()) return false;
   open(parsed.docId, parsed.space);
   return true;
 }

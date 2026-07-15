@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { openDocPreviewMock, wkAppMock } = vi.hoisted(() => {
+const { openDocPreviewMock, hasPaneMock, wkAppMock } = vi.hoisted(() => {
   const openDocPreviewMock = vi.fn();
+  const hasPaneMock = vi.fn(() => true);
   return {
     openDocPreviewMock,
+    hasPaneMock,
     wkAppMock: {
       openDocPreview: openDocPreviewMock as
         | ((docId: string, space?: string) => void)
         | undefined,
+      endpoints: {
+        hasChatDocPreviewPane: hasPaneMock as () => boolean,
+      },
     },
   };
 });
@@ -23,6 +28,8 @@ const ORIGIN = window.location.origin;
 describe("tryOpenDocLinkInSidebar", () => {
   beforeEach(() => {
     openDocPreviewMock.mockReset();
+    hasPaneMock.mockReset();
+    hasPaneMock.mockReturnValue(true);
     wkAppMock.openDocPreview = openDocPreviewMock;
   });
 
@@ -50,5 +57,11 @@ describe("tryOpenDocLinkInSidebar", () => {
   it("falls back (returns false) when no sidebar host is mounted", () => {
     wkAppMock.openDocPreview = undefined;
     expect(tryOpenDocLinkInSidebar(`${ORIGIN}/d/doc123?sp=space-1`)).toBe(false);
+  });
+
+  it("falls back (returns false) when the docs pane endpoint is not registered", () => {
+    hasPaneMock.mockReturnValue(false);
+    expect(tryOpenDocLinkInSidebar(`${ORIGIN}/d/doc123?sp=space-1`)).toBe(false);
+    expect(openDocPreviewMock).not.toHaveBeenCalled();
   });
 });

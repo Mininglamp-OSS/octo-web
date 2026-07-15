@@ -1,14 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { openSummaryDetailMock, openDocPreviewMock, wkAppMock } = vi.hoisted(() => {
+const { openSummaryDetailMock, openDocPreviewMock, hasDocPaneMock, wkAppMock } = vi.hoisted(() => {
   const openSummaryDetailMock = vi.fn();
   const openDocPreviewMock = vi.fn();
+  const hasDocPaneMock = vi.fn(() => true);
   return {
     openSummaryDetailMock,
     openDocPreviewMock,
+    hasDocPaneMock,
     wkAppMock: {
       openSummaryDetail: openSummaryDetailMock as ((taskId: number | string, spaceId?: string) => void) | undefined,
       openDocPreview: openDocPreviewMock as ((docId: string, space?: string) => void) | undefined,
+      endpoints: {
+        hasChatDocPreviewPane: hasDocPaneMock as () => boolean,
+      },
     },
   };
 });
@@ -24,6 +29,8 @@ describe("openUrl", () => {
     vi.restoreAllMocks();
     openSummaryDetailMock.mockReset();
     openDocPreviewMock.mockReset();
+    hasDocPaneMock.mockReset();
+    hasDocPaneMock.mockReturnValue(true);
     wkAppMock.openSummaryDetail = openSummaryDetailMock;
     wkAppMock.openDocPreview = openDocPreviewMock;
     vi.spyOn(window, "open").mockImplementation(() => null);
@@ -72,6 +79,19 @@ describe("openUrl", () => {
 
   it("opens a document link in a new tab when the sidebar host is unavailable", () => {
     wkAppMock.openDocPreview = undefined;
+
+    openUrl(`${window.location.origin}/d/doc123?sp=space-1`);
+
+    expect(openDocPreviewMock).not.toHaveBeenCalled();
+    expect(window.open).toHaveBeenCalledWith(
+      `${window.location.origin}/d/doc123?sp=space-1`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+  });
+
+  it("opens a document link in a new tab when the docs pane endpoint is not registered", () => {
+    hasDocPaneMock.mockReturnValue(false);
 
     openUrl(`${window.location.origin}/d/doc123?sp=space-1`);
 

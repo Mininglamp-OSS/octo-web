@@ -10,16 +10,8 @@
   background: var(--octo-bg, #fff);
 }
 
-/* The editor case lets EditorShell fill the whole slot (its own header hosts the controls). */
-.octo-doc-sidebar--editor {
-  height: 100%;
-}
-
-.octo-doc-sidebar--editor > .octo-doc {
-  height: 100%;
-}
-
-/* Slim top bar carrying 展开为整页 + 关闭 for the loading / terminal / sheet / board states. */
+/* Slim top bar carrying 展开为整页 + 关闭 across every state (loading / terminal / sheet / board /
+   document), so the close control is always reachable regardless of the inner editor's render state. */
 .octo-doc-sidebar-bar {
   display: flex;
   align-items: center;

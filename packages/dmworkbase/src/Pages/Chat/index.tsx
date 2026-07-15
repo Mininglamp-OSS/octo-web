@@ -953,6 +953,25 @@ export class ChatContentPage extends Component<
         }
       }
     }
+
+    // WS-17: keep the doc sidebar mutually exclusive with every other right-side panel. Opening a
+    // rival panel (thread / file preview / matter / summary / channel-search / settings) only sets
+    // its own flag; the render guard then hides the doc pane but leaves `previewDoc` set, so closing
+    // that rival would resurrect the doc pane the user had moved on from. Clearing it here — a single
+    // choke point — keeps exclusivity total regardless of which rival opened (current or future),
+    // without hand-clearing `previewDoc` in every opener and risking one being missed.
+    if (
+      this.state.previewDoc &&
+      (this.state.showThreadPanel ||
+        this.state.previewFile ||
+        this.state.showMatterPanel ||
+        this.state.showMatterDetailPanel ||
+        this.state.showSummaryPanel ||
+        this.state.showChannelSearch ||
+        this.state.showChannelSetting)
+    ) {
+      this.setState({ previewDoc: null });
+    }
   }
 
   private _onPendingThread?: (detail: {
@@ -1597,8 +1616,8 @@ export class ChatContentPage extends Component<
         )}
 
         {/* WS-17: 聊天内点击文档链接时，在复用的右侧面板槽位里内联打开文档编辑器（侧边栏）。
-            与其它面板互斥（仅在无其它面板打开时渲染），内容由 docs 模块注册的 chatDocPreviewPane
-            端点提供；未注册（endpoint 缺失）时安全降级为空。 */}
+            与其它右侧面板互斥（仅在无其它面板打开时渲染）；内容由 docs 模块注册的 chatDocPreviewPane
+            端点提供。 */}
         {previewDoc &&
           !showThreadPanel &&
           !previewFile &&
@@ -1606,25 +1625,39 @@ export class ChatContentPage extends Component<
           !showMatterDetailPanel &&
           !showSummaryPanel &&
           !showChannelSearch &&
-          !showChannelSetting && (
-            <div className="wk-thread-panel wk-doc-preview-panel">
-              <div className="wk-thread-panel-main">
-                {WKApp.endpoints.chatDocPreviewPane({
-                  docId: previewDoc.docId,
-                  space: previewDoc.space,
-                  onClose: this._closeDocPreview,
-                  onExpandFullPage: () => {
-                    // 展开为整页：打开现有整页文档路由 `/d/<docId>?sp=`，按辉哥定的在新标签页打开。
-                    const url = buildDocLink({
-                      docId: previewDoc.docId,
-                      space: previewDoc.space,
-                    });
-                    window.open(url, "_blank", "noopener,noreferrer");
-                  },
-                })}
-              </div>
-            </div>
-          )}
+          !showChannelSetting &&
+          this._renderDocPreviewPanel(previewDoc)}
+      </div>
+    );
+  }
+
+  /**
+   * WS-17: render the in-chat document sidebar for `previewDoc`. Returns null when the docs module
+   * has not registered the `chatDocPreviewPane` endpoint (endpoint returns undefined) so we never
+   * leave an empty, uncloseable panel shell in the slot — the interception in docLinkNavigation
+   * already gates on endpoint availability, this is defense in depth for the render path.
+   */
+  private _renderDocPreviewPanel(previewDoc: {
+    docId: string;
+    space?: string;
+  }): React.ReactNode {
+    const pane = WKApp.endpoints.chatDocPreviewPane({
+      docId: previewDoc.docId,
+      space: previewDoc.space,
+      onClose: this._closeDocPreview,
+      onExpandFullPage: () => {
+        // 展开为整页：打开现有整页文档路由 `/d/<docId>?sp=`，按辉哥定的在新标签页打开。
+        const url = buildDocLink({
+          docId: previewDoc.docId,
+          space: previewDoc.space,
+        });
+        window.open(url, "_blank", "noopener,noreferrer");
+      },
+    });
+    if (!pane) return null;
+    return (
+      <div className="wk-thread-panel wk-doc-preview-panel">
+        <div className="wk-thread-panel-main">{pane}</div>
       </div>
     );
   }
