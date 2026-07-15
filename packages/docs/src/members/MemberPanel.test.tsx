@@ -56,6 +56,14 @@ describe('MemberPanel — display names (#7)', () => {
     expect(container.firstChild).toBeNull()
   })
 
+  it('renders the link share-scope section for an admin (feature #64)', async () => {
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" />)
+    await waitFor(() => expect(screen.getByText('docs.share.title')).toBeTruthy())
+    // Both scope options are present; the default responder yields restricted, so the tier is hidden.
+    expect(screen.getByText('docs.share.restricted')).toBeTruthy()
+    expect(screen.getByText('docs.share.anyoneInSpace')).toBeTruthy()
+  })
+
   it('marks the owner row with an Owner badge (#A1)', async () => {
     render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_named" />)
     await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())

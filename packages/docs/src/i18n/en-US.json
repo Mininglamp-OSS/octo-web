@@ -363,6 +363,19 @@
     "writer": "Writer",
     "admin": "Admin"
   },
+  "share": {
+    "title": "Link sharing",
+    "restricted": "Restricted",
+    "restrictedHint": "Only collaborators can access",
+    "anyoneInSpace": "Anyone in Space",
+    "anyoneInSpaceHint": "Anyone in this space can access",
+    "permission": "Permission",
+    "role": {
+      "read": "Can read",
+      "edit": "Can edit"
+    },
+    "error": "Failed to update sharing. Please try again."
+  },
   "state": {
     "loading": "Loading document…",
     "empty": "Nothing here yet.",

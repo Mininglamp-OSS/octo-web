@@ -93,6 +93,15 @@ export interface DocMeta {
   documentName?: string
   /** `'doc'` | `'board'` — see DocListItem.docType. Absent on backends that don't persist it. */
   docType?: string
+  /**
+   * Link share scope / role (feature #64). The per-doc GET returns these additive, optional fields
+   * so the share dialog can render current state without a second GET /share round-trip. Forward-
+   * compatible: a backend that predates #64 omits them, and the share section falls back to fetching
+   * GET /share (or the restricted/read default). Typed loosely as string so an unexpected value is
+   * normalized at the consumer (share/shareScope.ts) rather than breaking the meta parse.
+   */
+  shareScope?: string
+  shareRole?: string
 }
 
 /**

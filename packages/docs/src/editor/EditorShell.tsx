@@ -282,6 +282,12 @@ export function EditorShell(props: EditorShellProps) {
   // Creation timestamp (RFC3339) for the "more" menu head's "Created on" line. Fetched from the
   // same per-doc GET as ownerId; stays undefined (row hidden) when the backend omits it.
   const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
+  // #64: link share scope/role, seeded from the same per-doc GET (additive shareScope/shareRole
+  // fields) so the member panel's share section renders current state without a second GET /share.
+  // Stays undefined when the backend predates #64; the panel then fetches /share or defaults.
+  const [shareSeed, setShareSeed] = useState<{ shareScope?: string; shareRole?: string } | undefined>(
+    undefined,
+  )
   useEffect(() => {
     let cancelled = false
     getDoc(docId)
@@ -289,6 +295,9 @@ export function EditorShell(props: EditorShellProps) {
         if (cancelled) return
         if (typeof meta?.ownerId === 'string' && meta.ownerId) setOwnerId(meta.ownerId)
         if (typeof meta?.createdAt === 'string' && meta.createdAt) setCreatedAt(meta.createdAt)
+        if (meta?.shareScope != null || meta?.shareRole != null) {
+          setShareSeed({ shareScope: meta.shareScope, shareRole: meta.shareRole })
+        }
       })
       .catch(() => {
         /* non-fatal: owner badge + created-on row just won't show */
@@ -781,6 +790,7 @@ export function EditorShell(props: EditorShellProps) {
               space={props.space}
               ownerId={ownerId}
               accessRequests={pendingAccess}
+              shareSeed={shareSeed}
               onClose={closePanel}
             />
           </div>

@@ -363,6 +363,19 @@
     "writer": "可编辑",
     "admin": "管理员"
   },
+  "share": {
+    "title": "链接分享范围",
+    "restricted": "仅协作者",
+    "restrictedHint": "仅协作者可访问",
+    "anyoneInSpace": "同空间任何人",
+    "anyoneInSpaceHint": "同空间任何人可访问",
+    "permission": "权限",
+    "role": {
+      "read": "可查看",
+      "edit": "可编辑"
+    },
+    "error": "更新分享设置失败，请重试。"
+  },
   "state": {
     "loading": "正在加载文档…",
     "empty": "这里还没有内容。",

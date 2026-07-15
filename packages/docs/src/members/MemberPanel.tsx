@@ -16,6 +16,8 @@ import { sortMembersForDisplay, withSyntheticOwner } from './sort.ts'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
 import { useAccessRequests, type UseAccessRequestsResult } from '../access-request/useAccessRequests.ts'
 import { PendingRequests } from '../access-request/PendingRequests.tsx'
+import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
+import type { ShareSeed } from '../share/shareScope.ts'
 
 const ROLES: Role[] = ['reader', 'writer', 'admin']
 
@@ -38,6 +40,7 @@ export function MemberPanel({
   space,
   ownerId,
   accessRequests: sharedAccessRequests,
+  shareSeed,
   onClose,
 }: {
   docId: string
@@ -45,6 +48,12 @@ export function MemberPanel({
   space?: string
   ownerId?: string
   accessRequests?: UseAccessRequestsResult
+  /**
+   * Optional seed for the link share-scope section, taken from a getDoc meta the caller already
+   * fetched (the per-doc GET returns additive shareScope/shareRole). When absent the section
+   * fetches GET /share itself; either way it falls back to restricted/read.
+   */
+  shareSeed?: ShareSeed
   onClose?: () => void
 }) {
   const [members, setMembers] = useState<Member[]>([])
@@ -129,6 +138,10 @@ export function MemberPanel({
           </button>
         )}
       </div>
+
+      {/* #64: link share scope (Restricted / Anyone in Space + read/edit) sits at the very top,
+          before "Add member". Admin-only visibility is inherited from this panel's canManage gate. */}
+      <ShareScopePanel docId={docId} seed={shareSeed} />
 
       {/* #5: "Add member" + "Invite" sit at the top of the members panel. */}
       <div className="octo-member-section">
