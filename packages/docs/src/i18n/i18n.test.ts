@@ -35,6 +35,19 @@ describe('docs i18n', () => {
       expect(Object.prototype.hasOwnProperty.call(zhCN, g), `zh-CN missing group ${g}`).toBe(true)
     }
   })
+
+  // XIN-1048 #7a: the font-family default option read a bare "默认"/"Default" — the same string as
+  // the font-SIZE default — so users could not tell which "默认" belonged to which control. The
+  // font-family default is now explicitly labelled, and the font-size default is left untouched.
+  it('labels the font-family default distinctly from the font-size default', () => {
+    expect(zhCN.toolbar.fontFamilyDefault).toBe('默认字体')
+    expect(enUS.toolbar.fontFamilyDefault).toBe('Default font')
+    // The size default must NOT have been swept up in the change.
+    expect(zhCN.toolbar.fontSizeDefault).toBe('默认')
+    expect(enUS.toolbar.fontSizeDefault).toBe('Default')
+    expect(zhCN.toolbar.fontFamilyDefault).not.toBe(zhCN.toolbar.fontSizeDefault)
+    expect(enUS.toolbar.fontFamilyDefault).not.toBe(enUS.toolbar.fontSizeDefault)
+  })
 })
 
 describe('DocsModule i18n registration', () => {

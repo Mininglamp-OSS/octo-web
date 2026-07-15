@@ -15,8 +15,17 @@
 import * as Y from 'yjs'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { IndexeddbPersistence } from 'y-indexeddb'
-import { LocaleType, mergeLocales } from '@univerjs/core'
+import { LocaleType, mergeLocales, ICommandService, CommandType, IContextService, FOCUSING_COMMON_DRAWINGS } from '@univerjs/core'
+import { IMenuManagerService, RibbonInsertGroup, MenuItemType, IFontService } from '@univerjs/ui'
 import { createUniver } from './createUniver.ts'
+import { sanitizeLinkHref } from '../editor/sanitize.ts'
+import { MathFormula, OCTO_MATH_FORMULA_KEY } from './floatDom/MathFormula.tsx'
+import { setFormulaSaveHandler, setDrawingBlurHandler, requestFormulaPicker } from './floatDom/formulaBridge.ts'
+import { PiIcon, OCTO_FORMULA_PI_ICON_KEY } from './floatDom/PiIcon.tsx'
+
+/** The single merged formula ribbon entry: a π button that opens the React formula picker. */
+const OCTO_FORMULA_MENU_ID = 'octo.menu.insert-formula'
+const OCTO_FORMULA_PICKER_CMD = 'octo.command.formula.picker'
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core'
 import sheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN'
 import '@univerjs/preset-sheets-core/lib/index.css'
@@ -26,8 +35,16 @@ import '@univerjs/preset-sheets-core/lib/index.css'
 // IImageIoService (base64-inline image storage), so no upload backend is required to insert.
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing'
 import { ISheetDrawingService } from '@univerjs/preset-sheets-drawing'
+import { IDrawingManagerService } from '@univerjs/drawing'
 import sheetsDrawingZhCN from '@univerjs/preset-sheets-drawing/locales/zh-CN'
 import '@univerjs/preset-sheets-drawing/lib/index.css'
+// Hyperlink (insert link) preset — OSS, same pattern as drawing. Hyperlinks live in the
+// SHEET_HYPER_LINK_PLUGIN resource (not cell data), so persistence/replication rides a dedicated
+// Yjs sync in binding.ts (fed the HyperLinkModel resolved from the injector below).
+import { UniverSheetsHyperLinkPreset } from '@univerjs/preset-sheets-hyper-link'
+import { HyperLinkModel } from '@univerjs/preset-sheets-hyper-link'
+import sheetsHyperLinkZhCN from '@univerjs/preset-sheets-hyper-link/locales/zh-CN'
+import '@univerjs/preset-sheets-hyper-link/lib/index.css'
 
 import { buildDocumentName } from '../documentName/index.ts'
 import { resolveCollabWsUrl } from '../config.ts'
@@ -38,7 +55,7 @@ import { cacheKey, deleteDatabaseAwait, type DocScope } from '../offline/cache.t
 import { RoleController } from '../collab/statelessRole.ts'
 import { CloseCodeMachine, type CloseEvent } from '../collab/closeCode.ts'
 import type { ConnState, TerminalState } from '../collab/createCollabEditor.ts'
-import { UniverYjsBinding, type DrawingReaderLike } from './binding.ts'
+import { UniverYjsBinding, type DrawingReaderLike, type HyperLinkModelLike } from './binding.ts'
 import { SheetCursorOverlay } from './sheetCursors.ts'
 import { SheetCommentMarkers, type MarkedCell } from './sheetCommentMarkers.ts'
 import { colorFromId } from '../awareness/presence.ts'
@@ -52,6 +69,26 @@ function colToA1(col: number): string {
     n = Math.floor(n / 26) - 1
   } while (n >= 0)
   return s
+}
+
+/**
+ * Decode a `data:<mime>;base64,<data>` URL into a File. Used to feed imported WPS cell images into
+ * the cell-image facade as a File (the string/URL path 400s on data: URLs). Returns null if the
+ * input isn't a base64 data URL.
+ */
+function dataUrlToFile(dataUrl: string, name: string): File | null {
+  const m = /^data:([^;,]+)(?:;charset=[^;,]+)?;base64,(.+)$/s.exec(dataUrl)
+  if (!m) return null
+  try {
+    const mime = m[1]
+    const bin = atob(m[2])
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    const ext = mime.split('/')[1]?.split('+')[0] || 'png'
+    return new File([bytes], `${name}.${ext}`, { type: mime })
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -97,6 +134,14 @@ export class CollabSheet {
   private readonly univer: ReturnType<typeof createUniver>['univer']
   private readonly univerAPI: ReturnType<typeof createUniver>['univerAPI']
   private readonly binding: UniverYjsBinding
+  /** Hyperlink model (from the injector), so importCells can apply imported links; null if unavailable. */
+  private hyperLinkModel: HyperLinkModelLike | null = null
+  /** Command + sheet-drawing services (from the injector) — used to persist a formula edit back into
+   *  its DRAWING_DOM record (which the drawing Yjs sync then replicates). Null if unavailable. */
+  private commandService: { executeCommand(id: string, params?: unknown): unknown } | null = null
+  private sheetDrawingSvc: {
+    getDrawingByParam(p: { unitId: string; subUnitId: string; drawingId: string }): { data?: Record<string, unknown> } | null | undefined
+  } | null = null
   private cursors: SheetCursorOverlay | null = null
   private commentMarkers: SheetCommentMarkers | null = null
   private commentMarkerClick: ((row: number, col: number, sheetId: string) => void) | null = null
@@ -147,9 +192,44 @@ export class CollabSheet {
     // 4) Univer instance mounted into the caller's container + an empty workbook,
     //    then bind it to the shared Y.Doc. The binding seeds from whichever side
     //    has data (existing session vs fresh book).
+    // Locale patch: @univerjs/sheets-ui@0.25.1's zh-CN bundle is missing the
+    // `sheets-ui.info` block (error / forceStringInfo), so the runtime renders the
+    // raw message keys (e.g. the "number stored as text" green-corner tooltip).
+    // Supply the two strings here (verbatim from the UMD locale) until the upstream
+    // ESM locale ships them; mergeLocales deep-merges, so the rest of sheets-ui
+    // (toolbar, etc.) is untouched.
+    const sheetsUIInfoZhCN = {
+      'sheets-ui': {
+        info: {
+          error: t('docs.sheet.info.error'),
+          forceStringInfo: t('docs.sheet.info.forceStringInfo'),
+        },
+      },
+    }
+    // Titles for our custom "insert formula" dropdown + presets (Univer's LocaleService resolves the
+    // menu `title` keys against these merged locales — an unknown key would render raw).
+    const octoMenuZhCN = {
+      octo: {
+        insertFormula: t('docs.sheet.formula.insert'),
+        formulaMenu: t('docs.sheet.formula.menu'),
+        formula: {
+          circleArea: t('docs.sheet.formula.circleArea'),
+          binomial: t('docs.sheet.formula.binomial'),
+          sumExpansion: t('docs.sheet.formula.sumExpansion'),
+          fourier: t('docs.sheet.formula.fourier'),
+          pythagorean: t('docs.sheet.formula.pythagorean'),
+          quadratic: t('docs.sheet.formula.quadratic'),
+          taylor: t('docs.sheet.formula.taylor'),
+          trig1: t('docs.sheet.formula.trig1'),
+          trig2: t('docs.sheet.formula.trig2'),
+          newFormula: t('docs.sheet.formula.newFormula'),
+          latex: t('docs.sheet.formula.latex'),
+        },
+      },
+    }
     const { univer, univerAPI } = createUniver({
       locale: LocaleType.ZH_CN,
-      locales: { [LocaleType.ZH_CN]: mergeLocales(sheetsCoreZhCN, sheetsDrawingZhCN) },
+      locales: { [LocaleType.ZH_CN]: mergeLocales(sheetsCoreZhCN, sheetsDrawingZhCN, sheetsHyperLinkZhCN, sheetsUIInfoZhCN, octoMenuZhCN) },
       darkMode: isDarkTheme(),
       presets: [
         UniverSheetsCorePreset({
@@ -167,6 +247,10 @@ export class CollabSheet {
         // service (no pro collab client). NOTE: binding.ts does not yet sync drawing
         // mutations through Yjs, so inserted images are local-only until that lands.
         UniverSheetsDrawingPreset(),
+        // Insert hyperlink (OSS). Hyperlinks live in the SHEET_HYPER_LINK_PLUGIN resource (not cell
+        // data); persistence + replication ride the hyperlink Yjs sync in binding.ts (the injected
+        // HyperLinkModel below). The cell's visible TEXT is separately in cell.v.
+        UniverSheetsHyperLinkPreset(),
       ],
     })
     this.univer = univer
@@ -190,17 +274,132 @@ export class CollabSheet {
       },
     })
     this.univerAPI = univerAPI
-    // Resolve the drawing (image) service from Univer's DI container so the binding can READ a
-    // sheet's images for sync. `__getInjector` is Univer's own accessor (FUniver.newAPI uses it);
-    // wrapped defensively so a Univer API change can't break sheet load — worst case images just
-    // don't persist (same as before this feature). Writes go through the facade, not this service.
+    // Resolve services from Univer's DI container. `__getInjector` is Univer's own accessor
+    // (FUniver.newAPI uses it); wrapped defensively so a Univer API change can't break sheet load.
     let drawingReader: DrawingReaderLike | null = null
+    let hyperLinkModel: HyperLinkModelLike | null = null
     try {
       const injector = (univer as unknown as { __getInjector?: () => { get(id: unknown): unknown } }).__getInjector?.()
-      const svc = injector?.get(ISheetDrawingService) as { getDrawingData?: unknown } | undefined
+      // Drop 微软雅黑 (Microsoft YaHei) from the font picker. It's a Windows-only font with no
+      // macOS name-equivalent, and Chromium refuses to honor an @font-face alias for that reserved
+      // name (unlike SimSun/SimHei/… which alias fine — see editor/styles.css), so on non-Windows
+      // clients it can only ever fall back to the default face + show a "not installed" warning. This
+      // just prunes the picker option (reactive via IFontService.fonts$); it does NOT touch any cell's
+      // stored font value, so existing/imported "Microsoft YaHei" cells and xlsx export are unaffected.
+      const fontSvc = injector?.get(IFontService) as {
+        removeFont?: (v: string) => boolean
+        addFont?: (f: { value: string; label: string; category?: string }) => void
+        getFontByValue?: (v: string) => unknown
+      } | undefined
+      if (typeof fontSvc?.removeFont === 'function') fontSvc.removeFont('Microsoft YaHei')
+      // Extend the picker with common macOS-available CJK + Latin fonts (Univer's built-in list is
+      // only ~12). `label` is shown verbatim (localeService.t falls through unknown keys); `value` is
+      // the CSS font-family the cell stores/exports. These use native font names that render directly
+      // on macOS — cross-platform @font-face aliasing (for the ones we keep) is a follow-up.
+      if (typeof fontSvc?.addFont === 'function') {
+        const EXTRA_FONTS = [
+          { value: 'PingFang SC', label: t('docs.sheet.fontLabels.pingfang'), category: 'sans-serif' },
+          { value: 'Hiragino Sans GB', label: t('docs.sheet.fontLabels.hiraginoSansGB'), category: 'sans-serif' },
+          { value: 'STXihei', label: t('docs.sheet.fontLabels.stxihei'), category: 'sans-serif' },
+          { value: 'Yuanti SC', label: t('docs.sheet.fontLabels.yuanti'), category: 'sans-serif' },
+          { value: 'Hannotate SC', label: t('docs.sheet.fontLabels.hannotate'), category: 'handwriting' },
+          { value: 'HanziPen SC', label: t('docs.sheet.fontLabels.hanzipen'), category: 'handwriting' },
+          { value: 'Wawati SC', label: t('docs.sheet.fontLabels.wawati'), category: 'handwriting' },
+          { value: 'Georgia', label: 'Georgia', category: 'serif' },
+          { value: 'Palatino', label: 'Palatino', category: 'serif' },
+          { value: 'Courier New', label: 'Courier New', category: 'monospace' },
+          { value: 'Trebuchet MS', label: 'Trebuchet MS', category: 'sans-serif' },
+          { value: 'Comic Sans MS', label: 'Comic Sans MS', category: 'handwriting' },
+          { value: 'Impact', label: 'Impact', category: 'display' },
+        ]
+        for (const f of EXTRA_FONTS) {
+          try { if (!fontSvc.getFontByValue?.(f.value)) fontSvc.addFont(f) } catch { /* already present */ }
+        }
+      }
+      const svc = injector?.get(ISheetDrawingService) as { getDrawingData?: unknown; getDrawingByParam?: unknown } | undefined
       if (svc && typeof svc.getDrawingData === 'function') drawingReader = svc as unknown as DrawingReaderLike
+      if (svc && typeof svc.getDrawingByParam === 'function') this.sheetDrawingSvc = svc as never
+      // The drawing MANAGER (distinct from the sheet drawing service) owns selection/focus. We use it
+      // to clear the selection when a formula field is focused, so Univer's move/delete-drawing key
+      // shortcuts have no target while editing (keys then act inside the formula). Wired below.
+      const dm = injector?.get(IDrawingManagerService) as { focusDrawing?: (p: unknown) => void } | undefined
+      // IContextService owns the `FOCUSING_COMMON_DRAWINGS` context key. Univer's move/delete-drawing
+      // shortcuts (ARROW_*/DELETE in @univerjs/sheets-drawing-ui) are gated on that key being true —
+      // it's set true when a drawing's transform control is created and stays true until the control
+      // is cleared. Clicking INTO the formula doesn't clear a pre-existing selection, so the key stays
+      // true and the arrows/Delete hijack the box. Forcing it false when the formula field focuses
+      // disables exactly those shortcuts (event-driven, so it stays false through the edit) — the keys
+      // then act inside the formula. Univer re-sets it true on the next real drawing selection.
+      const ctx = injector?.get(IContextService) as { setContextValue?: (k: string, v: boolean) => void } | undefined
+      if ((dm && typeof dm.focusDrawing === 'function') || (ctx && typeof ctx.setContextValue === 'function')) {
+        setDrawingBlurHandler(() => {
+          try {
+            ctx?.setContextValue?.(FOCUSING_COMMON_DRAWINGS, false)
+            dm?.focusDrawing?.([])
+          } catch {
+            /* best-effort */
+          }
+        })
+      }
+      // Same DI route for the hyperlink model, so the binding can read/write links for sync.
+      const hl = injector?.get(HyperLinkModel) as { getSubUnit?: unknown; linkUpdate$?: unknown } | undefined
+      if (hl && typeof hl.getSubUnit === 'function' && hl.linkUpdate$) hyperLinkModel = hl as unknown as HyperLinkModelLike
+      // Register ONE formula entry in the INSERT ribbon tab: a π button that opens the React formula
+      // picker (preset previews + the two builders). Univer can't render formula previews inside its
+      // native dropdown, so the rich dropdown is our own component (see FormulaPicker).
+      const cmd = injector?.get(ICommandService) as { registerCommand?: (c: unknown) => void; executeCommand?: unknown } | undefined
+      if (cmd && typeof cmd.executeCommand === 'function') this.commandService = cmd as never
+      const menuMgr = injector?.get(IMenuManagerService) as { mergeMenu?: (s: unknown) => void } | undefined
+      if (cmd?.registerCommand && menuMgr?.mergeMenu) {
+        cmd.registerCommand({
+          id: OCTO_FORMULA_PICKER_CMD,
+          type: CommandType.COMMAND,
+          handler: () => {
+            requestFormulaPicker()
+            return true
+          },
+        })
+        // The π icon component the ribbon button renders (resolved from the ComponentManager by key).
+        try {
+          ;(univerAPI as unknown as { registerComponent?: (k: string, c: unknown) => void }).registerComponent?.(
+            OCTO_FORMULA_PI_ICON_KEY,
+            PiIcon,
+          )
+        } catch {
+          /* icon optional */
+        }
+        menuMgr.mergeMenu({
+          [RibbonInsertGroup.OTHERS]: {
+            [OCTO_FORMULA_MENU_ID]: {
+              order: 99,
+              // Clicking a BUTTON menu item executes the command whose id === the item id.
+              menuItemFactory: () => ({
+                id: OCTO_FORMULA_PICKER_CMD,
+                type: MenuItemType.BUTTON,
+                title: 'octo.formulaMenu',
+                tooltip: 'octo.formulaMenu',
+                icon: OCTO_FORMULA_PI_ICON_KEY,
+              }),
+            },
+          },
+        })
+      }
     } catch {
       drawingReader = null
+      hyperLinkModel = null
+    }
+    this.hyperLinkModel = hyperLinkModel
+    // Register the editable math-formula float-DOM component (every collaborating client registers
+    // the same key so a synced formula drawing renders). Wire inline edits (latex + font size) to
+    // persist through the drawing model.
+    try {
+      ;(univerAPI as unknown as { registerComponent?: (k: string, c: unknown) => void }).registerComponent?.(
+        OCTO_MATH_FORMULA_KEY,
+        MathFormula,
+      )
+      setFormulaSaveHandler((id, latex, fontSize) => this.updateFormula(id, latex, fontSize))
+    } catch {
+      // formula feature unavailable — sheet still loads
     }
     // Pass a live write-gate: readers / downgraded users must NOT write to the shared Y.Doc
     // (the server rejects their writes anyway, but an ungated binding would still persist the
@@ -214,7 +413,7 @@ export class CollabSheet {
     // initialSync() is idempotent and only runs the seed decision once, against the settled doc.
     this.binding = new UniverYjsBinding(univerAPI, this.ydoc, () => canEdit(this.currentRole), {
       deferInitialSync: true,
-    }, drawingReader)
+    }, drawingReader, hyperLinkModel)
     // Drive it after the local cache has replayed (whenSynced), or immediately if offline cache
     // is disabled (no persistence layer to wait on). A one-shot guard + the binding's own
     // idempotency make a later provider 'synced' or the timeout fallback harmless.
@@ -497,14 +696,23 @@ export class CollabSheet {
       matrix: Array<Array<{ v?: unknown; f?: string; s?: Record<string, unknown> } | null>>
       merges?: Array<{ startRow: number; startColumn: number; endRow: number; endColumn: number }>
       drawings?: Array<{ source: string; col: number; row: number }>
+      cellImages?: Array<{ row: number; col: number; source: string }>
+      hyperlinks?: Array<{ row: number; col: number; url: string; display?: string }>
     }>,
   ): Promise<boolean> {
     const wb = this.univerAPI.getActiveWorkbook() as unknown as {
+      getId?: () => string
       getActiveSheet: () => unknown
       insertSheet?: (name?: string) => unknown
     } | null
     if (!wb) return false
-    const parsed = sheets.filter((s) => s.matrix.length > 0 || (s.drawings?.length ?? 0) > 0)
+    const parsed = sheets.filter(
+      (s) =>
+        s.matrix.length > 0 ||
+        (s.drawings?.length ?? 0) > 0 ||
+        (s.cellImages?.length ?? 0) > 0 ||
+        (s.hyperlinks?.length ?? 0) > 0,
+    )
     if (parsed.length === 0) return false
     let anyApplied = false
     // insertImage is async (it loads the image to size it). We AWAIT every image before returning
@@ -537,6 +745,69 @@ export class CollabSheet {
             anyApplied = true
           } catch {
             // ignore a single image that fails to insert
+          }
+        }
+      }
+      // WPS cell images → native Univer cell images (fit the cell, move with it), via the FRange
+      // facade. We pass a File (not the data-URL string): the string path goes through
+      // insertCellImageByUrl which fetches/validates the URL and 400s on a data: URL, whereas a
+      // File routes through insertCellImageByFile — the same path the UI's "insert cell image" uses
+      // (ImageIoService.saveImage, no fetch). Stored in cell.p, which the binding syncs.
+      if (ws && ps.cellImages?.length) {
+        const gws = ws as {
+          getRange?: (row: number, col: number) => { insertCellImageAsync?: (file: File | string) => Promise<unknown> } | null
+        }
+        for (const ci of ps.cellImages) {
+          const file = dataUrlToFile(ci.source, `cell-image-${ci.row}-${ci.col}`)
+          if (!file) continue
+          // insertCellImageAsync needs the per-render-unit SheetDrawingUpdateController, which only
+          // registers once the sheet has rendered — during import the render unit may not be ready
+          // yet (throws QuantityCheckError). Retry with backoff until it is (bounded so a genuinely
+          // missing controller can't loop forever). Once it lands, SetRangeValues writes cell.p, which
+          // the binding syncs — so the cell image persists + replicates like a user-inserted one.
+          const attempt = async (): Promise<void> => {
+            for (let i = 0; i < 8; i++) {
+              const range = gws.getRange?.(ci.row, ci.col)
+              if (range?.insertCellImageAsync) {
+                try {
+                  await range.insertCellImageAsync(file)
+                  return
+                } catch {
+                  if (i === 7) return // give up after the last try
+                }
+              }
+              await new Promise((r) => setTimeout(r, 200 * (i + 1)))
+            }
+          }
+          imagePromises.push(attempt())
+          anyApplied = true
+        }
+      }
+      // Hyperlinks: apply via the model (deterministic id per cell so a re-import overwrites rather
+      // than duplicates). Adding to the model fires linkUpdate$, which the binding syncs to Yjs so
+      // the links persist + replicate like a user-inserted link. The cell TEXT came in via the matrix.
+      if (ws && ps.hyperlinks?.length && this.hyperLinkModel) {
+        const unitId = wb.getId?.()
+        const subUnitId = (ws as { getSheetId?: () => string }).getSheetId?.()
+        if (unitId && subUnitId) {
+          for (const h of ps.hyperlinks) {
+            // Defense-in-depth at the model-write boundary: even though xlsxImport already
+            // whitelists the scheme, re-check here so nothing but http/https/mailto reaches the
+            // HyperLinkModel (mirrors the editor's "sanitize at both boundaries" rule).
+            const safeUrl = sanitizeLinkHref(h.url)
+            if (!safeUrl) continue
+            try {
+              this.hyperLinkModel.addHyperLink(unitId, subUnitId, {
+                id: `imp-${h.row}-${h.col}`,
+                row: h.row,
+                column: h.col,
+                payload: safeUrl,
+                ...(h.display !== undefined ? { display: h.display } : {}),
+              })
+              anyApplied = true
+            } catch {
+              // ignore a single link that fails to add
+            }
           }
         }
       }
@@ -600,6 +871,65 @@ export class CollabSheet {
     return canEdit(this.currentRole)
   }
 
+  /**
+   * Insert a math formula as a float-DOM drawing at a default spot on the active sheet (draggable).
+   * It renders via the registered MathLive component and persists as a DRAWING_DOM drawing (which
+   * the drawing Yjs sync replicates). Returns the new drawing id, or null if unavailable.
+   */
+  insertFormula(latex = '', fontSize = 20): string | null {
+    const ws = this.univerAPI.getActiveWorkbook()?.getActiveSheet() as unknown as {
+      addFloatDomToPosition?: (
+        layer: {
+          componentKey: string
+          initPosition: { startX: number; endX: number; startY: number; endY: number }
+          data?: Record<string, unknown>
+          allowTransform?: boolean
+        },
+        id?: string,
+      ) => { id: string } | null
+    } | null
+    if (!ws?.addFloatDomToPosition) return null
+    const id = `formula-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+    try {
+      const res = ws.addFloatDomToPosition(
+        {
+          componentKey: OCTO_MATH_FORMULA_KEY,
+          initPosition: { startX: 100, endX: 240, startY: 80, endY: 124 },
+          data: { latex, id, fontSize },
+          allowTransform: true,
+        },
+        id,
+      )
+      return res?.id ?? id
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Persist an inline formula edit (LaTeX + font size) by patching the DRAWING_DOM record's `data`
+   * via SetSheetDrawingCommand, which fires the drawing mutation the Yjs sync observes — so the edit
+   * persists + replicates. Assumes the formula is on the active sheet. Best-effort (silent no-op if
+   * the drawing/services aren't resolvable).
+   */
+  updateFormula(id: string, latex: string, fontSize: number): void {
+    const wb = this.univerAPI.getActiveWorkbook() as unknown as {
+      getId?: () => string
+      getActiveSheet: () => { getSheetId?: () => string } | null
+    } | null
+    const unitId = wb?.getId?.()
+    const subUnitId = wb?.getActiveSheet()?.getSheetId?.()
+    if (!unitId || !subUnitId || !this.sheetDrawingSvc || !this.commandService) return
+    try {
+      const drawing = this.sheetDrawingSvc.getDrawingByParam({ unitId, subUnitId, drawingId: id })
+      if (!drawing) return
+      const updated = { ...drawing, data: { ...(drawing.data ?? {}), latex, id, fontSize } }
+      this.commandService.executeCommand('sheet.command.set-sheet-image', { unitId, drawings: [updated] })
+    } catch {
+      // ignore — edit persistence is best-effort
+    }
+  }
+
   private async clearCache(): Promise<void> {
     // Mirror CollabEditor's terminal teardown (offline/cache.ts §6.3): disconnecting +
     // destroying the y-indexeddb handle only CLOSES the connection — the on-disk data
@@ -623,6 +953,8 @@ export class CollabSheet {
     if (this.sealTimer) clearTimeout(this.sealTimer)
     this.cursors?.dispose()
     this.commentMarkers?.dispose()
+    setFormulaSaveHandler(null)
+    setDrawingBlurHandler(null)
     this.binding.dispose()
     this.univer.dispose()
     // Clear our presence BEFORE tearing down the provider so peers don't keep seeing a

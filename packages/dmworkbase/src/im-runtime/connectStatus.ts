@@ -26,6 +26,15 @@ export interface ImConnectStatusRuntimeSdk {
   };
 }
 
+export interface ImReconnectRefreshDeps {
+  getLastRefreshAt: () => number;
+  setLastRefreshAt: (time: number) => void;
+  refreshMessages: () => void;
+  resyncSubscribers?: () => void;
+  now?: () => number;
+  debounceMs?: number;
+}
+
 export function createImConnectStatusListener(
   deps: ImConnectStatusListenerDeps
 ) {
@@ -80,4 +89,24 @@ export function reconnectImWhenNotConnected(
   if (status !== ConnectStatus.Connected) {
     sdk.connectManager.connect();
   }
+}
+
+export function handleImReconnectRefresh(
+  status: ConnectStatus,
+  deps: ImReconnectRefreshDeps
+) {
+  if (status !== ConnectStatus.Connected) {
+    return false;
+  }
+
+  const now = deps.now ? deps.now() : Date.now();
+  const debounceMs = deps.debounceMs ?? 5000;
+  if (now - deps.getLastRefreshAt() < debounceMs) {
+    return false;
+  }
+
+  deps.setLastRefreshAt(now);
+  deps.refreshMessages();
+  deps.resyncSubscribers?.();
+  return true;
 }

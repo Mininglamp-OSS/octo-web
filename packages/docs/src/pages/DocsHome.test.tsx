@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
@@ -1074,5 +1074,127 @@ describe('DocsHome — in-flight unknown-kind open is discarded after a Space sw
       | { props?: { docId?: string } }
       | undefined
     expect(lastPush?.props?.docId).toBeUndefined()
+  })
+})
+
+// Deleting the currently-open doc must clear the right pane and the selection, not just refresh the
+// list. Regression (XIN-1050): onDocDeleted guarded `docId === selectedDocId` against a STALE
+// closed-over selectedDocId. In the production (routeRight) path the shell is pushed into the host
+// pane as a one-time element snapshot by commitOpen — and that push runs synchronously right after
+// setSelectedDocId(X), before the state re-render — so the onDocDeleted baked into the snapshot
+// still saw the PRE-open id (null on first open, the previous doc on a switch). The guard therefore
+// never matched the just-opened doc, backToList never ran, and the deleted doc's shell stayed
+// resident in the right pane while only the list refreshed. doc / sheet / board share the single
+// onDocDeleted, so all three regressed. The fix reads selectedDocIdRef (the always-current id).
+// This test drives the exact snapshot path: it invokes the onDeleted wired into the pushed element,
+// as the shell does after a successful in-editor delete of the open doc.
+describe('DocsHome — deleting the open doc clears the right pane and selection (XIN-1050)', () => {
+  const shells: Array<{ kind: 'doc' | 'sheet' | 'board'; docType: string }> = [
+    { kind: 'doc', docType: 'doc' },
+    { kind: 'sheet', docType: 'sheet' },
+    { kind: 'board', docType: 'board' },
+  ]
+
+  for (const { kind, docType } of shells) {
+    it(`resets routeRight to the empty state and clears selection after deleting the open ${kind}`, async () => {
+      const wk = createMockWKApp()
+      const replaceToRoot = vi.fn()
+      // Production (resident-list) path so the shell is pushed into the host pane as a snapshot —
+      // the only path where the stale-closure bug manifests (the inline path rebuilds the shell
+      // every render, so its onDocDeleted is always current).
+      ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+      setWKApp(wk)
+      wk.apiClient.responder = (method, url) => {
+        if (method === 'get' && url.startsWith('/docs')) {
+          return {
+            data: {
+              total: 1,
+              items: [
+                { docId: 'd_x', title: 'Open Doc', ownerId: 'u_self', role: 'admin', docType },
+              ],
+            },
+            status: 200,
+          }
+        }
+        return { data: {}, status: 200 }
+      }
+
+      render(<DocsHome />)
+      await waitFor(() => expect(screen.getByText('Open Doc')).toBeTruthy())
+
+      // Known-kind row → openDoc commits synchronously and pushes the matching shell into the host
+      // pane. Wait for that push (the earlier mount empty-state push is not the shell).
+      fireEvent.click(screen.getByText('Open Doc'))
+      await waitFor(() => {
+        const last = replaceToRoot.mock.calls.at(-1)?.[0] as
+          | { props?: { docId?: string } }
+          | undefined
+        expect(last?.props?.docId).toBe('d_x')
+      })
+      // The just-opened row is marked active (selectedDocId === 'd_x').
+      await waitFor(() =>
+        expect(document.querySelector('.octo-docs-list-item-active')).toBeTruthy(),
+      )
+      // The durable target was persisted for the open doc.
+      expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_x' })
+
+      // Fire the onDeleted baked into the pushed shell snapshot, exactly as the shell does after a
+      // successful in-editor delete of the open doc.
+      const pushed = replaceToRoot.mock.calls.at(-1)![0] as {
+        props: { docId: string; onDeleted: (id: string) => void }
+      }
+      expect(typeof pushed.props.onDeleted).toBe('function')
+      act(() => pushed.props.onDeleted('d_x'))
+
+      // routeRight is cleared to the docs empty state — NOT left showing the deleted doc's shell.
+      await waitFor(() => {
+        const last = replaceToRoot.mock.calls.at(-1)?.[0] as
+          | { props?: { docId?: string } }
+          | undefined
+        expect(last?.props?.docId).toBeUndefined()
+      })
+      // selectedDocId is reset: no list row stays active and the persisted target is cleared.
+      expect(document.querySelector('.octo-docs-list-item-active')).toBeNull()
+      expect(window.sessionStorage.getItem(TARGET_KEY)).toBeNull()
+    })
+  }
+
+  it('refreshes the list but keeps the pane when a DIFFERENT (not-open) doc is deleted', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [{ docId: 'd_x', title: 'Open Doc', ownerId: 'u_self', role: 'admin', docType: 'doc' }],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Open Doc')).toBeTruthy())
+    fireEvent.click(screen.getByText('Open Doc'))
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } } | undefined
+      expect(last?.props?.docId).toBe('d_x')
+    })
+
+    const pushed = replaceToRoot.mock.calls.at(-1)![0] as {
+      props: { onDeleted: (id: string) => void }
+    }
+    // A doc other than the open one is deleted elsewhere: the open doc must stay resident.
+    act(() => pushed.props.onDeleted('d_other'))
+
+    // The right pane still shows the open doc (no empty-state push) and the target is intact —
+    // only the resident list is refreshed (via the reload-token bump).
+    const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } } | undefined
+    expect(last?.props?.docId).toBe('d_x')
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_x' })
   })
 })

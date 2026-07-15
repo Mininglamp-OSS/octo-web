@@ -122,4 +122,22 @@ describe('editor schema mirrors the schema audit lists', () => {
     expect(holder.innerHTML).toContain('font-family')
     expect(holder.innerHTML).toContain('SimSun')
   })
+
+  it('adds the v17 line-spacing attrs to heading and paragraph (attrs, not nodes)', () => {
+    for (const attr of ['lineHeight', 'spaceBefore', 'spaceAfter']) {
+      expect(schema.nodes.paragraph.spec.attrs?.[attr], `paragraph missing ${attr}`).toBeDefined()
+      expect(schema.nodes.heading.spec.attrs?.[attr], `heading missing ${attr}`).toBeDefined()
+    }
+  })
+
+  it('adds the v18 indent attr to heading and paragraph (attr, not a node), default null', () => {
+    expect(schema.nodes.paragraph.spec.attrs?.indent).toBeDefined()
+    expect(schema.nodes.heading.spec.attrs?.indent).toBeDefined()
+    expect(schema.nodes.paragraph.spec.attrs?.indent?.default).toBe(null)
+    expect(schema.nodes.heading.spec.attrs?.indent?.default).toBe(null)
+  })
+
+  it('does NOT add the indent attr to list items (list Tab/Shift-Tab stays untouched)', () => {
+    expect(schema.nodes.listItem.spec.attrs?.indent).toBeUndefined()
+  })
 })

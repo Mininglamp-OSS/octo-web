@@ -3,7 +3,6 @@ import type {
   Issue,
   IssueComment,
   CreateIssueReq,
-  QuickCreateReq,
   UpdateIssueReq,
   ListParams,
   GroupedParams,
@@ -16,6 +15,7 @@ import type {
 } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
 import { ensureDirectory, actorName, actorAvatar, listAssigneeCandidates as dirCandidates } from "./directory";
+import { arrayFilterQuery } from "./issueFilterQuery";
 
 // enrich 的同步核心:调用方已拿到 directory 时复用,避免每组重复 ensureDirectory。
 function enrichWith(dir: Awaited<ReturnType<typeof ensureDirectory>>, issues: Issue[]): Issue[] {
@@ -43,11 +43,7 @@ async function fetchIssues(path: string, query: Record<string, unknown>): Promis
 
 export function listIssues(params?: ListParams): Promise<{ issues: Issue[]; total: number }> {
   return fetchIssues("/issues", {
-    status: params?.status,
-    priority: params?.priority,
-    assignee_id: params?.assignee_id,
-    creator_id: params?.creator_id,
-    project_id: params?.project_id,
+    ...arrayFilterQuery(params ?? {}),
     date_field: params?.date_field,
     date_start: params?.date_start,
     date_end: params?.date_end,
@@ -92,13 +88,6 @@ export function createIssue(req: CreateIssueReq): Promise<Issue> {
   return httpPost<Issue>("/issues", req);
 }
 
-// 一句话派单(POST /issues/quick-create):异步建单 + 派给 agent/squad,返回 { task_id }。
-// 相比 createIssue,后端建单前查 runtime 在线 + daemon 版本,离线/过旧当场返 422
-// (LoopApiError.code = agent_unavailable / daemon_version_unsupported)供即时反馈。
-export function quickCreateIssue(req: QuickCreateReq): Promise<{ task_id: string }> {
-  return httpPost<{ task_id: string }>("/issues/quick-create", req);
-}
-
 export function updateIssue(id: string, req: UpdateIssueReq): Promise<Issue> {
   return httpPut<Issue>(`/issues/${id}`, req);
 }
@@ -114,15 +103,11 @@ export async function listGroupedIssues(params: GroupedParams): Promise<IssueGro
   const dir = await ensureDirectory();
   const data = await httpGet<{ groups?: IssueGroup[] }>("/issues/grouped", {
     group_by: "assignee",
-    statuses: params.statuses?.join(","),
-    priorities: params.priorities?.join(","),
-    assignee_types: params.assignee_types?.join(","),
+    ...arrayFilterQuery(params),
     assignee_id: params.assignee_id,
     involves_user_id: params.involves_user_id,
     creator_id: params.creator_id,
     project_id: params.project_id,
-    project_ids: params.project_ids?.join(","),
-    include_no_project: params.include_no_project ? "true" : undefined,
     date_field: params.date_field,
     date_start: params.date_start,
     date_end: params.date_end,
@@ -142,9 +127,16 @@ export async function listGroupedIssues(params: GroupedParams): Promise<IssueGro
 // (assignee_type, assignee_id) 合并分组、按 issue id 去重,total 取去重后条数。
 // 对齐后端「我的 issue」三过滤并集语义(assignee_types 对本 scope 无意义,剥离)。
 export async function listMyGroupedIssues(userId: string, params: GroupedParams): Promise<IssueGroup[]> {
-  // 剥离所有「用户关系」过滤:三 leg 各自设一个,base 保留任何一个都会污染另两 leg
-  // (如下拉 creator 会被 creator leg 覆盖、却在其余 leg 变成意外 AND)。assignee_types 同样无意义。
-  const base: GroupedParams = { ...params, assignee_types: undefined, assignee_id: undefined, creator_id: undefined, involves_user_id: undefined };
+  // 剥离所有「用户关系」过滤(单值 + 复数):三 leg 各自设一个,base 保留任何一个都会污染另两 leg
+  // (如 creator 下拉会在其余 leg 变成意外 AND)。复数 assignee_ids/creator_ids 同理必须剥,
+  // 否则 My Loop 面板选的负责人/创建者会 AND 进三腿、破坏并集语义。assignee_types 对本 scope 无意义。
+  const base: GroupedParams = {
+    ...params,
+    assignee_types: undefined,
+    assignee_id: undefined, assignee_ids: undefined,
+    creator_id: undefined, creator_ids: undefined,
+    involves_user_id: undefined,
+  };
   const variants: GroupedParams[] = [
     { ...base, assignee_id: userId },
     { ...base, creator_id: userId },

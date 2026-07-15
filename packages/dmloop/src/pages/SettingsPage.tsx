@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Typography, Button, Tabs, TabPane, Table, Tag, Select, Spin, Toast, Banner, Modal, Avatar,
+  Typography, Button, Tabs, TabPane, Table, Select, Spin, Toast, Banner, Modal, Avatar,
 } from "@douyinfe/semi-ui";
 import { Save, UserPlus, Trash2, User } from "lucide-react";
 import { useI18n, WKApp, SpaceService } from "@octo/base";
@@ -11,6 +11,8 @@ import {
   listWorkspaceInvitations, revokeInvitation,
 } from "../api/workspaceApi";
 import { invalidateDirectory } from "../api/directory";
+import LoopTag from "../ui/LoopTag";
+import LoopButton from "../ui/LoopButton";
 
 const { Title, Text } = Typography;
 const ROLES = ["admin", "member"];
@@ -96,7 +98,7 @@ function GeneralTab({ workspace, onUpdated }: { workspace: Workspace; onUpdated?
         <input className="loop-field" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("loop.workspace.descPlaceholder")} />
       </div>
       <div className="loop-fields__row">
-        <Button theme="solid" icon={<Save size={14} />} loading={saving} onClick={save}>{t("loop.action.save")}</Button>
+        <LoopButton icon={<Save size={14} />} loading={saving} onClick={save}>{t("loop.action.save")}</LoopButton>
       </div>
     </div>
   );
@@ -222,7 +224,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
     } },
     { title: t("loop.settings.role"), dataIndex: "role", width: 160, render: (v: string, r: WorkspaceMember) => (
       v === "owner"
-        ? <Tag color="amber" size="small">owner</Tag>
+        ? <LoopTag tone="amber">owner</LoopTag>
         : <Select value={v} size="small" style={{ width: 120 }} onChange={(nv) => changeRole(r, nv as string)}>
             {ROLES.map((x) => <Select.Option key={x} value={x}>{x}</Select.Option>)}
           </Select>
@@ -270,7 +272,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
         <Select value={role} onChange={(v) => setRole(v as string)} dropdownClassName="loop-fields__dropdown" style={{ width: 120 }}>
           {ROLES.map((x) => <Select.Option key={x} value={x}>{x}</Select.Option>)}
         </Select>
-        <Button theme="solid" icon={<UserPlus size={14} />} loading={adding} disabled={!selectedUid} onClick={add}>{t("loop.settings.addMember")}</Button>
+        <LoopButton icon={<UserPlus size={14} />} loading={adding} disabled={!selectedUid} onClick={add}>{t("loop.settings.addMember")}</LoopButton>
       </div>
 
       <div>
@@ -285,7 +287,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
             {invites.map((inv) => (
               <div key={inv.id} className="loop-comment" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Text>{inv.invitee_email}</Text>
-                <Tag size="small" color="grey">{inv.role}</Tag>
+                <LoopTag tone="grey">{inv.role}</LoopTag>
                 <Button theme="borderless" type="danger" size="small" style={{ marginLeft: "auto" }} icon={<Trash2 size={13} />} onClick={() => revoke(inv)}>{t("loop.settings.revoke")}</Button>
               </div>
             ))}

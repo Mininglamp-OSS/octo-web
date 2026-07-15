@@ -584,7 +584,7 @@ export function VersionHistoryPanel<TState, TCurrent>({
 
         {confirmRestore && (
           <div
-            className="octo-modal-overlay"
+            className="octo-modal-overlay octo-modal-overlay--center"
             role="presentation"
             onMouseDown={() => {
               if (!busy) setConfirmRestore(null)
@@ -623,7 +623,7 @@ export function VersionHistoryPanel<TState, TCurrent>({
 
         {confirmDelete && (
           <div
-            className="octo-modal-overlay"
+            className="octo-modal-overlay octo-modal-overlay--center"
             role="presentation"
             onMouseDown={() => {
               if (!busy) setConfirmDelete(null)

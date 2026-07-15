@@ -2,12 +2,13 @@ import React, { useCallback } from "react"
 import { Channel, ChannelTypeGroup } from "wukongimjssdk"
 import { X } from "lucide-react"
 import { IconSearchStroked } from "@douyinfe/semi-icons"
-import { Tag } from "@douyinfe/semi-ui"
+import { Tag, Tabs, TabPane } from "@douyinfe/semi-ui"
 import Checkbox from "../Checkbox"
 import AiBadge from "../AiBadge"
 import WKAvatar from "../WKAvatar"
 import VisibilityTrigger from "../VisibilityTrigger"
 import { useI18n } from "../../i18n"
+import type { ChatSelectorTab } from "../ChatSelector/tabFilter"
 import type { ForwardGrantConfig } from "./grant"
 import "./ForwardModal.css"
 
@@ -35,6 +36,10 @@ export interface ForwardModalProps {
   onToggleSelect: (item: ForwardItem) => void
   onConfirm: () => void
   onCancel?: () => void
+  /** 当前 Tab（关注 / 最近 / 全部群聊 / 全部私聊）。 */
+  activeTab: ChatSelectorTab
+  /** 切换 Tab 回调。 */
+  onTabChange: (tab: ChatSelectorTab) => void
   /** 懒加载：列表项进入视口时调用。未传则不触发懒加载（用于不需要拉 channelInfo 的场景） */
   onItemVisible?: (item: ForwardItem) => void
   /**
@@ -167,6 +172,8 @@ export function ForwardModal({
   onToggleSelect,
   onConfirm,
   onCancel,
+  activeTab,
+  onTabChange,
   onItemVisible,
   grant,
 }: ForwardModalProps) {
@@ -206,6 +213,19 @@ export function ForwardModal({
               onChange={handleInputChange}
             />
           </div>
+
+          {/* 四 Tab：关注 / 最近 / 全部群聊 / 全部私聊（对齐智能纪要选择器） */}
+          <Tabs
+            activeKey={activeTab}
+            onChange={(key) => onTabChange(key as ChatSelectorTab)}
+            size="small"
+            className="wk-fm-tabs"
+          >
+            <TabPane tab={t("base.forwardModal.tabFollowed")} itemKey="followed" />
+            <TabPane tab={t("base.forwardModal.tabRecent")} itemKey="recent" />
+            <TabPane tab={t("base.forwardModal.tabAllGroups")} itemKey="group" />
+            <TabPane tab={t("base.forwardModal.tabAllDirects")} itemKey="direct" />
+          </Tabs>
 
           {/* 可选列表 */}
           <div className="wk-fm-list">

@@ -4,7 +4,6 @@ import {
   Select,
   Button,
   Avatar,
-  Tag,
   Spin,
   Toast,
   Dropdown,
@@ -76,6 +75,8 @@ import LoopMarkdown from "../ui/LoopMarkdown";
 import AutoGrowTextarea from "../ui/AutoGrowTextarea";
 import CommentComposer, { type CommentComposerHandle } from "../ui/CommentComposer";
 import { useCommentTriggerPreview } from "../ui/useCommentTriggerPreview";
+import { buildRepliesByParent, collectThreadReplies } from "../ui/threadReplies";
+import LoopAttachments from "../ui/LoopAttachments";
 import { confirmDelete } from "../ui/confirmDelete";
 import RunDetailModal from "./RunDetailModal";
 import CreateIssueModal from "../ui/CreateIssueModal";
@@ -92,6 +93,8 @@ import {
   RUN_STATUS_HEX_FALLBACK,
   isActiveRun,
 } from "../ui/meta";
+import LoopTag from "../ui/LoopTag";
+import LoopButton from "../ui/LoopButton";
 import "./issueDetail.css";
 
 const { Text } = Typography;
@@ -228,7 +231,7 @@ function ThreadReply({
                 }}
               />
             </label>
-            <Button theme="solid" size="small" icon={<Send size={14} />} onClick={submit} loading={busy} disabled={!draft.trim() && files.length === 0} aria-label={sendLabel} />
+            <LoopButton size="sm" icon={<Send size={14} />} onClick={submit} loading={busy} disabled={!draft.trim() && files.length === 0} aria-label={sendLabel} />
           </>
         }
       />
@@ -489,26 +492,12 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     }
   };
 
-  // 附件渲染(评论/issue 共用):图片内联缩略,其它为带图标的下载链接(用短时 download_url)。
-  const renderAttachments = (atts: Attachment[] | null | undefined) => {
-    if (!atts?.length) return null;
-    return (
-      <div className="loop-atts">
-        {atts.map((a) =>
-          a.content_type.startsWith("image/") ? (
-            <a key={a.id} href={a.download_url} target="_blank" rel="noreferrer" className="loop-att loop-att--img">
-              <img src={a.download_url} alt={a.filename} />
-            </a>
-          ) : (
-            <a key={a.id} href={a.download_url} target="_blank" rel="noreferrer" className="loop-att">
-              <Paperclip size={12} />
-              <span>{a.filename}</span>
-            </a>
-          ),
-        )}
-      </div>
-    );
-  };
+  // 附件渲染(评论/issue 共用):图片内联缩略,其它为带图标的下载链接。
+  // 走 LoopAttachments:带鉴权取字节转 object URL —— download_url 是 auth-only,
+  // 原生 <img src> 带不上 token,且 octo-web 下 /api 代理到别的后端会 404(裂图)。
+  const renderAttachments = (atts: Attachment[] | null | undefined) => (
+    <LoopAttachments attachments={atts} />
+  );
 
   const submitComment = async () => {
     const content = commentDraft.trim();
@@ -724,7 +713,12 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   }
 
   const roots = comments.filter((c) => !c.parent_id);
-  const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id);
+  // Every descendant of a thread root, flattened chronologically. Not just
+  // direct children: an agent reply nests under the member comment that
+  // triggered it (a grandchild of the root), so direct-children-only would drop
+  // every agent answer from the thread. See collectThreadReplies.
+  const repliesByParent = buildRepliesByParent(comments);
+  const repliesOf = (id: string) => collectThreadReplies(id, repliesByParent);
   const childrenDone = children.filter((c) => c.status === "done").length;
   // issue 附件区只显 issue 级(comment_id 为空);评论附件归各评论下,避免重复。
   const issueAtts = (issue.attachments ?? []).filter((a) => !a.comment_id);
@@ -1049,7 +1043,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                       <Paperclip size={16} />
                       <input type="file" multiple hidden disabled={submitting} onChange={(e) => { addPendingFiles(e.target.files); e.target.value = ""; }} />
                     </label>
-                    <Button theme="solid" size="small" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!commentDraft.trim() && pendingFiles.length === 0} aria-label={t("loop.comment.send")} />
+                    <LoopButton size="sm" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!commentDraft.trim() && pendingFiles.length === 0} aria-label={t("loop.comment.send")} />
                   </>
                 }
               />
@@ -1090,7 +1084,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                       <Dropdown.Menu>
                         {ISSUE_STATUS_ORDER.map((s) => (
                           <Dropdown.Item key={s} active={issue.status === s} onClick={() => requestStatus(issue, s, (extra) => patch({ status: s, ...extra }))}>
-                            <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
+                            <LoopTag tone={ISSUE_STATUS_COLOR[s]}>{t(`loop.status.${s}`)}</LoopTag>
                           </Dropdown.Item>
                         ))}
                       </Dropdown.Menu>
@@ -1114,7 +1108,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                       <Dropdown.Menu>
                         {PRIORITY_ORDER.map((p) => (
                           <Dropdown.Item key={p} active={issue.priority === p} onClick={() => patch({ priority: p })}>
-                            <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
+                            <LoopTag tone={PRIORITY_COLOR[p]}>{t(`loop.priority.${p}`)}</LoopTag>
                           </Dropdown.Item>
                         ))}
                       </Dropdown.Menu>

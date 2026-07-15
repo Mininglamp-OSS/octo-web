@@ -26,6 +26,8 @@ import type {
     ScheduleItem,
     ScheduleConfig,
     WorkflowStage,
+    SummaryVersionDetail,
+    SummaryVersionItem,
 } from "../types/summary";
 import { TaskStatus, SummaryMode, ParticipantStatus } from "../types/summary";
 import {
@@ -50,6 +52,9 @@ interface SummaryDetailPageProps {
     taskId?: number;
 }
 
+type RegenerateMode = "refine" | "full";
+type RefineLoadingTarget = "personal" | "team" | "summary";
+
 interface SummaryDetailPageState {
     detail: SummaryDetail | null;
     loading: boolean;
@@ -63,6 +68,7 @@ interface SummaryDetailPageState {
     scheduleDisabling: boolean;
     showScheduleConfig: boolean;
     scheduleConfig: ScheduleConfig | null;
+    pendingScheduleInstruction: string;
     lastKnownStatus?: number;
     expandedReports: Record<string, boolean>;
     isEditing: boolean;
@@ -79,8 +85,21 @@ interface SummaryDetailPageState {
     showMatterPicker: boolean;
     forwardingToMatter: boolean;
     showRegenerateModal: boolean;
+    regenerateMode: RegenerateMode;
     regenerateTopic: string;
+    refineFeedback: string;
     regenerateSubmitting: boolean;
+    refineLoadingTarget: RefineLoadingTarget | null;
+    versions: SummaryVersionItem[];
+    versionsLoading: boolean;
+    restoringVersionId: number | null;
+    personalVersions: SummaryVersionItem[];
+    personalVersionsLoading: boolean;
+    restoringPersonalVersionId: number | null;
+    showVersionDetailModal: boolean;
+    versionDetailLoading: boolean;
+    versionDetail: SummaryVersionDetail | null;
+    versionDetailIsPersonal: boolean;
     /** V5：schedule 级一次性确认提交中 */
     confirmingSchedule: boolean;
     workflowDisplayIndex: number;
@@ -154,8 +173,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         showMatterPicker: false,
         forwardingToMatter: false,
         showRegenerateModal: false,
+        regenerateMode: "refine",
         regenerateTopic: "",
+        refineFeedback: "",
         regenerateSubmitting: false,
+        refineLoadingTarget: null,
+        versions: [],
+        versionsLoading: false,
+        restoringVersionId: null,
+        personalVersions: [],
+        personalVersionsLoading: false,
+        restoringPersonalVersionId: null,
+        showVersionDetailModal: false,
+        versionDetailLoading: false,
+        versionDetail: null,
+        versionDetailIsPersonal: false,
+        pendingScheduleInstruction: "",
         confirmingSchedule: false,
         workflowDisplayIndex: -1,
         workflowGateContent: false,
@@ -190,7 +223,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.loadDetail();
     }
 
-    componentDidUpdate(prevProps: any) {
+    componentDidUpdate(prevProps: any, prevState?: SummaryDetailPageState) {
         const prevTaskId = prevProps.taskId;
         const currentTaskId = this.taskId;
         if (prevTaskId !== currentTaskId && currentTaskId != null) {
@@ -198,8 +231,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.clearAllTimers();
             // Blocking 5：切 task 立即清空上一 task 的 schedule 状态，避免在新 detail
             // 返回前闪现旧定时（bump seq 由 loadDetail 内部完成，令旧 loadSchedule 作废）。
-            this.setState({ scheduleItem: null, scheduleLoading: false });
+            this.setState({
+                scheduleItem: null,
+                scheduleLoading: false,
+                showRegenerateModal: false,
+                regenerateSubmitting: false,
+                refineLoadingTarget: null,
+                showVersionDetailModal: false,
+                versionDetailLoading: false,
+                versionDetail: null,
+                restoringVersionId: null,
+                restoringPersonalVersionId: null,
+                pendingScheduleInstruction: "",
+            });
             this.loadDetail();
+        }
+        if (prevState && prevState.showVersionDetailModal !== this.state.showVersionDetailModal) {
+            this.syncVersionDetailScrollLock();
         }
     }
 
@@ -207,6 +255,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.removeEventListener("summary-status-change", this.handleStatusChangeEvent);
         window.removeEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.removeEventListener("summary-list-unmount", this.handleListPageUnmount);
+        this.setVersionDetailScrollLock(false);
         this.clearAllTimers();
     }
 
@@ -225,6 +274,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.workflowCompleteTimer = null;
         }
         this.workflowTargetIndex = -1;
+    }
+
+    private setVersionDetailScrollLock(locked: boolean) {
+        document.documentElement.classList.toggle("summary-version-detail-open", locked);
+        document.body.classList.toggle("summary-version-detail-open", locked);
+    }
+
+    private syncVersionDetailScrollLock() {
+        this.setVersionDetailScrollLock(this.state.showVersionDetailModal);
     }
 
     private workflowStageIndex(stage?: string): number {
@@ -316,6 +374,25 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return this.props.taskId ?? null;
     }
 
+    private shouldOperateOnTeamSummary(): boolean {
+        const { detail } = this.state;
+        return !!(
+            detail?.summary_mode === SummaryMode.BY_PERSON &&
+            this.isMultiCollab() &&
+            detail.result &&
+            detail.result_id
+        );
+    }
+
+    private isMultiCollabRegenerating(): boolean {
+        const { detail } = this.state;
+        return !!(
+            detail?.summary_mode === SummaryMode.BY_PERSON &&
+            this.isMultiCollab() &&
+            (detail.status === TaskStatus.PENDING || detail.status === TaskStatus.PROCESSING)
+        );
+    }
+
     async loadDetail() {
         if (this.taskId == null) return;
         // Blocking 5：每轮 detail 加载开始就 bump 序列号。这样旧 task 未完成的
@@ -350,6 +427,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             workflowDisplayIndex: -1,
             workflowGateContent: false,
             workflowRevealDone: false,
+            refineLoadingTarget: null,
+            versions: [],
+            versionsLoading: false,
+            restoringVersionId: null,
+            personalVersions: [],
+            personalVersionsLoading: false,
+            restoringPersonalVersionId: null,
         });
         try {
             const detail = await api.getSummaryDetail(this.taskId);
@@ -361,6 +445,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 lastKnownStatus: detail.status,
                 workflowGateContent: false,
             });
+            if (detail.status === TaskStatus.COMPLETED && detail.result) {
+                this.loadVersions(detail.task_id);
+            }
 
             // Blocking 5（跨 task 串台）：scheduleItem 必须始终对应当前 detail。
             // 同步部分：从「有定时」总结导航到「无定时」总结时，若不显式清空，旧 scheduleItem
@@ -427,7 +514,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * 仍一致才能 setState。过期响应（期间切了 task / 又发了一轮加载）一律
      * 忽略（return），绝不把旧任务的 personalResult 写到新任务界面（泄漏他人报告）。
      */
-    async loadPersonalResult(seq?: number) {
+    async loadPersonalResult(seq?: number, suppressWorkflow = false) {
         if (this.taskId == null) return;
         const reqSeq = seq ?? this.nextScheduleSeq();
         const requestTaskId = this.taskId;
@@ -436,7 +523,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const result = await api.getPersonalResult(this.taskId);
             // 迟到响应（期间切 task / 重新加载）：丢弃，不污染新 task。
             if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
-            const shouldGateWorkflow = this.shouldGateWorkflowForPersonalResult(result);
+            const shouldGateWorkflow = !suppressWorkflow && this.shouldGateWorkflowForPersonalResult(result);
             if (shouldGateWorkflow) {
                 this.setState({
                     personalResult: result,
@@ -453,6 +540,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 });
             }
             this.startPersonalPoll(result.worker_status);
+            if (result.content?.trim()) {
+                this.loadPersonalVersions(requestTaskId);
+            } else if (this.taskId === requestTaskId) {
+                this.setState({ personalVersions: [], personalVersionsLoading: false });
+            }
         } catch {
             if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
             this.setState({ personalLoading: false });
@@ -726,26 +818,266 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (this.taskId == null) return;
         this.setState({
             showRegenerateModal: true,
+            regenerateMode: "refine",
             regenerateTopic: detail?.title || "",
+            refineFeedback: "",
         });
     };
 
+    async loadVersions(taskId = this.taskId) {
+        if (taskId == null) return;
+        this.setState({ versionsLoading: true });
+        try {
+            const resp = await api.listSummaryVersions(taskId, 3);
+            if (this.taskId !== taskId) return;
+            this.setState({ versions: resp.versions || [], versionsLoading: false });
+        } catch {
+            if (this.taskId !== taskId) return;
+            this.setState({ versions: [], versionsLoading: false });
+        }
+    }
+
+    async loadPersonalVersions(taskId = this.taskId) {
+        if (taskId == null) return;
+        this.setState({ personalVersionsLoading: true });
+        try {
+            const resp = await api.listPersonalSummaryVersions(taskId, 3);
+            if (this.taskId !== taskId) return;
+            this.setState({ personalVersions: resp.versions || [], personalVersionsLoading: false });
+        } catch {
+            if (this.taskId !== taskId) return;
+            this.setState({ personalVersions: [], personalVersionsLoading: false });
+        }
+    }
+
     handleRegenerateConfirm = async () => {
         if (this.taskId == null || this.state.regenerateSubmitting) return;
-        const trimmed = this.state.regenerateTopic.trim();
+        const requestTaskId = this.taskId;
+        const { detail, regenerateMode } = this.state;
+        const trimmed = regenerateMode === "refine"
+            ? this.state.refineFeedback.trim()
+            : this.state.regenerateTopic.trim();
         if (!trimmed) return;
         this.setState({ regenerateSubmitting: true });
         try {
-            await api.regenerateSummary(this.taskId, { topic: trimmed });
-            Toast.success(t("summary.detail.regenerateStarted"));
-            this.setState({ showRegenerateModal: false });
-            this.loadDetail();
-            window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskId: this.taskId } }));
+            const operateOnTeamSummary = this.shouldOperateOnTeamSummary();
+            if (regenerateMode === "refine") {
+                if (detail?.summary_mode === SummaryMode.BY_PERSON && !operateOnTeamSummary) {
+                    const baseResultId = this.state.personalResult?.id;
+                    if (!baseResultId) return;
+                    this.setState({ showRegenerateModal: false, refineLoadingTarget: "personal" });
+                    const refined = await api.refinePersonalSummary(requestTaskId, {
+                        feedback: trimmed,
+                        base_result_id: baseResultId,
+                        base_version: this.state.personalResult?.version,
+                    });
+                    if (this.taskId !== requestTaskId) return;
+                    Toast.success(t("summary.detail.refineSuccess"));
+                    this.appendLocalScheduleInstruction(trimmed);
+                    this.reloadScheduleAfterInstructionChange(requestTaskId);
+                    this.setState((prev) => {
+                        const nextPersonal = prev.personalResult ? {
+                            ...prev.personalResult,
+                            id: refined.result_id || prev.personalResult.id,
+                            version: refined.version,
+                            content: refined.content,
+                            citations: (refined.citations as any) || prev.personalResult.citations,
+                            msg_count: refined.msg_count ?? prev.personalResult.msg_count,
+                            generated_at: refined.generated_at || prev.personalResult.generated_at,
+                        } : prev.personalResult;
+                        const myUid = WKApp.loginInfo.uid;
+                        return {
+                            showRegenerateModal: false,
+                            refineLoadingTarget: null,
+                            personalResult: nextPersonal,
+                            members: prev.members.map((m) => m.user_id === myUid ? {
+                                ...m,
+                                content: refined.content,
+                                citations: (refined.citations as any) || m.citations,
+                            } : m),
+                        } as Pick<SummaryDetailPageState, "showRegenerateModal" | "refineLoadingTarget" | "personalResult" | "members">;
+                    });
+                    this.loadPersonalVersions(this.taskId);
+                } else {
+                    const baseResultId = detail?.result_id;
+                    if (!baseResultId) return;
+                    this.setState({
+                        showRegenerateModal: false,
+                        refineLoadingTarget: operateOnTeamSummary ? "team" : "summary",
+                    });
+                    const refined = await api.refineSummary(requestTaskId, { feedback: trimmed, base_result_id: baseResultId });
+                    if (this.taskId !== requestTaskId) return;
+                    Toast.success(t("summary.detail.refineSuccess"));
+                    this.appendLocalScheduleInstruction(trimmed);
+                    this.reloadScheduleAfterInstructionChange(requestTaskId);
+                    this.setState((prev) => {
+                        if (!prev.detail?.result) return { showRegenerateModal: false, refineLoadingTarget: null } as Pick<SummaryDetailPageState, "showRegenerateModal" | "refineLoadingTarget">;
+                        return {
+                            showRegenerateModal: false,
+                            refineLoadingTarget: null,
+                            detail: {
+                                ...prev.detail,
+                                result_id: refined.result_id,
+                                result: {
+                                    ...prev.detail.result,
+                                    content: refined.content,
+                                    version: refined.version,
+                                    citations: (refined.citations as any) || prev.detail.result.citations,
+                                    team_citations: (refined.team_citations as any) || prev.detail.result.team_citations,
+                                    total_msg_count: refined.total_msg_count ?? prev.detail.result.total_msg_count,
+                                    total_token_used: refined.total_token_used ?? prev.detail.result.total_token_used,
+                                    model_version: refined.model_version || prev.detail.result.model_version,
+                                    operation_type: refined.operation_type,
+                                    operation_note: refined.operation_note,
+                                    parent_result_id: refined.parent_result_id,
+                                    generated_at: refined.generated_at || prev.detail.result.generated_at,
+                                },
+                            },
+                        } as Pick<SummaryDetailPageState, "showRegenerateModal" | "refineLoadingTarget" | "detail">;
+                    });
+                    this.loadVersions(this.taskId);
+                }
+            } else {
+                if (operateOnTeamSummary) {
+                    await api.regenerateSummary(requestTaskId, { topic: trimmed });
+                    if (this.taskId !== requestTaskId) return;
+                    Toast.success(t("summary.detail.regenerateStarted"));
+                    this.resetLocalScheduleInstruction(trimmed);
+                    this.setState((prev) => prev.detail ? {
+                        showRegenerateModal: false,
+                        detail: {
+                            ...prev.detail,
+                            title: trimmed || prev.detail.title,
+                            status: TaskStatus.PENDING,
+                        },
+                    } as Pick<SummaryDetailPageState, "showRegenerateModal" | "detail"> : { showRegenerateModal: false } as Pick<SummaryDetailPageState, "showRegenerateModal">);
+                    this.loadDetail();
+                } else if (detail?.summary_mode === SummaryMode.BY_PERSON && this.isMultiCollab()) {
+                    await api.regeneratePersonalSummary(requestTaskId, { topic: trimmed });
+                    if (this.taskId !== requestTaskId) return;
+                    Toast.success(t("summary.detail.regenerateStarted"));
+                    this.resetLocalScheduleInstruction(trimmed);
+                    this.setState((prev) => ({
+                        showRegenerateModal: false,
+                        detail: prev.detail ? {
+                            ...prev.detail,
+                            title: trimmed || prev.detail.title,
+                        } : prev.detail,
+                        personalResult: prev.personalResult ? {
+                            ...prev.personalResult,
+                            worker_status: 0,
+                            workflow_stage: "",
+                            content: "",
+                            citations: [],
+                            submitted_at: null,
+                            generated_at: null,
+                            msg_count: 0,
+                        } : prev.personalResult,
+                        personalVersions: [],
+                        personalVersionsLoading: false,
+                        workflowDisplayIndex: 0,
+                        workflowGateContent: true,
+                        workflowRevealDone: false,
+                    } as Pick<SummaryDetailPageState, "showRegenerateModal" | "detail" | "personalResult" | "personalVersions" | "personalVersionsLoading" | "workflowDisplayIndex" | "workflowGateContent" | "workflowRevealDone">));
+                    const seq = this.nextScheduleSeq();
+                    this.loadPersonalResult(seq);
+                    this.loadMembers(seq);
+                } else {
+                    await api.regenerateSummary(requestTaskId, { topic: trimmed });
+                    if (this.taskId !== requestTaskId) return;
+                    Toast.success(t("summary.detail.regenerateStarted"));
+                    this.resetLocalScheduleInstruction(trimmed);
+                    this.setState({ showRegenerateModal: false });
+                    this.loadDetail();
+                }
+            }
+            if (this.taskId !== requestTaskId) return;
+            window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskId: requestTaskId } }));
         } catch (err: any) {
+            this.setState({ refineLoadingTarget: null });
             Toast.error(err.message || t("summary.common.operationFailed"));
         } finally {
             this.setState({ regenerateSubmitting: false });
         }
+    };
+
+    handleRestoreVersion = async (version: SummaryVersionItem): Promise<boolean> => {
+        if (this.taskId == null || this.state.restoringVersionId != null) return false;
+        const requestTaskId = this.taskId;
+        this.setState({ restoringVersionId: version.result_id });
+        try {
+            await api.restoreSummaryVersion(requestTaskId, version.result_id);
+            if (this.taskId !== requestTaskId) return false;
+            Toast.success(t("summary.detail.versionRestored"));
+            this.loadDetail();
+            return true;
+        } catch (err: any) {
+            if (this.taskId !== requestTaskId) return false;
+            Toast.error(err.message || t("summary.common.operationFailed"));
+            return false;
+        } finally {
+            this.setState({ restoringVersionId: null });
+        }
+    };
+
+
+    handleRestorePersonalVersion = async (version: SummaryVersionItem): Promise<boolean> => {
+        if (this.taskId == null || this.state.restoringPersonalVersionId != null) return false;
+        const requestTaskId = this.taskId;
+        this.setState({
+            restoringPersonalVersionId: version.result_id,
+            workflowGateContent: false,
+            workflowRevealDone: true,
+            workflowDisplayIndex: -1,
+        });
+        try {
+            await api.restorePersonalSummaryVersion(requestTaskId, version.result_id);
+            if (this.taskId !== requestTaskId) return false;
+            Toast.success(t("summary.detail.versionRestored"));
+            const seq = this.nextScheduleSeq();
+            this.loadPersonalResult(seq, true);
+            this.loadMembers(seq);
+            this.loadPersonalVersions(this.taskId);
+            return true;
+        } catch (err: any) {
+            if (this.taskId !== requestTaskId) return false;
+            Toast.error(err.message || t("summary.common.operationFailed"));
+            return false;
+        } finally {
+            this.setState({ restoringPersonalVersionId: null });
+        }
+    };
+
+    handleViewVersion = async (version: SummaryVersionItem, isPersonal: boolean) => {
+        if (this.taskId == null || this.state.versionDetailLoading) return;
+        const requestTaskId = this.taskId;
+        const requestResultId = version.result_id;
+        this.setState({
+            showVersionDetailModal: true,
+            versionDetailLoading: true,
+            versionDetail: null,
+            versionDetailIsPersonal: isPersonal,
+        });
+        try {
+            const detail = isPersonal
+                ? await api.getPersonalSummaryVersion(requestTaskId, requestResultId)
+                : await api.getSummaryVersion(requestTaskId, requestResultId);
+            if (this.taskId !== requestTaskId) return;
+            if (detail.result_id !== requestResultId) {
+                this.setState({ showVersionDetailModal: false, versionDetailLoading: false, versionDetail: null });
+                return;
+            }
+            this.setState({ versionDetail: detail, versionDetailLoading: false });
+        } catch (err: any) {
+            if (this.taskId !== requestTaskId) return;
+            Toast.error(err.message || t("summary.common.operationFailed"));
+            this.setState({ showVersionDetailModal: false, versionDetailLoading: false, versionDetail: null });
+        }
+    };
+
+    handleCloseVersionDetail = () => {
+        if (this.state.versionDetailLoading) return;
+        this.setState({ showVersionDetailModal: false, versionDetail: null });
     };
 
     handleRegenerateCancel = () => {
@@ -769,13 +1101,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 原有周期/时刻，方便用户「重新启用」时不用从零填。保存逻辑（handleScheduleSave）
         // 会检测原记录是否 inactive 并走重新启用路径。
         if (scheduleItem) {
+            const scheduleConfig = scheduleItemToConfig(scheduleItem);
             this.setState({
-                scheduleConfig: scheduleItemToConfig(scheduleItem),
+                scheduleConfig: {
+                    ...scheduleConfig,
+                    generationInstruction: this.scheduleInstructionForConfig(scheduleItem.generation_instruction),
+                },
                 showScheduleConfig: true,
             });
         } else {
             this.setState({
-                scheduleConfig: { unit: "week", every: 1, time: "09:00" },
+                scheduleConfig: {
+                    unit: "week",
+                    every: 1,
+                    time: "09:00",
+                    generationInstruction: this.defaultScheduleInstruction(),
+                },
                 showScheduleConfig: true,
             });
         }
@@ -893,6 +1234,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             scheduleParticipants.length > 0 ? { participants: scheduleParticipants } : {};
         const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time, confirm_policy } =
             scheduleToParams({ ...config, confirm_policy: confirmPolicy });
+        const generation_instruction = (config.generationInstruction || "").trim();
 
         try {
             if (scheduleItem) {
@@ -914,6 +1256,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     day_of_week,
                     day_of_month,
                     run_time,
+                    generation_instruction,
                     scope: 'task',
                     task_id: detail.task_id,
                     ...participantsParam,
@@ -941,6 +1284,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 // 由下方 catch 的 Toast.error 透出 err.message。
                 const newSchedule = await api.createSchedule({
                     title: detail.title,
+                    generation_instruction,
                     summary_mode: detail.summary_mode,
                     cron_expr,
                     interval_days,
@@ -977,6 +1321,110 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             Toast.error(err.message || t("summary.common.saveFailed"));
         }
     };
+
+    private scheduleInstructionVersionSource() {
+        const { versions, personalVersions } = this.state;
+        return [...versions, ...personalVersions];
+    }
+
+    private defaultScheduleInstruction() {
+        const pending = this.state.pendingScheduleInstruction.trim();
+        if (pending) return pending;
+
+        const { detail } = this.state;
+        const versionSource = this.scheduleInstructionVersionSource();
+        let base = detail?.title || "";
+        const refinements: string[] = [];
+        versionSource
+            .slice()
+            .sort((a, b) => a.version - b.version)
+            .forEach((version) => {
+                const note = (version.operation_note || "").trim();
+                if (["generate", "regenerate", "scheduled_generate"].includes(version.operation_type)) {
+                    base = note || base;
+                    refinements.length = 0;
+                    return;
+                }
+                if (version.operation_type === "refine" && note) {
+                    refinements.push(note);
+                }
+            });
+        return [base.trim(), ...refinements].filter(Boolean).join("\n");
+    }
+
+    private scheduleInstructionForConfig(existingInstruction?: string) {
+        const existing = (existingInstruction || "").trim();
+        if (!existing) return this.defaultScheduleInstruction();
+
+        const missingRefinements = this.refinementNotesSinceLastReset()
+            .filter((note) => !existing.includes(note));
+        if (missingRefinements.length === 0) return existing;
+        return [existing, ...missingRefinements].filter(Boolean).join("\n");
+    }
+
+    private refinementNotesSinceLastReset() {
+        const versionSource = this.scheduleInstructionVersionSource();
+        const refinements: string[] = [];
+        versionSource
+            .slice()
+            .sort((a, b) => a.version - b.version)
+            .forEach((version) => {
+                if (["generate", "regenerate", "scheduled_generate"].includes(version.operation_type || "generate")) {
+                    refinements.length = 0;
+                    return;
+                }
+                const note = (version.operation_note || "").trim();
+                if (version.operation_type === "refine" && note) {
+                    refinements.push(note);
+                }
+            });
+        return refinements;
+    }
+
+    private appendLocalScheduleInstruction(feedback: string) {
+        const addition = feedback.trim();
+        if (!addition) return;
+        this.setState((prev) => {
+            const current = prev.scheduleItem
+                ? (prev.scheduleItem.generation_instruction || "").trim()
+                : (prev.pendingScheduleInstruction || prev.detail?.title || "").trim();
+            const nextInstruction = current ? `${current}\n${addition}` : addition;
+            return {
+                pendingScheduleInstruction: nextInstruction,
+                scheduleItem: prev.scheduleItem ? {
+                    ...prev.scheduleItem,
+                    generation_instruction: nextInstruction,
+                } : prev.scheduleItem,
+                scheduleConfig: prev.scheduleConfig ? {
+                    ...prev.scheduleConfig,
+                    generationInstruction: nextInstruction,
+                } : prev.scheduleConfig,
+            } as Pick<SummaryDetailPageState, "pendingScheduleInstruction" | "scheduleItem" | "scheduleConfig">;
+        });
+    }
+
+    private resetLocalScheduleInstruction(instruction: string) {
+        const next = instruction.trim();
+        if (!next) return;
+        this.setState((prev) => ({
+            pendingScheduleInstruction: next,
+            scheduleItem: prev.scheduleItem ? {
+                ...prev.scheduleItem,
+                title: next,
+                generation_instruction: next,
+            } : prev.scheduleItem,
+            scheduleConfig: prev.scheduleConfig ? {
+                ...prev.scheduleConfig,
+                generationInstruction: next,
+            } : prev.scheduleConfig,
+        } as Pick<SummaryDetailPageState, "pendingScheduleInstruction" | "scheduleItem" | "scheduleConfig">));
+    }
+
+    private reloadScheduleAfterInstructionChange(requestTaskId: number | null) {
+        const scheduleId = this.state.scheduleItem?.schedule_id;
+        if (!scheduleId || this.taskId !== requestTaskId) return;
+        this.loadSchedule(scheduleId);
+    }
 
     // 任务1：「关闭定时」——停用（可恢复），不走 delete。
     // 调 toggleSchedule(..., false) 把 is_active 置 0，成功后刷新详情页定时状态。
@@ -1141,7 +1589,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         const activeIndex = this.state.workflowDisplayIndex >= 0
             ? this.state.workflowDisplayIndex
-            : (detail?.status === TaskStatus.PROCESSING ? 0 : -1);
+            : (detail?.status === TaskStatus.PENDING || detail?.status === TaskStatus.PROCESSING ? 0 : -1);
         const personalDone = personalResult?.worker_status === 2;
         const personalFailed = personalResult?.worker_status === 3;
         const allDone = (detail?.status === TaskStatus.COMPLETED || personalDone) && this.state.workflowRevealDone;
@@ -1173,17 +1621,64 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     renderProcessing() {
         const { t } = this.context;
+        const { personalResult } = this.state;
+        const isTeamRegenerating = this.isMultiCollabRegenerating();
+        const myPersonalDone = isTeamRegenerating && personalResult?.worker_status === 2 && this.state.workflowRevealDone;
+        const titleKey = myPersonalDone
+            ? "summary.detail.teamRegeneratingWaitingTitle"
+            : (isTeamRegenerating ? "summary.detail.teamRegeneratingWorkflowTitle" : "summary.detail.processingTitle");
+        const descKey = myPersonalDone
+            ? "summary.detail.teamRegeneratingWaitingDesc"
+            : (isTeamRegenerating ? "summary.detail.teamRegeneratingWorkflowDesc" : "summary.detail.processingDesc");
         return (
             <div className="summary-detail-processing">
                 <div className="summary-progress-copy">
                     <div className="summary-progress-title">
-                        {t("summary.detail.processingTitle")}
+                        {t(titleKey)}
                     </div>
                     <div className="summary-progress-desc">
-                        {t("summary.detail.processingDesc")}
+                        {t(descKey)}
                     </div>
                 </div>
                 {this.renderWorkflowProgress()}
+            </div>
+        );
+    }
+
+    renderTeamGeneratingStatus() {
+        const { t } = this.context;
+        return (
+            <div className="summary-detail-team summary-detail-team-generating-card">
+                <div className="summary-detail-section-header">
+                    <span>{t("summary.detail.teamSummary")}</span>
+                </div>
+                <div className="summary-detail-team-generating">
+                    <Spin size="small" />
+                    <span>{t("summary.detail.teamGenerating")}</span>
+                </div>
+            </div>
+        );
+    }
+
+    renderRefineLoadingStatus() {
+        const { t } = this.context;
+        const target = this.state.refineLoadingTarget;
+        if (!target) return null;
+        const titleKey = target === "personal"
+            ? "summary.detail.mySummary"
+            : (target === "team" ? "summary.detail.teamSummary" : "summary.detail.contentTitle");
+        const descKey = target === "personal"
+            ? "summary.detail.refiningPersonal"
+            : (target === "team" ? "summary.detail.refiningTeam" : "summary.detail.refiningSummary");
+        return (
+            <div className="summary-detail-team summary-detail-team-generating-card">
+                <div className="summary-detail-section-header">
+                    <span>{t(titleKey)}</span>
+                </div>
+                <div className="summary-detail-team-generating">
+                    <Spin size="small" />
+                    <span>{t(descKey)}</span>
+                </div>
             </div>
         );
     }
@@ -1206,6 +1701,237 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div>{t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}</div>
                 </div>
             </div>
+        );
+    }
+
+
+    private formatVersionOperation(version: SummaryVersionItem): string {
+        const { t } = this.context;
+        if ((version.operation_type || "generate") === "generate") {
+            return t("summary.detail.versionInitialGenerate");
+        }
+        const key = `summary.detail.versionOperation.${version.operation_type || "generate"}`;
+        const label = t(key);
+        return label === key ? t("summary.detail.versionOperation.generate") : label;
+    }
+
+    private formatVersionOperationNote(version: SummaryVersionItem): string {
+        const { t } = this.context;
+        const note = (version.operation_note || "").trim();
+        if (note) return note;
+        if ((version.operation_type || "generate") === "generate") {
+            return t("summary.detail.versionInitialGenerateDesc");
+        }
+        if (version.operation_type === "restore" && version.parent_result_id) {
+            return t("summary.detail.versionRestoreFromResult", { values: { id: version.parent_result_id } });
+        }
+        return this.formatVersionOperation(version);
+    }
+
+    renderVersionHistory() {
+        const { versions, versionsLoading, detail, restoringVersionId } = this.state;
+        const { t } = this.context;
+        if (!detail?.result || versionsLoading || versions.length <= 1) return null;
+        const currentVersion = detail.result.version;
+        return (
+            <div className="summary-version-strip">
+                <div className="summary-version-strip-title">
+                    <IconHistory size="small" />
+                    <span>{t("summary.detail.recentVersions")}</span>
+                    <span className="summary-version-strip-hint">{t("summary.detail.recentVersionsLimitHint")}</span>
+                </div>
+                <div className="summary-version-list">
+                    {versions.slice(0, 3).map((version) => {
+                        const isCurrent = version.version === currentVersion;
+                        return (
+                            <div key={version.result_id} className="summary-version-item">
+                                <div className="summary-version-body">
+                                    <div className="summary-version-main">
+                                        <span className="summary-version-number">
+                                            {t("summary.common.version", { values: { version: version.version } })}
+                                        </span>
+                                        {isCurrent && <Tag size="small" color="blue">{t("summary.detail.currentVersion")}</Tag>}
+                                        {version.operation_type === "scheduled_generate" && (
+                                            <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
+                                        )}
+                                        {version.operation_type !== "scheduled_generate" && (
+                                            <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
+                                        )}
+                                    </div>
+                                    <div className="summary-version-note">{this.formatVersionOperationNote(version)}</div>
+                                </div>
+                                <div className="summary-version-actions">
+                                    <Button
+                                        size="small"
+                                        theme="borderless"
+                                        onClick={() => this.handleViewVersion(version, false)}
+                                    >
+                                        {t("summary.detail.viewVersion")}
+                                    </Button>
+                                    {!isCurrent && (detail.permissions?.can_edit_team || detail.permissions?.can_edit) && (
+                                        <Button
+                                            size="small"
+                                            theme="borderless"
+                                            loading={restoringVersionId === version.result_id}
+                                            onClick={() => this.handleRestoreVersion(version)}
+                                        >
+                                            {t("summary.detail.restoreVersion")}
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    }
+
+
+    renderPersonalVersionHistory() {
+        const { personalVersions, personalVersionsLoading, personalResult, restoringPersonalVersionId, detail } = this.state;
+        const { t } = this.context;
+        // 多人协作最终页只保留团队汇总版本控制；个人报告里的版本历史会让用户误以为
+        // 恢复个人版本会直接影响最终团队结果，因此在多人协作场景统一隐藏。
+        if (this.isMultiCollab()) return null;
+        if (!personalResult?.content || personalVersionsLoading || personalVersions.length <= 1) return null;
+        const currentVersion = personalResult.version || personalVersions[0]?.version;
+        return (
+            <div className="summary-version-strip">
+                <div className="summary-version-strip-title">
+                    <IconHistory size="small" />
+                    <span>{t("summary.detail.recentVersions")}</span>
+                    <span className="summary-version-strip-hint">{t("summary.detail.recentVersionsLimitHint")}</span>
+                </div>
+                <div className="summary-version-list">
+                    {personalVersions.slice(0, 3).map((version) => {
+                        const isCurrent = version.version === currentVersion;
+                        return (
+                            <div key={version.result_id} className="summary-version-item">
+                                <div className="summary-version-body">
+                                    <div className="summary-version-main">
+                                        <span className="summary-version-number">
+                                            {t("summary.common.version", { values: { version: version.version } })}
+                                        </span>
+                                        {isCurrent && <Tag size="small" color="blue">{t("summary.detail.currentVersion")}</Tag>}
+                                        {version.operation_type === "scheduled_generate" && (
+                                            <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
+                                        )}
+                                        {version.operation_type !== "scheduled_generate" && (
+                                            <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
+                                        )}
+                                    </div>
+                                    <div className="summary-version-note">{this.formatVersionOperationNote(version)}</div>
+                                </div>
+                                <div className="summary-version-actions">
+                                    <Button
+                                        size="small"
+                                        theme="borderless"
+                                        onClick={() => this.handleViewVersion(version, true)}
+                                    >
+                                        {t("summary.detail.viewVersion")}
+                                    </Button>
+                                    {!isCurrent && detail?.permissions?.can_edit_personal && (
+                                        <Button
+                                            size="small"
+                                            theme="borderless"
+                                            loading={restoringPersonalVersionId === version.result_id}
+                                            onClick={() => this.handleRestorePersonalVersion(version)}
+                                        >
+                                            {t("summary.detail.restoreVersion")}
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    }
+
+    renderVersionDetailModal() {
+        const { t } = this.context;
+        const { versionDetail, versionDetailLoading, versionDetailIsPersonal, detail, personalResult } = this.state;
+        const currentVersion = versionDetailIsPersonal
+            ? (personalResult?.version || 0)
+            : (detail?.result?.version || 0);
+        const isCurrent = !!versionDetail && versionDetail.version === currentVersion;
+        const canRestore = !!versionDetail && !isCurrent && (versionDetailIsPersonal
+            ? !!detail?.permissions?.can_edit_personal
+            : !!(detail?.permissions?.can_edit_team || detail?.permissions?.can_edit));
+        const operation = versionDetail ? this.formatVersionOperation(versionDetail) : "";
+        return (
+            <Modal
+                width="min(860px, calc(100vw - 48px))"
+                bodyStyle={{
+                    maxHeight: "calc(100vh - 320px)",
+                    overflowY: "auto",
+                }}
+                title={versionDetail
+                    ? t("summary.detail.versionDetailTitle", { values: { version: versionDetail.version, operation } })
+                    : t("summary.detail.versionDetailLoading")}
+                visible={this.state.showVersionDetailModal}
+                onCancel={this.handleCloseVersionDetail}
+                footer={
+                    <div className="summary-version-detail-footer">
+                        <Button onClick={this.handleCloseVersionDetail}>{t("summary.common.close")}</Button>
+                        {canRestore && versionDetail && (
+                            <Button
+                                theme="solid"
+                                loading={versionDetailIsPersonal
+                                    ? this.state.restoringPersonalVersionId === versionDetail.result_id
+                                    : this.state.restoringVersionId === versionDetail.result_id}
+                                onClick={async () => {
+                                    const restored = versionDetailIsPersonal
+                                        ? await this.handleRestorePersonalVersion(versionDetail)
+                                        : await this.handleRestoreVersion(versionDetail);
+                                    if (restored) {
+                                        this.setState({ showVersionDetailModal: false, versionDetail: null });
+                                    }
+                                }}
+                            >
+                                {t("summary.detail.restoreVersion")}
+                            </Button>
+                        )}
+                    </div>
+                }
+            >
+                {versionDetailLoading ? (
+                    <div className="summary-version-detail-loading">
+                        <Spin />
+                    </div>
+                ) : versionDetail ? (
+                    <div className="summary-version-detail">
+                        <section className="summary-version-detail-section">
+                            <div className="summary-version-detail-label">{t("summary.detail.versionDetailUserContent")}</div>
+                            <div className="summary-version-detail-note">
+                                {detail?.title || t("summary.common.unknown")}
+                            </div>
+                        </section>
+                        <section className="summary-version-detail-section">
+                            <div className="summary-version-detail-label">{t("summary.detail.versionDetailFeedback")}</div>
+                            <div className="summary-version-detail-note">
+                                {versionDetail.operation_type === "refine" && versionDetail.operation_note
+                                    ? versionDetail.operation_note
+                                    : t("summary.detail.versionDetailNoFeedback")}
+                            </div>
+                        </section>
+                        <section className="summary-version-detail-section">
+                            <div className="summary-version-detail-label">{t("summary.detail.versionDetailResult")}</div>
+                            <div className="summary-version-detail-content">
+                                <CitationText
+                                    content={versionDetail.content}
+                                    citations={versionDetail.citations || []}
+                                    teamCitations={versionDetail.team_citations || []}
+                                    members={this.state.members}
+                                    disableTeamMemberPreview
+                                />
+                            </div>
+                        </section>
+                    </div>
+                ) : null}
+            </Modal>
         );
     }
 
@@ -1236,6 +1962,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </div>
                     </div>
                 </div>
+                {this.renderVersionHistory()}
                 <div className="summary-detail-result-content">
                     <CitationText content={detail.result.content} citations={detail.result.citations || []} />
                 </div>
@@ -1293,6 +2020,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         )}
                     </div>
                 </div>
+                {this.renderPersonalVersionHistory()}
                 {personalResult.content && (
                     <div className="summary-detail-content-box">
                         <CitationText content={personalResult.content} citations={personalResult.citations || []} />
@@ -1354,19 +2082,34 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { detail, members, editingTeamSummary } = this.state;
         const { t } = this.context;
         if (!detail) return null;
-        // 问题4：多人协作任务（members.length > 1）且 status===PROCESSING 时，
-        // 团队总结正在生成/重算（参与者退出后后端把任务拉回 Processing 重算 meta worker）。
-        // 此时 detail.result 可能尚未产出或为旧版本，应显示“生成中”提示，
-        // 所以该判断必须放在 `if (!detail.result) return null` 之前。
-        if (members.length > 1 && detail.status === TaskStatus.PROCESSING) {
+        // 多人协作重新生成中不再展示邀请流程；主区域展示个人 workflow，
+        // 团队旧结果降级为“上一版团队汇总”，避免用户误解为新结果未变化。
+        if (this.isMultiCollabRegenerating()) {
+            if (!detail.result) return null;
             return (
-                <div className="summary-detail-team">
+                <div className="summary-detail-team summary-detail-team-previous">
                     <div className="summary-detail-section-header">
-                        <span>{t("summary.detail.teamSummary")}</span>
+                        <span>{t("summary.detail.previousTeamSummary")}</span>
+                        <div className="summary-detail-section-badges">
+                            <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
+                                {t("summary.common.version", { values: { version: detail.result.version } })}
+                            </Tag>
+                            <Tag color="grey" size="small" prefixIcon={<IconClock />} className="summary-detail-team-generated-time">
+                                {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
+                            </Tag>
+                        </div>
                     </div>
-                    <div className="summary-detail-team-generating">
-                        <Spin size="small" />
-                        <span>{t("summary.detail.teamGenerating")}</span>
+                    <div className="summary-detail-previous-desc">
+                        {t("summary.detail.previousTeamSummaryDesc")}
+                    </div>
+                    <div className="summary-detail-content-box">
+                        <CitationText
+                            content={detail.result.content}
+                            citations={detail.result.citations || []}
+                            teamCitations={detail.result.team_citations || []}
+                            members={members}
+                            hidePlainCitations
+                        />
                     </div>
                 </div>
             );
@@ -1427,6 +2170,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         )}
                     </div>
                 </div>
+                {this.renderVersionHistory()}
                 <div className="summary-detail-content-box">
                     <CitationText
                         content={detail.result.content}
@@ -1663,6 +2407,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     </Button>
                                 )}
                             </div>
+                            {isMe && this.renderPersonalVersionHistory()}
                             <div className="summary-detail-participant-report-content">
                                 {/* 问题2：「我」那条也参与 expanded/needsTruncate 收起逻辑。
                                     isMe 始终用 CitationText 渲染（保留引用可点）；
@@ -1783,6 +2528,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {t("summary.detail.submitToAll")}
                     </Button>
                 </div>
+                {this.renderPersonalVersionHistory()}
                 {myContent && this.canRevealPersonalContent() && (
                     <div className="summary-detail-participant-report-content">
                         <CitationText content={myContent} citations={myCitations} />
@@ -2190,6 +2936,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
                         {detail && !loading && (
                             <>
+                                {this.renderRefineLoadingStatus()}
                                 {detail.summary_mode === SummaryMode.BY_PERSON && (
                                     <>
                                         {/* need1：多人协作不再单独显示「我的总结」区块（自己内容改到参与者报告
@@ -2213,6 +2960,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         {/* 回归修复：多人协作页给「我自己」补回「提交给全部」轻量入口。
                                             不违反 need1（不恢复我的总结正文区），仅一句提示 + 提交按钮。
                                             isMultiCollab 内部门控；单人/BY_GROUP 返回 null。 */}
+                                        {this.isMultiCollabRegenerating() && this.shouldShowWorkflowCard() && this.renderProcessing()}
+                                        {this.isMultiCollabRegenerating() && !this.shouldShowWorkflowCard() && this.renderTeamGeneratingStatus()}
                                         {this.renderMySubmitBar()}
                                         {this.renderTeamSummary()}
                                         {this.renderMemberStatus()}
@@ -2221,6 +2970,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 )}
 
                                 {this.shouldShowProcessingCard() &&
+                                    !this.isMultiCollabRegenerating() &&
                                     !this.personalReady &&
                                     this.renderProcessing()
                                 }
@@ -2314,38 +3064,80 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     onConfirm={this.handleAddMemberConfirm}
                     onCancel={this.handleAddMemberCancel}
                 />
+                {this.renderVersionDetailModal()}
                 <Modal
-                    title={t("summary.detail.regenerateEditTitle")}
+                    title={t("summary.detail.adjustSummaryTitle")}
                     visible={this.state.showRegenerateModal}
                     onOk={this.handleRegenerateConfirm}
                     onCancel={this.handleRegenerateCancel}
-                    okText={t("summary.detail.regenerate")}
+                    okText={this.state.regenerateMode === "refine" ? t("summary.detail.refineAction") : t("summary.detail.regenerate")}
                     cancelText={t("summary.common.cancel")}
                     confirmLoading={this.state.regenerateSubmitting}
-                    okButtonProps={{ disabled: !this.state.regenerateTopic.trim() }}
+                    okButtonProps={{
+                        disabled: this.state.regenerateMode === "refine"
+                            ? !this.state.refineFeedback.trim() || (this.state.detail?.summary_mode === SummaryMode.BY_PERSON && !this.shouldOperateOnTeamSummary() ? !this.state.personalResult?.id : !this.state.detail?.result_id)
+                            : !this.state.regenerateTopic.trim(),
+                    }}
                 >
-                    <label id="regenerate-topic-label" style={{ display: "block", marginBottom: 8, color: "var(--semi-color-text-1)" }}>
-                        {t("summary.detail.regenerateTopicLabel")}
-                    </label>
-                    <div style={{ position: "relative" }}>
-                        <textarea
-                            ref={this.regenerateTopicRef}
-                            aria-labelledby="regenerate-topic-label"
-                            className="summary-regenerate-topic-textarea"
-                            rows={3}
-                            maxLength={1000}
-                            value={this.state.regenerateTopic}
-                            onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
-                        />
-                        <VoiceInputButton
-                            inputRef={this.regenerateTopicRef}
-                            onTranscribed={this.handleRegenerateTopicVoice}
-                            getCurrentText={() => this.state.regenerateTopic}
-                            showModeMenu
-                            size="sm"
-                            className="wk-vib--textarea-corner"
-                        />
+<div className="summary-adjust-mode-list">
+                        <button
+                            type="button"
+                            className={this.state.regenerateMode === "refine" ? "summary-adjust-mode is-active" : "summary-adjust-mode"}
+                            onClick={() => this.setState({ regenerateMode: "refine" })}
+                        >
+                            <span className="summary-adjust-mode-title">{t("summary.detail.refineModeTitle")}</span>
+                            <span className="summary-adjust-mode-desc">{t("summary.detail.refineModeDesc")}</span>
+                        </button>
+                        <button
+                            type="button"
+                            className={this.state.regenerateMode === "full" ? "summary-adjust-mode is-active" : "summary-adjust-mode"}
+                            onClick={() => this.setState({ regenerateMode: "full" })}
+                        >
+                            <span className="summary-adjust-mode-title">{t("summary.detail.fullRegenerateModeTitle")}</span>
+                            <span className="summary-adjust-mode-desc">{t("summary.detail.fullRegenerateModeDesc")}</span>
+                        </button>
                     </div>
+                    {this.state.regenerateMode === "refine" ? (
+                        <>
+                            <label id="summary-refine-feedback-label" className="summary-adjust-label">
+                                {t("summary.detail.refineFeedbackLabel")}
+                            </label>
+                            <textarea
+                                aria-labelledby="summary-refine-feedback-label"
+                                className="summary-regenerate-topic-textarea"
+                                rows={4}
+                                maxLength={2000}
+                                placeholder={t("summary.detail.refineFeedbackPlaceholder")}
+                                value={this.state.refineFeedback}
+                                onChange={(e) => this.setState({ refineFeedback: e.target.value.slice(0, 2000) })}
+                            />
+                        </>
+                    ) : (
+                        <>
+                            <label id="regenerate-topic-label" className="summary-adjust-label">
+                                {t("summary.detail.regenerateTopicLabel")}
+                            </label>
+                            <div style={{ position: "relative" }}>
+                                <textarea
+                                    ref={this.regenerateTopicRef}
+                                    aria-labelledby="regenerate-topic-label"
+                                    className="summary-regenerate-topic-textarea"
+                                    rows={3}
+                                    maxLength={1000}
+                                    value={this.state.regenerateTopic}
+                                    onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
+                                />
+                                <VoiceInputButton
+                                    inputRef={this.regenerateTopicRef}
+                                    onTranscribed={this.handleRegenerateTopicVoice}
+                                    getCurrentText={() => this.state.regenerateTopic}
+                                    showModeMenu
+                                    size="sm"
+                                    className="wk-vib--textarea-corner"
+                                />
+                            </div>
+                        </>
+                    )}
                 </Modal>
             </div>
         );

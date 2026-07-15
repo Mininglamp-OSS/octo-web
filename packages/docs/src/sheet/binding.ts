@@ -37,6 +37,7 @@ import * as Y from 'yjs'
 // getActiveWorkbook()/getActiveSheet()/getSheets()/insertSheet()/etc. onto the facade.
 import '@univerjs/preset-sheets-core'
 import type { FUniver } from '@univerjs/core/lib/facade'
+import { sanitizeLinkHref } from '../editor/sanitize.ts'
 
 /** Cell value/style commands we sync (see V1 note — diff is the source of truth). */
 const TRIGGER_IDS = new Set<string>([
@@ -83,6 +84,8 @@ export const SHEET_MERGES_FIELD = 'sheetMerges'
 export const SHEET_LIST_FIELD = 'sheetList'
 /** Images/drawings: `${logicalId}!${drawingId}` -> serialized ISheetImage (base64 inline). */
 export const SHEET_DRAWINGS_FIELD = 'sheetDrawings'
+/** Hyperlinks: `${logicalId}!${linkId}` -> { id, row, column, payload, display }. */
+export const SHEET_HYPERLINKS_FIELD = 'sheetHyperLinks'
 
 /**
  * The logical id used for the first/only sheet of a freshly-seeded book. Kept as
@@ -134,6 +137,35 @@ type StoredDrawing = Record<string, unknown> & { drawingId?: string }
 /** Minimal ISheetDrawingService read surface: a sheet's images as `{ [drawingId]: image }`. */
 export interface DrawingReaderLike {
   getDrawingData(unitId: string, subUnitId: string): Record<string, StoredDrawing> | undefined
+}
+
+/** A serialized hyperlink (Univer ISheetHyperLink): a URL (`payload`) + display text on a cell. */
+export interface StoredHyperLink {
+  id: string
+  row: number
+  column: number
+  payload: string
+  display?: string
+}
+
+/**
+ * Minimal HyperLinkModel surface. Hyperlinks live in the SHEET_HYPER_LINK_PLUGIN resource (not
+ * cell data), so — like drawings — they need their own sync. We read per-sheet via getSubUnit,
+ * write via add/remove/update, and react to any change through the linkUpdate$ stream.
+ */
+export interface HyperLinkModelLike {
+  getSubUnit(unitId: string, subUnitId: string): StoredHyperLink[]
+  addHyperLink(unitId: string, subUnitId: string, link: StoredHyperLink): boolean
+  removeHyperLink(unitId: string, subUnitId: string, id: string): boolean
+  updateHyperLink(
+    unitId: string,
+    subUnitId: string,
+    id: string,
+    payload: Partial<{ payload: string; display: string }>,
+    silent?: boolean,
+  ): boolean
+  getHyperLink(unitId: string, subUnitId: string, id: string): StoredHyperLink | null | undefined
+  linkUpdate$: { subscribe(next: () => void): { unsubscribe(): void } }
 }
 
 function cellKey(logicalId: string, row: number, col: number): string {
@@ -203,6 +235,8 @@ interface WSLike {
   insertImages?(images: StoredDrawing[]): unknown
   updateImages?(images: StoredDrawing[]): unknown
   deleteImages?(images: unknown[]): unknown
+  /** Remove a float-DOM drawing by id (images use deleteImages; DOM drawings have no FOverGridImage). */
+  removeFloatDom?(id: string): unknown
 }
 interface WBLike {
   getId?(): string
@@ -225,17 +259,21 @@ export class UniverYjsBinding {
   private readonly mergeMap: Y.Map<boolean>
   private readonly sheetListMap: Y.Map<SheetMeta>
   private readonly drawingMap: Y.Map<StoredDrawing>
+  private readonly hyperLinkMap: Y.Map<StoredHyperLink>
   private readonly commandDisposable: { dispose(): void }
   private readonly observer: (events: Y.YMapEvent<SyncCell>) => void
   private readonly dimObserver: (event: Y.YMapEvent<number>) => void
   private readonly mergeObserver: (event: Y.YMapEvent<boolean>) => void
   private readonly sheetListObserver: (event: Y.YMapEvent<SheetMeta>) => void
   private readonly drawingObserver: (event: Y.YMapEvent<StoredDrawing>) => void
+  private readonly hyperLinkObserver: (event: Y.YMapEvent<StoredHyperLink>) => void
+  private hyperLinkSub: { unsubscribe(): void } | null = null
   private applyingRemote = false
   private readonly lastSeen = new Map<string, SyncCell | null>()
   private readonly lastSeenDims = new Map<string, number>()
   private readonly lastSeenMerges = new Set<string>()
   private readonly lastSeenDrawings = new Map<string, StoredDrawing>()
+  private readonly lastSeenLinks = new Map<string, StoredHyperLink>()
   /** logical id -> local (univer) sheet id, and the reverse. */
   private readonly logicalToLocal = new Map<string, string>()
   private readonly localToLogical = new Map<string, string>()
@@ -250,12 +288,15 @@ export class UniverYjsBinding {
     /** Read side of image sync. When null (e.g. unit tests) drawing sync is inert: the observer
      *  still attaches so remote images could apply, but nothing is read/pushed locally. */
     private readonly drawingReader: DrawingReaderLike | null = null,
+    /** Hyperlink model. When null (tests) hyperlink sync is inert (observer attaches, nothing read). */
+    private readonly hyperLinkModel: HyperLinkModelLike | null = null,
   ) {
     this.ymap = ydoc.getMap<SyncCell>(SHEET_YMAP_FIELD)
     this.dimMap = ydoc.getMap<number>(SHEET_DIMS_FIELD)
     this.mergeMap = ydoc.getMap<boolean>(SHEET_MERGES_FIELD)
     this.sheetListMap = ydoc.getMap<SheetMeta>(SHEET_LIST_FIELD)
     this.drawingMap = ydoc.getMap<StoredDrawing>(SHEET_DRAWINGS_FIELD)
+    this.hyperLinkMap = ydoc.getMap<StoredHyperLink>(SHEET_HYPERLINKS_FIELD)
 
     // 1) Establish the sheet set + identity map, then seed or apply content.
     //    Runs synchronously by default. When the host (CollabSheet) sets `deferInitialSync`,
@@ -325,6 +366,8 @@ export class UniverYjsBinding {
         // Drawings keyed `${logicalId}!${drawingId}` share the `${id}!` prefix with cells; apply
         // the new sheet's images too (same not-yet-mapped-on-first-fire reasoning as dims/merges).
         this.applyRemoteDrawings(Array.from(this.drawingMap.keys()).filter((k) => prefixes.some((p) => k.startsWith(p))))
+        // Hyperlinks keyed `${logicalId}!${linkId}` share the `${id}!` prefix too.
+        this.applyRemoteHyperLinks(Array.from(this.hyperLinkMap.keys()).filter((k) => prefixes.some((p) => k.startsWith(p))))
       }
     }
     this.sheetListMap.observe(this.sheetListObserver)
@@ -335,6 +378,22 @@ export class UniverYjsBinding {
       this.applyRemoteDrawings(Array.from(event.keys.keys()))
     }
     this.drawingMap.observe(this.drawingObserver)
+
+    // 8) hyperlinks. Remote add/remove/update -> apply into the sheet it names.
+    this.hyperLinkObserver = (event: Y.YMapEvent<StoredHyperLink>) => {
+      if (this.disposed || event.transaction.local) return
+      this.applyRemoteHyperLinks(Array.from(event.keys.keys()))
+    }
+    this.hyperLinkMap.observe(this.hyperLinkObserver)
+    // Local -> Yjs for hyperlinks: the model has no command mutation we can observe via
+    // onCommandExecuted, but it exposes a change stream. Any local add/remove/update re-scans and
+    // diffs into the Y.Map (guarded by applyingRemote so a remote apply doesn't echo back).
+    if (this.hyperLinkModel) {
+      this.hyperLinkSub = this.hyperLinkModel.linkUpdate$.subscribe(() => {
+        if (this.disposed || this.applyingRemote || !this.canWrite()) return
+        this.syncHyperLinksToYmap()
+      })
+    }
   }
 
   private workbook(): WBLike | null {
@@ -360,6 +419,7 @@ export class UniverYjsBinding {
       this.applyRemoteDims(Array.from(this.dimMap.keys()))
       this.applyRemoteMerges(Array.from(this.mergeMap.keys()))
       this.applyRemoteDrawings(Array.from(this.drawingMap.keys()))
+      this.applyRemoteHyperLinks(Array.from(this.hyperLinkMap.keys()))
     } else if (this.ymap.size > 0 || this.dimMap.size > 0 || this.mergeMap.size > 0) {
       // Legacy V1 single-sheet doc: has populated `default!r:c` cells (and/or dims/merges)
       // but NO sheetList registry. Map the first local sheet to the 'default' logical id,
@@ -372,6 +432,7 @@ export class UniverYjsBinding {
       this.applyRemoteDims(Array.from(this.dimMap.keys()))
       this.applyRemoteMerges(Array.from(this.mergeMap.keys()))
       this.applyRemoteDrawings(Array.from(this.drawingMap.keys()))
+      this.applyRemoteHyperLinks(Array.from(this.hyperLinkMap.keys()))
     } else if (this.canWrite()) {
       // Doc LOOKS empty. This is either a genuinely brand-new doc we may author, OR a COLD
       // cache whose persisted (possibly renamed) registry hasn't arrived over the network yet.
@@ -394,6 +455,7 @@ export class UniverYjsBinding {
       // A brand-new book normally has no images, but seed defensively (e.g. a book created via
       // an import path that dropped images in) so they aren't lost. No-op when there are none.
       this.syncDrawingsToYmap()
+      this.syncHyperLinksToYmap()
     } else {
       // Reader on an empty doc: never authors, so it's safe regardless of network state. Map
       // local sheets so later remote content applies.
@@ -995,20 +1057,153 @@ export class UniverYjsBinding {
         const sheet = wb.getSheetBySheetId?.(localId) ?? null
         if (!sheet) continue
         const stored = this.drawingMap.get(key) ?? null
+        // Existence check via the drawing service (covers ALL drawing types — images AND float-DOM
+        // formulas/charts). getImageById only matches images, so it can't tell if a DOM drawing
+        // already exists (which would double-insert on update).
+        const alreadyThere = (() => {
+          try {
+            return !!this.drawingReader?.getDrawingData(unitId, localId)?.[drawingId]
+          } catch {
+            return false
+          }
+        })()
         try {
           if (stored) {
-            const image: StoredDrawing = { ...stored, unitId, subUnitId: localId, drawingId }
-            const existing = sheet.getImageById?.(drawingId)
-            if (existing) sheet.updateImages?.([image])
-            else sheet.insertImages?.([image])
+            // insertImages/updateImages just dispatch Insert/SetSheetDrawingCommand with the drawing
+            // param, so they work for DRAWING_DOM too (render is driven by the drawing-add listener,
+            // which handles the DOM type) — not only images.
+            const drawing: StoredDrawing = { ...stored, unitId, subUnitId: localId, drawingId }
+            if (alreadyThere) sheet.updateImages?.([drawing])
+            else sheet.insertImages?.([drawing])
             this.lastSeenDrawings.set(key, stored)
           } else {
-            const existing = sheet.getImageById?.(drawingId)
-            if (existing) sheet.deleteImages?.([existing])
+            // Delete: an image has an FOverGridImage (deleteImages); a float-DOM drawing does not,
+            // so fall back to removeFloatDom by id.
+            const img = sheet.getImageById?.(drawingId)
+            if (img) sheet.deleteImages?.([img])
+            else if (alreadyThere) sheet.removeFloatDom?.(drawingId)
             this.lastSeenDrawings.delete(key)
           }
         } catch {
-          // leave lastSeenDrawings untouched so a later pass retries this image
+          // leave lastSeenDrawings untouched so a later pass retries this drawing
+        }
+      }
+    } finally {
+      this.applyingRemote = false
+    }
+  }
+
+  // ---- Hyperlinks ---------------------------------------------------------------------------
+
+  /** Read EVERY mapped sheet's hyperlinks via the model, keyed by `${logicalId}!${id}`. */
+  private scanAllHyperLinks(): Map<string, StoredHyperLink> {
+    const out = new Map<string, StoredHyperLink>()
+    const model = this.hyperLinkModel
+    const wb = this.workbook()
+    if (!model || !wb) return out
+    const unitId = wb.getId?.()
+    if (!unitId) return out
+    for (const [localId, logicalId] of this.localToLogical) {
+      let links: StoredHyperLink[] = []
+      try {
+        links = model.getSubUnit(unitId, localId) ?? []
+      } catch {
+        continue
+      }
+      for (const l of links) {
+        if (!l || typeof l.id !== 'string') continue
+        // Strip nothing local here: id/row/column/payload/display are all portable.
+        out.set(`${logicalId}!${l.id}`, {
+          id: l.id,
+          row: l.row,
+          column: l.column,
+          payload: l.payload,
+          ...(l.display !== undefined ? { display: l.display } : {}),
+        })
+      }
+    }
+    return out
+  }
+
+  /** Diff live hyperlinks of all sheets vs lastSeenLinks; write only changed/removed ones. */
+  private syncHyperLinksToYmap(): void {
+    if (!this.hyperLinkModel) return
+    const live = this.scanAllHyperLinks()
+    const changed: Array<[string, StoredHyperLink | null]> = []
+    for (const [key, l] of live) {
+      const prev = this.lastSeenLinks.get(key)
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(l)) changed.push([key, l])
+    }
+    for (const key of this.lastSeenLinks.keys()) {
+      if (!live.has(key)) changed.push([key, null])
+    }
+    if (changed.length === 0) return
+    this.hyperLinkMap.doc?.transact(() => {
+      for (const [key, l] of changed) {
+        if (l) {
+          this.lastSeenLinks.set(key, l)
+          this.hyperLinkMap.set(key, l)
+        } else {
+          this.lastSeenLinks.delete(key)
+          this.hyperLinkMap.delete(key)
+        }
+      }
+    })
+  }
+
+  /**
+   * Apply remote-changed hyperlink keys into the sheet each names (by logical id). Add / update /
+   * remove via the model; the `applyingRemote` guard stops the model's linkUpdate$ from echoing
+   * back into the Y.Map. Per-item isolation mirrors the cell/drawing paths.
+   */
+  private applyRemoteHyperLinks(keys: string[]): void {
+    const model = this.hyperLinkModel
+    const wb = this.workbook()
+    if (!model || !wb) return
+    const unitId = wb.getId?.()
+    if (!unitId) return
+    this.applyingRemote = true
+    try {
+      for (const key of keys) {
+        const bang = key.indexOf('!')
+        if (bang < 0) continue
+        const logicalId = key.slice(0, bang)
+        const id = key.slice(bang + 1)
+        if (!id) continue
+        const localId = this.logicalToLocal.get(logicalId)
+        if (!localId) continue // sheet not created locally yet (registry reconcile pending)
+        const stored = this.hyperLinkMap.get(key) ?? null
+        try {
+          if (stored) {
+            // Remote-apply boundary: a peer could have written an unsanitized payload before this
+            // guard existed (or via a non-import path), so re-check the scheme here too — the
+            // editor's rule is to sanitize at BOTH the parse and the apply boundary.
+            const safePayload = sanitizeLinkHref(stored.payload)
+            if (!safePayload) {
+              // Drop a pseudo-scheme link rather than replicate it; remove any stale local copy.
+              if (model.getHyperLink(unitId, localId, id)) model.removeHyperLink(unitId, localId, id)
+              this.lastSeenLinks.set(key, stored)
+              continue
+            }
+            const existing = model.getHyperLink(unitId, localId, id)
+            if (existing) {
+              model.updateHyperLink(unitId, localId, id, { payload: safePayload, display: stored.display }, true)
+            } else {
+              model.addHyperLink(unitId, localId, {
+                id: stored.id,
+                row: stored.row,
+                column: stored.column,
+                payload: safePayload,
+                ...(stored.display !== undefined ? { display: stored.display } : {}),
+              })
+            }
+            this.lastSeenLinks.set(key, stored)
+          } else {
+            if (model.getHyperLink(unitId, localId, id)) model.removeHyperLink(unitId, localId, id)
+            this.lastSeenLinks.delete(key)
+          }
+        } catch {
+          // leave lastSeenLinks untouched so a later pass retries this link
         }
       }
     } finally {
@@ -1020,15 +1215,22 @@ export class UniverYjsBinding {
     if (this.disposed) return
     this.disposed = true
     this.commandDisposable.dispose()
+    try {
+      this.hyperLinkSub?.unsubscribe()
+    } catch {
+      // ignore
+    }
     this.ymap.unobserve(this.observer)
     this.dimMap.unobserve(this.dimObserver)
     this.mergeMap.unobserve(this.mergeObserver)
     this.sheetListMap.unobserve(this.sheetListObserver)
     this.drawingMap.unobserve(this.drawingObserver)
+    this.hyperLinkMap.unobserve(this.hyperLinkObserver)
     this.lastSeen.clear()
     this.lastSeenDims.clear()
     this.lastSeenMerges.clear()
     this.lastSeenDrawings.clear()
+    this.lastSeenLinks.clear()
     this.logicalToLocal.clear()
     this.localToLogical.clear()
   }

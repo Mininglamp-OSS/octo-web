@@ -109,8 +109,21 @@ html {
     text-rendering: optimizeLegibility;
     background: var( --background-color);
     color: rgba(9,30,66,.87) ;
+  }
 
+  /* Light-mode Semi primary tokens — issue #703.
+   * Raised to `html body` (specificity 0,0,2) so it wins over Semi's own plain `body`
+   * rule regardless of prod bundle order (Vite injects theme after Semi CSS; Rollup
+   * concatenates it before, which flipped primary back to Semi blue in prod).
+   * Also pins hover / active / light tints to the brand's achromatic family so button
+   * hover and focus halos never fall back to Semi's default blue. */
+  html body {
     --semi-color-primary: var(--wk-color-theme, #1C1C23);
+    --semi-color-primary-hover: #2A2A33;
+    --semi-color-primary-active: #101014;
+    --semi-color-primary-light-default: #F1F1F3;
+    --semi-color-primary-light-hover: #E9E9EC;
+    --semi-color-primary-light-active: #E1E1E5;
   }
 
   div {

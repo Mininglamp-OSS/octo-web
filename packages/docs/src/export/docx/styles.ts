@@ -6,9 +6,12 @@
 import {
   type IStylesOptions,
   type IParagraphStyleOptions,
+  type ISpacingProperties,
   HeadingLevel,
   AlignmentType,
+  LineRuleType,
 } from 'docx'
+import { sanitizeLineHeight, sanitizeSpacing } from '../../editor/LineHeight.ts'
 
 /** Default font for body text. */
 export const FONT_BODY = '微软雅黑'
@@ -214,4 +217,54 @@ export function mapTextAlign(align: unknown): (typeof AlignmentType)[keyof typeo
     default:
       return undefined
   }
+}
+
+// px → twips (1440 twips per inch, 96px per CSS inch → 15 twips/px) and a base
+// em size of 16px, so the block-spacing lengths (px|em) map to Word's twip units.
+const TWIPS_PER_PX = 15
+const PX_PER_EM = 16
+
+/** Convert a sanitised "<n>px|em" spacing length to whole twips, or undefined. */
+function spacingToTwips(raw: unknown): number | undefined {
+  // Reuse the editor's sanitizeSpacing so the docx path enforces the exact same
+  // whitelist AND <=1000 cap as parse/render and the backend schema sanitizer; an
+  // out-of-range value is rejected (undefined), never clamped.
+  const v = sanitizeSpacing(raw)
+  if (v === null) return undefined
+  const m = /^(\d+(?:\.\d+)?)(px|em)$/.exec(v)
+  if (!m) return undefined
+  const px = parseFloat(m[1]) * (m[2] === 'em' ? PX_PER_EM : 1)
+  return Math.round(px * TWIPS_PER_PX)
+}
+
+/**
+ * Map the v17 line-spacing node attrs (lineHeight unitless + spaceBefore/spaceAfter
+ * px|em) onto a docx `spacing` object, or undefined when none apply. line-height is a
+ * unitless multiplier → Word's line value is in 240ths of a line with lineRule AUTO
+ * (e.g. 1.5 → 360). before/after are the block margins in twips.
+ */
+export function mapSpacing(attrs: Record<string, unknown> | undefined): ISpacingProperties | undefined {
+  if (!attrs) return undefined
+  const spacing: {
+    line?: number
+    lineRule?: (typeof LineRuleType)[keyof typeof LineRuleType]
+    before?: number
+    after?: number
+  } = {}
+
+  const lh = sanitizeLineHeight(attrs.lineHeight)
+  if (lh !== null) {
+    // sanitizeLineHeight enforces the same 0 < lh <= 10 whitelist as parse/render, so the docx
+    // lineHeight path is capped identically to the spacing path (sanitizeSpacing, <=1000) — the
+    // two are symmetric; an out-of-range multiplier is rejected (undefined), never clamped.
+    spacing.line = Math.round(Number(lh) * 240)
+    spacing.lineRule = LineRuleType.AUTO
+  }
+
+  const before = spacingToTwips(attrs.spaceBefore)
+  if (before !== undefined) spacing.before = before
+  const after = spacingToTwips(attrs.spaceAfter)
+  if (after !== undefined) spacing.after = after
+
+  return Object.keys(spacing).length ? spacing : undefined
 }

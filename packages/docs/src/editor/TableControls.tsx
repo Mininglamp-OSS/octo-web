@@ -1,22 +1,22 @@
-// Table editing UI (#595).
+// Table editing UI (#595, right-click menu XIN-1052).
 //
 // Two pieces, both pure frontend on top of the already-loaded @tiptap/extension-table series
 // (schema unchanged):
 //
-//  1. TableBubbleMenu — a floating toolbar that appears whenever the caret sits inside ANY table
-//     cell (`editor.isActive('table')`), so it covers tables that already exist in a document, not
-//     just freshly inserted ones. It exposes add/delete row & column (+ delete table), wired to the
-//     Tiptap table commands that only look at the caret position, never at how the table was born.
+//  1. TableContextMenu — a right-click (contextmenu) menu that opens whenever the user right-clicks
+//     inside ANY table cell, so it covers tables that already exist in a document, not just freshly
+//     inserted ones. It exposes add/delete row & column (+ delete table), wired to the exact same
+//     Tiptap table commands as before — commands that only look at the caret position, never at how
+//     the table was born. Before opening, it moves the ProseMirror selection into the right-clicked
+//     cell (via posAtCoords) so the position-relative commands act on THAT cell, and it suppresses
+//     the native browser context menu only when the click lands inside a table.
 //
 //  2. TableGridPicker — replaces the old fixed 3×3 insert with a hover grid so the author picks the
 //     initial row/column count before inserting.
-//
-// A distinct pluginKey ('octoTableBubble') keeps this menu from clashing with the inline formatting
-// BubbleMenu and the comment BubbleMenu that share the same editor.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { BubbleMenu } from '@tiptap/react/menus'
+import { TextSelection } from '@tiptap/pm/state'
 import { CellSelection } from '@tiptap/pm/tables'
 import type { Editor } from '@tiptap/core'
 import { t } from '../octoweb/index.ts'
@@ -105,199 +105,239 @@ function TbBtn({
   )
 }
 
-// Vertical clearance (px) the floating toolbar needs to sit ABOVE a table without colliding with
-// the fixed editor toolbar: the ~32px control row plus the 8px placement offset, with margin. Used
-// only to decide whether the table sits far enough below the fixed `.octo-toolbar` for the toolbar
-// to keep floating above it, or whether it must instead drop BELOW the fixed toolbar.
-const TOOLBAR_CLEARANCE = 48
-
 /**
- * Clamp a table's rect into the visual viewport and collapse it to an anchor band, keyed to the
- * bottom of the fixed editor toolbar (`.octo-toolbar`), so the floating table toolbar never renders
- * behind — and gets its clicks swallowed by — that fixed toolbar (#625 off-screen fix + #716
- * follow-up). Pure core of {@link tableReferenceElement}, split out so it can be unit-tested
- * without a real layout.
+ * Move the ProseMirror selection to `pos` and report whether the caret then sits inside a table.
  *
- * The toolbar anchors to the table's OUTER edge and floats above it with `placement: 'top'`. Two
- * boundaries have to hold at once:
+ * Called by {@link TableContextMenu} right before it opens: the user right-clicked at a screen
+ * point, `posAtCoords` mapped that to a document position, and this moves the selection there so the
+ * position-relative table commands (addRow / deleteColumn / …) act on the cell that was clicked
+ * rather than wherever the caret happened to be. `pos` is clamped into the document so an
+ * out-of-range value from `posAtCoords` can never throw.
  *
- *  - **Long table scrolled past the top (XIN-939 / #625).** `rect.top` is a large negative and the
- *    bottom is far below the viewport; Floating-UI's default `flip` would re-anchor to that
- *    off-screen bottom edge and push the controls below the viewport, unreachable.
- *  - **Table jammed under the fixed toolbar (#716 follow-up).** A table at the very top of the doc
- *    sits right beneath the fixed `.octo-toolbar`; floating the controls ABOVE it lands them in the
- *    band the fixed toolbar occupies, which is opaque and higher in the stack, so it covers the
- *    controls and intercepts their pointer events.
+ * The table test is done on the *resolved* position WITHOUT dispatching anything, so a right-click
+ * on ordinary (non-table) text is a complete no-op: the selection is only moved when `pos` really
+ * lands inside a table cell. That keeps a right-click outside a table from collapsing the user's
+ * existing selection, so the browser's native context menu / Copy still act on the selected text.
  *
- * Fix: when the table's top is far enough below the fixed toolbar (with {@link TOOLBAR_CLEARANCE}
- * room to float above), keep a zero-height band at the real top edge — the normal, fully-visible
- * case is untouched (no #625 / TC-P0-001 regression). Otherwise anchor to the toolbar strip
- * `[0 .. toolbarBottom]`: `placement: 'top'` then overflows the viewport top, Floating-UI's `flip`
- * drops the controls to BOTTOM, and they land just below the fixed toolbar in the clear — reachable
- * and never behind the fixed toolbar, for both the off-screen and top-of-doc cases.
+ * When a multi-cell {@link CellSelection} is already active and the right-clicked cell is one of the
+ * selected cells, the selection is left intact so a range operation (delete column / delete row)
+ * still spans every selected cell instead of collapsing to the single clicked one. The selection is
+ * only moved when the click lands on a cell OUTSIDE the current selection.
  *
- * `toolbarBottom` is the fixed toolbar's bottom edge in viewport coordinates (0 when there is no
- * toolbar, e.g. a read-only view), clamped defensively into the viewport.
+ * Returns whether the click was inside a table — the gate the caller uses to decide whether to open
+ * a table menu (and suppress the native one) at all.
  */
-export function clampToolbarAnchorRect(
-  rect: { top: number; bottom: number; left: number; right: number },
-  viewport: { width: number; height: number },
-  toolbarBottom = 0,
-): DOMRect {
-  const left = Math.max(0, Math.min(rect.left, viewport.width))
-  const right = Math.min(viewport.width, Math.max(rect.right, left))
-  const width = Math.max(0, right - left)
-  const safeTop = Math.max(0, Math.min(toolbarBottom, viewport.height - 8))
-  const build = (top: number, bottom: number): DOMRect =>
-    ({
-      x: left,
-      y: top,
-      left,
-      top,
-      right: left + width,
-      bottom,
-      width,
-      height: Math.max(0, bottom - top),
-      toJSON() {
-        return this
-      },
-    } as DOMRect)
-  // Table sits clear below the fixed toolbar with room for the controls to float above it: keep a
-  // zero-height band at the real top edge so the toolbar floats above the table exactly as before.
-  if (rect.top - TOOLBAR_CLEARANCE >= safeTop) {
-    const top = Math.min(rect.top, viewport.height - 8)
-    return build(top, top)
-  }
-  // Table jammed under / above the fixed toolbar (top-of-doc or scrolled off the top): anchor to
-  // the toolbar strip so `placement: 'top'` overflows the viewport top and flips to BOTTOM, landing
-  // the controls just below the fixed toolbar's bottom edge — clickable, never behind it.
-  return build(0, safeTop)
-}
+export function moveSelectionIntoCell(editor: Editor, pos: number): boolean {
+  const { doc, selection } = editor.state
+  const safe = Math.max(0, Math.min(pos, doc.content.size))
+  const $pos = doc.resolve(safe)
 
-/**
- * Reference rect for the floating table toolbar (#625). Anchors to the OUTER edge of the table
- * (its scroll wrapper when present) rather than the caret's cell, so the toolbar — placed above
- * with `placement: 'top'` — floats in the block margin above the whole table instead of landing on
- * top of the text rows above the caret. The rect is clamped relative to the fixed editor toolbar
- * (see {@link clampToolbarAnchorRect}) so a long table scrolled past the top of the viewport keeps
- * the controls reachable and a table at the top of the doc keeps them clear of the fixed
- * `.octo-toolbar`. Returns a Floating-UI virtual element (computed lazily so scrolling/resizing
- * stays accurate), or null when the caret is not inside a table, in which case the BubbleMenu falls
- * back to its default cursor-based positioning.
- */
-function tableReferenceElement(editor: Editor): { getBoundingClientRect: () => DOMRect; getClientRects: () => DOMRect[] } | null {
-  const { $from } = editor.state.selection
-  for (let depth = $from.depth; depth > 0; depth--) {
-    if ($from.node(depth).type.name === 'table') {
-      const dom = editor.view.nodeDOM($from.before(depth))
-      if (dom instanceof HTMLElement) {
-        // Prefer the ProseMirror `.tableWrapper` scroll box so a horizontally scrolled wide table
-        // still anchors to the visible table region.
-        const anchor = (dom.closest('.tableWrapper') as HTMLElement | null) ?? dom
-        // Bottom edge of the fixed editor toolbar, measured live so a taller toolbar (e.g. the find
-        // bar expands `.octo-toolbar-wrap`) is always accounted for. Scoped to this editor's shell
-        // so an unrelated toolbar elsewhere on the page is never picked up.
-        const shell = (editor.view.dom.closest('.octo-doc--editor') as HTMLElement | null) ?? undefined
-        const toolbarBottom = () => {
-          const toolbarEl = (shell ?? document).querySelector('.octo-toolbar') as HTMLElement | null
-          const fixed = (toolbarEl?.closest('.octo-toolbar-wrap') as HTMLElement | null) ?? toolbarEl
-          return fixed ? fixed.getBoundingClientRect().bottom : 0
-        }
-        const band = () =>
-          clampToolbarAnchorRect(
-            anchor.getBoundingClientRect(),
-            { width: window.innerWidth, height: window.innerHeight },
-            toolbarBottom(),
-          )
-        return {
-          getBoundingClientRect: band,
-          getClientRects: () => [band()],
-        }
-      }
+  // Walk the resolved position's ancestors to see whether it sits inside a table, without touching
+  // the current selection. Mirrors editor.isActive('table') but for an arbitrary position. Also
+  // capture the position of the enclosing cell so we can test CellSelection membership below.
+  let inTable = false
+  let cellPos: number | null = null
+  for (let depth = $pos.depth; depth > 0; depth--) {
+    const name = $pos.node(depth).type.name
+    if (cellPos === null && (name === 'tableCell' || name === 'tableHeader')) {
+      cellPos = $pos.before(depth)
+    }
+    if (name === 'table') {
+      inTable = true
+      break
     }
   }
-  return null
+  if (!inTable) return false
+
+  // Preserve an existing multi-cell selection when the click lands inside it, so delete-column /
+  // delete-row keep acting on the whole selected range rather than collapsing to one cell.
+  if (selection instanceof CellSelection && cellPos !== null) {
+    let insideSelection = false
+    selection.forEachCell((_cell, p) => {
+      if (p === cellPos) insideSelection = true
+    })
+    if (insideSelection) return true
+  }
+
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near($pos)))
+  return true
 }
 
 /**
- * Whether the floating table toolbar should be visible for the editor's current selection. Shown
- * whenever the caret is inside a table cell — which naturally covers tables that were already in
- * the document, since it keys off the selection, not how the table was created. Suppressed while a
- * plain text run inside a cell is selected so it doesn't fight the inline formatting / comment
- * bubbles; a collapsed caret or a whole-cell (CellSelection) drag both keep it visible.
+ * Clamp the menu's top-left corner so a menu of the given size stays fully inside the viewport when
+ * opened at the pointer `point`. Right-clicks near the right / bottom edge would otherwise open a
+ * menu that overflows off-screen; shift it left / up just enough to fit, never past the top-left
+ * origin. Pure so it can be unit-tested without a real layout.
  */
-export function shouldShowTableBubble(editor: Editor): boolean {
-  if (!editor.isEditable || !editor.isActive('table')) return false
-  const sel = editor.state.selection
-  return sel.empty || sel instanceof CellSelection
+export function clampMenuPosition(
+  point: { x: number; y: number },
+  menu: { width: number; height: number },
+  viewport: { width: number; height: number },
+): { left: number; top: number } {
+  const left = Math.max(0, Math.min(point.x, viewport.width - menu.width))
+  const top = Math.max(0, Math.min(point.y, viewport.height - menu.height))
+  return { left, top }
 }
 
 /**
- * Floating table toolbar. See {@link shouldShowTableBubble} for the visibility rule. A distinct
- * pluginKey keeps it from clashing with the inline formatting / comment BubbleMenus on the same
- * editor.
+ * Right-click (contextmenu) table menu. Opens whenever the user right-clicks inside a table cell —
+ * which naturally covers tables that were already in the document, since it keys off the clicked
+ * position, not how the table was created. On open it moves the selection into the clicked cell (so
+ * the position-relative commands act on it) and suppresses the native browser menu; a right-click
+ * outside any table is left alone so the browser's own menu still works. Closes on outside-click /
+ * Escape, and after any command runs.
  */
-export function TableBubbleMenu({ editor }: { editor: Editor }) {
+export function TableContextMenu({ editor }: { editor: Editor }) {
+  // Viewport-coord anchor point where the user right-clicked; null while the menu is closed.
+  const [point, setPoint] = useState<{ x: number; y: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  // Cell positions (anchor/head) of a multi-cell CellSelection captured at right-click time, or
+  // null when the click was on a single cell. See the snapshot in onContextMenu below for why this
+  // has to be remembered rather than re-read from the live selection when a menu item is clicked.
+  const cellRangeRef = useRef<{ anchor: number; head: number } | null>(null)
+
+  // Attach the contextmenu listener to this editor's DOM. Right-click inside a cell opens the menu
+  // at the pointer and preventDefault()s the native menu; anywhere else is left untouched.
+  useEffect(() => {
+    const dom = editor.view.dom
+    const onContextMenu = (e: MouseEvent) => {
+      // Read-only editors must never edit a table: leave the native browser menu fully intact —
+      // no preventDefault, no selection move, no custom menu. Table mutations are meaningless there.
+      if (!editor.isEditable) return
+      const coords = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
+      if (!coords) return
+      if (!moveSelectionIntoCell(editor, coords.pos)) return
+      e.preventDefault()
+      // Snapshot a multi-cell CellSelection NOW, while it is still intact. After this handler
+      // returns the browser processes the native right-click: it moves the caret to the clicked
+      // cell and fires `selectionchange`, which ProseMirror syncs back into a single-cell
+      // TextSelection — collapsing the multi-column/row rectangle before the user gets to click a
+      // menu item. If deleteColumn/deleteRow then read the live selection they would only see the
+      // one clicked cell and remove a single column/row (the real-browser "delete N, only 1 goes"
+      // bug; jsdom never fires that selectionchange, which is why the old unit tests were green).
+      // Remembering the cell range here lets us re-establish it right before the command runs.
+      const sel = editor.state.selection
+      cellRangeRef.current =
+        sel instanceof CellSelection
+          ? { anchor: sel.$anchorCell.pos, head: sel.$headCell.pos }
+          : null
+      setPoint({ x: e.clientX, y: e.clientY })
+    }
+    dom.addEventListener('contextmenu', onContextMenu)
+    return () => dom.removeEventListener('contextmenu', onContextMenu)
+  }, [editor])
+
+  // Close on outside-click / Escape, mirroring TableGridPicker.
+  useEffect(() => {
+    if (!point) return
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setPoint(null)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPoint(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [point])
+
+  // Once the menu has real dimensions, nudge it back inside the viewport if the pointer was near an
+  // edge. jsdom reports a zero rect (no layout), so this is a harmless no-op in tests.
+  useLayoutEffect(() => {
+    const el = menuRef.current
+    if (!point || !el) return
+    const rect = el.getBoundingClientRect()
+    const { left, top } = clampMenuPosition(
+      point,
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    )
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
+  }, [point])
+
+  if (!point) return null
+
+  // Run a table command then close. When the menu was opened over a multi-cell selection we first
+  // re-establish that CellSelection (the browser's right-click caret move will have collapsed it to
+  // a single cell in the meantime — see the snapshot in onContextMenu), so range operations such as
+  // deleteColumn / deleteRow act on every selected column/row instead of just the clicked one. No
+  // document edit happens between opening the menu and this click, so the captured cell positions
+  // are still valid; CellSelection.create is guarded in case a position is somehow stale.
+  const run = (fn: () => void) => {
+    const range = cellRangeRef.current
+    if (range) {
+      try {
+        editor.view.dispatch(
+          editor.state.tr.setSelection(
+            CellSelection.create(editor.state.doc, range.anchor, range.head),
+          ),
+        )
+      } catch {
+        // Stale range (e.g. the table changed out from under us) — fall back to the live selection.
+      }
+    }
+    fn()
+    cellRangeRef.current = null
+    setPoint(null)
+  }
+
   return (
-    <BubbleMenu
-      editor={editor}
-      pluginKey="octoTableBubble"
-      // The toolbar floats over the table while the caret sits in a cell, so its frame would
-      // otherwise sit on top of the column-resize hot zone and swallow the hover/drag the resize
-      // plugin listens for on the editor DOM. octo-table-bubble-portal makes the floating wrapper
-      // transparent to pointer events (see styles.css); only the buttons below re-capture them.
-      className="octo-table-bubble-portal"
-      // Anchor the toolbar to the table's outer edge rather than the caret's cell, so with
-      // placement: 'top' it floats in the block margin above the whole table and never covers the
-      // in-table text rows above the caret (#625). Falls back to the default caret rect when the
-      // helper can't find a table (never happens while shouldShow is satisfied).
-      getReferencedVirtualElement={() => tableReferenceElement(editor)}
-      options={{ placement: 'top', offset: 8 }}
-      shouldShow={({ editor: e }) => shouldShowTableBubble(e)}
+    <div
+      ref={menuRef}
+      className="octo-bubble-menu octo-table-context-menu"
+      role="menu"
+      style={{ position: 'fixed', left: point.x, top: point.y }}
+      onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="octo-bubble-menu octo-table-bubble">
-        <TbBtn
-          label={<IconRowBefore />}
-          title={t('docs.table.addRowBefore')}
-          onClick={() => editor.chain().focus().addRowBefore().run()}
-        />
-        <TbBtn
-          label={<IconRowAfter />}
-          title={t('docs.table.addRowAfter')}
-          onClick={() => editor.chain().focus().addRowAfter().run()}
-        />
-        <TbBtn
-          label={<IconDeleteRow />}
-          title={t('docs.table.deleteRow')}
-          text={t('docs.table.deleteRow')}
-          onClick={() => editor.chain().focus().deleteRow().run()}
-        />
-        <span className="octo-tb-sep" />
-        <TbBtn
-          label={<IconColBefore />}
-          title={t('docs.table.addColumnBefore')}
-          onClick={() => editor.chain().focus().addColumnBefore().run()}
-        />
-        <TbBtn
-          label={<IconColAfter />}
-          title={t('docs.table.addColumnAfter')}
-          onClick={() => editor.chain().focus().addColumnAfter().run()}
-        />
-        <TbBtn
-          label={<IconDeleteCol />}
-          title={t('docs.table.deleteColumn')}
-          text={t('docs.table.deleteColumn')}
-          onClick={() => editor.chain().focus().deleteColumn().run()}
-        />
-        <span className="octo-tb-sep" />
-        <TbBtn
-          label={<IconDeleteTable />}
-          title={t('docs.table.deleteTable')}
-          text={t('docs.table.deleteTable')}
-          onClick={() => editor.chain().focus().deleteTable().run()}
-        />
-      </div>
-    </BubbleMenu>
+      <TbBtn
+        label={<IconRowBefore />}
+        title={t('docs.table.addRowBefore')}
+        text={t('docs.table.addRowBefore')}
+        onClick={() => run(() => editor.chain().focus().addRowBefore().run())}
+      />
+      <TbBtn
+        label={<IconRowAfter />}
+        title={t('docs.table.addRowAfter')}
+        text={t('docs.table.addRowAfter')}
+        onClick={() => run(() => editor.chain().focus().addRowAfter().run())}
+      />
+      <TbBtn
+        label={<IconDeleteRow />}
+        title={t('docs.table.deleteRow')}
+        text={t('docs.table.deleteRow')}
+        onClick={() => run(() => editor.chain().focus().deleteRow().run())}
+      />
+      <span className="octo-tb-sep" />
+      <TbBtn
+        label={<IconColBefore />}
+        title={t('docs.table.addColumnBefore')}
+        text={t('docs.table.addColumnBefore')}
+        onClick={() => run(() => editor.chain().focus().addColumnBefore().run())}
+      />
+      <TbBtn
+        label={<IconColAfter />}
+        title={t('docs.table.addColumnAfter')}
+        text={t('docs.table.addColumnAfter')}
+        onClick={() => run(() => editor.chain().focus().addColumnAfter().run())}
+      />
+      <TbBtn
+        label={<IconDeleteCol />}
+        title={t('docs.table.deleteColumn')}
+        text={t('docs.table.deleteColumn')}
+        onClick={() => run(() => editor.chain().focus().deleteColumn().run())}
+      />
+      <span className="octo-tb-sep" />
+      <TbBtn
+        label={<IconDeleteTable />}
+        title={t('docs.table.deleteTable')}
+        text={t('docs.table.deleteTable')}
+        onClick={() => run(() => editor.chain().focus().deleteTable().run())}
+      />
+    </div>
   )
 }
 

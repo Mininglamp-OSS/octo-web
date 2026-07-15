@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Typography, Input, Button, Select, Avatar, Spin, Modal, Toast, Banner } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import { Search, Plus, Trash2, Bot, RotateCcw } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { Agent, AgentVisibility, RuntimeDevice } from "../api/types";
+import type { Agent, RuntimeDevice } from "../api/types";
 import { listAgents, createAgent, archiveAgent, restoreAgent, listRuntimesForAgent } from "../api/agentApi";
 import { listAssigneeCandidates } from "../api/issueApi";
 import AgentDetailPage from "../panel/AgentDetailPage";
@@ -28,7 +29,6 @@ export default function AgentPage() {
   const [nName, setNName] = useState("");
   const [nDesc, setNDesc] = useState("");
   const [nModel, setNModel] = useState("");
-  const [nVis, setNVis] = useState<AgentVisibility>("workspace");
   const [nRuntimeId, setNRuntimeId] = useState<string | undefined>();
   const [runtimes, setRuntimes] = useState<RuntimeDevice[]>([]);
 
@@ -76,7 +76,7 @@ export default function AgentPage() {
     if (!nName.trim()) { Toast.warning(t("loop.validate.nameRequired")); return; }
     if (!nRuntimeId) { Toast.warning(t("loop.agent.runtimeRequired")); return; }
     try {
-      await createAgent({ name: nName.trim(), description: nDesc, runtime_id: nRuntimeId, model: nModel || undefined, visibility: nVis });
+      await createAgent({ name: nName.trim(), description: nDesc, runtime_id: nRuntimeId, model: nModel || undefined, visibility: "workspace" });
       setCreateOpen(false); setNName(""); setNDesc("");
       Toast.success(t("loop.toast.created")); reload();
     } catch (e) { Toast.error((e as Error)?.message ?? "create failed"); }
@@ -104,7 +104,7 @@ export default function AgentPage() {
         <Title heading={4}>{t("loop.nav.agent")}</Title>
         <div className="loop-page__spacer" />
         <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.agent")} value={keyword} onChange={setKeyword} showClear style={{ width: 220 }} />
-        <Button theme="solid" icon={<Plus size={14} />} onClick={openCreate}>{t("loop.action.newAgent")}</Button>
+        <LoopButton icon={<Plus size={14} />} onClick={openCreate}>{t("loop.action.newAgent")}</LoopButton>
       </div>
 
       <div className="loop-agent-toolbar">
@@ -126,7 +126,7 @@ export default function AgentPage() {
               <Bot size={40} className="loop-empty__icon" />
               <div className="loop-empty__title">{scope === "archived" ? t("loop.agent.archivedEmpty") : t("loop.empty.agentTitle")}</div>
               {scope !== "archived" && <div className="loop-empty__desc">{t("loop.empty.agentDesc")}</div>}
-              {scope !== "archived" && <Button theme="solid" icon={<Plus size={14} />} onClick={openCreate} style={{ marginTop: 12 }}>{t("loop.action.newAgent")}</Button>}
+              {scope !== "archived" && <LoopButton icon={<Plus size={14} />} onClick={openCreate} style={{ marginTop: 12 }}>{t("loop.action.newAgent")}</LoopButton>}
             </div>
           ) : (
             <div className="loop-agent-list">
@@ -176,13 +176,6 @@ export default function AgentPage() {
           <div className="loop-fields__row">
             <div className="loop-fields__label">{t("loop.agent.model")}</div>
             <input className="loop-field" value={nModel} onChange={(e) => setNModel(e.target.value)} placeholder="claude-opus-4 / codex-latest…" />
-          </div>
-          <div className="loop-fields__row">
-            <div className="loop-fields__label">{t("loop.agent.visibility")}</div>
-            <Select value={nVis} onChange={(v) => setNVis(v as AgentVisibility)} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }}>
-              <Select.Option value="workspace">{t("loop.agent.visWorkspace")}</Select.Option>
-              <Select.Option value="private">{t("loop.agent.visPrivate")}</Select.Option>
-            </Select>
           </div>
         </div>
       </Modal>

@@ -53,7 +53,19 @@
 //        Byte-aligned with the backend fontFamily attr under this shared version. The FontFamily
 //        extension is always registered so the attr round-trips faithfully; the toolbar entry that
 //        SETS it is gated behind FONT_FAMILY_ENABLED (default off) for the phased rollout.
-export const SCHEMA_VERSION = 16
+//   v17 — SCHEMA-SPEC §1: add the line-spacing ATTRIBUTES `lineHeight` (+ optional `spaceBefore`/
+//        `spaceAfter`) to the `heading` and `paragraph` nodes (not new nodes/marks) via the
+//        self-built `LineHeight` extension, replicating the v5 `textAlign` approach. All three
+//        default to null and ride on a single inline style declaration → line-height (unitless)
+//        + margin-top/margin-bottom (px|em), sanitised at both parse and render. Byte-aligned
+//        with the backend toDOM (see LineHeight.ts for the canonical style serialization).
+//   v18 — SCHEMA-SPEC §16: add a global `indent` ATTRIBUTE to the `heading` and `paragraph`
+//        nodes (not a new node/mark) — an integer indent level rendered via margin-left and
+//        round-tripped as data-indent, configured for exactly those two types (list Tab/Shift-Tab
+//        sink/lift is untouched). Same class of change as v5 textAlign / v7 fontSize: attribute,
+//        version bump only, byte-aligned with the backend stub + SCHEMA-SPEC. Missing attr = 0.
+//        The v18 margin-left declaration is appended AFTER the v17 line-spacing declarations.
+export const SCHEMA_VERSION = 18
 
 // Node names present in the schema at the current SCHEMA_VERSION. Mirrors the
 // backend stub's node set (SCHEMA-SPEC); kept here so the set is auditable against
@@ -93,7 +105,8 @@ export const SCHEMA_NODES = [
 // backend stub's mark set (SCHEMA-SPEC §3); kept here so the set is auditable
 // against the spec without importing the editor extensions.
 //
-// NOTE: v5 `textAlign`, v7 `fontSize` and v16 `fontFamily` are ATTRIBUTES (textAlign on
+// NOTE: v5 `textAlign`, v7 `fontSize`, v16 `fontFamily`, v17 `lineHeight`/`spaceBefore`/
+// `spaceAfter`, and v18 `indent` are ATTRIBUTES (textAlign + line-spacing + indent on
 // heading/paragraph, fontSize + fontFamily on the textStyle mark), not new nodes/marks, so they
 // add no entry here — only a version bump. They still round-trip through the Y.Doc as node/mark attrs.
 export const SCHEMA_MARKS = [

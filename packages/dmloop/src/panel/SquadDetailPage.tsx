@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Typography, Input, Select, Button, Avatar, Spin, Toast, Modal, Dropdown } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import { ChevronRight, Archive, Users, FileText, Plus, Trash2, Crown, ArrowUpRight, Save, Pencil, MoreHorizontal } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Squad, SquadMember, SquadMemberStatus, SquadMemberStatusValue, AssigneeCandidate } from "../api/types";
@@ -295,7 +296,7 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
               <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.squad.instructionsDesc")}</Text>
               <div className="loop-sqd__instr-actions">
                 {instrDirty && <span className="loop-sqd__unsaved">{t("loop.squad.unsaved")}</span>}
-                <Button theme="solid" size="small" icon={<Save size={14} />} disabled={!instrDirty || savingInstr} loading={savingInstr} onClick={saveInstr}>{t("loop.action.save")}</Button>
+                <LoopButton size="sm" icon={<Save size={14} />} disabled={!instrDirty || savingInstr} loading={savingInstr} onClick={saveInstr}>{t("loop.action.save")}</LoopButton>
               </div>
             </div>
             <div className="loop-sqd__editor">

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Typography, Input, Button, Tag, Spin, Modal, Toast, Banner,
+  Typography, Input, Button, Spin, Modal, Toast, Banner,
   Select, Checkbox, Tooltip, Popover,
 } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Sparkles, Download, FileText, Link2, Copy, Clock3, Users } from "lucide-react";
@@ -15,6 +15,8 @@ import { listWorkspaces } from "../api/workspaceApi";
 import { listRuntimes } from "../api/runtimeApi";
 import SkillDetailPage from "../panel/SkillDetailPage";
 import { confirmDelete } from "../ui/confirmDelete";
+import LoopTag from "../ui/LoopTag";
+import LoopButton from "../ui/LoopButton";
 import { isValidSkillName } from "../ui/skillName";
 import { ensureSkillFrontmatter, parseFrontmatter } from "../ui/frontmatter";
 import { formatRelativeTime } from "../ui/time";
@@ -204,7 +206,7 @@ export default function SkillPage() {
             <Title heading={4}>{t("loop.nav.skill")}</Title>
             <Text type="tertiary" className="loop-skill-page-head__desc">{t("loop.empty.skillDesc")}</Text>
           </div>
-          <Button theme="solid" icon={<Plus size={14} />} onClick={openCreate}>{t("loop.action.newSkill")}</Button>
+          <LoopButton icon={<Plus size={14} />} onClick={openCreate}>{t("loop.action.newSkill")}</LoopButton>
         </div>
         <Input
           prefix={<Search size={14} />}
@@ -223,7 +225,7 @@ export default function SkillPage() {
               <Sparkles size={40} className="loop-empty__icon" />
               <div className="loop-empty__title">{t("loop.empty.skillTitle")}</div>
               <div className="loop-empty__desc">{t("loop.empty.skillDesc")}</div>
-              <Button theme="solid" icon={<Plus size={14} />} onClick={openCreate} style={{ marginTop: 12 }}>{t("loop.action.newSkill")}</Button>
+              <LoopButton icon={<Plus size={14} />} onClick={openCreate} style={{ marginTop: 12 }}>{t("loop.action.newSkill")}</LoopButton>
             </div>
           ) : filteredRows.length === 0 ? (
             <div className="loop-empty">
@@ -361,7 +363,7 @@ export default function SkillPage() {
                             <strong>{s.name}</strong>
                             {s.description && <small>{s.description}</small>}
                           </span>
-                          {s.provider && <Tag size="small" color="grey">{s.provider}</Tag>}
+                          {s.provider && <LoopTag tone="grey">{s.provider}</LoopTag>}
                         </label>
                       ))}
                     </div>
@@ -415,15 +417,15 @@ export default function SkillPage() {
           <div className="loop-nsk__footer">
             <Button onClick={() => setCreateOpen(false)}>{t("loop.action.cancel")}</Button>
             {createTab === "local" && (
-              <Button theme="solid" icon={<Plus size={14} />} disabled={!nName.trim()} onClick={createLocal}>{t("loop.action.create")}</Button>
+              <LoopButton icon={<Plus size={14} />} disabled={!nName.trim()} onClick={createLocal}>{t("loop.action.create")}</LoopButton>
             )}
             {createTab === "web" && (
-              <Button theme="solid" icon={<Download size={14} />} loading={webBusy} disabled={!webUrl.trim()} onClick={importFromWeb}>{t("loop.skill.import")}</Button>
+              <LoopButton icon={<Download size={14} />} loading={webBusy} disabled={!webUrl.trim()} onClick={importFromWeb}>{t("loop.skill.import")}</LoopButton>
             )}
             {createTab === "runtime" && (
-              <Button theme="solid" icon={<Download size={14} />} loading={rtBusy} disabled={rtPicked.size === 0} onClick={importFromRuntime}>
+              <LoopButton icon={<Download size={14} />} loading={rtBusy} disabled={rtPicked.size === 0} onClick={importFromRuntime}>
                 {t("loop.skill.importSelected")}（{rtPicked.size}）
-              </Button>
+              </LoopButton>
             )}
           </div>
         </div>

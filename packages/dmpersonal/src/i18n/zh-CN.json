@@ -8,8 +8,6 @@
   },
   "workspace": {
     "loading": "正在加载工作区…",
-    "requiredTitle": "请先加入一个 workspace",
-    "requiredDesc": "Runtimes 和 Skills 当前仍按 workspace 管理。加入或创建 workspace 后再回来查看。",
     "loadFailed": "工作区加载失败"
   }
 }

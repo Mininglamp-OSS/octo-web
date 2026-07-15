@@ -1,15 +1,23 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Select, Tag } from "@douyinfe/semi-ui";
+import { Modal, Toast, Avatar } from "@douyinfe/semi-ui";
+import { ChevronRight, X, Paperclip } from "lucide-react";
 import { useI18n } from "@octo/base";
-import type { IssueStatus, IssuePriority, Project } from "../api/types";
-import { createIssue } from "../api/issueApi";
-import { listProjects } from "../api/projectApi";
+import type { IssueStatus, IssuePriority, AssigneeType } from "../api/types";
+import { createIssue, listAssigneeCandidates } from "../api/issueApi";
+import { listProjectOptions } from "../api/directory";
+import { uploadAttachment } from "../api/attachmentApi";
+import { currentWorkspaceName } from "../api/http";
 import AssigneePicker from "./AssigneePicker";
+import AutoGrowTextarea from "./AutoGrowTextarea";
+import LoopButton from "./LoopButton";
+import LoopPropertyPill, { type LoopPropertyPillOption } from "./LoopPropertyPill";
 import {
   ISSUE_STATUS_ORDER,
-  ISSUE_STATUS_COLOR,
+  ISSUE_STATUS_ICON,
+  ISSUE_STATUS_HEX,
   PRIORITY_ORDER,
-  PRIORITY_COLOR,
+  PRIORITY_ICON,
+  PRIORITY_HEX,
 } from "./meta";
 
 export interface CreateIssueModalProps {
@@ -20,9 +28,24 @@ export interface CreateIssueModalProps {
   parentIssueId?: string;
 }
 
+// 上次选中的指派对象(仅 new loop 场景):sessionStorage 记忆,下次开框若仍是有效候选则复用。
+const LAST_ASSIGNEE_KEY = "loop.newloop.assignee";
+type LastAssignee = { id: string; type: AssigneeType; name: string };
+function readLastAssignee(): LastAssignee | null {
+  try {
+    const p = JSON.parse(sessionStorage.getItem(LAST_ASSIGNEE_KEY) ?? "null");
+    if (p && typeof p.id === "string" && typeof p.type === "string" && typeof p.name === "string") return p;
+  } catch { /* ignore */ }
+  return null;
+}
+function writeLastAssignee(a: LastAssignee): void {
+  try { sessionStorage.setItem(LAST_ASSIGNEE_KEY, JSON.stringify(a)); } catch { /* ignore */ }
+}
+
 /**
- * 新建 Issue 弹窗（对齐产品设计的手动创建流程）：
- * 标题 / 描述 / 指派(member|agent|squad 三态) / 状态 / 优先级 / 项目。
+ * 新建回路弹窗(对齐 multica 手动建单):面包屑([workspace] > 新建回路) + 标题 + 描述 +
+ * 运行提示(选了 AI 队友时提示「创建后 X 会立即开始工作」) + pill 工具栏(状态/优先级/指派) +
+ * 底栏(左附件 · 右取消/创建)。指派默认落到「我的第一个 AI队友」,并记忆上次选择。
  * 传 parentIssueId 时创建为子任务。
  */
 export default function CreateIssueModal({ visible, onClose, onCreated, parentIssueId }: CreateIssueModalProps) {
@@ -31,24 +54,57 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
   const [desc, setDesc] = useState("");
   const [status, setStatus] = useState<IssueStatus>("todo");
   const [priority, setPriority] = useState<IssuePriority>("none");
+  const [projectId, setProjectId] = useState<string>("");
+  const [projects, setProjects] = useState<Array<{ id: string; title: string }>>([]);
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
-  const [assigneeType, setAssigneeType] = useState<import("../api/types").AssigneeType | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [assigneeType, setAssigneeType] = useState<AssigneeType | null>(null);
+  const [assigneeName, setAssigneeName] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (visible) {
-      setTitle(""); setDesc(""); setStatus("todo"); setPriority("none");
-      setAssigneeId(null); setAssigneeType(null); setProjectId(null);
-      listProjects().then(setProjects).catch(() => setProjects([]));
-    }
+    if (!visible) return;
+    setTitle(""); setDesc(""); setStatus("todo"); setPriority("none"); setProjectId(""); setPendingFiles([]);
+    setAssigneeId(null); setAssigneeType(null); setAssigneeName(null);
+    let alive = true;
+    listProjectOptions().then((ps) => { if (alive) setProjects(ps); }).catch(() => { if (alive) setProjects([]); });
+    // 默认指派:优先复用上次选择(若仍是有效候选),否则落到我的第一个 AI队友(agent)。
+    listAssigneeCandidates()
+      .then((cands) => {
+        if (!alive) return;
+        const last = readLastAssignee();
+        const reuse = last ? cands.find((c) => c.id === last.id) : undefined;
+        const pick = reuse ?? cands.find((c) => c.type === "agent") ?? null;
+        if (pick) { setAssigneeId(pick.id); setAssigneeType(pick.type); setAssigneeName(pick.name); }
+      })
+      .catch(() => { /* 无候选则保持未指派 */ });
+    return () => { alive = false; };
   }, [visible]);
 
+  const isBot = assigneeType === "agent" || assigneeType === "squad";
+
+  const addFiles = (files: FileList | null) => {
+    if (!files?.length) return;
+    const arr = Array.from(files);
+    setPendingFiles((p) => [...p, ...arr]);
+  };
+  const removeFile = (idx: number) => setPendingFiles((p) => p.filter((_, i) => i !== idx));
+
   const submit = async () => {
-    if (!title.trim()) return;
+    if (!title.trim() || submitting) return;
     setSubmitting(true);
     try {
+      // 附件先上传拿 id(issue 尚不存在),再随建单绑定;任一失败则中止建单,提示重试。
+      let attachmentIds: string[] | undefined;
+      if (pendingFiles.length) {
+        const ids: string[] = [];
+        let failed = 0;
+        for (const f of pendingFiles) {
+          try { ids.push((await uploadAttachment(f)).id); } catch { failed++; }
+        }
+        if (failed) { Toast.error(t("loop.attach.attachFailed", { values: { count: failed } })); return; }
+        if (ids.length) attachmentIds = ids;
+      }
       await createIssue({
         title: title.trim(),
         description: desc || undefined,
@@ -56,9 +112,14 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
         priority,
         assignee_id: assigneeId,
         assignee_type: assigneeType,
-        project_id: projectId,
+        project_id: projectId || null,
         parent_issue_id: parentIssueId,
+        attachment_ids: attachmentIds,
       });
+      // 记忆本次 AI 队友选择(仅 agent/squad),下次 new loop 复用。
+      if (isBot && assigneeId && assigneeType && assigneeName) {
+        writeLastAssignee({ id: assigneeId, type: assigneeType, name: assigneeName });
+      }
       onClose();
       onCreated?.();
     } finally {
@@ -66,80 +127,100 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
     }
   };
 
+  const statusOptions: LoopPropertyPillOption<IssueStatus>[] = ISSUE_STATUS_ORDER.map((s) => {
+    const Icon = ISSUE_STATUS_ICON[s];
+    return { value: s, label: t(`loop.status.${s}`), icon: <Icon size={14} style={{ color: ISSUE_STATUS_HEX[s] }} /> };
+  });
+  const priorityOptions: LoopPropertyPillOption<IssuePriority>[] = PRIORITY_ORDER.map((p) => {
+    const Icon = PRIORITY_ICON[p];
+    return { value: p, label: t(`loop.priority.${p}`), icon: <Icon size={14} style={{ color: PRIORITY_HEX[p] }} /> };
+  });
+  const projectOptions: LoopPropertyPillOption<string>[] = [
+    { value: "", label: t("loop.field.noProject") },
+    ...projects.map((p) => ({ value: p.id, label: p.title })),
+  ];
+
+  const wsName = currentWorkspaceName();
+
   return (
     <Modal
-      className="loop-modal"
-      title={parentIssueId ? t("loop.subIssue.create") : t("loop.action.newIssue")}
+      className="loop-modal loop-ci-modal"
       visible={visible}
-      onOk={submit}
       onCancel={onClose}
-      okText={t("loop.action.create")}
-      cancelText={t("loop.action.cancel")}
-      okButtonProps={{ loading: submitting, disabled: !title.trim() }}
-      width={560}
+      header={null}
+      footer={null}
+      closable={false}
+      width={600}
     >
-      <div className="loop-createissue">
+      <div className="loop-ci">
+        <div className="loop-ci__head">
+          <div className="loop-ci__crumb">
+            {wsName && (
+              <>
+                <span className="loop-ci__crumb-ws">{wsName}</span>
+                <ChevronRight size={13} className="loop-ci__crumb-sep" />
+              </>
+            )}
+            <span className="loop-ci__crumb-cur">{parentIssueId ? t("loop.subIssue.create") : t("loop.action.newIssue")}</span>
+          </div>
+          <button type="button" className="loop-ci__close" onClick={onClose} aria-label={t("loop.action.cancel")}>
+            <X size={16} />
+          </button>
+        </div>
+
         <input
           autoFocus
-          className="loop-field loop-field--lg"
+          className="loop-ci__title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={t("loop.field.titlePlaceholder")}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
         />
-        <textarea
-          className="loop-field-textarea"
+        <AutoGrowTextarea
+          className="loop-ci__desc"
           value={desc}
-          onChange={(e) => setDesc(e.target.value)}
+          onChange={setDesc}
           placeholder={t("loop.field.descriptionPlaceholder")}
-          style={{ marginTop: 12 }}
         />
 
-        <div className="loop-createissue__row">
-          <div className="loop-createissue__field">
-            <label>{t("loop.field.status")}</label>
-            <Select value={status} onChange={(v) => setStatus(v as IssueStatus)} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} size="small">
-              {ISSUE_STATUS_ORDER.map((s) => (
-                <Select.Option key={s} value={s}>
-                  <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
-                </Select.Option>
-              ))}
-            </Select>
+        {isBot && assigneeName && (
+          <div className="loop-ci__hint">
+            <Avatar size="extra-extra-small" color="light-blue">{assigneeName.slice(0, 1)}</Avatar>
+            <span>{t("loop.createIssue.runHint", { values: { name: assigneeName } })}</span>
           </div>
-          <div className="loop-createissue__field">
-            <label>{t("loop.field.priority")}</label>
-            <Select value={priority} onChange={(v) => setPriority(v as IssuePriority)} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} size="small">
-              {PRIORITY_ORDER.map((p) => (
-                <Select.Option key={p} value={p}>
-                  <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
-                </Select.Option>
-              ))}
-            </Select>
-          </div>
+        )}
+
+        <div className="loop-ci__toolbar">
+          <LoopPropertyPill value={status} options={statusOptions} onChange={setStatus} ariaLabel={t("loop.field.status")} />
+          <LoopPropertyPill value={priority} options={priorityOptions} onChange={setPriority} ariaLabel={t("loop.field.priority")} />
+          <AssigneePicker
+            value={assigneeId}
+            valueName={assigneeName}
+            onChange={(id, type, name) => { setAssigneeId(id); setAssigneeType(type); setAssigneeName(name); }}
+          />
+          <LoopPropertyPill value={projectId} options={projectOptions} onChange={setProjectId} ariaLabel={t("loop.field.project")} />
         </div>
 
-        <div className="loop-createissue__row">
-          <div className="loop-createissue__field">
-            <label>{t("loop.field.assignee")}</label>
-            <div className="loop-createissue__assignee">
-              <AssigneePicker value={assigneeId} valueName={null} onChange={(id, type) => { setAssigneeId(id); setAssigneeType(type); }} />
-            </div>
+        {pendingFiles.length > 0 && (
+          <div className="loop-ci__atts">
+            {pendingFiles.map((f, i) => (
+              <span key={i} className="loop-ci__att">
+                <Paperclip size={12} />
+                <span>{f.name}</span>
+                <button type="button" aria-label={t("loop.action.delete")} onClick={() => removeFile(i)}>×</button>
+              </span>
+            ))}
           </div>
-          <div className="loop-createissue__field">
-            <label>{t("loop.field.project")}</label>
-            <Select
-              value={projectId ?? undefined}
-              onChange={(v) => setProjectId((v as string) ?? null)}
-              dropdownClassName="loop-fields__dropdown"
-              style={{ width: "100%" }}
-              size="small"
-              showClear
-              placeholder={t("loop.field.noProject")}
-            >
-              {projects.map((p) => (
-                <Select.Option key={p.id} value={p.id}>{p.icon} {p.title}</Select.Option>
-              ))}
-            </Select>
+        )}
+
+        <div className="loop-ci__footer">
+          <label className="loop-ci__attach" aria-label={t("loop.attach.add")}>
+            <Paperclip size={16} />
+            <input type="file" multiple hidden disabled={submitting} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+          </label>
+          <div className="loop-ci__footer-right">
+            <LoopButton variant="ghost" onClick={onClose}>{t("loop.action.cancel")}</LoopButton>
+            <LoopButton loading={submitting} disabled={!title.trim()} onClick={submit}>{t("loop.action.create")}</LoopButton>
           </div>
         </div>
       </div>

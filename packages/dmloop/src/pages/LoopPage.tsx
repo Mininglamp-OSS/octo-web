@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Typography, Dropdown, Avatar, Modal, Toast, Button } from "@douyinfe/semi-ui";
+import React, { useEffect, useState } from "react";
+import { Typography, Dropdown, Avatar, Modal, Toast } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import {
   ClipboardList, Briefcase, Bot, Users, Settings,
   ChevronDown, Check, Plus, SquarePen, FolderPlus,
@@ -10,10 +11,10 @@ import type { Workspace } from "../api/types";
 import { listWorkspaces, createWorkspace } from "../api/workspaceApi";
 import { setWorkspaceContext, currentWorkspaceId } from "../api/http";
 import { invalidateDirectory } from "../api/directory";
-import { invalidateRuntimeMap } from "../api/agentApi";
+import { invalidateRuntimeMap, invalidateAgentStatus } from "../api/agentApi";
 import { slugSuffix, withRandomSuffix } from "../ui/slug";
 import IssuePage from "./IssuePage";
-import NewLoopPage from "./NewLoopPage";
+import CreateIssueModal from "../ui/CreateIssueModal";
 import ProjectPage from "./ProjectPage";
 import AgentPage from "./AgentPage";
 import SquadPage from "./SquadPage";
@@ -24,10 +25,14 @@ import "../ui/loopControls.css";
 
 const { Title, Text } = Typography;
 
-type TabKey = "myloop" | "issue" | "project" | "automation" | "agent" | "squad" | "settings";
+// 切换工作区时统一重置所有工作区级缓存(目录/运行时/agent 状态),避免残留上个工作区数据。
+function resetWorkspaceCaches() {
+  invalidateDirectory();
+  invalidateRuntimeMap();
+  invalidateAgentStatus();
+}
 
-// 派单后看板补刷的退避时刻(ms):agent 异步建单的落库延迟不可观测,手调的退避窗口(非可推导状态)。
-const SETTLE_DELAYS_MS = [2000, 5000, 9000, 14000];
+type TabKey = "myloop" | "issue" | "project" | "automation" | "agent" | "squad" | "settings";
 
 
 // 顶部独立入口：我的回路（复用 Issue 视图的「与我相关」分组）。
@@ -54,6 +59,7 @@ export default function LoopPage() {
   const [wsSlugTouched, setWsSlugTouched] = useState(false);
   const [wsSlugSuffix, setWsSlugSuffix] = useState("");
   const [wsBusy, setWsBusy] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const findWs = (list: Workspace[], id: string) => list.find((w) => w.id === id) ?? null;
 
@@ -78,12 +84,8 @@ export default function LoopPage() {
     WKApp.routeRight.replaceToRoot(renderTab(key, findWs(workspaces, wsId)));
   };
 
-  // 新建回路 → 唤起 composer 独立页；成功后落到回路看板（新回路即在其中）。
-  const openNewLoop = () => {
-    WKApp.routeRight.push(
-      <NewLoopPage onCreated={() => { openTab("issue"); }} />,
-    );
-  };
+  // 新建回路 → 唤起统一建单弹窗（对齐 multica，不再拉起独立 AI 页）。成功后落回路看板并刷新。
+  const openNewLoop = () => setCreateOpen(true);
 
   // 空态引导：无 workspace 时右栏提示创建
   const showEmptyGuide = () => {
@@ -98,10 +100,9 @@ export default function LoopPage() {
 
   const applyWorkspace = (ws: Workspace | null, list: Workspace[]) => {
     if (ws) {
-      setWorkspaceContext(ws.slug, ws.id);
+      setWorkspaceContext(ws.slug, ws.id, ws.name);
       setWsId(ws.id);
-      invalidateDirectory();
-      invalidateRuntimeMap();
+      resetWorkspaceCaches();
       WKApp.routeRight.replaceToRoot(renderTab(tab, ws));
     } else {
       setWorkspaceContext("", "");
@@ -141,33 +142,18 @@ export default function LoopPage() {
       if (!ws) { showEmptyGuide(); return; }
       setTab("issue");
       WKApp.routeRight.replaceToRoot(renderTab("issue", ws));
+      // 已停在 issue tab 时 key(issue:wsId) 不变不会重挂 → 补发刷新事件，让当前 IssuePage 重新拉数(data→view)。
+      setTimeout(() => WKApp.mittBus.emit("wk:loop-issues-refresh"), 0);
     };
     WKApp.mittBus.on("wk:nav-menu-activated", onNavMenuActivated);
     return () => WKApp.mittBus.off("wk:nav-menu-activated", onNavMenuActivated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaces, wsId, loaded]);
 
-  // 派单后看板补刷:quick-create 异步(agent 稍后建 issue,dmloop 无 WS,见记忆 dmloop-no-realtime-defer-ws)。
-  // NewLoopPage 派单成功发 `wk:loop-issues-dispatched`;由常驻(不随 tab/建单入口重挂)的 LoopPage 持有定时器,
-  // 有界补发 `wk:loop-issues-refresh`,当前挂载的看板(IssuePage)订阅后重取——一套机制统一覆盖
-  // 「看板内新建」与「侧栏新建」两个入口(此前 settle 只挂在看板实例上,漏了侧栏 openTab 重挂的路径)。
-  const settleTimersRef = useRef<number[]>([]);
-  useEffect(() => {
-    const onDispatched = () => {
-      settleTimersRef.current.forEach(clearTimeout);
-      settleTimersRef.current = SETTLE_DELAYS_MS.map((d) =>
-        window.setTimeout(() => WKApp.mittBus.emit("wk:loop-issues-refresh"), d),
-      );
-    };
-    WKApp.mittBus.on("wk:loop-issues-dispatched", onDispatched);
-    return () => { WKApp.mittBus.off("wk:loop-issues-dispatched", onDispatched); settleTimersRef.current.forEach(clearTimeout); };
-  }, []);
-
   const switchWorkspace = (w: Workspace) => {
-    setWorkspaceContext(w.slug, w.id);
+    setWorkspaceContext(w.slug, w.id, w.name);
     setWsId(w.id);
-    invalidateDirectory();
-    invalidateRuntimeMap();
+    resetWorkspaceCaches();
     WKApp.routeRight.replaceToRoot(renderTab(tab, w));
   };
 
@@ -239,7 +225,7 @@ export default function LoopPage() {
 
       {!hasWs && loaded ? (
         <div className="loop-sidebar__new">
-          <Button theme="solid" block icon={<FolderPlus size={14} />} onClick={openCreateWs}>{t("loop.workspace.create")}</Button>
+          <LoopButton block icon={<FolderPlus size={14} />} onClick={openCreateWs}>{t("loop.workspace.create")}</LoopButton>
         </div>
       ) : (
         <>
@@ -291,6 +277,17 @@ export default function LoopPage() {
           </div>
         </div>
       </Modal>
+      <CreateIssueModal
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => {
+          setCreateOpen(false);
+          openTab("issue");
+          // 若已在 issue tab（同 key 不重挂），补发刷新使新回路即时出现。
+          setTimeout(() => WKApp.mittBus.emit("wk:loop-issues-refresh"), 0);
+          Toast.success(t("loop.toast.created"));
+        }}
+      />
     </div>
   );
 }

@@ -90,10 +90,27 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
             })
             const latency = Date.now() - start
             if (isImConnected(WKSDK.shared())) {
-                this.setState({ latency })
+                const nextState: Partial<ConnectionStatusState> = {
+                    status: ConnectStatus.Connected,
+                    latency,
+                }
+                if (!this.state.connectedSince) {
+                    this.connectedTime = Date.now()
+                    nextState.connectedSince = this.connectedTime
+                }
+                this.setState(nextState)
             }
         } catch {
-            // ignore
+            if (!isImConnected(WKSDK.shared())) {
+                this.connectedTime = 0
+                this.setState({
+                    status: ConnectStatus.Disconnect,
+                    latency: null,
+                    connectedSince: null,
+                })
+            } else {
+                this.setState({ latency: null })
+            }
         }
     }
 

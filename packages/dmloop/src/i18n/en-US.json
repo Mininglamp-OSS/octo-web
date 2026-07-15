@@ -103,18 +103,17 @@
     "runtimeCount": "{{count}} runtimes",
     "builtIn": "Built-in",
     "addComputerTitle": "Add computer",
-    "addComputerDesc": "Run this command on the computer you want to connect. After login, its runtimes will appear in the list.",
-    "copyCommand": "Copy command",
+    "addComputerDesc": "Hand the install instructions below to your Bot to auto-install, configure permissions and restart on the target machine. Once connected, its runtimes appear in the list.",
     "copy": "Copy",
     "copied": "Copied",
-    "copySuccess": "Command copied",
+    "copySuccess": "Install instructions copied",
     "copyFailed": "Copy failed. Please copy manually.",
-    "addComputerBrowser": "1. Browser authorization (this machine has a browser):",
-    "addComputerHeadless": "2. Headless (no browser / remote / CI):",
-    "headlessTokenPlaceholder": "<click Copy to generate>",
-    "headlessNoBackend": "The administrator has not configured a public backend URL; headless command unavailable",
-    "headlessFailed": "Failed to generate headless command, please retry",
-    "headlessCopyManual": "Command generated below, but auto-copy failed — please copy it manually"
+    "copyInstall": "Copy install instructions",
+    "installHint": "Copy these instructions to your Bot to run (contains a one-time credential — do not share):",
+    "installTokenPlaceholder": "<generated when you click Copy>",
+    "installPrompt": "Please install and configure the octo-daemon runtime on this machine. Run these steps in order:\n\n1. Install:\n{{install}}\n\n2. Configure permissions (login):\n{{auth}}\n\n3. Start / restart to apply:\n{{start}}\n\n4. Refer to octo-daemon --help to install the built-in skills.\n\nWhen done, confirm the daemon shows as online in the runtime list.",
+    "headlessNoBackend": "The administrator has not configured a public backend URL; install instructions unavailable",
+    "headlessFailed": "Failed to generate install instructions, please retry"
   },
   "view": {
     "board": "Board",
@@ -146,8 +145,10 @@
     "assignee": "Assignee",
     "creator": "Creator",
     "project": "Project",
+    "label": "Label",
     "dateRange": "Date range",
-    "noProject": "Incl. no project"
+    "noProject": "Incl. no project",
+    "noAssignee": "Incl. no assignee"
   },
   "dateField": {
     "created_at": "Created",
@@ -248,7 +249,9 @@
     "dueDate": "Due date",
     "parent": "Parent issue",
     "noParent": "No parent",
-    "stage": "Stage"
+    "stage": "Stage",
+    "progress": "Progress",
+    "createdAt": "Created"
   },
   "status": {
     "backlog": "Backlog",
@@ -327,7 +330,11 @@
   "attach": {
     "title": "Attachments",
     "add": "Add attachment",
+    "download": "Download {{name}}",
     "empty": "No attachments"
+  },
+  "createIssue": {
+    "runHint": "{{name}} will start working right after creation."
   },
   "toast": {
     "created": "Created",
@@ -460,7 +467,7 @@
   },
   "mention": {
     "groupUsers": "Users",
-    "groupIssues": "Issues",
+    "groupIssues": "Loops",
     "allMembers": "All members"
   },
   "agent": {
@@ -670,7 +677,6 @@
     "dispatch": "Dispatch",
     "dispatched": "Dispatched",
     "agentUnavailable": "That AI teammate is offline right now, so it can't be dispatched — wait for it to come online, or pick one that's online.",
-    "daemonUnsupported": "That AI teammate's runtime is too old to dispatch safely — please upgrade its runtime and try again.",
     "attachFailedAbort": "{{count}} attachment(s) failed to upload, so dispatch was cancelled — attachments are the AI's context; please retry.",
     "manualSwitch": "Create manually · assign to a person",
     "examplesTitle": "Start from an example",

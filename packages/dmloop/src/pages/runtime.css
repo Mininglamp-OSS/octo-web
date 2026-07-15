@@ -36,14 +36,6 @@
   line-height: 1.5;
 }
 
-.loop-runtime-hero__action.semi-button {
-  border-radius: var(--wk-r-sm);
-  background: var(--wk-text-primary);
-  color: var(--wk-text-inverse);
-  font-size: var(--wk-text-size-sm);
-  font-weight: 600;
-}
-
 .loop-runtime-list {
   display: flex;
   flex-direction: column;
@@ -251,32 +243,27 @@
 .loop-runtime-add__command {
   margin: 0;
   padding: var(--wk-sp-4);
+  max-height: 260px;
   overflow: auto;
   border: 1px solid var(--semi-color-border);
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-elevated);
   color: var(--wk-text-primary);
   font: var(--wk-text-code);
-  white-space: pre;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
+/* 命令块与「复制安装指令」按钮竖排：按钮单独一行、右上角右对齐，不遮挡多行提示词内容。 */
 .loop-runtime-add__row {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
 }
 
-/* 复制按钮浮于命令框内右侧、纵向居中，框预留右内边距避免文字被遮挡；
-   长命令横向滚动时按钮相对框固定，不随内容滚走。 */
-.loop-runtime-add__row .loop-runtime-add__command {
-  padding-right: 88px;
-}
-
-.loop-runtime-add__copy {
-  position: absolute;
-  top: 50%;
-  right: var(--wk-sp-3);
-  transform: translateY(-50%);
-  min-width: 64px;
-  justify-content: center;
+.loop-runtime-add__bar {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .loop-runtime-add__hint {

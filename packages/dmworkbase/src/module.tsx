@@ -1144,6 +1144,7 @@ export default class BaseModule implements IModule {
           new Row({
             cell: ListItem,
             properties: {
+              key: "userinfo.remark",
               title: t("base.module.userInfo.remark"),
               onClick: () => {
                 this.inputEditPush(

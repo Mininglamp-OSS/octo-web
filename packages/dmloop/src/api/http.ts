@@ -15,16 +15,19 @@ const client = axios.create({ baseURL: LOOP_API_BASE, withCredentials: true });
 // 持久化到 sessionStorage：整页刷新后内存变量会归零、LoopPage 恢复时恒回落 list[0]，
 // 故刷新前 seed 回上次选中的 workspace。仅当前标签页（符合 issue 预期）。
 const WS_CTX_KEY = "loop.workspace.ctx";
-function readWorkspaceCtx(): { slug: string; id: string } {
+function readWorkspaceCtx(): { slug: string; id: string; name: string } {
   try {
     const p = JSON.parse(sessionStorage.getItem(WS_CTX_KEY) ?? "null");
-    if (p && typeof p.slug === "string" && typeof p.id === "string") return p;
+    if (p && typeof p.slug === "string" && typeof p.id === "string") {
+      return { slug: p.slug, id: p.id, name: typeof p.name === "string" ? p.name : "" };
+    }
   } catch { /* ignore */ }
-  return { slug: "", id: "" };
+  return { slug: "", id: "", name: "" };
 }
 const _initCtx = readWorkspaceCtx();
 let _workspaceSlug = _initCtx.slug;
 let _workspaceId = _initCtx.id;
+let _workspaceName = _initCtx.name;
 
 export function currentWorkspaceSlug(): string {
   return _workspaceSlug;
@@ -32,11 +35,16 @@ export function currentWorkspaceSlug(): string {
 export function currentWorkspaceId(): string {
   return _workspaceId;
 }
-export function setWorkspaceContext(slug: string, id: string): void {
+export function currentWorkspaceName(): string {
+  return _workspaceName;
+}
+export function setWorkspaceContext(slug: string, id: string, name?: string): void {
   _workspaceSlug = slug || "";
   _workspaceId = id || "";
+  // name 可选：清空上下文(id 为空)时一并清；否则给了就更新、没给保留上次(避免误清面包屑名)。
+  _workspaceName = _workspaceId ? (name ?? _workspaceName) : "";
   try {
-    if (_workspaceId) sessionStorage.setItem(WS_CTX_KEY, JSON.stringify({ slug: _workspaceSlug, id: _workspaceId }));
+    if (_workspaceId) sessionStorage.setItem(WS_CTX_KEY, JSON.stringify({ slug: _workspaceSlug, id: _workspaceId, name: _workspaceName }));
     else sessionStorage.removeItem(WS_CTX_KEY);
   } catch { /* ignore */ }
 }
@@ -58,7 +66,7 @@ client.interceptors.request.use((config) => {
 /* ---------- 结构化错误（供页面展示异常态） ---------- */
 export class LoopApiError extends Error {
   status?: number;
-  code?: string; // 后端结构化错误码(如 quick-create 的 agent_unavailable / daemon_version_unsupported)
+  code?: string; // 后端结构化错误码(如 quick-create 的 agent_unavailable)
   constructor(message: string, status?: number, code?: string) {
     super(message);
     this.name = "LoopApiError";
@@ -98,6 +106,23 @@ export async function httpGet<T>(
   try {
     const resp = await client.get<T>(path, { params: clean(params) });
     return resp.data;
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+// Fetch a binary resource (e.g. an attachment) through the SAME authenticated
+// client as every other loop request. The attachment download endpoint is
+// auth-only and is meant to be loaded as a native <img>/<video> src — but a
+// native element request cannot carry the `token` / `X-Space-Id` headers this
+// client injects, and under octo-web the document origin proxies `/api/*` to a
+// different backend than the loop API, so a raw `download_url` src 404s. Going
+// through the client (which rewrites to the loop backend and injects auth) and
+// handing the caller a Blob to wrap in an object URL fixes both.
+export async function httpGetBlob(path: string): Promise<Blob> {
+  try {
+    const resp = await client.get(path, { responseType: "blob" });
+    return resp.data as Blob;
   } catch (err) {
     throw toApiError(err);
   }

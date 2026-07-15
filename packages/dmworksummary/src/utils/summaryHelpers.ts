@@ -297,13 +297,16 @@ export function scheduleItemToConfig(item: {
     day_of_week?: number;
     day_of_month?: number;
     run_time?: string;
+    generation_instruction?: string;
 }): ScheduleConfig {
+    const generationInstruction = item.generation_instruction || "";
     if (item.interval_months && item.interval_months > 0) {
         return {
             unit: "month",
             every: item.interval_months,
             time: item.run_time || "09:00",
             dayOfMonth: item.day_of_month || 0,
+            generationInstruction,
         };
     }
     if (item.interval_days && item.interval_days > 0) {
@@ -313,17 +316,18 @@ export function scheduleItemToConfig(item: {
                 every: item.interval_days / DAYS_PER_WEEK,
                 time: item.run_time || "09:00",
                 dayOfWeek: item.day_of_week || 0,
+                generationInstruction,
             };
         }
-        return { unit: "day", every: item.interval_days, time: item.run_time || "09:00" };
+        return { unit: "day", every: item.interval_days, time: item.run_time || "09:00", generationInstruction };
     }
     // 遗留 cron：尽量从 cron 提取时刻，默认每 1 天。
     // 非阻塞1：打上 legacyCron 标记，供弹窗提示「保存将转换为间隔模式」，
     // 避免用户未主动改周期却被默默转成「每 1 天」。
     if (item.cron_expr) {
-        return { unit: "day", every: 1, time: cronToTime(item.cron_expr), legacyCron: item.cron_expr };
+        return { unit: "day", every: 1, time: cronToTime(item.cron_expr), legacyCron: item.cron_expr, generationInstruction };
     }
-    return { unit: "day", every: 1, time: "09:00" };
+    return { unit: "day", every: 1, time: "09:00", generationInstruction };
 }
 
 /** 从标准 5 段 cron 提取 HH:MM，解析失败返回 09:00 */

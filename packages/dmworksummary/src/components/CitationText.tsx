@@ -36,6 +36,8 @@ interface CitationTextProps {
      * 不传此开关，引用照常可点。
      */
     hidePlainCitations?: boolean;
+    /** 历史版本详情只展示当时的 [Pn] 姓名，不用当前成员列表展开个人报告。 */
+    disableTeamMemberPreview?: boolean;
 }
 
 const citationSchema = {
@@ -190,7 +192,12 @@ function remarkTeamCitation() {
     };
 }
 
-function markdownComponents(citations: CitationItem[], teamCitations: TeamCitationItem[], members: MemberStatus[]): any {
+function markdownComponents(
+    citations: CitationItem[],
+    teamCitations: TeamCitationItem[],
+    members: MemberStatus[],
+    disableTeamMemberPreview: boolean,
+): any {
     return {
         citation: ({ node, ...props }: any) => {
             const idx = node?.properties?.index ?? props?.index;
@@ -209,7 +216,15 @@ function markdownComponents(citations: CitationItem[], teamCitations: TeamCitati
             const idx = node?.properties?.index ?? props?.index;
             const badgeKey = node?.properties?.badgekey ?? props?.badgekey ?? `tc-${idx}-fallback`;
             if (idx === undefined) return null;
-            return <TeamCitationBadge index={idx} teamCitations={teamCitations} badgeKey={badgeKey} members={members} />;
+            return (
+                <TeamCitationBadge
+                    index={idx}
+                    teamCitations={teamCitations}
+                    badgeKey={badgeKey}
+                    members={members}
+                    disableMemberPreview={disableTeamMemberPreview}
+                />
+            );
         },
         a: ({ href, children, ...props }: any) => (
             <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
@@ -219,7 +234,14 @@ function markdownComponents(citations: CitationItem[], teamCitations: TeamCitati
     };
 }
 
-const CitationText: React.FC<CitationTextProps> = ({ content, citations, teamCitations = [], members = [], hidePlainCitations = false }) => {
+const CitationText: React.FC<CitationTextProps> = ({
+    content,
+    citations,
+    teamCitations = [],
+    members = [],
+    hidePlainCitations = false,
+    disableTeamMemberPreview = false,
+}) => {
     const { t } = useI18n();
     const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -249,7 +271,7 @@ const CitationText: React.FC<CitationTextProps> = ({ content, citations, teamCit
                 <ReactMarkdown
                     remarkPlugins={remarkPlugins}
                     rehypePlugins={[[rehypeSanitize, citationSchema]]}
-                    components={markdownComponents(citations, teamCitations, members)}
+                    components={markdownComponents(citations, teamCitations, members, disableTeamMemberPreview)}
                 >
                     {normalized}
                 </ReactMarkdown>

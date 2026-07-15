@@ -1,41 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Typography, Spin, Tag, Banner, Button, Toast } from "@douyinfe/semi-ui";
+import { Typography, Spin, Banner, Button, Toast } from "@douyinfe/semi-ui";
 import { Box, Check, Circle, Code2, Copy, Cpu, Monitor, Plus, Terminal } from "lucide-react";
 import { copyToClipboard, useI18n, WKModal } from "@octo/base";
 import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
-import { issueHeadlessCliToken, getDaemonServerUrl } from "../api/authApi";
-import { headlessCommand } from "./headlessCommand";
+import LoopTag from "../ui/LoopTag";
+import LoopButton from "../ui/LoopButton";
+import { issueHeadlessCliToken } from "../api/authApi";
+import { INSTALL_SCRIPT_CMD, authCommand, START_CMD } from "./headlessCommand";
 import { deviceVersion, runtimeVersion } from "./runtimeVersion";
 import "./runtime.css";
 
 const { Title } = Typography;
-
-function envValue(key: string): string {
-  return (import.meta as { env?: Record<string, string | undefined> }).env?.[key]?.trim() ?? "";
-}
-
-function originOf(value: string): string {
-  if (!value) return "";
-  try {
-    return new URL(value).origin;
-  } catch {
-    return "";
-  }
-}
-
-function currentOrigin(): string {
-  if (typeof window !== "undefined" && window.location.origin) {
-    return window.location.origin;
-  }
-  return originOf(envValue("VITE_APP_URL")) || originOf(envValue("VITE_API_URL"));
-}
-
-// 「添加计算机」引导命令：octo-daemon 以当前 web 站点 origin 作为 --server-url
-// （daemon 会据此推导 fleet 地址）。
-function addComputerCommand(): string {
-  return `octo-daemon --server-url ${currentOrigin()}`;
-}
 
 interface Device {
   key: string;
@@ -102,30 +78,18 @@ export default function RuntimePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [promptText, setPromptText] = useState("");
+  const [copyLoading, setCopyLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [daemonServerUrl, setDaemonServerUrl] = useState("");
-  const [headlessCommandText, setHeadlessCommandText] = useState("");
-  const [headlessLoading, setHeadlessLoading] = useState(false);
-  const [headlessCopied, setHeadlessCopied] = useState(false);
   // 同步重入守卫：React state 是异步提交的，挡不住同一 tick 内的连点；
   // 用 ref 在签发前就拦住并发点击，保证一次会话只签发一个 PAT。
   const mintingRef = useRef(false);
-
-  useEffect(() => {
-    getDaemonServerUrl().then(setDaemonServerUrl).catch(() => setDaemonServerUrl(""));
-  }, []);
 
   useEffect(() => {
     if (!copied) return undefined;
     const timer = window.setTimeout(() => setCopied(false), 1600);
     return () => window.clearTimeout(timer);
   }, [copied]);
-
-  useEffect(() => {
-    if (!headlessCopied) return undefined;
-    const timer = window.setTimeout(() => setHeadlessCopied(false), 1600);
-    return () => window.clearTimeout(timer);
-  }, [headlessCopied]);
 
   useEffect(() => {
     setLoading(true);
@@ -152,56 +116,49 @@ export default function RuntimePage() {
     return Array.from(map.values());
   }, [runtimes]);
 
-  const copyCommand = async () => {
-    const ok = await copyToClipboard(addComputerCommand());
-    if (!ok) {
-      Toast.error(t("loop.runtime.copyFailed"));
-      return;
-    }
-    setCopied(true);
-    Toast.success(t("loop.runtime.copySuccess"));
-  };
+  // 统一安装指令(给 AI 队友的提示词):安装 → 配置权限(登录认证) → 启动/重启。
+  // --server-url 用当前访问的 host(浏览器地址),让 daemon 直连用户正在访问的站点。
+  // token 占位符仅用于弹窗预览;真实 PAT 在点击「复制安装指令」时才签发。
+  const serverUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const buildPrompt = (token: string) =>
+    t("loop.runtime.installPrompt", {
+      values: { install: INSTALL_SCRIPT_CMD, auth: authCommand(token, serverUrl), start: START_CMD },
+    });
 
-  // 命令2 的复制：命令框里 token 段先显示占位符，只有点击复制的这一刻
-  // 才向后端签发一次性 PAT 并把真实命令写入框；已签发过则直接复制既有命令，
-  // 避免反复点击在账号里累积凭证。
-  const onCopyHeadless = async () => {
-    if (!daemonServerUrl) {
-      Toast.warning(t("loop.runtime.headlessNoBackend"));
-      return;
-    }
+  // 「复制安装指令」:提示词里 token 段先显示占位符,只有点击复制的这一刻才向后端签发
+  // 一次性 PAT 并把真实提示词写入框;已签发过则直接复制既有提示词,避免反复点击累积凭证。
+  const onCopyInstall = async () => {
     if (mintingRef.current) return;
     mintingRef.current = true;
-    setHeadlessLoading(true);
+    setCopyLoading(true);
     try {
-      let cmd = headlessCommandText;
-      if (!cmd) {
+      let text = promptText;
+      if (!text) {
         const { token } = await issueHeadlessCliToken();
-        cmd = headlessCommand(token, daemonServerUrl);
-        setHeadlessCommandText(cmd);
+        text = buildPrompt(token);
+        setPromptText(text);
       }
-      const ok = await copyToClipboard(cmd);
+      const ok = await copyToClipboard(text);
       if (ok) {
-        setHeadlessCopied(true);
+        setCopied(true);
         Toast.success(t("loop.runtime.copySuccess"));
       } else {
-        // 真实命令已写入下方命令框，复制失败可手动复制。
-        Toast.warning(t("loop.runtime.headlessCopyManual"));
+        // 真实提示词已写入下方框,复制失败可手动复制。
+        Toast.warning(t("loop.runtime.copyFailed"));
       }
     } catch {
       Toast.error(t("loop.runtime.headlessFailed"));
     } finally {
       mintingRef.current = false;
-      setHeadlessLoading(false);
+      setCopyLoading(false);
     }
   };
 
-  // 关闭「添加电脑」弹窗时清除已签发的真实命令/凭证，避免重开弹窗再次把
-  // 上一次的 PAT 渲染出来。
+  // 关闭「添加电脑」弹窗时清除已签发的真实提示词/凭证,避免重开弹窗再次把上一次的 PAT 渲染出来。
   const closeAddDialog = () => {
     setAddOpen(false);
-    setHeadlessCommandText("");
-    setHeadlessCopied(false);
+    setPromptText("");
+    setCopied(false);
   };
 
   return (
@@ -214,9 +171,9 @@ export default function RuntimePage() {
           </div>
           <div className="loop-runtime-hero__subtitle">{t("loop.runtime.subtitle")}</div>
         </div>
-        <Button className="loop-runtime-hero__action" theme="solid" type="tertiary" icon={<Plus size={13} />} onClick={() => setAddOpen(true)}>
+        <LoopButton icon={<Plus size={13} />} onClick={() => setAddOpen(true)}>
           {t("loop.runtime.add")}
-        </Button>
+        </LoopButton>
       </div>
       <div className="loop-page__body" style={{ padding: 0 }}>
         {error ? (
@@ -242,7 +199,7 @@ export default function RuntimePage() {
                     </span>
                   </div>
                   <div className="loop-runtime-machine__meta">
-                    {version !== "-" && <Tag size="small" color="grey">{version}</Tag>}
+                    {version !== "-" && <LoopTag tone="grey">{version}</LoopTag>}
                     <span>{shortDaemon(device.runtimes[0]?.daemon_id)}</span>
                     <span>{t("loop.runtime.allSpace")}</span>
                     <strong>{t("loop.runtime.runtimeCount", { values: { count: device.runtimes.length } })}</strong>
@@ -256,7 +213,7 @@ export default function RuntimePage() {
                           {providerIcon(runtime.provider)}
                         </span>
                         <strong>{providerName(runtime.provider)}</strong>
-                        <Tag size="small" color="grey">{t("loop.runtime.builtIn")}</Tag>
+                        <LoopTag tone="grey">{t("loop.runtime.builtIn")}</LoopTag>
                       </div>
                       <div className={`loop-runtime-status is-${runtime.status}`} role="cell">
                         <Circle size={6} fill="currentColor" />
@@ -287,40 +244,22 @@ export default function RuntimePage() {
         <div className="loop-runtime-add">
           <p>{t("loop.runtime.addComputerDesc")}</p>
 
-          <p>{t("loop.runtime.addComputerBrowser")}</p>
+          <p>{t("loop.runtime.installHint")}</p>
           <div className="loop-runtime-add__row">
-            <pre className="loop-runtime-add__command"><code>{addComputerCommand()}</code></pre>
-            <Button
-              className="loop-runtime-add__copy"
-              size="small"
-              theme="solid"
-              type="tertiary"
-              icon={copied ? <Check size={14} /> : <Copy size={14} />}
-              onClick={copyCommand}
-            >
-              {copied ? t("loop.runtime.copied") : t("loop.runtime.copy")}
-            </Button>
-          </div>
-
-          <p>{t("loop.runtime.addComputerHeadless")}</p>
-          {daemonServerUrl ? (
-            <div className="loop-runtime-add__row">
-              <pre className="loop-runtime-add__command"><code>{headlessCommandText || headlessCommand(t("loop.runtime.headlessTokenPlaceholder"), daemonServerUrl)}</code></pre>
-              <Button
+            <div className="loop-runtime-add__bar">
+              <LoopButton
                 className="loop-runtime-add__copy"
-                size="small"
-                theme="solid"
-                type="tertiary"
-                loading={headlessLoading}
-                icon={headlessCopied ? <Check size={14} /> : <Copy size={14} />}
-                onClick={onCopyHeadless}
+                variant="secondary"
+                size="sm"
+                loading={copyLoading}
+                icon={copied ? <Check size={14} /> : <Copy size={14} />}
+                onClick={onCopyInstall}
               >
-                {headlessCopied ? t("loop.runtime.copied") : t("loop.runtime.copy")}
-              </Button>
+                {copied ? t("loop.runtime.copied") : t("loop.runtime.copyInstall")}
+              </LoopButton>
             </div>
-          ) : (
-            <p className="loop-runtime-add__hint">{t("loop.runtime.headlessNoBackend")}</p>
-          )}
+            <pre className="loop-runtime-add__command"><code>{promptText || buildPrompt(t("loop.runtime.installTokenPlaceholder"))}</code></pre>
+          </div>
         </div>
       </WKModal>
     </div>

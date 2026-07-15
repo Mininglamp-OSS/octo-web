@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Typography, Button, Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import { ChevronRight, Archive, Save, Eraser, Plus, Trash2, FileText, Pencil, Eye } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Agent, AgentTask, AgentContribution, Issue } from "../api/types";
@@ -353,7 +354,7 @@ export default function AgentDetailPage({
                             <Eye size={13} />{t("loop.skill.detail.preview")}
                           </button>
                         </div>
-                        <Button theme="solid" size="small" icon={<Save size={14} />} disabled={!instrDirty} onClick={saveInstr}>{t("loop.action.save")}</Button>
+                        <LoopButton size="sm" icon={<Save size={14} />} disabled={!instrDirty} onClick={saveInstr}>{t("loop.action.save")}</LoopButton>
                       </div>
                     </div>
                     <div className="loop-adp__editor">
@@ -380,7 +381,7 @@ export default function AgentDetailPage({
                         {!agent.mcp_config_redacted && mcpText.trim() && (
                           <Button theme="borderless" size="small" icon={<Eraser size={14} />} onClick={() => { setMcpText(""); setMcpDirty(true); setMcpError(null); }}>{t("loop.agent.clear")}</Button>
                         )}
-                        <Button theme="solid" size="small" icon={<Save size={14} />} disabled={!mcpDirty || !!agent.mcp_config_redacted} onClick={saveMcp}>{t("loop.action.save")}</Button>
+                        <LoopButton size="sm" icon={<Save size={14} />} disabled={!mcpDirty || !!agent.mcp_config_redacted} onClick={saveMcp}>{t("loop.action.save")}</LoopButton>
                       </div>
                     </div>
                     {agent.mcp_config_redacted ? (
@@ -405,7 +406,7 @@ export default function AgentDetailPage({
                     <div className="loop-adp__panel-head">
                       <span className="loop-adp__panel-title">{t("loop.agent.skills")}</span>
                       {skills.length > 0 && (
-                        <Button theme="solid" size="small" icon={<Plus size={14} />} disabled={wsSkillCount === 0} onClick={() => setSkillDlgOpen(true)}>{t("loop.agent.addSkill")}</Button>
+                        <LoopButton size="sm" icon={<Plus size={14} />} disabled={wsSkillCount === 0} onClick={() => setSkillDlgOpen(true)}>{t("loop.agent.addSkill")}</LoopButton>
                       )}
                     </div>
                     <div className="loop-adp__panel-scroll">
@@ -414,7 +415,7 @@ export default function AgentDetailPage({
                           <FileText size={32} className="loop-adp__skills-empty-ico" />
                           <div className="loop-adp__skills-empty-title">{t("loop.agent.skillsEmptyTitle")}</div>
                           <div className="loop-adp__skills-empty-hint">{t("loop.agent.skillsEmptyHint")}</div>
-                          <Button theme="solid" size="small" icon={<Plus size={14} />} disabled={wsSkillCount === 0} onClick={() => setSkillDlgOpen(true)} style={{ marginTop: 12 }}>{t("loop.agent.addSkill")}</Button>
+                          <LoopButton size="sm" icon={<Plus size={14} />} disabled={wsSkillCount === 0} onClick={() => setSkillDlgOpen(true)} style={{ marginTop: 12 }}>{t("loop.agent.addSkill")}</LoopButton>
                         </div>
                       ) : (
                         <div className="loop-adp__skills-list">

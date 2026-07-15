@@ -436,6 +436,20 @@
 .loop-att span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .loop-att--img { padding: 0; border: none; background: none; }
 .loop-att--img img { max-height: 96px; max-width: 220px; border-radius: 8px; display: block; object-fit: cover; }
+/* Skeleton shown while an attachment's bytes are being fetched. */
+.loop-att--loading {
+  width: 120px;
+  height: 72px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(90deg, var(--semi-color-fill-0, #f5f6f8) 25%, var(--semi-color-fill-1, #eaebef) 37%, var(--semi-color-fill-0, #f5f6f8) 63%);
+  background-size: 400% 100%;
+  animation: loop-att-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes loop-att-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
 .loop-att--pending button {
   border: none; background: transparent; cursor: pointer; color: var(--semi-color-text-2, #8590a6);
   font-size: 14px; line-height: 1; padding: 0 0 0 2px;

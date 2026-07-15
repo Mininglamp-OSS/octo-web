@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { render, cleanup, screen, fireEvent } from '@testing-library/react'
+import { render, cleanup, screen, fireEvent, createEvent } from '@testing-library/react'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Table } from '@tiptap/extension-table'
@@ -8,14 +8,23 @@ import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { CellSelection } from '@tiptap/pm/tables'
 import { TextSelection } from '@tiptap/pm/state'
-import { shouldShowTableBubble, TableGridPicker, TableBubbleMenu, clampToolbarAnchorRect } from './TableControls.tsx'
+import {
+  TableGridPicker,
+  TableContextMenu,
+  moveSelectionIntoCell,
+  clampMenuPosition,
+} from './TableControls.tsx'
 
-// #595 — table add/delete row/column UI. The critical acceptance point is that the controls work on
-// tables that ALREADY EXIST in a document (parsed from stored HTML), not only freshly inserted
-// ones. These tests seed the editor from HTML so every assertion runs against a "historical" table.
+// XIN-1052 — table add/delete row/column UI moved from a floating bubble toolbar to a right-click
+// context menu. The critical acceptance points are that the menu opens only on a right-click INSIDE
+// a table cell, the native browser menu is suppressed there, the selection is first moved into the
+// right-clicked cell so the position-relative commands act on it, and the same commands work on
+// tables that ALREADY EXIST in a document (parsed from stored HTML), not only freshly inserted ones.
 
-function tableEditor(content: string) {
+function tableEditor(content: string, element?: HTMLElement, editable = true) {
   return new Editor({
+    element,
+    editable,
     extensions: [
       StarterKit.configure({ undoRedo: false }),
       Table.configure({ resizable: false }),
@@ -25,6 +34,25 @@ function tableEditor(content: string) {
     ],
     content,
   })
+}
+
+// A 2-row × 3-column table, used for the multi-column CellSelection regression so deleting the two
+// selected columns still leaves one column behind (a 2×2 table would collapse entirely).
+const MULTI_COL_DOC =
+  '<table><tbody>' +
+  '<tr><td>a</td><td>b</td><td>c</td></tr>' +
+  '<tr><td>d</td><td>e</td><td>f</td></tr>' +
+  '</tbody></table>'
+
+/** Positions (pointing AT the cell node, i.e. the value forEachCell / $pos.before report) of every
+ *  table cell in document order. */
+function cellPositions(e: Editor): number[] {
+  const positions: number[] = []
+  e.state.doc.descendants((node, p) => {
+    if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') positions.push(p)
+    return true
+  })
+  return positions
 }
 
 // A 2-row × 2-column table sitting between two paragraphs, as it would arrive from stored content.
@@ -63,43 +91,94 @@ function tableDims(e: Editor): { rows: number; cols: number } | null {
 
 afterEach(() => cleanup())
 
-describe('shouldShowTableBubble — visibility gate (covers historical tables)', () => {
-  it('is true when the caret sits inside a cell of a pre-existing table', () => {
+describe('moveSelectionIntoCell — gate + selection move for the right-clicked cell', () => {
+  it('moves the selection into a pre-existing table cell and reports the caret is in a table', () => {
     const e = tableEditor(HISTORICAL_DOC)
-    e.commands.setTextSelection(firstCellTextPos(e))
-    expect(e.isActive('table')).toBe(true)
-    expect(shouldShowTableBubble(e)).toBe(true)
-    e.destroy()
-  })
-
-  it('is false when the caret is outside any table', () => {
-    const e = tableEditor(HISTORICAL_DOC)
-    e.commands.setTextSelection(2) // inside the leading "before" paragraph
+    e.commands.setTextSelection(2) // start with the caret in the leading "before" paragraph
     expect(e.isActive('table')).toBe(false)
-    expect(shouldShowTableBubble(e)).toBe(false)
+
+    const inTable = moveSelectionIntoCell(e, firstCellTextPos(e))
+    expect(inTable).toBe(true)
+    expect(e.isActive('table')).toBe(true)
     e.destroy()
   })
 
-  it('is true for a whole-cell (CellSelection) selection', () => {
+  it('reports false (do not open a table menu) when the pointer is outside any table', () => {
     const e = tableEditor(HISTORICAL_DOC)
-    const cellPos = firstCellTextPos(e) - 2 // position just before the first cell node
-    const { tr } = e.state
-    const $cell = e.state.doc.resolve(cellPos)
-    tr.setSelection(new CellSelection($cell))
-    e.view.dispatch(tr)
-    expect(e.state.selection).toBeInstanceOf(CellSelection)
-    expect(shouldShowTableBubble(e)).toBe(true)
+    const paragraphPos = 2 // inside the leading "before" paragraph
+    expect(moveSelectionIntoCell(e, paragraphPos)).toBe(false)
+    expect(e.isActive('table')).toBe(false)
     e.destroy()
   })
 
-  it('is false while a plain text run inside a cell is selected (defers to the formatting bubble)', () => {
+  it('leaves an existing selection untouched when the pointer is outside any table', () => {
+    // Regression: a right-click on ordinary (non-table) text must be a complete no-op — it must
+    // NOT collapse the user's current selection, so the browser's native context menu / Copy keeps
+    // operating on the still-selected text. Previously the selection was moved before the
+    // isActive('table') gate, which collapsed any selection on every out-of-table right-click.
     const e = tableEditor(HISTORICAL_DOC)
-    const pos = firstCellTextPos(e)
-    const { tr } = e.state
-    tr.setSelection(TextSelection.create(tr.doc, pos, pos + 1)) // select the "a" character
-    e.view.dispatch(tr)
+    // Select a range inside the leading "before" paragraph (text occupies positions 1..7).
+    e.commands.setTextSelection({ from: 2, to: 5 })
     expect(e.state.selection.empty).toBe(false)
-    expect(shouldShowTableBubble(e)).toBe(false)
+
+    const paragraphPos = 3 // right-click lands inside that same paragraph, outside the table
+    expect(moveSelectionIntoCell(e, paragraphPos)).toBe(false)
+
+    // Selection is preserved exactly — not collapsed, not moved.
+    expect(e.state.selection.from).toBe(2)
+    expect(e.state.selection.to).toBe(5)
+    expect(e.state.selection.empty).toBe(false)
+    expect(e.isActive('table')).toBe(false)
+    e.destroy()
+  })
+
+  it('is safe against out-of-range positions', () => {
+    const e = tableEditor(HISTORICAL_DOC)
+    expect(() => moveSelectionIntoCell(e, 1e9)).not.toThrow()
+    expect(() => moveSelectionIntoCell(e, -5)).not.toThrow()
+    e.destroy()
+  })
+
+  it('keeps a multi-cell CellSelection when the right-click lands inside it, so delete-column removes every selected column', () => {
+    // Regression (P1): a user framed a multi-column CellSelection then right-clicked a cell already
+    // inside it. moveSelectionIntoCell used to collapse the selection to that single cell, so
+    // "delete column" only removed the clicked column instead of the whole multi-column selection.
+    const e = tableEditor(MULTI_COL_DOC)
+    const cells = cellPositions(e) // [a, b, c, d, e, f] as positions pointing at each cell
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 3 })
+
+    // Select columns 0 and 1 (cells a,b,d,e): anchor at cell a (0,0), head at cell e (1,1).
+    const sel = CellSelection.create(e.state.doc, cells[0], cells[4])
+    e.view.dispatch(e.state.tr.setSelection(sel))
+    expect(e.state.selection instanceof CellSelection).toBe(true)
+
+    // Right-click a text position inside cell "b" — which is inside the current selection.
+    const insidePos = cells[1] + 2 // step into the cell, then into its paragraph's text
+    expect(moveSelectionIntoCell(e, insidePos)).toBe(true)
+
+    // Selection is preserved (not collapsed to the single clicked cell)...
+    expect(e.state.selection instanceof CellSelection).toBe(true)
+    // ...so delete-column removes BOTH selected columns, leaving the third behind.
+    e.chain().focus().deleteColumn().run()
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 1 })
+    e.destroy()
+  })
+
+  it('moves the selection when the right-click lands on a cell outside the current CellSelection', () => {
+    // The complement of the case above: right-clicking a cell that is NOT part of the multi-cell
+    // selection collapses to that cell, matching the single-cell behaviour authors expect.
+    const e = tableEditor(MULTI_COL_DOC)
+    const cells = cellPositions(e)
+    // Select columns 0 and 1 (cells a,b,d,e).
+    e.view.dispatch(e.state.tr.setSelection(CellSelection.create(e.state.doc, cells[0], cells[4])))
+
+    // Right-click cell "c" (column 2), outside the selection.
+    const outsidePos = cells[2] + 2
+    expect(moveSelectionIntoCell(e, outsidePos)).toBe(true)
+    // Selection collapsed to the clicked cell, so delete-column removes only that one column.
+    expect(e.state.selection instanceof CellSelection).toBe(false)
+    e.chain().focus().deleteColumn().run()
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 2 })
     e.destroy()
   })
 })
@@ -135,101 +214,271 @@ describe('table commands operate on a pre-existing (historical) table', () => {
   })
 })
 
-describe('TableBubbleMenu — does not block the column-resize hot zone (#595 C1)', () => {
-  // The toolbar floats over the table while the caret is in a cell. Its floating wrapper must stay
-  // transparent to pointer events so the column-resize plugin (which listens for hover/mousedown on
-  // the editor DOM) still sees the column border; only the buttons may re-capture the pointer.
-  it('marks the floating wrapper pointer-events exempt while keeping the buttons interactive', () => {
-    // jsdom has no layout, so give Range the rect-query methods tiptap's positioning needs; the
-    // returned rect is all-zero, which is fine — we only care about the DOM the menu renders, not
-    // where it lands. Without this the BubbleMenu never attaches its floating wrapper.
-    const zeroRect = { top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0, x: 0, y: 0 }
-    type RangeRectFns = { getClientRects?: () => unknown; getBoundingClientRect?: () => unknown }
-    const rangeProto = Range.prototype as unknown as RangeRectFns
-    if (!rangeProto.getClientRects) rangeProto.getClientRects = () => [zeroRect]
-    if (!rangeProto.getBoundingClientRect) rangeProto.getBoundingClientRect = () => zeroRect
-
+describe('TableContextMenu — right-click inside a cell opens the menu (XIN-1052)', () => {
+  it('renders nothing until a right-click lands inside a table cell', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
-    const e = new Editor({
-      element: host,
-      extensions: [
-        StarterKit.configure({ undoRedo: false }),
-        Table.configure({ resizable: false }),
-        TableRow,
-        TableHeader,
-        TableCell,
-      ],
-      content: HISTORICAL_DOC,
-    })
-    // Caret inside a cell → the toolbar shows and attaches its floating wrapper to the DOM.
-    e.commands.setTextSelection(firstCellTextPos(e))
-    render(<TableBubbleMenu editor={e} />)
+    const e = tableEditor(HISTORICAL_DOC, host)
+    render(<TableContextMenu editor={e} />)
+    expect(document.querySelector('.octo-table-context-menu')).toBeNull()
+    e.destroy()
+    host.remove()
+  })
 
-    const portal = document.querySelector('.octo-table-bubble-portal')
-    expect(portal).toBeTruthy()
-    // Every action button lives under the exempt wrapper and opts back into pointer events.
-    const buttons = portal!.querySelectorAll('button.octo-tb-btn')
-    expect(buttons.length).toBeGreaterThan(0)
+  it('opens at the pointer, suppresses the native menu, and exposes every table command', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(HISTORICAL_DOC, host)
+    // jsdom has no layout, so posAtCoords can't map real client coords to a doc position. Point it
+    // at the first cell so the handler behaves as it would when the user right-clicks that cell.
+    e.view.posAtCoords = () => ({ pos: firstCellTextPos(e), inside: -1 })
+    render(<TableContextMenu editor={e} />)
+
+    const evt = createEvent.contextMenu(e.view.dom, { clientX: 120, clientY: 90 })
+    fireEvent(e.view.dom, evt)
+
+    // Native context menu is suppressed only when the click is inside a table.
+    expect(evt.defaultPrevented).toBe(true)
+    const menu = document.querySelector('.octo-table-context-menu') as HTMLElement | null
+    expect(menu).toBeTruthy()
+    // Selection was moved into the right-clicked cell so position-relative commands act on it.
+    expect(e.isActive('table')).toBe(true)
+    // All seven table commands are present (add row before/after, delete row, add column
+    // before/after, delete column, delete table).
+    const buttons = menu!.querySelectorAll('button.octo-tb-btn')
+    expect(buttons.length).toBe(7)
+    e.destroy()
+    host.remove()
+  })
+
+  it('leaves the native menu alone when the right-click is outside any table', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(HISTORICAL_DOC, host)
+    // Point posAtCoords at the trailing paragraph, i.e. not inside the table.
+    e.view.posAtCoords = () => ({ pos: e.state.doc.content.size - 1, inside: -1 })
+    render(<TableContextMenu editor={e} />)
+
+    const evt = createEvent.contextMenu(e.view.dom, { clientX: 10, clientY: 10 })
+    fireEvent(e.view.dom, evt)
+
+    expect(evt.defaultPrevented).toBe(false)
+    expect(document.querySelector('.octo-table-context-menu')).toBeNull()
+    e.destroy()
+    host.remove()
+  })
+
+  it('leaves the native menu fully intact on a read-only editor, even inside a table cell', () => {
+    // Regression (P1): a reader (editable === false) right-clicking a table used to still get the
+    // native menu suppressed and the custom table menu opened, letting them "edit" a read-only doc.
+    // A read-only editor must pass the native browser menu through untouched — no preventDefault,
+    // no selection move, no custom menu.
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(HISTORICAL_DOC, host, false)
+    expect(e.isEditable).toBe(false)
+    // Point posAtCoords at a real cell; the handler must bail on the isEditable gate before it runs.
+    e.view.posAtCoords = () => ({ pos: firstCellTextPos(e), inside: -1 })
+    render(<TableContextMenu editor={e} />)
+
+    const evt = createEvent.contextMenu(e.view.dom, { clientX: 120, clientY: 90 })
+    fireEvent(e.view.dom, evt)
+
+    expect(evt.defaultPrevented).toBe(false)
+    expect(document.querySelector('.octo-table-context-menu')).toBeNull()
+    e.destroy()
+    host.remove()
+  })
+
+  it('runs a command and closes when a menu item is clicked', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(HISTORICAL_DOC, host)
+    e.view.posAtCoords = () => ({ pos: firstCellTextPos(e), inside: -1 })
+    render(<TableContextMenu editor={e} />)
+
+    fireEvent(e.view.dom, createEvent.contextMenu(e.view.dom, { clientX: 120, clientY: 90 }))
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 2 })
+
+    // "Add row after" — reuse the accessible name from the shared i18n keys.
+    fireEvent.click(screen.getByTitle('docs.table.addRowAfter'))
+    expect(tableDims(e)).toEqual({ rows: 3, cols: 2 })
+    // Menu closes after the action.
+    expect(document.querySelector('.octo-table-context-menu')).toBeNull()
+    e.destroy()
+    host.remove()
+  })
+
+  it('closes on Escape', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(HISTORICAL_DOC, host)
+    e.view.posAtCoords = () => ({ pos: firstCellTextPos(e), inside: -1 })
+    render(<TableContextMenu editor={e} />)
+
+    fireEvent(e.view.dom, createEvent.contextMenu(e.view.dom, { clientX: 120, clientY: 90 }))
+    expect(document.querySelector('.octo-table-context-menu')).toBeTruthy()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(document.querySelector('.octo-table-context-menu')).toBeNull()
     e.destroy()
     host.remove()
   })
 })
 
-describe('clampToolbarAnchorRect — keep the toolbar clear of the fixed toolbar (#625 off-screen + #716)', () => {
-  const VIEWPORT = { width: 1200, height: 1000 }
-  // Bottom edge of the fixed editor toolbar in viewport coords, as tableReferenceElement measures it.
-  const TOOLBAR_BOTTOM = 64
+// Multi-cell delete through the REAL right-click flow, reproducing the behaviour a browser (not
+// jsdom) produces. When a user frames a multi-column/row CellSelection and then right-clicks a cell
+// inside it, the browser processes the native right-click AFTER our contextmenu handler returns: it
+// moves the caret into the clicked cell and fires `selectionchange`, which ProseMirror syncs back
+// into a single-cell TextSelection — collapsing the framed rectangle before the user can click a
+// menu item. The previous unit tests called moveSelectionIntoCell directly and asserted on the
+// still-intact selection, so they never exercised this collapse and stayed green while the real
+// browser deleted only the one clicked column ("select N, only 1 goes"). These tests drive the full
+// contextmenu -> collapse -> menu-click path and assert the whole framed range is removed.
+describe('TableContextMenu — multi-cell delete survives the browser right-click selection collapse', () => {
+  // 2 rows × 4 columns, so deleting a 2- or 3-column selection still leaves a table behind.
+  const WIDE_DOC =
+    '<table><tbody>' +
+    '<tr><td>a</td><td>b</td><td>c</td><td>d</td></tr>' +
+    '<tr><td>e</td><td>f</td><td>g</td><td>h</td></tr>' +
+    '</tbody></table>'
+  // 4 rows × 2 columns, for the delete-row counterpart.
+  const TALL_DOC =
+    '<table><tbody>' +
+    '<tr><td>a</td><td>b</td></tr>' +
+    '<tr><td>c</td><td>d</td></tr>' +
+    '<tr><td>e</td><td>f</td></tr>' +
+    '<tr><td>g</td><td>h</td></tr>' +
+    '</tbody></table>'
 
-  it('leaves a fully-visible table at its real top edge (no TC-P0-001 regression)', () => {
-    // A normal table sitting mid-viewport, well below the fixed toolbar: the band stays a
-    // zero-height anchor at the real top so the toolbar still floats above the table as before.
-    const r = clampToolbarAnchorRect({ top: 300, bottom: 520, left: 200, right: 900 }, VIEWPORT, TOOLBAR_BOTTOM)
-    expect(r.top).toBe(300)
-    expect(r.height).toBe(0)
-    expect(r.left).toBe(200)
-    expect(r.right).toBe(900)
+  /**
+   * Open the context menu over a framed CellSelection (anchor..head cells), then reproduce the
+   * browser collapsing that selection to the single clicked cell before the menu item is clicked.
+   * Returns the editor mounted in a live DOM host, ready for a menu-item click.
+   */
+  function openMenuOverSelectionThenCollapse(
+    doc: string,
+    anchorCellIdx: number,
+    headCellIdx: number,
+    clickedCellIdx: number,
+  ): { e: Editor; host: HTMLElement } {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(doc, host)
+    const cells = cellPositions(e)
+    e.view.dispatch(
+      e.state.tr.setSelection(CellSelection.create(e.state.doc, cells[anchorCellIdx], cells[headCellIdx])),
+    )
+    expect(e.state.selection instanceof CellSelection).toBe(true)
+
+    // Right-click a text position inside a cell that is part of the framed selection.
+    const clickPos = cells[clickedCellIdx] + 2
+    e.view.posAtCoords = () => ({ pos: clickPos, inside: -1 })
+    render(<TableContextMenu editor={e} />)
+    fireEvent(e.view.dom, createEvent.contextMenu(e.view.dom, { clientX: 60, clientY: 40 }))
+    expect(document.querySelector('.octo-table-context-menu')).toBeTruthy()
+
+    // The browser now moves the caret into the clicked cell and ProseMirror collapses the
+    // CellSelection to a single-cell TextSelection — exactly what jsdom never does on its own.
+    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, clickPos)))
+    expect(e.state.selection instanceof CellSelection).toBe(false)
+
+    return { e, host }
+  }
+
+  it('deletes both framed columns (select 2 of 4 -> 2 remain), not just the clicked one', () => {
+    // Columns 1 and 2 = cells b(1), c(2), f(5), g(6). Right-click cell c, inside the selection.
+    const { e, host } = openMenuOverSelectionThenCollapse(WIDE_DOC, 1, 6, 2)
+    fireEvent.click(screen.getByTitle('docs.table.deleteColumn'))
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 2 })
+    e.destroy()
+    host.remove()
   })
 
-  it('anchors a long table scrolled past the top to the toolbar strip so it flips below (XIN-939)', () => {
-    // The XIN-939 case: 34-row table scrolled so its top is far above the viewport and its bottom
-    // is below it. The band becomes the toolbar strip [0 .. toolbarBottom]; placement:'top' then
-    // overflows the viewport top and Floating-UI flips the controls to just below the fixed toolbar
-    // (top === 0 is what forces that flip; bottom === toolbarBottom is where they land).
-    const r = clampToolbarAnchorRect({ top: -1248, bottom: 1052, left: 200, right: 900 }, VIEWPORT, TOOLBAR_BOTTOM)
-    expect(r.top).toBe(0)
-    expect(r.bottom).toBe(TOOLBAR_BOTTOM)
-    expect(r.left).toBe(200)
-    expect(r.right).toBe(900)
+  it('deletes N framed columns (select 3 of 4 -> 1 remains)', () => {
+    // Columns 0..2 = cells a(0), b(1), c(2), e(4), f(5), g(6). Right-click cell b, inside it.
+    const { e, host } = openMenuOverSelectionThenCollapse(WIDE_DOC, 0, 6, 1)
+    fireEvent.click(screen.getByTitle('docs.table.deleteColumn'))
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 1 })
+    e.destroy()
+    host.remove()
   })
 
-  it('anchors a table jammed under the fixed toolbar to the strip so it flips below it (#716)', () => {
-    // The #716 follow-up: a table at the very top of the doc sits right beneath a tall fixed
-    // toolbar (bottom 180). Floating above would land the controls behind the fixed toolbar; the
-    // strip band flips them to just below it instead.
-    const tallToolbar = 180
-    const r = clampToolbarAnchorRect({ top: 185, bottom: 405, left: 200, right: 900 }, VIEWPORT, tallToolbar)
-    expect(r.top).toBe(0)
-    expect(r.bottom).toBe(tallToolbar)
+  it('deletes both framed rows (select 2 of 4 -> 2 remain) via delete row', () => {
+    // Rows 1 and 2 = cells c(2), d(3), e(4), f(5). Right-click cell d, inside the selection.
+    const { e, host } = openMenuOverSelectionThenCollapse(TALL_DOC, 2, 5, 3)
+    fireEvent.click(screen.getByTitle('docs.table.deleteRow'))
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 2 })
+    e.destroy()
+    host.remove()
   })
 
-  it('never drops the band below the viewport bottom', () => {
-    const r = clampToolbarAnchorRect({ top: 5000, bottom: 6000, left: 100, right: 400 }, VIEWPORT, TOOLBAR_BOTTOM)
-    expect(r.top).toBe(VIEWPORT.height - 8)
-    expect(r.top).toBeLessThan(VIEWPORT.height)
+  it('still collapses to the single clicked cell when the right-click lands outside the framed selection', () => {
+    // Complement: a single-cell right-click must NOT be treated as a range. Frame columns 0-1, then
+    // right-click cell d (column 3), outside the selection: only that one column is removed.
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(WIDE_DOC, host)
+    const cells = cellPositions(e)
+    e.view.dispatch(e.state.tr.setSelection(CellSelection.create(e.state.doc, cells[0], cells[5])))
+    const clickPos = cells[3] + 2 // cell d, column 3, outside the selection
+    e.view.posAtCoords = () => ({ pos: clickPos, inside: -1 })
+    render(<TableContextMenu editor={e} />)
+    fireEvent(e.view.dom, createEvent.contextMenu(e.view.dom, { clientX: 60, clientY: 40 }))
+    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, clickPos)))
+
+    fireEvent.click(screen.getByTitle('docs.table.deleteColumn'))
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 3 })
+    e.destroy()
+    host.remove()
+  })
+})
+
+describe('TableContextMenu — read-only editor never mutates a table', () => {
+  it('right-clicking a table cell in a read-only editor leaves the table unchanged (native menu passes through)', () => {
+    // Runnable read-only pass-through evidence: on a reader (editable === false) the handler must
+    // bail before touching the selection or opening the menu, so no table command can ever run and
+    // the document is untouched. Complements the "native menu intact" assertion above with a direct
+    // mutation check.
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(HISTORICAL_DOC, host, false)
+    expect(e.isEditable).toBe(false)
+    const before = e.getHTML()
+    e.view.posAtCoords = () => ({ pos: firstCellTextPos(e), inside: -1 })
+    render(<TableContextMenu editor={e} />)
+
+    const evt = createEvent.contextMenu(e.view.dom, { clientX: 120, clientY: 90 })
+    fireEvent(e.view.dom, evt)
+
+    // No custom menu, native menu left intact, and the table is byte-for-byte unchanged.
+    expect(evt.defaultPrevented).toBe(false)
+    expect(document.querySelector('.octo-table-context-menu')).toBeNull()
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 2 })
+    expect(e.getHTML()).toBe(before)
+    e.destroy()
+    host.remove()
+  })
+})
+
+describe('clampMenuPosition — keep the context menu inside the viewport', () => {
+  const VIEWPORT = { width: 1200, height: 800 }
+  const MENU = { width: 180, height: 220 }
+
+  it('opens at the pointer when there is room in both directions', () => {
+    expect(clampMenuPosition({ x: 300, y: 200 }, MENU, VIEWPORT)).toEqual({ left: 300, top: 200 })
   })
 
-  it('clamps the horizontal extent of a wide / off-screen table into the viewport', () => {
-    const r = clampToolbarAnchorRect({ top: 300, bottom: 520, left: -500, right: 3000 }, VIEWPORT, TOOLBAR_BOTTOM)
-    expect(r.left).toBe(0)
-    expect(r.right).toBe(VIEWPORT.width)
-    expect(r.width).toBe(VIEWPORT.width)
+  it('shifts left/up so the menu never overflows the right/bottom edges', () => {
+    const { left, top } = clampMenuPosition({ x: 1190, y: 790 }, MENU, VIEWPORT)
+    expect(left).toBe(VIEWPORT.width - MENU.width)
+    expect(top).toBe(VIEWPORT.height - MENU.height)
   })
 
-  it('with no fixed toolbar (toolbarBottom defaults to 0) keeps a fully-visible table at its top', () => {
-    const r = clampToolbarAnchorRect({ top: 300, bottom: 520, left: 200, right: 900 }, VIEWPORT)
-    expect(r.top).toBe(300)
-    expect(r.height).toBe(0)
+  it('never goes negative', () => {
+    const { left, top } = clampMenuPosition({ x: -50, y: -50 }, MENU, VIEWPORT)
+    expect(left).toBe(0)
+    expect(top).toBe(0)
   })
 })
 

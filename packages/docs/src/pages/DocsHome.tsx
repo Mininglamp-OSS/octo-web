@@ -29,11 +29,13 @@ export interface DocTarget {
 }
 
 /**
- * Excel import is temporarily HIDDEN for this release (owner request — ships next week). The
- * import machinery (parse + float-image support) is complete and left intact; only the entry
- * button is gated. Flip this to `true` to restore the "导入" button.
+ * Excel import entry visibility. #583 originally hid this per owner request ("ships next week").
+ * The owner (李庆祥) has since asked in this PR (#737, §5) for the entry to be re-enabled, so the
+ * flag is ON — but a formal owner sign-off ON THIS PR is still PENDING and the `needs-human-review`
+ * label ensures a human maintainer confirms it before merge. Kept as a flag so it can be toggled
+ * per release. Import machinery (parse + float-image + hyperlink) lives in xlsxImport/CollabSheet.
  */
-const IMPORT_ENABLED = false
+const IMPORT_ENABLED = true
 
 /**
  * A dropdown menu rendered in a body portal at fixed coords, so it is never clipped by an
@@ -559,7 +561,7 @@ function DocsList({
             </button>
           </PortalMenu>
         )}
-        {/* Import entry hidden for this release — re-enable by flipping IMPORT_ENABLED. */}
+        {/* Import entry — flag ON; formal owner sign-off on this PR still PENDING, gated by needs-human-review (was hidden in #583). Toggle via IMPORT_ENABLED. */}
         {IMPORT_ENABLED && (
           <>
         <button
@@ -836,6 +838,19 @@ export function DocsHome() {
     () => initialKnownKind,
   )
 
+  // Live mirror of selectedDocId for callbacks pushed imperatively into the host route pane. The
+  // editor/sheet/board shells are pushed via routeRight.replaceToRoot in commitOpen — a ONE-TIME
+  // element snapshot that bakes in whatever `onDocDeleted` closure existed at push time. Because
+  // that push runs synchronously right after setSelectedDocId(X) (before the state re-render), the
+  // baked-in closure still sees the PRE-open selectedDocId (null on first open, the previous doc on
+  // a switch). onDocDeleted must therefore compare against this ref — the always-current id — not
+  // the closed-over state, or the `docId === selectedDocId` guard never matches and the deleted
+  // doc's shell is left resident in the right pane (XIN-1050).
+  const selectedDocIdRef = useRef<string | null>(selectedDocId)
+  useEffect(() => {
+    selectedDocIdRef.current = selectedDocId
+  }, [selectedDocId])
+
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
   // full-width list+detail layout Matter/Summary use. When absent (tests / standalone), we
@@ -921,13 +936,18 @@ export function DocsHome() {
   // Called after a successful delete (now from the editor detail page, Problem 4). If the deleted
   // doc is the one open in the right pane, return to the empty/list state (which also resets the
   // editor's drawer, #5 C4); always bump the reload token so the resident list refreshes.
+  // We read selectedDocIdRef (the live id), NOT the closed-over selectedDocId: this callback is
+  // baked into the shell snapshot pushed by commitOpen before the open's state update commits, so
+  // the closure's selectedDocId is stale (pre-open). Reading the ref makes the guard match the
+  // actually-open doc across doc/sheet/board (XIN-1050).
   const onDocDeleted = useCallback(
     (docId: string) => {
-      if (docId === selectedDocId) backToList()
+      if (docId === selectedDocIdRef.current) backToList()
       setListReloadToken((n) => n + 1)
     },
-    [selectedDocId, backToList],
+    [backToList],
   )
+
 
   // "Open in new page" (AC-1): open the current doc as a standalone full-window `/d/:docId` link
   // in a new browser tab — the clean, shareable cold-load entry that lives outside the app shell.

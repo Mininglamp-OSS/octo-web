@@ -62,11 +62,17 @@ export interface ListParams {
   // 客户端关键词过滤:projectApi/skillApi/squadApi/agentApi/runtimeApi 共用此字段。
   // issue 列表不再用它(关键词走 searchIssues → /issues/search),但其它 list 端点仍需,勿删。
   keyword?: string;
-  status?: IssueStatus;
-  priority?: IssuePriority;
-  assignee_id?: string;
-  creator_id?: string;
-  project_id?: string;
+  // 统一多选筛选(后端数组参,与看板/列表/分组共用)。空数组 = 不发。issue 列表只用这套数组,
+  // 不再有同维单值(已移除,避免单/复数同发的歧义)。
+  statuses?: IssueStatus[];
+  priorities?: IssuePriority[];
+  assignee_ids?: string[];
+  assignee_types?: AssigneeType[];
+  include_no_assignee?: boolean;
+  creator_ids?: string[];
+  project_ids?: string[];
+  include_no_project?: boolean;
+  label_ids?: string[];
   // 时间范围筛选:date_field(仅 created_at|updated_at)+ date_start + date_end 必须同时给,
   // 值为 RFC3339;后端要求 start 严格早于 end。
   date_field?: IssueDateField;
@@ -90,13 +96,16 @@ export interface GroupedParams {
   priorities?: IssuePriority[];
   assignee_types?: AssigneeType[];
   assignee_id?: string;
+  assignee_ids?: string[];
+  include_no_assignee?: boolean;
   involves_user_id?: string;
   creator_id?: string;
+  creator_ids?: string[];
   project_id?: string;
   project_ids?: string[];
   // 纳入无项目的 issue(后端 include_no_project)。与项目多选配对 = 所选项目 ∪ 无项目。
-  // (未加 include_no_assignee:仅与 assignee_filters 配对有意义,本 UI 用 assignee_types/involves。)
   include_no_project?: boolean;
+  label_ids?: string[];
   date_field?: IssueDateField;
   date_start?: string;
   date_end?: string;
@@ -186,17 +195,6 @@ export interface CreateIssueReq {
   // 新建子 issue 时绑定父任务(后端 CreateIssueRequest.parent_issue_id)。
   parent_issue_id?: string | null;
   // 新建时绑定已上传附件(上传返回的 id 列表)。
-  attachment_ids?: string[];
-}
-// 一句话派单(POST /issues/quick-create):把 prompt 交给 agent/squad,后端异步建单+派单,返 { task_id }。
-// agent_id / squad_id 恰好给一个(后端 XOR 校验)。与 createIssue 的区别:建单前查 runtime 在线 +
-// daemon 版本,离线/过旧当场返 422(agent_unavailable / daemon_version_unsupported)。
-export interface QuickCreateReq {
-  agent_id?: string;
-  squad_id?: string;
-  prompt: string;
-  project_id?: string | null;
-  parent_issue_id?: string | null;
   attachment_ids?: string[];
 }
 export interface UpdateIssueReq {

@@ -64,6 +64,11 @@
 .octo-doc-scroll {
   height: 100%;
   overflow-y: auto;
+  /* The document itself should never scroll horizontally — tables carry their own inner
+     horizontal scroll. Without this, overflow-y:auto promotes the other axis to `auto`,
+     which combined with the sticky toolbar's negative bleed margins turns this into a
+     silent horizontal scroll container and pushes the right-side toolbar buttons out of view. */
+  overflow-x: hidden;
   box-sizing: border-box;
   padding: 0 32px 24px;
 }
@@ -183,6 +188,31 @@
   opacity: 0.4;
   cursor: default;
 }
+
+/* Line-spacing controls (SCHEMA_VERSION 17). The custom line-height field holds only a short
+   numeric multiplier (e.g. "1.5"), so it is sized to a few characters — an unstyled text input
+   renders at the browser default width (~20 chars) and read as an oversized box next to the
+   dropdown (XIN-1039 #3). */
+.octo-line-height-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.octo-line-height-custom {
+  width: 4.5ch;
+  box-sizing: content-box;
+  border: 1px solid var(--octo-border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 13px;
+  background: var(--octo-bg);
+  color: var(--octo-fg);
+}
+.octo-line-height-custom:focus {
+  outline: none;
+  border-color: var(--octo-accent);
+}
+
 /* (Legacy inline link-input styles removed in batch 7 — the link editor is now a floating panel,
    see .octo-link-popover / .octo-link-field below near the colour-popover styles.) */
 
@@ -417,6 +447,20 @@
   display: flex;
   justify-content: flex-end;
 }
+/* XIN-1051: inline validation for an empty / unsafe URL. The field gets a red border and a small
+   message sits between the fields and the Set action, so a mistyped URL is corrected in place
+   instead of the popover silently discarding it. */
+.octo-link-field.is-invalid {
+  border-color: #eb5757;
+}
+.octo-link-field.is-invalid:focus {
+  border-color: #eb5757;
+}
+.octo-link-error {
+  color: #eb5757;
+  font-size: 12px;
+  line-height: 1.3;
+}
 
 .octo-bubble-menu,
 .octo-floating-menu {
@@ -429,19 +473,33 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
-/* Table editing UI (#595). The floating table toolbar reuses .octo-bubble-menu; it only needs to
-   keep its buttons on one line and align the separators vertically. */
-.octo-table-bubble {
-  align-items: center;
+/* Table editing UI (#595, right-click menu XIN-1052). The right-click table menu reuses
+   .octo-bubble-menu for its frame; it lays the actions out as a vertical list anchored at the
+   pointer (position/left/top set inline), sitting above the editor content. */
+.octo-table-context-menu {
+  position: fixed;
+  z-index: 1000;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 168px;
 }
-.octo-table-bubble .octo-tb-sep {
+.octo-table-context-menu .octo-tb-sep {
+  height: 1px;
   align-self: stretch;
+  background: var(--octo-border);
+  margin: 2px 0;
 }
-/* Delete controls carry a text caption (#621-2) so it's clear which row / column / table the
-   action removes. Lay the icon and caption out inline; icon-only buttons are unaffected. */
-.octo-table-bubble .octo-tb-btn {
+/* Each action reads as a full-width row: icon on the left, its caption next to it, so the user
+   sees exactly which row / column / table the action affects. */
+.octo-table-context-menu .octo-tb-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  text-align: left;
 }
 .octo-tb-btn--labeled {
   gap: 4px;
@@ -450,18 +508,6 @@
   font-size: 12px;
   line-height: 1;
   white-space: nowrap;
-}
-/* While the caret is inside a table cell this toolbar floats over the table (placement: top). Its
-   frame would otherwise sit on top of the column-resize hot zone and swallow the hover/mousedown
-   the resize plugin listens for on the editor DOM, so `.column-resize-handle` never appears and the
-   column can't be dragged (#595 C1). pointer-events is inherited, so making the floating wrapper
-   transparent lets those events fall through to the table underneath; only the buttons re-capture
-   the pointer so they stay clickable. */
-.octo-table-bubble-portal {
-  pointer-events: none;
-}
-.octo-table-bubble-portal .octo-tb-btn {
-  pointer-events: auto;
 }
 
 /* Grid picker for inserting a table at a chosen size (replaces the fixed 3×3). Floats under the
@@ -494,6 +540,24 @@
   text-align: center;
   font-size: 12px;
   color: var(--octo-muted, #8a919e);
+}
+
+/* Math insert popover (XIN-1048 #3): stack a kind-specific title above the LaTeX input +
+   insert button so inline vs block formula dialogs are visually distinguishable. */
+.octo-math-popover {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.octo-math-popover-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--octo-muted, #8a919e);
+}
+.octo-math-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .octo-editor-region {
@@ -1111,6 +1175,16 @@
   background: rgba(0, 0, 0, 0.4);
   overflow-y: auto;
 }
+/* Vertically-center modifier for the destructive-action confirm (decision #2). The base overlay is
+   top-anchored (align-items: flex-start) because the preview/diff modal can be taller than the
+   viewport and needs to scroll from the top. The small restore/delete confirm card, however, should
+   sit centered in the viewport. `safe center` keeps it centered but degrades to top-aligned if the
+   content ever overflows, so the action buttons stay reachable instead of being clipped off-screen.
+   Only the confirm overlays carry this modifier; the preview/diff overlay keeps its top-anchored,
+   scrollable behavior. */
+.octo-modal-overlay--center {
+  align-items: safe center;
+}
 .octo-modal {
   width: 100%;
   max-width: 560px;
@@ -1391,38 +1465,6 @@
 }
 .octo-error {
   color: #eb5757;
-}
-.octo-docs-delete-confirm {
-  margin: 4px 10px 8px;
-  padding: 10px;
-  border: 1px solid var(--octo-border, #e5e6eb);
-  border-radius: 8px;
-  background: var(--octo-bg-2, #fafbfc);
-}
-.octo-docs-delete-confirm-text {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: var(--octo-fg, #1f2329);
-}
-.octo-docs-delete-confirm-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-.octo-docs-delete-confirm-go {
-  color: #fff;
-  background: #eb5757;
-}
-.octo-docs-delete-confirm-go:hover:not(:disabled) {
-  background: #d64545;
-}
-
-/* Editor delete entry (Problem 4): the delete action now lives inside the header ≡ "more" menu
-   (danger row, see .octo-doc-more-item.is-danger below). The confirm card still sits just under
-   the header instead of floating in a list row. */
-.octo-doc-delete-confirm {
-  margin: 8px 0 0;
-  max-width: 420px;
 }
 
 /* ── Centered confirm dialog (ConfirmModal): shared by document + sheet delete so both pop the
@@ -2534,6 +2576,8 @@
 /* Emoji toolbar picker grid (v9). */
 .octo-emoji-popover {
   position: absolute;
+  top: 100%;
+  left: 0;
   z-index: 1000;
   margin-top: 6px;
   display: flex;
@@ -3001,5 +3045,81 @@
    `univer-justify-center`. Overriding only ribbon-toolbar left the tabs centered. */
 .octo-sheet-container [data-u-comp="ribbon-header-menu"] [role="tablist"] {
   justify-content: flex-start !important;
+}
+
+/* Sheet font aliases (cross-platform rendering).
+ *
+ * Univer's built-in font list (DEFAULT_FONT_LIST) uses WINDOWS PostScript names
+ * (SimSun / SimHei / Microsoft YaHei / NSimSun ...). The cell font value (`ff`) is
+ * stored/exported verbatim as that name, and Univer's canvas renderer resolves it
+ * against the *client machine's* installed fonts. On macOS those Windows fonts don't
+ * exist under those names — the OS ships the same typefaces under DIFFERENT names
+ * (宋体 → "Songti SC", 黑体 → "Heiti SC", etc.) — so the browser can't match and the
+ * text falls back to a default face (and Univer flags the font with a "not installed"
+ * ⓘ hint).
+ *
+ * NOTE: "Microsoft YaHei" is deliberately NOT aliased here — Chromium reserves that name
+ * and ignores any @font-face for it, so it can't be rescued via CSS. It's instead removed
+ * from the font picker entirely (see CollabSheet.ts, IFontService.removeFont).
+ *
+ * These @font-face rules define each Windows-named family with a `src` of `local()`
+ * fallbacks only — NO downloaded font files. The browser picks the FIRST locally
+ * installed candidate: the real Windows font on Windows, the macOS equivalent on Mac.
+ * This touches ONLY how glyphs are drawn on screen: `ff` still stores/exports the
+ * clean single canonical name (see SheetView.tsx `font: { name: s.ff }`), so import/
+ * export is unaffected. `font-weight: 100 900` keeps bold cells on the aliased face
+ * (otherwise a bold request wouldn't match this face and would fall back).
+ *
+ * Global scope note: @font-face families are page-global, but these Windows font
+ * names are used NOWHERE else in the app (only Univer's list references them), so
+ * aliasing them has no side effects outside the sheet.
+ */
+@font-face {
+  font-family: "SimSun";
+  src: local("SimSun"), local("Songti SC"), local("STSong"), local("Songti TC");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "NSimSun";
+  src: local("NSimSun"), local("SimSun"), local("Songti SC"), local("STSong");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "SimHei";
+  src: local("SimHei"), local("Heiti SC"), local("STHeiti"), local("PingFang SC");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Kaiti";
+  src: local("Kaiti"), local("KaiTi"), local("Kaiti SC"), local("STKaiti");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "FangSong";
+  src: local("FangSong"), local("STFangsong"), local("FangSong SC");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "STXinwei";
+  src: local("STXinwei"), local("Weibei SC Bold"), local("WeibeiSC-Bold"), local("Weibei SC"), local("魏碑-简 粗体"), local("魏碑-简");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "STXingkai";
+  src: local("STXingkai"), local("Xingkai SC Bold"), local("XingkaiSC-Bold"), local("Xingkai SC"), local("行楷-简 粗体"), local("行楷-简");
+  font-weight: 100 900;
+  font-style: normal;
+}
+@font-face {
+  font-family: "STLiti";
+  src: local("STLiti"), local("Baoli SC Regular"), local("BaoliSC-Regular"), local("Baoli SC"), local("隶变-简 常规体"), local("隶变-简");
+  font-weight: 100 900;
+  font-style: normal;
 }
 

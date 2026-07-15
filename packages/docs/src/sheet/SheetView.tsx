@@ -19,6 +19,10 @@ import { SheetCommentPanel, parseCell as parseCommentAnchor } from './SheetComme
 import { useDocComments } from '../comments/useDocComments.ts'
 import { pendingSheetImports } from './xlsxImport.ts'
 import { buildSheetDims, buildSheetMerges, excelSheetName } from './sheetExport.ts'
+import { sanitizeLinkHref } from '../editor/sanitize.ts'
+import { setFormulaEditorOpener, setFormulaPickerOpener, type FormulaEditorRequest } from './floatDom/formulaBridge.ts'
+import { LatexInputModal } from './floatDom/LatexInputModal.tsx'
+import { FormulaPicker } from './floatDom/FormulaPicker.tsx'
 import {
   injectImagesIntoXlsx,
   floatingToExportImage,
@@ -177,6 +181,11 @@ export function SheetView(props: SheetViewProps) {
   const [conn, setConn] = useState<ConnState>('connecting')
   const [terminal, setTerminal] = useState<TerminalState>({ kind: 'none' })
   const [panel, setPanel] = useState<Panel>(null)
+  // In-app formula editor request (insert / edit), driven by the ribbon "custom" command and by
+  // double-clicking a formula (via formulaBridge). Rendered as a modal near the end of this view.
+  const [formulaReq, setFormulaReq] = useState<FormulaEditorRequest | null>(null)
+  // Whether the formula picker (the π-button dropdown) is open, driven by the ribbon button.
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [title, setTitle] = useState('')
   // Creator + creation timestamp for the ≡ "more" menu head (mirror of EditorShell), so the
   // sheet's collapsed menu shows the same creator/created-on line a document does.
@@ -202,6 +211,17 @@ export function SheetView(props: SheetViewProps) {
   // Always paint a corner badge on every commented cell (independent of the panel).
   // Orange = has an open comment, green = resolved (resolved threads only load when the
   // panel's "显示已解决" is on, so a green badge appears once you opt to show them).
+  // Register the in-app formula editor opener so the ribbon "custom" command + a formula's
+  // double-click can pop the modal (instead of a system prompt). Cleared on unmount.
+  useEffect(() => {
+    setFormulaEditorOpener((req) => setFormulaReq(req))
+    setFormulaPickerOpener(() => setPickerOpen(true))
+    return () => {
+      setFormulaEditorOpener(null)
+      setFormulaPickerOpener(null)
+    }
+  }, [])
+
   useEffect(() => {
     if (!sheet) return
     const cells = comments.threads
@@ -405,6 +425,7 @@ export function SheetView(props: SheetViewProps) {
     const dimMap = sheet.ydoc.getMap<number>('sheetDims')
     const listMap = sheet.ydoc.getMap<{ name: string; order: number }>('sheetList')
     const drawingMap = sheet.ydoc.getMap<Record<string, unknown>>('sheetDrawings')
+    const hyperLinkMap = sheet.ydoc.getMap<{ row: number; column: number; payload: string }>('sheetHyperLinks')
 
     // Normalize a Univer color (#rrggbb / rrggbb / rgb(r,g,b)) to the 6-hex SheetJS wants.
     const toHex = (rgb?: string): string | undefined => {
@@ -446,6 +467,15 @@ export function SheetView(props: SheetViewProps) {
       let maxC = 0
       const cells = new Map<string, { v?: unknown; f?: string; s?: Record<string, unknown> }>()
       const cellPrefix = `${logicalId}!`
+      // Hyperlinks for this sheet: `${row}:${col}` -> url. xlsx-js-style writes cell.l as a
+      // <hyperlink>. Keyed by location so we can attach it to the matching cell below.
+      const linkByRC = new Map<string, string>()
+      for (const [key, link] of hyperLinkMap.entries()) {
+        if (!key.startsWith(cellPrefix)) continue
+        if (link && typeof link.payload === 'string' && Number.isInteger(link.row) && Number.isInteger(link.column)) {
+          linkByRC.set(`${link.row}:${link.column}`, link.payload)
+        }
+      }
       for (const [key, cell] of cellMap.entries()) {
         if (!key.startsWith(cellPrefix)) continue
         const rc = key.slice(cellPrefix.length)
@@ -505,7 +535,38 @@ export function SheetView(props: SheetViewProps) {
           const border = univerBdToXlsx(s.bd, toHex)
           if (border) (out.s as { border?: unknown }).border = border
         }
+        // Hyperlink on this cell → xlsx-js-style `l` (writes a worksheet <hyperlink>).
+        // Sanitize at the export boundary too: a payload can arrive via a Yjs value from
+        // another client or any write path that skipped the guard, and it would otherwise be
+        // written verbatim into the downloaded .xlsx as a live link. Mirrors the import
+        // (CollabSheet) and remote-apply (binding) sinks — sanitize at every boundary.
+        const url = linkByRC.get(`${rs}:${cs}`)
+        if (url) {
+          const safeUrl = sanitizeLinkHref(url)
+          if (safeUrl) (out as { l?: { Target: string } }).l = { Target: safeUrl }
+        }
         ws[XLSX.utils.encode_cell({ r: Number(rs), c: Number(cs) })] = out as unknown as XLSX.CellObject
+      }
+      // Math formulas are float-DOM (DRAWING_DOM) objects — xlsx has no formula-object concept, so
+      // export DEGRADES them to plain text: write the LaTeX into the formula's anchor cell when it
+      // has one. Floating formulas without a cell anchor can't be placed and are dropped (documented).
+      for (const [key, raw] of drawingMap.entries()) {
+        if (!key.startsWith(cellPrefix)) continue
+        const d = raw as {
+          drawingType?: number
+          data?: { latex?: string }
+          sheetTransform?: { from?: { row?: number; column?: number } }
+        }
+        if (d.drawingType !== 8) continue // 8 = DRAWING_DOM
+        const latex = d.data?.latex
+        const from = d.sheetTransform?.from
+        if (!latex || !from || !Number.isInteger(from.row) || !Number.isInteger(from.column)) continue
+        const addr = XLSX.utils.encode_cell({ r: from.row as number, c: from.column as number })
+        if (!ws[addr]) {
+          ws[addr] = { t: 's', v: latex } as unknown as XLSX.CellObject
+          if ((from.row as number) > maxR) maxR = from.row as number
+          if ((from.column as number) > maxC) maxC = from.column as number
+        }
       }
       ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } })
       // Merges: delegated to buildSheetMerges (sheetExport.ts). V2 keys are `${logicalId}:sr:sc:er:ec`;
@@ -768,6 +829,41 @@ export function SheetView(props: SheetViewProps) {
         onConfirm={() => void del.confirm()}
         onCancel={del.cancel}
       />
+
+      {/* Formula picker (the π-button dropdown): preset previews + the two builders. Picking a preset
+          drops it on the sheet; the footer opens the builder / raw-LaTeX editor. */}
+      {pickerOpen && sheet && (
+        <FormulaPicker
+          onPick={(latex) => {
+            if (latex.trim()) sheet.insertFormula(latex)
+            setPickerOpen(false)
+          }}
+          onNewFormula={() => {
+            setPickerOpen(false)
+            setFormulaReq({ mode: 'insert', ui: 'builder' })
+          }}
+          onLatex={() => {
+            setPickerOpen(false)
+            setFormulaReq({ mode: 'insert', ui: 'latex' })
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {/* 「插入新公式」(ui:'builder') → structure palette editor; 「LaTeX 公式」(ui:'latex') → raw
+          LaTeX box, no palette. Both build a formula that's then dropped onto the sheet (editable). */}
+      {formulaReq && sheet && (
+        <LatexInputModal
+          initialLatex=""
+          showPalette={formulaReq.ui === 'builder'}
+          title={t(formulaReq.ui === 'builder' ? 'docs.sheet.latexTitle' : 'docs.sheet.formula.latex')}
+          onConfirm={(latex, fontSize) => {
+            if (latex.trim()) sheet.insertFormula(latex, fontSize)
+            setFormulaReq(null)
+          }}
+          onCancel={() => setFormulaReq(null)}
+        />
+      )}
     </div>
   )
 }

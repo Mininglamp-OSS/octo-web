@@ -257,3 +257,147 @@
 
 /* 详情页(.loop-apd) 内联 Semi 控件由上方 :is() 皮肤层统一覆盖，无需单列。 */
 
+/* ==========================================================================
+ * Loop 语义标签（loop-tag）—— 色彩规范 token
+ * 取代零散的 Semi <Tag color="green|amber|violet…">（默认糖果色：高亮度低饱和，
+ * 贴白底显塑料）。每个 tone 落在设计师给定的「浊色域」：饱和度 S≈30–45%（远离塑料区
+ * <15%）、彩色底明度 L≤85%（避免高亮块「浮」在白底上）、同色系加深文字 + 描边。
+ * 命名 --loop-tag-* 为新增 token，非 Semi 覆盖；集中在此单一来源，改一处全站生效。
+ * ========================================================================== */
+:root {
+  --loop-tag-grey-bg: #F1F2F4;   --loop-tag-grey-fg: #5D626F;   --loop-tag-grey-bd: #DDDFE3;
+  --loop-tag-blue-bg: #E4EAF2;   --loop-tag-blue-fg: #3E6598;   --loop-tag-blue-bd: #CDD7E4;
+  --loop-tag-green-bg: #E1EFE9;  --loop-tag-green-fg: #337154;  --loop-tag-green-bd: #CBE2D7;
+  --loop-tag-amber-bg: #F2ECDE;  --loop-tag-amber-fg: #896D34;  --loop-tag-amber-bd: #E7DDC5;
+  --loop-tag-orange-bg: #F4EAE1; --loop-tag-orange-fg: #9B653B; --loop-tag-orange-bd: #E9D8C9;
+  --loop-tag-red-bg: #F5E7E5;    --loop-tag-red-fg: #B14E43;    --loop-tag-red-bd: #ECD3D0;
+  --loop-tag-violet-bg: #ECE7F3; --loop-tag-violet-fg: #7B56B3; --loop-tag-violet-bd: #D9D1E6;
+  --loop-tag-purple-bg: #F0E7F3; --loop-tag-purple-fg: #9852AD; --loop-tag-purple-bd: #E1D1E6;
+}
+
+/* 标签公共外形（语义标签 loop-tag 与用户色标签 loop-label-chip 共用，避免重复声明） */
+.loop-tag,
+.loop-label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.loop-tag { border: 1px solid transparent; }
+
+.loop-tag--grey   { background: var(--loop-tag-grey-bg);   color: var(--loop-tag-grey-fg);   border-color: var(--loop-tag-grey-bd); }
+.loop-tag--blue   { background: var(--loop-tag-blue-bg);   color: var(--loop-tag-blue-fg);   border-color: var(--loop-tag-blue-bd); }
+.loop-tag--green  { background: var(--loop-tag-green-bg);  color: var(--loop-tag-green-fg);  border-color: var(--loop-tag-green-bd); }
+.loop-tag--amber  { background: var(--loop-tag-amber-bg);  color: var(--loop-tag-amber-fg);  border-color: var(--loop-tag-amber-bd); }
+.loop-tag--orange { background: var(--loop-tag-orange-bg); color: var(--loop-tag-orange-fg); border-color: var(--loop-tag-orange-bd); }
+.loop-tag--red    { background: var(--loop-tag-red-bg);    color: var(--loop-tag-red-fg);    border-color: var(--loop-tag-red-bd); }
+.loop-tag--violet { background: var(--loop-tag-violet-bg); color: var(--loop-tag-violet-fg); border-color: var(--loop-tag-violet-bd); }
+.loop-tag--purple { background: var(--loop-tag-purple-bg); color: var(--loop-tag-purple-fg); border-color: var(--loop-tag-purple-bd); }
+
+/* 任意后端色相的用户标签：把 hex 与白/黑混合拉出深度，避免 12% 透明度贴白底的塑料感。
+ * --loop-chip-color 由 <LabelChips> 内联传入。每个属性先给中性灰 token 兜底：不支持
+ * color-mix 的老引擎会丢弃整条 color-mix 声明、退回上一条，chip 仍成形而非裸样式。 */
+.loop-label-chip {
+  background: var(--loop-tag-grey-bg);
+  background: color-mix(in oklch, var(--loop-chip-color, #8a8f99) 16%, var(--semi-color-bg-0, #fff));
+  border: 1px solid var(--loop-tag-grey-bd);
+  border: 1px solid color-mix(in oklch, var(--loop-chip-color, #8a8f99) 32%, var(--semi-color-bg-0, #fff));
+  color: var(--loop-tag-grey-fg);
+  color: color-mix(in oklch, var(--loop-chip-color, #8a8f99) 74%, #14161a);
+}
+
+/* ==========================================================================
+ * Loop 按钮（loop-btn）—— 原生 <button>，替代散乱的 Semi <Button>
+ * 统一 6px 圆角（对齐 --wk-r-sm，与输入/分段控件同家族；Semi 默认 3px 是异类）。
+ * primary = 品牌黑，hover 提亮 / active 压深：state 只动明度、锁死色相，
+ * 绝不出现「黑→纯蓝」的色相跳跃。颜色走 --semi-color-primary* 单一来源（见 App.css）。
+ * ========================================================================== */
+.loop-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-sm, 6px);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+
+.loop-btn--sm { height: 28px; padding: 0 10px; font-size: 12px; gap: 4px; }
+.loop-btn--block { width: 100%; }
+.loop-btn--icon { width: 32px; padding: 0; }
+.loop-btn--icon.loop-btn--sm { width: 28px; }
+
+/* primary：品牌黑 + 同色系提亮/压深 */
+.loop-btn--primary {
+  background: var(--semi-color-primary, #1C1C23);
+  color: #fff;
+}
+.loop-btn--primary:hover:not(:disabled) { background: var(--semi-color-primary-hover, #2A2A33); }
+.loop-btn--primary:active:not(:disabled) { background: var(--semi-color-primary-active, #101014); }
+
+/* secondary：白底描边（取消/次级操作） */
+.loop-btn--secondary {
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
+  border-color: var(--semi-color-border, #e8e9eb);
+}
+.loop-btn--secondary:hover:not(:disabled) {
+  border-color: var(--semi-color-text-3, #c9cdd4);
+  background: var(--semi-color-fill-0, #f7f8fa);
+}
+.loop-btn--secondary:active:not(:disabled) { background: var(--semi-color-fill-1, #f0f1f4); }
+
+/* ghost：无边框（工具栏/内联次级） */
+.loop-btn--ghost { background: transparent; color: var(--semi-color-text-1, #4e5969); }
+.loop-btn--ghost:hover:not(:disabled) {
+  background: var(--semi-color-fill-0, #f5f6f8);
+  color: var(--semi-color-text-0, #1c1f23);
+}
+
+.loop-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.loop-btn__spin { animation: loop-btn-spin 0.7s linear infinite; }
+@keyframes loop-btn-spin { to { transform: rotate(360deg); } }
+
+/* ==========================================================================
+ * Loop 属性 pill（loop-pill）—— 对齐 multica 建单工具栏的圆角属性选择器
+ * 圆角描边 + 图标 + 文案 + caret，点开走 Semi Dropdown（loop 皮肤）。
+ * ========================================================================== */
+.loop-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 999px;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.loop-pill:hover {
+  background: var(--semi-color-fill-0, #f5f6f8);
+  border-color: var(--semi-color-text-3, #c9cdd4);
+}
+.loop-pill__caret { color: var(--semi-color-text-2, #a4a9b3); }
+.loop-pill__opt { display: inline-flex; align-items: center; gap: 8px; }
+

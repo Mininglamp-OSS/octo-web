@@ -103,18 +103,17 @@
     "runtimeCount": "{{count}} 个运行时",
     "builtIn": "内置",
     "addComputerTitle": "添加电脑",
-    "addComputerDesc": "在需要接入的电脑上运行下面的命令，完成登录后运行时会出现在列表里。",
-    "copyCommand": "复制命令",
+    "addComputerDesc": "把下面的安装指令交给你的 Bot，让它在目标电脑上自动完成安装、配置权限并重启；接入成功后运行时会出现在列表里。",
     "copy": "复制",
     "copied": "已复制",
-    "copySuccess": "命令已复制",
+    "copySuccess": "安装指令已复制",
     "copyFailed": "复制失败，请手动复制",
-    "addComputerBrowser": "1. 浏览器授权（本机有浏览器）：",
-    "addComputerHeadless": "2. 免浏览器（headless / 远程 / CI 环境）：",
-    "headlessTokenPlaceholder": "<点击右侧「复制」生成>",
-    "headlessNoBackend": "管理员未配置后端公开地址，无法生成 headless 命令",
-    "headlessFailed": "生成 headless 命令失败，请重试",
-    "headlessCopyManual": "命令已生成在下方，自动复制失败，请手动复制"
+    "copyInstall": "复制安装指令",
+    "installHint": "把这段指令复制给 Bot 执行（含一次性认证凭证，请勿外传）：",
+    "installTokenPlaceholder": "<点击「复制安装指令」时生成>",
+    "installPrompt": "请在这台电脑上安装并配置 octo-daemon 运行时，依次执行：\n\n1. 安装：\n{{install}}\n\n2. 配置权限（登录认证）：\n{{auth}}\n\n3. 启动 / 重启使其生效：\n{{start}}\n\n4. 参考 octo-daemon --help 安装内置的 skills。\n\n完成后请确认该 daemon 在运行时列表中显示为在线。",
+    "headlessNoBackend": "管理员未配置后端公开地址，无法生成安装指令",
+    "headlessFailed": "生成安装指令失败，请重试"
   },
   "view": {
     "board": "看板",
@@ -146,8 +145,10 @@
     "assignee": "负责人",
     "creator": "创建者",
     "project": "项目",
+    "label": "标签",
     "dateRange": "时间范围",
-    "noProject": "含无项目"
+    "noProject": "含无项目",
+    "noAssignee": "含无负责人"
   },
   "dateField": {
     "created_at": "创建时间",
@@ -248,7 +249,9 @@
     "dueDate": "截止日期",
     "parent": "父 Issue",
     "noParent": "无父 Issue",
-    "stage": "阶段"
+    "stage": "阶段",
+    "progress": "进度",
+    "createdAt": "创建时间"
   },
   "status": {
     "backlog": "待规划",
@@ -327,7 +330,11 @@
   "attach": {
     "title": "附件",
     "add": "添加附件",
+    "download": "下载 {{name}}",
     "empty": "暂无附件"
+  },
+  "createIssue": {
+    "runHint": "创建后 {{name}} 会立即开始工作"
   },
   "toast": {
     "created": "已创建",
@@ -460,7 +467,7 @@
   },
   "mention": {
     "groupUsers": "用户",
-    "groupIssues": "事项",
+    "groupIssues": "回路",
     "allMembers": "所有成员"
   },
   "agent": {
@@ -670,7 +677,6 @@
     "dispatch": "派单",
     "dispatched": "已派单",
     "agentUnavailable": "AI 队友当前不在线，无法派单——请等它上线，或换一个在线的队友。",
-    "daemonUnsupported": "AI 队友的运行环境版本过低，无法安全派单——请先升级它的运行时后重试。",
     "attachFailedAbort": "有 {{count}} 个附件上传失败，已取消派单——附件是 AI 的上下文，请重试。",
     "manualSwitch": "手动建单 · 指派给人",
     "examplesTitle": "从一个例子开始",
