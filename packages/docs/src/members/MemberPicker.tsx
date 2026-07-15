@@ -41,13 +41,17 @@ export function MemberPicker({
   /** True while a parent add/refresh is in flight (disables the Add button). */
   busy?: boolean
 }) {
+  // An empty roles={[]} would yield an undefined role + empty dropdown; fall back to defaults.
+  const effectiveRoles = roles.length > 0 ? roles : DEFAULT_ROLES
   const [members, setMembers] = useState<SpaceMemberLite[]>([])
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   // Default to 'writer' when offered (keeps rich-doc's prior initial), else the sole/first role
   // so a single-role dropdown ('reader' for HTML) is selected without an empty state.
-  const [role, setRole] = useState<Role>(roles.includes('writer') ? 'writer' : roles[0])
+  const [role, setRole] = useState<Role>(
+    effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0],
+  )
 
   useEffect(() => {
     let active = true
@@ -160,7 +164,7 @@ export function MemberPicker({
 
       <div className="octo-member-picker-actions">
         <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-          {roles.map((r) => (
+          {effectiveRoles.map((r) => (
             <option key={r} value={r}>
               {t(`docs.role.${r}`)}
             </option>
