@@ -2934,7 +2934,8 @@ body.octo-table-reordering {
 .octo-file-status,
 .octo-file-error,
 .octo-bookmark-status,
-.octo-bookmark-error {
+.octo-bookmark-error,
+.octo-table-reorder-error {
   position: fixed;
   bottom: 16px;
   left: 50%;
@@ -2951,7 +2952,8 @@ body.octo-table-reordering {
   background: var(--octo-accent, #1664ff);
 }
 .octo-file-error,
-.octo-bookmark-error {
+.octo-bookmark-error,
+.octo-table-reorder-error {
   background: #e03131;
 }
 

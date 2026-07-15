@@ -16,7 +16,7 @@ import {
 } from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import type { Transaction } from '@tiptap/pm/state'
-import { TableReorderHandle, tableReorderPluginKey, resolveDragSource } from './TableReorderHandle.ts'
+import { TableReorderHandle, tableReorderPluginKey, resolveDragSource, tableStructureSignature } from './TableReorderHandle.ts'
 
 // octo-docs-backend#76: table row/column reorder. The drag handle UI is DOM/pointer-driven and
 // needs real layout (jsdom reports zero rects), so these tests exercise the reorder MOVE that a
@@ -400,5 +400,122 @@ describe('concurrent reorder remapping (collaboration correctness)', () => {
     const mapped = remoteTr.mapping.map(cellPos)
     editor.view.dispatch(remoteTr)
     expect(resolveDragSource(editor.state.doc, mapped)).toBeNull()
+  })
+})
+
+// octo-docs-backend#76 / XIN-1187 (plan B —老板拍板 B): serialize-or-abort guard. The reorder
+// command rebuilds the whole table with a coarse `tr.replaceWith`; two such replaces that land
+// concurrently converge in the CRDT but interleave cell text (silent corruption — see
+// TableReorderConcurrency.test.ts). Plan B snapshots the dragged table's structure at drag start
+// (`tableStructureSignature`) and, in the plugin `state.apply`, re-fingerprints it against every
+// transaction that arrives mid-drag; if the fingerprint diverges the drop is aborted instead of
+// committing the replace. These tests pin the detection primitive and drive it through the exact
+// `tr.mapping` flow `state.apply` uses in production (a captured remote transaction, replayed).
+describe('plan-B concurrency guard — table structure signature', () => {
+  const HTML_3x2 =
+    '<table><tbody>' +
+    '<tr><td><p>r1c1</p></td><td><p>r1c2</p></td></tr>' +
+    '<tr><td><p>r2c1</p></td><td><p>r2c2</p></td></tr>' +
+    '<tr><td><p>r3c1</p></td><td><p>r3c2</p></td></tr>' +
+    '</tbody></table>'
+
+  it('is stable for an unchanged table (no false conflict)', () => {
+    editor = makeEditor(HTML_3x2)
+    const cellPos = cellPosOf(editor, 2, 0)
+    const a = tableStructureSignature(editor.state.doc, cellPos)
+    const b = tableStructureSignature(editor.state.doc, cellPos)
+    expect(a).not.toBeNull()
+    expect(a).toBe(b)
+  })
+
+  it('detects a concurrent REMOTE reorder of the dragged table (same dimensions)', () => {
+    editor = makeEditor(HTML_3x2)
+    // Drag starts on row 2; capture the baseline exactly like beginDrag.
+    let cellPos = cellPosOf(editor, 2, 0)
+    const baseline = tableStructureSignature(editor.state.doc, cellPos)
+
+    // A remote peer reorders the SAME table (row 0 → bottom). Capture as a transaction and remap the
+    // drag anchor through it, mirroring the plugin state.apply.
+    selectCell(editor, 0, 0)
+    const remoteTr = captureTr(editor, moveTableRow({ from: 0, to: 2 }))
+    cellPos = remoteTr.mapping.map(cellPos)
+    editor.view.dispatch(remoteTr)
+
+    // Row/col counts are unchanged, so a dimension-only check would miss this. A whole-table
+    // replace collapses the remapped anchor to the replace boundary (signature null) OR the
+    // text-in-order fingerprint diverges — either way matches the guard's `current === null ||
+    // current !== baseline` test, so it latches a conflict and the drop aborts.
+    const after = tableStructureSignature(editor.state.doc, cellPos)
+    expect(after === null || after !== baseline).toBe(true)
+  })
+
+  it('detects a concurrent remote row insert into the dragged table', () => {
+    editor = makeEditor(HTML_3x2)
+    let cellPos = cellPosOf(editor, 2, 0)
+    const baseline = tableStructureSignature(editor.state.doc, cellPos)
+
+    selectCell(editor, 0, 0)
+    const remoteTr = captureTr(editor, addRowBefore)
+    cellPos = remoteTr.mapping.map(cellPos)
+    editor.view.dispatch(remoteTr)
+
+    expect(tableStructureSignature(editor.state.doc, cellPos)).not.toBe(baseline)
+  })
+
+  it('detects a concurrent remote column insert into the dragged table', () => {
+    editor = makeEditor(HTML_3x2)
+    let cellPos = cellPosOf(editor, 2, 0)
+    const baseline = tableStructureSignature(editor.state.doc, cellPos)
+
+    selectCell(editor, 0, 0)
+    const remoteTr = captureTr(editor, addColumnBefore)
+    cellPos = remoteTr.mapping.map(cellPos)
+    editor.view.dispatch(remoteTr)
+
+    expect(tableStructureSignature(editor.state.doc, cellPos)).not.toBe(baseline)
+  })
+
+  it('treats a deleted source table as a conflict (signature null)', () => {
+    editor = makeEditor(HTML_3x2)
+    const cellPos = cellPosOf(editor, 2, 0)
+    expect(tableStructureSignature(editor.state.doc, cellPos)).not.toBeNull()
+
+    const { doc } = editor.state
+    let tableStart = -1
+    let tableEnd = -1
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'table') {
+        tableStart = pos
+        tableEnd = pos + node.nodeSize
+        return false
+      }
+      return true
+    })
+    const remoteTr = editor.state.tr.delete(tableStart, tableEnd)
+    const mapped = remoteTr.mapping.map(cellPos)
+    editor.view.dispatch(remoteTr)
+    expect(tableStructureSignature(editor.state.doc, mapped)).toBeNull()
+  })
+
+  it('does NOT fire for a benign edit outside the dragged table (no false abort)', () => {
+    editor = makeEditor(
+      '<p>lead</p>' +
+        '<table><tbody>' +
+        '<tr><td><p>r1c1</p></td><td><p>r1c2</p></td></tr>' +
+        '<tr><td><p>r2c1</p></td><td><p>r2c2</p></td></tr>' +
+        '</tbody></table>',
+    )
+    let cellPos = cellPosOf(editor, 1, 0)
+    const baseline = tableStructureSignature(editor.state.doc, cellPos)
+
+    // A collaborator types into the leading paragraph (position 1), well before the table. This
+    // shifts every table position, so the anchor must be remapped — but the table itself is
+    // untouched, so the fingerprint stays equal and the reorder is allowed to proceed.
+    const remoteTr = editor.state.tr.insertText('xyz', 1)
+    cellPos = remoteTr.mapping.map(cellPos)
+    editor.view.dispatch(remoteTr)
+
+    const after = tableStructureSignature(editor.state.doc, cellPos)
+    expect(after).toBe(baseline)
   })
 })

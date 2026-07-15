@@ -36,6 +36,7 @@ import {
   tableEditingKey,
 } from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
+import { tableStructureSignature } from './TableReorderHandle.ts'
 
 // Same collab field name the editor wires in production (schema/index.ts COLLAB_FIELD).
 const FIELD = 'default'
@@ -93,6 +94,14 @@ function selectCell(editor: Editor, row: number, col: number): void {
   const cellRel = map.map[row * map.width + col]
   const $inside = editor.state.doc.resolve(pos + 1 + cellRel + 1)
   editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near($inside)))
+}
+
+/** Absolute document position just before the (row,col) cell — the anchor a drag captures as
+ *  `cellPos` at drag start and the plan-B guard fingerprints from. */
+function cellPosOf(editor: Editor, row: number, col: number): number {
+  const { node, pos } = firstTable(editor)
+  const map = TableMap.get(node)
+  return pos + 1 + map.map[row * map.width + col]
 }
 
 /** Seed peer A with `html`, fork peer B from A's identical Y state, return both peers plus the
@@ -238,5 +247,99 @@ describe('table reorder — collaborative convergence baseline (#76)', () => {
     const texts = new Set(grid(edA).flat())
     const anyPristineRowLabel = ['r1c1', 'r2c1', 'r3c1'].some((t) => texts.has(t))
     expect(anyPristineRowLabel).toBe(false) // documents today's garbling; a fix should flip this
+  })
+})
+
+// Plan B (octo-docs-backend#76 / XIN-1187 —老板拍板 B). The guard added to TableReorderHandle
+// snapshots the dragged table's structure at drag start and, if a concurrent edit lands on that
+// table during the drag, ABORTS the local reorder (shows an i18n toast) instead of committing the
+// coarse whole-table replace. These tests reuse the same dual-Y.Doc harness as the baseline above
+// and show the guard's two halves: (1) `tableStructureSignature` detects exactly the concurrent
+// structural races the characterization test corrupts on, and (2) once the losing peer aborts, only
+// the surviving edit lands, so the peers converge to a clean, non-corrupt table — no silent data
+// loss. The baseline/characterization tests above are left untouched as the evidence of the hazard.
+describe('table reorder — plan B conflict-abort guard eliminates silent corruption (#76)', () => {
+  // The exact scenario the characterization test corrupts on: two concurrent reorders of the same
+  // table. With the guard, the peer that detects the concurrent reorder aborts its own move, so only
+  // ONE whole-table replace is ever committed — the peers converge to a clean reorder, labels intact.
+  it('two concurrent reorders → losing peer aborts, peers converge with NO corruption', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(HTML_3x3)
+    track(edA, edB)
+
+    // Peer A begins dragging row 2 and snapshots the table (beginDrag → dragBaseline).
+    const dragCell = cellPosOf(edA, 2, 0)
+    const baseline = tableStructureSignature(edA.state.doc, dragCell)
+    expect(baseline).not.toBeNull()
+
+    // Peer B concurrently reorders the SAME table (row 0 → bottom) and commits it.
+    selectCell(edB, 0, 0)
+    moveTableRow({ from: 0, to: 2 })(edB.state, edB.view.dispatch)
+
+    // B's concurrent edit reaches A (y-prosemirror). A's guard re-fingerprints the dragged table and
+    // sees it diverge from the baseline → the drop is aborted, so A commits NOTHING.
+    mergeConcurrent(docA, docB, base)
+    const afterMerge = tableStructureSignature(edA.state.doc, cellPosOf(edA, 0, 0))
+    expect(afterMerge).not.toBe(baseline) // guard fires → A aborts its reorder
+
+    // Because A aborted, only B's single reorder is in the CRDT: peers converge and every original
+    // cell label survives verbatim — the char-interleaving corruption is gone.
+    expect(xml(docA)).toBe(xml(docB))
+    expect(grid(edA)).toEqual(grid(edB))
+    const texts = grid(edA).flat()
+    for (const cell of [
+      'r1c1', 'r1c2', 'r1c3',
+      'r2c1', 'r2c2', 'r2c3',
+      'r3c1', 'r3c2', 'r3c3',
+    ]) {
+      expect(texts).toContain(cell)
+    }
+    // B's reorder landed cleanly: row 0 ("r1") moved to the bottom.
+    expect(grid(edA).map((row) => row[0])).toEqual(['r2c1', 'r3c1', 'r1c1'])
+  })
+
+  it('reorder ⟂ concurrent remote row insert → guard fires, insert survives, nothing lost', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(HTML_3x2)
+    track(edA, edB)
+
+    // Peer A begins dragging row 2 and snapshots the table.
+    const dragCell = cellPosOf(edA, 2, 0)
+    const baseline = tableStructureSignature(edA.state.doc, dragCell)
+
+    // Peer B concurrently inserts a row above the first row of the SAME table.
+    selectCell(edB, 0, 0)
+    addRowBefore(edB.state, edB.view.dispatch)
+
+    mergeConcurrent(docA, docB, base)
+
+    // Row count changed → guard fires → A aborts. Only B's insert lands; peers converge with no loss.
+    expect(tableStructureSignature(edA.state.doc, cellPosOf(edA, 0, 0))).not.toBe(baseline)
+    expect(xml(docA)).toBe(xml(docB))
+    expect(grid(edA)).toEqual(grid(edB))
+    const texts = grid(edA).flat()
+    for (const cell of ['r1c1', 'r2c1', 'r3c1', 'r1c2', 'r2c2', 'r3c2']) {
+      expect(texts).toContain(cell)
+    }
+    // A brand-new empty row was inserted (a blank leading cell), and the original order is intact.
+    expect(texts.filter((t) => t === '').length).toBeGreaterThanOrEqual(1)
+    expect(grid(edA).map((row) => row[0]).filter((t) => t.startsWith('r'))).toEqual([
+      'r1c1',
+      'r2c1',
+      'r3c1',
+    ])
+  })
+
+  it('reorder with NO concurrent edit → guard stays clear, reorder proceeds normally', () => {
+    const { edA } = forkedPeers(HTML_3x3)
+    track(edA)
+
+    // Single-user drag: snapshot, no concurrent transaction arrives, so the fingerprint is unchanged
+    // and the reorder is allowed — the guard never blocks the happy path.
+    const dragCell = cellPosOf(edA, 2, 0)
+    const baseline = tableStructureSignature(edA.state.doc, dragCell)
+    expect(tableStructureSignature(edA.state.doc, cellPosOf(edA, 2, 0))).toBe(baseline)
+
+    selectCell(edA, 2, 0)
+    moveTableRow({ from: 2, to: 0 })(edA.state, edA.view.dispatch)
+    expect(grid(edA).map((row) => row[0])).toEqual(['r3c1', 'r1c1', 'r2c1'])
   })
 })

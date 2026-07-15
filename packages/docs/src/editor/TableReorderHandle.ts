@@ -25,12 +25,25 @@
 // (`tr.replaceWith`), so y-prosemirror syncs it like any other edit — no bespoke collab code.
 // The handle + drop-indicator are plugin-managed DOM outside the document (like
 // BlockDragHandle), so the mutation observer never sees them as content.
+//
+// Concurrency guard (plan B, octo-docs-backend#76 / XIN-1187). The reorder command rebuilds the
+// whole table with a single coarse `tr.replaceWith`. TableReorderConcurrency.test.ts shows the
+// real hazard: two whole-table replaces that land concurrently (a remote reorder, or a remote
+// add/delete row·column / merge·split racing our drag) DO converge in the CRDT, but y-prosemirror
+// re-diffs each replace against the base and interleaves cell text — the peers agree on a GARBLED
+// table, i.e. silent data loss. The fine-grained fix (plan A) is scheduled separately; plan B is a
+// serialize-or-abort guard layered on top: we snapshot the dragged table's structure at drag start
+// (`tableStructureSignature`) and, if any transaction that arrives DURING the drag changes that
+// table (structure or cell content), we ABORT the reorder instead of committing the replace — a
+// clear i18n toast tells the user to retry. Aborting is a pure early return before any dispatch, so
+// there is no half-commit and no dirty state; we would rather cancel than silently corrupt.
 
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import { TableMap, cellAround, moveTableColumn, moveTableRow } from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
+import { t } from '../octoweb/index.ts'
 
 export const tableReorderPluginKey = new PluginKey('octoTableReorder')
 
@@ -129,6 +142,68 @@ export function resolveDragSource(
   }
 }
 
+/** Fingerprint of the table that contains `cellPos`, used by the plan-B concurrency guard to tell
+ * whether a transaction arriving mid-drag changed the dragged table. The signature folds in exactly
+ * the things a corrupting concurrent edit would move: the grid dimensions (add/delete row·column),
+ * each cell's colspan/rowspan (merge·split) and each cell's text in grid order (a remote reorder
+ * reshuffles the text, a concurrent cell edit rewrites it). Anything OUTSIDE this table — edits to
+ * other tables or prose — leaves the signature untouched, so the guard only fires on same-table
+ * races. Returns null when `cellPos` no longer resolves to a table cell (e.g. a peer deleted it),
+ * which the guard also treats as a conflict. Deliberately conservative: any same-table change aborts
+ * the reorder, because the coarse whole-table replace can silently corrupt against any of them until
+ * the fine-grained plan-A move lands. */
+export function tableStructureSignature(doc: PMNode, cellPos: number): string | null {
+  if (cellPos < 0 || cellPos + 1 > doc.content.size) return null
+  let $inside
+  try {
+    $inside = doc.resolve(cellPos + 1)
+  } catch {
+    return null
+  }
+  let depth = -1
+  for (let d = $inside.depth; d > 0; d--) {
+    if ($inside.node(d).type.spec.tableRole === 'table') {
+      depth = d
+      break
+    }
+  }
+  if (depth < 0) return null
+  const table = $inside.node(depth)
+  let map: TableMap
+  try {
+    map = TableMap.get(table)
+  } catch {
+    return null
+  }
+  const parts: string[] = [`${map.height}x${map.width}`]
+  for (let r = 0; r < map.height; r++) {
+    for (let c = 0; c < map.width; c++) {
+      const cell = table.nodeAt(map.map[r * map.width + c])
+      if (!cell) {
+        parts.push('-')
+        continue
+      }
+      const colspan = (cell.attrs.colspan as number | undefined) ?? 1
+      const rowspan = (cell.attrs.rowspan as number | undefined) ?? 1
+      parts.push(`${cell.textContent}#${colspan},${rowspan}`)
+    }
+  }
+  return parts.join('|')
+}
+
+/** Transient, document-external toast telling the user their reorder was cancelled because a
+ * collaborator changed the same table mid-drag. Lives in <body> (never the Y.Doc), so it cannot
+ * desync collab content — mirrors `notifyFileError` in fileUpload.ts. */
+function notifyReorderConflict(): void {
+  if (typeof document === 'undefined') return
+  const el = document.createElement('div')
+  el.className = 'octo-table-reorder-error'
+  el.setAttribute('role', 'alert')
+  el.textContent = t('docs.table.reorderConflict')
+  document.body.appendChild(el)
+  setTimeout(() => el.remove(), 4000)
+}
+
 function cellContextAt(view: EditorView, clientX: number, clientY: number): CellContext | null {
   const found = view.posAtCoords({ left: clientX, top: clientY })
   if (!found) return null
@@ -180,6 +255,13 @@ export const TableReorderHandle = Extension.create({
     let drag: DragState | null = null
     // Resolved drop target row/column index during a drag (null = no valid target yet).
     let dropIndex: number | null = null
+    // Plan-B concurrency guard. `dragBaseline` is the dragged table's structure signature captured
+    // at drag start; `concurrentEdit` latches true when any transaction that lands during the drag
+    // changes that table (a remote reorder / add·delete row·column / merge·split / cell edit — see
+    // the plugin `state.apply`). When latched, `runMove` aborts the reorder rather than committing a
+    // whole-table replace that would silently corrupt against the concurrent edit.
+    let dragBaseline: string | null = null
+    let concurrentEdit = false
 
     const hideHandles = () => {
       if (rowHandle) rowHandle.style.display = 'none'
@@ -276,6 +358,14 @@ export const TableReorderHandle = Extension.create({
         reorderDebug({ phase: 'drop', dispatched: false, reason: 'no valid target', drag, dropIndex })
         return
       }
+      // Plan-B guard: a collaborator changed this table during the drag. Abort BEFORE any dispatch
+      // (no selection change, no move) so there is zero half-commit, and tell the user to retry —
+      // committing the whole-table replace now would silently corrupt against their edit.
+      if (concurrentEdit) {
+        reorderDebug({ phase: 'drop', dispatched: false, reason: 'concurrent structural edit — aborted' })
+        notifyReorderConflict()
+        return
+      }
       // Re-resolve the source cell against the CURRENT doc from its remapped position, then take
       // the move's `from` from the live grid rect — never the drag-start index. Under concurrent
       // collaboration a remote peer may have inserted/deleted rows or columns above the dragged
@@ -314,6 +404,8 @@ export const TableReorderHandle = Extension.create({
       runMove(view)
       drag = null
       dropIndex = null
+      dragBaseline = null
+      concurrentEdit = false
       hideIndicator()
       hideHandles()
     }
@@ -377,6 +469,10 @@ export const TableReorderHandle = Extension.create({
         tablePos: hover.tablePos,
         cellPos: hover.cellPos,
       }
+      // Snapshot the dragged table's structure so the plan-B guard can detect a concurrent edit to
+      // it during the drag. Reset the latch for this fresh drag.
+      dragBaseline = tableStructureSignature(view.state.doc, hover.cellPos)
+      concurrentEdit = false
       reorderDebug({ phase: 'begin', kind, index: kind === 'col' ? hover.rect.left : hover.rect.top })
       dropIndex = null
       activeView = view
@@ -396,13 +492,22 @@ export const TableReorderHandle = Extension.create({
         // holds no value of its own; it exists only for the mapping side effect on the drag anchor.
         state: {
           init: () => null,
-          apply: (tr) => {
+          apply: (tr, _value, _oldState, newState) => {
             if (drag && tr.docChanged) {
               drag = {
                 ...drag,
                 cellPos: tr.mapping.map(drag.cellPos),
                 tablePos: tr.mapping.map(drag.tablePos),
                 tableStart: tr.mapping.map(drag.tableStart),
+              }
+              // Plan-B conflict detection. Re-fingerprint the dragged table (via the just-remapped
+              // cellPos, against the post-transaction doc) and latch a conflict if it diverges from
+              // the drag-start baseline — i.e. this transaction changed the table we are dragging in.
+              // A benign edit elsewhere leaves the signature equal, so the latch stays clear. Once
+              // latched it stays latched for the rest of the drag; `runMove` then aborts.
+              if (!concurrentEdit && dragBaseline !== null) {
+                const current = tableStructureSignature(newState.doc, drag.cellPos)
+                if (current === null || current !== dragBaseline) concurrentEdit = true
               }
             }
             return null
@@ -452,6 +557,8 @@ export const TableReorderHandle = Extension.create({
               rowHandle = colHandle = indicator = null
               activeView = null
               drag = null
+              dragBaseline = null
+              concurrentEdit = false
             },
           }
         },

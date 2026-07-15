@@ -213,7 +213,8 @@
     "freezeThroughRow": "Freeze up to this row",
     "freezeFirstColumn": "Freeze first column",
     "freezeThroughColumn": "Freeze up to this column",
-    "unfreeze": "Unfreeze"
+    "unfreeze": "Unfreeze",
+    "reorderConflict": "The table was changed by a collaborator, so the reorder was cancelled. Please try again."
   },
   "callout": {
     "info": "Info",
