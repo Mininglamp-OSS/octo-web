@@ -163,25 +163,87 @@ export function resolveDocTarget(search: string, uid?: string): DocTarget | null
 }
 
 /**
+ * History-state markers we stamp on the docs route's entries so a browser Back/Forward can be
+ * told apart from a genuine reload/deep-link (see readDocFromHistory + the popstate handler).
+ * `octoDocsDoc` tags the entry that addresses an open doc; `octoDocsList` tags the list entry
+ * that sits beneath it. Kept as a small serialisable shape so it survives history.state.
+ */
+const HISTORY_STATE_DOC = 'octoDocsDoc'
+const HISTORY_STATE_LIST = 'octoDocsList'
+
+/** Build the `/docs?…&doc=<id>` URL for the given selection (doc addressing). */
+function docUrl(docId: string, space: string, folder: string): string {
+  const q = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+  q.set('space', space)
+  q.set('folder', folder)
+  q.set('doc', docId)
+  return `/docs?${q.toString()}`
+}
+
+/** Build the `/docs` list URL (doc addressing stripped). */
+function listUrl(): string {
+  const q = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+  q.delete('doc')
+  q.delete('docId')
+  q.delete('space')
+  q.delete('folder')
+  const qs = q.toString()
+  return qs ? `/docs?${qs}` : '/docs'
+}
+
+/**
  * Mirror the active doc to the URL (`?doc=<id>`) WITHOUT a full navigation.
  *
- * Split-pane note: opening a doc is now an in-pane state change (setSelectedDoc), not a
- * `window.location.assign`. We still reflect the selection into the URL via
- * history.replaceState so the link is shareable/refreshable — but replaceState does NOT
- * trigger the host RouteManager's pathname-only re-push (that fires on assign/pushState),
- * so `?doc=` is no longer wiped. sessionStorage remains the durable mirror for the
- * deep-link/refresh path. This is what neutralizes the `?doc=` strip should-fix.
+ * Split-pane note: opening a doc is an in-pane state change (setSelectedDoc), not a
+ * `window.location.assign`. We reflect the selection into the URL so the link is
+ * shareable/refreshable; neither replaceState nor pushState triggers the host RouteManager's
+ * pathname-only re-push (that only fires on `popstate`/`pageshow`), so `?doc=` is not wiped
+ * on open. sessionStorage remains the durable mirror for the deep-link/refresh path.
+ *
+ * `push` controls the history entry (XIN-1172 — the Back/reload → about:blank fix):
+ *   - `push: true`  — opening a doc while none was open. We first normalise the CURRENT entry
+ *     to the list, then push the doc as its OWN entry. That guarantees a list entry sits
+ *     beneath the doc, so a browser Back returns to the list instead of popping past `/docs`
+ *     to the tab's initial `about:blank` (the reported blank page). Before this fix opening a
+ *     doc only replaceState'd the current entry, leaving no in-app entry to go Back to.
+ *   - `push: false` — switching from one open doc to another: stay at the same history depth
+ *     (a single doc entry over the one list entry), so Back still lands on the list.
  */
-function mirrorDocToUrl(docId: string, space: string, folder: string): void {
+function mirrorDocToUrl(docId: string, space: string, folder: string, push: boolean): void {
   if (typeof window === 'undefined') return
   try {
-    const q = new URLSearchParams(window.location.search)
-    q.set('space', space)
-    q.set('folder', folder)
-    q.set('doc', docId)
-    window.history.replaceState(window.history.state, '', `/docs?${q.toString()}`)
+    const url = docUrl(docId, space, folder)
+    if (push) {
+      // Normalise the current entry to the list (Back target), then push the doc entry on top.
+      window.history.replaceState({ [HISTORY_STATE_LIST]: true }, '', listUrl())
+      window.history.pushState({ [HISTORY_STATE_DOC]: docId }, '', url)
+    } else {
+      window.history.replaceState({ [HISTORY_STATE_DOC]: docId }, '', url)
+    }
   } catch {
     // history unavailable: selection still works via state; just not URL-reflected.
+  }
+}
+
+/**
+ * Resolve which doc (if any) a history entry addresses, used by the popstate handler to decide
+ * list vs doc after a browser Back/Forward. Prefers the marker we stamped on the entry
+ * (`octoDocsDoc`/`octoDocsList`); falls back to the URL query when the state is absent (e.g. the
+ * host RouteManager overwrote it on its own popstate re-push). Returns the docId, or null for
+ * "this is the list".
+ */
+export function readDocFromHistory(state: unknown, search: string): string | null {
+  const st = state && typeof state === 'object' ? (state as Record<string, unknown>) : null
+  if (st) {
+    const doc = st[HISTORY_STATE_DOC]
+    if (typeof doc === 'string' && doc) return doc
+    if (st[HISTORY_STATE_LIST] === true) return null
+  }
+  try {
+    const q = new URLSearchParams(search)
+    return q.get('doc') || q.get('docId') || null
+  } catch {
+    return null
   }
 }
 
@@ -189,13 +251,7 @@ function mirrorDocToUrl(docId: string, space: string, folder: string): void {
 function mirrorListToUrl(): void {
   if (typeof window === 'undefined') return
   try {
-    const q = new URLSearchParams(window.location.search)
-    q.delete('doc')
-    q.delete('docId')
-    q.delete('space')
-    q.delete('folder')
-    const qs = q.toString()
-    window.history.replaceState(window.history.state, '', qs ? `/docs?${qs}` : '/docs')
+    window.history.replaceState({ [HISTORY_STATE_LIST]: true }, '', listUrl())
   } catch {
     // ignore
   }
@@ -1122,16 +1178,21 @@ export function DocsHome() {
   // right pane. Split out from openDoc so the kind can be resolved asynchronously first.
   const commitOpen = useCallback(
     (docId: string, docType: 'board' | 'doc' | 'sheet') => {
+      // Whether a doc was already open BEFORE this commit — read from the live ref (not the
+      // closed-over state, which lags a render). Drives whether we PUSH a new history entry
+      // (first open from the list) or REPLACE in place (doc → doc switch). See mirrorDocToUrl.
+      const wasOpen = selectedDocIdRef.current !== null
       setSelectedDocId(docId)
       setSelectedDocType(docType)
       // View ingest (frontend-design §3.4 / XIN-1098 API 1): record that this doc was opened so it
       // surfaces in "最近查看". Fire-and-forget on the open success path — read-only opens count too,
       // the call is idempotent (server UPSERTs on (uid,docId)), and a failure never blocks the open.
       void recordDocView(docId)
-      // Durable mirror (survives the host's query-wiping re-push) + shareable URL (replaceState,
-      // no host re-push) — together neutralizing the `?doc=` strip should-fix.
+      // Durable mirror (survives the host's query-wiping re-push) + shareable URL. On a first open
+      // we push a doc entry over a normalised list entry so a browser Back returns to the list, not
+      // the tab's initial about:blank (XIN-1172).
       persistDocTarget({ space, folder, doc: docId, docType })
-      mirrorDocToUrl(docId, space, folder)
+      mirrorDocToUrl(docId, space, folder, !wasOpen)
       const push = (dt: string | undefined) => {
         setSelectedDocType(dt)
         if (routeRight) {
@@ -1270,6 +1331,29 @@ export function DocsHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Browser Back / Forward handling (XIN-1172). Opening a doc pushes a doc history entry over a
+  // list entry (see mirrorDocToUrl), so a Back pops to the list entry and fires `popstate`. Here we
+  // reconcile the pane to whatever that entry addresses: a doc → (re)open it; the list → close the
+  // doc AND clear the persisted target so neither this instance nor the host RouteManager's own
+  // popstate re-push (which re-mounts DocsHome reading sessionStorage) re-opens the doc. Clearing
+  // synchronously in the popstate dispatch — before React flushes the host's re-mount — is what
+  // makes "open doc → Back → list (kept), reload → still list, never about:blank" deterministic.
+  useEffect(() => {
+    const onPopState = () => {
+      const doc =
+        typeof window !== 'undefined'
+          ? readDocFromHistory(window.history.state, window.location.search)
+          : null
+      if (doc) {
+        if (doc !== selectedDocIdRef.current) openDoc(doc)
+      } else {
+        clearDocTarget()
+        backToList()
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [openDoc, backToList])
   // Production (routeRight present): the editor lives in the host's main pane; this route
   // slot renders ONLY the resident list (left). Tests / standalone (no routeRight): render
   // the inline CSS split-pane (left list + right editor) so the layout still works.

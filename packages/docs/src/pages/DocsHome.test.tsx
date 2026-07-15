@@ -3,7 +3,7 @@ import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-libra
 import type { ReactNode } from 'react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
-import { resolveDocTarget, clearDocTarget, DocsHome } from './DocsHome.tsx'
+import { resolveDocTarget, clearDocTarget, readDocFromHistory, DocsHome } from './DocsHome.tsx'
 import { captureDocTargetDeepLink } from '../config.ts'
 
 // Replace the heavy editor shell (Tiptap + Yjs + Hocuspocus) with a marker so the DocsHome
@@ -58,6 +58,7 @@ const TARGET_KEY = 'octo.docs.target'
 
 let assignSpy: ReturnType<typeof vi.fn>
 let replaceStateSpy: ReturnType<typeof vi.fn>
+let pushStateSpy: ReturnType<typeof vi.fn>
 const realLocation = window.location
 
 beforeEach(() => {
@@ -72,13 +73,19 @@ beforeEach(() => {
     writable: true,
     value: { search: '', assign: assignSpy },
   })
-  // Split-pane mirrors selection to the URL via history.replaceState (no host re-push),
-  // not a full navigation — stub it so the URL-mirror is observable.
+  // Split-pane mirrors selection to the URL via the History API (no host re-push), not a full
+  // navigation — stub replaceState AND pushState so the URL-mirror is observable. Opening a doc
+  // now normalises the current entry to the list (replaceState) then pushes the doc as its own
+  // entry (pushState) so a browser Back returns to the list, not about:blank (XIN-1172).
   replaceStateSpy = vi.fn()
+  pushStateSpy = vi.fn()
   // Cast at the call site: vitest 4's loosely-typed `vi.fn()` isn't directly assignable to the
-  // precise `replaceState` signature mockImplementation expects (the spy still records calls).
+  // precise replaceState/pushState signatures mockImplementation expects (the spies still record).
   vi.spyOn(window.history, 'replaceState').mockImplementation(
     replaceStateSpy as unknown as typeof window.history.replaceState,
+  )
+  vi.spyOn(window.history, 'pushState').mockImplementation(
+    pushStateSpy as unknown as typeof window.history.pushState,
   )
 })
 
@@ -249,11 +256,14 @@ describe('DocsHome navigation (split-pane)', () => {
     // and the list stays resident on the left.
     await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_new')
-    // selection mirrored to sessionStorage + URL (replaceState, not assign).
+    // selection mirrored to sessionStorage + URL. Opening from the list PUSHES a doc entry over a
+    // normalised list entry (XIN-1172): the doc addressing lands on pushState, the last replaceState
+    // is the list entry beneath it (no `doc=`), so a browser Back returns to the list.
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_new' })
     expect(assignSpy).not.toHaveBeenCalled()
-    expect(replaceStateSpy).toHaveBeenCalled()
-    expect(String(replaceStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_new')
+    expect(pushStateSpy).toHaveBeenCalled()
+    expect(String(pushStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_new')
+    expect(String(replaceStateSpy.mock.calls.at(-1)![2])).not.toContain('doc=')
   })
 
   it('creates a board via the New dropdown and opens it in the board shell', async () => {
@@ -341,7 +351,9 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(screen.getByText('Doc A')).toBeTruthy()
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_a' })
     expect(assignSpy).not.toHaveBeenCalled()
-    expect(String(replaceStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_a')
+    // First open from the list pushes the doc entry over a normalised list entry (XIN-1172).
+    expect(String(pushStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_a')
+    expect(String(replaceStateSpy.mock.calls.at(-1)![2])).not.toContain('doc=')
   })
 
   it('AC-1: the open doc exposes an "Open in new page" entry that opens the /d/:docId standalone link', async () => {
@@ -1208,5 +1220,94 @@ describe('DocsHome — deleting the open doc clears the right pane and selection
     const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } } | undefined
     expect(last?.props?.docId).toBe('d_x')
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_x' })
+  })
+})
+
+// XIN-1172 — opening a doc → browser Back / Back-then-reload landed on about:blank because the
+// open only replaceState'd the current entry (no in-app entry to go Back to) and the persisted
+// target re-opened the doc on the host's popstate re-push. The fix pushes a doc entry over a
+// normalised list entry and reconciles popstate to the list, clearing the target.
+describe('readDocFromHistory (XIN-1172 Back/Forward intent)', () => {
+  it('returns the docId when the entry is marked as a doc entry', () => {
+    expect(readDocFromHistory({ octoDocsDoc: 'd_open' }, '')).toBe('d_open')
+  })
+
+  it('returns null (list) when the entry is marked as the list entry', () => {
+    // Even if a stale ?doc= lingers in the URL, an explicit list marker wins → show the list.
+    expect(readDocFromHistory({ octoDocsList: true }, '?doc=d_stale')).toBeNull()
+  })
+
+  it('falls back to the URL query when the state carries no marker (host re-push overwrote it)', () => {
+    expect(readDocFromHistory({}, '?space=s&folder=f&doc=d_url')).toBe('d_url')
+    expect(readDocFromHistory(null, '?sid=abc')).toBeNull()
+  })
+
+  it('accepts docId as an alias in the URL fallback', () => {
+    expect(readDocFromHistory(undefined, '?docId=d_alias')).toBe('d_alias')
+  })
+})
+
+describe('DocsHome — browser Back returns to the list, never about:blank (XIN-1172)', () => {
+  it('pushes a doc entry over a normalised list entry so Back has a list to return to', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [{ docId: 'd_a', title: 'Doc A', ownerId: 'u_self', role: 'admin', docType: 'doc' }],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Doc A')).toBeTruthy())
+    fireEvent.click(screen.getByText('Doc A'))
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+
+    // The current entry was normalised to the list (no doc), then the doc was pushed on top —
+    // guaranteeing an in-app list entry beneath so a browser Back never pops past /docs.
+    const listReplace = replaceStateSpy.mock.calls.at(-1)!
+    expect(String(listReplace[2])).not.toContain('doc=')
+    expect((listReplace[0] as Record<string, unknown>).octoDocsList).toBe(true)
+    const docPush = pushStateSpy.mock.calls.at(-1)!
+    expect(String(docPush[2])).toContain('doc=d_a')
+    expect((docPush[0] as Record<string, unknown>).octoDocsDoc).toBe('d_a')
+  })
+
+  it('on popstate to a non-doc entry, closes the doc and clears the persisted target (Back → list)', async () => {
+    // A doc is open via a persisted target (mirrors the host having re-opened it before a Back).
+    window.sessionStorage.setItem(TARGET_KEY, JSON.stringify({ doc: 'd_persist' }))
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_persist') {
+        return { data: { docId: 'd_persist', title: 'Persisted', role: 'admin', docType: 'doc' }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+
+    // Simulate the browser Back popping to the list entry (history.state is the mocked no-op, so
+    // readDocFromHistory sees no doc marker and the empty URL → "this is the list").
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+
+    // The editor is dismissed and the persisted target is cleared, so the host's own popstate
+    // re-push (which re-mounts DocsHome reading sessionStorage) cannot re-open the doc — and a
+    // reload of the now doc-less /docs URL lands on the list, not a blank page.
+    await waitFor(() => expect(screen.queryByTestId('editor-shell')).toBeNull())
+    expect(window.sessionStorage.getItem(TARGET_KEY)).toBeNull()
+    expect(assignSpy).not.toHaveBeenCalled()
   })
 })
