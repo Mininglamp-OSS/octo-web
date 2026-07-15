@@ -19,6 +19,7 @@ import type { ReactNode } from 'react'
 import { TextSelection } from '@tiptap/pm/state'
 import { CellSelection } from '@tiptap/pm/tables'
 import type { Editor } from '@tiptap/core'
+import { getFreezeSpec, isInTable } from './TableFreeze.ts'
 import { t } from '../octoweb/index.ts'
 
 // Largest table the grid picker can size in one drag. Big enough for the common cases; authors who
@@ -75,12 +76,41 @@ const IconTable = () => (
     <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5zm2 1v3h5V6H6zm7 0v3h5V6h-5zM6 11v3h5v-3H6zm7 0v3h5v-3h-5zm-7 5v2h5v-2H6zm7 0v2h5v-2h-5z" />
   </svg>
 )
+// Freeze glyphs: a table outline with the frozen band (top row / first column) filled solid so the
+// action reads at a glance, matching the 3×3-grid style of the add/delete icons above.
+const IconFreeze = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5z" opacity="0.35" />
+    <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v3H4V5zM4 8h5v12H5a1 1 0 0 1-1-1V8z" />
+  </svg>
+)
+const IconFreezeRow = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5z" opacity="0.35" />
+    <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v4H4V5z" />
+  </svg>
+)
+const IconFreezeCol = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5z" opacity="0.35" />
+    <path d="M4 5a1 1 0 0 1 1-1h5v16H5a1 1 0 0 1-1-1V5z" />
+  </svg>
+)
+const IconUnfreeze = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5zm2 1v12h12V6H6z" />
+    <path d="M8.7 8.7a1 1 0 0 1 1.4 0L12 10.6l1.9-1.9a1 1 0 1 1 1.4 1.4L13.4 12l1.9 1.9a1 1 0 0 1-1.4 1.4L12 13.4l-1.9 1.9a1 1 0 0 1-1.4-1.4L10.6 12 8.7 10.1a1 1 0 0 1 0-1.4z" />
+  </svg>
+)
 
 function TbBtn({
   onClick,
   label,
   title,
   text,
+  active,
+  disabled,
+  caret,
 }: {
   onClick: () => void
   label: ReactNode
@@ -89,18 +119,27 @@ function TbBtn({
   // delete controls (#621-2) so the user reads which row/column/table the action removes,
   // instead of guessing from an icon alone.
   text?: string
+  // Active (e.g. this freeze band is on) and disabled states, mirroring the toolbar Btn.
+  active?: boolean
+  disabled?: boolean
+  // Expander caret ("▸"/"▾") shown at the row's trailing edge for a submenu trigger (#755).
+  caret?: ReactNode
 }) {
   return (
     <button
       type="button"
-      className={'octo-tb-btn' + (text ? ' octo-tb-btn--labeled' : '')}
+      className={
+        'octo-tb-btn' + (text ? ' octo-tb-btn--labeled' : '') + (active ? ' is-active' : '')
+      }
       title={title}
       aria-label={title}
+      disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
     >
       {label}
       {text ? <span className="octo-tb-btn-label">{text}</span> : null}
+      {caret ? <span className="octo-tb-btn-caret">{caret}</span> : null}
     </button>
   )
 }
@@ -191,6 +230,10 @@ export function TableContextMenu({ editor }: { editor: Editor }) {
   // Viewport-coord anchor point where the user right-clicked; null while the menu is closed.
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  // Whether the inline "Freeze" submenu is expanded (#755). Kept as plain React state on the menu
+  // itself and toggled by a click — no hover flyout, no portal, no capture-phase listener that could
+  // race the toggle — so the sub-options open reliably every time the user picks Freeze.
+  const [freezeOpen, setFreezeOpen] = useState(false)
   // Cell positions (anchor/head) of a multi-cell CellSelection captured at right-click time, or
   // null when the click was on a single cell. See the snapshot in onContextMenu below for why this
   // has to be remembered rather than re-read from the live selection when a menu item is clicked.
@@ -221,6 +264,7 @@ export function TableContextMenu({ editor }: { editor: Editor }) {
         sel instanceof CellSelection
           ? { anchor: sel.$anchorCell.pos, head: sel.$headCell.pos }
           : null
+      setFreezeOpen(false)
       setPoint({ x: e.clientX, y: e.clientY })
     }
     dom.addEventListener('contextmenu', onContextMenu)
@@ -282,8 +326,12 @@ export function TableContextMenu({ editor }: { editor: Editor }) {
     }
     fn()
     cellRangeRef.current = null
+    setFreezeOpen(false)
     setPoint(null)
   }
+
+  // Freeze extent of the right-clicked table, so the submenu can show which bands are already on.
+  const freeze = getFreezeSpec(editor.state)
 
   return (
     <div
@@ -330,6 +378,52 @@ export function TableContextMenu({ editor }: { editor: Editor }) {
         text={t('docs.table.deleteColumn')}
         onClick={() => run(() => editor.chain().focus().deleteColumn().run())}
       />
+      <span className="octo-tb-sep" />
+      <TbBtn
+        label={<IconFreeze />}
+        title={t('docs.table.freeze')}
+        text={t('docs.table.freeze')}
+        active={freeze.rows > 0 || freeze.cols > 0}
+        caret={freezeOpen ? '▾' : '▸'}
+        onClick={() => setFreezeOpen((v) => !v)}
+      />
+      {freezeOpen && (
+        <div className="octo-table-submenu" role="group" aria-label={t('docs.table.freeze')}>
+          <TbBtn
+            label={<IconFreezeRow />}
+            title={t('docs.table.freezeHeaderRow')}
+            text={t('docs.table.freezeHeaderRow')}
+            active={freeze.rows > 0}
+            onClick={() => run(() => editor.chain().focus().toggleFreezeHeaderRow().run())}
+          />
+          <TbBtn
+            label={<IconFreezeRow />}
+            title={t('docs.table.freezeThroughRow')}
+            text={t('docs.table.freezeThroughRow')}
+            onClick={() => run(() => editor.chain().focus().freezeThroughSelectedRow().run())}
+          />
+          <TbBtn
+            label={<IconFreezeCol />}
+            title={t('docs.table.freezeFirstColumn')}
+            text={t('docs.table.freezeFirstColumn')}
+            active={freeze.cols > 0}
+            onClick={() => run(() => editor.chain().focus().toggleFreezeFirstColumn().run())}
+          />
+          <TbBtn
+            label={<IconFreezeCol />}
+            title={t('docs.table.freezeThroughColumn')}
+            text={t('docs.table.freezeThroughColumn')}
+            onClick={() => run(() => editor.chain().focus().freezeThroughSelectedColumn().run())}
+          />
+          <TbBtn
+            label={<IconUnfreeze />}
+            title={t('docs.table.unfreeze')}
+            text={t('docs.table.unfreeze')}
+            disabled={freeze.rows === 0 && freeze.cols === 0}
+            onClick={() => run(() => editor.chain().focus().clearTableFreeze().run())}
+          />
+        </div>
+      )}
       <span className="octo-tb-sep" />
       <TbBtn
         label={<IconDeleteTable />}
@@ -417,6 +511,111 @@ export function TableGridPicker({ editor }: { editor: Editor }) {
             )}
           </span>
           <span className="octo-table-grid-label">{label}</span>
+        </span>
+      )}
+    </span>
+  )
+}
+
+/**
+ * Ribbon entry for freeze panes (#755): a dedicated toolbar button that opens a small popover with
+ * the same freeze actions as the right-click submenu, so authors can freeze rows/columns without
+ * discovering the context menu. Disabled unless the caret is inside a table; the button reads active
+ * while any band of the current table is frozen. Reuses the shared color-control popover pattern
+ * (relative wrapper + absolute float, outside-click / Escape close) so it matches the toolbar's other
+ * dropdowns. All state lives in the freeze plugin — this only dispatches commands.
+ */
+export function TableFreezeControl({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+
+  // Re-render on selection / document changes so the enabled + active states track the caret.
+  const [, force] = useState(0)
+  useEffect(() => {
+    const bump = () => force((n) => n + 1)
+    editor.on('transaction', bump)
+    editor.on('selectionUpdate', bump)
+    return () => {
+      editor.off('transaction', bump)
+      editor.off('selectionUpdate', bump)
+    }
+  }, [editor])
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const inTable = isInTable(editor.state)
+  const freeze = getFreezeSpec(editor.state)
+  const frozen = freeze.rows > 0 || freeze.cols > 0
+
+  // Run a freeze command then close the popover. Focus stays in the editor so the command sees the
+  // same caret/cell the popover was opened for.
+  const run = (fn: () => void) => {
+    fn()
+    setOpen(false)
+  }
+
+  return (
+    <span className="octo-color-control octo-table-freeze-control" ref={ref}>
+      <button
+        type="button"
+        className={'octo-tb-btn' + (frozen ? ' is-active' : '')}
+        title={t('docs.toolbar.freeze')}
+        aria-label={t('docs.toolbar.freeze')}
+        disabled={!inTable}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <IconFreeze />
+      </button>
+      {open && inTable && (
+        <span className="octo-color-popover octo-table-freeze-popover" role="menu">
+          <TbBtn
+            label={<IconFreezeRow />}
+            title={t('docs.table.freezeHeaderRow')}
+            text={t('docs.table.freezeHeaderRow')}
+            active={freeze.rows > 0}
+            onClick={() => run(() => editor.chain().focus().toggleFreezeHeaderRow().run())}
+          />
+          <TbBtn
+            label={<IconFreezeRow />}
+            title={t('docs.table.freezeThroughRow')}
+            text={t('docs.table.freezeThroughRow')}
+            onClick={() => run(() => editor.chain().focus().freezeThroughSelectedRow().run())}
+          />
+          <TbBtn
+            label={<IconFreezeCol />}
+            title={t('docs.table.freezeFirstColumn')}
+            text={t('docs.table.freezeFirstColumn')}
+            active={freeze.cols > 0}
+            onClick={() => run(() => editor.chain().focus().toggleFreezeFirstColumn().run())}
+          />
+          <TbBtn
+            label={<IconFreezeCol />}
+            title={t('docs.table.freezeThroughColumn')}
+            text={t('docs.table.freezeThroughColumn')}
+            onClick={() => run(() => editor.chain().focus().freezeThroughSelectedColumn().run())}
+          />
+          <TbBtn
+            label={<IconUnfreeze />}
+            title={t('docs.table.unfreeze')}
+            text={t('docs.table.unfreeze')}
+            disabled={!frozen}
+            onClick={() => run(() => editor.chain().focus().clearTableFreeze().run())}
+          />
         </span>
       )}
     </span>

@@ -193,7 +193,8 @@
     "bookmark": "Bookmark",
     "collapsible": "Collapsible block",
     "callout": "Callout",
-    "mathBlock": "Block formula"
+    "mathBlock": "Block formula",
+    "freeze": "Freeze panes"
   },
   "table": {
     "addRowBefore": "Insert row above",
@@ -204,7 +205,13 @@
     "deleteColumn": "Delete column",
     "deleteTable": "Delete table",
     "pickerHint": "Pick a size",
-    "pickerLabel": "Table size"
+    "pickerLabel": "Table size",
+    "freeze": "Freeze",
+    "freezeHeaderRow": "Freeze header row",
+    "freezeThroughRow": "Freeze up to this row",
+    "freezeFirstColumn": "Freeze first column",
+    "freezeThroughColumn": "Freeze up to this column",
+    "unfreeze": "Unfreeze"
   },
   "callout": {
     "info": "Info",

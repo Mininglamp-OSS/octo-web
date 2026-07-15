@@ -509,6 +509,41 @@
   line-height: 1;
   white-space: nowrap;
 }
+/* Trailing expander caret on a submenu-trigger row (#755 Freeze), pushed to the right edge. */
+.octo-tb-btn-caret {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--octo-muted, #8a919e);
+}
+/* Inline "Freeze" submenu inside the right-click menu (#755): a click-toggled accordion (no hover
+   flyout, no portal) so the sub-options open reliably. Indented under the Freeze row to read as a
+   nested group. */
+.octo-table-submenu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding-left: 10px;
+  margin-left: 2px;
+  border-left: 2px solid var(--octo-border);
+}
+/* Freeze popover launched from the ribbon button (#755): same vertical row layout as the context
+   menu, floated under the toolbar button via the shared color-popover frame. */
+.octo-table-freeze-popover {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 176px;
+}
+.octo-table-freeze-popover .octo-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  text-align: left;
+}
 
 /* Grid picker for inserting a table at a chosen size (replaces the fixed 3×3). Floats under the
    toolbar button via the shared .octo-color-control / .octo-color-popover pattern. */
@@ -1931,6 +1966,49 @@
 }
 .octo-prose .tableWrapper {
   overflow-x: auto;
+}
+
+/* Table freeze panes (#755, XIN-1096). Freeze is VIEW-STATE: the TableFreeze plugin marks the first
+   N rows / columns of a table position:sticky (offsets measured + set inline by its view), so they
+   stay put while the body scrolls. Nothing is written to the Y.Doc — freeze is per-client and not
+   persisted across reload (see PR notes). The rules here supply the opaque backgrounds sticky cells
+   need (so scrolled content does not show through), the scroll box a frozen header sticks within,
+   and the separate-border treatment sticky cells require; positioning + z-index are set inline. */
+.octo-prose table td.octo-frozen-cell {
+  background: var(--octo-bg, #fff);
+}
+.octo-prose table th.octo-frozen-cell {
+  background: var(--octo-hover, #f2f3f5);
+}
+/* A frozen table must not use border-collapse:collapse (Chromium ignores position:sticky on
+   <td>/<th> under collapsed borders) and must not be its own scroll container (the default
+   overflow:hidden captures the sticky offset so the band scrolls away anyway — both confirmed in
+   the browser). Switch a frozen table to separate borders with no spacing, then redraw single 1px
+   lines: the table paints the outer top + left, each cell paints its own right + bottom. The class
+   is added by the plugin only while a table is frozen, so normal tables are untouched. */
+.octo-prose table.octo-frozen-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: visible;
+  border-top: 1px solid var(--octo-border);
+  border-left: 1px solid var(--octo-border);
+}
+.octo-prose table.octo-frozen-table td,
+.octo-prose table.octo-frozen-table th {
+  border-width: 0 1px 1px 0;
+}
+/* A frozen header needs a bounded vertical scroll container to stick within (the wrapper already
+   scrolls horizontally). Only applied while at least one row is frozen, so default tables that flow
+   in the page are unchanged. */
+.octo-prose .tableWrapper.octo-has-frozen-rows {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+/* #749 interplay: sticky frozen cells create stacking contexts (z-index ≤ 4, set inline) that would
+   otherwise occlude the un-z-indexed column-resize handle at right:-2px, so a frozen column could
+   not be resized. Lift the handle above every frozen cell to keep column-width dragging working. */
+.octo-prose table .column-resize-handle {
+  z-index: 6;
 }
 
 /* Image node (SCHEMA-SPEC §2). The NodeView renders a wrapper + <img>; alignment is

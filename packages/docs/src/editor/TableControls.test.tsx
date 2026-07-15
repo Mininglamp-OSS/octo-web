@@ -244,9 +244,10 @@ describe('TableContextMenu — right-click inside a cell opens the menu (XIN-105
     // Selection was moved into the right-clicked cell so position-relative commands act on it.
     expect(e.isActive('table')).toBe(true)
     // All seven table commands are present (add row before/after, delete row, add column
-    // before/after, delete column, delete table).
+    // before/after, delete column, delete table), plus the collapsed "Freeze" submenu trigger (#755)
+    // whose sub-options are hidden until it is expanded.
     const buttons = menu!.querySelectorAll('button.octo-tb-btn')
-    expect(buttons.length).toBe(7)
+    expect(buttons.length).toBe(8)
     e.destroy()
     host.remove()
   })
@@ -500,5 +501,102 @@ describe('TableGridPicker — insert at a chosen size (no more hardcoded 3×3)',
     expect(screen.getByLabelText('1 × 1')).toBeTruthy()
     expect(screen.getByLabelText('8 × 8')).toBeTruthy()
     e.destroy()
+  })
+})
+
+// Table freeze panes (#755, XIN-1096). The freeze feature is greenfield — before this change the
+// right-click menu had no freeze option and no submenu at all. The tests below lock in (a) the
+// submenu opening reliably by construction (a click-toggled accordion, so the document mousedown
+// that immediately follows the trigger click can never race it closed — the failure mode behind the
+// reported "freeze submenu occasionally doesn't pop up" bug), and (b) the freeze commands actually
+// flipping the view-state the sticky renderer reads.
+import { TableFreeze, getFreezeSpec } from './TableFreeze.ts'
+
+function freezeTableEditor(content: string, element?: HTMLElement) {
+  return new Editor({
+    element,
+    editable: true,
+    extensions: [
+      StarterKit.configure({ undoRedo: false }),
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      TableFreeze,
+    ],
+    content,
+  })
+}
+
+function openTableMenu(e: Editor) {
+  e.view.posAtCoords = () => ({ pos: firstCellTextPos(e), inside: -1 })
+  fireEvent(e.view.dom, createEvent.contextMenu(e.view.dom, { clientX: 120, clientY: 90 }))
+}
+
+describe('TableContextMenu — Freeze submenu opens reliably (#755)', () => {
+  it('hides the freeze sub-options until Freeze is clicked, then reveals them', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = freezeTableEditor(HISTORICAL_DOC, host)
+    render(<TableContextMenu editor={e} />)
+    openTableMenu(e)
+
+    // Collapsed: the sub-options are not in the DOM yet.
+    expect(document.querySelector('.octo-table-submenu')).toBeNull()
+    expect(screen.queryByTitle('docs.table.freezeHeaderRow')).toBeNull()
+
+    fireEvent.click(screen.getByTitle('docs.table.freeze'))
+
+    const submenu = document.querySelector('.octo-table-submenu')
+    expect(submenu).toBeTruthy()
+    expect(screen.getByTitle('docs.table.freezeHeaderRow')).toBeTruthy()
+    expect(screen.getByTitle('docs.table.freezeFirstColumn')).toBeTruthy()
+    expect(screen.getByTitle('docs.table.unfreeze')).toBeTruthy()
+    e.destroy()
+    host.remove()
+  })
+
+  it('stays open across the document mousedown that follows the trigger click (the flaky-open bug)', () => {
+    // A hover flyout / capture-phase-driven submenu can be closed by the same pointer interaction
+    // that was meant to open it, which is what produced the intermittent "submenu doesn't pop up".
+    // The accordion is click-toggled state on the menu itself, so a mousedown INSIDE the menu (which
+    // the outside-close handler ignores) leaves it open every time.
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = freezeTableEditor(HISTORICAL_DOC, host)
+    render(<TableContextMenu editor={e} />)
+    openTableMenu(e)
+
+    const freezeBtn = screen.getByTitle('docs.table.freeze')
+    fireEvent.click(freezeBtn)
+    // Simulate the pointer settling on the menu (the interaction that used to collapse a flyout).
+    fireEvent.mouseDown(freezeBtn)
+
+    expect(document.querySelector('.octo-table-submenu')).toBeTruthy()
+    expect(screen.getByTitle('docs.table.freezeHeaderRow')).toBeTruthy()
+    e.destroy()
+    host.remove()
+  })
+
+  it('freezes the header row when the sub-option is clicked, and unfreezes it', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = freezeTableEditor(HISTORICAL_DOC, host)
+    render(<TableContextMenu editor={e} />)
+
+    openTableMenu(e)
+    fireEvent.click(screen.getByTitle('docs.table.freeze'))
+    fireEvent.click(screen.getByTitle('docs.table.freezeHeaderRow'))
+    expect(getFreezeSpec(e.state)).toEqual({ rows: 1, cols: 0 })
+    // Menu closes after running a command.
+    expect(document.querySelector('.octo-table-context-menu')).toBeNull()
+
+    // Toggle it back off.
+    openTableMenu(e)
+    fireEvent.click(screen.getByTitle('docs.table.freeze'))
+    fireEvent.click(screen.getByTitle('docs.table.freezeHeaderRow'))
+    expect(getFreezeSpec(e.state)).toEqual({ rows: 0, cols: 0 })
+    e.destroy()
+    host.remove()
   })
 })

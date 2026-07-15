@@ -193,7 +193,8 @@
     "bookmark": "书签",
     "collapsible": "折叠块",
     "callout": "标注",
-    "mathBlock": "公式块"
+    "mathBlock": "公式块",
+    "freeze": "冻结窗格"
   },
   "table": {
     "addRowBefore": "在上方插入行",
@@ -204,7 +205,13 @@
     "deleteColumn": "删除列",
     "deleteTable": "删除表格",
     "pickerHint": "选择尺寸",
-    "pickerLabel": "表格尺寸"
+    "pickerLabel": "表格尺寸",
+    "freeze": "冻结",
+    "freezeHeaderRow": "冻结首行",
+    "freezeThroughRow": "冻结到当前行",
+    "freezeFirstColumn": "冻结首列",
+    "freezeThroughColumn": "冻结到当前列",
+    "unfreeze": "取消冻结"
   },
   "callout": {
     "info": "信息",
