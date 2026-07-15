@@ -122,6 +122,7 @@
     position: relative;
     width: max-content;
     max-width: 100%;
+    box-sizing: border-box;
     padding-left: var(--wk-sp-4);
     margin-left: auto;
     margin-right: auto;
@@ -150,7 +151,8 @@
     color: var(--wk-text-inverse, #fff);
     line-height: 1.25;
     margin-bottom: 12px;
-    white-space: nowrap;
+    white-space: normal;
+    text-wrap: balance;
     text-shadow:
         calc(var(--wk-sp-1) / 2)
         calc(var(--wk-sp-1) / 2)
