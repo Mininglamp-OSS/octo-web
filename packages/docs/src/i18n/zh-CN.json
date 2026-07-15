@@ -294,6 +294,7 @@
     "placeholder": "写下评论…",
     "send": "发送",
     "handleWithAI": "让 AI 处理",
+    "anonymous": "匿名",
     "agentInstructionTitle": "让 AI 处理评论：{{request}} (doc {{slug}} · {{target}})"
   },
   "time": {

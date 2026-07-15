@@ -7,7 +7,10 @@ import {
   sanitizeDocHtml,
   absolutizeDocAssetUrls,
   resolveHtmlDocAnchorText,
+  injectBaseHref,
 } from './HtmlDocView.tsx'
+import { setWKApp } from '../octoweb/index.ts'
+import { createMockWKApp } from '../octoweb/mock.ts'
 
 // HtmlDocView fetches the published octo-doc HTML from a SEPARATE backend, so we stub the
 // global fetch (not the octoweb apiClient) — mirroring the component's raw-fetch design.
@@ -517,5 +520,131 @@ describe('sanitizeDocHtml', () => {
     expect(out).toContain('<p>')
     expect(out).toContain('<table>')
     expect(out).toContain('href="https://ok.test"')
+  })
+})
+
+describe('injectBaseHref', () => {
+  it('inserts <base> at the START of an existing <head> with a trailing-slash href', () => {
+    const out = injectBaseHref('<html><head><title>t</title></head><body>x</body></html>', 'https://od.test')
+    expect(out).toContain('<head><base href="https://od.test/">')
+    // Only one base, and it precedes the original head content.
+    expect(out.indexOf('<base')).toBeLessThan(out.indexOf('<title>'))
+  })
+
+  it('preserves an already-trailing slash and prepends <base> when there is no <head>', () => {
+    const out = injectBaseHref('<p>no head</p>', 'https://od.test/')
+    expect(out).toBe('<base href="https://od.test/"><p>no head</p>')
+  })
+
+  it('is a no-op when baseUrl is empty', () => {
+    expect(injectBaseHref('<p>x</p>', '')).toBe('<p>x</p>')
+  })
+})
+
+describe('HtmlDocView — header parity (presence / comments / members / more)', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  function serveDoc(htmlBody: string, meta?: Record<string, unknown>) {
+    const inline = meta ? `<script>window.__ODOC__ = ${JSON.stringify(meta)};</script>` : ''
+    return stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
+      return htmlResponse(`${inline}${htmlBody}`)
+    })
+  }
+
+  beforeEach(() => {
+    ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
+    wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    setWKApp(wk)
+  })
+  afterEach(() => {
+    delete (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
+    // Reset the WKApp override so it never leaks into other suites in this file.
+    setWKApp(undefined as never)
+  })
+
+  it('renders exactly one viewer avatar and no Synced/Connecting connection text', async () => {
+    serveDoc('<p>body</p>')
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    const presence = screen.getByTestId('html-doc-presence')
+    expect(presence.querySelectorAll('.octo-avatar')).toHaveLength(1)
+    expect(container.textContent).not.toContain('Synced')
+    expect(container.textContent).not.toContain('Connecting')
+  })
+
+  it('toggles the comment panel with the 💬 comments button (open by default)', async () => {
+    serveDoc('<p>body</p>')
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    expect(screen.getByTestId('html-doc-comment-panel')).toBeTruthy()
+    fireEvent.click(screen.getByTitle('docs.toolbar.comments'))
+    expect(screen.queryByTestId('html-doc-comment-panel')).toBeNull()
+    fireEvent.click(screen.getByTitle('docs.toolbar.comments'))
+    expect(screen.getByTestId('html-doc-comment-panel')).toBeTruthy()
+  })
+
+  it('does NOT show the member management panel to a non-author viewer', async () => {
+    // viewer uid (u_viewer) ≠ creator uid → HtmlMemberPanel.canManage=false → renders null.
+    serveDoc('<p>body</p>', { creator_uid: 'u_other' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    fireEvent.click(screen.getByTitle('docs.toolbar.members'))
+    expect(container.querySelector('.octo-member-panel')).toBeNull()
+  })
+
+  it('shows the member management panel when the viewer IS the author', async () => {
+    wk.loginInfo.uid = 'u_owner'
+    setWKApp(wk)
+    serveDoc('<p>body</p>', { creator_uid: 'u_owner' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    fireEvent.click(screen.getByTitle('docs.toolbar.members'))
+    expect(container.querySelector('.octo-member-panel')).toBeTruthy()
+  })
+
+  it('forwards the whole-doc link via openDocForward from the header forward button', async () => {
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    fireEvent.click(screen.getByTitle('docs.forward.entry'))
+    expect(wk.openDocForwardCalls).toHaveLength(1)
+    expect(wk.openDocForwardCalls[0]).toMatchObject({ docId: 'd1', title: 'My Doc', canGrant: false })
+    expect(typeof wk.openDocForwardCalls[0].link).toBe('string')
+  })
+
+  it('offers delete only to the author in the ≡ menu', async () => {
+    // Non-author: open the ≡ menu → no delete row.
+    serveDoc('<p>body</p>', { creator_uid: 'u_other' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    expect(screen.queryByText('docs.doc.deleteEntry')).toBeNull()
+    // The neutral rows are present.
+    expect(screen.getByText('docs.toolbar.history')).toBeTruthy()
+    expect(screen.getByText('docs.standalone.openInNewPage')).toBeTruthy()
+  })
+
+  it('loads the version list when 历史版本 is chosen from the ≡ menu', async () => {
+    const spy = stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
+      if (url.includes('/versions'))
+        return jsonResponse({ data: { versions: [{ n: 2, created_at: '2026-07-15T04:00:00Z' }] } })
+      return htmlResponse('<p>body</p>')
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" />)
+    await waitForFrame(container)
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    fireEvent.click(screen.getByText('docs.toolbar.history'))
+    await waitFor(() => expect(screen.getByTestId('html-doc-version-panel')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/^v2/)).toBeTruthy())
+    expect(spy.mock.calls.some((c) => String(c[0]) === 'https://od.test/docs/the-slug/versions')).toBe(true)
+  })
+
+  it('injects a <base> into the iframe srcdoc so CSS/relative assets resolve to the doc origin', async () => {
+    serveDoc('<html><head></head><body><p>body</p></body></html>')
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    expect(frame.getAttribute('srcdoc')).toContain('<base href="https://od.test/">')
   })
 })

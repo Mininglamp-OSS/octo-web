@@ -187,6 +187,39 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
 
     expect(screen.getByTestId('pending-anchor').textContent).toContain('docs.comment.targetDoc')
   })
+
+  it('renders author name + formatted time for a root comment and its reply', async () => {
+    stubFetch(() =>
+      jsonResponse({
+        data: [
+          {
+            id: 'c1',
+            text: 'root with author',
+            anchor: null,
+            author: { login: 'u_alice', name: 'Alice' },
+            created_at: '2026-07-15T04:09:00Z',
+            replies: [
+              {
+                id: 'r1',
+                text: 'reply with login only',
+                author: { login: 'u_bob' },
+                created_at: '2026-07-15T05:30:00Z',
+              },
+            ],
+          },
+        ],
+      })
+    )
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
+
+    await waitFor(() => expect(screen.getByText('root with author')).toBeTruthy())
+    // Display name prefers author.name, falls back to login.
+    expect(screen.getByText('Alice')).toBeTruthy()
+    expect(screen.getByText('u_bob')).toBeTruthy()
+    // Times rendered to the minute (local tz → assert the shape, not an absolute value).
+    const times = screen.getAllByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+    expect(times.length).toBeGreaterThanOrEqual(2)
+  })
 })
 
 describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', () => {

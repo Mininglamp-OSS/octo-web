@@ -115,10 +115,53 @@
   margin: 4px 0;
   font-size: 13px;
 }
+/* Author + time meta line under each comment / reply. */
+.octo-html-doc-comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #6b7280));
+}
+.octo-html-doc-comment-meta .octo-avatar {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  line-height: 18px;
+}
+.octo-html-doc-comment-author {
+  font-weight: 500;
+  color: var(--octo-doc-fg, var(--semi-color-text-0, #1f2937));
+}
 .octo-html-doc-comment-reply {
   margin: 2px 0 2px 12px;
   font-size: 12px;
   color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #6b7280));
+}
+.octo-html-doc-comment-reply-text {
+  margin: 2px 0;
+}
+/* Single viewer avatar in the title bar (no connection state). */
+.octo-html-doc-presence {
+  display: flex;
+  align-items: center;
+}
+/* Read-only version list panel (≡ → 历史版本). */
+.octo-html-doc-versions {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+}
+.octo-html-doc-versions-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.octo-html-doc-version-time {
+  color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #6b7280));
+  font-size: 12px;
 }
 .octo-html-doc-comments-target {
   display: flex;

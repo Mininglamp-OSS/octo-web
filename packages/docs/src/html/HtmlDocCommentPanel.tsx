@@ -11,7 +11,15 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { canForwardToChat, openDocForward, t } from '../octoweb/index.ts'
-import { createComment, listComments, type Anchor, type OctoDocCommentThread } from './htmlDocComments.ts'
+import {
+  createComment,
+  formatCommentTime,
+  listComments,
+  type Anchor,
+  type OctoDocAuthor,
+  type OctoDocComment,
+  type OctoDocCommentThread,
+} from './htmlDocComments.ts'
 import { buildAgentInstruction, truncateAnchorText, type AgentInstructionDoc } from './htmlDocAnchor.ts'
 
 export interface HtmlDocCommentPanelProps {
@@ -42,6 +50,31 @@ function anchorLabel(anchor: Anchor | null | undefined): string {
 
 function fallbackAnchorText(anchor: Anchor | null | undefined): string | null {
   return anchor?.kind === 'text' ? truncateAnchorText(anchor.text) : null
+}
+
+/** Display name for a comment author: name → login → anonymous fallback. */
+function authorName(author: OctoDocAuthor | null | undefined): string {
+  return author?.name || author?.login || t('docs.comment.anonymous')
+}
+
+/** Author + time line shown under each root comment and reply. */
+function CommentMeta({ author, createdAt }: { author?: OctoDocAuthor | null; createdAt?: string | null }) {
+  const name = authorName(author)
+  const time = formatCommentTime(createdAt)
+  const initial = name.slice(0, 1).toUpperCase()
+  return (
+    <div className="octo-html-doc-comment-meta">
+      {author?.avatar_url ? (
+        <img className="octo-avatar" src={author.avatar_url} alt="" title={name} />
+      ) : (
+        <span className="octo-avatar" title={name} aria-hidden="true">
+          {initial}
+        </span>
+      )}
+      <span className="octo-html-doc-comment-author">{name}</span>
+      {time && <span className="octo-html-doc-comment-time">{time}</span>}
+    </div>
+  )
 }
 
 export function HtmlDocCommentPanel({
@@ -132,11 +165,13 @@ export function HtmlDocCommentPanel({
                   {label}
                 </div>
               ) : null}
+              <CommentMeta author={thread.author} createdAt={thread.created_at} />
               <p className="octo-html-doc-comment-text">{thread.text}</p>
-              {thread.replies?.map((r) => (
-                <p key={r.id} className="octo-html-doc-comment-reply">
-                  {r.text}
-                </p>
+              {thread.replies?.map((r: OctoDocComment) => (
+                <div key={r.id} className="octo-html-doc-comment-reply">
+                  <CommentMeta author={r.author} createdAt={r.created_at} />
+                  <p className="octo-html-doc-comment-reply-text">{r.text}</p>
+                </div>
               ))}
               <button
                 type="button"

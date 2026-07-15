@@ -17,9 +17,22 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
-import { t, getWKApp } from '../octoweb/index.ts'
+import { canForwardToChat, getCurrentUid, openDocForward, t, getWKApp } from '../octoweb/index.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
+import { HtmlPresenceBar } from './HtmlPresenceBar.tsx'
+import { HtmlVersionPanel } from './HtmlVersionPanel.tsx'
+import { listVersions, type HtmlDocVersion } from './htmlDocVersions.ts'
+import { deleteDoc } from './htmlDocAdmin.ts'
+import { ConfirmModal } from '../editor/ConfirmModal.tsx'
+import {
+  DocMoreMenu,
+  OpenNewPageIcon,
+  HistoryIcon,
+  LinkIcon,
+  DeleteIcon,
+  type DocMoreMenuItem,
+} from '../editor/DocMoreMenu.tsx'
 import { buildAnchorFromSelection, truncateAnchorText } from './htmlDocAnchor.ts'
 import type { Anchor } from './htmlDocComments.ts'
 import './HtmlDocView.css'
@@ -130,6 +143,29 @@ export function absolutizeDocAssetUrls(html: string, docUrl = resolveAbsoluteOct
   return `${doctype}${doc.documentElement.outerHTML}`
 }
 
+/**
+ * Inject a <base href> so relative/root-path resources (CSS background-image, srcset, url(…))
+ * resolve against the real doc origin instead of about:srcdoc.
+ *
+ * srcDoc renders under about:srcdoc, where relative/root URLs have no meaningful base. img[src]
+ * / link[href] are already absolutized by absolutizeDocAssetUrls, but CSS-referenced assets
+ * (background-image, mask, etc.) are not — <base> is the single fallback that fixes them all.
+ * Effective because the iframe is sandbox="allow-same-origin". Inserted at the START of <head>
+ * (or synthesized before <html>/content when absent) so it wins over any later in-doc <base>.
+ */
+export function injectBaseHref(html: string, baseUrl: string): string {
+  if (!baseUrl) return html
+  // Ensure a trailing slash so a root path like /d/… resolves against the doc root, not a file.
+  const href = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+  const baseTag = `<base href="${href.replace(/"/g, '&quot;')}">`
+  const headOpen = /<head[^>]*>/i.exec(html)
+  if (headOpen) {
+    const at = headOpen.index + headOpen[0].length
+    return `${html.slice(0, at)}${baseTag}${html.slice(at)}`
+  }
+  return `${baseTag}${html}`
+}
+
 export interface HtmlDocViewProps {
   /** Doc id (used as the octo-doc slug when no explicit slug is supplied). */
   docId: string
@@ -193,6 +229,7 @@ interface OctoDocMeta {
   identity?: { login?: string; name?: string } | null
   creator_uid?: string
   creator_name?: string
+  created_at?: string
 }
 
 // Pull the __ODOC__ blob the render page inlines. Best-effort: a parse miss just means
@@ -218,15 +255,66 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
   const frameRef = useRef<HTMLIFrameElement>(null)
   const selectionDocRef = useRef<Document | null>(null)
   const [frameReadyTick, setFrameReadyTick] = useState(0)
-  // Header UI state. Members/forward/more backends are not wired yet; these drive a
-  // transient "coming soon" hint so the buttons render and are clearly present.
+  // Header UI state.
   const [membersOpen, setMembersOpen] = useState(false)
-  const [headerNotice, setHeaderNotice] = useState<'forward' | 'more' | null>(null)
+  // Comments default open (preserves prior behaviour); the 💬 button toggles the rail.
+  const [commentsOpen, setCommentsOpen] = useState(true)
+  // Version panel (≡ → 历史版本): lazy-loaded on first open.
+  const [versionsOpen, setVersionsOpen] = useState(false)
+  const [versions, setVersions] = useState<HtmlDocVersion[]>([])
+  const [versionsLoading, setVersionsLoading] = useState(false)
+  const [versionsError, setVersionsError] = useState<string | null>(null)
+  // Delete flow (≡ → 删除此文档, author-only): confirm modal + in-flight/error state.
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const meta = state.status === 'ready' ? state.meta : null
   // Title: backend does not expose a human title yet → fall back to slug. Creator: prefer a
   // display name, else the creator/login uid.
   const headerTitle = meta?.title || effectiveSlug
   const headerCreator = meta?.creator_name || meta?.identity?.name || meta?.creator_uid || meta?.identity?.login || '—'
+  // Permission gate mirrors HtmlMemberPanel.canManage: only the author (viewer uid === creator)
+  // manages members / deletes the doc. creatorUid falls back to the publisher identity login.
+  const creatorUid = meta?.creator_uid || meta?.identity?.login
+  const viewerUid = getCurrentUid()
+  const canManage = !!viewerUid && !!creatorUid && viewerUid === creatorUid
+  // Browser-openable address for this doc (new-page / forward). window.location keeps whatever
+  // route the viewer is on; buildOctoDocUrl is the canonical /d/{slug}/v/{version} fallback.
+  const docUrl =
+    typeof window !== 'undefined' && window.location?.href
+      ? window.location.href
+      : buildOctoDocUrl(effectiveSlug, version)
+  const canForward = canForwardToChat()
+
+  const doForward = useCallback(() => {
+    if (!canForward) return
+    // Doc-level forward: the whole document link (not a specific comment). canGrant=false — this
+    // shares a read link, not an access grant.
+    openDocForward({ docId, title: headerTitle, link: docUrl, canGrant: false })
+  }, [canForward, docId, headerTitle, docUrl])
+
+  const openVersions = useCallback(() => {
+    setVersionsOpen(true)
+    setVersionsLoading(true)
+    setVersionsError(null)
+    listVersions(effectiveSlug)
+      .then((v) => setVersions(v))
+      .catch(() => setVersionsError(t('docs.state.error')))
+      .finally(() => setVersionsLoading(false))
+  }, [effectiveSlug])
+
+  const confirmDeleteDoc = useCallback(() => {
+    setDeleting(true)
+    setDeleteError(null)
+    deleteDoc(effectiveSlug)
+      .then(() => {
+        setConfirmDelete(false)
+        // No onBack prop on this surface → return to the previous page after delete.
+        if (typeof window !== 'undefined') window.history.back()
+      })
+      .catch(() => setDeleteError(t('docs.state.error')))
+      .finally(() => setDeleting(false))
+  }, [effectiveSlug])
 
   useEffect(() => {
     const seq = ++reqSeq.current
@@ -263,7 +351,9 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
           html.trim()
             ? {
                 status: 'ready',
-                html: absolutizeDocAssetUrls(html, url),
+                // Absolutize known asset attrs, then inject <base> as the catch-all so CSS-referenced
+                // (background/url()) and any other relative/root resources resolve to the real origin.
+                html: injectBaseHref(absolutizeDocAssetUrls(html, url), resolveAbsoluteOctoDocBase()),
                 meta: parseOdocMeta(html),
               }
             : { status: 'empty' }
@@ -334,36 +424,39 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
     }
   }, [cleanupFrameSelectionWatcher])
 
-  // Auto-dismiss the transient header "coming soon" hint.
-  useEffect(() => {
-    if (!headerNotice) return
-    const id = window.setTimeout(() => setHeaderNotice(null), 2500)
-    return () => window.clearTimeout(id)
-  }, [headerNotice])
-
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-html-doc" data-testid="html-doc-view">
-      {/* Header parity with rich docs (BoardShell/EditorShell octo-doc-header): title, creator,
-          forward-to-chat, members, and a more menu. HTML docs are read-only so title is static.
-          Members/menu are wired as buttons now; their backends (doc_grants) land in a later pass —
-          see the group discussion. Fields the render page doesn't yet expose (human title,
-          creator display name) fall back to slug / login uid. */}
+      {/* Header parity with rich docs (EditorShell octo-doc-header): title on the left; on the right,
+          the viewer avatar → 💬 comments → ⤴ forward → members → ≡ more. HTML docs are read-only so the
+          title is static; the creator + created date moved into the ≡ menu head (avoids duplicating
+          it in the bar). Retains octo-html-doc-header for HTML-specific CSS. */}
       <header className="octo-doc-header octo-html-doc-header">
         <div className="octo-doc-title octo-html-doc-title" title={headerTitle}>
           {headerTitle}
         </div>
         <div className="octo-doc-header-right">
-          <span className="octo-html-doc-creator" title={t('docs.header.creator')}>
-            {t('docs.header.creator')}: {headerCreator}
-          </span>
+          <HtmlPresenceBar name={meta?.identity?.name} />
           <button
             type="button"
-            className="octo-tb-btn octo-doc-forward-btn"
-            title={t('docs.forward.entry')}
-            onClick={() => setHeaderNotice('forward')}
+            className={commentsOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
+            aria-pressed={commentsOpen}
+            title={t('docs.toolbar.comments')}
+            onClick={() => setCommentsOpen((v) => !v)}
           >
-            ⤴ {t('docs.forward.entry')}
+            💬 {t('docs.toolbar.comments')}
           </button>
+          {/* Forward gated on canForward so it never renders as a dead no-op where the host lacks the
+              conversation-select surface (the standalone /d/ page). */}
+          {canForward && (
+            <button
+              type="button"
+              className="octo-tb-btn octo-doc-forward-btn"
+              title={t('docs.forward.entry')}
+              onClick={doForward}
+            >
+              ⤴ {t('docs.forward.entry')}
+            </button>
+          )}
           <button
             type="button"
             className={membersOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
@@ -373,30 +466,77 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
           >
             {t('docs.toolbar.members')}
           </button>
-          <button
-            type="button"
-            className="octo-tb-btn octo-html-doc-more"
-            aria-label={t('docs.toolbar.more')}
-            title={t('docs.toolbar.more')}
-            onClick={() => setHeaderNotice('more')}
-          >
-            ≡
-          </button>
+          <DocMoreMenu
+            creatorName={headerCreator}
+            createdAt={meta?.created_at}
+            items={[
+              {
+                key: 'open-new-page',
+                label: t('docs.standalone.openInNewPage'),
+                icon: OpenNewPageIcon,
+                onClick: () => window.open(docUrl, '_blank'),
+              },
+              {
+                key: 'history',
+                label: t('docs.toolbar.history'),
+                icon: HistoryIcon,
+                onClick: openVersions,
+              },
+              ...(canForward
+                ? [
+                    {
+                      key: 'forward',
+                      label: t('docs.forward.entry'),
+                      icon: LinkIcon,
+                      onClick: doForward,
+                    } as DocMoreMenuItem,
+                  ]
+                : []),
+            ]}
+            dangerItem={
+              canManage
+                ? {
+                    key: 'delete',
+                    label: t('docs.doc.deleteEntry'),
+                    icon: DeleteIcon,
+                    danger: true,
+                    onClick: () => {
+                      setDeleteError(null)
+                      setConfirmDelete(true)
+                    },
+                  }
+                : undefined
+            }
+          />
         </div>
       </header>
-      {/* Members/forward/more backends are not wired yet — surface a transient hint so the
-          buttons are visibly present (老板 asked to show the header first). */}
-      {headerNotice && (
-        <div className="octo-html-doc-state" role="status">
-          {t('docs.header.comingSoon')}
-        </div>
+      <ConfirmModal
+        open={confirmDelete}
+        title={t('docs.doc.deleteEntry')}
+        message={t('docs.doc.deleteConfirm')}
+        confirmLabel={t('docs.comment.delete')}
+        cancelLabel={t('docs.comment.cancel')}
+        danger
+        busy={deleting}
+        error={deleteError}
+        onConfirm={confirmDeleteDoc}
+        onCancel={() => setConfirmDelete(false)}
+      />
+      {versionsOpen && (
+        <HtmlVersionPanel
+          slug={effectiveSlug}
+          versions={versions}
+          loading={versionsLoading}
+          error={versionsError}
+          onClose={() => setVersionsOpen(false)}
+        />
       )}
       {membersOpen && (
         <HtmlMemberPanel
           slug={effectiveSlug}
           space={space}
-          creatorUid={meta?.creator_uid || meta?.identity?.login}
-          currentUid={meta?.identity?.login}
+          creatorUid={creatorUid}
+          currentUid={viewerUid}
           onClose={() => setMembersOpen(false)}
         />
       )}
@@ -434,17 +574,19 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
             agent HTML, so the view stays strictly read-only. It only renders once the doc is
             readable (a comment scope needs a real slug/version).
           */}
-          <HtmlDocCommentPanel
-            docId={docId}
-            space={space}
-            role={role}
-            slug={effectiveSlug}
-            version={version}
-            pendingAnchor={pendingAnchor}
-            resolveAnchorText={resolveAnchorText}
-            onClearPendingAnchor={() => setPendingAnchor(null)}
-            onPosted={() => setPendingAnchor(null)}
-          />
+          {commentsOpen && (
+            <HtmlDocCommentPanel
+              docId={docId}
+              space={space}
+              role={role}
+              slug={effectiveSlug}
+              version={version}
+              pendingAnchor={pendingAnchor}
+              resolveAnchorText={resolveAnchorText}
+              onClearPendingAnchor={() => setPendingAnchor(null)}
+              onPosted={() => setPendingAnchor(null)}
+            />
+          )}
         </div>
       )}
     </div>

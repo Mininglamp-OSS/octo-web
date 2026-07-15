@@ -47,6 +47,17 @@ export interface ElementAnchor {
 
 export type Anchor = TextAnchor | ElementAnchor
 
+/**
+ * Author object as returned by octo-doc (mirrors backend core.Author). Comments carry the
+ * full author, not a bare uid string, so the UI can show a display name + avatar.
+ */
+export interface OctoDocAuthor {
+  login: string
+  name?: string
+  avatar_url?: string | null
+  kind?: string
+}
+
 /** Wire shape of a single octo-doc comment (roots and replies share this shape). */
 export interface OctoDocComment {
   id: string
@@ -54,8 +65,21 @@ export interface OctoDocComment {
   /** Present on roots that were anchored to a selection; absent on replies / doc-level notes. */
   anchor?: Anchor | null
   parent_id?: string | null
-  author?: string | null
+  author?: OctoDocAuthor | null
   created_at?: string | null
+}
+
+/**
+ * Format an ISO/RFC3339 timestamp as `YYYY-MM-DD HH:mm` in the viewer's local timezone.
+ * Comments need minute precision (unlike DocMoreMenu's date-only formatter). Unparseable
+ * input yields '' so the caller drops the time instead of rendering "Invalid Date".
+ */
+export function formatCommentTime(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 /** A root comment plus its nested replies (list groups replies under their root). */

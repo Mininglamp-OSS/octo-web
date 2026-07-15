@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { listComments, createComment } from './htmlDocComments.ts'
+import { listComments, createComment, formatCommentTime } from './htmlDocComments.ts'
 
 // octo-doc comments live in a SEPARATE backend (same deployment as the published HTML), reached
 // by raw credentialed fetch — so we stub the global fetch and assert URL/credentials/body, NOT
@@ -79,7 +79,7 @@ describe('createComment (octo-doc backend)', () => {
       text: 'reply',
       version: 'latest',
       parentId: 'c1',
-      anchor: { kind: 'element', aid: 'a1' },
+      anchor: { kind: 'element', aid: 'a1', selector: '[data-odoc-aid="a1"]' },
     })
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string)
     expect(body.parent_id).toBe('c1')
@@ -97,5 +97,26 @@ describe('createComment (octo-doc backend)', () => {
   it('throws on a non-ok response', async () => {
     stubFetch(() => jsonResponse(null, false, 500))
     await expect(createComment('s', { text: 'x', version: 'latest' })).rejects.toThrow()
+  })
+})
+
+describe('formatCommentTime', () => {
+  it('formats an ISO timestamp as YYYY-MM-DD HH:mm (local, zero-padded)', () => {
+    // Local-time formatting: derive the expected string from the same Date so the assertion
+    // is timezone-independent.
+    const iso = '2026-07-15T04:09:00Z'
+    const d = new Date(iso)
+    const p = (n: number) => String(n).padStart(2, '0')
+    const expected = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+    expect(formatCommentTime(iso)).toBe(expected)
+    // Minute/hour are zero-padded to two digits.
+    expect(formatCommentTime(iso)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+  })
+
+  it('returns "" for empty / null / unparseable input (so the caller drops the time)', () => {
+    expect(formatCommentTime(undefined)).toBe('')
+    expect(formatCommentTime(null)).toBe('')
+    expect(formatCommentTime('')).toBe('')
+    expect(formatCommentTime('not-a-date')).toBe('')
   })
 })

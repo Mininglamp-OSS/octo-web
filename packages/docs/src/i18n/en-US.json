@@ -294,6 +294,7 @@
     "placeholder": "Write a comment…",
     "send": "Send",
     "handleWithAI": "Ask AI to handle",
+    "anonymous": "Anonymous",
     "agentInstructionTitle": "Ask AI to handle comment: {{request}} (doc {{slug}} · {{target}})"
   },
   "time": {
