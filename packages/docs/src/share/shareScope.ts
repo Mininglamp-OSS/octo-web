@@ -54,6 +54,3 @@ export interface ShareSeed {
   shareScope?: string
   shareRole?: string
 }
-
-/** The restricted/read default used before any fetch resolves and on read failure. */
-export const DEFAULT_SHARE_SETTINGS: ShareSettings = { shareScope: 'restricted', shareRole: 'read' }

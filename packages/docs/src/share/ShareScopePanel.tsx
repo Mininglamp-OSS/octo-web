@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { t } from '../octoweb/index.ts'
 import { getShareSettings, setShareSettings } from './api.ts'
 import {
@@ -8,6 +8,7 @@ import {
   type ShareRole,
   type ShareScope,
   type ShareSeed,
+  type ShareSettings,
 } from './shareScope.ts'
 
 /**
@@ -37,7 +38,23 @@ import {
  */
 type LoadStatus = 'loading' | 'ready' | 'error'
 
-export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSeed }) {
+export function ShareScopePanel({
+  docId,
+  seed,
+  onCommitted,
+}: {
+  docId: string
+  seed?: ShareSeed
+  /**
+   * Called after a scope change is persisted (PUT succeeds), carrying the authoritative
+   * `{ scope, role }` the backend returned. The caller (EditorShell) uses it to refresh the seed
+   * it holds so a later reopen of the panel (which unmounts/remounts this component) reflects the
+   * committed value instead of the now-stale page-load seed. Without this, a committed scope would
+   * silently revert to the pre-edit seed on reopen — a confidently-wrong display on an
+   * access-control indicator.
+   */
+  onCommitted?: (next: ShareSettings) => void
+}) {
   // A valid seed scope means the caller (EditorShell) already carried the state in from getDoc —
   // trust it and skip the GET. The seed can also arrive LATER (EditorShell sets it after getDoc
   // resolves), so both values are tracked as effect deps below and adopted whenever they appear.
@@ -56,22 +73,35 @@ export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSe
   // Bumped by the retry affordance to re-run the mount fetch after a read failure.
   const [reloadKey, setReloadKey] = useState(0)
 
+  // Whether an AUTHORITATIVE scope has been locked in — from a seed adopted on/after mount, a
+  // successful GET /share, or a successful commit. Once true, a LATER-arriving seed must never
+  // overwrite it: EditorShell's one-shot getDoc can resolve with PRE-EDIT meta after the admin has
+  // already committed a change, and re-adopting that stale seed would silently revert the panel to
+  // a confidently-wrong scope. Seeding at mount counts as authoritative; a read failure does not
+  // (so a retry / late seed can still populate an as-yet-unknown panel).
+  const authoritativeRef = useRef<boolean>(seededScope != null)
+
   useEffect(() => {
-    // An authoritative seed (initial OR newly-arrived from EditorShell's async getDoc) wins: adopt
-    // it and skip the GET. Because seededScope/seededRole are effect deps, a seed that lands after
-    // the panel already mounted (and possibly fetched) still updates the UI to the real value.
-    if (seededScope) {
+    // Adopt a seed ONLY while no authoritative value is established yet. This still lets a seed that
+    // lands after mount (EditorShell's async getDoc) fill an in-flight/unknown panel, but it never
+    // lets a late/stale seed clobber a value the admin already committed or a scope already read.
+    if (seededScope && !authoritativeRef.current) {
+      authoritativeRef.current = true
       setScope(seededScope)
       setRole(seededRole)
       setStatus('ready')
       return
     }
+    // Already resolved authoritatively (commit / earlier fetch / earlier seed): do not re-fetch and
+    // do not let a changed seed prop overwrite the live value.
+    if (authoritativeRef.current) return
     let cancelled = false
     setStatus('loading')
     setScope(null)
     getShareSettings(docId)
       .then((s) => {
         if (cancelled) return
+        authoritativeRef.current = true
         setScope(s.shareScope)
         setRole(s.shareRole)
         setStatus('ready')
@@ -79,7 +109,8 @@ export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSe
       .catch(() => {
         if (cancelled) return
         // Read failed → the true scope is UNKNOWN. Surface an explicit error/unknown state instead
-        // of silently presenting "Restricted" as the confirmed current scope.
+        // of silently presenting "Restricted" as the confirmed current scope. Not authoritative, so
+        // a retry or a late seed can still resolve it.
         setScope(null)
         setStatus('error')
       })
@@ -92,10 +123,13 @@ export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSe
     const prevScope = scope
     const prevRole = role
     const prevStatus = status
+    const prevAuthoritative = authoritativeRef.current
     setError(null)
     setSaving(true)
     // Optimistic: reflect the choice immediately, roll back to the prior state if the PUT fails. A
-    // successful commit also establishes a known scope, so status settles to `ready`.
+    // successful commit also establishes a known scope, so status settles to `ready`. Mark the value
+    // authoritative up front so a late getDoc seed landing mid-PUT cannot clobber the choice.
+    authoritativeRef.current = true
     setScope(nextScope)
     setRole(nextRole)
     setStatus('ready')
@@ -103,7 +137,12 @@ export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSe
       const saved = await setShareSettings(docId, nextScope, nextRole)
       setScope(saved.shareScope)
       setRole(saved.shareRole)
+      // Bubble the authoritative committed value up so the caller's seed reflects the latest state;
+      // otherwise a reopen (this panel unmounts/remounts) would re-seed from the stale page-load
+      // value and display a confidently-wrong scope.
+      onCommitted?.({ shareScope: saved.shareScope, shareRole: saved.shareRole })
     } catch {
+      authoritativeRef.current = prevAuthoritative
       setScope(prevScope)
       setRole(prevRole)
       setStatus(prevStatus)

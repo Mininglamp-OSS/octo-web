@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { useState } from 'react'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
 import { ShareScopePanel } from './ShareScopePanel.tsx'
+import type { ShareSeed, ShareSettings } from './shareScope.ts'
 
 let wk: ReturnType<typeof createMockWKApp>
 let api: MockApiClient
@@ -198,5 +200,139 @@ describe('ShareScopePanel — in-flight + rollback (#64)', () => {
     // Rolled back: restricted stays selected and the tier stays hidden.
     expect(radios()[0].checked).toBe(true)
     expect(roleSelect()).toBeNull()
+  })
+})
+
+// Regression coverage for B1: a committed scope must not silently revert to a confidently-wrong
+// value when the panel unmounts/remounts (close→reopen) or when a stale one-shot seed lands after a
+// commit. The fix = commit bubbles the authoritative value up (onCommitted) so the caller refreshes
+// its seed, AND the panel only adopts a seed while no authoritative value is established yet.
+describe('ShareScopePanel — seed refresh on commit / reopen (B1)', () => {
+  // Mirrors EditorShell: holds the seed the panel was born with, refreshes it from onCommitted, and
+  // conditionally renders the panel (close = unmount, reopen = remount) exactly like the member modal.
+  function Harness({ initialSeed }: { initialSeed?: ShareSeed }) {
+    const [seed, setSeed] = useState<ShareSeed | undefined>(initialSeed)
+    const [open, setOpen] = useState(true)
+    return (
+      <div>
+        <button type="button" onClick={() => setOpen((o) => !o)}>
+          toggle
+        </button>
+        {open && (
+          <ShareScopePanel
+            docId="d_1"
+            seed={seed}
+            onCommitted={(next) =>
+              setSeed({ shareScope: next.shareScope, shareRole: next.shareRole })
+            }
+          />
+        )}
+      </div>
+    )
+  }
+
+  it('bubbles the committed scope up via onCommitted so the caller can refresh its seed', async () => {
+    const committed: ShareSettings[] = []
+    api.responder = (method) =>
+      method === 'put'
+        ? { data: { shareScope: 'anyone_in_space', shareRole: 'read' }, status: 200 }
+        : { data: {}, status: 200 }
+    render(
+      <ShareScopePanel
+        docId="d_1"
+        seed={{ shareScope: 'restricted', shareRole: 'read' }}
+        onCommitted={(n) => committed.push(n)}
+      />,
+    )
+    fireEvent.click(radios()[1])
+    await waitFor(() =>
+      expect(committed).toEqual([{ shareScope: 'anyone_in_space', shareRole: 'read' }]),
+    )
+  })
+
+  it('reopening the panel after a commit shows the committed scope, not the stale page-load seed', async () => {
+    // The exact reviewer sequence: open (Restricted seed) → switch to Anyone-in-Space (PUT ok) →
+    // close (unmount) → reopen (remount). Before the fix the remount re-adopted the stale Restricted
+    // seed and confidently displayed Restricted while the doc was actually anyone_in_space.
+    api.responder = (method, _url, body) =>
+      method === 'put'
+        ? {
+            data: {
+              shareScope: (body as { shareScope?: string }).shareScope,
+              shareRole: (body as { shareRole?: string }).shareRole ?? 'read',
+            },
+            status: 200,
+          }
+        : { data: {}, status: 200 }
+    render(<Harness initialSeed={{ shareScope: 'restricted', shareRole: 'read' }} />)
+    expect(radios()[0].checked).toBe(true)
+
+    fireEvent.click(radios()[1])
+    await waitFor(() => expect(radios()[1].checked).toBe(true))
+
+    // Close → ShareScopePanel unmounts (radios gone).
+    fireEvent.click(screen.getByText('toggle'))
+    await waitFor(() => expect(screen.queryAllByRole('radio')).toHaveLength(0))
+    // Reopen → remount.
+    fireEvent.click(screen.getByText('toggle'))
+    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2))
+
+    // The reopened panel reflects the committed Anyone-in-Space scope, not the stale Restricted seed,
+    // and needs no GET (the refreshed seed is authoritative).
+    expect(radios()[1].checked).toBe(true)
+    expect(radios()[0].checked).toBe(false)
+    expect(gets()).toHaveLength(0)
+  })
+
+  it('does not let a stale seed arriving after a commit revert the committed scope', async () => {
+    // CASE (b): panel opens before the one-shot getDoc resolves (no seed → GET /share), the admin
+    // commits Anyone-in-Space, then the late getDoc lands with PRE-EDIT meta and flips the seed prop
+    // undefined → restricted. The committed value must survive; the stale seed must not clobber it.
+    api.responder = (method, url, body) => {
+      if (method === 'get' && url.endsWith('/share'))
+        return { data: { shareScope: 'restricted', shareRole: 'read' }, status: 200 }
+      if (method === 'put')
+        return {
+          data: {
+            shareScope: (body as { shareScope?: string }).shareScope,
+            shareRole: (body as { shareRole?: string }).shareRole ?? 'read',
+          },
+          status: 200,
+        }
+      return { data: {}, status: 200 }
+    }
+    const { rerender } = render(<ShareScopePanel docId="d_1" />)
+    await waitFor(() => expect(radios()[0].checked).toBe(true))
+
+    fireEvent.click(radios()[1])
+    await waitFor(() => expect(radios()[1].checked).toBe(true))
+
+    // Late getDoc resolves with pre-edit meta → seed prop appears as restricted.
+    rerender(<ShareScopePanel docId="d_1" seed={{ shareScope: 'restricted', shareRole: 'read' }} />)
+    await waitFor(() => expect(radios()[1].checked).toBe(true))
+    expect(radios()[0].checked).toBe(false)
+  })
+
+  it('fires exactly one PUT per change and a later seed refresh does not re-fire it', async () => {
+    // Q3 hardening: a change-on-select control that mutates must not loop. One click → one PUT, and a
+    // benign seed prop change afterwards (the caller refreshing its seed) must not trigger another.
+    api.responder = (method) =>
+      method === 'put'
+        ? { data: { shareScope: 'anyone_in_space', shareRole: 'read' }, status: 200 }
+        : { data: {}, status: 200 }
+    const { rerender } = render(
+      <ShareScopePanel docId="d_1" seed={{ shareScope: 'restricted', shareRole: 'read' }} />,
+    )
+    fireEvent.click(radios()[1])
+    await waitFor(() => expect(radios()[1].checked).toBe(true))
+    rerender(
+      <ShareScopePanel
+        docId="d_1"
+        seed={{ shareScope: 'anyone_in_space', shareRole: 'read' }}
+        onCommitted={() => {}}
+      />,
+    )
+    await waitFor(() => expect(radios()[1].checked).toBe(true))
+    expect(puts()).toHaveLength(1)
   })
 })

@@ -17,7 +17,7 @@ import { InvitePanel } from '../invite/InvitePanel.tsx'
 import { useAccessRequests, type UseAccessRequestsResult } from '../access-request/useAccessRequests.ts'
 import { PendingRequests } from '../access-request/PendingRequests.tsx'
 import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
-import type { ShareSeed } from '../share/shareScope.ts'
+import type { ShareSeed, ShareSettings } from '../share/shareScope.ts'
 
 const ROLES: Role[] = ['reader', 'writer', 'admin']
 
@@ -41,6 +41,7 @@ export function MemberPanel({
   ownerId,
   accessRequests: sharedAccessRequests,
   shareSeed,
+  onShareCommitted,
   onClose,
 }: {
   docId: string
@@ -54,6 +55,12 @@ export function MemberPanel({
    * fetches GET /share itself; either way it falls back to restricted/read.
    */
   shareSeed?: ShareSeed
+  /**
+   * Forwarded to ShareScopePanel: fires with the authoritative `{ shareScope, shareRole }` after a
+   * scope change is persisted. EditorShell uses it to refresh the seed it holds so a reopen of this
+   * (unmount/remount) panel shows the committed value rather than a stale page-load seed.
+   */
+  onShareCommitted?: (next: ShareSettings) => void
   onClose?: () => void
 }) {
   const [members, setMembers] = useState<Member[]>([])
@@ -141,7 +148,7 @@ export function MemberPanel({
 
       {/* #64: link share scope (Restricted / Anyone in Space + read/edit) sits at the very top,
           before "Add member". Admin-only visibility is inherited from this panel's canManage gate. */}
-      <ShareScopePanel docId={docId} seed={shareSeed} />
+      <ShareScopePanel docId={docId} seed={shareSeed} onCommitted={onShareCommitted} />
 
       {/* #5: "Add member" + "Invite" sit at the top of the members panel. */}
       <div className="octo-member-section">

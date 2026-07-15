@@ -791,6 +791,9 @@ export function EditorShell(props: EditorShellProps) {
               ownerId={ownerId}
               accessRequests={pendingAccess}
               shareSeed={shareSeed}
+              onShareCommitted={(next) =>
+                setShareSeed({ shareScope: next.shareScope, shareRole: next.shareRole })
+              }
               onClose={closePanel}
             />
           </div>
