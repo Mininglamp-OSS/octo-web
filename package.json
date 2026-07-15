@@ -28,21 +28,21 @@
     "cleanup:worktree": "bash scripts/cleanup-worktree.sh"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
-    "@storybook/addon-vitest": "^10.3.3",
+    "@playwright/test": "^1.61.1",
+    "@storybook/addon-vitest": "^10.5.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^13.4.0",
-    "@vitest/browser-playwright": "^4.1.5",
+    "@vitest/browser-playwright": "^4.1.10",
     "eslint": "^7.32.0",
     "eslint-config-custom": "*",
-    "jsdom": "^29.0.1",
+    "jsdom": "^29.1.1",
     "prettier": "^2.5.1",
     "rimraf": "^5.0.5",
-    "stylelint": "^17.6.0",
-    "turbo": "2.2.1",
+    "stylelint": "^17.14.0",
+    "turbo": "2.10.5",
     "typescript": "5.9.3",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -51,9 +51,9 @@
   "dependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "katex": "^0.16.45",
+    "katex": "^0.17.0",
     "lucide-react": "^0.577.0",
-    "pinyin-pro": "^3.28.0",
+    "pinyin-pro": "^3.28.1",
     "react-syntax-highlighter": "^15.6.6",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
