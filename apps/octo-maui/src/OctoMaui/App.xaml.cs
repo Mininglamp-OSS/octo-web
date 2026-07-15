@@ -157,7 +157,12 @@ public partial class App : Application
                             && Uri.TryCreate(url, UriKind.Absolute, out var dlUri)
                             && (dlUri.Scheme == "http" || dlUri.Scheme == "https"))
                         {
-                            await Browser.OpenAsync(url);
+                            var api = Resolve<IApiService>();
+                            if (api is { } && Uri.TryCreate(api.BaseUrl, UriKind.Absolute, out var apiUri)
+                                && string.Equals(dlUri.Host, apiUri.Host, StringComparison.OrdinalIgnoreCase))
+                            {
+                                await Browser.OpenAsync(url);
+                            }
                         }
                     }
                 });

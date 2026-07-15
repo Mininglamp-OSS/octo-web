@@ -26,17 +26,25 @@ public partial class AppShell : Shell
 
         InitializeComponent();
 
-        Routing.RegisterRoute("server-config", typeof(Pages.ServerConfigPage));
-        Routing.RegisterRoute("login", typeof(Pages.LoginPage));
-        Routing.RegisterRoute("chat", typeof(Pages.ChatPage));
-
         // React to all three state changes that affect routing.
-        _auth.AuthStateChanged += (_, _) => MainThread.BeginInvokeOnMainThread(async () => await Navigate());
+        _auth.AuthStateChanged += OnAuthStateChanged;
         _server.ServerChanged += OnServerChanged;
 
         // Sequential initialization: theme + history + auth + server, then navigate.
         // Avoid fire-and-forget so that theme is applied before first render.
         _ = InitializeAndNavigateAsync();
+    }
+
+    protected override void OnDisappearing()
+    {
+        _auth.AuthStateChanged -= OnAuthStateChanged;
+        _server.ServerChanged -= OnServerChanged;
+        base.OnDisappearing();
+    }
+
+    private void OnAuthStateChanged(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(async () => await Navigate());
     }
 
     /// <summary>

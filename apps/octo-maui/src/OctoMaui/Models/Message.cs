@@ -76,9 +76,8 @@ public sealed class Message : INotifyPropertyChanged
     public bool HasImage => Type == MessageType.Image && !string.IsNullOrWhiteSpace(Url);
 
     /// <summary>
-    /// Validated image URL: only http/https, resolved against the server origin
-    /// to prevent cross-origin or non-http(s) URL injection. Null if Url is
-    /// missing or unsafe.
+    /// Validated image URL: only http/https absolute URLs are accepted.
+    /// Null if Url is missing, unsafe, or a relative URL.
     /// </summary>
     [JsonIgnore]
     public string? SafeImageUrl

@@ -23,7 +23,7 @@ internal static class HttpUtils
             {
                 if (message.RequestUri is { } uri && IsLoopback(uri.Host))
                     return true;
-                return false;
+                return errors == SslPolicyErrors.None;
             };
         }
         return new HttpClient(handler) { BaseAddress = new Uri(baseUrl), Timeout = timeout };
