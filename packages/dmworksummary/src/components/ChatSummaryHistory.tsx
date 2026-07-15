@@ -6,6 +6,7 @@ import * as summaryApi from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
 import { TaskStatus } from '../types/summary';
 import SummaryCard from './SummaryCard';
+import { containsAllTaskIds, COVERING_HEARTBEAT_WINDOW_MS } from '../utils/heartbeatCoverage';
 
 interface ChatSummaryHistoryProps {
     channel: { channelID: string; channelType: number };
@@ -29,6 +30,12 @@ export default class ChatSummaryHistory extends Component<
     private abortController: AbortController | null = null;
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private isPolling = false;
+    // #334: bring this component into the summary-batch-heartbeat protocol.
+    private peerActive = false;
+    private lastCoveringEventTime = 0;
+    // Set true for the duration of one synchronous window.dispatchEvent call
+    // when WE are the dispatcher, so our own listener can ignore the echo.
+    private isDispatchingOwnHeartbeat = false;
 
     constructor(props: ChatSummaryHistoryProps) {
         super(props);
@@ -39,6 +46,9 @@ export default class ChatSummaryHistory extends Component<
         void this.loadHistory();
         window.addEventListener('chat-summary-created', this.handleChange as EventListener);
         window.addEventListener('chat-summary-deleted', this.handleChange as EventListener);
+        window.addEventListener('summary-batch-heartbeat', this.handleBatchHeartbeat as EventListener);
+        window.addEventListener('summary-status-change', this.handleStatusChangeEvent as EventListener);
+        window.addEventListener('summary-list-unmount', this.handleListUnmount as EventListener);
     }
 
     componentWillUnmount() {
@@ -46,6 +56,9 @@ export default class ChatSummaryHistory extends Component<
         this.stopPoll();
         window.removeEventListener('chat-summary-created', this.handleChange as EventListener);
         window.removeEventListener('chat-summary-deleted', this.handleChange as EventListener);
+        window.removeEventListener('summary-batch-heartbeat', this.handleBatchHeartbeat as EventListener);
+        window.removeEventListener('summary-status-change', this.handleStatusChangeEvent as EventListener);
+        window.removeEventListener('summary-list-unmount', this.handleListUnmount as EventListener);
     }
 
     componentDidUpdate(prevProps: ChatSummaryHistoryProps) {
@@ -80,6 +93,14 @@ export default class ChatSummaryHistory extends Component<
                 this.stopPoll();
                 return;
             }
+            // #334: a peer's heartbeat covered our active set within the
+            // freshness window — skip this tick, do NOT stop the timer.
+            if (
+                this.peerActive &&
+                Date.now() - this.lastCoveringEventTime <= COVERING_HEARTBEAT_WINDOW_MS
+            ) {
+                return;
+            }
             void this.doPoll(ids);
         }, 5000);
     }
@@ -96,6 +117,16 @@ export default class ChatSummaryHistory extends Component<
         this.isPolling = true;
         try {
             const updates = await summaryApi.batchStatus(taskIds);
+            // #334: let peers skip their next tick. Self-echo guard explained
+            // on handleBatchHeartbeat (sync dispatchEvent re-enters own listener).
+            this.isDispatchingOwnHeartbeat = true;
+            try {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds } }),
+                );
+            } finally {
+                this.isDispatchingOwnHeartbeat = false;
+            }
             const updateMap = new Map(updates.map(u => [u.id, u]));
             let changed = false;
             const newItems = this.state.items.map(item => {
@@ -120,6 +151,56 @@ export default class ChatSummaryHistory extends Component<
         if (e.detail?.channelId === this.props.channel.channelID) {
             void this.loadHistory();
         }
+    };
+
+    // #334: a covering heartbeat from a peer means we can skip our next own
+    // poll tick. We do NOT stop the timer — the tick callback consults the
+    // flag + freshness window and self-skips. See containsAllTaskIds for the
+    // exact subset semantics.
+    //
+    // Self-echo guard: window.dispatchEvent is synchronous, so our own
+    // dispatch in doPoll re-enters this listener on the same call stack.
+    // Without the guard we would set peerActive=true from our own heartbeat
+    // and starve our own next tick → 5s cadence would silently degrade to
+    // ~15s when we are the sole poller. The isDispatchingOwnHeartbeat flag
+    // is set true in doPoll right before dispatch and cleared immediately
+    // after; we ignore any event observed while it is true.
+    private handleBatchHeartbeat = (event: Event) => {
+        if (this.isDispatchingOwnHeartbeat) return;
+        const taskIds: number[] | undefined = (event as CustomEvent).detail?.taskIds;
+        if (!containsAllTaskIds(taskIds, this.getActiveTaskIds())) return;
+        this.peerActive = true;
+        this.lastCoveringEventTime = Date.now();
+    };
+
+    // #334: a peer surfaced a status flip for at least one of our visible
+    // items — refresh from server so the UI shows the new status without
+    // waiting for our own 5s tick. Ignored when the flip is for unrelated
+    // tasks (different channel / different page in SummaryListPage).
+    //
+    // Name choice: `handleStatusChangeEvent` mirrors SummaryDetailPage's
+    // identically-named handler (DetailPage:303) and avoids confusion with
+    // SummaryListPage's `handleStatusChange` (a filter-dropdown callback on
+    // a different class — unrelated despite the bare name).
+    private handleStatusChangeEvent = (event: Event) => {
+        // #334: panel is hidden in detail view — even if a peer's status flip
+        // is for one of our items, the user can't see this list right now.
+        // maybeStartPoll already short-circuits on paused; mirror that here
+        // so we don't waste a network round-trip + setState while invisible.
+        if (this.props.paused) return;
+        const taskIds: number[] | undefined = (event as CustomEvent).detail?.taskIds;
+        if (!taskIds || taskIds.length === 0) return;
+        const mine = new Set(this.state.items.map(item => item.task_id));
+        const intersects = taskIds.some(id => mine.has(id));
+        if (!intersects) return;
+        void this.loadHistory();
+    };
+
+    // #334: a peer left the heartbeat protocol (e.g. SummaryListPage
+    // unmounted). Clear suppression so the next 5s tick polls — we may
+    // now be the only poller covering our active-task set.
+    private handleListUnmount = () => {
+        this.peerActive = false;
     };
 
     private async loadHistory() {

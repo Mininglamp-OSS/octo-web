@@ -18,6 +18,7 @@ import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/Voic
 import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
+import { COVERING_HEARTBEAT_WINDOW_MS } from "../utils/heartbeatCoverage";
 import OverflowTooltip from "../components/OverflowTooltip";
 import type {
     SummaryDetail,
@@ -647,7 +648,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private startFallbackPoll() {
         if (this.fallbackPollTimer || this.fallbackStartTimeout) return;
 
-        if (this.listPageActive && Date.now() - this.lastEventTime > 15000) {
+        if (this.listPageActive && Date.now() - this.lastEventTime > COVERING_HEARTBEAT_WINDOW_MS) {
             this.listPageActive = false;
         }
         if (this.listPageActive) return;
