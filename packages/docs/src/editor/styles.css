@@ -682,6 +682,62 @@
   background: var(--octo-hover);
   color: var(--octo-fg);
 }
+/* Table row/column reorder handles (octo-docs-backend#76). Slim grab bars pinned to the
+   row-left / column-top edges of the hovered cell by the TableReorderHandle plugin; dragging
+   one reorders that row/column. They live in the editor wrapper (outside the document) and are
+   positioned inline by the plugin. Kept clear of the column-resize handle (interior right edge)
+   and the block drag handle (further out in the left gutter). */
+.octo-table-reorder {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--octo-hover);
+  border: 1px solid var(--octo-border);
+  border-radius: 4px;
+  color: var(--octo-muted, #8a919e);
+  z-index: 5;
+  box-sizing: border-box;
+}
+.octo-table-reorder:hover {
+  background: var(--octo-accent, #3370ff);
+  border-color: var(--octo-accent, #3370ff);
+  color: #fff;
+}
+.octo-table-reorder--col {
+  cursor: grab;
+}
+.octo-table-reorder--row {
+  cursor: grab;
+}
+.octo-table-reorder:active {
+  cursor: grabbing;
+}
+/* Grip dots: a row of dots on the column bar, a column of dots on the row bar. */
+.octo-table-reorder--col::before {
+  content: '⋯';
+  font-size: 14px;
+  line-height: 1;
+}
+.octo-table-reorder--row::before {
+  content: '⋮';
+  font-size: 14px;
+  line-height: 1;
+}
+/* Insertion caret shown while dragging: an accent line at the boundary the row/column lands on. */
+.octo-table-reorder-indicator {
+  display: none;
+  background: var(--octo-accent, #3370ff);
+  border-radius: 1px;
+  z-index: 6;
+  pointer-events: none;
+}
+/* While a reorder drag is in flight, suppress text selection everywhere so dragging over the
+   prose does not paint a selection, and force the grabbing cursor. */
+body.octo-table-reordering {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 /* Document outline / table of contents (LEFT rail, #3). Rendered before the editor main
    column so it sits to its left; default collapsed to a slim title bar. */
 .octo-outline {
