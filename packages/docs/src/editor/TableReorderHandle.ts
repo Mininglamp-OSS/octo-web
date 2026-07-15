@@ -26,34 +26,38 @@
 // The handle + drop-indicator are plugin-managed DOM outside the document (like
 // BlockDragHandle), so the mutation observer never sees them as content.
 //
-// Concurrency guard (plan B, octo-docs-backend#76 / XIN-1187). The reorder command rebuilds the
-// whole table with a single coarse `tr.replaceWith`. TableReorderConcurrency.test.ts shows the
-// real hazard: two whole-table replaces that land concurrently (a remote reorder, or a remote
+// Concurrency guard (octo-docs-backend#76 / XIN-1187 plan B, reworked in XIN-1225). The reorder command
+// rebuilds the whole table with a single coarse `tr.replaceWith`. TableReorderConcurrency.test.ts shows
+// the real hazard: two whole-table replaces that land concurrently (a remote reorder, or a remote
 // add/delete row·column / merge·split racing our drag) DO converge in the CRDT, but y-prosemirror
 // re-diffs each replace against the base and interleaves cell text — the peers agree on a GARBLED
-// table, i.e. silent data loss. The fine-grained fix (plan A) is scheduled separately; plan B is a
-// serialize-or-abort guard layered on top: if any transaction that arrives DURING the drag changes
-// the DRAGGED table (structure or cell content), we ABORT the reorder instead of committing the
-// replace — a clear i18n toast tells the user to retry. Aborting is a pure early return before any
-// dispatch, so there is no half-commit and no dirty state; we would rather cancel than silently
-// corrupt.
+// table, i.e. silent data loss. So if a transaction that arrives DURING the drag changes the DRAGGED
+// table, we ABORT the reorder instead of committing the replace — a clear i18n toast tells the user to
+// retry. Aborting is a pure early return before any dispatch, so there is no half-commit and no dirty
+// state; we would rather cancel than silently corrupt.
 //
-// The guard must react to changes of the DRAGGED table ONLY — an edit to prose or to a different
-// table must never cancel the reorder. Two earlier tries got the SCOPE wrong (octo-docs-backend#76
-// FAIL-2, XIN-1206/1221): (1) re-fingerprinting a single remapped cell anchor false-aborted on ANY
-// edit, because a coarse remote ReplaceStep collapses interior positions to a boundary (so the
-// anchor stops resolving even when the table is untouched); (2) counting how many tables still
-// carry the drag-start signature false-aborts as soon as the document holds two byte-identical
-// tables and the OTHER one is edited (the global count drops though the dragged table never moved).
-// Both failure modes come from using a POSITION or a GLOBAL COUNT as a stand-in for table identity.
-// The guard now uses a stable, position-independent identity instead: at drag start it snapshots the
-// ordered signature list of every table plus the dragged table's ORDINAL within it, and it aborts
-// only when the signature at THAT ordinal changes. Position-independent (a ReplaceStep can move the
-// table freely) and twin-safe (an edit to an identical sibling table changes a different ordinal),
-// while a real structural/content change to the dragged table still flips its slot and aborts.
+// The guard must react to changes of the DRAGGED table ONLY — an edit to prose or to a different table
+// (even an identical twin) must never cancel the reorder. Earlier tries got the SCOPE wrong by keying off
+// a remapped cell anchor or a global signature count. XIN-1225 settled it with RUNTIME EVIDENCE rather
+// than another source-level guess: instrumenting `window.__reorderAbortDebug` in a real browser (see
+// dev/run-reorder.mjs) showed that @tiptap/y-tiptap delivers a remote edit — even a one-character prose
+// edit OUTSIDE the table — to the local peer as ONE coarse ReplaceStep spanning (nearly) the whole
+// document. That has two consequences the old attempts fell foul of:
+//   • a literal "does a step's RANGE overlap the table" test can't discriminate (the step covers
+//     everything), and
+//   • any ABSOLUTE position (a remapped cell/table anchor) collapses to the replace boundary — which is
+//     ALSO why the drop silently no-op'd (resolveDragSource returned null) even when the guard allowed the
+//     reorder: that no-op, not only the guard, was the real "TC01/TC02 reorder didn't happen" defect.
+// The only identity that survives a whole-document ReplaceStep is the table's ORDINAL among tables in
+// document order. So both the guard and the drop are anchored to that ordinal (captured at drag start):
+// the guard aborts only when the dragged table's signature AT ITS ORDINAL changes (twin-safe — an
+// identical sibling is a different ordinal), and the drop resolves the source row/column by ordinal +
+// the drag-start index (valid because any structural change to the dragged table aborts first). See
+// `analyzeDraggedTableConflict` and `resolveDragSourceByOrdinal`.
 
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import type { Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import { TableMap, cellAround, moveTableColumn, moveTableRow } from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
@@ -74,6 +78,29 @@ interface ReorderDebugEvent {
 function reorderDebug(event: ReorderDebugEvent): void {
   if (typeof window === 'undefined') return
   const sink = (window as unknown as { __tableReorderDebug?: ReorderDebugEvent[] }).__tableReorderDebug
+  if (Array.isArray(sink)) sink.push(event)
+}
+
+// Opt-in runtime tracing for the CONCURRENCY GUARD specifically (octo-docs-backend#76 / XIN-1225). The
+// signature-by-ordinal guard kept passing its jsdom unit tests while real-browser TC01 (prose edit
+// outside the table) and TC02 (edit of an identical second table) STILL false-aborted the reorder — a
+// runtime-only divergence a source read could not settle. This hook records, for every transaction that
+// lands during a drag, what the step-range decision actually saw: the dragged table's node range, each
+// step's changed range, whether any step fell inside the dragged table, whether that table's structure
+// signature changed, and the resulting abort decision + reason. Inert and zero-cost unless a page opts
+// in with `window.__reorderAbortDebug = []` before dragging. This is the "instrument, don't infer"
+// evidence base the rework was gated on.
+interface ReorderAbortDebugEvent {
+  tableRange: { from: number; to: number } | null
+  steps: { type: string; ranges: [number, number][] }[]
+  touched: boolean
+  signatureChanged: boolean | null
+  conflict: boolean
+  reason: string
+}
+function reorderAbortDebug(event: ReorderAbortDebugEvent): void {
+  if (typeof window === 'undefined') return
+  const sink = (window as unknown as { __reorderAbortDebug?: ReorderAbortDebugEvent[] }).__reorderAbortDebug
   if (Array.isArray(sink)) sink.push(event)
 }
 
@@ -183,6 +210,163 @@ export function signatureOfTable(table: PMNode): string | null {
     }
   }
   return parts.join('|')
+}
+
+// ────────────────────────────────────────────────────────────────────────────────────────────────
+// Step-range concurrency detection (octo-docs-backend#76 / XIN-1225 — replaces the signature-by-ordinal
+// guard). The rule the acceptance criteria pin down: a concurrent reorder is aborted ONLY when a
+// transaction that lands during the drag actually MODIFIES THE DRAGGED TABLE'S OWN NODE RANGE. An edit to
+// prose, or to a different table (even a byte-identical twin), never touches that range, so it can never
+// abort — that is TC01/TC02 by construction, with no dependence on table ordinals, a global signature
+// count, or a remapped cell anchor (all three of which false-aborted before: an ordinal/count is
+// ambiguous with twin tables and shifts on any concurrent table add/delete, and a coarse y-tiptap
+// ReplaceStep collapses a remapped interior anchor to a boundary). Here we work in the OLD document's
+// coordinate space, where the dragged table's range is exactly known, and ask a direct question of the
+// transaction's steps.
+
+/** The dragged table node's position range in `doc`. `tablePos` is the position just BEFORE the table
+ * node (what `beginDrag` captures and the plugin remaps each transaction). Returns `{ from, to }` with
+ * `from` = tablePos and `to` = tablePos + nodeSize (one past the table's closing token), or null when
+ * the position no longer resolves to a table node. */
+export function tableNodeRange(doc: PMNode, tablePos: number): { from: number; to: number } | null {
+  if (tablePos < 0 || tablePos >= doc.content.size) return null
+  const node = doc.nodeAt(tablePos)
+  if (!node || node.type.spec.tableRole !== 'table') return null
+  return { from: tablePos, to: tablePos + node.nodeSize }
+}
+
+/** Does any step in `tr` modify content strictly INSIDE the range `[from, to)` of the document BEFORE
+ * `tr` was applied? Each step's changed span is read from its own StepMap in that step's coordinate
+ * space, and the table range is mapped forward through the PRIOR steps (`tr.mapping.slice(0, i)`) so both
+ * are compared in the same space — a transaction can carry several steps. The overlap test is strict
+ * interior (`start < to && end > from`), so an edit that merely abuts the table (an insertion exactly at
+ * the boundary before/after it — e.g. typing in the paragraph immediately adjacent) does NOT count, only
+ * an edit that lands within the table. Also collects each step's ranges + type for the debug hook. */
+export function stepsTouchRange(
+  tr: Transaction,
+  from: number,
+  to: number,
+): { touched: boolean; steps: { type: string; ranges: [number, number][] }[] } {
+  const steps: { type: string; ranges: [number, number][] }[] = []
+  let touched = false
+  for (let i = 0; i < tr.steps.length; i++) {
+    const prior = tr.mapping.slice(0, i)
+    const iFrom = prior.map(from, -1)
+    const iTo = prior.map(to, 1)
+    const ranges: [number, number][] = []
+    tr.mapping.maps[i].forEach((s: number, e: number) => {
+      ranges.push([s, e])
+      if (s < iTo && e > iFrom) touched = true
+    })
+    steps.push({ type: tr.steps[i].constructor.name, ranges })
+  }
+  return { touched, steps }
+}
+
+/** The concurrency decision for one mid-drag transaction, scoped to the DRAGGED table only.
+ *
+ * RUNTIME EVIDENCE (octo-docs-backend#76 / XIN-1225, `window.__reorderAbortDebug`): a remote edit —
+ * even a one-character prose edit OUTSIDE the table — arrives on the local peer as a single COARSE
+ * ReplaceStep spanning (almost) the whole document, because @tiptap/y-tiptap re-renders the changed
+ * XmlFragment wholesale. That has two consequences the earlier attempts missed:
+ *   • a literal "does a step's RANGE overlap the table" test is useless — the step covers everything,
+ *     so it can never separate an inside-table edit from an outside one; and
+ *   • any ABSOLUTE position (a remapped cell/table anchor) collapses to the replace boundary, so it
+ *     can no longer locate the dragged table.
+ * The only identity that survives a whole-document ReplaceStep is the table's ORDINAL among tables in
+ * document order (the tree order is preserved). So we decide the conflict by comparing the dragged
+ * table's signature AT ITS ORDINAL against the drag-start baseline: an edit to prose or to another
+ * table (even an identical twin — a different ordinal) leaves that slot byte-identical and never
+ * aborts (TC01/TC02), while a real reorder / add·delete row·column / merge·split / cell edit on the
+ * dragged table itself flips its slot and aborts (TC03, data-safety). A change in the table COUNT
+ * means the ordinals no longer align, so we abort conservatively (rare concurrent table add/delete).
+ *
+ * `stepsTouchRange` is still evaluated — it is an exact FAST PATH for the fine-grained case (a local
+ * or non-coarse transaction whose steps provably miss the table's range is benign without a full
+ * signature scan) and the evidence recorded by the debug hook — but it is never the sole decider,
+ * precisely because the observed remote steps are coarse. */
+export function analyzeDraggedTableConflict(
+  tr: Transaction,
+  oldDoc: PMNode,
+  newDoc: PMNode,
+  oldTablePos: number,
+  dragOrdinal: number,
+  baselineSigs: (string | null)[],
+): ReorderAbortDebugEvent {
+  const range = tableNodeRange(oldDoc, oldTablePos)
+  const { touched, steps } = range
+    ? stepsTouchRange(tr, range.from, range.to)
+    : { touched: true, steps: stepsTouchRange(tr, 0, 0).steps }
+  // Fast path: a fine-grained transaction whose steps all miss the dragged table's range cannot have
+  // changed it. (Remote edits are coarse and take the ordinal path below.)
+  if (range && !touched) {
+    return { tableRange: range, steps, touched: false, signatureChanged: null, conflict: false, reason: 'no step inside dragged table range — benign (fine-grained outside edit)' }
+  }
+  // Ordinal path: compare the dragged table's signature at its stable ordinal. Coarse-ReplaceStep-proof.
+  const baselineSig = dragOrdinal >= 0 && dragOrdinal < baselineSigs.length ? baselineSigs[dragOrdinal] : null
+  if (baselineSig === null) {
+    return { tableRange: range, steps, touched, signatureChanged: null, conflict: false, reason: 'no drag-start signature for dragged table — guard disabled' }
+  }
+  const nowSigs = tableSignatures(newDoc)
+  if (nowSigs.length !== baselineSigs.length) {
+    return { tableRange: range, steps, touched, signatureChanged: true, conflict: true, reason: 'table count changed mid-drag — ordinals unaligned, abort (data-safe)' }
+  }
+  const changed = nowSigs[dragOrdinal] !== baselineSig
+  return {
+    tableRange: range,
+    steps,
+    touched,
+    signatureChanged: changed,
+    conflict: changed,
+    reason: changed
+      ? 'dragged table (by ordinal) changed structure/content — abort (data-safe)'
+      : 'dragged table (by ordinal) unchanged — benign (outside/other-table edit)',
+  }
+}
+
+/** Locate the DRAGGED table by its drag-start ORDINAL among tables in `doc` and resolve the source
+ * row/column's live cell position + grid rect. This is the coarse-ReplaceStep-proof replacement for
+ * position-remapped source resolution: the whole-document ReplaceStep y-tiptap emits for a remote edit
+ * collapses any absolute cell/table anchor, but the table's ordinal is stable, and the source row/column
+ * INDEX captured at drag start stays valid because ANY structural change to the dragged table aborts the
+ * drag (see the guard) — so if we reach a drop, the dragged table's grid is exactly as it was. Returns
+ * null when the ordinal no longer resolves to a table or the source index is out of range. */
+export function resolveDragSourceByOrdinal(
+  doc: PMNode,
+  ordinal: number,
+  kind: 'row' | 'col',
+  sourceIndex: number,
+): { tableStart: number; tablePos: number; rect: { left: number; top: number; right: number; bottom: number }; cellPos: number } | null {
+  if (ordinal < 0) return null
+  let seen = 0
+  let found: { node: PMNode; pos: number } | null = null
+  doc.descendants((node, pos) => {
+    if (node.type.spec.tableRole === 'table') {
+      if (seen === ordinal) found = { node, pos }
+      seen++
+      return false // tables don't nest
+    }
+    return true
+  })
+  if (!found) return null
+  const { node, pos } = found
+  let map: TableMap
+  try {
+    map = TableMap.get(node)
+  } catch {
+    return null
+  }
+  if (kind === 'row' ? sourceIndex >= map.height : sourceIndex >= map.width) return null
+  const row = kind === 'row' ? sourceIndex : 0
+  const col = kind === 'col' ? sourceIndex : 0
+  const cellRel = map.map[row * map.width + col]
+  let rect
+  try {
+    rect = map.findCell(cellRel)
+  } catch {
+    return null
+  }
+  return { tableStart: pos + 1, tablePos: pos, rect, cellPos: pos + 1 + cellRel }
 }
 
 /** Fingerprint of the table that contains `cellPos`. Used at drag start to snapshot the dragged
@@ -346,11 +530,19 @@ function cellContextAt(view: EditorView, clientX: number, clientY: number): Cell
  * re-derived from the (remapped) `cellPos` via `resolveDragSource` at hover/drop time, so a
  * collaborator changing the grid above the dragged row/column can never leave us moving a stale
  * index (octo-docs-backend#76 review fix). */
+/** State captured at drag start. Identity is anchored to survive the coarse whole-document ReplaceStep
+ * that y-tiptap emits for a remote edit (which collapses any absolute position): `ordinal` is the dragged
+ * table's index among tables in document order, and `sourceIndex` is the row/column being dragged. Both
+ * are position-independent, so the drop still targets the right row/column after a concurrent remote edit
+ * — and they stay valid because ANY structural change to the dragged table aborts the drag (the guard),
+ * so if we reach a drop the dragged table's grid is exactly as it was at drag start. Source resolution,
+ * the probe clamp and the move all re-derive the table's live position from `ordinal` (see
+ * `resolveDragSourceByOrdinal`); nothing here stores an absolute position that a ReplaceStep could
+ * collapse. */
 interface DragState {
   kind: 'row' | 'col'
-  tableStart: number
-  tablePos: number
-  cellPos: number
+  ordinal: number
+  sourceIndex: number
 }
 
 /** Table row/column reorder extension. */
@@ -367,19 +559,22 @@ export const TableReorderHandle = Extension.create({
     let drag: DragState | null = null
     // Resolved drop target row/column index during a drag (null = no valid target yet).
     let dropIndex: number | null = null
-    // Plan-B concurrency guard. `dragBaselineSigs` is the ordered signature of every table at drag
-    // start and `dragTableIndex` the dragged table's ordinal within it — together a stable,
-    // position-independent identity for the dragged table (see `draggedTableConflict`).
-    // `concurrentEdit` latches true when a transaction landing during the drag changes the signature
-    // at that ordinal — i.e. the dragged table's own structure/content changed (a remote reorder /
-    // add·delete row·column / merge·split / cell edit on THAT table), or a whole table was added/
-    // deleted so the ordinals no longer align (see the plugin `state.apply`). Edits to prose or to a
-    // different table (even an identical twin) leave that slot unchanged, so they never latch. When
-    // latched, `runMove` aborts the reorder rather than committing a whole-table replace that would
+    // Concurrency guard (octo-docs-backend#76 / XIN-1225). `concurrentEdit` latches true when a
+    // transaction landing during the drag changes the DRAGGED table's own structure/content — a remote
+    // reorder / add·delete row·column / merge·split / cell edit on THAT table (see the plugin
+    // `state.apply`, which drives the decision through `analyzeDraggedTableConflict`). Runtime evidence
+    // (`window.__reorderAbortDebug`) showed remote edits arrive as ONE coarse whole-document ReplaceStep,
+    // so the dragged table is pinned by its stable ORDINAL (drag.ordinal) and compared against the
+    // drag-start signature list `dragBaselineSigs`; an edit to prose or to another table (even an
+    // identical twin, a different ordinal) leaves the dragged slot byte-identical and never latches.
+    // When latched, `runMove` aborts the reorder rather than committing a whole-table replace that would
     // silently corrupt against the concurrent edit.
-    let dragBaselineSigs: (string | null)[] | null = null
-    let dragTableIndex = -1
     let concurrentEdit = false
+    let dragBaselineSigs: (string | null)[] = []
+    // True only while WE dispatch the reorder move itself, so the guard below does not mistake our own
+    // whole-table replace for a concurrent remote conflict (the local move lands while `drag` is still
+    // set, and it obviously changes the dragged table).
+    let committing = false
     // Latches true once we have seen a mid-drag mousemove that actually reports the primary button
     // held (`buttons & 1`). It gates the "released outside the window" abort below: that abort must
     // only fire on a genuine release, i.e. AFTER the button was observed down. Some event sources
@@ -434,16 +629,11 @@ export const TableReorderHandle = Extension.create({
     // a higher index lands AFTER it. A drop on the source itself shows nothing (it's a no-op).
     const showIndicator = (view: EditorView, ctx: CellContext) => {
       if (!indicator || !drag) return
-      // Re-derive the source index from the (remapped) cellPos against the CURRENT doc, so a
-      // concurrent remote insert/delete above the dragged row/column shifts the caret and the
-      // drop-direction test onto the row/column the user actually grabbed.
-      const source = resolveDragSource(view.state.doc, drag.cellPos)
-      if (!source) {
-        dropIndex = null
-        hideIndicator()
-        return
-      }
-      const srcIndex = drag.kind === 'col' ? source.rect.left : source.rect.top
+      // The source row/column index is fixed at drag start (`drag.sourceIndex`) and stays valid: any
+      // structural change to the dragged table aborts the drag, so while a drop is still possible the
+      // grid is unchanged. This is coarse-ReplaceStep-proof — unlike re-deriving it from a remapped
+      // cellPos, which a whole-document remote ReplaceStep collapses (octo-docs-backend#76 XIN-1225).
+      const srcIndex = drag.sourceIndex
       const hovered = drag.kind === 'col' ? ctx.rect.left : ctx.rect.top
       if (hovered === srcIndex) {
         dropIndex = null
@@ -492,12 +682,14 @@ export const TableReorderHandle = Extension.create({
         notifyReorderConflict()
         return
       }
-      // Re-resolve the source cell against the CURRENT doc from its remapped position, then take
-      // the move's `from` from the live grid rect — never the drag-start index. Under concurrent
-      // collaboration a remote peer may have inserted/deleted rows or columns above the dragged
-      // one during the drag; the stale index would move the wrong row/column, but the remapped
-      // cellPos still identifies the original cell (octo-docs-backend#76 review fix).
-      const source = resolveDragSource(view.state.doc, drag.cellPos)
+      // Re-resolve the source cell against the CURRENT doc by the dragged table's stable ORDINAL plus
+      // the drag-start row/column index — NOT a remapped position. Runtime evidence showed remote edits
+      // arrive as a coarse whole-document ReplaceStep that collapses any absolute cell/table anchor, so
+      // the old `resolveDragSource(remapped cellPos)` returned null and the drop silently no-op'd even
+      // when the guard correctly allowed it — the real cause of TC01/TC02 "reorder didn't happen"
+      // (octo-docs-backend#76 XIN-1225). The ordinal survives the ReplaceStep; the source index is valid
+      // because any structural change to the dragged table would have aborted above.
+      const source = resolveDragSourceByOrdinal(view.state.doc, drag.ordinal, drag.kind, drag.sourceIndex)
       if (!source) {
         reorderDebug({ phase: 'drop', dispatched: false, reason: 'source no longer resolves', drag, dropIndex })
         return
@@ -518,7 +710,9 @@ export const TableReorderHandle = Extension.create({
         drag.kind === 'col'
           ? moveTableColumn({ from: fromIndex, to: dropIndex })
           : moveTableRow({ from: fromIndex, to: dropIndex })
+      committing = true
       const dispatched = command(view.state, view.dispatch)
+      committing = false
       reorderDebug({ phase: 'dispatch', kind: drag.kind, from: fromIndex, to: dropIndex, dispatched })
       view.focus()
     }
@@ -541,9 +735,9 @@ export const TableReorderHandle = Extension.create({
     const resetDragState = () => {
       drag = null
       dropIndex = null
-      dragBaselineSigs = null
-      dragTableIndex = -1
       concurrentEdit = false
+      committing = false
+      dragBaselineSigs = []
       pointerHeldSeen = false
       document.body.classList.remove('octo-table-reordering')
       hideIndicator()
@@ -605,14 +799,17 @@ export const TableReorderHandle = Extension.create({
       // over no cell, which is why the column axis was a silent no-op (octo-docs-backend#76 rework).
       let probeX = event.clientX
       let probeY = event.clientY
-      const tableDom = tableElementAt(activeView, drag.tablePos)
+      // Resolve the dragged table's CURRENT position by its stable ordinal (drag.tablePos would be a
+      // drag-start position that a coarse remote ReplaceStep has since invalidated — XIN-1225).
+      const live = resolveDragSourceByOrdinal(activeView.state.doc, drag.ordinal, drag.kind, drag.sourceIndex)
+      const tableDom = live ? tableElementAt(activeView, live.tablePos) : null
       if (tableDom) {
         const t = tableDom.getBoundingClientRect()
         probeX = Math.min(Math.max(probeX, t.left + 1), t.right - 1)
         probeY = Math.min(Math.max(probeY, t.top + 1), t.bottom - 1)
       }
       const ctx = cellContextAt(activeView, probeX, probeY)
-      if (!ctx || ctx.tableStart !== drag.tableStart) {
+      if (!ctx || !live || ctx.tableStart !== live.tableStart) {
         reorderDebug({
           phase: 'move',
           x: event.clientX,
@@ -655,15 +852,13 @@ export const TableReorderHandle = Extension.create({
       event.preventDefault()
       drag = {
         kind,
-        tableStart: hover.tableStart,
-        tablePos: hover.tablePos,
-        cellPos: hover.cellPos,
+        // Stable, coarse-ReplaceStep-proof identity for the dragged table + source line.
+        ordinal: draggedTableIndex(view.state.doc, hover.cellPos),
+        sourceIndex: kind === 'col' ? hover.rect.left : hover.rect.top,
       }
-      // Snapshot the dragged table's stable identity so the plan-B guard can detect a concurrent
-      // edit to it during the drag: the ordered signature of every table plus the dragged table's
-      // ordinal within that list. Reset the latch for this fresh drag.
+      // Snapshot every table's signature so the guard can compare the dragged table's slot (by ordinal)
+      // against it on each mid-drag transaction. Reset the latch for this fresh drag.
       dragBaselineSigs = tableSignatures(view.state.doc)
-      dragTableIndex = draggedTableIndex(view.state.doc, hover.cellPos)
       concurrentEdit = false
       pointerHeldSeen = false
       reorderDebug({ phase: 'begin', kind, index: kind === 'col' ? hover.rect.left : hover.rect.top })
@@ -680,36 +875,36 @@ export const TableReorderHandle = Extension.create({
     return [
       new Plugin({
         key: tableReorderPluginKey,
-        // Keep an in-flight drag's captured positions valid across every transaction that lands
-        // during the drag — crucially the REMOTE ones y-prosemirror applies for collaborators.
-        // Mapping `cellPos`/`tablePos`/`tableStart` through `tr.mapping` means a peer inserting or
-        // deleting rows/columns above the dragged one shifts our anchors with the document, so the
-        // drop still targets the original row/column (octo-docs-backend#76 review fix). This state
-        // holds no value of its own; it exists only for the mapping side effect on the drag anchor.
+        // Detect a concurrent edit to the DRAGGED table on every transaction that lands during the drag
+        // — crucially the REMOTE ones y-prosemirror applies for collaborators. The dragged table is
+        // pinned by its stable ORDINAL (drag.ordinal), which survives the coarse whole-document
+        // ReplaceStep y-tiptap emits for a remote edit; source resolution and the move also key off that
+        // ordinal + drag.sourceIndex, so no absolute position needs remapping here (octo-docs-backend#76
+        // XIN-1225). This plugin state holds no value of its own; it exists only for the guard side
+        // effect on each transaction.
         state: {
           init: () => null,
-          apply: (tr, _value, _oldState, newState) => {
-            if (drag && tr.docChanged) {
-              drag = {
-                ...drag,
-                cellPos: tr.mapping.map(drag.cellPos),
-                tablePos: tr.mapping.map(drag.tablePos),
-                tableStart: tr.mapping.map(drag.tableStart),
-              }
-              // Plan-B conflict detection, scoped to the dragged table only by STABLE IDENTITY.
-              // Re-select the dragged table by its drag-start ordinal and compare its signature to
-              // the baseline; a change means the dragged table's own structure/content changed (or
-              // the table set changed) — latch a conflict so `runMove` aborts. This is fully
-              // position-independent, so it does NOT depend on the remapped `cellPos`/`tablePos`
-              // (which a coarse y-prosemirror ReplaceStep collapses to a boundary even when the table
-              // is untouched) — that anchor drift, and the earlier global-count heuristic that
-              // false-aborted whenever an identical twin table was edited, are exactly what made
-              // edits OUTSIDE the dragged table cancel the reorder before (octo-docs-backend#76
-              // FAIL-2 / XIN-1221). Benign edits to prose or another table leave that slot unchanged,
-              // so the latch stays clear.
-              if (!concurrentEdit && dragBaselineSigs !== null) {
-                if (draggedTableConflict(newState.doc, dragBaselineSigs, dragTableIndex)) concurrentEdit = true
-              }
+          apply: (tr, _value, oldState, newState) => {
+            if (drag && tr.docChanged && !concurrentEdit && !committing) {
+              // Compare the dragged table's signature at its drag-start ordinal against the baseline.
+              // An edit to prose or another table (even an identical twin — a different ordinal) leaves
+              // that slot byte-identical and never aborts (real-browser TC01/TC02); a reorder / add·
+              // delete row·column / merge·split / cell edit on the dragged table itself flips it and
+              // aborts (TC03, data-safety). `stepsTouchRange` inside is an exact fast path for the
+              // fine-grained case + the `window.__reorderAbortDebug` evidence trail; it needs the
+              // dragged table's CURRENT position (by ordinal) in the pre-transaction doc, not a
+              // drag-start position a prior coarse ReplaceStep may have invalidated.
+              const liveOld = resolveDragSourceByOrdinal(oldState.doc, drag.ordinal, drag.kind, drag.sourceIndex)
+              const decision = analyzeDraggedTableConflict(
+                tr,
+                oldState.doc,
+                newState.doc,
+                liveOld ? liveOld.tablePos : -1,
+                drag.ordinal,
+                dragBaselineSigs,
+              )
+              reorderAbortDebug(decision)
+              if (decision.conflict) concurrentEdit = true
             }
             return null
           },
@@ -757,8 +952,6 @@ export const TableReorderHandle = Extension.create({
               rowHandle = colHandle = indicator = null
               activeView = null
               drag = null
-              dragBaselineSigs = null
-              dragTableIndex = -1
               concurrentEdit = false
               pointerHeldSeen = false
             },

@@ -36,7 +36,8 @@ import {
   tableEditingKey,
 } from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { tableStructureSignature, signatureOfTable, countTableSignature, tableSignatures, draggedTableIndex, draggedTableConflict } from './TableReorderHandle.ts'
+import { tableStructureSignature, signatureOfTable, countTableSignature, tableSignatures, draggedTableIndex, draggedTableConflict, analyzeDraggedTableConflict, resolveDragSourceByOrdinal, resolveDragSource } from './TableReorderHandle.ts'
+import type { Transaction } from '@tiptap/pm/state'
 
 // Same collab field name the editor wires in production (schema/index.ts COLLAB_FIELD).
 const FIELD = 'default'
@@ -604,5 +605,160 @@ describe('table reorder — plan B guard: single table, edits outside must not a
     mergeConcurrent(docA, docB, base)
 
     expect(draggedTableConflict(edA.state.doc, baselineSigs, dragIndex)).toBe(true)
+  })
+})
+
+// octo-docs-backend#76 XIN-1225 — the runtime rework. Real-browser instrumentation
+// (window.__reorderAbortDebug, dev/run-reorder.mjs) showed WHY the signature-by-ordinal guard kept
+// passing these jsdom tests yet TC01 (prose edit outside) / TC02 (identical second table) still failed
+// on a real machine: y-tiptap applies a remote edit on the local peer as ONE COARSE ReplaceStep over
+// (nearly) the whole document. That (a) makes any "does a step's RANGE overlap the table" test useless
+// (the step covers everything) and (b) collapses the remapped drag cell/table anchor, so the DROP
+// silently no-op'd even when the guard allowed the reorder — the real "reorder didn't happen" defect.
+// These tests drive the two functions that fix it through the REAL transaction y-prosemirror produces
+// on the merge (not a hand-built signature): `analyzeDraggedTableConflict` (guard, ordinal-anchored)
+// and `resolveDragSourceByOrdinal` (drop, ordinal-anchored).
+describe('table reorder — XIN-1225 real coarse-transaction guard + drop anchor (#76)', () => {
+  const TABLE_WITH_PROSE =
+    '<p>heading</p>' +
+    '<table><tbody>' +
+    '<tr><td><p>r1c1</p></td><td><p>r1c2</p></td></tr>' +
+    '<tr><td><p>r2c1</p></td><td><p>r2c2</p></td></tr>' +
+    '<tr><td><p>r3c1</p></td><td><p>r3c2</p></td></tr>' +
+    '</tbody></table>' +
+    '<p>trailing paragraph</p>'
+
+  const TWO_TABLES =
+    '<table><tbody>' +
+    '<tr><td><p>r1c1</p></td><td><p>r1c2</p></td></tr>' +
+    '<tr><td><p>r2c1</p></td><td><p>r2c2</p></td></tr>' +
+    '<tr><td><p>r3c1</p></td><td><p>r3c2</p></td></tr>' +
+    '</tbody></table>' +
+    '<p>between</p>' +
+    '<table><tbody>' +
+    '<tr><td><p>r1c1</p></td><td><p>r1c2</p></td></tr>' +
+    '<tr><td><p>r2c1</p></td><td><p>r2c2</p></td></tr>' +
+    '<tr><td><p>r3c1</p></td><td><p>r3c2</p></td></tr>' +
+    '</tbody></table>'
+
+  /** Position just before the nth table in document order. */
+  function tablePosByOrdinal(doc: PMNode, ordinal: number): number {
+    let seen = 0
+    let pos = -1
+    doc.descendants((node, p) => {
+      if (node.type.name === 'table') {
+        if (seen === ordinal) pos = p
+        seen++
+        return false
+      }
+      return true
+    })
+    return pos
+  }
+
+  /** Apply peer B's concurrent diff into A and return the REAL doc-changing transactions y-prosemirror
+   *  produces on A (the ones the plugin's state.apply guard would see mid-drag). */
+  function captureMergeTransactions(edA: Editor, docA: Y.Doc, docB: Y.Doc, base: Uint8Array): Transaction[] {
+    const trs: Transaction[] = []
+    const on = ({ transaction }: { transaction: Transaction }) => {
+      if (transaction.docChanged) trs.push(transaction)
+    }
+    edA.on('transaction', on)
+    Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB, base))
+    edA.off('transaction', on)
+    return trs
+  }
+
+  it('TC01: remote prose edit outside → NO transaction flags a conflict (guard stays clear)', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TABLE_WITH_PROSE)
+    track(edA, edB)
+    const cellPos = cellPosOf(edA, 2, 0)
+    const dragOrdinal = draggedTableIndex(edA.state.doc, cellPos) // table #0
+    const baselineSigs = tableSignatures(edA.state.doc)
+
+    edB.view.dispatch(edB.state.tr.insertText(' edited', 8)) // prose inside the leading paragraph
+    const trs = captureMergeTransactions(edA, docA, docB, base)
+
+    expect(trs.length).toBeGreaterThan(0)
+    for (const tr of trs) {
+      const oldPos = tablePosByOrdinal(tr.before, dragOrdinal)
+      const decision = analyzeDraggedTableConflict(tr, tr.before, tr.doc, oldPos, dragOrdinal, baselineSigs)
+      expect(decision.conflict).toBe(false)
+    }
+  })
+
+  it('TC02: remote edit of an identical SECOND table → NO transaction flags a conflict', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TWO_TABLES)
+    track(edA, edB)
+    const cellPos = cellPosOf(edA, 2, 0)
+    const dragOrdinal = draggedTableIndex(edA.state.doc, cellPos) // dragging table #0
+    expect(dragOrdinal).toBe(0)
+    const baselineSigs = tableSignatures(edA.state.doc)
+
+    // Edit a cell of the SECOND identical table.
+    let secondPos = -1
+    let seen = 0
+    edB.state.doc.descendants((node, p) => {
+      if (node.type.name === 'table') {
+        if (seen === 1) secondPos = p
+        seen++
+        return false
+      }
+      return true
+    })
+    const m1 = TableMap.get(edB.state.doc.nodeAt(secondPos)!)
+    edB.view.dispatch(edB.state.tr.insertText('X', secondPos + 1 + m1.map[0] + 1))
+    const trs = captureMergeTransactions(edA, docA, docB, base)
+
+    expect(trs.length).toBeGreaterThan(0)
+    for (const tr of trs) {
+      const oldPos = tablePosByOrdinal(tr.before, dragOrdinal)
+      const decision = analyzeDraggedTableConflict(tr, tr.before, tr.doc, oldPos, dragOrdinal, baselineSigs)
+      expect(decision.conflict).toBe(false)
+    }
+  })
+
+  it('TC03: remote reorder of the SAME dragged table → a transaction flags a conflict (data-safety)', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TABLE_WITH_PROSE)
+    track(edA, edB)
+    const cellPos = cellPosOf(edA, 2, 0)
+    const dragOrdinal = draggedTableIndex(edA.state.doc, cellPos)
+    const baselineSigs = tableSignatures(edA.state.doc)
+
+    selectCell(edB, 0, 0)
+    addRowBefore(edB.state, edB.view.dispatch) // structural change to the dragged table
+    const trs = captureMergeTransactions(edA, docA, docB, base)
+
+    const anyConflict = trs.some((tr) => {
+      const oldPos = tablePosByOrdinal(tr.before, dragOrdinal)
+      return analyzeDraggedTableConflict(tr, tr.before, tr.doc, oldPos, dragOrdinal, baselineSigs).conflict
+    })
+    expect(anyConflict).toBe(true)
+  })
+
+  it('drop anchor: after the merge the dragged source resolves by ORDINAL', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TABLE_WITH_PROSE)
+    track(edA, edB)
+    let cellPos = cellPosOf(edA, 2, 0) // row 3 of table #0
+    const dragOrdinal = draggedTableIndex(edA.state.doc, cellPos)
+
+    // Peer B edits prose outside; remap the drag anchor through the real merge transactions exactly as
+    // the plugin used to — this is the coarse ReplaceStep that collapsed the anchor at runtime.
+    edB.view.dispatch(edB.state.tr.insertText(' edited', 8))
+    const on = ({ transaction }: { transaction: Transaction }) => {
+      if (transaction.docChanged) cellPos = transaction.mapping.map(cellPos)
+    }
+    edA.on('transaction', on)
+    Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB, base))
+    edA.off('transaction', on)
+
+    // The ordinal-anchored resolver still finds the dragged source row (index 2) — this is what makes the
+    // drop complete instead of silently no-op'ing on a collapsed anchor.
+    const src = resolveDragSourceByOrdinal(edA.state.doc, dragOrdinal, 'row', 2)
+    expect(src).not.toBeNull()
+    expect(src!.rect.top).toBe(2)
+    // The position-based resolver is the fragile path we moved off of (may return null under a coarse
+    // ReplaceStep). Referenced only to document the contrast; the drop no longer depends on it.
+    void resolveDragSource(edA.state.doc, cellPos)
   })
 })

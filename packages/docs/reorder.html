@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Table reorder concurrency real-runtime harness (XIN-1225)</title>
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+      }
+      table {
+        border-collapse: collapse;
+      }
+      td,
+      th {
+        border: 1px solid #adb5bd;
+        padding: 6px 10px;
+        min-width: 48px;
+      }
+      /* Make the reorder grab handles visible/hittable in the harness (production styles live in
+         editor/styles.css, not loaded here). */
+      .octo-table-reorder {
+        background: #4263eb;
+        opacity: 0.85;
+        cursor: grab;
+        z-index: 10;
+      }
+      .octo-table-reorder-indicator {
+        background: #f03e3e;
+        z-index: 11;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/dev/reorder.harness.tsx"></script>
+  </body>
+</html>

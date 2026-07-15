@@ -81,6 +81,7 @@ packages/docs/dev-dist/
 # docs collab smoke screenshots / artifacts
 packages/docs/dev/smoke-out/
 packages/docs/dev/presence-out/
+packages/docs/dev/reorder-out/
 
 # Loop V1 内部设计文档仅保留在本地 workspace，不纳入版本库
 docs/loop-v1/
