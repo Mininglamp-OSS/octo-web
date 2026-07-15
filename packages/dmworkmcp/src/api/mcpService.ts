@@ -336,6 +336,8 @@ function extractErrorMessage(err: unknown): string {
 function localizedForCode(code: string): string {
   const KNOWN: Record<string, string> = {
     "err.marketplace.mcp.name_taken": "mcp.errors.nameTaken",
+    "err.marketplace.mcp.slug_taken": "mcp.errors.slugTaken",
+    "err.marketplace.mcp.slug_invalid": "mcp.errors.slugInvalid",
     "err.marketplace.mcp.secret_leaked": "mcp.errors.secretLeaked",
     "err.marketplace.mcp.forbidden": "mcp.errors.forbidden",
     "err.marketplace.mcp.not_found": "mcp.errors.notFound",

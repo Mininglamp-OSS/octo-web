@@ -11,6 +11,8 @@
   },
   "errors": {
     "nameTaken": "This name is already taken",
+    "slugTaken": "This service slug is already taken in the current Space",
+    "slugInvalid": "Slug must match ^[a-z0-9-]{1,64}$",
     "secretLeaked": "Please remove the real token and use the placeholder before submitting",
     "forbidden": "You are not allowed to modify this MCP",
     "notFound": "MCP not found or has been removed",

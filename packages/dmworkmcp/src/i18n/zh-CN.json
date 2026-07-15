@@ -11,6 +11,8 @@
   },
   "errors": {
     "nameTaken": "此名称已被占用",
+    "slugTaken": "此服务标识 (slug) 在当前空间已被占用",
+    "slugInvalid": "服务标识 (slug) 只能包含小写字母、数字与连字符，且 1-64 位",
     "secretLeaked": "请勿提交真实密钥，把它替换成占位符再试",
     "forbidden": "无权操作该 MCP",
     "notFound": "MCP 不存在或已被删除",
