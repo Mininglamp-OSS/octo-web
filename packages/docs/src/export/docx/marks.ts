@@ -4,7 +4,7 @@
  * highlight, textStyle, subscript, superscript) into docx TextRun options.
  */
 
-import { type IRunOptions, ExternalHyperlink, TextRun, UnderlineType, type ParagraphChild } from 'docx'
+import { type IRunOptions, ExternalHyperlink, TextRun, UnderlineType, ShadingType, type ParagraphChild } from 'docx'
 import { FONT_CODE, FONT_EMOJI } from './styles.ts'
 import { isSafeHref } from './href-safety.ts'
 import { latexToMathComponent } from './math.ts'
@@ -139,8 +139,21 @@ export function buildRunOptionsFromMarks(marks: MarkDef[]): IRunOptions {
         opts.underline = { type: UnderlineType.SINGLE }
         break
       case 'highlight': {
-        // docx highlight only supports named colors; use yellow as default
-        opts.highlight = 'yellow'
+        // The editor's Highlight extension is multicolor: the chosen background
+        // rides on the mark's `color` attr (any CSS colour, usually #rrggbb).
+        // Word's `w:highlight` only accepts ~16 named colours, so it cannot carry
+        // an arbitrary hex losslessly. Emit `w:shd` (shading) with the exact hex
+        // fill instead — that renders the true background and round-trips 1:1
+        // through the importer (which reads w:shd/@w:fill back into the mark).
+        // Fall back to a plain yellow highlight when no usable colour is present.
+        const hl = mark.attrs?.color
+        const hlHex =
+          typeof hl === 'string' && hl ? normalizeDocxColor(hl) : null
+        if (hlHex) {
+          opts.shading = { type: ShadingType.CLEAR, color: 'auto', fill: hlHex }
+        } else {
+          opts.highlight = 'yellow'
+        }
         break
       }
       case 'textStyle': {

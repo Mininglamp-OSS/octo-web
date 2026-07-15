@@ -62,6 +62,27 @@ describe('latexToMathComponent (unit)', () => {
     expect(latexToMathComponent('   ', false)).toBeNull()
   })
 
+  // Regression: these previously errored in MathJax (color package missing /
+  // non-standard command) and degraded to raw LaTeX text runs, which imported
+  // back as red literal LaTeX. They must now produce real OMML components.
+  it('converts \\color / \\textcolor to a real math component (not text fallback)', () => {
+    expect(latexToMathComponent('\\color{red} E = mc^2', true)).not.toBeNull()
+    expect(latexToMathComponent('\\textcolor{blue}{\\frac{1}{2}} + F = ma', true)).not.toBeNull()
+  })
+
+  it('converts \\hdots (mapped to \\dots) to a real math component', () => {
+    expect(latexToMathComponent('a_1 \\le a_2 \\le \\hdots \\le a_n', true)).not.toBeNull()
+  })
+
+  it('converts a piecewise cases / matrix to a real math component', () => {
+    expect(
+      latexToMathComponent(
+        'f(x)=\\left\\{\\begin{matrix} x^{2} & x \\geq 0 \\\\ -x & x<0 \\end{matrix}\\right.',
+        true,
+      ),
+    ).not.toBeNull()
+  })
+
   it('produced component serializes to an <m:oMath> element', () => {
     // A component placed in a paragraph must serialize as real OMML markup.
     const comp = latexToMathComponent('E = mc^2', true)!
@@ -330,5 +351,31 @@ describe('inline math end-to-end docx export', () => {
     // No LaTeX leaked as fallback text.
     expect(xml).not.toContain('\\overset')
     expect(xml).not.toContain('\\xrightarrow')
+  })
+
+  it('renders \\binom as a no-bar OMML fraction (no spurious horizontal line)', async () => {
+    // Regression: \binom came through as <mfrac linethickness="0"> but the
+    // exporter emitted a normal <m:f>, adding a fraction bar on round-trip
+    // ("41 本来没有横线怎么多了横线"). It must carry <m:type m:val="noBar"/>.
+    const doc: MdNode[] = [
+      { type: 'blockMath', attrs: { latex: '\\binom{n}{x}' } },
+    ] as MdNode[]
+    const xml = await renderDocumentXml(doc)
+    expect(xml).toContain('<m:type m:val="noBar"/>')
+    expect(xml).toContain('<m:f>')
+  })
+
+  it('renders wide accents (\\overrightarrow \\widehat) as stretchy <m:groupChr>, not narrow <m:acc>', async () => {
+    // Regression: \overrightarrow{AB} / \widehat{ABC} exported as a narrow
+    // <m:acc> combining mark, shrinking the accent and spacing the letters
+    // ("21 abc 太小"). A stretchy accent over a multi-char base must be a
+    // <m:groupChr> that spans the base.
+    const doc: MdNode[] = [
+      { type: 'blockMath', attrs: { latex: '\\overrightarrow{AB}, \\widehat{ABC}' } },
+    ] as MdNode[]
+    const xml = await renderDocumentXml(doc)
+    // Two stretchy group chars (arrow + hat); no narrow accent for the wide ones.
+    expect((xml.match(/<m:groupChr>/g) ?? []).length).toBeGreaterThanOrEqual(2)
+    expect(xml).toContain('m:val="\u2192"') // stretchy right arrow over AB
   })
 })

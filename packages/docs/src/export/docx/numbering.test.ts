@@ -108,6 +108,28 @@ describe('ordered list numbering', () => {
     expect(resolveParagraphStarts(numXml, docXml)).toEqual([1, 1, 1, 5, 5])
   })
 
+  it('ordered list of display formulas keeps its numbering and the formulas', async () => {
+    // path treated the first block as inline runs, silently dropping both the
+    // formula and the list number — a numbered equation list lost all its
+    // "1. 2. 3." markers. Assert every item now emits a w:numPr AND the OMML.
+    const mathList: MdNode = {
+      type: 'orderedList',
+      content: ['a^2 + b^2 = c^2', 'E = mc^2', '\\int_0^1 x\\,dx'].map((latex) => ({
+        type: 'listItem',
+        content: [{ type: 'blockMath', attrs: { latex } }],
+      })),
+    } as MdNode
+    const { docXml } = await buildNumberingXml([mathList])
+    // Three numbered items at ilvl 0, all sharing one numbering instance.
+    const numIds = [...docXml.matchAll(/<w:numPr>\s*<w:ilvl w:val="0"\/>\s*<w:numId w:val="(\d+)"/g)].map(
+      (m) => m[1],
+    )
+    expect(numIds).toHaveLength(3)
+    expect(new Set(numIds).size).toBe(1)
+    // Each numbered paragraph carries a native OMML formula (not dropped).
+    expect((docXml.match(/<m:oMath\b/g) ?? []).length).toBe(3)
+  })
+
   it('nested ordered list with start=3 begins at 3', async () => {
     // bulletList > (item: para + orderedList(start=3))
     const doc: MdNode = {

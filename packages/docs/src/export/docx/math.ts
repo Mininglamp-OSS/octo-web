@@ -46,6 +46,10 @@ import type { MmlNode } from 'mathjax-full/js/core/MmlTree/MmlNode.js'
 // degrades to raw LaTeX source text in Word. The import wires up the extension.
 import 'mathjax-full/js/input/tex/base/BaseConfiguration.js'
 import 'mathjax-full/js/input/tex/ams/AmsConfiguration.js'
+// Registers the `color` TeX package so `\color{…}` / `\textcolor{…}{…}` compile
+// to `<mstyle mathcolor>` instead of failing with "Undefined control sequence"
+// and degrading the whole formula to raw LaTeX source text in Word.
+import 'mathjax-full/js/input/tex/color/ColorConfiguration.js'
 import { mathmlToOmml } from './mathml-to-omml.ts'
 
 /** LaTeX → MathML converter, or null if MathJax failed to initialize. */
@@ -69,7 +73,9 @@ function getConverter(): MathMLConverter | null {
   try {
     const adaptor = liteAdaptor()
     RegisterHTMLHandler(adaptor)
-    const tex = new TeX({ packages: ['base', 'ams'] })
+    // `color` covers \color/\textcolor so they compile to `<mstyle mathcolor>`
+    // instead of erroring and degrading the whole formula to raw source text.
+    const tex = new TeX({ packages: ['base', 'ams', 'color'] })
     const doc = mathjax.document('', { InputJax: tex })
     const visitor = new SerializedMmlVisitor()
     converter = (latex: string, display: boolean): string => {
@@ -92,8 +98,22 @@ function getConverter(): MathMLConverter | null {
  * @returns the math component, or null if conversion failed (caller should
  *          fall back to rendering the raw source text)
  */
+/**
+ * Rewrite a few non-standard TeX commands seen in real source data onto their
+ * standard equivalents so MathJax compiles them instead of emitting an
+ * `<merror>` (which forces the whole formula to degrade to raw LaTeX text in
+ * Word). Kept intentionally small and exact so it never mangles valid input.
+ *   - `\hdots` is not a real LaTeX command; treat it as `\dots`.
+ */
+function normalizeSourceLatex(src: string): string {
+  if (!src) return src
+  // Replace \hdots only when it is a complete command token (followed by a
+  // non-letter or end of string), so we never touch a longer macro name.
+  return src.replace(/\\hdots(?![a-zA-Z])/g, '\\dots')
+}
+
 export function latexToMathComponent(latex: string, display: boolean): ParagraphChild | null {
-  const src = typeof latex === 'string' ? latex.trim() : ''
+  const src = normalizeSourceLatex(typeof latex === 'string' ? latex.trim() : '')
   if (!src) return null
 
   const convert = getConverter()

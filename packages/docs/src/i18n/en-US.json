@@ -178,7 +178,25 @@
     "exportPdf": "Export as PDF",
     "exportError": "Couldn't export this document. Please try again.",
     "export": "Export",
-    "exportSignedLinkNotice": "This document contains shared links — please verify access permissions"
+    "exportSignedLinkNotice": "This document contains shared links — please verify access permissions",
+    "importCorrupt": "The imported content is corrupt or unreadable and couldn't be loaded."
+  },
+  "import": {
+    "word": "Import from Word",
+    "wordError": "Couldn't parse this Word document. Please make sure it's a valid .docx.",
+    "wordTooLarge": "This Word document is too large or too complex to import.",
+    "markdown": "Import from Markdown",
+    "pdf": "Import from PDF",
+    "pdfError": "Couldn't parse this PDF. Please make sure it's a valid PDF with a text layer.",
+    "localImagesSkipped": "{{count}} local image(s) were not imported (only network image URLs are supported).",
+    "imageNotImported": "[image: {{name}} not imported]",
+    "imageMigrateFailed": "An image could not be migrated to the new document ({{reason}}).",
+    "imagesMigratePartial": "Some images could not be migrated to the new document.",
+    "externalImagesLinked": "Some external images could not be saved to the document and were kept as links.",
+    "mdOnly": "Only Markdown files (.md / .markdown) can be imported.",
+    "noFileChosen": "No file selected.",
+    "fileReadFailed": "Failed to read the file.",
+    "cancelled": "Cancelled by user."
   },
   "slash": {
     "groupBasic": "Basic",

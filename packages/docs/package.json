@@ -59,6 +59,7 @@
     "highlight.js": "^11.11.1",
     "jszip": "^3.10.1",
     "lowlight": "^3.3.0",
+    "markdown-it": "^14.1.1",
     "mathjax-full": "^3.2.2",
     "mathlive": "^0.104.0",
     "xlsx-js-style": "^1.2.0",
@@ -75,6 +76,7 @@
   "devDependencies": {
     "@testing-library/react": "16.1.0",
     "@types/node": "^22.19.21",
+    "@types/markdown-it": "^14.1.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^6.0.1",

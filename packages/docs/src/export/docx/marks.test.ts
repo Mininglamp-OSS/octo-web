@@ -93,3 +93,36 @@ describe('buildRunOptionsFromMarks — fontFamily', () => {
     expect(a).not.toBe('Arial')
   })
 })
+
+// The editor's Highlight extension is multicolor: the chosen background rides on
+// the mark's `color` attr. Word's `w:highlight` only supports ~16 named colours,
+// so an arbitrary hex is emitted as `w:shd` (shading fill) instead, which the
+// importer reads back verbatim for a lossless round-trip.
+describe('buildRunOptionsFromMarks — highlight colour', () => {
+  it('emits an arbitrary highlight colour as a shading fill (not w:highlight)', () => {
+    const opts = buildRunOptionsFromMarks([
+      { type: 'highlight', attrs: { color: '#00FFCC' } },
+    ])
+    expect(opts.shading).toEqual({ type: 'clear', color: 'auto', fill: '00ffcc' })
+    expect(opts.highlight).toBeUndefined()
+  })
+
+  it('normalises rgb()/short-hex highlight colours to 6-hex fill', () => {
+    expect(
+      buildRunOptionsFromMarks([{ type: 'highlight', attrs: { color: 'rgb(255, 0, 0)' } }])
+        .shading,
+    ).toEqual({ type: 'clear', color: 'auto', fill: 'ff0000' })
+    expect(
+      buildRunOptionsFromMarks([{ type: 'highlight', attrs: { color: '#fc0' } }]).shading,
+    ).toEqual({ type: 'clear', color: 'auto', fill: 'ffcc00' })
+  })
+
+  it('falls back to a named yellow highlight when no usable colour is present', () => {
+    expect(buildRunOptionsFromMarks([{ type: 'highlight' }]).highlight).toBe('yellow')
+    // An unmappable colour (e.g. hsl) also degrades to the yellow fallback.
+    expect(
+      buildRunOptionsFromMarks([{ type: 'highlight', attrs: { color: 'hsl(0,100%,50%)' } }])
+        .highlight,
+    ).toBe('yellow')
+  })
+})

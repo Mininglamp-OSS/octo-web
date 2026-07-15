@@ -188,6 +188,64 @@ export function createParagraphStyles(): IParagraphStyleOptions[] {
         shading: { fill: 'D4EDDA' },
       },
     },
+    {
+      // Summary line of a collapsible <details> block. The importer keys on this
+      // pStyle id to rebuild the detailsSummary node.
+      id: 'DetailsSummary',
+      name: 'Details Summary',
+      basedOn: 'Normal',
+      run: {
+        bold: true,
+      },
+      paragraph: {
+        spacing: { before: 80, after: 40 },
+      },
+    },
+    {
+      // Invisible boundary markers wrapping a <details> block's content. The
+      // importer uses a stack of Start/End markers to reconstruct arbitrarily
+      // nested details. Rendered tiny + light so they are visually unobtrusive
+      // in Word (they carry no user text).
+      id: 'DetailsStart',
+      name: 'Details Start',
+      basedOn: 'Normal',
+      run: { size: 2, color: 'FFFFFF', vanish: true },
+      paragraph: { spacing: { before: 0, after: 0 } },
+    },
+    {
+      id: 'DetailsEnd',
+      name: 'Details End',
+      basedOn: 'Normal',
+      run: { size: 2, color: 'FFFFFF', vanish: true },
+      paragraph: { spacing: { before: 0, after: 0 } },
+    },
+    {
+      // Invisible boundary markers wrapping a blockquote's content. Like the
+      // details markers, the importer uses a Start/End stack to rebuild the
+      // quote and keep nested blocks (lists, nested quotes) inside it.
+      id: 'BlockQuoteStart',
+      name: 'Block Quote Start',
+      basedOn: 'Normal',
+      run: { size: 2, color: 'FFFFFF', vanish: true },
+      paragraph: { spacing: { before: 0, after: 0 } },
+    },
+    {
+      id: 'BlockQuoteEnd',
+      name: 'Block Quote End',
+      basedOn: 'Normal',
+      run: { size: 2, color: 'FFFFFF', vanish: true },
+      paragraph: { spacing: { before: 0, after: 0 } },
+    },
+    {
+      // Invisible boundary after a code block, so the importer breaks the run of
+      // per-line CodeBlock paragraphs at block boundaries instead of merging two
+      // adjacent code blocks into one.
+      id: 'CodeBlockEnd',
+      name: 'Code Block End',
+      basedOn: 'Normal',
+      run: { size: 2, color: 'FFFFFF', vanish: true },
+      paragraph: { spacing: { before: 0, after: 0 } },
+    },
   ]
 }
 

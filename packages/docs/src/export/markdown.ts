@@ -157,11 +157,11 @@ function serializeBlock(node: MdNode, ctx: Ctx): string {
       return wrapAlign(`${'#'.repeat(level)} ${serializeInline(node.content ?? [], ctx)}`, node)
     }
     case 'bulletList':
-      return serializeList(node, false, ctx, 0)
+      return serializeList(node, false, ctx, '')
     case 'orderedList':
-      return serializeList(node, true, ctx, 0)
+      return serializeList(node, true, ctx, '')
     case 'taskList':
-      return serializeList(node, false, ctx, 0)
+      return serializeList(node, false, ctx, '')
     case 'blockquote':
       return prefixLines(serializeBlocks(node.content ?? [], ctx), '> ')
     case 'codeBlock': {
@@ -252,14 +252,14 @@ function escapeLeadingBlockMarkers(text: string): string {
 
 // ── Lists ────────────────────────────────────────────────────────────────────
 
-function serializeList(node: MdNode, ordered: boolean, ctx: Ctx, depth: number): string {
+function serializeList(node: MdNode, ordered: boolean, ctx: Ctx, indent: string): string {
   const items = node.content ?? []
   // Ordered lists may start at a value other than 1 (ProseMirror `start` attr); honour it so the
   // rendered markers match the editor instead of always counting from 1.
   const rawStart = node.attrs?.start
   const start = ordered && typeof rawStart === 'number' && rawStart >= 0 ? Math.floor(rawStart) : 1
   return items
-    .map((item, idx) => serializeListItem(item, ordered, start + idx, ctx, depth))
+    .map((item, idx) => serializeListItem(item, ordered, start + idx, ctx, indent))
     // Drop empty items so an item with no content never emits a bare dangling marker (`- `).
     .filter((s) => s !== '')
     .join('\n')
@@ -270,12 +270,22 @@ function serializeListItem(
   ordered: boolean,
   num: number,
   ctx: Ctx,
-  depth: number,
+  indent: string,
 ): string {
-  const indent = '  '.repeat(depth)
   let marker: string
-  if (item.type === 'taskItem') marker = item.attrs?.checked ? '- [x] ' : '- [ ] '
-  else marker = ordered ? `${num}. ` : '- '
+  if (item.type === 'taskItem') {
+    // GFM task-list syntax (`- [x]` / `- [ ]`). GFM-aware viewers render an
+    // interactive checkbox; the import side maps `[x]`/`[X]` (and a checked box
+    // glyph) back to a checked taskItem, so the round-trip is correct even if a
+    // given previewer shows the literal `x`.
+    marker = item.attrs?.checked ? '- [x] ' : '- [ ] '
+  } else marker = ordered ? `${num}. ` : '- '
+
+  // CommonMark counts a sub-block as nested only when it is indented to at least the parent
+  // marker's width. An ordered marker like `10. ` is wider than `- `, so a fixed 2-space step
+  // would flatten deep ordered lists on re-import. Derive the child indent from this item's
+  // actual marker width (parent indent + marker length) so nesting always survives a round-trip.
+  const childIndent = indent + ' '.repeat(marker.length)
 
   const blocks = item.content ?? []
   let line = indent + marker
@@ -283,13 +293,13 @@ function serializeListItem(
   const trailing: string[] = []
   blocks.forEach((b, i) => {
     if (b.type === 'bulletList' || b.type === 'orderedList' || b.type === 'taskList') {
-      trailing.push(serializeList(b, b.type === 'orderedList', ctx, depth + 1))
+      trailing.push(serializeList(b, b.type === 'orderedList', ctx, childIndent))
     } else if (i === 0) {
       body = serializeBlock(b, ctx)
       line += body
     } else {
       // Continuation block under the same item — indent to align with the marker text.
-      trailing.push(prefixLines(serializeBlock(b, ctx), indent + '  '))
+      trailing.push(prefixLines(serializeBlock(b, ctx), childIndent))
     }
   })
   // An item with no first-block text AND no nested/trailing content is empty — emit nothing
@@ -303,6 +313,38 @@ function serializeListItem(
 function cellText(cell: MdNode, ctx: Ctx): string {
   // A cell holds block content (usually paragraphs); flatten to single-line inline.
   return serializeBlocks(cell.content ?? [], ctx).replace(/\n+/g, ' ').trim()
+}
+
+/**
+ * A GFM pipe-table cell is single-line inline only. A cell whose content cannot survive being
+ * flattened to one inline line (a NESTED TABLE, a block image, a list, a code block, a blockquote,
+ * a details/callout, a horizontal rule, block math, or more than one block) forces the whole
+ * table onto the HTML fallback, where the cell body is rendered as real (possibly nested) HTML.
+ * Without this a nested table's multi-line markdown has its newlines collapsed to spaces
+ * (`| | | || --- | --- |`) and can never be re-parsed.
+ */
+const CELL_BLOCK_TYPES = new Set([
+  'table',
+  'image',
+  'bulletList',
+  'orderedList',
+  'taskList',
+  'codeBlock',
+  'blockquote',
+  'details',
+  'callout',
+  'horizontalRule',
+  'blockMath',
+])
+
+function cellNeedsHtml(cell: MdNode): boolean {
+  const blocks = cell.content ?? []
+  if (blocks.length > 1) return true
+  return blocks.some((b) => CELL_BLOCK_TYPES.has(b.type))
+}
+
+function tableNeedsHtml(node: MdNode): boolean {
+  return (node.content ?? []).some((row) => (row.content ?? []).some((cell) => cellNeedsHtml(cell)))
 }
 
 /**
@@ -329,8 +371,9 @@ function hasMergedCells(node: MdNode): boolean {
 }
 
 function serializeTable(node: MdNode, ctx: Ctx): string {
-  // Merged cells can't be expressed in GFM pipe tables → inline HTML fallback.
-  if (hasMergedCells(node)) return serializeTableHtml(node, ctx)
+  // Merged cells can't be expressed in GFM pipe tables, and neither can block cell content
+  // (nested tables, images, lists…) → inline HTML fallback with real (nested) HTML cells.
+  if (hasMergedCells(node) || tableNeedsHtml(node)) return serializeTableHtml(node, ctx)
 
   const rows = node.content ?? []
   if (rows.length === 0) return ''
@@ -356,7 +399,7 @@ function serializeTableHtml(node: MdNode, ctx: Ctx): string {
       const rowspan = Number(cell.attrs?.rowspan ?? 1)
       const attrs =
         (colspan > 1 ? ` colspan="${colspan}"` : '') + (rowspan > 1 ? ` rowspan="${rowspan}"` : '')
-      out.push(`<${tag}${attrs}>${escapeHtmlText(cellText(cell, ctx))}</${tag}>`)
+      out.push(`<${tag}${attrs}>${cellHtml(cell, ctx)}</${tag}>`)
     }
     out.push('</tr>')
   }
@@ -364,12 +407,61 @@ function serializeTableHtml(node: MdNode, ctx: Ctx): string {
   return out.join('\n')
 }
 
+/**
+ * Render a table cell's body as HTML for the HTML-table fallback. A simple inline-only cell stays
+ * flattened+escaped text (the historical behavior, cheap + readable). A cell carrying block
+ * content (nested table, image, list…) is rendered as real HTML so it round-trips: the import
+ * side's DOM-based HTML-table parser reconstructs the nested structure.
+ */
+function cellHtml(cell: MdNode, ctx: Ctx): string {
+  if (!cellNeedsHtml(cell)) return escapeHtmlText(cellText(cell, ctx))
+  return (cell.content ?? []).map((b) => blockToHtml(b, ctx)).join('')
+}
+
+/** Recursively render a block node to HTML for embedding inside an HTML-fallback table cell. */
+function blockToHtml(node: MdNode, ctx: Ctx): string {
+  switch (node.type) {
+    case 'table':
+      return serializeTableHtml(node, ctx)
+    case 'image': {
+      const src = imageSrc(node, ctx)
+      if (!src) return ''
+      const alt = escapeHtmlAttr(typeof node.attrs?.alt === 'string' ? node.attrs.alt : '')
+      return `<img src="${escapeHtmlAttr(src)}" alt="${alt}" />`
+    }
+    case 'paragraph':
+      return `<p>${escapeHtmlText(serializeInline(node.content ?? [], ctx))}</p>`
+    case 'heading': {
+      const level = clampLevel(node.attrs?.level)
+      return `<h${level}>${escapeHtmlText(serializeInline(node.content ?? [], ctx))}</h${level}>`
+    }
+    case 'bulletList':
+    case 'taskList':
+      return `<ul>${(node.content ?? []).map((li) => `<li>${listItemHtml(li, ctx)}</li>`).join('')}</ul>`
+    case 'orderedList':
+      return `<ol>${(node.content ?? []).map((li) => `<li>${listItemHtml(li, ctx)}</li>`).join('')}</ol>`
+    case 'codeBlock': {
+      const code = (node.content ?? []).map((c) => c.text ?? '').join('')
+      return `<pre><code>${escapeHtmlText(code)}</code></pre>`
+    }
+    case 'blockquote':
+      return `<blockquote>${(node.content ?? []).map((b) => blockToHtml(b, ctx)).join('')}</blockquote>`
+    case 'horizontalRule':
+      return '<hr />'
+    default:
+      // Unknown/other block: fall back to escaped flattened text so nothing is dropped.
+      return escapeHtmlText(serializeBlocks([node], ctx).replace(/\n+/g, ' ').trim())
+  }
+}
+
+function listItemHtml(li: MdNode, ctx: Ctx): string {
+  return (li.content ?? []).map((b) => blockToHtml(b, ctx)).join('')
+}
+
 // ── Atoms ────────────────────────────────────────────────────────────────────
 
 function serializeImage(node: MdNode, ctx: Ctx): string {
-  const attachId = node.attrs?.attachId
-  const resolved = typeof attachId === 'string' ? ctx.urls.get(attachId) : undefined
-  const rawUrl = resolved?.url ?? (typeof node.attrs?.src === 'string' ? node.attrs.src : '') ?? ''
+  const rawUrl = imageSrc(node, ctx)
   // An image destination is not a navigable `<a href>` (a `javascript:` img src does not execute),
   // so we don't scheme-gate it — but we DO escape it so it can't break out of the `(...)`.
   const url = escapeMarkdownUrl(rawUrl)
@@ -378,6 +470,13 @@ function serializeImage(node: MdNode, ctx: Ctx): string {
   // The title sits inside `"..."`; backslash-escape the quote/backslash so it can't terminate early.
   const title = rawTitle ? ` "${rawTitle.replace(/(["\\])/g, '\\$1')}"` : ''
   return `![${alt}](${url}${title})`
+}
+
+/** Resolve an image node's export URL: freshly-resolved signed URL by attachId, else its src. */
+function imageSrc(node: MdNode, ctx: Ctx): string {
+  const attachId = node.attrs?.attachId
+  const resolved = typeof attachId === 'string' ? ctx.urls.get(attachId) : undefined
+  return resolved?.url ?? (typeof node.attrs?.src === 'string' ? node.attrs.src : '') ?? ''
 }
 
 function serializeFileAttachment(node: MdNode, ctx: Ctx): string {
@@ -450,23 +549,38 @@ function serializeInlineNode(node: MdNode, ctx: Ctx): string {
   }
 }
 
+/**
+ * Wrap `text` in an emphasis delimiter (`**`, `*`, `~~`). CommonMark forbids a delimiter run
+ * that is preceded (closing) or followed (opening) by Unicode whitespace, so `**1. **` renders
+ * as literal asterisks and the bold is lost. Move any leading/trailing whitespace OUTSIDE the
+ * delimiters (`**1. **` -> `**1.** `) so the emphasis actually forms; an all-whitespace or
+ * empty run keeps its text unwrapped (nothing to emphasize).
+ */
+function wrapEmphasis(text: string, delim: string): string {
+  const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(text)
+  if (!m) return text
+  const [, lead, core, trail] = m
+  if (core === '') return text // nothing but whitespace: don't emit empty `****`
+  return `${lead}${delim}${core}${delim}${trail}`
+}
+
 function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<string, unknown> }>): string {
   let out = text
   for (const mark of marks) {
     switch (mark.type) {
       case 'bold':
       case 'strong':
-        out = `**${out}**`
+        out = wrapEmphasis(out, '**')
         break
       case 'italic':
       case 'em':
-        out = `*${out}*`
+        out = wrapEmphasis(out, '*')
         break
       case 'code':
         out = '`' + out + '`'
         break
       case 'strike':
-        out = `~~${out}~~`
+        out = wrapEmphasis(out, '~~')
         break
       case 'link': {
         // Scheme-gate the href (drop javascript:/data:/…) and escape it for the `(...)` target.
@@ -492,9 +606,14 @@ function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<st
       }
       case 'textStyle': {
         const color = mark.attrs?.color
-        // Color lands inside a `style="..."` attribute — escape it so it can't break out of the
-        // attribute (and inject markup). `color: red"><img onerror=…>` becomes inert text.
-        if (typeof color === 'string' && color) out = `<span style="color:${escapeHtmlAttr(color)}">${out}</span>`
+        const fontSize = mark.attrs?.fontSize
+        // Collect inline style declarations. Both color and fontSize land inside a
+        // `style="..."` attribute, so escape each value so it can't break out of the
+        // attribute and inject markup (`color: red"><img onerror=…>` becomes inert text).
+        const decls: string[] = []
+        if (typeof color === 'string' && color) decls.push(`color:${escapeHtmlAttr(color)}`)
+        if (typeof fontSize === 'string' && fontSize) decls.push(`font-size:${escapeHtmlAttr(fontSize)}`)
+        if (decls.length > 0) out = `<span style="${decls.join(';')}">${out}</span>`
         break
       }
       case 'subscript':

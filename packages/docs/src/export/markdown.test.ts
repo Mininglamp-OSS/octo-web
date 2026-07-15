@@ -6,6 +6,9 @@ import {
   type ExportOptions,
 } from './markdown.ts'
 import type { ResolveResult } from '../attachments/api.ts'
+import { parseMarkdownToPmDoc } from '../import/markdown.ts'
+import { getSchema } from '@tiptap/core'
+import { buildPreviewExtensions } from '../editor/extensions.ts'
 
 // Resolve stub: every id resolves to a deterministic signed URL except 'missing',
 // which lands in notFound (so the exporter must degrade gracefully).
@@ -478,5 +481,180 @@ describe('exportDocToMarkdown — XSS hardening of hrefs and attributes', () => 
     // The injected quote is backslash-escaped inside the markdown title, never closing it early.
     expect(out).not.toContain('cap" onerror=')
     expect(out).toContain('\\"')
+  })
+})
+
+// Round-trip nesting: a nested list under an ordered item must stay nested after re-import.
+// Regression for a flattening bug where a fixed 2-space indent step was narrower than an
+// ordered marker (`2. ` is 3 cols), so CommonMark counted the sublist as a sibling and the
+// child items (e.g. `2.1`, `2.2`) were promoted to the parent level.
+describe('exportDocToMarkdown — nested list round-trip', () => {
+  const li = (t: string, ...extra: MdNode[]): MdNode => ({
+    type: 'listItem',
+    content: [p(text(t)), ...extra],
+  })
+
+  // Walk to find the first list of `type` and return its item count.
+  function listItemCount(node: MdNode, type: string): number {
+    if (node.type === type) return (node.content ?? []).length
+    for (const c of node.content ?? []) {
+      const n = listItemCount(c, type)
+      if (n >= 0) return n
+    }
+    return -1
+  }
+  function findNested(node: MdNode): boolean {
+    // true when an orderedList/bulletList appears inside a listItem
+    if (node.type === 'listItem') {
+      if ((node.content ?? []).some((c) => c.type === 'orderedList' || c.type === 'bulletList'))
+        return true
+    }
+    return (node.content ?? []).some(findNested)
+  }
+
+  it('keeps a nested ordered sublist nested (indent aligns past the parent marker)', async () => {
+    const doc0 = doc({
+      type: 'orderedList',
+      content: [
+        li('第一步'),
+        li('第二步', {
+          type: 'orderedList',
+          content: [li('2.1'), li('2.2')],
+        }),
+        li('第三步'),
+      ],
+    })
+    const out = await md(doc0)
+    // The child items must be indented to at least the marker width (3 cols for `2. `).
+    expect(out).toMatch(/\n {3}1\. 2\.1/)
+    expect(out).toMatch(/\n {3}2\. 2\.2/)
+
+    const re = parseMarkdownToPmDoc(out).doc
+    // Top-level ordered list keeps exactly 3 items (child list not flattened into it).
+    expect(listItemCount(re, 'orderedList')).toBe(3)
+    expect(findNested(re)).toBe(true)
+  })
+
+  it('keeps an ordered sublist nested under a bullet item (mixed nesting)', async () => {
+    const doc0 = doc({
+      type: 'bulletList',
+      content: [
+        li('B-2-a', {
+          type: 'orderedList',
+          content: [
+            li('第一步'),
+            li('第二步', { type: 'orderedList', content: [li('2.1'), li('2.2')] }),
+            li('第三步'),
+          ],
+        }),
+      ],
+    })
+    const out = await md(doc0)
+    const re = parseMarkdownToPmDoc(out).doc
+    // Bullet has 1 item; the ordered sublist inside it keeps its own 3 items, and 2.1/2.2 stay
+    // one level deeper (three-level nesting preserved).
+    expect(listItemCount(re, 'bulletList')).toBe(1)
+    expect(findNested(re)).toBe(true)
+    // 2.1 must NOT appear as a sibling of 第一步 in the first ordered list.
+    const flat = JSON.stringify(re)
+    expect(flat).toContain('2.1')
+    expect(flat).toContain('2.2')
+  })
+})
+
+// Emphasis whitespace: CommonMark forbids a bold/italic delimiter next to whitespace, so text
+// like a bold `1. ` (trailing space) must export as `**1.** ` (space outside the delimiters),
+// not `**1. **` — otherwise the asterisks render literally and the bold is lost on import.
+describe('exportDocToMarkdown — emphasis whitespace', () => {
+  it('moves a trailing space outside a bold run so the emphasis still forms', async () => {
+    const out = await md(doc(p(text('1. ', [{ type: 'bold' }]), text('内容'))))
+    expect(out).toContain('**1.** 内容')
+    expect(out).not.toContain('**1. **')
+  })
+
+  it('moves a leading space outside a bold run', async () => {
+    const out = await md(doc(p(text('a'), text(' bold', [{ type: 'bold' }]))))
+    expect(out).toContain('a **bold**')
+    expect(out).not.toContain('** bold**')
+  })
+
+  it('does not emit empty delimiters for an all-whitespace bold run', async () => {
+    const out = await md(doc(p(text('x'), text(' ', [{ type: 'bold' }]), text('y'))))
+    expect(out).not.toContain('****')
+    expect(out).toContain('x y')
+  })
+
+  it('round-trips a bold run that has a trailing space (bold survives)', async () => {
+    const out = await md(doc(p(text('重点 ', [{ type: 'bold' }]), text('普通'))))
+    const re = parseMarkdownToPmDoc(out).doc
+    const flat = JSON.stringify(re)
+    // The bold text must import back with a bold mark, not as literal `**` characters.
+    expect(flat).toContain('"bold"')
+    expect(flat).not.toContain('**')
+  })
+})
+
+describe('table export — nested tables & block cell content', () => {
+  const cell = (...blocks: MdNode[]): MdNode => ({ type: 'tableCell', content: blocks.length ? blocks : [{ type: 'paragraph' }] })
+  const hcell = (...inline: MdNode[]): MdNode => ({ type: 'tableHeader', content: [inline.length ? p(...inline) : { type: 'paragraph' }] })
+  const rowOf = (...cells: MdNode[]): MdNode => ({ type: 'tableRow', content: cells })
+  const table = (...rows: MdNode[]): MdNode => ({ type: 'table', content: rows })
+  const img = (src: string, attachId?: string): MdNode => ({
+    type: 'image',
+    attrs: attachId ? { src, attachId } : { src },
+  })
+
+  it('emits an HTML table (not a flattened pipe row) when a cell holds a nested table', async () => {
+    const inner = table(rowOf(hcell(text('x')), hcell(text('y'))), rowOf(cell(p(text('1'))), cell(p(text('2')))))
+    const outer = table(rowOf(hcell(text('说明')), hcell(text('图'))), rowOf(cell(inner), cell(p(text('z')))))
+    const out = await md(doc(outer))
+    // Must use the HTML fallback with a real nested <table>, NOT a collapsed `| | | |` pipe row.
+    expect(out).toContain('<table>')
+    expect(out).not.toMatch(/\|\s*---\s*\|\s*---\s*\|\s*\|/) // no collapsed nested separator
+  })
+
+  it('round-trips a nested table (table inside a cell survives import)', async () => {
+    const inner = table(rowOf(hcell(text('A')), hcell(text('B'))), rowOf(cell(p(text('1'))), cell(p(text('2')))))
+    const outer = table(rowOf(hcell(text('说明')), hcell(text('图'))), rowOf(cell(inner), cell(p(text('末'))))) 
+    const out = await md(doc(outer))
+    const re = parseMarkdownToPmDoc(out).doc
+    // Find the outer table, then a cell that itself contains a table node.
+    const outerT = re.content!.find((n) => n.type === 'table')!
+    const bodyRow = outerT.content!.find((r) => r.content!.some((c) => c.type === 'tableCell'))!
+    const nestedCell = bodyRow.content!.find((c) => c.content!.some((b) => b.type === 'table'))
+    expect(nestedCell).toBeDefined()
+    const nested = nestedCell!.content!.find((b) => b.type === 'table')!
+    // Inner table has 2 rows.
+    expect(nested.content!.length).toBe(2)
+  })
+
+  it('round-trips a block image inside a table cell via the HTML fallback', async () => {
+    const url = 'http://localhost:28080/file/d_x/att_abc123/pic.png'
+    const t = table(rowOf(hcell(text('说明')), hcell(text('图'))), rowOf(cell(p(text('文字'))), cell(img(url, 'att_abc123'))))
+    const out = await md(doc(t))
+    expect(out).toContain('<img')
+    const re = parseMarkdownToPmDoc(out).doc
+    const outerT = re.content!.find((n) => n.type === 'table')!
+    const bodyRow = outerT.content!.find((r) => r.content!.some((c) => c.type === 'tableCell'))!
+    const imgCell = bodyRow.content!.find((c) => c.content!.some((b) => b.type === 'image'))
+    expect(imgCell).toBeDefined()
+    const image = imgCell!.content!.find((b) => b.type === 'image')!
+    expect(image.attrs?.attachId).toBe('att_abc123')
+  })
+
+  it('a re-imported nested table with EMPTY cells validates against the editor schema (no empty text nodes → no blank page)', async () => {
+    // Regression: empty cells were imported as a paragraph holding an empty text node, which
+    // ProseMirror rejects ("Empty text nodes are not allowed"), throwing in setContent and
+    // blanking the whole editor. Empty cells must be an empty paragraph instead.
+    const inner = table(
+      rowOf(hcell(), hcell()),                 // empty headers
+      rowOf(cell(), cell(img('http://localhost:28080/file/d/att_z9/i.png', 'att_z9'))),
+    )
+    const outer = table(rowOf(hcell(text('a')), hcell(text('b'))), rowOf(cell(inner), cell()))
+    const out = await md(doc(outer))
+    const re = parseMarkdownToPmDoc(out).doc
+    const schema = getSchema(buildPreviewExtensions('d_test'))
+    // nodeFromJSON + check() throws on any schema violation (the exact blank-page cause).
+    expect(() => schema.nodeFromJSON(re).check()).not.toThrow()
   })
 })

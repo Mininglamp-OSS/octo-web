@@ -115,9 +115,38 @@ function escAttr(s: string): string {
   return escXml(s).replace(/"/g, '&quot;')
 }
 
-/** A plain math run carrying literal text. */
+/**
+ * Current math text color (a 6-hex RRGGBB string) while converting inside an
+ * `<mstyle mathcolor>` subtree, or null. OMML has no subtree color wrapper, so
+ * we thread it down and stamp each run's `<m:rPr>`, which is how Word carries
+ * math run color. A stack supports nested/overriding color scopes.
+ */
+const colorStack: string[] = []
+function currentColor(): string | null {
+  return colorStack.length ? colorStack[colorStack.length - 1]! : null
+}
+
+/** Normalize a MathML color (name or #hex) to a 6-hex RRGGBB, or null. */
+function normalizeColor(raw: string | undefined): string | null {
+  if (!raw) return null
+  const v = raw.trim().toLowerCase()
+  const NAMES: Record<string, string> = {
+    red: 'FF0000', blue: '0000FF', green: '008000', black: '000000',
+    white: 'FFFFFF', yellow: 'FFFF00', orange: 'FFA500', purple: '800080',
+    gray: '808080', grey: '808080', cyan: '00FFFF', magenta: 'FF00FF',
+  }
+  if (NAMES[v]) return NAMES[v]
+  const hex = v.replace(/^#/, '')
+  if (/^[0-9a-f]{6}$/.test(hex)) return hex.toUpperCase()
+  if (/^[0-9a-f]{3}$/.test(hex)) return hex.split('').map((c) => c + c).join('').toUpperCase()
+  return null
+}
+
+/** A plain math run carrying literal text (with the active color, if any). */
 function run(text: string): string {
-  return `<m:r><m:t xml:space="preserve">${escXml(text)}</m:t></m:r>`
+  const color = currentColor()
+  const rPr = color ? `<m:rPr><w:color w:val="${color}"/></m:rPr>` : ''
+  return `<m:r>${rPr}<m:t xml:space="preserve">${escXml(text)}</m:t></m:r>`
 }
 
 function sSup(base: Element, sup: Element): string {
@@ -132,8 +161,12 @@ function sSubSup(base: Element, sub: Element, sup: Element): string {
   return `<m:sSubSup><m:sSubSupPr><m:ctrlPr/></m:sSubSupPr><m:e>${convertNode(base)}</m:e><m:sub>${convertNode(sub)}</m:sub><m:sup>${convertNode(sup)}</m:sup></m:sSubSup>`
 }
 
-function frac(num: Element, den: Element): string {
-  return `<m:f><m:fPr><m:ctrlPr/></m:fPr><m:num>${convertNode(num)}</m:num><m:den>${convertNode(den)}</m:den></m:f>`
+function frac(num: Element, den: Element, noBar = false): string {
+  // A zero line-thickness fraction is a binomial-style stack (\binom): OMML
+  // represents it with `<m:type m:val="noBar"/>`. Without this the bar shows up
+  // as a spurious horizontal line on round-trip.
+  const typeProp = noBar ? '<m:type m:val="noBar"/>' : ''
+  return `<m:f><m:fPr>${typeProp}<m:ctrlPr/></m:fPr><m:num>${convertNode(num)}</m:num><m:den>${convertNode(den)}</m:den></m:f>`
 }
 
 /** √ with hidden (empty) degree. */
@@ -182,6 +215,32 @@ const ACCENT_CHARS: Record<string, string> = {
 function accentChar(over: Element | undefined): string | undefined {
   if (!over || over.name !== 'mo') return undefined
   return ACCENT_CHARS[textOf(over).trim()]
+}
+
+/**
+ * True when an accent `<mo>` is stretchy (wide). MathJax marks NARROW accents
+ * (\hat \vec over a single token) with `stretchy="false"`; the WIDE variants
+ * (\overrightarrow \widehat \widetilde over a multi-token base) omit it and are
+ * stretchy by default. Stretchy accents must become a `<m:groupChr>` so the mark
+ * spans the whole base instead of shrinking to a centered combining glyph.
+ */
+function isStretchyAccent(over: Element | undefined): boolean {
+  if (!over || over.name !== 'mo') return false
+  return over.attributes?.stretchy !== 'false'
+}
+
+/**
+ * Combining accent → the stretchy glyph OMML uses for its WIDE form in
+ * `<m:groupChr>`. Only accents that have a genuine wide TeX variant appear here
+ * (\overrightarrow, \widehat, \widetilde, \overline-as-bar); the rest fall back
+ * to the narrow `<m:acc>`.
+ */
+const WIDE_ACCENT_CHARS: Record<string, string> = {
+  '\u20d7': '\u2192', // combining right arrow → stretchy → (\overrightarrow)
+  '\u20d6': '\u2190', // combining left arrow → stretchy ← (\overleftarrow)
+  '\u0302': '\u0302', // circumflex (\widehat) — stretchy caret over the base
+  '\u0303': '\u0303', // tilde (\widetilde) — stretchy tilde over the base
+  '\u0304': '\u2015', // macron → horizontal bar (\overline over wide base)
 }
 
 /** `<m:acc>` — a combining accent centered over the base. */
@@ -259,9 +318,22 @@ function overUnder(node: Element, kind: 'over' | 'under'): string {
   const base = kids[0]
   const script = kids[1]
   // 1. Diacritic accent (over only; \hat \vec \dot \ddot \tilde \bar …).
+  //    A NON-stretchy `<mo>` (MathJax marks narrow accents `stretchy="false"`)
+  //    is a small combining accent → `<m:acc>`. A stretchy accent over a wide
+  //    base (\overrightarrow, \widehat, \widetilde) must instead stretch across
+  //    the base, so it is emitted as a `<m:groupChr>` (step 2b) — using `<m:acc>`
+  //    there shrinks the mark and spaces the letters (the "abc 太小" bug).
   if (kind === 'over') {
     const acc = accentChar(script)
-    if (acc) return accent(base, acc)
+    if (acc) {
+      // A stretchy accent that has a genuine WIDE variant (\overrightarrow,
+      // \widehat, \widetilde, \overline) over a wide base → `<m:groupChr>` so the
+      // mark spans the base. Everything else (all narrow diacritics, incl. dot/
+      // ddot which simply omit `stretchy`) stays a centered `<m:acc>`.
+      const wide = WIDE_ACCENT_CHARS[acc]
+      if (wide && isStretchyAccent(script)) return groupChr(base, wide, 'top')
+      return accent(base, acc)
+    }
   }
   // 2. Stretchy brace/line directly on this node.
   const grp = groupCharOf(node)
@@ -587,11 +659,22 @@ function convertNode(node: Element): string {
       return ''
     // Grouping / styling wrappers are transparent in OMML.
     case 'mrow':
-    case 'mstyle':
     case 'mpadded':
     case 'menclose':
     case 'mphantom':
       return convertSequence(kids)
+    case 'mstyle': {
+      // `\color{…}` / `\textcolor{…}{…}` compile to `<mstyle mathcolor>`. OMML
+      // carries color per run, so push the color while converting the subtree.
+      const color = normalizeColor(node.attributes?.mathcolor as string | undefined)
+      if (!color) return convertSequence(kids)
+      colorStack.push(color)
+      try {
+        return convertSequence(kids)
+      } finally {
+        colorStack.pop()
+      }
+    }
     case 'msup':
       return sSup(kids[0], kids[1])
     case 'msub':
@@ -606,8 +689,11 @@ function convertNode(node: Element): string {
       return overUnder(node, 'under')
     case 'munderover':
       return sSubSup(kids[0], kids[1], kids[2])
-    case 'mfrac':
-      return frac(kids[0], kids[1])
+    case 'mfrac': {
+      const lt = node.attributes?.linethickness
+      const noBar = typeof lt === 'string' && /^0(\.0+)?(em|px|pt)?$/.test(lt.trim())
+      return frac(kids[0], kids[1], noBar)
+    }
     case 'msqrt':
       return sqrt(kids)
     case 'mroot':

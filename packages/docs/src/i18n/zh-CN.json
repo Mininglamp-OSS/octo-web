@@ -178,7 +178,25 @@
     "exportPdf": "导出为 PDF",
     "exportError": "导出文档失败，请重试。",
     "export": "导出",
-    "exportSignedLinkNotice": "此文档包含共享链接，请注意访问权限"
+    "exportSignedLinkNotice": "此文档包含共享链接，请注意访问权限",
+    "importCorrupt": "导入内容已损坏或无法解析，未能载入。"
+  },
+  "import": {
+    "word": "从 Word 导入",
+    "wordError": "无法解析该 Word 文档，请确认是有效的 .docx",
+    "wordTooLarge": "该 Word 文档过大或结构过于复杂，无法导入",
+    "markdown": "从 Markdown 导入",
+    "pdf": "从 PDF 导入",
+    "pdfError": "无法解析该 PDF，请确认是带文本层的有效 PDF",
+    "localImagesSkipped": "{{count}} 张本地图片未导入（仅支持网络图片 URL）",
+    "imageNotImported": "[图片: {{name}} 未导入]",
+    "imageMigrateFailed": "图片未能迁移到新文档（{{reason}}）",
+    "imagesMigratePartial": "部分图片未能迁移到新文档",
+    "externalImagesLinked": "部分外部图片未能保存到文档，已改为链接",
+    "mdOnly": "仅支持导入 Markdown 文件（.md / .markdown）",
+    "noFileChosen": "未选择文件",
+    "fileReadFailed": "文件读取失败",
+    "cancelled": "用户取消"
   },
   "slash": {
     "groupBasic": "基础",

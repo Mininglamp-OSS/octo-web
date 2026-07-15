@@ -11,6 +11,7 @@ import {
   HeadingLevel,
   LevelFormat,
   AlignmentType,
+  BorderStyle,
   ExternalHyperlink,
   UnderlineType,
   type ILevelsOptions,
@@ -213,14 +214,8 @@ function convertList(node: MdNode, reference: string, ctx: DocxContext, depth: n
           result.push(...convertList(block, 'bullet-list', ctx, depth + 1))
         }
       } else if (i === 0) {
-        // First block in list item — apply numbering
-        const runs = convertInlineContent(block.content ?? [], ctx.emojiGlyph)
-        result.push(
-          new Paragraph({
-            children: runs,
-            numbering: { reference, level: Math.min(depth, 4), instance },
-          }),
-        )
+        // First block in list item — apply numbering.
+        result.push(...numberedFirstBlock(block, reference, depth, instance, ctx))
       } else {
         // Continuation blocks under the same item
         result.push(...convertBlock(block, ctx, depth))
@@ -229,6 +224,52 @@ function convertList(node: MdNode, reference: string, ctx: DocxContext, depth: n
   }
 
   return result
+}
+
+/**
+ * Produce the first block of a list item with the list marker (numbering)
+ * attached. A list item's first block is usually a paragraph, but it can be a
+ * display formula (blockMath), code block, table, etc. Converting only the
+ * paragraph's inline content — the old behavior — silently dropped any
+ * non-paragraph first block AND its list number (e.g. an ordered list where
+ * every item is a standalone display formula lost all its numbers on export).
+ *
+ * We special-case the known item shapes: a paragraph keeps its inline runs; a
+ * display formula (blockMath) becomes a numbered paragraph carrying the OMML
+ * formula, so the number renders next to the formula just like in the editor.
+ * Rarer leading blocks fall back to a normal conversion.
+ */
+function numberedFirstBlock(
+  block: MdNode,
+  reference: string,
+  depth: number,
+  instance: number,
+  ctx: DocxContext,
+): FileChild[] {
+  const numbering = { reference, level: Math.min(depth, 4), instance }
+
+  if (block.type === 'paragraph') {
+    const runs = convertInlineContent(block.content ?? [], ctx.emojiGlyph)
+    return [new Paragraph({ children: runs, numbering })]
+  }
+
+  // Display formula as the item body: build a numbered paragraph that carries
+  // the OMML formula (or the LaTeX fallback), so the list marker renders next
+  // to the formula — exactly like a numbered equation in the editor. Not
+  // centered here: a list marker + centered body reads as a broken indent.
+  if (block.type === 'blockMath') {
+    const latex = typeof block.attrs?.latex === 'string' ? block.attrs.latex : ''
+    const math = latexToMathComponent(latex, true)
+    const children = math
+      ? [math]
+      : [new TextRun({ text: latex, font: FONT_CODE, italics: true, size: 22 })]
+    return [new Paragraph({ children, numbering })]
+  }
+
+  // Any other leading block (code block, table, nested container, …): convert
+  // it normally. These shapes cannot carry a list marker as their first line in
+  // a lossless way, so we preserve the prior behavior and just emit the block.
+  return convertBlock(block, ctx, depth)
 }
 
 /**
@@ -289,10 +330,21 @@ function convertTaskList(node: MdNode, ctx: DocxContext, depth: number): FileChi
   return result
 }
 
-/** Convert a blockquote. */
+/** Convert a blockquote.
+ *
+ * A blockquote can contain arbitrary blocks (paragraphs, lists, nested quotes,
+ * code, …). Tagging only the direct child paragraphs with the `BlockQuote`
+ * pStyle loses everything else — a nested list would export as ordinary list
+ * paragraphs and escape the quote on re-import. So we bracket the whole content
+ * with invisible `BlockQuoteStart`/`BlockQuoteEnd` marker paragraphs (mirroring
+ * the details pattern) and convert inner blocks normally; the importer rebuilds
+ * the quote (and any nesting) from the marker stack. Direct paragraphs still
+ * carry the `BlockQuote` pStyle so Word renders them with the quote look. */
 function convertBlockquote(node: MdNode, ctx: DocxContext): FileChild[] {
   const children = node.content ?? []
   const result: FileChild[] = []
+
+  result.push(new Paragraph({ style: 'BlockQuoteStart', children: [] }))
 
   for (const child of children) {
     if (child.type === 'paragraph') {
@@ -305,11 +357,13 @@ function convertBlockquote(node: MdNode, ctx: DocxContext): FileChild[] {
         }),
       )
     } else {
-      // Nested blocks in blockquote
-      const converted = convertBlock(child, ctx, 0)
-      result.push(...converted)
+      // Nested blocks (lists, nested blockquotes, code, …) convert normally and
+      // stay inside the Start/End frame so the importer keeps them in the quote.
+      result.push(...convertBlock(child, ctx, 0))
     }
   }
+
+  result.push(new Paragraph({ style: 'BlockQuoteEnd', children: [] }))
 
   return result
 }
@@ -319,7 +373,7 @@ function convertCodeBlock(node: MdNode): FileChild[] {
   const code = (node.content ?? []).map((c) => c.text ?? '').join('')
   const lines = code.split('\n')
 
-  return lines.map(
+  const out: FileChild[] = lines.map(
     (line) =>
       new Paragraph({
         children: line
@@ -336,20 +390,26 @@ function convertCodeBlock(node: MdNode): FileChild[] {
         shading: { fill: 'F5F5F5' },
       }),
   )
+  // Boundary marker so the importer does not merge this code block with an
+  // immediately-following one (both export as consecutive CodeBlock paragraphs,
+  // one per line, with no other separator between distinct blocks).
+  out.push(new Paragraph({ style: 'CodeBlockEnd', children: [] }))
+  return out
 }
 
 /** Convert a horizontal rule. */
 function convertHorizontalRule(): Paragraph {
+  // A thematic break is an empty paragraph carrying only a bottom border
+  // (`w:pBdr`). Word renders that as a full-width horizontal rule, and the
+  // importer round-trips it back to a `horizontalRule` node. (The previous
+  // representation — a centered run of 50 ‘─’ glyphs — rendered as a short,
+  // mid-page dash line and imported as a literal text paragraph.)
   return new Paragraph({
-    children: [
-      new TextRun({
-        text: '─'.repeat(50),
-        color: 'CCCCCC',
-        size: 16,
-      }),
-    ],
+    children: [],
+    border: {
+      bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: 'CCCCCC' },
+    },
     spacing: { before: 120, after: 120 },
-    alignment: AlignmentType.CENTER,
   })
 }
 
@@ -551,39 +611,43 @@ function convertBlockMath(node: MdNode): Paragraph {
   })
 }
 
-/** Convert a details/collapsible node. */
+/** Convert a details/collapsible node into a boundary-delimited block sequence.
+ *
+ * Word has no native collapsible block, so we bracket the summary + content
+ * with invisible `DetailsStart`/`DetailsEnd` marker paragraphs and tag the
+ * summary line with the `DetailsSummary` pStyle. The importer maintains a stack
+ * of these markers, which reconstructs arbitrarily nested details (a nested
+ * details node simply recurses here and emits its own Start/End pair). */
 function convertDetails(node: MdNode, ctx: DocxContext): FileChild[] {
   const children = node.content ?? []
   const summaryNode = children.find((c) => c.type === 'detailsSummary')
   const contentNode = children.find((c) => c.type === 'detailsContent')
   const result: FileChild[] = []
 
-  // Summary as a bold paragraph with toggle indicator
-  if (summaryNode) {
-    const runs = convertInlineContent(summaryNode.content ?? [], ctx.emojiGlyph)
-    result.push(
-      new Paragraph({
-        children: [new TextRun({ text: '▸ ', bold: true }), ...runs],
-        spacing: { before: 80, after: 40 },
-      }),
-    )
-  }
+  // Opening boundary marker (empty, invisible).
+  result.push(new Paragraph({ style: 'DetailsStart', children: [] }))
 
-  // Content indented
+  // Summary line, tagged so the importer maps it to detailsSummary.
+  const summaryRuns = summaryNode
+    ? convertInlineContent(summaryNode.content ?? [], ctx.emojiGlyph)
+    : []
+  result.push(
+    new Paragraph({
+      style: 'DetailsSummary',
+      children: [new TextRun({ text: '▸ ', bold: true }), ...summaryRuns],
+    }),
+  )
+
+  // Content blocks, converted normally so nested details / lists / code blocks
+  // round-trip. A nested details recurses through convertBlock → convertDetails
+  // and emits its own Start/End markers, so the importer's stack rebuilds depth.
   const contentChildren = contentNode?.content ?? children.filter((c) => c.type !== 'detailsSummary')
   for (const child of contentChildren) {
-    if (child.type === 'paragraph') {
-      const runs = convertInlineContent(child.content ?? [], ctx.emojiGlyph)
-      result.push(
-        new Paragraph({
-          children: runs,
-          indent: { left: 360 },
-        }),
-      )
-    } else {
-      result.push(...convertBlock(child, ctx, 0))
-    }
+    result.push(...convertBlock(child, ctx, 0))
   }
+
+  // Closing boundary marker.
+  result.push(new Paragraph({ style: 'DetailsEnd', children: [] }))
 
   return result
 }
