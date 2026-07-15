@@ -1,12 +1,12 @@
 import type { GlobalSearchFilters } from "./types";
 
 // Independent of activeChannelSearchFilterCount: covers channels /
-// channelTypes / contentTypes / fileExts / fileSize / memberUid as well as
+// channelTypes / contentTypes / fileExts / fileSize / memberUids as well as
 // the base sender + date + sort fields.
 export function activeGlobalSearchFilterCount(filters: GlobalSearchFilters) {
   let count = 0;
   if (filters.senderUids.length > 0) count += 1;
-  if (filters.memberUid) count += 1;
+  if (filters.memberUids.length > 0) count += 1;
   if (filters.channels.length > 0) count += 1;
   if (filters.channelTypes.length > 0) count += 1;
   if (filters.contentTypes.length > 0) count += 1;

@@ -43,7 +43,7 @@ function sniffImageType(buffer: ArrayBuffer): 'jpg' | 'png' | 'gif' | 'bmp' | nu
 }
 import { convertTable } from './tables.ts'
 import { getImageBuffer, getImageDimensions } from './images.ts'
-import { FONT_CODE, mapTextAlign } from './styles.ts'
+import { FONT_CODE, mapTextAlign, mapSpacing } from './styles.ts'
 import type { MdNode, DocxContext } from './types.ts'
 
 /** Map heading level 1-6 to docx HeadingLevel enum. */
@@ -171,17 +171,24 @@ function convertBlock(node: MdNode, ctx: DocxContext, listDepth: number): FileCh
 function convertParagraph(node: MdNode, ctx: DocxContext): Paragraph {
   const runs = convertInlineContent(node.content ?? [], ctx.emojiGlyph)
   const align = mapTextAlign(node.attrs?.textAlign)
-  return new Paragraph({ children: runs, ...(align ? { alignment: align } : {}) })
+  const spacing = mapSpacing(node.attrs)
+  return new Paragraph({
+    children: runs,
+    ...(align ? { alignment: align } : {}),
+    ...(spacing ? { spacing } : {}),
+  })
 }
 
 /** Convert a heading node. */
 function convertHeading(node: MdNode, ctx: DocxContext): Paragraph {
   const runs = convertInlineContent(node.content ?? [], ctx.emojiGlyph)
   const align = mapTextAlign(node.attrs?.textAlign)
+  const spacing = mapSpacing(node.attrs)
   return new Paragraph({
     children: runs,
     heading: toHeadingLevel(node.attrs?.level),
     ...(align ? { alignment: align } : {}),
+    ...(spacing ? { spacing } : {}),
   })
 }
 
@@ -347,7 +354,7 @@ function convertHorizontalRule(): Paragraph {
 }
 
 /** Convert an image node. */
-function convertImage(node: MdNode, ctx: DocxContext): FileChild[] {
+export function convertImage(node: MdNode, ctx: DocxContext): FileChild[] {
   const buffer = getImageBuffer(node, ctx)
   const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : ''
 
@@ -366,7 +373,7 @@ function convertImage(node: MdNode, ctx: DocxContext): FileChild[] {
     ]
   }
 
-  const dims = getImageDimensions(node, buffer)
+  const dims = getImageDimensions(node, buffer, ctx.maxImageWidthPx)
   // Image uses `align` attr (left/center/right), not `textAlign`
   const align = mapTextAlign(node.attrs?.align)
 

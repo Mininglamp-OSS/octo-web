@@ -1,0 +1,64 @@
+/* Loop Markdown 渲染样式 —— 对齐 issue 正文排版 */
+.loop-md {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--semi-color-text-0, #1c1f23);
+  word-break: break-word;
+}
+.loop-md h1, .loop-md h2, .loop-md h3, .loop-md h4 {
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 18px 0 8px;
+}
+.loop-md h1 { font-size: 22px; }
+.loop-md h2 { font-size: 18px; padding-bottom: 4px; border-bottom: 1px solid var(--semi-color-border, #e8e9eb); }
+.loop-md h3 { font-size: 16px; }
+.loop-md h4 { font-size: 14px; }
+.loop-md p { margin: 8px 0; }
+.loop-md ul, .loop-md ol { margin: 8px 0; padding-left: 22px; }
+.loop-md li { margin: 3px 0; }
+.loop-md a { color: var(--semi-color-primary, #6a5cff); text-decoration: none; }
+.loop-md a:hover { text-decoration: underline; }
+.loop-md code {
+  font-family: var(--semi-font-family-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  background: var(--semi-color-fill-0, #f2f3f5);
+  padding: 1.5px 5px;
+  border-radius: 4px;
+}
+.loop-md pre {
+  background: var(--semi-color-fill-0, #f5f6f8);
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow: auto;
+  margin: 10px 0;
+}
+.loop-md pre code { background: transparent; padding: 0; font-size: 12.5px; line-height: 1.55; }
+.loop-md blockquote {
+  margin: 10px 0;
+  padding: 4px 14px;
+  border-left: 3px solid var(--semi-color-border, #d0d2d6);
+  color: var(--semi-color-text-1, #4e5969);
+}
+.loop-md table {
+  border-collapse: collapse;
+  margin: 10px 0;
+  width: 100%;
+  font-size: 13px;
+}
+.loop-md th, .loop-md td {
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  padding: 6px 10px;
+  text-align: left;
+}
+.loop-md th { background: var(--semi-color-fill-0, #f5f6f8); font-weight: 600; }
+.loop-md hr { border: none; border-top: 1px solid var(--semi-color-border, #e8e9eb); margin: 16px 0; }
+.loop-md img { max-width: 100%; border-radius: 6px; }
+
+/* @提及 chip(mention:// 链接,不可导航;PR @提及) */
+.loop-mention {
+  color: var(--semi-color-primary, #0064fa);
+  background: var(--semi-color-primary-light-default, #e8f0ff);
+  border-radius: 4px; padding: 0 4px; font-weight: 500; white-space: nowrap;
+}

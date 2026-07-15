@@ -261,6 +261,8 @@ interface TeamCitationBadgeProps {
      * `[Pn]` 点击时以此在本地匹配作者单人报告，不发新请求。
      */
     members?: MemberStatus[];
+    /** 历史版本详情不应使用当前成员列表展开个人报告。 */
+    disableMemberPreview?: boolean;
 }
 
 const memberRowStyle: React.CSSProperties = {
@@ -278,7 +280,13 @@ const memberRowStyle: React.CSSProperties = {
 // Match priority: personal_result_id (convenience field) is NOT carried on
 // MemberStatus, so the authoritative join key is user_id (§6.2/Q4). The popover
 // degrades to name-only when the member has not submitted (no content yet).
-export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({ index, teamCitations, badgeKey, members = [] }) => {
+export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({
+    index,
+    teamCitations,
+    badgeKey,
+    members = [],
+    disableMemberPreview = false,
+}) => {
     const { t } = useI18n();
     const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
     const citation = teamCitations.find(c => c.index === index);
@@ -290,7 +298,7 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({ index, tea
     // 优先用 user_id 在 members 里匹配同一成员（§6.2/Q4）。
     // 显式注解：避免在某些 broken React 类型环境下 members 退化为 never[]。
     const memberList: MemberStatus[] = members;
-    const member = memberList.find((m) => m.user_id === citation.user_id);
+    const member = disableMemberPreview ? undefined : memberList.find((m) => m.user_id === citation.user_id);
     const memberContent = member?.content?.trim();
 
     const isVisible = activeKey === badgeKey;
@@ -308,13 +316,13 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({ index, tea
                         <div style={{ fontWeight: 600, fontSize: 13, marginBottom: memberContent ? 4 : 0 }}>
                             {t("summary.citation.member", { values: { name: citation.user_name } })}
                         </div>
-                        {memberContent ? (
+                        {!disableMemberPreview && memberContent ? (
                             <CitationText
                                 content={(memberContent || '').replace(/\[\d+\]/g, '')}
                                 citations={[]}
                                 hidePlainCitations
                             />
-                        ) : member?.status === "declined" ? (
+                        ) : !disableMemberPreview && member?.status === "declined" ? (
                             // OCT-15 / upstream #495：纵深防御。正常流程里 declined 成员不会被
                             // 后端写进 team_citations（GLM 评审结论），但若数据漂移让 popover
                             // 拿到一个 declined 的 [Pn]，不再误显示「等待提交」。
@@ -323,11 +331,11 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({ index, tea
                             <div style={{ fontSize: 12, color: '#999' }}>
                                 {t("summary.confirmPage.declined")}
                             </div>
-                        ) : (
+                        ) : !disableMemberPreview ? (
                             <div style={{ fontSize: 12, color: '#999' }}>
                                 {t("summary.detail.waitingSubmit", { values: { name: citation.user_name } })}
                             </div>
-                        )}
+                        ) : null}
                     </div>
                 </div>
             }

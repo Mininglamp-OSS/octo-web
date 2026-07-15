@@ -306,6 +306,96 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     confirmSpy.mockRestore()
   })
 
+  it('renders the confirm box in a fixed viewport-centered overlay (stays visible on long scrolled lists)', async () => {
+    // Regression for XIN-867: the in-panel confirm box used to render at the end of the panel's
+    // content flow (after the version list) with only box-model styling and no positioning, so on a
+    // long, scrolled list it fell below the fold — users clicked delete/restore and never saw the
+    // confirm. It now renders inside the shared .octo-modal-overlay (position: fixed; inset: 0), the
+    // same viewport-anchored overlay the preview/diff modal uses, so it is always on-screen and its
+    // buttons clickable regardless of scroll. jsdom does not compute layout, so we assert the overlay
+    // structure (which pins the fixed positioning) rather than measured coordinates, and verify the
+    // overlay-click / Esc cancel paths that match the preview modal.
+    renderPanel('admin')
+    await screen.findByText('Draft v1')
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.delete'))
+    const box = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
+    // The confirm card is wrapped by the fixed viewport overlay, not left inline in the panel flow.
+    const overlay = box.closest('.octo-modal-overlay') as HTMLElement
+    expect(overlay).toBeTruthy()
+    expect(box.getAttribute('role')).toBe('dialog')
+    expect(box.getAttribute('aria-modal')).toBe('true')
+    // Clicking the card body does not dismiss (stopPropagation); clicking the overlay backdrop does.
+    fireEvent.mouseDown(box)
+    expect(document.querySelector('.octo-version-confirm')).toBeTruthy()
+    fireEvent.mouseDown(overlay)
+    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
+    // Reopen and confirm Escape cancels too (mirrors the preview modal).
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.restore'))
+    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeTruthy())
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
+  })
+
+  it('vertically-centers the confirm overlay via a scoped modifier the preview/diff overlay does not carry', async () => {
+    // Regression for XIN-887 (decision #2): the confirm card must sit centered in the viewport, not
+    // top-anchored like the preview/diff modal. The base .octo-modal-overlay is top-anchored (it can
+    // hold taller-than-viewport preview content that scrolls from the top), so the confirm overlay
+    // opts into centering with the scoped .octo-modal-overlay--center modifier. jsdom does not compute
+    // layout, so we assert the class contract: the confirm overlay carries the modifier and the
+    // preview overlay does not, keeping the two behaviors isolated.
+    renderPanel('admin', { loadPreviewState: async (seq) => ({ body: `body-${seq}` }) })
+    await screen.findByText('Draft v1')
+
+    // Delete confirm overlay is centered.
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.delete'))
+    let box = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
+    expect(box.closest('.octo-modal-overlay')!.classList.contains('octo-modal-overlay--center')).toBe(true)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
+
+    // Restore confirm overlay is centered too.
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.restore'))
+    box = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
+    expect(box.closest('.octo-modal-overlay')!.classList.contains('octo-modal-overlay--center')).toBe(true)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
+
+    // Preview/diff overlay keeps its top-anchored (non-centered) behavior — no modifier.
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
+    expect(modal.closest('.octo-modal-overlay')!.classList.contains('octo-modal-overlay--center')).toBe(false)
+  })
+
+  it('does not dismiss the confirm overlay on backdrop-click or Escape while a restore is in flight (busy guard)', async () => {
+    // The overlay-click and Escape cancel paths both no-op while a mutation is running, so a stray
+    // backdrop click or keypress cannot tear the confirm down mid-request. Hold the restore mutation
+    // open to keep the panel busy, then assert both dismissals are ignored until it settles.
+    let release!: (v: { newDocVersionSeq: number; restoredFrom: number }) => void
+    restoreVersionMock.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        release = resolve
+      }),
+    )
+    renderPanel('admin')
+    await screen.findByText('Draft v1')
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.restore'))
+    const box = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
+    const overlay = box.closest('.octo-modal-overlay') as HTMLElement
+
+    // Trigger the restore → busy is now true (mutation pending).
+    fireEvent.click(btnByText(box, 'docs.version.restore'))
+    await waitFor(() => expect(restoreVersionMock).toHaveBeenCalled())
+
+    // Backdrop click and Escape are both no-ops while busy.
+    fireEvent.mouseDown(overlay)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(document.querySelector('.octo-version-confirm')).toBeTruthy()
+
+    // Once the mutation settles, the confirm clears on its own.
+    release({ newDocVersionSeq: 9, restoredFrom: 7 })
+    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
+  })
+
   it('renames a named version inline (no native prompt)', async () => {
     renderPanel('admin')
     await screen.findByText('Draft v1')

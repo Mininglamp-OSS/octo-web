@@ -1,15 +1,46 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { WKSDK, Channel, ChannelInfo, ChannelInfoListener, ChannelTypeGroup } from "wukongimjssdk"
+import { WKSDK, Channel, ChannelInfo, ChannelInfoListener, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
 import { ConversationWrap } from "../../Service/Model"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import { shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace } from "../../Service/SpaceService"
 import { filterArchivedThreads } from "../ConversationListGrouped/archivedThreads"
 import { debounce } from "../../Utils/rateLimit"
 import WKApp from "../../App"
+import SidebarService from "../../Service/SidebarService"
 import { ForwardItem } from "./ForwardModal"
 import { candidateToForwardItem } from "./candidateToForwardItem"
 import { chatTypeToChannelType } from "./chatTypeToChannelType"
+import {
+  filterChatSelectorItems,
+  type ChatSelectorTab,
+  type ChatSelectorAccessors,
+  type ChatKind,
+} from "../ChatSelector/tabFilter"
 import type { ForwardFinished, ForwardGrantRole } from "./grant"
+
+// 复合 key：${channelType}::${channelID}，防跨类型 id 碰撞。channelType 取值
+// (个人=1 / 群=2 / 子区=5) 恰与 SidebarTargetType(DM/CHANNEL/THREAD) 一致，
+// 故转发本地 item 与 SidebarService 返回的关注/最近集合可直接对齐比较。
+function forwardItemKey(item: ForwardItem): string {
+  return `${item.channelType}::${item.channelID}`
+}
+
+// 归类：个人→私聊，子区→thread，其余→群。供四 Tab 作用域过滤使用。
+function forwardItemKind(item: ForwardItem): ChatKind {
+  if (item.channelType === ChannelTypePerson) return "direct"
+  if (item.isThread || item.channelType === ChannelTypeCommunityTopic) return "thread"
+  return "group"
+}
+
+const FORWARD_ITEM_ACCESSORS: ChatSelectorAccessors<ForwardItem> = {
+  getId: (i) => i.channelID,
+  getName: (i) => i.displayName,
+  getKind: forwardItemKind,
+  getParentId: (i) => i.parentChannelID,
+  getKey: forwardItemKey,
+  // 父群恒为群聊，故以群类型（ChannelTypeGroup）构造复合 key，与 forwardItemKey 同构。
+  getGroupKeyFromId: (parentId) => `${ChannelTypeGroup}::${parentId}`,
+}
 
 function channelInfoToForwardItem(channelInfo: ChannelInfo): ForwardItem {
   return {
@@ -68,6 +99,10 @@ export interface UseForwardModalResult {
   /** 触发 debounce 过滤的 keyword */
   keyword: string
   loading: boolean
+  /** 当前 Tab（关注 / 最近 / 全部群聊 / 全部私聊）。 */
+  activeTab: ChatSelectorTab
+  /** 切换 Tab。 */
+  setActiveTab: (tab: ChatSelectorTab) => void
   /** 更新 input 显示值，内部 debounce 后更新过滤 keyword */
   setInputValue: (val: string) => void
   toggleSelect: (item: ForwardItem) => void
@@ -103,6 +138,14 @@ export function useForwardModal(
   const [inputValue, setInputValueState] = useState("")
   const [keyword, setKeyword] = useState("")
   const [loading, setLoading] = useState(true)
+  // 四 Tab：关注 / 最近 / 全部群聊 / 全部私聊（对齐智能纪要选择器）。默认「最近」，
+  // 因转发本地数据源以最近会话为主，落地即有内容，避免默认「关注」空集。
+  const [activeTab, setActiveTab] = useState<ChatSelectorTab>("recent")
+  // 关注集合（复合 key）：来自 SidebarService follow 同步，供「关注」Tab 过滤。
+  const [followedKeys, setFollowedKeys] = useState<Set<string>>(new Set())
+  // 最近集合（复合 key）：由本地最近会话（wrapsRef）派生，供「最近」Tab 过滤。
+  // 方案 (b) 下「最近」直接等价于最近会话，不依赖后端 recent 同步。
+  const [recentKeys, setRecentKeys] = useState<Set<string>>(new Set())
   // 授权区状态：开关默认关闭（不勾选，需用户主动打开才走授权），角色默认 reader。
   // 仅在传入 grantOptions 时生效。
   const grantActive = !!grantOptions
@@ -172,8 +215,11 @@ export function useForwardModal(
     const spaceId = WKApp.shared.currentSpaceId
     // 已并入的群 ID（recents 群 + extraGroups 群），用于去重与子区挂回。
     const seenGroupIDs = new Set<string>()
+    // 最近集合：最近会话即「最近」Tab 的作用域，用复合 key 记录（含群/子区/私聊）。
+    const recentKeySet = new Set<string>()
     for (const wrap of wrapsRef.current) {
       channelMapRef.current.set(wrap.channel.channelID, wrap.channel)
+      recentKeySet.add(`${wrap.channel.channelType}::${wrap.channel.channelID}`)
       if (wrap.channel.channelType === ChannelTypeCommunityTopic) {
         threadWraps.push(wrap)
       } else {
@@ -276,6 +322,7 @@ export function useForwardModal(
     }
 
     setConversationItems(items)
+    setRecentKeys(recentKeySet)
   }, [])
 
   useEffect(() => {
@@ -355,7 +402,37 @@ export function useForwardModal(
     }
   }, [rebuildConvItems])
 
-  // 搜索群组：keyword >= 2 时调用注册的 searchChatCandidates 获取群组结果
+  // 关注集合同步：与智能纪要选择器一致，走 SidebarService follow 同步。
+  // 数据源采用方案 (b)：转发列表主体仍复用本地会话 + group/my + 好友装配
+  // （保证零权限回归、无新后端依赖），仅「关注」Tab 需要额外的关注集合，故
+  // 这里只拉 follow（不拉 recent —— 转发「最近」直接映射本地最近会话/群列表）。
+  // deviceId 为空时后端 validateSidebarRequest 必拒，跳过注定失败的请求，
+  // 关注集合退化为空集（关注 Tab 显示空态）。
+  useEffect(() => {
+    const deviceUuid = WKApp.shared.deviceId || ""
+    if (deviceUuid === "") {
+      setFollowedKeys(new Set())
+      return
+    }
+    let cancelled = false
+    SidebarService.sync({ tab: "follow", device_uuid: deviceUuid })
+      .then((resp) => {
+        if (cancelled) return
+        const keys = new Set<string>()
+        for (const item of resp?.items ?? []) {
+          if (item.is_followed) keys.add(`${item.target_type}::${item.target_id}`)
+        }
+        setFollowedKeys(keys)
+      })
+      .catch(() => {
+        if (!cancelled) setFollowedKeys(new Set())
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+
   useEffect(() => {
     if (keyword.length < 2) {
       setSearchGroupItems([])
@@ -395,28 +472,16 @@ export function useForwardModal(
   const uniqueSearchGroups = searchGroupItems.filter((g: ForwardItem) => !localIDs.has(g.channelID))
   const allItems = [...conversationItems, ...uniqueFriends, ...uniqueSearchGroups]
 
-  // 关键字过滤（方案 A：命中子区时带出父群；命中父群不自动展开子区）
-  const filtered = keyword
-    ? (() => {
-        const kw = keyword.toLowerCase()
-        // 先找命中的项
-        const matched = allItems.filter((i) => i.displayName.toLowerCase().includes(kw))
-        // 命中子区时，把父群也加进来（若父群本身未命中）
-        const parentIDsToInclude = new Set<string>()
-        for (const item of matched) {
-          if (item.parentChannelID) {
-            parentIDsToInclude.add(item.parentChannelID)
-          }
-        }
-        const matchedIDs = new Set(matched.map((i) => i.channelID))
-        const parents = parentIDsToInclude.size > 0
-          ? allItems.filter((i) => parentIDsToInclude.has(i.channelID) && !matchedIDs.has(i.channelID))
-          : []
-        // 保持树状顺序：遍历 allItems，只保留命中项 + 需要带出的父群
-        const includeIDs = new Set([...matchedIDs, ...parents.map((p) => p.channelID)])
-        return allItems.filter((i) => includeIDs.has(i.channelID))
-      })()
-    : allItems
+  // 四 Tab 作用域 + 关键字过滤（方案 A：命中子区带出父群；命中父群不展开子区）。
+  // 复用共享的 filterChatSelectorItems，保证与智能纪要选择器同一套过滤语义。
+  // 注意：搜索时（keyword 非空）以搜索结果 uniqueSearchGroups 补充 allItems，
+  // 这些后端候选未必落在 followed/recent 本地集合内，但「关注/最近」Tab 仍按
+  // 集合过滤（搜后端全库群不应污染关注/最近作用域），与纪要行为一致。
+  const filtered = filterChatSelectorItems(
+    allItems,
+    { activeTab, keyword, followedKeys, recentKeys },
+    FORWARD_ITEM_ACCESSORS,
+  )
 
   const toggleSelect = useCallback((item: ForwardItem) => {
     setSelectedIDs((prev: string[]) =>
@@ -456,6 +521,7 @@ export function useForwardModal(
     setSelectedIDs([])
     setInputValueState("")
     setKeyword("")
+    setActiveTab("recent")
   }, [])
 
   return {
@@ -466,6 +532,8 @@ export function useForwardModal(
     inputValue,
     keyword,
     loading,
+    activeTab,
+    setActiveTab,
     setInputValue,
     toggleSelect,
     confirm,

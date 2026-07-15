@@ -106,7 +106,28 @@ export interface SummaryResult {
     total_token_used: number;
     model_version: string;
     version: number;
+    operation_type?: string;
+    operation_note?: string;
+    parent_result_id?: number | null;
     generated_at: string | null;
+    citations?: CitationItem[];
+    team_citations?: TeamCitationItem[];
+}
+
+export interface SummaryVersionItem {
+    result_id: number;
+    version_id?: number;
+    version: number;
+    operation_type: string;
+    operation_note?: string;
+    parent_result_id?: number | null;
+    created_by?: string;
+    generated_at: string;
+    edited_at?: string | null;
+}
+
+export interface SummaryVersionDetail extends SummaryVersionItem {
+    content: string;
     citations?: CitationItem[];
     team_citations?: TeamCitationItem[];
 }
@@ -120,6 +141,8 @@ export type WorkflowStage =
     | "generate_summary";
 
 export interface PersonalResult {
+    id?: number;
+    version?: number;
     worker_status: 0 | 1 | 2 | 3;
     workflow_stage?: WorkflowStage | "";
     content: string;
@@ -258,6 +281,7 @@ export interface ScheduleParticipantConfig {
 export interface ScheduleItem {
     schedule_id: number;
     title: string;
+    generation_instruction?: string;
     summary_mode: SummaryModeType;
     cron_expr: string;
     interval_days?: number;
@@ -290,6 +314,7 @@ export interface ScheduleItem {
 
 export interface CreateScheduleParams {
     title: string;
+    generation_instruction?: string;
     summary_mode: SummaryModeType;
     cron_expr: string;
     interval_days?: number;
@@ -319,6 +344,7 @@ export interface CreateScheduleParams {
 
 export interface UpdateScheduleParams {
     title?: string;
+    generation_instruction?: string;
     summary_mode?: SummaryModeType;
     cron_expr?: string;
     interval_days?: number;
@@ -413,6 +439,7 @@ export interface ScheduleConfig {
     time: string;         // "HH:MM" — 运行时刻，始终保留
     dayOfWeek?: number;   // 周模式：1=周一 .. 7=周日，0/undefined=不限
     dayOfMonth?: number;  // 月模式：1..31，0/undefined=不限
+    generationInstruction?: string; // 定时任务后续生成时参考的要求
     /**
      * 非阻塞1：原始遗留 cron 表达式（仅当回填的定时是遗留 cron 时存在）。
      * 新表单仅支持 interval(天/周/月)，无法精确回填 cron。带此标记时弹窗会

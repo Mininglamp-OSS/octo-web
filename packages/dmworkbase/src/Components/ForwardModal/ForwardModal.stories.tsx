@@ -149,6 +149,8 @@ function Interactive(props: Partial<ForwardModalProps> & { initialItems?: Forwar
         }}
         onConfirm={() => {}}
         onCancel={props.onCancel}
+        activeTab={props.activeTab ?? "recent"}
+        onTabChange={props.onTabChange ?? (() => {})}
       />
     </div>
   )
@@ -241,6 +243,8 @@ export const Loading: Story = {
         onInputChange={() => {}}
         onToggleSelect={() => {}}
         onConfirm={() => {}}
+        activeTab="recent"
+        onTabChange={() => {}}
       />
     </div>
   ),

@@ -195,4 +195,140 @@ describe('inline math end-to-end docx export', () => {
     expect(xml).not.toContain('\\int')
     expect(xml).not.toContain('\\,')
   })
+
+  it('converts a pmatrix to an OMML matrix (<m:m>) instead of falling back to source', async () => {
+    // Regression: <mtable>/<mtr>/<mtd> hit the default branch and threw, so any
+    // formula containing a matrix / cases environment degraded to raw LaTeX text
+    // in Word. Now the table becomes a real OMML matrix.
+    const doc: MdNode[] = [
+      { type: 'blockMath', attrs: { latex: '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}' } },
+    ] as MdNode[]
+    const xml = await renderDocumentXml(doc)
+    expect(xml).toContain('<m:m>')
+    expect((xml.match(/<m:mr>/g) ?? []).length).toBe(2)
+    // The parentheses become a growing OMML delimiter <m:d> (begChr "(" / endChr
+    // ")") wrapping the matrix, so Word auto-sizes the brackets to the matrix
+    // height instead of rendering tiny single-line "(" ")" characters.
+    expect(xml).toContain('<m:d>')
+    expect(xml).toContain('<m:begChr m:val="("/>')
+    expect(xml).toContain('<m:endChr m:val=")"/>')
+    // No raw LaTeX leaked as fallback text.
+    expect(xml).not.toContain('pmatrix')
+    expect(xml).not.toContain('\\begin')
+  })
+
+  it('keeps a \\tag-numbered equation row (mlabeledtr) instead of silently dropping it', async () => {
+    // Regression: MathJax emits <mlabeledtr> (not <mtr>) for a \tag-numbered
+    // row; the matrix converter filtered to `mtr` only, so the whole row --
+    // equation body AND its number -- vanished from the Word output with no
+    // error and no fallback. matrix() must include mlabeledtr and drop only its
+    // leading label cell (the equation number), still rendering the body.
+    const doc: MdNode[] = [
+      {
+        type: 'blockMath',
+        attrs: { latex: '\\begin{align} a &= b \\tag{1} \\\\ c &= d \\end{align}' },
+      },
+    ] as MdNode[]
+    const xml = await renderDocumentXml(doc)
+    expect(xml).toContain('<m:m>')
+    // Both rows survive: the \tag{1} row (mlabeledtr) and the plain row (mtr).
+    expect((xml.match(/<m:mr>/g) ?? []).length).toBe(2)
+    // The tagged row's body still renders (its `a`/`b` content is not dropped).
+    expect(xml).toContain('a')
+    expect(xml).toContain('b')
+    // No raw LaTeX leaked as fallback text.
+    expect(xml).not.toContain('mlabeledtr')
+    expect(xml).not.toContain('\\begin')
+  })
+
+  it('converts a cases environment to an OMML matrix (piecewise function)', async () => {
+    const doc: MdNode[] = [
+      { type: 'blockMath', attrs: { latex: 'f(x) = \\begin{cases} x^2 & x \\ge 0 \\\\ -x & x < 0 \\end{cases}' } },
+    ] as MdNode[]
+    const xml = await renderDocumentXml(doc)
+    expect(xml).toContain('<m:m>')
+    // The piecewise opening brace becomes a one-sided growing delimiter
+    // (begChr "{" / empty endChr) around the matrix, so Word draws a tall brace
+    // instead of a tiny single-line "{" beside the rows.
+    expect(xml).toContain('<m:begChr m:val="{"/>')
+    expect(xml).toContain('<m:endChr m:val=""/>')
+    // The brace is not emitted as a plain literal text run.
+    expect(xml).not.toContain('<m:t xml:space="preserve">{</m:t>')
+    expect(xml).not.toContain('cases')
+    expect(xml).not.toContain('\\begin')
+  })
+
+  it('renders diacritic accents (\\vec \\hat \\dot …) as centered <m:acc>, not superscripts', async () => {
+    // Regression: \vec/\hat/\dot/\ddot/\tilde/\bar came through as <mover> and
+    // were mapped to a superscript, shoving the mark up-and-right of the base
+    // ("公式符号偏移"). They must become an OMML <m:acc> so the accent sits
+    // centered on top of the base like Word/LaTeX draw it.
+    const doc: MdNode[] = [
+      { type: 'blockMath', attrs: { latex: '\\hat{x}, \\bar{y}, \\dot{z}, \\ddot{w}, \\tilde{u}, \\vec{v}' } },
+    ] as MdNode[]
+    const xml = await renderDocumentXml(doc)
+    // Six accents, one per diacritic; none degraded to a superscript wrapper.
+    expect((xml.match(/<m:acc>/g) ?? []).length).toBe(6)
+    // The vec arrow must be the *combining* right-arrow-above (U+20D7), which
+    // stacks on the base, not the spacing → (U+2192) sitting beside it.
+    expect(xml).toContain('m:val="\u20d7"')
+    // The accent glyph is not left as a plain text run next to the base.
+    expect(xml).not.toContain('<m:t xml:space="preserve">\u2192</m:t>')
+  })
+
+  it('grows |…| absolute-value / determinant bars with an OMML delimiter', async () => {
+    // Regression: vmatrix and |\vec a| left the bars as literal single-height
+    // `|` runs, far too short around a matrix or an accented vector. They must
+    // become a growing <m:d> delimiter with `|` begChr/endChr.
+    const doc: MdNode[] = [
+      { type: 'blockMath', attrs: { latex: '\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix} = ad - bc' } },
+      { type: 'blockMath', attrs: { latex: '\\vec{a} \\cdot \\vec{b} = |\\vec{a}||\\vec{b}|\\cos\\theta' } },
+    ] as MdNode[]
+    const xml = await renderDocumentXml(doc)
+    // vmatrix: a matrix wrapped in a bar delimiter.
+    expect(xml).toContain('<m:m>')
+    expect(xml).toContain('<m:begChr m:val="|"/>')
+    expect(xml).toContain('<m:endChr m:val="|"/>')
+    // The abs-value formula produces its own bar delimiters too (at least the
+    // two |·| groups plus the vmatrix = 3 bar-open chars total).
+    expect((xml.match(/<m:begChr m:val="\|"\/>/g) ?? []).length).toBeGreaterThanOrEqual(3)
+    expect(xml).not.toContain('vmatrix')
+  })
+
+  it('renders \\overbrace / \\underbrace as stretchy <m:groupChr> braces', async () => {
+    // Regression: \overbrace/\underbrace came through as <mover>/<munder> over a
+    // brace glyph and were mapped to super/subscript, so the brace did not grow
+    // over the group. They must become an OMML <m:groupChr> stretchy brace.
+    const doc: MdNode[] = [
+      { type: 'blockMath', attrs: { latex: '\\overbrace{a + b + c}^{n} = \\underbrace{x + y}_{m}' } },
+    ] as MdNode[]
+    const xml = await renderDocumentXml(doc)
+    expect((xml.match(/<m:groupChr>/g) ?? []).length).toBe(2)
+    // The over-brace glyph sits on top, the under-brace below.
+    expect(xml).toContain('<m:pos m:val="top"/>')
+    expect(xml).toContain('<m:pos m:val="bot"/>')
+    // The labels (n above, m below) sit centered on the braced group via OMML
+    // limit boxes (limUpp / limLow), not corner super/subscripts.
+    expect(xml).toContain('<m:limUpp>')
+    expect(xml).toContain('<m:limLow>')
+  })
+
+  it('centers \\overset / \\underset / stretchy-arrow labels with limit boxes, not corner scripts', async () => {
+    // Regression: \overset{n}{X}, \underset{i}{\star}, \stackrel{?}{=}, and the
+    // label on \xrightarrow{f} came through as super/subscripts, so the mark sat
+    // at the base's upper/lower-right corner instead of centered above/below it
+    // ("34/35 符号不在正位置"). They must become OMML <m:limUpp>/<m:limLow>.
+    const doc: MdNode[] = [
+      { type: 'blockMath', attrs: { latex: 'a \\stackrel{?}{=} b, \\quad \\overset{n}{X}, \\quad \\underset{i}{\\star}' } },
+      { type: 'blockMath', attrs: { latex: 'x \\xrightarrow{\\ f\\ } y \\xleftarrow{g} z' } },
+    ] as MdNode[]
+    const xml = await renderDocumentXml(doc)
+    // stackrel + overset + two arrow labels -> at least 3 upper limit boxes;
+    // underset -> a lower limit box.
+    expect((xml.match(/<m:limUpp>/g) ?? []).length).toBeGreaterThanOrEqual(3)
+    expect(xml).toContain('<m:limLow>')
+    // No LaTeX leaked as fallback text.
+    expect(xml).not.toContain('\\overset')
+    expect(xml).not.toContain('\\xrightarrow')
+  })
 })

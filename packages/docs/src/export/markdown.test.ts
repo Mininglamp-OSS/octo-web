@@ -379,6 +379,29 @@ describe('exportDocToMarkdown — inline marks and atoms', () => {
     const out = await md(doc({ type: 'paragraph', attrs: { textAlign: 'center' }, content: [text('mid')] }))
     expect(out).toContain('<p align="center">mid</p>')
   })
+
+  it('indent (v18) wraps the block with a margin-left style', async () => {
+    const out = await md(doc({ type: 'paragraph', attrs: { indent: 2 }, content: [text('in')] }))
+    expect(out).toContain('<p style="margin-left:4em">in</p>')
+  })
+
+  it('indent + align combine into one wrapper tag', async () => {
+    const out = await md(
+      doc({ type: 'paragraph', attrs: { textAlign: 'right', indent: 1 }, content: [text('both')] }),
+    )
+    expect(out).toContain('<p align="right" style="margin-left:2em">both</p>')
+  })
+
+  it('an indented heading wraps in a div with margin-left', async () => {
+    const out = await md(doc({ type: 'heading', attrs: { level: 2, indent: 1 }, content: [text('h')] }))
+    expect(out).toContain('<div style="margin-left:2em">## h</div>')
+  })
+
+  it('indent 0 leaves the block as plain Markdown (backward-compat)', async () => {
+    const out = await md(doc({ type: 'paragraph', attrs: { indent: 0 }, content: [text('plain')] }))
+    expect(out).not.toContain('margin-left')
+    expect(out).toContain('plain')
+  })
 })
 
 // Regression (yujiawei P1 #3): markdown export interpolated hrefs and HTML-attribute values with

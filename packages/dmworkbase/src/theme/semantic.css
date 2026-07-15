@@ -57,6 +57,23 @@
   --wk-onboarding-mention-bg: rgba(124, 58, 237, 0.12);
   --wk-onboarding-mention-selection-bg: rgba(124, 58, 237, 0.22);
   --wk-onboarding-hover-border-color: rgba(167, 139, 250, 0.3);
+  --wk-onboarding-panel-width: 960px;
+  --wk-onboarding-panel-height: 720px;
+  --wk-onboarding-panel-padding: 26px;
+  --wk-onboarding-panel-radius: 15px;
+  --wk-onboarding-panel-content-gap: 18px;
+  --wk-onboarding-panel-title-offset: 44px;
+  --wk-onboarding-panel-close-size: 31px;
+  --wk-onboarding-nav-inline-padding: 18px;
+  --wk-onboarding-nav-brand-font-size: 19px;
+  --wk-onboarding-nav-item-gap: 11px;
+  --wk-onboarding-nav-item-height: 42px;
+  --wk-onboarding-nav-item-padding: 9px 11px;
+  --wk-onboarding-copy-font-size: 17px;
+  --wk-onboarding-copy-inset: 15px;
+  --wk-onboarding-copy-gap: 9px;
+  --wk-onboarding-copy-support-gap: 5px;
+  --wk-onboarding-media-shadow: 0 2px 8px var(--wk-black-alpha-08);
 
   /* ── Status & Fixed（Figma 色值） ── */
   --wk-color-online: var(--wk-green-dark); /* Figma: #52C41A 在线状态绿 */

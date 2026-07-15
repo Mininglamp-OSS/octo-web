@@ -39,6 +39,13 @@ import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js'
 import { SerializedMmlVisitor } from 'mathjax-full/js/core/MmlTree/SerializedMmlVisitor.js'
 import { STATE } from 'mathjax-full/js/core/MathItem.js'
 import type { MmlNode } from 'mathjax-full/js/core/MmlTree/MmlNode.js'
+// Importing these configuration modules registers the `base` and `ams` TeX
+// packages as a side-effect. Without the AMS import, `new TeX({ packages:
+// ['base','ams'] })` silently leaves AMS environments unregistered, so every
+// matrix/pmatrix/cases/align formula fails with "Unknown environment" and
+// degrades to raw LaTeX source text in Word. The import wires up the extension.
+import 'mathjax-full/js/input/tex/base/BaseConfiguration.js'
+import 'mathjax-full/js/input/tex/ams/AmsConfiguration.js'
 import { mathmlToOmml } from './mathml-to-omml.ts'
 
 /** LaTeX → MathML converter, or null if MathJax failed to initialize. */

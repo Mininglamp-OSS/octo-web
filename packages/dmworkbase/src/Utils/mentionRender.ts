@@ -1,3 +1,5 @@
+import { match } from "pinyin-pro";
+
 /**
  * Shared render-side helpers for the three-state mention model
  * (`@所有人` / `@所有AI` / member, with legacy `mention.all=1` support).
@@ -257,9 +259,14 @@ export function buildMentionDropdownItems<
     };
   });
 
-  const filteredMembers = items.filter((item) =>
-    item.name.toLowerCase().includes(trimmedQuery.toLowerCase()),
-  );
+  const normalizedQuery = trimmedQuery.toLowerCase();
+  const filteredMembers = items.filter((item) => {
+    const nameMatches = item.name.toLowerCase().includes(normalizedQuery);
+    const pinyinMatches =
+      normalizedQuery.length > 0 && match(item.name, normalizedQuery) !== null;
+
+    return nameMatches || pinyinMatches;
+  });
 
   return [...stickyTop, ...filteredMembers];
 }

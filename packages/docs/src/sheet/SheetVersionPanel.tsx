@@ -1,30 +1,26 @@
-// Version-history panel for spreadsheets — the sheet counterpart of the docs
-// VersionPanel. It reuses the version REST layer (versions/api.ts) and time
-// formatting (versions/format.ts) UNCHANGED; the only sheet-specific parts are:
-//   - preview renders the snapshot's CELLS (a read-only HTML grid) instead of a
-//     Tiptap document — the docs panel renders ProseMirror JSON, which for a sheet
-//     is empty (the cells live in the 'sheet' Yjs map, returned as `sheetCells`).
-//   - compare is a CELL-LEVEL change list (added / changed / removed) against the
-//     current live grid, not a text-block diff.
-//   - restore just calls the backend, which now reconciles the 'sheet' map onto the
-//     live doc (see octo-docs-backend liveRestore.ts); the grid updates via Yjs.
+// Sheet version-history panel — now a THIN ADAPTER over the unified <VersionHistoryPanel> shell
+// (XIN-842, following the doc adapter XIN-840). The shell owns everything shared across the doc /
+// sheet / board ends: the single mixed list with filter tabs (all / manual / auto) + counts +
+// load-more, save / rename / delete / restore, the in-panel restore confirm box, the unified race
+// guard, and the centered preview / diff modal (Esc / overlay-close / focus). This adapter injects
+// only the sheet-specific pieces:
+//   - loadPreviewState → GET /versions/:seq/state, reading the snapshot's `sheetCells` (the cells
+//     live in the 'sheet' Yjs map; the shared PM-JSON `doc` is empty for a spreadsheet),
+//   - renderPreview    → a read-only HTML <CellGrid> of the snapshot cells,
+//   - renderDiff       → a CELL-LEVEL change list (added / changed / removed) against the current
+//     live grid — reusing the existing diffCells + the octo-sheet-diff-list markup,
+//   - getCurrent       → the sheet's current cells read from the live Y.Doc (read-only).
 //
-// It does NOT modify any docs file, so it won't conflict with ongoing docs work.
+// Restore stays forward / non-destructive: the backend reconciles the 'sheet' map onto the live doc
+// (see octo-docs-backend liveRestore.ts) and the grid updates via Yjs — this panel never mutates the
+// sheet. The sheet-specific pure helpers (CellGrid / diffCells / colToA1 / parseKey / currentCells)
+// are preserved unchanged; only the panel chrome moved into the shell.
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import type { Role } from '../auth/roles.ts'
-import { canEdit, canManage } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
-import { formatRelative, formatAbsolute } from '../versions/format.ts'
-import {
-  listVersions,
-  createNamedVersion,
-  getVersionState,
-  restoreVersion,
-  renameVersion,
-  deleteVersion,
-  type VersionMeta,
-} from '../versions/api.ts'
+import { getVersionState } from '../versions/api.ts'
+import { VersionHistoryPanel } from '../versions/VersionHistoryPanel.tsx'
 import type { CollabSheet } from './CollabSheet.ts'
 
 type Cell = { v?: unknown; f?: string; s?: Record<string, unknown> }
@@ -161,6 +157,27 @@ function diffCells(from: CellMap, to: CellMap): DiffEntry[] {
   return out
 }
 
+/** The sheet's compare view: a cell-level change list against the current live grid. */
+function SheetDiffList({ from, to }: { from: CellMap; to: CellMap }) {
+  const diff = useMemo(() => diffCells(from, to), [from, to])
+  if (diff.length === 0) return <p className="octo-comment-empty">{t('docs.sheet.version.noDiff')}</p>
+  return (
+    <ul className="octo-sheet-diff-list" style={{ maxHeight: '52vh', overflow: 'auto', margin: 0, padding: 0, listStyle: 'none' }}>
+      {diff.map((d) => (
+        <li key={d.a1} style={{ padding: '3px 4px', borderBottom: '1px solid #eee', fontSize: 12 }}>
+          <span style={{ fontWeight: 600, marginRight: 6 }}>{d.a1}</span>
+          <span style={{ color: d.kind === 'added' ? '#16a34a' : d.kind === 'removed' ? '#dc2626' : '#d97706' }}>
+            {d.kind === 'added' ? t('docs.sheet.version.added') : d.kind === 'removed' ? t('docs.sheet.version.removed') : t('docs.sheet.version.changed')}
+          </span>
+          <span style={{ marginLeft: 8, opacity: 0.75 }}>
+            {d.from || t('docs.sheet.version.emptyCell')} → {d.to || t('docs.sheet.version.emptyCell')}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function SheetVersionPanel({
   docId,
   role,
@@ -170,241 +187,23 @@ export function SheetVersionPanel({
 }: {
   docId: string
   role: Role
+  /** Live sheet — read-only here; the "current" side of a diff, read from its Y.Doc. */
   sheet: CollabSheet | null
   names?: Map<string, string>
   onClose?: () => void
 }) {
-  const [items, setItems] = useState<VersionMeta[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  // Inline "save current version" compose row (mirror of the docs VersionPanel): a collapsed
-  // "保存当前版本" button expands to a name input + 保存/取消, instead of a native window.prompt.
-  const [snapshotOpen, setSnapshotOpen] = useState(false)
-  const [snapshotLabel, setSnapshotLabel] = useState('')
-
-  const [preview, setPreview] = useState<{ seq: number; cells: CellMap } | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
-  const [compare, setCompare] = useState(false)
-
-  const nameOf = (uid: string) => names?.get(uid) || uid
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await listVersions(docId, { kind: 'all', limit: 50 })
-      setItems(res.items)
-    } catch {
-      setError(t('docs.sheet.version.loadFailed'))
-    } finally {
-      setLoading(false)
-    }
-  }, [docId])
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-
-  const onCreateSnapshot = async () => {
-    if (busy) return
-    setBusy(true)
-    setError(null)
-    try {
-      await createNamedVersion(docId, snapshotLabel.trim() || undefined)
-      setSnapshotOpen(false)
-      setSnapshotLabel('')
-      await refresh()
-    } catch {
-      setError(t('docs.sheet.version.saveFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const onPreview = async (seq: number) => {
-    setPreviewLoading(true)
-    setCompare(false)
-    try {
-      const res = (await getVersionState(docId, seq)) as { sheetCells?: CellMap }
-      setPreview({ seq, cells: res.sheetCells ?? {} })
-    } catch {
-      setError(t('docs.sheet.version.previewFailed'))
-    } finally {
-      setPreviewLoading(false)
-    }
-  }
-
-  const onRestore = async (seq: number) => {
-    if (!window.confirm(t('docs.sheet.version.restoreConfirm'))) return
-    setBusy(true)
-    try {
-      await restoreVersion(docId, seq)
-      await refresh()
-      setPreview(null)
-    } catch {
-      setError(t('docs.sheet.version.restoreFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const onRename = async (seq: number, cur: string) => {
-    const label = window.prompt(t('docs.sheet.version.renamePrompt'), cur)
-    if (label === null || label.trim() === '') return
-    setBusy(true)
-    try {
-      await renameVersion(docId, seq, label.trim())
-      await refresh()
-    } catch {
-      setError(t('docs.sheet.version.renameFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const onDelete = async (seq: number) => {
-    if (!window.confirm(t('docs.sheet.version.deleteConfirm'))) return
-    setBusy(true)
-    try {
-      await deleteVersion(docId, seq)
-      if (preview?.seq === seq) setPreview(null)
-      await refresh()
-    } catch {
-      setError(t('docs.sheet.version.deleteFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const diff = useMemo(
-    () => (compare && preview ? diffCells(preview.cells, currentCells(sheet)) : null),
-    [compare, preview, sheet],
-  )
-
-  const kindLabel = (k: VersionMeta['kind']) =>
-    k === 'named' ? t('docs.sheet.version.kindNamed') : k === 'restore-marker' ? t('docs.sheet.version.kindRestore') : t('docs.sheet.version.kindAuto')
-
   return (
-    <section className="octo-comment-panel">
-      <div className="octo-member-row">
-        <h3 style={{ flex: 1, margin: 0 }}>{t('docs.sheet.version.title')}</h3>
-        {onClose && (
-          <button type="button" className="octo-tb-btn" onClick={onClose}>
-            {t('docs.comment.close')}
-          </button>
-        )}
-      </div>
-
-      {/* Save current version — inline compose row (mirror of the docs VersionPanel), replacing the
-          old native window.prompt: a collapsed button expands to a name input + 保存/取消. */}
-      {canEdit(role) && (
-        <div className="octo-version-save">
-          {snapshotOpen ? (
-            <div className="octo-member-row">
-              <input
-                className="octo-uid"
-                placeholder={t('docs.version.labelPlaceholder')}
-                value={snapshotLabel}
-                onChange={(e) => setSnapshotLabel(e.target.value)}
-                autoFocus
-              />
-              <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onCreateSnapshot()}>
-                {t('docs.version.save')}
-              </button>
-              <button
-                type="button"
-                className="octo-tb-btn"
-                disabled={busy}
-                onClick={() => {
-                  setSnapshotOpen(false)
-                  setSnapshotLabel('')
-                }}
-              >
-                {t('docs.version.cancel')}
-              </button>
-            </div>
-          ) : (
-            <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => setSnapshotOpen(true)}>
-              {t('docs.sheet.version.save')}
-            </button>
-          )}
-        </div>
-      )}
-
-      {error && <p className="octo-member-error">{error}</p>}
-
-      {preview && (
-        <div className="octo-sheet-preview" style={{ marginBottom: 12 }}>
-          <div className="octo-comment-actions" style={{ marginBottom: 6 }}>
-            <strong style={{ flex: 1 }}>{t('docs.sheet.version.preview')} · #{preview.seq}</strong>
-            <button type="button" className="octo-tb-btn" onClick={() => setCompare((c) => !c)}>
-              {compare ? t('docs.sheet.version.viewContent') : t('docs.sheet.version.compare')}
-            </button>
-            <button type="button" className="octo-tb-btn" onClick={() => setPreview(null)}>
-              {t('docs.sheet.version.closePreview')}
-            </button>
-          </div>
-          {compare && diff ? (
-            diff.length === 0 ? (
-              <p className="octo-comment-empty">{t('docs.sheet.version.noDiff')}</p>
-            ) : (
-              <ul className="octo-sheet-diff-list" style={{ maxHeight: '52vh', overflow: 'auto', margin: 0, padding: 0, listStyle: 'none' }}>
-                {diff.map((d) => (
-                  <li key={d.a1} style={{ padding: '3px 4px', borderBottom: '1px solid #eee', fontSize: 12 }}>
-                    <span style={{ fontWeight: 600, marginRight: 6 }}>{d.a1}</span>
-                    <span style={{ color: d.kind === 'added' ? '#16a34a' : d.kind === 'removed' ? '#dc2626' : '#d97706' }}>
-                      {d.kind === 'added' ? t('docs.sheet.version.added') : d.kind === 'removed' ? t('docs.sheet.version.removed') : t('docs.sheet.version.changed')}
-                    </span>
-                    <span style={{ marginLeft: 8, opacity: 0.75 }}>
-                      {d.from || t('docs.sheet.version.emptyCell')} → {d.to || t('docs.sheet.version.emptyCell')}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )
-          ) : (
-            <CellGrid cells={preview.cells} />
-          )}
-        </div>
-      )}
-
-      {loading && items.length === 0 && <p className="octo-loading">{t('docs.sheet.version.loading')}</p>}
-      {!loading && items.length === 0 && <p className="octo-comment-empty">{t('docs.sheet.version.empty')}</p>}
-
-      <ul className="octo-comment-list">
-        {items.map((v) => (
-          <li key={v.docVersionSeq} className={`octo-comment-thread${preview?.seq === v.docVersionSeq ? ' is-selected' : ''}`}>
-            <div className="octo-comment-head">
-              <span className="octo-comment-quote">{v.label || `#${v.docVersionSeq}`}</span>
-              <span className="octo-comment-time" title={formatAbsolute(v.createdAt)}>
-                {kindLabel(v.kind)} · {formatRelative(v.createdAt)}
-              </span>
-            </div>
-            <div className="octo-uid" style={{ fontSize: 12, opacity: 0.7 }}>{nameOf(v.createdBy)}</div>
-            <div className="octo-comment-actions">
-              <button type="button" className="octo-tb-btn" disabled={previewLoading} onClick={() => void onPreview(v.docVersionSeq)}>
-                {t('docs.sheet.version.preview')}
-              </button>
-              {canManage(role) && (
-                <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onRestore(v.docVersionSeq)}>
-                  {t('docs.sheet.version.restore')}
-                </button>
-              )}
-              {canEdit(role) && v.kind === 'named' && (
-                <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onRename(v.docVersionSeq, v.label)}>
-                  {t('docs.sheet.version.rename')}
-                </button>
-              )}
-              {canManage(role) && (
-                <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onDelete(v.docVersionSeq)}>
-                  {t('docs.sheet.version.delete')}
-                </button>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <VersionHistoryPanel<CellMap, CellMap>
+      docId={docId}
+      role={role}
+      names={names}
+      onClose={onClose}
+      loadPreviewState={(seq, signal) =>
+        getVersionState(docId, seq, signal).then((r) => (r as { sheetCells?: CellMap }).sheetCells ?? {})
+      }
+      renderPreview={(cells) => <CellGrid cells={cells} />}
+      renderDiff={(version, current) => <SheetDiffList from={version} to={current ?? {}} />}
+      getCurrent={() => currentCells(sheet)}
+    />
   )
 }

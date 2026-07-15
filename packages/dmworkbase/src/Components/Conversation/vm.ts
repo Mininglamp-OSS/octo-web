@@ -27,6 +27,11 @@ import { getPulldownRestoredScrollTop, getRestoredAnchorScrollTop } from "./hist
 import { applyMsgLevelExternalFieldsWithFallback } from "../../Service/Convert";
 import { wrapSendContentForInjection } from "./sendContentProxy";
 import { isMessageSelectable } from "../../Service/messageSelection";
+import {
+    addImConnectStatusListener,
+    handleImReconnectRefresh,
+    removeImConnectStatusListener,
+} from "../../im-runtime/connectStatus";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -1022,23 +1027,21 @@ export default class ConversationVM extends ProviderListener {
         // ⚠️ 必须在 didUnMount 成对 removeConnectStatusListener，否则页面切换
         // 累积 listener → 内存泄漏 + 重连时多实例并发拉首屏。
         this.connectStatusListener = (status: ConnectStatus) => {
-            if (status !== ConnectStatus.Connected) {
-                return
-            }
-            const now = Date.now()
-            if (now - this.lastReconnectRefreshAt < 5000) {
-                return
-            }
-            this.lastReconnectRefreshAt = now
-            this.requestMessagesOfFirstPage(0)
             // 断连期间的成员变更 CMD（加/减成员，含龙虾）随 WS 丢失，SDK 重连
             // 只 reSubscribe 不补拉，subscriberChangeListener 因此不会被触发，
             // 导致 subscribers 停在断连前旧快照 → @ 提及弹窗搜不到新成员。
             // 成员重同步自带独立节流（lastSubscriberResyncAt），不与上方消息补拉
             // 共用时间戳，修复 octo-web#567/#568。
-            this.resyncSubscribers()
+            handleImReconnectRefresh(status, {
+                getLastRefreshAt: () => this.lastReconnectRefreshAt,
+                setLastRefreshAt: (time) => {
+                    this.lastReconnectRefreshAt = time
+                },
+                refreshMessages: () => this.requestMessagesOfFirstPage(0),
+                resyncSubscribers: () => this.resyncSubscribers(),
+            })
         }
-        WKSDK.shared().connectManager.addConnectStatusListener(this.connectStatusListener)
+        addImConnectStatusListener(WKSDK.shared(), this.connectStatusListener)
 
         // 回前台补刷：合盖/息屏久后回到页面，WS 可能已断且成员变更事件已丢失。
         // App.tsx 的 visibilitychange/focus 只刷 remoteConfig，不碰成员，这里补上。
@@ -1108,7 +1111,7 @@ export default class ConversationVM extends ProviderListener {
         WKSDK.shared().chatManager.removeCMDListener(this.cmdListener)
 
         TypingManager.shared.removeTypingListener(this.typingListener)
-        WKSDK.shared().connectManager.removeConnectStatusListener(this.connectStatusListener)
+        removeImConnectStatusListener(WKSDK.shared(), this.connectStatusListener)
         WKSDK.shared().conversationManager.removeConversationListener(this.conversationListener)
         WKSDK.shared().channelManager.removeSubscriberChangeListener(this.subscriberChangeListener)
         WKSDK.shared().channelManager.removeListener(this.channelInfoListener)

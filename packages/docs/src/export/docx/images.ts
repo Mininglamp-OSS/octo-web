@@ -301,6 +301,7 @@ export function readIntrinsicSize(
 export function getImageDimensions(
   node: MdNode,
   buffer?: ArrayBuffer,
+  maxWidthPx?: number,
 ): { width: number; height: number } {
   const attrWidth =
     typeof node.attrs?.width === 'number' && Number.isFinite(node.attrs.width) && node.attrs.width > 0
@@ -321,19 +322,29 @@ export function getImageDimensions(
   if (intrinsic) ratio = intrinsic.height / intrinsic.width
   else if (attrWidth && attrHeight) ratio = attrHeight / attrWidth
 
+  // Effective width cap: the page-wide default, further tightened to the current
+  // container (e.g. a table cell) when a bound is supplied. Nested tables shrink
+  // the cell well below the page width, so without this an image keeps its
+  // page-scale width and overflows the cell.
+  const widthCap =
+    typeof maxWidthPx === 'number' && Number.isFinite(maxWidthPx) && maxWidthPx > 0
+      ? Math.min(MAX_IMAGE_WIDTH, maxWidthPx)
+      : MAX_IMAGE_WIDTH
+
   // Target display width: stored attr, else intrinsic, else default.
   let width = attrWidth ?? intrinsic?.width ?? DEFAULT_IMAGE.width
-  if (width > MAX_IMAGE_WIDTH) width = MAX_IMAGE_WIDTH
+  if (width > widthCap) width = widthCap
 
   // If we still have no real ratio, fall back to the legacy default box so we
   // never emit a zero/NaN dimension.
   if (!ratio || !Number.isFinite(ratio) || ratio <= 0) {
-    if (attrWidth) {
-      // Have a width but no ratio at all: keep the default box aspect.
-      const defRatio = DEFAULT_IMAGE.height / DEFAULT_IMAGE.width
-      return { width: Math.round(width), height: Math.round(width * defRatio) }
-    }
-    return { ...DEFAULT_IMAGE }
+    // Keep the default box aspect, but always honour the width cap so an image
+    // whose bytes we can't sniff (e.g. SVG/WebP, which readIntrinsicSize does
+    // not parse) and that carries no explicit width can't render at the full
+    // 400px default and overflow a narrow nested cell.
+    const defRatio = DEFAULT_IMAGE.height / DEFAULT_IMAGE.width
+    const boxWidth = attrWidth ? width : Math.min(DEFAULT_IMAGE.width, widthCap)
+    return { width: Math.round(boxWidth), height: Math.max(1, Math.round(boxWidth * defRatio)) }
   }
 
   return { width: Math.round(width), height: Math.max(1, Math.round(width * ratio)) }

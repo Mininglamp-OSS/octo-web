@@ -161,6 +161,30 @@ export function buildRunOptionsFromMarks(marks: MarkDef[]): IRunOptions {
             opts.size = Math.min(3276, Math.max(2, halfPoints))
           }
         }
+        // v16 fontFamily attr → docx run font. The attr holds a CSS font-family stack
+        // (e.g. `SimSun, "宋体", serif`); docx wants a single face name, so take the first
+        // family, strip quotes/whitespace, and drop generic CSS keywords (serif/sans-serif/…)
+        // which are not real .docx font names. Don't set `opts.font` for `code` — the code
+        // branch above already pinned FONT_CODE and must win.
+        const fontFamily = mark.attrs?.fontFamily
+        if (typeof fontFamily === 'string' && opts.font !== FONT_CODE) {
+          const face = fontFamily
+            .split(',')[0]
+            .replace(/["']/g, '')
+            .trim()
+          const GENERIC = new Set([
+            'serif',
+            'sans-serif',
+            'monospace',
+            'cursive',
+            'fantasy',
+            'system-ui',
+            'ui-serif',
+            'ui-sans-serif',
+            'ui-monospace',
+          ])
+          if (face && !GENERIC.has(face.toLowerCase())) opts.font = face
+        }
         break
       }
       case 'subscript':

@@ -1,0 +1,13 @@
+{
+  "menu": {
+    "title": "我的"
+  },
+  "nav": {
+    "runtime": "运行时",
+    "skill": "Skills"
+  },
+  "workspace": {
+    "loading": "正在加载工作区…",
+    "loadFailed": "工作区加载失败"
+  }
+}

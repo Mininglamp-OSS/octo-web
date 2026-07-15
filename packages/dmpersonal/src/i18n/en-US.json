@@ -1,0 +1,13 @@
+{
+  "menu": {
+    "title": "Personal"
+  },
+  "nav": {
+    "runtime": "Runtimes",
+    "skill": "Skills"
+  },
+  "workspace": {
+    "loading": "Loading workspace...",
+    "loadFailed": "Failed to load workspaces"
+  }
+}

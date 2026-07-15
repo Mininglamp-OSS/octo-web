@@ -40,6 +40,8 @@ export default function ConversationSelect({
     selectedChannels,
     inputValue,
     loading,
+    activeTab,
+    setActiveTab,
     setInputValue,
     toggleSelect,
     confirm,
@@ -126,6 +128,8 @@ export default function ConversationSelect({
       onToggleSelect={toggleSelect}
       onConfirm={confirm}
       onCancel={onCancel}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
       onItemVisible={requestChannelInfoIfNeeded}
       grant={grantConfig}
     />

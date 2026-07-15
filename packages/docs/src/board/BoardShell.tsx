@@ -20,6 +20,7 @@ import { useAccessRequests } from '../access-request/useAccessRequests.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
 import { canManage, canEdit } from '../auth/roles.ts'
 import { useDocDelete } from '../editor/useDocDelete.ts'
+import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { getDoc, getUserName } from '../pages/docsApi.ts'
 import type { Role } from '../auth/roles.ts'
 import type { ConnState } from '../collab/createCollabEditor.ts'
@@ -1147,19 +1148,20 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         </p>
       )}
 
-      {del.confirming && (
-        <div className="octo-docs-delete-confirm octo-doc-delete-confirm" role="alertdialog" aria-label={t('docs.doc.deleteConfirmTitle')}>
-          <p className="octo-docs-delete-confirm-text">{t('docs.doc.deleteConfirm')}</p>
-          <div className="octo-docs-delete-confirm-actions">
-            <button type="button" className="octo-tb-btn" disabled={del.deleting} onClick={del.cancel}>
-              {t('docs.doc.deleteCancel')}
-            </button>
-            <button type="button" className="octo-tb-btn octo-docs-delete-confirm-go" disabled={del.deleting} onClick={() => void del.confirm()}>
-              {t('docs.doc.delete')}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Delete confirm — the shared centered modal, identical to the document's and sheet's
+          delete dialog. Board-specific wording (title/message) with the generic delete/cancel
+          button labels. */}
+      <ConfirmModal
+        open={del.confirming}
+        title={t('docs.board.deleteConfirmTitle')}
+        message={t('docs.board.deleteConfirm')}
+        confirmLabel={t('docs.doc.delete')}
+        cancelLabel={t('docs.doc.deleteCancel')}
+        danger
+        busy={del.deleting}
+        onConfirm={() => void del.confirm()}
+        onCancel={del.cancel}
+      />
       {del.error && (
         <p className="octo-member-error" role="alert">
           {del.error}
@@ -1201,6 +1203,24 @@ export function BoardShell(props: BoardShellProps): ReactElement {
             </Excalidraw>
           </BoardErrorBoundary>
         )}
+
+        {/* Version history opens in a right-side DRAWER (decision #1), aligned with the doc / sheet
+            version panels (aside.octo-doc-drawer): the list + save / restore / rename / delete live
+            here, while the read-only scene preview pops in the shell's own centered modal (decision
+            #2). Anchored inside the relative canvas so it overlays only the canvas area, below the
+            header. Available to any role — reader+ can browse / preview; restore / delete gate to
+            admin inside the panel. */}
+        {versionOpen && (
+          <aside className="octo-doc-drawer octo-board-version-drawer" role="complementary">
+            <BoardVersionPanel
+              docId={docId}
+              role={role ?? 'reader'}
+              dark={dark}
+              names={names}
+              onClose={() => setVersionOpen(false)}
+            />
+          </aside>
+        )}
       </div>
 
       {/* Manage members opens a dedicated modal (mirrors the doc editor's #A4 modal, not a drawer). */}
@@ -1220,29 +1240,6 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               ownerId={ownerId}
               accessRequests={pendingAccess}
               onClose={() => setMembersOpen(false)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Version history opens a dedicated modal (like members), wide enough for the read-only scene
-          preview. Available to any role: reader+ can browse/preview, restore/delete gate to admin
-          inside the panel. */}
-      {versionOpen && (
-        <div className="octo-modal-overlay" role="presentation" onMouseDown={() => setVersionOpen(false)}>
-          <div
-            className="octo-modal octo-board-version-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('docs.board.version.title')}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <BoardVersionPanel
-              docId={docId}
-              role={role ?? 'reader'}
-              dark={dark}
-              names={names}
-              onClose={() => setVersionOpen(false)}
             />
           </div>
         </div>

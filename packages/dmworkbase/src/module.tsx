@@ -19,6 +19,7 @@ import { Smile, Scissors, ImagePlus, Paperclip, AtSign } from "lucide-react";
 import { Howl, Howler } from "howler";
 import WKApp, { FriendApply, FriendApplyState, ThemeMode } from "./App";
 import { isChannelSearchEnabled } from "./Components/ChannelSearch/feature";
+import ChatSearchEntryButton from "./Components/ChannelSearch/ChatSearchEntryButton";
 import ChannelQRCode from "./Components/ChannelQRCode";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
 import { IndexTableItem } from "./Components/IndexTable";
@@ -647,6 +648,24 @@ export default class BaseModule implements IModule {
     this.registerMessageContextMenus(); // 注册消息上下文菜单
 
     this.registerChatToolbars(); // 注册聊天工具栏
+    this.registerChannelHeaderRightItems(); // 注册频道头部右侧入口按钮
+  }
+
+  /**
+   * 频道头右侧入口按钮。dmworksummary / dmworktodo 各自注册了「智能总结」/「事项」
+   * 图标；这里注册「查找聊天内容」按钮，与信息栏入口 (channel.base.settingMessageHistory)
+   * 使用同一 feature 门禁 (isChannelSearchEnabled) 与同一打开效果，通过 mittBus
+   * 事件 wk:open-channel-search 通知 Pages/Chat 调 _openChannelSearchPanel()。
+   */
+  registerChannelHeaderRightItems() {
+    WKApp.endpoints.registerChannelHeaderRightItem(
+      "channelheader.search",
+      ({ channel }) => {
+        if (!isChannelSearchEnabled(channel)) return undefined;
+        return <ChatSearchEntryButton channel={channel} />;
+      },
+      4900, // 排在 matter (5000) / summary (5100) 之前
+    );
   }
 
   tipsAudio() {

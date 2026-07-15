@@ -1,7 +1,6 @@
 import {
   Channel,
   ChannelTypeGroup,
-  ChannelTypePerson,
   WKSDK,
 } from "wukongimjssdk";
 import WKApp from "../../App";
@@ -43,13 +42,17 @@ function selfSender(): ChannelSearchSender {
 // same data sources the backend allowlist builds from (§6.2). The server also
 // intersects with the authoritative allowlist, so a stale local cache is safe.
 //
-// v1 scope (YUJ-15): threads (channelType=5) get no dedicated picker in the
-// 「所在群聊」panel. Any thread that happens to appear in a recent
-// conversation will slip into the pool here (the conversation branch below
-// accepts ChannelTypeCommunityTopic), but we do NOT enumerate all threads of
-// the user's groups — a group-scoped thread picker is deferred. Thread hits
-// still surface via the 群聊 chip → channel_types=[2,5] fail-open path (see
-// GLOBAL_CHANNEL_TYPES_GROUP + GlobalSearchFilterPanel comment).
+// YUJ-30 bug 2: private conversations (channelType=1, DM) are excluded from
+// the candidate pool. The picker is now labeled 「所在群聊或子区」 and only
+// groups (channelType=2) + threads (channelType=5) belong there — a DM row
+// in this list was misleading and had no matching backend filter path.
+//
+// v1 scope (YUJ-15) note: threads that happen to appear in a recent
+// conversation get their own row in the pool (the conversation branch below
+// accepts ChannelTypeCommunityTopic). We still do NOT enumerate all threads
+// of the user's groups — a full group-scoped thread picker is deferred. Thread
+// hits from a picked *group* now expand to «group + all its threads» server-
+// side under the YUJ-30 unified rule (see 01-backend-search-global.md §3/§6).
 async function loadReadableChannelOptions(
   keyword: string
 ): Promise<GlobalSearchChannelOption[]> {
@@ -64,8 +67,9 @@ async function loadReadableChannelOptions(
   for (const conv of conversations) {
     const channel = conv.channel;
     if (!channel?.channelID) continue;
+    // Bug 2: only groups (2) + threads (5). DMs (ChannelTypePerson=1) are
+    // filtered out here so the picker never surfaces them.
     if (
-      channel.channelType !== ChannelTypePerson &&
       channel.channelType !== ChannelTypeGroup &&
       channel.channelType !== ChannelTypeCommunityTopic
     ) {

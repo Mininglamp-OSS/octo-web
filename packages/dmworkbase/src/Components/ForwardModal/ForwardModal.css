@@ -86,6 +86,12 @@
   color: rgba(28, 28, 35, 0.35);
 }
 
+/* 四 Tab 栏：夹在搜索框与列表之间，紧凑无外边距溢出 */
+.wk-fm-tabs {
+  margin: 0 var(--wk-sp-2, 8px);
+  flex-shrink: 0;
+}
+
 /* 可选列表 */
 .wk-fm-list {
   flex: 1;

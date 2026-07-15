@@ -23,18 +23,26 @@ describe("activeGlobalSearchFilterCount", () => {
     ).toBe(1);
   });
 
-  it("counts memberUid separately from senderUids", () => {
+  it("counts memberUids separately from senderUids", () => {
     expect(
       activeGlobalSearchFilterCount(
-        withOverrides({ senderUids: ["u1"], memberUid: "u9" })
+        withOverrides({ senderUids: ["u1"], memberUids: ["u9"] })
       )
     ).toBe(2);
+  });
+
+  it("counts multi-select memberUids as a single active filter", () => {
+    expect(
+      activeGlobalSearchFilterCount(
+        withOverrides({ memberUids: ["u1", "u2", "u3"] })
+      )
+    ).toBe(1);
   });
 
   it("counts each independent filter dimension exactly once", () => {
     const all = withOverrides({
       senderUids: ["u1"],
-      memberUid: "u9",
+      memberUids: ["u9"],
       channels: [{ channelId: "g1", channelType: 2 }],
       channelTypes: [1, 2],
       contentTypes: [1, 14],

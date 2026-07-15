@@ -18,9 +18,10 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import Highlight from '@tiptap/extension-highlight'
-import { TextStyle, FontSize } from '@tiptap/extension-text-style'
+import { TextStyle, FontSize, FontFamily } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import TextAlign from '@tiptap/extension-text-align'
+import { LineHeight } from './LineHeight.ts'
 import Underline from '@tiptap/extension-underline'
 import Superscript from '@tiptap/extension-superscript'
 import Subscript from '@tiptap/extension-subscript'
@@ -29,6 +30,7 @@ import { Mathematics } from '@tiptap/extension-mathematics'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
 import { BlockDragHandle } from './BlockDragHandle.ts'
+import { ParagraphIndent } from './ParagraphIndent.ts'
 import { Table } from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
@@ -50,9 +52,11 @@ import type { HocuspocusProvider } from '@hocuspocus/provider'
 // editor and the read-only preview pick up the math typography.
 import 'katex/dist/katex.min.css'
 
+import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { COLLAB_FIELD } from '../schema/index.ts'
+import { FONT_FAMILY_ENABLED } from '../config.ts'
 import { colorFromId, type OctoAwarenessUser } from '../awareness/presence.ts'
-import { sanitizeLinkHref } from './sanitize.ts'
+import { sanitizeLinkHref, stripPastedFontFamily } from './sanitize.ts'
 import { SlashCommand } from './SlashCommand.ts'
 import { FindReplace } from './findReplace.ts'
 import CharacterCount from '@tiptap/extension-character-count'
@@ -65,6 +69,70 @@ export function createDocsLowlight() {
 }
 
 const lowlight = createDocsLowlight()
+
+// SCHEMA_VERSION 16: FontFamily is registered UNCONDITIONALLY (schema must always know the
+// `fontFamily` textStyle attr so this bundle round-trips stored fonts faithfully). But the
+// FONT_FAMILY_ENABLED flag must gate every WRITE path, not just the toolbar selector. Paste is
+// the second write path: FontFamily.parseHTML(element.style.fontFamily) runs on pasted HTML
+// regardless of the flag, so a `<span style="font-family:…">` pasted from Word/browser would
+// land fontFamily in the shared Y.Doc while the flag is off — an older client (no attr in its
+// schema) opening the same doc then silently strips it (data loss). This paste guard strips the
+// inline font-family from pasted HTML while the flag is off; parsing/rendering already-stored
+// content is untouched (round-trip stays intact). When the flag is on, the transform is identity.
+// Exported so the paste-gate can be exercised through the real ProseMirror plugin (not by
+// calling the sanitizer directly) in fontFamilyPaste.test.ts.
+export const LiveFontFamily = FontFamily.extend({
+  // Harden the `fontFamily` textStyle attribute on the parse (write-from-HTML) path. Two jobs:
+  //
+  //  1. FLAG-OFF BACKSTOP. transformPastedHTML below strips font-family from pasted HTML, but
+  //     that textual pass keys on what it can see in the string. The authoritative gate is
+  //     here: parseHTML reads the *browser-resolved* `element.style.fontFamily`, so whatever
+  //     the CSSOM resolved a family to — including comment/escape/whitespace-encoded property
+  //     names that a purely textual strip might not model — is visible at this point. With the
+  //     write flag off we normalize that resolved family to null (the schema default), so NO
+  //     fontFamily value can reach the shared Y.Doc from any HTML parse, by construction. This
+  //     is a WRITE gate, not a read gate: collaborative round-trip loads from the Y.Doc (not
+  //     HTML parseHTML), and with the flag off no font is ever written to begin with, so there
+  //     is nothing legitimate to strip on read. When the flag is on this is a pass-through.
+  //  2. EMPTY→NULL (flag-on, universally correct). When the flag is on, a `font` shorthand whose
+  //     family the sanitizer removed (`font: 14px Georgia` → `font-size: 14px`) still parses
+  //     through here with `element.style.fontFamily === ""`; upstream would store that "" as a
+  //     real `fontFamily=""` key. An empty family is never meaningful, so we default it out to
+  //     null. A real family (flag on, or a stored font) is non-empty and passes through
+  //     untouched, so the toolbar write path and round-trip stay intact.
+  addGlobalAttributes() {
+    return (this.parent?.() ?? []).map((group) =>
+      group.attributes && 'fontFamily' in group.attributes
+        ? {
+            ...group,
+            attributes: {
+              ...group.attributes,
+              fontFamily: {
+                ...group.attributes.fontFamily,
+                parseHTML: (element: HTMLElement) => {
+                  if (!FONT_FAMILY_ENABLED) return null // flag-off backstop: nothing reaches the Y.Doc
+                  const family = (element.style.fontFamily ?? '').trim()
+                  return family === '' ? null : family
+                },
+              },
+            },
+          }
+        : group,
+    )
+  },
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin({
+        key: new PluginKey('fontFamilyPasteGate'),
+        props: {
+          transformPastedHTML: (html) =>
+            FONT_FAMILY_ENABLED ? html : stripPastedFontFamily(html),
+        },
+      }),
+    ]
+  },
+})
 
 export interface BuildExtensionsOptions {
   ydoc: Y.Doc
@@ -116,10 +184,32 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // 3.22.2); it adds a `fontSize` global attribute to the textStyle mark → <span
     // style="font-size:…">. MUST be registered after TextStyle (its carrier mark).
     FontSize,
-    // SCHEMA-SPEC §1 (SCHEMA_VERSION 5): text alignment. A global `textAlign` attr on the
+    // SCHEMA-SPEC §6 (SCHEMA_VERSION 16): font family. FontFamily also ships inside
+    // @tiptap/extension-text-style (there is no standalone @tiptap/extension-font-family at
+    // 3.22.2); it adds a `fontFamily` global attribute to the textStyle mark → <span
+    // style="font-family:…">. MUST be registered after TextStyle (its carrier mark), same as
+    // FontSize. Registered UNCONDITIONALLY — the schema must always know the attr so this bundle
+    // round-trips fonts faithfully and never strips them; the toolbar *entry* is what the
+    // FONT_FAMILY_ENABLED flag gates (Toolbar.tsx), not the schema. This is the byte-aligned
+    // counterpart of the backend fontFamily attr under the shared SCHEMA_VERSION 16 contract.
+    // Uses LiveFontFamily (FontFamily + a paste-write gate) so the FONT_FAMILY_ENABLED flag
+    // also covers the paste write path, not just the toolbar selector — see LiveFontFamily above.
+    LiveFontFamily,
     // heading + paragraph nodes (not a new node/mark) → style="text-align:…". Configured for
     // exactly those two types so lists/tables/etc. keep their own layout.
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    // SCHEMA-SPEC §1 (SCHEMA_VERSION 17): line spacing. Self-built global attrs lineHeight +
+    // spaceBefore/spaceAfter on heading + paragraph (no official Tiptap line-height extension),
+    // replicating TextAlign → merged into a single style="…" declaration. MUST be registered
+    // AFTER TextAlign so the canonical style property order (text-align; line-height; margin-top;
+    // margin-bottom) holds for byte-alignment with the backend toDOM. Two-sided sanitise.
+    LineHeight,
+    // SCHEMA-SPEC §16 (SCHEMA_VERSION 18): paragraph/heading indent. A global `indent` attr on
+    // the heading + paragraph nodes (not a new node/mark), rendered via margin-left and round-
+    // tripped as data-indent. Configured for the same two types as TextAlign so lists keep their
+    // own Tab/Shift-Tab sink/lift behavior untouched. Registered AFTER LineHeight so the
+    // margin-left declaration is appended last, matching the backend toDOM style order.
+    ParagraphIndent.configure({ types: ['heading', 'paragraph'] }),
     // SCHEMA-SPEC §3 (SCHEMA_VERSION 6): underline mark. StarterKit's bundled Underline is
     // disabled above; this standalone install is the single `underline` mark (same pattern as
     // the sanitised Link).
@@ -136,10 +226,10 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // ProseMirror's native drag pipeline, so moves sync as ordinary transactions.
     BlockDragHandle,
     // SCHEMA-SPEC §4 (SCHEMA_VERSION 4): tables. extension-table series pinned at
-    // 2.27.2 (matching the stack — v3 would pull a second Tiptap core). Column
-    // resizing is on; cells use a self-built NodeView (TableCellView) that gives
-    // ProseMirror explicit ignoreMutation/stopEvent rules so resize/remote DOM
-    // writes don't desync collaborative cursors (§3.2 requirement).
+    // 3.22.2 (matching the Tiptap core). Column resizing is on; cells use a
+    // self-built NodeView (TableCellView) that gives ProseMirror explicit
+    // ignoreMutation/stopEvent rules so resize/remote DOM writes don't desync
+    // collaborative cursors (§3.2 requirement).
     Table.configure({ resizable: true }),
     TableRow,
     TableHeader.extend({
@@ -227,9 +317,17 @@ export function buildPreviewExtensions(docId: string): Extensions {
     TextStyle,
     Color,
     // Mirror the live editor's schema-touching marks/attrs so a historical version renders
-    // faithfully (SCHEMA_VERSION 5–8): font size + alignment + underline + super/sub-script.
+    // faithfully (SCHEMA_VERSION 5–8, 16): font size + font family + alignment + underline +
+    // super/sub-script. FontFamily is mirrored here too so a stored `fontFamily` attr renders in
+    // the read-only preview/diff even while the live toolbar entry is flag-gated off.
     FontSize,
+    FontFamily,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    // Mirror the live editor's v17 line-spacing attrs so a historical version renders faithfully.
+    LineHeight,
+    // Mirror the v18 indent attr so a historical version / preview renders the same margin.
+    // Registered AFTER LineHeight, matching the live set's style order.
+    ParagraphIndent.configure({ types: ['heading', 'paragraph'] }),
     Underline,
     Superscript,
     Subscript,

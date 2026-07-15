@@ -186,11 +186,40 @@ describe('getImageDimensions — aspect ratio preservation', () => {
     expect(getImageDimensions(img())).toEqual({ width: 400, height: 300 })
   })
 
+  it('caps the default box to the container width when bytes are unsniffable (SVG/WebP in a narrow cell)', () => {
+    // Blocker regression: readIntrinsicSize does not parse SVG/WebP, so such an
+    // image with no explicit width has no ratio and no attrWidth. The default
+    // box must still honour the container cap instead of rendering at the full
+    // 400px default and overflowing a narrow nested cell.
+    const capped = getImageDimensions(img(), undefined, 90)
+    expect(capped.width).toBe(90)
+    // Default box aspect (4:3) preserved: 90 * 300/400 = 68 (rounded).
+    expect(capped.height).toBe(68)
+  })
+
   it('uses attr width+height ratio when buffer unreadable', () => {
     // no buffer, but both attrs present -> derive from attr ratio
     expect(getImageDimensions(img({ width: 200, height: 100 }))).toEqual({
       width: 200,
       height: 100,
     })
+  })
+
+  it('bounds width to the container cap when supplied (nested table cell)', () => {
+    // 16:9 image at 1600 wide inside a narrow (120px) nested cell -> shrink to
+    // 120 and keep the ratio, instead of the page-wide 600 cap that overflows.
+    expect(getImageDimensions(img(), pngOf(1600, 900), 120)).toEqual({ width: 120, height: 68 })
+  })
+
+  it('caps a stored width attr to the container cap too', () => {
+    // Explicit width 500 but the cell is only 90px wide -> shrink to 90.
+    const d = getImageDimensions(img({ width: 500 }), pngOf(1000, 500), 90)
+    expect(d.width).toBe(90)
+    expect(d.height).toBe(45)
+  })
+
+  it('ignores a container cap larger than the page cap (never upscales)', () => {
+    // A huge cap does not raise the 600 page cap.
+    expect(getImageDimensions(img(), pngOf(1600, 900), 5000)).toEqual({ width: 600, height: 338 })
   })
 })

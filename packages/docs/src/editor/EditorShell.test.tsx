@@ -35,7 +35,7 @@ vi.mock('../export/markdown.ts', () => ({
 // Stub the presentational children that take the live editor/provider — they are not under test.
 vi.mock('@tiptap/react', () => ({ EditorContent: () => null }))
 vi.mock('./Toolbar.tsx', () => ({ Toolbar: () => null, EditorBubbleMenu: () => null }))
-vi.mock('./TableControls.tsx', () => ({ TableBubbleMenu: () => null }))
+vi.mock('./TableControls.tsx', () => ({ TableContextMenu: () => null }))
 vi.mock('./Outline.tsx', () => ({ Outline: () => null }))
 vi.mock('./StatusBar.tsx', () => ({ StatusBar: () => null }))
 vi.mock('./PresenceBar.tsx', () => ({ PresenceBar: () => null }))
