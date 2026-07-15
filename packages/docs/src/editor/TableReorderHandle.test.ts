@@ -6,9 +6,17 @@ import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { TextSelection } from '@tiptap/pm/state'
-import { TableMap, moveTableColumn, moveTableRow, cellAround } from '@tiptap/pm/tables'
+import {
+  TableMap,
+  moveTableColumn,
+  moveTableRow,
+  cellAround,
+  addRowBefore,
+  addColumnBefore,
+} from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { TableReorderHandle, tableReorderPluginKey } from './TableReorderHandle.ts'
+import type { Transaction } from '@tiptap/pm/state'
+import { TableReorderHandle, tableReorderPluginKey, resolveDragSource } from './TableReorderHandle.ts'
 
 // octo-docs-backend#76: table row/column reorder. The drag handle UI is DOM/pointer-driven and
 // needs real layout (jsdom reports zero rects), so these tests exercise the reorder MOVE that a
@@ -74,8 +82,8 @@ function selectCell(editor: Editor, row: number, col: number): void {
     }
     return true
   })
-  const t = table as PMNode
-  const map = TableMap.get(t)
+  if (!table) throw new Error('no table')
+  const map = TableMap.get(table)
   const cellRel = map.map[row * map.width + col]
   const $inside = doc.resolve(tablePos + 1 + cellRel + 1)
   editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near($inside)))
@@ -86,6 +94,38 @@ afterEach(() => {
   editor?.destroy()
   editor = null
 })
+
+/** Absolute document position just before the cell at grid (row,col) — the same anchor the drag
+ * captures as `cellPos` at drag start. */
+function cellPosOf(editor: Editor, row: number, col: number): number {
+  const { doc } = editor.state
+  let table: PMNode | null = null
+  let tablePos = -1
+  doc.descendants((node, pos) => {
+    if (!table && node.type.name === 'table') {
+      table = node
+      tablePos = pos
+      return false
+    }
+    return true
+  })
+  if (!table) throw new Error('no table')
+  const map = TableMap.get(table)
+  const cellRel = map.map[row * map.width + col]
+  return tablePos + 1 + cellRel
+}
+
+/** Capture (without applying) the transaction a prosemirror-tables command would dispatch, so a
+ * test can read its mapping — this is how a concurrent REMOTE edit's mapping reaches the drag
+ * anchor in production (via the plugin `state.apply`). */
+function captureTr(editor: Editor, command: (state: Editor['state'], dispatch: (tr: Transaction) => void) => boolean): Transaction {
+  let captured: Transaction | null = null
+  command(editor.state, (tr) => {
+    captured = tr
+  })
+  if (!captured) throw new Error('command produced no transaction')
+  return captured
+}
 
 describe('TableReorderHandle extension', () => {
   it('registers its ProseMirror plugin', () => {
@@ -188,5 +228,177 @@ describe('merged-cell safety', () => {
     // Command reports it did nothing; the grid is unchanged (merge preserved).
     expect(moved).toBe(false)
     expect(grid(editor)).toEqual(before)
+  })
+})
+
+// octo-docs-backend#76 review (Jerry-Xin, CHANGES_REQUESTED): the blocking collab correctness bug.
+// A drag captures its source row/column at drag start; during the drag a remote collaborator may
+// insert or delete rows/columns ABOVE the dragged one, remapping the document. The fix remaps the
+// drag's cell POSITION through each incoming transaction (plugin state.apply) and re-derives the
+// source INDEX from that remapped position at drop time via `resolveDragSource`, so the reorder
+// still moves the row/column the user grabbed — not whatever now sits at the stale drag-start index.
+describe('concurrent reorder remapping (collaboration correctness)', () => {
+  it('RED: the stale drag-start row index moves the WRONG row after a remote insert above', () => {
+    editor = makeEditor(
+      '<table><tbody>' +
+        '<tr><td><p>r1c1</p></td><td><p>r1c2</p></td></tr>' +
+        '<tr><td><p>r2c1</p></td><td><p>r2c2</p></td></tr>' +
+        '<tr><td><p>r3c1</p></td><td><p>r3c2</p></td></tr>' +
+        '</tbody></table>',
+    )
+    // Drag starts on row index 2 ("r3"). This is the value the OLD code stored and reused at drop.
+    const staleFromIndex = 2
+
+    // A remote peer inserts a blank row above the whole table (caret in row 0, addRowBefore).
+    selectCell(editor, 0, 0)
+    editor.view.dispatch(captureTr(editor, addRowBefore))
+    expect(grid(editor)).toEqual([
+      ['', ''],
+      ['r1c1', 'r1c2'],
+      ['r2c1', 'r2c2'],
+      ['r3c1', 'r3c2'],
+    ])
+
+    // Reordering with the stale index moves index 2 — now "r2", NOT the grabbed "r3". This is the
+    // reviewer's bug: the wrong row moves.
+    selectCell(editor, staleFromIndex, 0)
+    moveTableRow({ from: staleFromIndex, to: 0 })(editor.state, editor.view.dispatch)
+    expect(grid(editor)[0]).toEqual(['r2c1', 'r2c2']) // wrong row bubbled to the top
+    expect(grid(editor)[0]).not.toEqual(['r3c1', 'r3c2'])
+  })
+
+  it('GREEN: remapping the drag source keeps the move on the original row under a remote insert', () => {
+    editor = makeEditor(
+      '<table><tbody>' +
+        '<tr><td><p>r1c1</p></td><td><p>r1c2</p></td></tr>' +
+        '<tr><td><p>r2c1</p></td><td><p>r2c2</p></td></tr>' +
+        '<tr><td><p>r3c1</p></td><td><p>r3c2</p></td></tr>' +
+        '</tbody></table>',
+    )
+    // Drag starts on row 2 ("r3"); capture its cell position, exactly like beginDrag.
+    let cellPos = cellPosOf(editor, 2, 0)
+    expect(resolveDragSource(editor.state.doc, cellPos)?.rect.top).toBe(2)
+
+    // Remote peer inserts a blank row above; remap the drag anchor through that transaction's
+    // mapping (the plugin state.apply does this in production).
+    selectCell(editor, 0, 0)
+    const remoteTr = captureTr(editor, addRowBefore)
+    cellPos = remoteTr.mapping.map(cellPos)
+    editor.view.dispatch(remoteTr)
+
+    // The remapped anchor now resolves to grid row index 3 — the grabbed "r3" shifted down by one.
+    const source = resolveDragSource(editor.state.doc, cellPos)
+    expect(source?.rect.top).toBe(3)
+
+    // Move using the RE-DERIVED index → the original row moves, not the stale index's neighbour.
+    const fromIndex = source!.rect.top
+    selectCell(editor, fromIndex, 0)
+    moveTableRow({ from: fromIndex, to: 0 })(editor.state, editor.view.dispatch)
+    expect(grid(editor)[0]).toEqual(['r3c1', 'r3c2'])
+    expect(grid(editor)).toEqual([
+      ['r3c1', 'r3c2'],
+      ['', ''],
+      ['r1c1', 'r1c2'],
+      ['r2c1', 'r2c2'],
+    ])
+  })
+
+  it('GREEN: remapping the drag source survives a remote row DELETE above', () => {
+    editor = makeEditor(
+      '<table><tbody>' +
+        '<tr><td><p>r1c1</p></td><td><p>r1c2</p></td></tr>' +
+        '<tr><td><p>r2c1</p></td><td><p>r2c2</p></td></tr>' +
+        '<tr><td><p>r3c1</p></td><td><p>r3c2</p></td></tr>' +
+        '</tbody></table>',
+    )
+    // Drag starts on row 2 ("r3").
+    let cellPos = cellPosOf(editor, 2, 0)
+    expect(resolveDragSource(editor.state.doc, cellPos)?.rect.top).toBe(2)
+
+    // Remote peer deletes row 0 ("r1"). Build the delete as a transaction and remap through it.
+    const { doc } = editor.state
+    let firstRowStart = -1
+    let firstRowEnd = -1
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'tableRow' && firstRowStart < 0) {
+        firstRowStart = pos
+        firstRowEnd = pos + node.nodeSize
+        return false
+      }
+      return true
+    })
+    const remoteTr = editor.state.tr.delete(firstRowStart, firstRowEnd)
+    cellPos = remoteTr.mapping.map(cellPos)
+    editor.view.dispatch(remoteTr)
+    expect(grid(editor)).toEqual([
+      ['r2c1', 'r2c2'],
+      ['r3c1', 'r3c2'],
+    ])
+
+    // "r3" is now at index 1; the remapped anchor tracks it.
+    const source = resolveDragSource(editor.state.doc, cellPos)
+    expect(source?.rect.top).toBe(1)
+
+    const fromIndex = source!.rect.top
+    selectCell(editor, fromIndex, 0)
+    moveTableRow({ from: fromIndex, to: 0 })(editor.state, editor.view.dispatch)
+    expect(grid(editor)).toEqual([
+      ['r3c1', 'r3c2'],
+      ['r2c1', 'r2c2'],
+    ])
+  })
+
+  it('GREEN: remaps the drag source across a concurrent column insert to the left', () => {
+    editor = makeEditor(
+      '<table><tbody>' +
+        '<tr><td><p>a1</p></td><td><p>b1</p></td><td><p>c1</p></td></tr>' +
+        '<tr><td><p>a2</p></td><td><p>b2</p></td><td><p>c2</p></td></tr>' +
+        '</tbody></table>',
+    )
+    // Drag starts on column 2 ("c").
+    let cellPos = cellPosOf(editor, 0, 2)
+    expect(resolveDragSource(editor.state.doc, cellPos)?.rect.left).toBe(2)
+
+    // Remote peer inserts a column to the left of column 0.
+    selectCell(editor, 0, 0)
+    const remoteTr = captureTr(editor, addColumnBefore)
+    cellPos = remoteTr.mapping.map(cellPos)
+    editor.view.dispatch(remoteTr)
+
+    // The grabbed column "c" shifted from index 2 to index 3.
+    const source = resolveDragSource(editor.state.doc, cellPos)
+    expect(source?.rect.left).toBe(3)
+
+    const fromIndex = source!.rect.left
+    selectCell(editor, 0, fromIndex)
+    moveTableColumn({ from: fromIndex, to: 0 })(editor.state, editor.view.dispatch)
+    // Column "c" lands first; the freshly inserted blank column and the rest follow.
+    expect(grid(editor)[0]).toEqual(['c1', '', 'a1', 'b1'])
+  })
+
+  it('a drop whose source cell was deleted by a collaborator resolves to null (safe no-op)', () => {
+    editor = makeEditor(
+      '<table><tbody>' +
+        '<tr><td><p>r1c1</p></td><td><p>r1c2</p></td></tr>' +
+        '<tr><td><p>r2c1</p></td><td><p>r2c2</p></td></tr>' +
+        '</tbody></table>',
+    )
+    const cellPos = cellPosOf(editor, 1, 0)
+    // Remote peer deletes the whole table — the source can no longer resolve.
+    const { doc } = editor.state
+    let tableStart = -1
+    let tableEnd = -1
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'table') {
+        tableStart = pos
+        tableEnd = pos + node.nodeSize
+        return false
+      }
+      return true
+    })
+    const remoteTr = editor.state.tr.delete(tableStart, tableEnd)
+    const mapped = remoteTr.mapping.map(cellPos)
+    editor.view.dispatch(remoteTr)
+    expect(resolveDragSource(editor.state.doc, mapped)).toBeNull()
   })
 })

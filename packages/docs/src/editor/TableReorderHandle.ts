@@ -82,6 +82,53 @@ function tableElementAt(view: EditorView, tablePos: number): HTMLElement | null 
   return inner instanceof HTMLElement ? inner : dom
 }
 
+/** Re-resolve a drag's source cell against a document, by the position just before it.
+ *
+ * The blocking collab bug (octo-docs-backend#76 review): `beginDrag` captures the source
+ * row/column index and cell position as ABSOLUTE values at drag start. On drop, `runMove` used
+ * those stale numbers directly — but this is a y-prosemirror collaborative editor, so a remote
+ * peer inserting or deleting a row/column ABOVE the dragged one during the drag remaps the
+ * document; the stale index then points at a DIFFERENT row/column and the reorder moves the
+ * wrong one (a correctness defect, not a crash).
+ *
+ * The fix has two halves that meet here: (1) the drag's `cellPos` is remapped through every
+ * transaction that arrives mid-drag (the plugin `state.apply` below maps it via `tr.mapping`, so
+ * it keeps pointing at the SAME cell across concurrent edits), and (2) at drop / hover time we
+ * re-derive the live grid index from that remapped position with this helper instead of trusting
+ * the drag-start index. Returns null when the source cell no longer resolves (e.g. a collaborator
+ * deleted it), which makes the drop a safe no-op rather than a mis-move. */
+export function resolveDragSource(
+  doc: PMNode,
+  cellPos: number,
+): { tableStart: number; rect: { left: number; top: number; right: number; bottom: number }; cellPos: number } | null {
+  if (cellPos < 0 || cellPos + 1 > doc.content.size) return null
+  let $inside
+  try {
+    $inside = doc.resolve(cellPos + 1)
+  } catch {
+    return null
+  }
+  let depth = -1
+  for (let d = $inside.depth; d > 0; d--) {
+    if ($inside.node(d).type.spec.tableRole === 'table') {
+      depth = d
+      break
+    }
+  }
+  if (depth < 0) return null
+  const table = $inside.node(depth)
+  const tableStart = $inside.start(depth)
+  const $cell = cellAround($inside)
+  if (!$cell) return null
+  const map = TableMap.get(table)
+  try {
+    const rect = map.findCell($cell.pos - tableStart)
+    return { tableStart, rect, cellPos: $cell.pos }
+  } catch {
+    return null
+  }
+}
+
 function cellContextAt(view: EditorView, clientX: number, clientY: number): CellContext | null {
   const found = view.posAtCoords({ left: clientX, top: clientY })
   if (!found) return null
@@ -104,12 +151,16 @@ function cellContextAt(view: EditorView, clientX: number, clientY: number): Cell
   return { table, tableStart, tablePos, map, rect, cellPos: $cell.pos }
 }
 
-/** State captured at drag start: which axis, the source row/column index, and enough table
- * identity to (a) confirm a drop lands in the SAME table and (b) place the selection back
- * inside the source before running the move command. */
+/** State captured at drag start: which axis, plus enough table/cell identity to (a) confirm a
+ * drop lands in the SAME table and (b) place the selection back inside the source before running
+ * the move command. `cellPos`, `tableStart` and `tablePos` are POSITIONS, remapped through every
+ * transaction that arrives during the drag (see the plugin `state.apply`), so they survive
+ * concurrent remote edits. The source row/column INDEX is intentionally NOT stored: it is
+ * re-derived from the (remapped) `cellPos` via `resolveDragSource` at hover/drop time, so a
+ * collaborator changing the grid above the dragged row/column can never leave us moving a stale
+ * index (octo-docs-backend#76 review fix). */
 interface DragState {
   kind: 'row' | 'col'
-  index: number
   tableStart: number
   tablePos: number
   cellPos: number
@@ -175,8 +226,18 @@ export const TableReorderHandle = Extension.create({
     // a higher index lands AFTER it. A drop on the source itself shows nothing (it's a no-op).
     const showIndicator = (view: EditorView, ctx: CellContext) => {
       if (!indicator || !drag) return
+      // Re-derive the source index from the (remapped) cellPos against the CURRENT doc, so a
+      // concurrent remote insert/delete above the dragged row/column shifts the caret and the
+      // drop-direction test onto the row/column the user actually grabbed.
+      const source = resolveDragSource(view.state.doc, drag.cellPos)
+      if (!source) {
+        dropIndex = null
+        hideIndicator()
+        return
+      }
+      const srcIndex = drag.kind === 'col' ? source.rect.left : source.rect.top
       const hovered = drag.kind === 'col' ? ctx.rect.left : ctx.rect.top
-      if (hovered === drag.index) {
+      if (hovered === srcIndex) {
         dropIndex = null
         hideIndicator()
         return
@@ -187,7 +248,7 @@ export const TableReorderHandle = Extension.create({
       const base = (view.dom as HTMLElement).getBoundingClientRect()
       const cell = cellDom.getBoundingClientRect()
       const table = tableDom.getBoundingClientRect()
-      const before = hovered < drag.index
+      const before = hovered < srcIndex
 
       indicator.style.display = 'block'
       if (drag.kind === 'col') {
@@ -211,25 +272,38 @@ export const TableReorderHandle = Extension.create({
     // source row/column — a pure selection change (no doc edit, so y-prosemirror ignores it) —
     // then dispatch the single-transaction move on the updated state.
     const runMove = (view: EditorView) => {
-      if (!drag || dropIndex == null || dropIndex === drag.index) {
+      if (!drag || dropIndex == null) {
         reorderDebug({ phase: 'drop', dispatched: false, reason: 'no valid target', drag, dropIndex })
         return
       }
-      const { doc } = view.state
-      if (drag.cellPos + 1 > doc.content.size) return
+      // Re-resolve the source cell against the CURRENT doc from its remapped position, then take
+      // the move's `from` from the live grid rect — never the drag-start index. Under concurrent
+      // collaboration a remote peer may have inserted/deleted rows or columns above the dragged
+      // one during the drag; the stale index would move the wrong row/column, but the remapped
+      // cellPos still identifies the original cell (octo-docs-backend#76 review fix).
+      const source = resolveDragSource(view.state.doc, drag.cellPos)
+      if (!source) {
+        reorderDebug({ phase: 'drop', dispatched: false, reason: 'source no longer resolves', drag, dropIndex })
+        return
+      }
+      const fromIndex = drag.kind === 'col' ? source.rect.left : source.rect.top
+      if (dropIndex === fromIndex) {
+        reorderDebug({ phase: 'drop', dispatched: false, reason: 'no-op (same index)', from: fromIndex, dropIndex })
+        return
+      }
       let $inside
       try {
-        $inside = doc.resolve(drag.cellPos + 1)
+        $inside = view.state.doc.resolve(source.cellPos + 1)
       } catch {
         return
       }
       view.dispatch(view.state.tr.setSelection(TextSelection.near($inside)))
       const command =
         drag.kind === 'col'
-          ? moveTableColumn({ from: drag.index, to: dropIndex })
-          : moveTableRow({ from: drag.index, to: dropIndex })
+          ? moveTableColumn({ from: fromIndex, to: dropIndex })
+          : moveTableRow({ from: fromIndex, to: dropIndex })
       const dispatched = command(view.state, view.dispatch)
-      reorderDebug({ phase: 'dispatch', kind: drag.kind, from: drag.index, to: dropIndex, dispatched })
+      reorderDebug({ phase: 'dispatch', kind: drag.kind, from: fromIndex, to: dropIndex, dispatched })
       view.focus()
     }
 
@@ -299,12 +373,11 @@ export const TableReorderHandle = Extension.create({
       event.preventDefault()
       drag = {
         kind,
-        index: kind === 'col' ? hover.rect.left : hover.rect.top,
         tableStart: hover.tableStart,
         tablePos: hover.tablePos,
         cellPos: hover.cellPos,
       }
-      reorderDebug({ phase: 'begin', kind, index: drag.index })
+      reorderDebug({ phase: 'begin', kind, index: kind === 'col' ? hover.rect.left : hover.rect.top })
       dropIndex = null
       activeView = view
       document.body.classList.add('octo-table-reordering')
@@ -315,6 +388,26 @@ export const TableReorderHandle = Extension.create({
     return [
       new Plugin({
         key: tableReorderPluginKey,
+        // Keep an in-flight drag's captured positions valid across every transaction that lands
+        // during the drag — crucially the REMOTE ones y-prosemirror applies for collaborators.
+        // Mapping `cellPos`/`tablePos`/`tableStart` through `tr.mapping` means a peer inserting or
+        // deleting rows/columns above the dragged one shifts our anchors with the document, so the
+        // drop still targets the original row/column (octo-docs-backend#76 review fix). This state
+        // holds no value of its own; it exists only for the mapping side effect on the drag anchor.
+        state: {
+          init: () => null,
+          apply: (tr) => {
+            if (drag && tr.docChanged) {
+              drag = {
+                ...drag,
+                cellPos: tr.mapping.map(drag.cellPos),
+                tablePos: tr.mapping.map(drag.tablePos),
+                tableStart: tr.mapping.map(drag.tableStart),
+              }
+            }
+            return null
+          },
+        },
         view(view) {
           const wrapper = view.dom.parentElement
           rowHandle = document.createElement('div')
