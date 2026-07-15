@@ -1153,6 +1153,8 @@
   "voiceInput.status.transcribingDots": "转写中...",
   "voiceInput.title.input": "语音输入",
   "voiceInput.title.inputLongPress": "语音输入 (长按 Shift)",
+  "voiceInput.triggerKey.switchedToRight": "语音输入键已切换为右 Shift",
+  "voiceInput.triggerKey.switchedToLeft": "语音输入键已切换为左 Shift",
   "voiceInput.title.networkUnavailable": "网络不可用",
   "todo.outputs.tabLabel": "产出文件",
   "todo.outputs.emptySearch": "没有匹配的产出文件",
