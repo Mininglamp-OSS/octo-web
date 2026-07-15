@@ -10,7 +10,7 @@
 // "让 AI 处理" click forwards an instruction to chat (openDocForward). The two are decoupled.
 
 import { useCallback, useEffect, useState } from 'react'
-import { canForwardToChat, openDocForward, t } from '../octoweb/index.ts'
+import { canForwardToChat, openDocForward, t, getWKApp } from '../octoweb/index.ts'
 import {
   createComment,
   formatCommentTime,
@@ -60,15 +60,40 @@ function authorName(author: OctoDocAuthor | null | undefined): string {
   return author?.name || author?.login || t('docs.comment.anonymous')
 }
 
+/**
+ * Resolve a comment author's avatar URL. Prefer the backend-supplied avatar_url when present;
+ * otherwise derive it from the author uid (author.login) the same way collaborator avatars do:
+ * the octo-server `/v1/users/<uid>/avatar` image endpoint, reached via the same-origin `/api/v1/`
+ * proxy. This makes comment avatars work for ALL comments (incl. history) without the verify API
+ * having to return an avatar. Returns null when no uid is available (→ initial-letter fallback).
+ */
+function avatarUrlFor(author: OctoDocAuthor | null | undefined): string | null {
+  if (author?.avatar_url) return author.avatar_url
+  let uid = author?.login?.trim()
+  if (!uid) return null
+  // Strip the Space-scoped prefix (s<spaceId>_) so we address the raw uid, mirroring
+  // WKApp.avatarUser()'s handling of person channel ids.
+  const spaceId = getWKApp().shared?.currentSpaceId
+  if (spaceId && uid.startsWith(`s${spaceId}_`)) {
+    uid = uid.substring(spaceId.length + 2)
+  }
+  if (!uid) return null
+  return `/api/v1/users/${encodeURIComponent(uid)}/avatar`
+}
+
 /** Author + time line shown under each root comment and reply. */
 function CommentMeta({ author, createdAt }: { author?: OctoDocAuthor | null; createdAt?: string | null }) {
   const name = authorName(author)
   const time = formatCommentTime(createdAt)
   const initial = name.slice(0, 1).toUpperCase()
+  const avatarUrl = avatarUrlFor(author)
+  // Fall back to the initial-letter chip if the avatar image fails to load (missing user / non-image).
+  const [imgFailed, setImgFailed] = useState(false)
+  const showImg = !!avatarUrl && !imgFailed
   return (
     <div className="octo-html-doc-comment-meta">
-      {author?.avatar_url ? (
-        <img className="octo-avatar" src={author.avatar_url} alt="" title={name} />
+      {showImg ? (
+        <img className="octo-avatar" src={avatarUrl} alt="" title={name} onError={() => setImgFailed(true)} />
       ) : (
         <span className="octo-avatar" title={name} aria-hidden="true">
           {initial}
