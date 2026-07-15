@@ -298,6 +298,14 @@ export const TableReorderHandle = Extension.create({
     let dragBaseline: string | null = null
     let dragBaselineCount = 0
     let concurrentEdit = false
+    // Latches true once we have seen a mid-drag mousemove that actually reports the primary button
+    // held (`buttons & 1`). It gates the "released outside the window" abort below: that abort must
+    // only fire on a genuine release, i.e. AFTER the button was observed down. Some event sources
+    // deliver a drag whose moves never set `buttons` (a synthetic MouseEvent built without it, a raw
+    // CDP `Input.dispatchMouseEvent` that omits the field) — those report `buttons === 0` for the
+    // whole drag even though a real button is logically down, and treating the first such move as a
+    // release wrongly cancelled the reorder (octo-docs-backend#76 / XIN-1215 headed-Chromium repro).
+    let pointerHeldSeen = false
 
     const hideHandles = () => {
       if (rowHandle) rowHandle.style.display = 'none'
@@ -454,6 +462,7 @@ export const TableReorderHandle = Extension.create({
       dragBaseline = null
       dragBaselineCount = 0
       concurrentEdit = false
+      pointerHeldSeen = false
       document.body.classList.remove('octo-table-reordering')
       hideIndicator()
       hideHandles()
@@ -488,7 +497,18 @@ export const TableReorderHandle = Extension.create({
       // re-enters. Treat it as an interruption, NOT a drop: abort with zero dispatch. Without this
       // the drag stays armed and the NEXT stray mouseup would wrongly commit the reorder — the
       // "interrupted drag still reordered the table" defect (octo-docs-backend#76 FAIL-1).
-      if (event.buttons === 0) {
+      //
+      // Gate this on `pointerHeldSeen`: only abort once a mid-drag move has actually reported the
+      // button held. A drag whose moves never carry `buttons` (a hand-built MouseEvent, a raw CDP
+      // mouse event that omits the field) reports `buttons === 0` throughout even though the button
+      // is logically down; without the gate the very first such move cancelled a perfectly good
+      // reorder — which is exactly what made the handle look "unusable" under headed-Chromium
+      // automation while a real held-button drag (buttons === 1) worked (octo-docs-backend#76 /
+      // XIN-1215). A genuine release is always preceded by at least one held move, so the gate keeps
+      // FAIL-1 intact.
+      if ((event.buttons & 1) !== 0) {
+        pointerHeldSeen = true
+      } else if (pointerHeldSeen) {
         cancelDrag()
         return
       }
@@ -563,6 +583,7 @@ export const TableReorderHandle = Extension.create({
       dragBaseline = tableStructureSignature(view.state.doc, hover.cellPos)
       dragBaselineCount = dragBaseline === null ? 0 : countTableSignature(view.state.doc, dragBaseline)
       concurrentEdit = false
+      pointerHeldSeen = false
       reorderDebug({ phase: 'begin', kind, index: kind === 'col' ? hover.rect.left : hover.rect.top })
       dropIndex = null
       activeView = view
@@ -654,6 +675,7 @@ export const TableReorderHandle = Extension.create({
               dragBaseline = null
               dragBaselineCount = 0
               concurrentEdit = false
+              pointerHeldSeen = false
             },
           }
         },
