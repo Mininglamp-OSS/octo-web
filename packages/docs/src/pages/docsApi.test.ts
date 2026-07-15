@@ -3,6 +3,8 @@ import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
 import {
   listDocs,
+  listRecentDocs,
+  listRecentCreators,
   createDoc,
   getDoc,
   getUserName,
@@ -134,6 +136,49 @@ describe('docs list/create API (bare-relative /docs)', () => {
       throw { response: { status: 409 } }
     }
     await expect(deleteDoc('d_arch')).rejects.toMatchObject({ response: { status: 409 } })
+  })
+})
+
+// The recent tab is the default landing surface, so its list/creators GETs must degrade to an
+// empty result — never throw — when the backend is not yet deployed (404) or errors (5xx).
+// Otherwise useDocsView's `.catch` flips the default tab into the error phase on first paint.
+describe('recent feed resilience (not-yet-deployed backend degrades to empty)', () => {
+  it('listRecentDocs returns an empty page instead of rejecting on a 404/5xx', async () => {
+    api.responder = () => {
+      throw { response: { status: 404 } }
+    }
+    await expect(listRecentDocs({ q: 'x' })).resolves.toEqual({
+      total: 0,
+      items: [],
+      nextCursor: null,
+    })
+  })
+
+  it('listRecentDocs still parses a normal 200 body', async () => {
+    api.responder = () => ({
+      data: {
+        total: 2,
+        items: [{ docId: 'd_r', title: 'Recent', ownerId: 'u0', role: 'admin', viewedAt: 't' }],
+        nextCursor: 'cur_1',
+      },
+      status: 200,
+    })
+    const res = await listRecentDocs()
+    expect(res.items).toHaveLength(1)
+    expect(res.nextCursor).toBe('cur_1')
+    expect(api.calls.at(-1)!.url).toContain('/docs/recent')
+  })
+
+  it('listRecentCreators returns [] instead of rejecting on a 404/5xx', async () => {
+    api.responder = () => {
+      throw { response: { status: 500 } }
+    }
+    await expect(listRecentCreators('x')).resolves.toEqual([])
+  })
+
+  it('listRecentCreators still parses a normal 200 body', async () => {
+    api.responder = () => ({ data: { creators: [{ uid: 'u1', name: 'Ada' }] }, status: 200 })
+    expect(await listRecentCreators()).toEqual([{ uid: 'u1', name: 'Ada' }])
   })
 })
 

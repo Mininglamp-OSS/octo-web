@@ -127,14 +127,21 @@ export async function listRecentDocs(params: RecentDocsParams = {}): Promise<Rec
   if (params.cursor) q.set('cursor', params.cursor)
   if (params.pageSize) q.set('pageSize', String(params.pageSize))
   const qs = q.toString()
-  const { data } = await apiClient().get<Partial<RecentDocsResult>>(
-    `/docs/recent${qs ? `?${qs}` : ''}`,
-  )
-  const items = data?.items ?? []
-  return {
-    total: data?.total ?? items.length,
-    items,
-    nextCursor: data?.nextCursor ?? null,
+  try {
+    const { data } = await apiClient().get<Partial<RecentDocsResult>>(
+      `/docs/recent${qs ? `?${qs}` : ''}`,
+    )
+    const items = data?.items ?? []
+    return {
+      total: data?.total ?? items.length,
+      items,
+      nextCursor: data?.nextCursor ?? null,
+    }
+  } catch {
+    // Degrade to an empty page when the endpoint is not yet deployed (404) or errors (5xx). A
+    // rejected request would otherwise bubble to useDocsView's `.catch` and flip the default tab to
+    // the error phase; the contract (and the JSDoc above) is an empty list, mirroring recordDocView.
+    return { total: 0, items: [], nextCursor: null }
   }
 }
 
@@ -150,10 +157,16 @@ export async function listRecentCreators(q?: string): Promise<CreatorOption[]> {
   const term = (q ?? '').trim()
   if (term) params.set('q', term)
   const qs = params.toString()
-  const { data } = await apiClient().get<{ creators?: CreatorOption[] }>(
-    `/docs/recent/creators${qs ? `?${qs}` : ''}`,
-  )
-  return Array.isArray(data?.creators) ? data.creators : []
+  try {
+    const { data } = await apiClient().get<{ creators?: CreatorOption[] }>(
+      `/docs/recent/creators${qs ? `?${qs}` : ''}`,
+    )
+    return Array.isArray(data?.creators) ? data.creators : []
+  } catch {
+    // Not-yet-deployed / erroring backend yields no candidates rather than throwing (same contract
+    // as listRecentDocs); the recent tab simply shows an empty creator filter.
+    return []
+  }
 }
 
 /**

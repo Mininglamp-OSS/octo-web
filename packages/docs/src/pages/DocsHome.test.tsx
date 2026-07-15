@@ -695,18 +695,25 @@ describe('DocsHome — a stale (out-of-order) list response cannot overwrite the
     wk.shared.currentSpaceId = 'space-a'
     setWKApp(wk)
 
-    // Deferred resolvers keyed by the Space each GET was scoped to, so the test drives the ORDER
-    // responses settle independently of the order the requests were issued (delayed / reordered).
+    // The default tab is "recent" (最近查看), which lists via GET /docs/recent — it carries NO
+    // spaceId query (space is server-derived from the token / X-Space-Id header), so we key deferred
+    // resolvers by the live `currentSpaceId` read at call time instead of parsing the URL. This
+    // keeps the P0 guard covering the actual rendered rows now that recent is the default surface.
     const deferred: Record<string, (items: unknown[]) => void> = {}
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/docs')) {
-        const spaceId = new URLSearchParams(url.split('?')[1] ?? '').get('spaceId') ?? ''
+      // The recent tab also fetches its creator candidates; answer that sibling GET immediately so
+      // only the paged-list request lands in `deferred`.
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        const spaceId = wk.shared.currentSpaceId ?? ''
         return new Promise((resolve) => {
           deferred[spaceId] = (items) =>
-            resolve({ data: { total: items.length, items }, status: 200 })
+            resolve({ data: { total: items.length, items, nextCursor: null }, status: 200 })
         })
       }
-      return { data: {}, status: 200 }
+      return { data: { total: 0, items: [], nextCursor: null }, status: 200 }
     }
 
     render(<DocsHome />)
@@ -722,8 +729,8 @@ describe('DocsHome — a stale (out-of-order) list response cannot overwrite the
     deferred['space-b']([{ docId: 'd_b', title: 'Space B Doc', ownerId: 'u_self', role: 'admin' }])
     await waitFor(() => expect(screen.getByText('Space B Doc')).toBeTruthy())
 
-    // ...then let the OLDER (space-a) request resolve LAST (out of order). Without the guard this
-    // stale setItems would clobber the list with the old Space's doc.
+    // ...then let the OLDER (space-a) request resolve LAST (out of order). Without the per-view
+    // seqRef guard this stale setItems would clobber the list with the old Space's doc.
     deferred['space-a']([{ docId: 'd_a', title: 'Space A Doc', ownerId: 'u_self', role: 'admin' }])
     // Give the stale promise a chance to (wrongly) apply before asserting.
     await new Promise((r) => setTimeout(r, 20))
@@ -1030,19 +1037,24 @@ describe('DocsHome — in-flight unknown-kind open is discarded after a Space sw
             })
         })
       }
-      if (method === 'get' && url.startsWith('/docs')) {
-        const spaceId = new URLSearchParams(url.split('?')[1] ?? '').get('spaceId') ?? ''
-        // Only the initial Space lists the unknown-kind row; the new Space is empty.
-        if (spaceId === 'space-a') {
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        // The default tab lists via GET /docs/recent (no spaceId query — space is server-derived),
+        // so branch on the live current Space: only the initial Space lists the unknown-kind row;
+        // the new Space is empty.
+        if (wk.shared.currentSpaceId === 'space-a') {
           return {
             data: {
               total: 1,
               items: [{ docId: 'd_a', title: 'Space A Doc', ownerId: 'u_owner', role: 'admin' }],
+              nextCursor: null,
             },
             status: 200,
           }
         }
-        return { data: { total: 0, items: [] }, status: 200 }
+        return { data: { total: 0, items: [], nextCursor: null }, status: 200 }
       }
       return { data: {}, status: 200 }
     }

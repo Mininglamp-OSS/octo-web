@@ -117,12 +117,22 @@ export function useDocsView(
   // Loaded row count for the current result set — lets mine's offset paging decide `hasMore` against
   // `total` without a side-effect inside a setState updater.
   const loadedRef = useRef(0)
+  // Synchronous in-flight guard for appends. `moreStatus` is React state: `setMoreStatus` is async,
+  // and InfiniteList's `loadMoreRef` only points at the fresh callback after a commit, so under fast
+  // scroll / reflow a second IntersectionObserver notification can re-enter loadMore before the
+  // state (and thus the state-based guard) reflects the first — firing a duplicate request for the
+  // same cursor/page and appending it twice (duplicate rows + corrupted cursor, AC-6.4). A ref flips
+  // synchronously in the same tick, so the re-entrant call is dropped before it issues a request.
+  const loadingMoreRef = useRef(false)
 
   const fetchFirst = useCallback(
     (nextQ: string, nextCreators: string[]) => {
       const seq = ++seqRef.current
       cursorRef.current = null
       pageRef.current = 1
+      // A fresh result set supersedes any in-flight append (its settle will no-op on the seq check),
+      // so release the in-flight guard here rather than in that stale settle.
+      loadingMoreRef.current = false
       setPhase('loading')
       setEmpty(null)
       setMoreStatus('idle')
@@ -183,13 +193,16 @@ export function useDocsView(
   const loadMore = useCallback(() => {
     if (!hasMoreRef.current) return
     if (seqRef.current === 0) return
-    // Guard against re-entrancy while an append is already in flight for this result set.
-    if (moreStatus === 'loadingMore') return
+    // Synchronous re-entrancy guard: drop the call if an append is already in flight for this result
+    // set (see loadingMoreRef above — a ref, not `moreStatus`, so a same-tick duplicate is caught).
+    if (loadingMoreRef.current) return
     const seq = seqRef.current
+    loadingMoreRef.current = true
     setMoreStatus('loadingMore')
 
     const append = (fetched: DocListItem[], more: boolean) => {
       if (seq !== seqRef.current) return
+      loadingMoreRef.current = false
       loadedRef.current += fetched.length
       setItems((prev) => [...prev, ...fetched])
       hasMoreRef.current = more
@@ -198,6 +211,7 @@ export function useDocsView(
     }
     const fail = () => {
       if (seq !== seqRef.current) return
+      loadingMoreRef.current = false
       // Keep the already-loaded rows; surface a retryable footer error (frontend-design §5.5).
       setMoreStatus('error')
     }
@@ -231,7 +245,7 @@ export function useDocsView(
         })
         .catch(fail)
     }
-  }, [kind, q, creators, space, folder, moreStatus])
+  }, [kind, q, creators, space, folder])
 
   const setQuery = useCallback(
     (next: string) => {
