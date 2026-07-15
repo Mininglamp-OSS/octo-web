@@ -27,45 +27,78 @@ import {
  * NOTE (octo-web host commit-starvation): this stays inside the already-loaded MemberPanel
  * (editor chunk). It must NOT introduce a React.lazy/Suspense boundary — see module.tsx:79-98.
  */
+/**
+ * Load status of the panel's scope. `ready` means an authoritative scope is known (from a valid
+ * seed or a successful GET /share); `loading` means we're still resolving it; `error` means the
+ * read failed and the CURRENT SCOPE IS UNKNOWN. The error state is deliberately NOT collapsed to a
+ * confident "Restricted": on an access-control indicator, conflating "read failed / unknown" with
+ * "confirmed restricted" would let an admin believe a doc is locked down when the backend could
+ * actually be `anyone_in_space`.
+ */
+type LoadStatus = 'loading' | 'ready' | 'error'
+
 export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSeed }) {
   // A valid seed scope means the caller (EditorShell) already carried the state in from getDoc —
-  // trust it and skip the GET. Otherwise start at the restricted/read default and fetch.
+  // trust it and skip the GET. The seed can also arrive LATER (EditorShell sets it after getDoc
+  // resolves), so both values are tracked as effect deps below and adopted whenever they appear.
   const seededScope: ShareScope | undefined = isShareScope(seed?.shareScope)
     ? (seed!.shareScope as ShareScope)
     : undefined
+  const seededRole: ShareRole = normalizeShareRole(seed?.shareRole)
 
-  const [scope, setScope] = useState<ShareScope>(seededScope ?? 'restricted')
-  const [role, setRole] = useState<ShareRole>(normalizeShareRole(seed?.shareRole))
+  // `null` scope = unknown (no authoritative value yet); it is never rendered as a checked radio,
+  // so an unknown/failed read cannot masquerade as a confident "Restricted".
+  const [scope, setScope] = useState<ShareScope | null>(seededScope ?? null)
+  const [role, setRole] = useState<ShareRole>(seededRole)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<LoadStatus>(seededScope ? 'ready' : 'loading')
+  // Bumped by the retry affordance to re-run the mount fetch after a read failure.
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
-    if (seededScope) return
+    // An authoritative seed (initial OR newly-arrived from EditorShell's async getDoc) wins: adopt
+    // it and skip the GET. Because seededScope/seededRole are effect deps, a seed that lands after
+    // the panel already mounted (and possibly fetched) still updates the UI to the real value.
+    if (seededScope) {
+      setScope(seededScope)
+      setRole(seededRole)
+      setStatus('ready')
+      return
+    }
     let cancelled = false
+    setStatus('loading')
+    setScope(null)
     getShareSettings(docId)
       .then((s) => {
         if (cancelled) return
         setScope(s.shareScope)
         setRole(s.shareRole)
+        setStatus('ready')
       })
       .catch(() => {
-        /* non-fatal: keep the restricted/read default already in state */
+        if (cancelled) return
+        // Read failed → the true scope is UNKNOWN. Surface an explicit error/unknown state instead
+        // of silently presenting "Restricted" as the confirmed current scope.
+        setScope(null)
+        setStatus('error')
       })
     return () => {
       cancelled = true
     }
-    // seededScope is derived from the immutable `seed` prop; docId is the real dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId])
+  }, [docId, seededScope, seededRole, reloadKey])
 
   async function commit(nextScope: ShareScope, nextRole: ShareRole) {
     const prevScope = scope
     const prevRole = role
+    const prevStatus = status
     setError(null)
     setSaving(true)
-    // Optimistic: reflect the choice immediately, roll back to the prior state if the PUT fails.
+    // Optimistic: reflect the choice immediately, roll back to the prior state if the PUT fails. A
+    // successful commit also establishes a known scope, so status settles to `ready`.
     setScope(nextScope)
     setRole(nextRole)
+    setStatus('ready')
     try {
       const saved = await setShareSettings(docId, nextScope, nextRole)
       setScope(saved.shareScope)
@@ -73,6 +106,7 @@ export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSe
     } catch {
       setScope(prevScope)
       setRole(prevRole)
+      setStatus(prevStatus)
       setError(t('docs.share.error'))
     } finally {
       setSaving(false)
@@ -80,7 +114,11 @@ export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSe
   }
 
   function onScopeChange(next: ShareScope) {
-    if (next === scope || saving) return
+    if (saving) return
+    // No value-equality early-return: an explicit selection always commits, so an admin can
+    // re-assert a scope even from an unknown/error/stale display (the earlier `next === scope`
+    // guard blocked re-asserting "Restricted" when the shown value was stale). Native radios only
+    // fire onChange on a genuine change, so this never double-fires on the already-selected value.
     // Switching to Anyone in Space keeps the current tier (defaults to Can read on first switch,
     // since role state starts at read); Restricted lets the backend force-persist read.
     void commit(next, next === 'anyone_in_space' ? role : 'read')
@@ -92,9 +130,40 @@ export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSe
     void commit('anyone_in_space', next)
   }
 
+  // Disable only while a resolve is genuinely in flight (initial fetch or a PUT). In the error /
+  // unknown state the controls stay ENABLED so an admin can explicitly assert a scope (which fires
+  // a PUT) rather than being stuck — that also re-asserts "Restricted" from a stale/unknown UI.
+  const controlsDisabled = saving || status === 'loading'
+
   return (
     <div className="octo-member-section">
       <h4 className="octo-member-subtitle">{t('docs.share.title')}</h4>
+
+      {status === 'loading' && (
+        <p className="octo-uid" style={{ color: 'var(--octo-muted)' }}>
+          {t('docs.share.loading')}
+        </p>
+      )}
+
+      {status === 'error' && (
+        <p className="octo-member-error" role="alert">
+          {t('docs.share.loadError')}{' '}
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              color: 'inherit',
+              textDecoration: 'underline',
+              cursor: 'pointer',
+            }}
+          >
+            {t('docs.share.retry')}
+          </button>
+        </p>
+      )}
 
       <label className="octo-member-row">
         <input
@@ -102,7 +171,7 @@ export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSe
           name={`octo-share-scope-${docId}`}
           value="restricted"
           checked={scope === 'restricted'}
-          disabled={saving}
+          disabled={controlsDisabled}
           onChange={() => onScopeChange('restricted')}
         />
         <span className="octo-uid" style={{ flex: 1 }}>
@@ -117,7 +186,7 @@ export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSe
           name={`octo-share-scope-${docId}`}
           value="anyone_in_space"
           checked={scope === 'anyone_in_space'}
-          disabled={saving}
+          disabled={controlsDisabled}
           onChange={() => onScopeChange('anyone_in_space')}
         />
         <span className="octo-uid" style={{ flex: 1 }}>
@@ -138,7 +207,7 @@ export function ShareScopePanel({ docId, seed }: { docId: string; seed?: ShareSe
           <select
             aria-label={t('docs.share.permission')}
             value={role}
-            disabled={saving}
+            disabled={controlsDisabled}
             onChange={(e) => onRoleChange(e.target.value as ShareRole)}
           >
             {SHARE_ROLES.map((r) => (

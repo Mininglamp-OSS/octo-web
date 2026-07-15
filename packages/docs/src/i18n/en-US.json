@@ -374,7 +374,10 @@
       "read": "Can read",
       "edit": "Can edit"
     },
-    "error": "Failed to update sharing. Please try again."
+    "error": "Failed to update sharing. Please try again.",
+    "loading": "Loading share settings…",
+    "loadError": "Couldn't load share settings — the current scope is unknown.",
+    "retry": "Retry"
   },
   "state": {
     "loading": "Loading document…",
