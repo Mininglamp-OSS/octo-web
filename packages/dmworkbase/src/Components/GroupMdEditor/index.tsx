@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import { Button, Spin } from "@douyinfe/semi-ui";
 import { Toast } from "@douyinfe/semi-ui";
-import { Channel } from "wukongimjssdk";
+import { Channel, WKSDK } from "wukongimjssdk";
 import WKApp from "../../App";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { parseThreadChannelId } from "../../Service/Thread";
@@ -97,6 +97,21 @@ export class GroupMdEditor extends Component<
     return parseThreadChannelId(this.props.channel.channelID);
   }
 
+  // 保存/删除 md 后，channelInfo 缓存里的 has_group_md / has_thread_md 标志位已过期。
+  // 主动清缓存并重新拉取：fetchChannelInfo 拿到新数据后会触发 channelManager listener，
+  // 设置面板的 reloadChannelInfo 随之重跑，「已配置/未配置」副标题即可刷新。
+  // 与子区改名流程（module.tsx）的缓存刷新口径保持一致；thread 与 group 两种 channel
+  // 都适用（channelInfoCallback 会按 channelType 走对应接口重拉标志位）。
+  private refreshChannelInfoCache = async () => {
+    const { channel } = this.props;
+    try {
+      WKSDK.shared().channelManager.deleteChannelInfo(channel);
+      await WKSDK.shared().channelManager.fetchChannelInfo(channel);
+    } catch {
+      // 缓存刷新失败不影响本次保存/删除结果：面板下次进入会重新拉取，忽略即可。
+    }
+  };
+
   loadContent = async () => {
     try {
       let resp;
@@ -162,6 +177,7 @@ export class GroupMdEditor extends Component<
         saving: false,
       });
       Toast.success(this.context.t("base.groupMd.saved"));
+      void this.refreshChannelInfoCache();
     } catch (err: any) {
       Toast.error(err?.msg || this.context.t("base.groupMd.saveFailed"));
       this.setState({ saving: false });
@@ -195,6 +211,7 @@ export class GroupMdEditor extends Component<
             version: 0,
           });
           Toast.success(this.context.t("base.groupMd.deleted"));
+          void this.refreshChannelInfoCache();
         } catch (err: any) {
           Toast.error(err?.msg || this.context.t("base.groupMd.deleteFailed"));
         }
