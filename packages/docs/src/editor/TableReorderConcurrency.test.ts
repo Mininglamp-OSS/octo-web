@@ -36,7 +36,7 @@ import {
   tableEditingKey,
 } from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { tableStructureSignature, signatureOfTable, countTableSignature, draggedTableConflict } from './TableReorderHandle.ts'
+import { tableStructureSignature, signatureOfTable, countTableSignature, tableSignatures, draggedTableIndex, draggedTableConflict } from './TableReorderHandle.ts'
 
 // Same collab field name the editor wires in production (schema/index.ts COLLAB_FIELD).
 const FIELD = 'default'
@@ -344,14 +344,19 @@ describe('table reorder — plan B conflict-abort guard eliminates silent corrup
   })
 })
 
-// octo-docs-backend#76 FAIL-2 (XIN-1206): the plan-B guard must fire ONLY for a concurrent change to
-// the DRAGGED table. The original guard re-fingerprinted a single remapped `cellPos`; under real
-// collaboration y-prosemirror applies a remote update as one coarse ReplaceStep, so mapping that
-// anchor forward collapses it to the replace boundary — it stops resolving to a cell even when the
-// dragged table is untouched, and the old `signature === null → conflict` branch then FALSE-ABORTED
-// on edits to prose or to a different table (observed as: "editing text outside the table cancels my
-// reorder"). These tests exercise the exact dual-Y.Doc merge and drive conflict detection through the
-// position-independent `countTableSignature` / `draggedTableConflict` the guard now uses.
+// octo-docs-backend#76 FAIL-2 (XIN-1206 → XIN-1221): the plan-B guard must fire ONLY for a concurrent
+// change to the DRAGGED table. Two earlier scopings still false-aborted on edits OUTSIDE that table:
+//   (1) re-fingerprinting a single remapped `cellPos` — under real collaboration y-prosemirror applies
+//       a remote update as one coarse ReplaceStep, so mapping that interior anchor forward collapses it
+//       to the replace boundary; it stops resolving to a cell even when the dragged table is untouched,
+//       and the old `signature === null → conflict` branch then FALSE-ABORTED on prose / other-table
+//       edits ("editing text outside the table cancels my reorder").
+//   (2) counting how many tables still carry the drag-start signature — position-independent, but a
+//       document with two byte-identical tables makes the count ambiguous: editing the OTHER identical
+//       table drops the global count and the guard false-aborted, though the dragged table never moved.
+// The guard now pins the dragged table by a STABLE IDENTITY — its ORDINAL among tables plus the ordered
+// signature list (`tableSignatures` / `draggedTableIndex`) — and aborts only when the signature at that
+// ordinal changes. These tests drive that decision through the exact dual-Y.Doc merge.
 describe('table reorder — plan B guard scope: same-table only (#76 FAIL-2)', () => {
   const TWO_TABLES =
     '<p>lead</p>' +
@@ -382,14 +387,17 @@ describe('table reorder — plan B guard scope: same-table only (#76 FAIL-2)', (
     return pos + 1 + map.map[row * map.width + col] + 1 // inside the cell
   }
 
-  // Diagnostic: prove the anchor-drift that broke the OLD approach is real in this harness. After a
-  // remote edit merges, the dragged cell's remapped position no longer fingerprints the table.
+  // Diagnostic: prove the anchor-drift that broke the OLD position-based approach is real in this
+  // harness. After a remote edit merges, the dragged cell's remapped position no longer fingerprints
+  // the table — so the guard must NOT depend on that position.
   it('remapped cellPos drifts under a coarse remote ReplaceStep (root cause of the false abort)', () => {
     const { docA, edA, docB, edB, base } = forkedPeers(TWO_TABLES)
     track(edA, edB)
     let cellPos = cellPosOf(edA, 0, 0) // dragging table #0
-    const baseline = tableStructureSignature(edA.state.doc, cellPos)
-    expect(baseline).not.toBeNull()
+    const baselineSigs = tableSignatures(edA.state.doc)
+    const dragIndex = draggedTableIndex(edA.state.doc, cellPos)
+    expect(dragIndex).toBe(0)
+    expect(baselineSigs[dragIndex]).not.toBeNull()
 
     const onTr = ({ transaction }: { transaction: { docChanged: boolean; mapping: { map(p: number): number } } }) => {
       if (transaction.docChanged) cellPos = transaction.mapping.map(cellPos)
@@ -400,50 +408,48 @@ describe('table reorder — plan B guard scope: same-table only (#76 FAIL-2)', (
     mergeConcurrent(docA, docB, base)
     edA.off('transaction', onTr)
 
-    // OLD behaviour: the remapped anchor's signature is now null → old guard would abort. This is the
-    // FAIL-2 false positive we are eliminating.
+    // The remapped anchor's signature is now null (position collapsed) — an approach that trusted it
+    // would abort. This is the FAIL-2 false positive we are eliminating.
     expect(tableStructureSignature(edA.state.doc, cellPos)).toBeNull()
-    // NEW behaviour: the dragged table's signature is still present in the doc → no conflict.
-    const baselineCount = countTableSignature(edA.state.doc, baseline!) // recount post-merge
-    expect(baselineCount).toBeGreaterThanOrEqual(1)
-    expect(draggedTableConflict(edA.state.doc, baseline, baselineCount)).toBe(false)
+    // Identity approach: the dragged table's ordinal slot is unchanged → no conflict.
+    expect(draggedTableConflict(edA.state.doc, baselineSigs, dragIndex)).toBe(false)
   })
 
   it('reorder ⟂ remote edit of a DIFFERENT table → guard stays clear (no false abort)', () => {
     const { docA, edA, docB, edB, base } = forkedPeers(TWO_TABLES)
     track(edA, edB)
-    const baselineSig = signatureOfTable(nthTable(edA, 0).node) // dragging table #0
-    const baselineCount = countTableSignature(edA.state.doc, baselineSig!)
-    expect(baselineSig).not.toBeNull()
+    const baselineSigs = tableSignatures(edA.state.doc)
+    const dragIndex = draggedTableIndex(edA.state.doc, cellPosOf(edA, 0, 0)) // dragging table #0
+    expect(dragIndex).toBe(0)
 
     // Peer B edits the OTHER table's cell text.
     const insideB = cellInsideOf(edB, 1, 0, 0)
     edB.view.dispatch(edB.state.tr.insertText('CHANGED', insideB))
     mergeConcurrent(docA, docB, base)
 
-    // Dragged table #0 unchanged → its signature still present → reorder allowed.
-    expect(draggedTableConflict(edA.state.doc, baselineSig, baselineCount)).toBe(false)
+    // Dragged table #0 unchanged → its ordinal slot still matches → reorder allowed.
+    expect(draggedTableConflict(edA.state.doc, baselineSigs, dragIndex)).toBe(false)
     expect(xml(docA)).toBe(xml(docB))
   })
 
   it('reorder ⟂ remote edit of prose OUTSIDE any table → guard stays clear', () => {
     const { docA, edA, docB, edB, base } = forkedPeers(TWO_TABLES)
     track(edA, edB)
-    const baselineSig = signatureOfTable(nthTable(edA, 0).node)
-    const baselineCount = countTableSignature(edA.state.doc, baselineSig!)
+    const baselineSigs = tableSignatures(edA.state.doc)
+    const dragIndex = draggedTableIndex(edA.state.doc, cellPosOf(edA, 0, 0))
 
     edB.view.dispatch(edB.state.tr.insertText('hello', 2)) // prose before the tables
     mergeConcurrent(docA, docB, base)
 
-    expect(draggedTableConflict(edA.state.doc, baselineSig, baselineCount)).toBe(false)
+    expect(draggedTableConflict(edA.state.doc, baselineSigs, dragIndex)).toBe(false)
     expect(xml(docA)).toBe(xml(docB))
   })
 
   it('reorder ⟂ remote structural change to the DRAGGED table → guard fires (data-safety kept)', () => {
     const { docA, edA, docB, edB, base } = forkedPeers(TWO_TABLES)
     track(edA, edB)
-    const baselineSig = signatureOfTable(nthTable(edA, 0).node) // dragging table #0
-    const baselineCount = countTableSignature(edA.state.doc, baselineSig!)
+    const baselineSigs = tableSignatures(edA.state.doc)
+    const dragIndex = draggedTableIndex(edA.state.doc, cellPosOf(edA, 0, 0)) // dragging table #0
 
     // Peer B reorders the SAME table #0 (row swap).
     const { pos } = nthTable(edB, 0)
@@ -453,7 +459,150 @@ describe('table reorder — plan B guard scope: same-table only (#76 FAIL-2)', (
     moveTableRow({ from: 1, to: 0 })(edB.state, edB.view.dispatch)
     mergeConcurrent(docA, docB, base)
 
-    // The drag-start signature no longer matches any table → conflict → local reorder aborts.
-    expect(draggedTableConflict(edA.state.doc, baselineSig, baselineCount)).toBe(true)
+    // The dragged table's ordinal slot changed → conflict → local reorder aborts.
+    expect(draggedTableConflict(edA.state.doc, baselineSigs, dragIndex)).toBe(true)
+  })
+})
+
+// octo-docs-backend#76 FAIL-2 continuation (XIN-1221): the specific regression the old global-count
+// heuristic could not handle. When the document holds two BYTE-IDENTICAL tables, editing the table the
+// user is NOT dragging must not cancel the drag — yet counting drag-start signatures dropped the global
+// count (2 → 1) and false-aborted. The stable-identity guard distinguishes the twins by ordinal, so an
+// edit to the sibling leaves the dragged table's slot untouched, while a change to the dragged twin
+// itself still aborts (data-safety guard preserved even against an identical sibling).
+describe('table reorder — plan B guard: identical-twin tables (#76 FAIL-2, XIN-1221)', () => {
+  // Two tables with byte-identical content — the case the old count heuristic could not disambiguate.
+  const TWIN_TABLES =
+    '<table><tbody>' +
+    '<tr><td><p>x1</p></td></tr>' +
+    '<tr><td><p>x2</p></td></tr>' +
+    '</tbody></table>' +
+    '<p>between</p>' +
+    '<table><tbody>' +
+    '<tr><td><p>x1</p></td></tr>' +
+    '<tr><td><p>x2</p></td></tr>' +
+    '</tbody></table>'
+
+  function nthTwin(editor: Editor, n: number): { node: PMNode; pos: number } {
+    const found: { node: PMNode; pos: number }[] = []
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'table') {
+        found.push({ node, pos })
+        return false
+      }
+      return true
+    })
+    if (!found[n]) throw new Error(`no table #${n}`)
+    return found[n]
+  }
+
+  it('twins share one signature — the count heuristic is ambiguous, identity is not', () => {
+    const { edA } = forkedPeers(TWIN_TABLES)
+    track(edA)
+    const s0 = signatureOfTable(nthTwin(edA, 0).node)
+    const s1 = signatureOfTable(nthTwin(edA, 1).node)
+    expect(s0).toBe(s1) // byte-identical tables → identical signatures
+    expect(countTableSignature(edA.state.doc, s0!)).toBe(2) // global count cannot tell them apart
+    // Identity: two distinct ordinals carry that same signature.
+    expect(tableSignatures(edA.state.doc)).toEqual([s0, s1])
+    expect(draggedTableIndex(edA.state.doc, nthTwin(edA, 0).pos + 1)).toBe(0)
+    expect(draggedTableIndex(edA.state.doc, nthTwin(edA, 1).pos + 1)).toBe(1)
+  })
+
+  it('reorder ⟂ remote edit of the OTHER identical twin → guard stays clear (no false abort)', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TWIN_TABLES)
+    track(edA, edB)
+    // A drags twin #0.
+    const baselineSigs = tableSignatures(edA.state.doc)
+    const dragIndex = draggedTableIndex(edA.state.doc, nthTwin(edA, 0).pos + 1)
+    expect(dragIndex).toBe(0)
+
+    // Peer B edits the OTHER twin's (#1) cell text — this dropped the global signature count 2→1 and
+    // false-aborted under the old heuristic.
+    const t1 = nthTwin(edB, 1)
+    const m1 = TableMap.get(t1.node)
+    const insideB = t1.pos + 1 + m1.map[0] + 1
+    edB.view.dispatch(edB.state.tr.insertText('EDIT', insideB))
+    mergeConcurrent(docA, docB, base)
+
+    // Dragged twin #0 is untouched → its ordinal slot still matches → NO abort.
+    expect(draggedTableConflict(edA.state.doc, baselineSigs, dragIndex)).toBe(false)
+    expect(xml(docA)).toBe(xml(docB))
+  })
+
+  it('reorder ⟂ remote structural change to the DRAGGED twin → guard still fires (data-safety kept)', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TWIN_TABLES)
+    track(edA, edB)
+    // A drags twin #0.
+    const baselineSigs = tableSignatures(edA.state.doc)
+    const dragIndex = draggedTableIndex(edA.state.doc, nthTwin(edA, 0).pos + 1)
+
+    // Peer B reorders the SAME twin #0 (swap its two rows) — even though an identical sibling exists,
+    // the dragged twin's own slot must change and abort.
+    const { pos } = nthTwin(edB, 0)
+    const mapB = TableMap.get(nthTwin(edB, 0).node)
+    const $inB = edB.state.doc.resolve(pos + 1 + mapB.map[1 * mapB.width + 0] + 1)
+    edB.view.dispatch(edB.state.tr.setSelection(TextSelection.near($inB)))
+    moveTableRow({ from: 1, to: 0 })(edB.state, edB.view.dispatch)
+    mergeConcurrent(docA, docB, base)
+
+    expect(draggedTableConflict(edA.state.doc, baselineSigs, dragIndex)).toBe(true)
+  })
+})
+
+// octo-docs-backend#76 XIN-1220/1221 — the exact browser-repro scenario, at the unit level: a SINGLE
+// table with prose around it, one peer holding a row drag while the other edits body text OUTSIDE the
+// table. The guard must stay clear so the reorder completes; only a change to the table itself aborts.
+// This is the "表外正文编辑不误触中止" regression pinned so it cannot come back.
+describe('table reorder — plan B guard: single table, edits outside must not abort (#76 XIN-1220)', () => {
+  const TABLE_WITH_PROSE =
+    '<p>heading</p>' +
+    '<table><tbody>' +
+    '<tr><td><p>r1c1</p></td><td><p>r1c2</p></td></tr>' +
+    '<tr><td><p>r2c1</p></td><td><p>r2c2</p></td></tr>' +
+    '<tr><td><p>r3c1</p></td><td><p>r3c2</p></td></tr>' +
+    '</tbody></table>' +
+    '<p>trailing paragraph</p>'
+
+  // Mirror the runtime beginDrag capture exactly: snapshot the ordered table signatures and the
+  // dragged table's ordinal from the drag-start cell position.
+  it('remote edit of prose BEFORE the table → guard stays clear, reorder allowed', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TABLE_WITH_PROSE)
+    track(edA, edB)
+    const baselineSigs = tableSignatures(edA.state.doc)
+    const dragIndex = draggedTableIndex(edA.state.doc, cellPosOf(edA, 2, 0)) // dragging row 3
+    expect(dragIndex).toBe(0)
+
+    edB.view.dispatch(edB.state.tr.insertText(' edited', 8)) // inside the leading paragraph
+    mergeConcurrent(docA, docB, base)
+
+    expect(draggedTableConflict(edA.state.doc, baselineSigs, dragIndex)).toBe(false)
+    expect(xml(docA)).toBe(xml(docB))
+  })
+
+  it('remote edit of prose AFTER the table → guard stays clear, reorder allowed', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TABLE_WITH_PROSE)
+    track(edA, edB)
+    const baselineSigs = tableSignatures(edA.state.doc)
+    const dragIndex = draggedTableIndex(edA.state.doc, cellPosOf(edA, 2, 0))
+
+    edB.view.dispatch(edB.state.tr.insertText('X', edB.state.doc.content.size - 2)) // trailing paragraph
+    mergeConcurrent(docA, docB, base)
+
+    expect(draggedTableConflict(edA.state.doc, baselineSigs, dragIndex)).toBe(false)
+    expect(xml(docA)).toBe(xml(docB))
+  })
+
+  it('remote structural change to the single table → guard still fires (data-safety kept)', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TABLE_WITH_PROSE)
+    track(edA, edB)
+    const baselineSigs = tableSignatures(edA.state.doc)
+    const dragIndex = draggedTableIndex(edA.state.doc, cellPosOf(edA, 2, 0))
+
+    selectCell(edB, 0, 0)
+    addRowBefore(edB.state, edB.view.dispatch) // changes the dragged table's row count
+    mergeConcurrent(docA, docB, base)
+
+    expect(draggedTableConflict(edA.state.doc, baselineSigs, dragIndex)).toBe(true)
   })
 })

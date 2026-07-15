@@ -32,11 +32,25 @@
 // add/delete row·column / merge·split racing our drag) DO converge in the CRDT, but y-prosemirror
 // re-diffs each replace against the base and interleaves cell text — the peers agree on a GARBLED
 // table, i.e. silent data loss. The fine-grained fix (plan A) is scheduled separately; plan B is a
-// serialize-or-abort guard layered on top: we snapshot the dragged table's structure at drag start
-// (`tableStructureSignature`) and, if any transaction that arrives DURING the drag changes that
-// table (structure or cell content), we ABORT the reorder instead of committing the replace — a
-// clear i18n toast tells the user to retry. Aborting is a pure early return before any dispatch, so
-// there is no half-commit and no dirty state; we would rather cancel than silently corrupt.
+// serialize-or-abort guard layered on top: if any transaction that arrives DURING the drag changes
+// the DRAGGED table (structure or cell content), we ABORT the reorder instead of committing the
+// replace — a clear i18n toast tells the user to retry. Aborting is a pure early return before any
+// dispatch, so there is no half-commit and no dirty state; we would rather cancel than silently
+// corrupt.
+//
+// The guard must react to changes of the DRAGGED table ONLY — an edit to prose or to a different
+// table must never cancel the reorder. Two earlier tries got the SCOPE wrong (octo-docs-backend#76
+// FAIL-2, XIN-1206/1221): (1) re-fingerprinting a single remapped cell anchor false-aborted on ANY
+// edit, because a coarse remote ReplaceStep collapses interior positions to a boundary (so the
+// anchor stops resolving even when the table is untouched); (2) counting how many tables still
+// carry the drag-start signature false-aborts as soon as the document holds two byte-identical
+// tables and the OTHER one is edited (the global count drops though the dragged table never moved).
+// Both failure modes come from using a POSITION or a GLOBAL COUNT as a stand-in for table identity.
+// The guard now uses a stable, position-independent identity instead: at drag start it snapshots the
+// ordered signature list of every table plus the dragged table's ORDINAL within it, and it aborts
+// only when the signature at THAT ordinal changes. Position-independent (a ReplaceStep can move the
+// table freely) and twin-safe (an edit to an identical sibling table changes a different ordinal),
+// while a real structural/content change to the dragged table still flips its slot and aborts.
 
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
@@ -193,14 +207,12 @@ export function tableStructureSignature(doc: PMNode, cellPos: number): string | 
   return signatureOfTable($inside.node(depth))
 }
 
-/** How many tables in `doc` currently have structure signature `sig`. The plan-B guard uses this
- * instead of re-fingerprinting a single remapped anchor. WHY: under real collaboration y-prosemirror
- * applies a remote update as one coarse `ReplaceStep`, and mapping an interior anchor (the dragged
- * cell) through that replace collapses it to the replace boundary — so the anchor no longer resolves
- * to its cell even when the dragged table is UNTOUCHED, and the old anchor+null==conflict check then
- * false-aborted on any edit elsewhere in the doc (octo-docs-backend#76 FAIL-2). Counting tables that
- * still carry the drag-start signature is position-independent, so an edit to OTHER tables or prose
- * leaves the count unchanged, while a structural change to the dragged table drops it. */
+/** How many tables in `doc` currently have structure signature `sig`. Kept as a position-independent
+ * diagnostic primitive (see TableReorderConcurrency.test.ts): an edit to OTHER tables or prose leaves
+ * the count unchanged, while a structural change to the dragged table drops it. The guard itself no
+ * longer decides on this global count — a document with two byte-identical tables makes the count
+ * ambiguous (editing the twin drops it too) — see `draggedTableConflict` for the identity-based
+ * decision that replaced it. */
 export function countTableSignature(doc: PMNode, sig: string): number {
   let n = 0
   doc.descendants((node) => {
@@ -213,15 +225,82 @@ export function countTableSignature(doc: PMNode, sig: string): number {
   return n
 }
 
-/** Plan-B conflict decision, scoped to the DRAGGED table only. `baselineSig` is the dragged table's
- * signature at drag start and `baselineCount` how many tables shared it then. A conflict is latched
- * only when the number of tables carrying that signature DROPS — i.e. the dragged table's structure
- * (or content) actually changed, or it was deleted. Concurrent edits to other tables or to prose
- * leave the dragged table's signature present, so they no longer trigger a false abort. A null
- * baseline (drag never fingerprinted a table) disables the guard rather than aborting blindly. */
-export function draggedTableConflict(doc: PMNode, baselineSig: string | null, baselineCount: number): boolean {
-  if (baselineSig === null) return false
-  return countTableSignature(doc, baselineSig) < baselineCount
+/** Ordered signature of EVERY table in `doc`, in document order. This is the position-independent
+ * identity basis for the drag guard: the dragged table is pinned by its ORDINAL in this list (see
+ * `draggedTableIndex`) plus the signature at that ordinal, never by an absolute position — a coarse
+ * remote `ReplaceStep` can move the table freely and the ordinal still selects it. Entries are null
+ * for a table that isn't currently laid out (see `signatureOfTable`). */
+export function tableSignatures(doc: PMNode): (string | null)[] {
+  const sigs: (string | null)[] = []
+  doc.descendants((node) => {
+    if (node.type.spec.tableRole === 'table') {
+      sigs.push(signatureOfTable(node))
+      return false // tables don't nest; don't descend
+    }
+    return true
+  })
+  return sigs
+}
+
+/** Ordinal of the table containing `cellPos` among all tables in document order, or -1 when the
+ * position is not inside a table. Captured at drag start as the dragged table's STABLE IDENTITY:
+ * combined with `tableSignatures` it lets the guard re-select exactly the dragged table after any
+ * transaction, without trusting an absolute position (which a coarse remote ReplaceStep collapses to
+ * a boundary). Positions are valid at drag start, so resolving the ordinal here is reliable even
+ * though the position itself becomes unusable once concurrent edits land. */
+export function draggedTableIndex(doc: PMNode, cellPos: number): number {
+  if (cellPos < 0 || cellPos + 1 > doc.content.size) return -1
+  let $inside
+  try {
+    $inside = doc.resolve(cellPos + 1)
+  } catch {
+    return -1
+  }
+  let depth = -1
+  for (let d = $inside.depth; d > 0; d--) {
+    if ($inside.node(d).type.spec.tableRole === 'table') {
+      depth = d
+      break
+    }
+  }
+  if (depth < 0) return -1
+  const tablePos = $inside.before(depth)
+  let seen = 0
+  let found = -1
+  doc.descendants((node, pos) => {
+    if (node.type.spec.tableRole === 'table') {
+      if (pos === tablePos) found = seen
+      seen++
+      return false // tables don't nest; don't descend
+    }
+    return true
+  })
+  return found
+}
+
+/** Plan-B conflict decision, scoped to the DRAGGED table only, by STABLE IDENTITY. `baselineSigs` is
+ * the ordered table-signature list captured at drag start (`tableSignatures`) and `dragIndex` the
+ * dragged table's ordinal within it (`draggedTableIndex`). A conflict is latched only when the
+ * signature at THAT ordinal changes:
+ *   - edits to prose, or to any OTHER table (even a byte-identical twin), leave `now[dragIndex]`
+ *     equal to the baseline, so they never false-abort (octo-docs-backend#76 FAIL-2);
+ *   - a structural or content change to the dragged table itself flips its slot → abort (the data-
+ *     safety guard the acceptance criteria require);
+ *   - a concurrent whole-table ADD/DELETE changes the table count, so ordinals no longer align and
+ *     we cannot prove the dragged table is untouched → abort conservatively (data-safe; this is a
+ *     rare concurrent structural edit, and the user is simply asked to retry).
+ * A null baseline list, an out-of-range ordinal, or a null baseline signature at that ordinal (drag
+ * never fingerprinted a laid-out table) disables the guard rather than aborting blindly. */
+export function draggedTableConflict(
+  doc: PMNode,
+  baselineSigs: (string | null)[] | null,
+  dragIndex: number,
+): boolean {
+  if (baselineSigs === null || dragIndex < 0 || dragIndex >= baselineSigs.length) return false
+  if (baselineSigs[dragIndex] === null) return false
+  const now = tableSignatures(doc)
+  if (now.length !== baselineSigs.length) return true
+  return now[dragIndex] !== baselineSigs[dragIndex]
 }
 
 /** Transient, document-external toast telling the user their reorder was cancelled because a
@@ -288,15 +367,18 @@ export const TableReorderHandle = Extension.create({
     let drag: DragState | null = null
     // Resolved drop target row/column index during a drag (null = no valid target yet).
     let dropIndex: number | null = null
-    // Plan-B concurrency guard. `dragBaseline` is the dragged table's structure signature captured
-    // at drag start and `dragBaselineCount` how many tables shared it then; `concurrentEdit` latches
-    // true when a transaction landing during the drag drops that count — i.e. the dragged table's own
-    // structure/content changed (a remote reorder / add·delete row·column / merge·split / cell edit
-    // on THAT table — see the plugin `state.apply`). Edits to other tables or prose leave the count
-    // unchanged, so they never latch. When latched, `runMove` aborts the reorder rather than
-    // committing a whole-table replace that would silently corrupt against the concurrent edit.
-    let dragBaseline: string | null = null
-    let dragBaselineCount = 0
+    // Plan-B concurrency guard. `dragBaselineSigs` is the ordered signature of every table at drag
+    // start and `dragTableIndex` the dragged table's ordinal within it — together a stable,
+    // position-independent identity for the dragged table (see `draggedTableConflict`).
+    // `concurrentEdit` latches true when a transaction landing during the drag changes the signature
+    // at that ordinal — i.e. the dragged table's own structure/content changed (a remote reorder /
+    // add·delete row·column / merge·split / cell edit on THAT table), or a whole table was added/
+    // deleted so the ordinals no longer align (see the plugin `state.apply`). Edits to prose or to a
+    // different table (even an identical twin) leave that slot unchanged, so they never latch. When
+    // latched, `runMove` aborts the reorder rather than committing a whole-table replace that would
+    // silently corrupt against the concurrent edit.
+    let dragBaselineSigs: (string | null)[] | null = null
+    let dragTableIndex = -1
     let concurrentEdit = false
     // Latches true once we have seen a mid-drag mousemove that actually reports the primary button
     // held (`buttons & 1`). It gates the "released outside the window" abort below: that abort must
@@ -459,8 +541,8 @@ export const TableReorderHandle = Extension.create({
     const resetDragState = () => {
       drag = null
       dropIndex = null
-      dragBaseline = null
-      dragBaselineCount = 0
+      dragBaselineSigs = null
+      dragTableIndex = -1
       concurrentEdit = false
       pointerHeldSeen = false
       document.body.classList.remove('octo-table-reordering')
@@ -577,11 +659,11 @@ export const TableReorderHandle = Extension.create({
         tablePos: hover.tablePos,
         cellPos: hover.cellPos,
       }
-      // Snapshot the dragged table's structure so the plan-B guard can detect a concurrent edit to
-      // it during the drag: its signature plus how many tables currently share that signature. Reset
-      // the latch for this fresh drag.
-      dragBaseline = tableStructureSignature(view.state.doc, hover.cellPos)
-      dragBaselineCount = dragBaseline === null ? 0 : countTableSignature(view.state.doc, dragBaseline)
+      // Snapshot the dragged table's stable identity so the plan-B guard can detect a concurrent
+      // edit to it during the drag: the ordered signature of every table plus the dragged table's
+      // ordinal within that list. Reset the latch for this fresh drag.
+      dragBaselineSigs = tableSignatures(view.state.doc)
+      dragTableIndex = draggedTableIndex(view.state.doc, hover.cellPos)
       concurrentEdit = false
       pointerHeldSeen = false
       reorderDebug({ phase: 'begin', kind, index: kind === 'col' ? hover.rect.left : hover.rect.top })
@@ -614,16 +696,19 @@ export const TableReorderHandle = Extension.create({
                 tablePos: tr.mapping.map(drag.tablePos),
                 tableStart: tr.mapping.map(drag.tableStart),
               }
-              // Plan-B conflict detection, scoped to the dragged table only. Count the tables that
-              // still carry the drag-start signature; a DROP means the dragged table's own structure
-              // or content changed (or it was deleted) — latch a conflict so `runMove` aborts. This
-              // is position-independent, so it does NOT depend on the remapped `cellPos` (which a
-              // coarse y-prosemirror ReplaceStep can collapse to a boundary even when the table is
-              // untouched) — that anchor drift is exactly what made edits OUTSIDE the dragged table
-              // false-abort before (octo-docs-backend#76 FAIL-2). Benign edits elsewhere leave the
-              // count unchanged, so the latch stays clear.
-              if (!concurrentEdit && dragBaseline !== null) {
-                if (draggedTableConflict(newState.doc, dragBaseline, dragBaselineCount)) concurrentEdit = true
+              // Plan-B conflict detection, scoped to the dragged table only by STABLE IDENTITY.
+              // Re-select the dragged table by its drag-start ordinal and compare its signature to
+              // the baseline; a change means the dragged table's own structure/content changed (or
+              // the table set changed) — latch a conflict so `runMove` aborts. This is fully
+              // position-independent, so it does NOT depend on the remapped `cellPos`/`tablePos`
+              // (which a coarse y-prosemirror ReplaceStep collapses to a boundary even when the table
+              // is untouched) — that anchor drift, and the earlier global-count heuristic that
+              // false-aborted whenever an identical twin table was edited, are exactly what made
+              // edits OUTSIDE the dragged table cancel the reorder before (octo-docs-backend#76
+              // FAIL-2 / XIN-1221). Benign edits to prose or another table leave that slot unchanged,
+              // so the latch stays clear.
+              if (!concurrentEdit && dragBaselineSigs !== null) {
+                if (draggedTableConflict(newState.doc, dragBaselineSigs, dragTableIndex)) concurrentEdit = true
               }
             }
             return null
@@ -672,8 +757,8 @@ export const TableReorderHandle = Extension.create({
               rowHandle = colHandle = indicator = null
               activeView = null
               drag = null
-              dragBaseline = null
-              dragBaselineCount = 0
+              dragBaselineSigs = null
+              dragTableIndex = -1
               concurrentEdit = false
               pointerHeldSeen = false
             },

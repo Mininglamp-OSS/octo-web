@@ -16,7 +16,7 @@ import {
 } from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import type { Transaction } from '@tiptap/pm/state'
-import { TableReorderHandle, tableReorderPluginKey, resolveDragSource, tableStructureSignature, signatureOfTable, countTableSignature, draggedTableConflict } from './TableReorderHandle.ts'
+import { TableReorderHandle, tableReorderPluginKey, resolveDragSource, tableStructureSignature, signatureOfTable, countTableSignature, tableSignatures, draggedTableIndex, draggedTableConflict } from './TableReorderHandle.ts'
 
 // octo-docs-backend#76: table row/column reorder. The drag handle UI is DOM/pointer-driven and
 // needs real layout (jsdom reports zero rects), so these tests exercise the reorder MOVE that a
@@ -520,14 +520,15 @@ describe('plan-B concurrency guard — table structure signature', () => {
   })
 })
 
-// octo-docs-backend#76 FAIL-2 (XIN-1206): the plan-B guard's scope was too wide — it re-fingerprinted
-// the dragged table via a single remapped `cellPos`, so an edit ELSEWHERE in the doc false-aborted
-// the reorder. Under real collaboration y-prosemirror applies a remote update as one coarse
-// ReplaceStep, which collapses the remapped `cellPos` to a boundary (it stops resolving to a cell)
-// even when the dragged table is untouched — the old `signature === null → conflict` branch then
-// fired on prose / other-table edits. The fix keys conflict detection off the dragged table's
-// structure signature and how many tables carry it (`countTableSignature` / `draggedTableConflict`),
-// which is position-independent, so only a change to the DRAGGED table drops the count.
+// octo-docs-backend#76 FAIL-2 (XIN-1206 → XIN-1221): the plan-B guard's scope was too wide. Two
+// scopings still false-aborted on edits ELSEWHERE in the doc: (1) re-fingerprinting a single remapped
+// `cellPos` — a coarse remote ReplaceStep collapses it to a boundary so it stops resolving to a cell
+// even when the dragged table is untouched, firing the old `signature === null → conflict` branch on
+// prose / other-table edits; (2) counting how many tables carry the drag-start signature — a document
+// with two byte-identical tables makes the count ambiguous, so editing the OTHER twin dropped it and
+// false-aborted. The guard now keys off a STABLE IDENTITY: the dragged table's ordinal among tables
+// plus the ordered signature list (`tableSignatures` / `draggedTableIndex` / `draggedTableConflict`),
+// so only a change to the DRAGGED table's own ordinal slot aborts.
 describe('plan-B guard scope — same-table only (FAIL-2)', () => {
   const TWO_TABLES =
     '<table><tbody>' +
@@ -574,76 +575,110 @@ describe('plan-B guard scope — same-table only (FAIL-2)', () => {
     expect(signatureOfTable(para as unknown as PMNode)).toBeNull()
   })
 
-  it('countTableSignature counts only tables that carry the signature', () => {
+  it('tableSignatures lists every table in document order; draggedTableIndex pins one by ordinal', () => {
     editor = makeEditor(TWO_TABLES)
     const sigA = signatureOfTable(nthTable(editor, 0).node)!
     const sigB = signatureOfTable(nthTable(editor, 1).node)!
     expect(sigA).not.toBe(sigB)
+    expect(tableSignatures(editor.state.doc)).toEqual([sigA, sigB])
+    expect(draggedTableIndex(editor.state.doc, cellPosInTable(editor, 0, 0, 0))).toBe(0)
+    expect(draggedTableIndex(editor.state.doc, cellPosInTable(editor, 1, 0, 0))).toBe(1)
+    // An out-of-range position has no table ordinal.
+    expect(draggedTableIndex(editor.state.doc, -5)).toBe(-1)
+    expect(draggedTableIndex(editor.state.doc, editor.state.doc.content.size + 10)).toBe(-1)
+  })
+
+  it('countTableSignature still counts tables carrying a signature (position-independent primitive)', () => {
+    editor = makeEditor(TWO_TABLES)
+    const sigA = signatureOfTable(nthTable(editor, 0).node)!
+    const sigB = signatureOfTable(nthTable(editor, 1).node)!
     expect(countTableSignature(editor.state.doc, sigA)).toBe(1)
     expect(countTableSignature(editor.state.doc, sigB)).toBe(1)
     expect(countTableSignature(editor.state.doc, 'nonexistent')).toBe(0)
   })
 
-  it('two identical tables → count is 2, and a change to one drops it to 1 (conflict)', () => {
+  it('two identical tables → editing the OTHER twin does NOT abort, editing the dragged one does', () => {
     editor = makeEditor(
       '<table><tbody><tr><td><p>x</p></td><td><p>y</p></td></tr></tbody></table>' +
         '<table><tbody><tr><td><p>x</p></td><td><p>y</p></td></tr></tbody></table>',
     )
     const sig = signatureOfTable(nthTable(editor, 0).node)!
-    expect(countTableSignature(editor.state.doc, sig)).toBe(2)
-    // Dragging one of the twins: baseline count 2. A reorder of the FIRST table (columns swap)
-    // drops the count of the drag-start signature to 1 → the guard still detects the same-table race
-    // even when an identical twin exists elsewhere.
-    selectCell(editor, 0, 0)
+    expect(countTableSignature(editor.state.doc, sig)).toBe(2) // count cannot tell the twins apart
+
+    // Drag twin #0: capture its stable identity BEFORE any edit.
+    const baselineSigs = tableSignatures(editor.state.doc)
+    const dragIndex = draggedTableIndex(editor.state.doc, cellPosInTable(editor, 0, 0, 0))
+    expect(dragIndex).toBe(0)
+
+    // A reorder of the OTHER twin (#1, columns swap) leaves the dragged twin's slot untouched → the
+    // old global-count heuristic false-aborted here (2 → 1); the identity guard does not.
+    selectCell2(editor, 1, 0, 0)
     moveTableColumn({ from: 0, to: 1 })(editor.state, editor.view.dispatch)
-    expect(draggedTableConflict(editor.state.doc, sig, 2)).toBe(true)
+    expect(draggedTableConflict(editor.state.doc, baselineSigs, dragIndex)).toBe(false)
+  })
+
+  it('two identical tables → a reorder of the DRAGGED twin still aborts (data-safety kept)', () => {
+    editor = makeEditor(
+      '<table><tbody><tr><td><p>x</p></td><td><p>y</p></td></tr></tbody></table>' +
+        '<table><tbody><tr><td><p>x</p></td><td><p>y</p></td></tr></tbody></table>',
+    )
+    const baselineSigs = tableSignatures(editor.state.doc)
+    const dragIndex = draggedTableIndex(editor.state.doc, cellPosInTable(editor, 0, 0, 0)) // twin #0
+
+    // Reorder the DRAGGED twin (#0): columns swap. Its own ordinal slot changes → conflict, even
+    // though an identical sibling exists.
+    selectCell2(editor, 0, 0, 0)
+    moveTableColumn({ from: 0, to: 1 })(editor.state, editor.view.dispatch)
+    expect(draggedTableConflict(editor.state.doc, baselineSigs, dragIndex)).toBe(true)
   })
 
   it('does NOT flag a conflict when a DIFFERENT table is edited (FAIL-2 false-abort gone)', () => {
     editor = makeEditor(TWO_TABLES)
-    const baselineSig = signatureOfTable(nthTable(editor, 0).node)! // dragging table #0
-    const baselineCount = countTableSignature(editor.state.doc, baselineSig)
+    const baselineSigs = tableSignatures(editor.state.doc)
+    const dragIndex = draggedTableIndex(editor.state.doc, cellPosInTable(editor, 0, 0, 0)) // dragging table #0
 
     // Edit a cell in the OTHER table (#1) — a same-doc structural/content change, but not to the
     // dragged table.
     selectCell2(editor, 1, 0, 0)
     editor.view.dispatch(editor.state.tr.insertText('CHANGED'))
 
-    // The dragged table's signature is still present exactly once → no conflict, reorder allowed.
-    expect(draggedTableConflict(editor.state.doc, baselineSig, baselineCount)).toBe(false)
+    // The dragged table's ordinal slot is unchanged → no conflict, reorder allowed.
+    expect(draggedTableConflict(editor.state.doc, baselineSigs, dragIndex)).toBe(false)
   })
 
   it('does NOT flag a conflict when prose OUTSIDE any table is edited', () => {
     editor = makeEditor('<p>lead</p>' + TWO_TABLES)
-    const baselineSig = signatureOfTable(nthTable(editor, 0).node)!
-    const baselineCount = countTableSignature(editor.state.doc, baselineSig)
+    const baselineSigs = tableSignatures(editor.state.doc)
+    const dragIndex = draggedTableIndex(editor.state.doc, cellPosInTable(editor, 0, 0, 0))
     editor.view.dispatch(editor.state.tr.insertText('typed', 2)) // inside the leading paragraph
-    expect(draggedTableConflict(editor.state.doc, baselineSig, baselineCount)).toBe(false)
+    expect(draggedTableConflict(editor.state.doc, baselineSigs, dragIndex)).toBe(false)
   })
 
   it('DOES flag a conflict when the dragged table itself is structurally changed', () => {
     editor = makeEditor(TWO_TABLES)
-    const baselineSig = signatureOfTable(nthTable(editor, 0).node)! // dragging table #0
-    const baselineCount = countTableSignature(editor.state.doc, baselineSig)
+    const baselineSigs = tableSignatures(editor.state.doc)
+    const dragIndex = draggedTableIndex(editor.state.doc, cellPosInTable(editor, 0, 0, 0)) // dragging table #0
 
     // A concurrent reorder of the DRAGGED table (#0): row swap.
     selectCell2(editor, 0, 1, 0)
     moveTableRow({ from: 1, to: 0 })(editor.state, editor.view.dispatch)
-    expect(draggedTableConflict(editor.state.doc, baselineSig, baselineCount)).toBe(true)
+    expect(draggedTableConflict(editor.state.doc, baselineSigs, dragIndex)).toBe(true)
   })
 
   it('DOES flag a conflict when the dragged table is deleted', () => {
     editor = makeEditor(TWO_TABLES)
-    const baselineSig = signatureOfTable(nthTable(editor, 0).node)!
-    const baselineCount = countTableSignature(editor.state.doc, baselineSig)
+    const baselineSigs = tableSignatures(editor.state.doc)
+    const dragIndex = draggedTableIndex(editor.state.doc, cellPosInTable(editor, 0, 0, 0))
     const { pos, node } = nthTable(editor, 0)
     editor.view.dispatch(editor.state.tr.delete(pos, pos + node.nodeSize))
-    expect(draggedTableConflict(editor.state.doc, baselineSig, baselineCount)).toBe(true)
+    // The table set shrank → ordinals no longer align → conflict.
+    expect(draggedTableConflict(editor.state.doc, baselineSigs, dragIndex)).toBe(true)
   })
 
-  it('a null baseline disables the guard (never a blind abort)', () => {
+  it('a null baseline or out-of-range ordinal disables the guard (never a blind abort)', () => {
     editor = makeEditor(TWO_TABLES)
     expect(draggedTableConflict(editor.state.doc, null, 0)).toBe(false)
+    expect(draggedTableConflict(editor.state.doc, tableSignatures(editor.state.doc), -1)).toBe(false)
   })
 
   /** selectCell for an arbitrary table index (the file-level selectCell targets the first table). */
