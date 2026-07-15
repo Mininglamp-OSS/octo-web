@@ -157,13 +157,13 @@
         calc(var(--wk-sp-1) / 2)
         calc(var(--wk-sp-1) / 2)
         var(--wk-sp-1)
-        color-mix(in srgb, var(--wk-text-primary) 18%, transparent);
+        color-mix(in srgb, var(--wk-text-primary) 12%, transparent);
 }
 
 .wk-login-brand-subline {
     font-size: var(--wk-text-size-xl);
     font-weight: 500;
-    color: color-mix(in srgb, var(--wk-text-inverse) 88%, transparent);
+    color: color-mix(in srgb, var(--wk-text-inverse) 96%, transparent);
     line-height: 1.65;
     margin-bottom: 0;
 }

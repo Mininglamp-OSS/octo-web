@@ -66,6 +66,17 @@ describe("login page presentation", () => {
     );
   });
 
+  it("keeps the left-side brand copy opaque without muddying the headline", () => {
+    const styles = readRepoFile("packages/dmworklogin/src/login.css");
+
+    expect(styles).toContain(
+      "color-mix(in srgb, var(--wk-text-primary) 12%, transparent);"
+    );
+    expect(styles).toContain(
+      "color: color-mix(in srgb, var(--wk-text-inverse) 96%, transparent);"
+    );
+  });
+
   it("does not describe internal Octo account provisioning on the login page", () => {
     const source = readRepoFile("packages/dmworklogin/src/login.tsx");
     const zhCN = readRepoFile("packages/dmworklogin/src/i18n/zh-CN.json");
