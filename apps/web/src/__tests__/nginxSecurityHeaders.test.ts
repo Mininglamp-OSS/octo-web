@@ -44,6 +44,10 @@ describe('Nginx Security Headers', () => {
     expect(nginxConfig).toMatch(/worker-src\s+'self'\s+blob:/);
   });
 
+  it('should have media-src directive allowing HTTPS CDN for video/audio preview', () => {
+    expect(nginxConfig).toMatch(/media-src\s+'self'\s+blob:\s+https:/);
+  });
+
   it('should have HSTS header available (commented for manual enable)', () => {
     expect(nginxConfig).toContain('Strict-Transport-Security');
   });
