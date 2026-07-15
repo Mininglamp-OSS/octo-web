@@ -67,6 +67,21 @@ interface CellContext {
   cellPos: number
 }
 
+// Resolve the real `<table>` element for a table node position. `view.nodeDOM(tablePos)` returns
+// prosemirror-tables' `.tableWrapper` div, whose box INCLUDES the table's `margin: 12px 0` — the
+// wrapper is a block-formatting context (`overflow-x: auto`), so the child table's vertical margin
+// sits inside it and the wrapper's top edge is ~12px ABOVE the first row. Clamping / caret geometry
+// must use the inner table's rect, not the wrapper's, or vertical positions land in that margin gap
+// (this is what made column drags a no-op while rows — whose left margin is 0 — worked). Returns
+// null when the node view isn't laid out yet.
+function tableElementAt(view: EditorView, tablePos: number): HTMLElement | null {
+  const dom = view.nodeDOM(tablePos)
+  if (!(dom instanceof HTMLElement)) return null
+  if (dom.tagName === 'TABLE') return dom
+  const inner = dom.querySelector('table')
+  return inner instanceof HTMLElement ? inner : dom
+}
+
 function cellContextAt(view: EditorView, clientX: number, clientY: number): CellContext | null {
   const found = view.posAtCoords({ left: clientX, top: clientY })
   if (!found) return null
@@ -129,8 +144,8 @@ export const TableReorderHandle = Extension.create({
     const placeHandles = (view: EditorView, ctx: CellContext) => {
       if (!rowHandle || !colHandle) return
       const cellDom = view.nodeDOM(ctx.cellPos)
-      const tableDom = view.nodeDOM(ctx.tablePos)
-      if (!(cellDom instanceof HTMLElement) || !(tableDom instanceof HTMLElement)) {
+      const tableDom = tableElementAt(view, ctx.tablePos)
+      if (!(cellDom instanceof HTMLElement) || !tableDom) {
         hideHandles()
         return
       }
@@ -167,8 +182,8 @@ export const TableReorderHandle = Extension.create({
         return
       }
       const cellDom = view.nodeDOM(ctx.cellPos)
-      const tableDom = view.nodeDOM(ctx.tablePos)
-      if (!(cellDom instanceof HTMLElement) || !(tableDom instanceof HTMLElement)) return
+      const tableDom = tableElementAt(view, ctx.tablePos)
+      if (!(cellDom instanceof HTMLElement) || !tableDom) return
       const base = (view.dom as HTMLElement).getBoundingClientRect()
       const cell = cellDom.getBoundingClientRect()
       const table = tableDom.getBoundingClientRect()
@@ -238,12 +253,14 @@ export const TableReorderHandle = Extension.create({
       // a drag naturally travels along that gutter — so the raw pointer point is usually not over
       // any table cell and posAtCoords resolves nothing. Probe the drop target with the pointer
       // clamped into the table's interior instead: for a row drag the pointer's Y still selects the
-      // row (X is pulled inside), for a column drag its X still selects the column. Without this the
-      // drop target is never found and the move is a silent no-op (octo-docs-backend#76 rework).
+      // row (X is pulled inside), for a column drag its X still selects the column. Clamp against
+      // the real <table> rect (not the wrapper, whose box includes the table's 12px top/bottom
+      // margin) — clamping to the wrapper's top lands ~12px above the first row, in the margin gap
+      // over no cell, which is why the column axis was a silent no-op (octo-docs-backend#76 rework).
       let probeX = event.clientX
       let probeY = event.clientY
-      const tableDom = activeView.nodeDOM(drag.tablePos)
-      if (tableDom instanceof HTMLElement) {
+      const tableDom = tableElementAt(activeView, drag.tablePos)
+      if (tableDom) {
         const t = tableDom.getBoundingClientRect()
         probeX = Math.min(Math.max(probeX, t.left + 1), t.right - 1)
         probeY = Math.min(Math.max(probeY, t.top + 1), t.bottom - 1)
