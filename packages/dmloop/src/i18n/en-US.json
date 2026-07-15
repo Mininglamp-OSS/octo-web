@@ -420,6 +420,8 @@
     "urlPlaceholder": "https://example.com/webhooks/octo",
     "add": "Add",
     "empty": "No webhooks yet.",
+    "adminOnly": "Only workspace admins can manage webhooks.",
+    "loadFailed": "Failed to load webhooks — click to retry.",
     "enabled": "Enabled",
     "delete": "Delete webhook",
     "deleteConfirm": "Delete this webhook?",

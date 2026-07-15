@@ -420,6 +420,8 @@
     "urlPlaceholder": "https://example.com/webhooks/octo",
     "add": "添加",
     "empty": "还没有 webhook。",
+    "adminOnly": "仅工作区管理员可管理 Webhook。",
+    "loadFailed": "加载 webhook 失败，点击重试。",
     "enabled": "启用",
     "delete": "删除 webhook",
     "deleteConfirm": "删除这个 webhook？",

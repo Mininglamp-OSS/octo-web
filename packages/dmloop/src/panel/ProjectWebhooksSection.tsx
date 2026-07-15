@@ -9,20 +9,24 @@ import { confirmDelete } from "../ui/confirmDelete";
 
 const { Text } = Typography;
 
-/** 项目 Webhook 配置分区：列表 + 启用开关 + 删除 + 新增（创建后一次性展示 secret）。 */
-export default function ProjectWebhooksSection({ projectId }: { projectId: string }) {
+/** 项目 Webhook 配置分区：列表 + 启用开关 + 删除 + 新增（创建后一次性展示 secret）。
+ *  Webhook 端点限 owner/admin，故非管理员只展示占位、不发任何请求。 */
+export default function ProjectWebhooksSection({ projectId, isAdmin }: { projectId: string; isAdmin?: boolean }) {
   const { t } = useI18n();
   const [rows, setRows] = useState<WebhookSubscription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
 
+  // 失败不静默当空态:否则一次瞬时故障会让管理员以为"没有 webhook"而重复创建。
   const reload = () => {
     setLoading(true);
-    listWebhooks(projectId).then(setRows).finally(() => setLoading(false));
+    setLoadFailed(false);
+    listWebhooks(projectId).then(setRows).catch(() => setLoadFailed(true)).finally(() => setLoading(false));
   };
-  useEffect(reload, [projectId]);
+  useEffect(() => { if (isAdmin) reload(); }, [projectId, isAdmin]);
 
   const add = async () => {
     const value = url.trim();
@@ -70,12 +74,21 @@ export default function ProjectWebhooksSection({ projectId }: { projectId: strin
     }
   };
 
+  if (isAdmin === undefined) {
+    return <div className="loop-wh"><div style={{ padding: "8px 0" }}><Spin size="small" /></div></div>;
+  }
+  if (!isAdmin) {
+    return <div className="loop-wh"><div className="loop-wh__empty">{t("loop.webhook.adminOnly")}</div></div>;
+  }
+
   return (
     <div className="loop-wh">
       <div className="loop-wh__hint">{t("loop.webhook.hint")}</div>
 
       {loading ? (
         <div style={{ padding: "8px 0" }}><Spin size="small" /></div>
+      ) : loadFailed ? (
+        <div className="loop-wh__empty" style={{ cursor: "pointer" }} onClick={reload}>{t("loop.webhook.loadFailed")}</div>
       ) : rows.length === 0 ? (
         <div className="loop-wh__empty">{t("loop.webhook.empty")}</div>
       ) : (
@@ -108,6 +121,7 @@ export default function ProjectWebhooksSection({ projectId }: { projectId: strin
         ))
       )}
 
+      {!loadFailed && (
       <div className="loop-wh__add">
         <Input
           value={url}
@@ -119,6 +133,7 @@ export default function ProjectWebhooksSection({ projectId }: { projectId: strin
           {t("loop.webhook.add")}
         </LoopButton>
       </div>
+      )}
 
       <Modal
         className="loop-modal"
