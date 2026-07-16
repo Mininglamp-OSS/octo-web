@@ -36,7 +36,6 @@ import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { TableCellView } from './TableCellView.ts'
-import { TableFreeze } from './TableFreeze.ts'
 import { TableReorderHandle } from './TableReorderHandle.ts'
 import { OctoImage } from './ImageNode.ts'
 import { CommentHighlight } from '../comments/CommentDecorations.ts'
@@ -252,10 +251,6 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
         return ({ node }) => new TableCellView(node, 'td')
       },
     }),
-    // #755 (XIN-1096): freeze rows/columns (冻结窗格). View-state only — a plugin marks the first N
-    // rows / columns sticky, nothing is written to the Y.Doc (see TableFreeze.ts). Registered on the
-    // live editor only; the static/export editor below has no interactive freeze.
-    TableFreeze,
     // octo-docs-backend#76: table row/column drag-to-reorder. A self-built plugin renders
     // grab handles at the row-left / column-top edges and drives prosemirror-tables'
     // moveTableRow / moveTableColumn (single-transaction, TableMap-based, merge-aware) — see
