@@ -811,9 +811,13 @@
 
 /* Shared agent/member status dot — single source for color, shape, and motion.
    Status colors live in the --dot-* variables so the mention-avatar path
-   (mentionExtension.agentDotColor) can reference the exact same values. */
+   (mentionExtension.agentDotColor) can reference the exact same values.
+   --status-online is the product's single "online / available / success" green,
+   matching the IM presence dot (wk-navrail__user-status = #52c41a) so agent
+   status dots and the user's own presence dot read as the same green. */
 :root {
-  --dot-idle: #52c41a;
+  --status-online: #52c41a;
+  --dot-idle: var(--status-online, #52c41a);
   --dot-working: #2f6fed;
   --dot-offline: var(--semi-color-tertiary, #b8bcc8);
   --dot-error: var(--semi-color-danger, #f5222d);

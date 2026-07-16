@@ -184,7 +184,7 @@
   border-radius: 4px;
   background: #d9d9d9;
 }
-.loop-adp__run-dot[data-status="completed"] { background: #41cd59; }
+.loop-adp__run-dot[data-status="completed"] { background: var(--semi-color-success, #23a55a); }
 .loop-adp__run-dot[data-status="failed"] { background: var(--semi-color-danger, #f5222d); }
 .loop-adp__run-dot[data-status="cancelled"] { background: #d9d9d9; }
 .loop-adp__run-title {

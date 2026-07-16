@@ -164,11 +164,11 @@ export const RUN_STATUS_HEX_FALLBACK = "#c9cdd4";
 
 // Autopilot 运行状态 → 状态点颜色（卡片 last-run 点与详情运行行共用；未知值走灰兜底）。
 export const AUTOPILOT_RUN_DOT: Record<string, string> = {
-  issue_created: "#23a55a",
-  completed: "#23a55a",
-  running: "#f5a623",
-  failed: "#f5222d",
-  skipped: "#8a8f99",
+  issue_created: "var(--semi-color-success, #23a55a)",
+  completed: "var(--semi-color-success, #23a55a)",
+  running: "var(--semi-color-warning, #f5a623)",
+  failed: "var(--semi-color-danger, #f5222d)",
+  skipped: "var(--semi-color-tertiary, #8a8f99)",
 };
 export const AUTOPILOT_RUN_DOT_FALLBACK = "#c9cdd4";
 

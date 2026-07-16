@@ -660,7 +660,7 @@
   min-width: 0;
 }
 .loop-apd__status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--semi-color-text-2, #c9cdd4); flex: 0 0 auto; }
-.loop-apd__status-dot[data-status="active"] { background: #23a55a; }
+.loop-apd__status-dot[data-status="active"] { background: var(--status-online, #52c41a); }
 
 /* 名称内联编辑：点击文字进入编辑 */
 .loop-apd__name-btn {
