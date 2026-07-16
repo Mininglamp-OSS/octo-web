@@ -111,6 +111,32 @@ describe("renderOctoCard", () => {
     target.remove();
   });
 
+  it("Action.Submit 的 style positive/destructive → 渲染出 style-positive/style-destructive class（审批卡主/次按钮样式依赖此 SDK class 名）", () => {
+    const target = mountTarget();
+    renderOctoCard({
+      card: {
+        type: "AdaptiveCard",
+        version: "1.5",
+        body: [{ type: "TextBlock", text: "审批" }],
+        actions: [
+          { type: "Action.Submit", id: "approve", title: "允许", style: "positive" },
+          { type: "Action.Submit", id: "deny", title: "拒绝", style: "destructive" },
+        ],
+      },
+      target,
+      onAction: () => {},
+    });
+    // index.css 的 .ac-pushButton.style-positive / .style-destructive 依赖 SDK 为
+    // style:positive/destructive 输出这两个 class；SDK 升级若改名，审批卡主/次按钮样式会
+    // 静默失效——此测试兜底锁死该契约（对齐服务端 approval_request 模板打的 ActionStyle）。
+    const classes = Array.from(
+      target.querySelectorAll<HTMLButtonElement>(".ac-pushButton")
+    ).map((b) => Array.from(b.classList));
+    expect(classes.some((c) => c.includes("style-positive"))).toBe(true);
+    expect(classes.some((c) => c.includes("style-destructive"))).toBe(true);
+    target.remove();
+  });
+
   it("Action.ToggleVisibility 由 SDK 原生切换 isVisible", () => {
     const target = mountTarget();
     const types: string[] = [];
