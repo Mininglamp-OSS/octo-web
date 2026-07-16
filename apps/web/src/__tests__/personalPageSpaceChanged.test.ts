@@ -13,6 +13,16 @@ function onSpaceChangedBody(src: string): string {
   return end < 0 ? rest : rest.slice(0, end);
 }
 
+// LoopPage's actual re-resolve logic lives in reResolveSpace (shared by the
+// space-changed handler and reactivation). Extract its body for assertions.
+function reResolveSpaceBody(src: string): string {
+  const start = src.search(/const\s+reResolveSpace\s*=/);
+  if (start < 0) return '';
+  const rest = src.slice(start);
+  const end = rest.search(/\n  const\s+\w+\s*=|\n  useEffect\(/);
+  return end < 0 ? rest : rest.slice(0, end);
+}
+
 /**
  * Switching octo space must refresh the Personal (我的/运行时) right pane.
  *
@@ -70,8 +80,9 @@ describe('PersonalPage — re-resolve workspace on space switch', () => {
     expect(body).toMatch(/selectedWsRef\.current\s*=\s*null/);
     expect(body).toMatch(/machineModeRef\.current\s*=\s*false/);
     expect(body).toMatch(/setWorkspaceContext\(\s*["']["']\s*,\s*["']["']\s*\)/);
-    // Each clear must precede resolveRef.current(...).
-    const resolveIdx = body.search(/resolveRef\.current\(/);
+    // Each clear must precede the resolveRef.current(...) CALL. Anchor on a
+    // statement line (newline + indent) so a comment mention doesn't match.
+    const resolveIdx = body.search(/\n\s*resolveRef\.current\(/);
     expect(resolveIdx).toBeGreaterThan(0);
     expect(body.search(/selectedWsRef\.current\s*=\s*null/)).toBeLessThan(resolveIdx);
     expect(body.search(/machineModeRef\.current\s*=\s*false/)).toBeLessThan(resolveIdx);
@@ -86,6 +97,41 @@ describe('PersonalPage — re-resolve workspace on space switch', () => {
     // openTab bails on !workspaceReady; the handler must flip it false during the
     // window so the Skills/runtime tabs cannot open against the old space's scope.
     expect(onSpaceChangedBody(personalPage)).toMatch(/setWorkspaceReady\(\s*false\s*\)/);
+  });
+
+  it('only re-resolves when it is the active menu (no shared-pane fight)', () => {
+    // PersonalPage and LoopPage share the single routeRight and stay mounted; a
+    // backgrounded page must not touch the shared pane/context on space-changed.
+    // PersonalPage re-resolves lazily on reactivation (nav-menu-activated →
+    // resolveRef), so gating out when backgrounded is sufficient.
+    expect(onSpaceChangedBody(personalPage)).toMatch(/WKApp\.currentMenuId\s*!==\s*["']dmpersonal["']/);
+  });
+
+  it('resets private state + drops ready when backgrounded (gated reactivation window)', () => {
+    // The backgrounded branch must NOT clear the shared http context (would wipe
+    // the active page's slug), but must reset its own private state and drop
+    // workspaceReady so the reactivation window is gated (openTab bails) instead
+    // of letting a click write the old space's slug back → 403.
+    const body = onSpaceChangedBody(personalPage);
+    const guardIdx = body.search(/WKApp\.currentMenuId\s*!==\s*["']dmpersonal["']/);
+    expect(guardIdx).toBeGreaterThanOrEqual(0);
+    const afterGuard = body.slice(guardIdx);
+    const bgBranch = afterGuard.slice(0, afterGuard.search(/return;/) + 7);
+    expect(bgBranch).toMatch(/setWorkspaceReady\(\s*false\s*\)/);
+    expect(bgBranch).toMatch(/selectedWsRef\.current\s*=\s*null/);
+    expect(bgBranch).not.toMatch(/setWorkspaceContext\(/);
+  });
+
+  it('resolveAndPaint bails on shared writes when backgrounded', () => {
+    // Any async resolve that lands after the user navigated away must not write
+    // the shared pane/context. resolveAndPaint's .then and .catch re-check the
+    // active menu (after the seq/mounted guard) before touching them.
+    const start = personalPage.search(/const\s+resolveAndPaint\s*=/);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end = personalPage.slice(start).search(/\n  const\s+\w+\s*=|\n  useEffect\(/);
+    const body = end < 0 ? personalPage.slice(start) : personalPage.slice(start, start + end);
+    const checks = (body.match(/WKApp\.currentMenuId\s*!==\s*["']dmpersonal["']/g) || []).length;
+    expect(checks).toBeGreaterThanOrEqual(2); // .then and .catch
   });
 });
 
@@ -115,9 +161,7 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     // Clearing setWorkspaceContext("","") first prevents any request during the
     // re-list window from carrying the old space's workspace slug (which would
     // hit the backend isolation gate). It must precede listWorkspaces().
-    const handlerIdx = loopPage.search(/const\s+onSpaceChanged\s*=/);
-    expect(handlerIdx).toBeGreaterThanOrEqual(0);
-    const body = onSpaceChangedBody(loopPage);
+    const body = reResolveSpaceBody(loopPage);
     expect(body).toMatch(/setWorkspaceContext\(\s*["']["']\s*,\s*["']["']\s*\)/);
     expect(body).toMatch(/listWorkspaces\(/);
     expect(body.search(/setWorkspaceContext\(\s*["']["']/)).toBeLessThan(body.search(/listWorkspaces\(/));
@@ -127,10 +171,28 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     // Fast consecutive space switches race their listWorkspaces() responses; a
     // stale one landing last would write the old slug back and re-trigger 403.
     // Only the latest resolve may apply — assert a seq/generation guard exists.
-    const body = onSpaceChangedBody(loopPage);
+    const body = reResolveSpaceBody(loopPage);
     expect(body).toMatch(/spaceResolveSeqRef/);
     // The .then must bail when its captured seq is no longer current.
     expect(body).toMatch(/!==\s*spaceResolveSeqRef\.current/);
+  });
+
+  it('only re-resolves when it is the active menu; defers when backgrounded', () => {
+    // Both LoopPage and PersonalPage write the single shared routeRight and stay
+    // mounted. The space-changed handler must not repaint the pane when the page
+    // is backgrounded (that clobbers the active page); it flags a pending
+    // re-resolve that reactivation consumes.
+    const body = onSpaceChangedBody(loopPage);
+    expect(body).toMatch(/WKApp\.currentMenuId\s*!==\s*["']loop["']/);
+    expect(body).toMatch(/pendingSpaceReresolveRef\.current\s*=\s*true/);
+    // Reactivation (nav-menu-activated) consumes the pending flag and re-resolves.
+    expect(loopPage).toMatch(/if\s*\(\s*pendingSpaceReresolveRef\.current\s*\)/);
+    // The resolve callbacks re-check the active menu before writing the shared
+    // pane/context — an in-flight resolve that lands after navigating away must
+    // defer (set pending) instead of clobbering the now-active page.
+    const rr = reResolveSpaceBody(loopPage);
+    const menuChecks = (rr.match(/WKApp\.currentMenuId\s*!==\s*["']loop["']/g) || []).length;
+    expect(menuChecks).toBeGreaterThanOrEqual(2); // .then and .catch
   });
 
   it('renders the current tab (not a frozen mount-time tab) after re-resolve', () => {
@@ -170,9 +232,9 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
   });
 
   it('unmounts the stale right pane during the re-resolve window', () => {
-    // The previous space's IssuePage keeps polling until unmounted; onSpaceChanged
-    // must replace the right pane before awaiting the new resolve.
-    const body = onSpaceChangedBody(loopPage);
+    // The previous space's IssuePage keeps polling until unmounted; the resolve
+    // must replace the right pane before awaiting the new list.
+    const body = reResolveSpaceBody(loopPage);
     expect(body).toMatch(/routeRight\.replaceToRoot/);
     expect(body.search(/routeRight\.replaceToRoot/)).toBeLessThan(body.search(/listWorkspaces\(/));
   });
@@ -191,6 +253,9 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     expect(body).toMatch(/const\s+seq\s*=\s*spaceResolveSeqRef\.current/); // capture
     expect(body).not.toMatch(/\+\+\s*spaceResolveSeqRef\.current/);        // never bump
     expect(body).toMatch(/!==\s*spaceResolveSeqRef\.current/);             // still guarded
+    // And it must also bail on shared writes if navigated away mid-create
+    // (no space-changed → seq unchanged, so the seq guard alone is insufficient).
+    expect(body).toMatch(/WKApp\.currentMenuId\s*!==\s*["']loop["']/);
   });
 
   it('gates workspace-create entry on !loaded and closes modals on space switch', () => {
@@ -199,7 +264,7 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     // page is re-resolving a new space.
     const openBody = loopPage.slice(loopPage.search(/const\s+openCreateWs\s*=/), loopPage.search(/const\s+openCreateWs\s*=/) + 160);
     expect(openBody).toMatch(/if\s*\(\s*!loaded\s*\)\s*return/);
-    const onSpaceBody = onSpaceChangedBody(loopPage);
+    const onSpaceBody = reResolveSpaceBody(loopPage);
     expect(onSpaceBody).toMatch(/setWsModalOpen\(\s*false\s*\)/);
   });
 

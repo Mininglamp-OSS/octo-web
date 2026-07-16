@@ -55,6 +55,10 @@ export default function PersonalPage() {
     workspaceApi.listWorkspaces()
       .then((workspaces) => {
         if (!mountedRef.current || seq !== resolveSeqRef.current) return;
+        // If the page was backgrounded before this resolve landed, don't write
+        // the shared pane/context (would clobber the now-active page). Bail;
+        // reactivation re-resolves via wk:nav-menu-activated (resolveRef).
+        if (WKApp.currentMenuId !== "dmpersonal") return;
         // 优先用本页自己存的 workspace,仅当它不存在(如在别处被删)时才回落到共享全局。
         // 直接读 currentWorkspaceId() 会让 Personal 跟随 Loop 最后选中的 workspace(#619 污染)。
         const targetId = selectedWsRef.current?.id ?? currentWorkspaceId();
@@ -83,6 +87,8 @@ export default function PersonalPage() {
       })
       .catch((error) => {
         if (!mountedRef.current || seq !== resolveSeqRef.current) return;
+        // Backgrounded before the failure landed → don't paint the shared pane.
+        if (WKApp.currentMenuId !== "dmpersonal") return;
         const message = error?.message ? String(error.message) : t("personal.workspace.loadFailed");
         setWorkspaceError(message);
         setWorkspaceReady(false);
@@ -153,6 +159,19 @@ export default function PersonalPage() {
   // 复位后 resolveAndPaint 重新 listWorkspaces:新 space 无 workspace 时自然落入 machine 空态。
   useEffect(() => {
     const onSpaceChanged = () => {
+      // Only the active page may touch the single shared right pane / http-layer
+      // workspace context. When backgrounded, do NOT clear the shared context
+      // (that would wipe the active Loop page's slug) — but still reset our own
+      // PRIVATE state and drop workspaceReady, so the reactivation window is
+      // gated by !workspaceReady (openTab bails) instead of letting a click
+      // write the old space's slug back → 403. Reactivation re-resolves via
+      // wk:nav-menu-activated (resolveRef.current(true)).
+      if (WKApp.currentMenuId !== "dmpersonal") {
+        selectedWsRef.current = null;
+        machineModeRef.current = false;
+        setWorkspaceReady(false);
+        return;
+      }
       selectedWsRef.current = null;
       machineModeRef.current = false;
       setWorkspaceContext("", "");
