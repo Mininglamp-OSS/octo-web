@@ -268,8 +268,16 @@ export function getDownloadUrl(id: string): string {
   return `${API_BASE_URL}/skill/${encodeURIComponent(id)}/download`;
 }
 
-export function downloadSkill(id: string): void {
-  window.open(getDownloadUrl(id), "_blank", "noopener,noreferrer");
+export async function downloadSkill(id: string): Promise<void> {
+  const result = await request<{ url: string }>(`/skill/${encodeURIComponent(id)}/download?format=json`);
+  if (!result.url) {
+    throw normalizeError({ code: "invalid_response", message: "下载地址无效" });
+  }
+  const anchor = document.createElement("a");
+  anchor.href = result.url;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  anchor.click();
 }
 
 // ─── Upload / Parse flow ───────────────────────────────────────────────────

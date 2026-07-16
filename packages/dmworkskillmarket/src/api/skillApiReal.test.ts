@@ -14,6 +14,7 @@ import {
   triggerParse,
   pollParse,
   getDownloadUrl,
+  downloadSkill,
 } from "./skillApiReal";
 
 // Mock global fetch
@@ -491,6 +492,21 @@ describe("skillApiReal", () => {
     expect(getDownloadUrl("skill/with space")).toBe(
       "/market/api/v1/skill/skill%2Fwith%20space/download",
     );
+  });
+
+  it("downloads through an authenticated JSON URL request", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ url: "https://cdn.example.com/skills/demo.zip" }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    await downloadSkill("skill/with space");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/market/api/v1/skill/skill%2Fwith%20space/download?format=json",
+      expect.objectContaining({
+        headers: expect.objectContaining({ token: "test-token", "X-Space-Id": "space-123" }),
+      }),
+    );
+    expect(click).toHaveBeenCalledOnce();
   });
 
   it("normalizes tags when backend returns a JSON-encoded string", async () => {

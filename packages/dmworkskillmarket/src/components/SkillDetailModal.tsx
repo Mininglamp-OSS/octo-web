@@ -125,10 +125,14 @@ export default function SkillDetailModal({
     }
   }
 
-  function downloadSkillPackage() {
+  async function downloadSkillPackage() {
     if (!skill) return;
-    downloadSkill(skill.id);
-    onFeedback?.("下载已打开");
+    try {
+      await downloadSkill(skill.id);
+      onFeedback?.("下载已打开");
+    } catch (err) {
+      onFeedback?.(err instanceof Error ? err.message : "下载失败");
+    }
   }
 
   function handlePublishVersion() {

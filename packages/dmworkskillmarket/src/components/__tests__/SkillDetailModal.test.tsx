@@ -45,7 +45,7 @@ describe("SkillDetailModal", () => {
   });
 
   it("copies install prompt and opens download", async () => {
-    vi.mocked(api.downloadSkill).mockReturnValue(undefined);
+    vi.mocked(api.downloadSkill).mockResolvedValue(undefined);
     const onFeedback = vi.fn();
     render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} onFeedback={onFeedback} />);
 
@@ -56,7 +56,7 @@ describe("SkillDetailModal", () => {
     expect(onFeedback).toHaveBeenCalledWith("安装 Prompt 已复制");
 
     fireEvent.click(screen.getByRole("button", { name: "下载 Skill 包" }));
-    expect(api.downloadSkill).toHaveBeenCalledWith(skill.id);
+    await waitFor(() => expect(api.downloadSkill).toHaveBeenCalledWith(skill.id));
     expect(onFeedback).toHaveBeenCalledWith("下载已打开");
   });
 
