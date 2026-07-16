@@ -1688,6 +1688,26 @@
   font-size: 15px;
   line-height: 1;
 }
+/* 卡片图标与列表图标同尺寸 */
+.loop-project-card__icon {
+  flex: none;
+  font-size: 15px;
+  line-height: 1;
+}
+/* 可点击的项目图标：hover 出浅灰底提示可改，位移用负 margin 抵消 padding 不撑行 */
+.loop-project-icon--btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: -3px;
+  padding: 3px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.loop-project-icon--btn:hover { background: var(--semi-color-fill-1, #f0f1f4); }
+/* emoji-mart picker 容器：去掉行高留白，让弹层贴合 */
+.loop-emoji-pop { line-height: 0; }
 .loop-project-list__name {
   min-width: 0;
   overflow: hidden;

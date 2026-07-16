@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Input, Button, Spin, Modal, Toast } from "@douyinfe/semi-ui";
+import { Input, Button, Spin, Modal, Toast, Popover } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Briefcase, List, LayoutGrid, ListChecks } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Project, UpsertProjectReq } from "../api/types";
 import { listProjects, createProject, updateProject, deleteProject } from "../api/projectApi";
 import ProjectDetailPage from "../panel/ProjectDetailPage";
 import LoopButton from "../ui/LoopButton";
+import EmojiPicker from "../ui/EmojiPicker";
 import ProjectStatusBadge from "../ui/ProjectStatusBadge";
 import ProjectPriorityBadge from "../ui/ProjectPriorityBadge";
 import AssigneePicker from "../ui/AssigneePicker";
@@ -52,6 +53,8 @@ export default function ProjectPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [nTitle, setNTitle] = useState("");
   const [nDesc, setNDesc] = useState("");
+  // 当前打开 emoji 选择器的项目 id（列表/卡片共用一个，打开新的会关掉旧的）。
+  const [iconPickerFor, setIconPickerFor] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -110,6 +113,37 @@ export default function ProjectPage() {
     }
   };
 
+  // 项目图标：点击 emoji 唤起选择器，选中即存（PUT 全量，复用 patchProject 回传其它字段）。
+  // stopPropagation 阻止冒泡到行的 openDetail；trigger="custom" + onClickOutSide 完全受控。
+  const renderIcon = (p: Project, className: string) => (
+    <Popover
+      trigger="custom"
+      visible={iconPickerFor === p.id}
+      onClickOutSide={() => setIconPickerFor(null)}
+      position="bottomLeft"
+      content={
+        iconPickerFor === p.id ? (
+          // React 事件按组件树冒泡：Popover 内容虽 portal 到 body，click 仍会冒泡到行的 onClick(openDetail)。
+          // 在内容容器 stopPropagation，避免选 emoji 时误入详情页。
+          <div className="loop-emoji-pop" onClick={(e) => e.stopPropagation()}>
+            <EmojiPicker
+              onSelect={(emoji) => { setIconPickerFor(null); patchProject(p, { icon: emoji }); }}
+            />
+          </div>
+        ) : null
+      }
+    >
+      <span
+        className={`${className} loop-project-icon--btn`}
+        role="button"
+        aria-label={t("loop.project.changeIcon")}
+        onClick={(e) => { e.stopPropagation(); setIconPickerFor((cur) => (cur === p.id ? null : p.id)); }}
+      >
+        {p.icon || "📁"}
+      </span>
+    </Popover>
+  );
+
   const renderList = () => (
     <div className="loop-project-list" role="table">
       <div className="loop-ptable__head" role="row">
@@ -124,7 +158,7 @@ export default function ProjectPage() {
       {filtered.map((p) => (
         <div key={p.id} className="loop-project-list__row" role="row" onClick={() => openDetail(p.id)}>
           <div className="loop-project-list__namecell">
-            <span className="loop-project-list__icon">{p.icon || "📁"}</span>
+            {renderIcon(p, "loop-project-list__icon")}
             <span className="loop-project-list__name">{p.title}</span>
           </div>
           <div className="loop-project-list__cell" onClick={(e) => e.stopPropagation()}>
@@ -169,7 +203,7 @@ export default function ProjectPage() {
           <Ring done={p.done_count} total={p.issue_count} />
           <div className="loop-project-card__body">
             <div className="loop-project-card__title">
-              <span>{p.icon || "📁"}</span>
+              {renderIcon(p, "loop-project-card__icon")}
               <strong>{p.title}</strong>
             </div>
             <div className="loop-project-card__sub">

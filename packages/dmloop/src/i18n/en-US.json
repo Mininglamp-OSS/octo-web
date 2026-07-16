@@ -416,7 +416,8 @@
     "lead": "Lead",
     "descPlaceholder": "Add a description...",
     "namePlaceholder": "Project name, e.g. Growth experiments",
-    "descHint": "Provided to agents as project context and applied to every task in this project."
+    "descHint": "Provided to agents as project context and applied to every task in this project.",
+    "changeIcon": "Change icon"
   },
   "webhook": {
     "title": "Webhooks",
