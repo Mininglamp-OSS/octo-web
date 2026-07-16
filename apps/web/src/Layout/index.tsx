@@ -7,13 +7,13 @@ import { Notification as NotificationUI, Button } from '@douyinfe/semi-ui';
 import { checkUpdate, installUpdate, UpdateManifest } from '@tauri-apps/api/updater'
 import { relaunch } from '@tauri-apps/api/process'
 import { os } from "@tauri-apps/api";
-import { getSid, getQueryParam, computeAndSaveJoinSuccess } from "@octo/base";
+import { getQueryParam, computeAndSaveJoinSuccess, removeSidFromPath, setSessionSid } from "@octo/base";
 import type { JoinApprovalStatus } from "@octo/base";
 import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
-import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn, withReturnSid } from "@octo/docs";
+import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
 import { SummaryDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { isLoopCliAuthorizePath, LOOP_CLI_AUTHORIZE_PATH } from "@octo/loop";
@@ -137,8 +137,6 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             const basePath = rawPath
                 .replace(/^\/api(?:\/v\d+)?(?=\/|$)/, '')
                 .replace(/\/+$/, '')
-            // 保留原始 sid（如果有），不随机生成新的
-            const existingSid = getQueryParam("sid") || ""
             // #511 problem 2 (附带必修): a forwarded-doc link is `/docs?...&doc=<id>&sid=<space>`.
             // A first-time recipient logs in, then the post-login redirect used to keep only ?sid=
             // and drop ?doc=, landing them on the empty document list instead of the document they
@@ -149,7 +147,6 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             const forwardFolder = getQueryParam("folder") || ""
             const forwardSp = getQueryParam("sp") || ""
             const redirectQuery = new URLSearchParams()
-            if (existingSid) redirectQuery.set("sid", existingSid)
             if (forwardDoc) {
                 redirectQuery.set("doc", forwardDoc)
                 if (forwardSpace) redirectQuery.set("space", forwardSpace)
@@ -161,7 +158,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 if (forwardSpace) redirectQuery.set("space", forwardSpace)
             }
             const redirectQs = redirectQuery.toString()
-            const sidParam = redirectQs ? `?${redirectQs}` : ""
+            const redirectSearch = redirectQs ? `?${redirectQs}` : ""
 
             const goMain = () => {
                 // A user who signed in from a shared /d/:docId link (local OR SSO/OIDC, where the
@@ -170,27 +167,22 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 // clears the key and only returns SAFE same-origin relative paths (open-redirect
                 // guard), so a tampered value can never redirect off-origin.
                 //
-                // Carry the just-authenticated session's own sid on the reload (XIN-398): the
-                // stashed target has no `?sid=`, so the reloaded /d/:docId's sid-keyed load() would
-                // read only the empty-sid bucket and — for a multi-session user — fall through to a
-                // recovery that (XIN-392 P1-2) refuses to guess an identity, bouncing them back to
-                // login in a loop. withReturnSid appends the sid of the bucket that already holds the
-                // current token (findSidForToken — the known identity, never a guess), so the reload
-                // hits the right session directly instead of relying on the now-strict recovery. It
-                // no-ops when the target already carries a sid or the session lives in the empty-sid
-                // bucket (where a no-sid reload already resolves it), and the appended target still
-                // passes the isSafeReturnPath / parseStandaloneDocId gates.
+                // Carry the just-authenticated session's own sid on the reload (XIN-398), but keep
+                // the URL clean: store the known bucket sid in SessionScope, then navigate to the
+                // sid-less return path. The reloaded page still hits the right sid-keyed session
+                // bucket, without exposing `?sid=` in the address bar.
                 const standaloneReturn = consumeStandaloneReturn();
                 if (standaloneReturn) {
                     const sessionSid = findSidForToken(localStorage, WKApp.loginInfo.token || "");
-                    window.location.assign(withReturnSid(standaloneReturn, sessionSid))
+                    if (sessionSid) setSessionSid(sessionSid);
+                    window.location.assign(removeSidFromPath(standaloneReturn))
                     return
                 }
                 if ((window as any).__POWERED_EXTENSION__) {
                     window.location.reload()
                     return
                 }
-                window.location.href = `${window.location.origin}${basePath}/${sidParam}`
+                window.location.href = `${window.location.origin}${basePath}/${redirectSearch}`
             }
 
             // 检查是否有待处理的邀请码（验证格式防止 XSS/Open Redirect）
@@ -430,7 +422,8 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
             // Anonymous: stash the exact /d/:docId target so the post-login flow (local OR SSO/OIDC)
             // can bounce the user back to the document instead of the app root, then fall through to
-            // the login screen (below) without navigating away. The standalone page itself only
+            // the login screen (below) without navigating away. SessionScope keeps the session bucket
+            // available without exposing sid in the return URL. The standalone page itself only
             // mounts once a token exists, so the anonymous path is the ONLY place this key gets
             // written for a first-time visitor — onLogin consumes it via consumeStandaloneReturn.
             persistStandaloneReturn();
