@@ -195,17 +195,11 @@ export class CollabSheet {
     // Locale patch: @univerjs/sheets-ui@0.25.1's zh-CN bundle is missing the
     // `sheets-ui.info` block (error / forceStringInfo), so the runtime renders the
     // raw message keys (e.g. the "number stored as text" green-corner tooltip).
-    // Supply the two strings here (verbatim from the UMD locale) until the upstream
-    // ESM locale ships them; mergeLocales deep-merges, so the rest of sheets-ui
-    // (toolbar, etc.) is untouched.
-    const sheetsUIInfoZhCN = {
-      'sheets-ui': {
-        info: {
-          error: t('docs.sheet.info.error'),
-          forceStringInfo: t('docs.sheet.info.forceStringInfo'),
-        },
-      },
-    }
+    // We supply the two strings here — but mergeLocales is a SHALLOW merge
+    // (Object.assign under the hood), so passing `{ 'sheets-ui': { info } }` as a
+    // separate arg would REPLACE the entire `sheets-ui` namespace with just `{ info }`,
+    // wiping toolbar/align/border translations. Instead, merge the base locales first,
+    // then deep-merge only the `info` sub-block into `sheets-ui`.
     // Titles for our custom "insert formula" dropdown + presets (Univer's LocaleService resolves the
     // menu `title` keys against these merged locales — an unknown key would render raw).
     const octoMenuZhCN = {
@@ -227,9 +221,21 @@ export class CollabSheet {
         },
       },
     }
+    const baseZhCN = mergeLocales(sheetsCoreZhCN, sheetsDrawingZhCN, sheetsHyperLinkZhCN, octoMenuZhCN) as Record<string, unknown>
+    const mergedZhCN = {
+      ...baseZhCN,
+      'sheets-ui': {
+        ...(baseZhCN['sheets-ui'] as Record<string, unknown> | undefined),
+        info: {
+          ...((baseZhCN['sheets-ui'] as { info?: Record<string, unknown> } | undefined)?.info),
+          error: t('docs.sheet.info.error'),
+          forceStringInfo: t('docs.sheet.info.forceStringInfo'),
+        },
+      },
+    }
     const { univer, univerAPI } = createUniver({
       locale: LocaleType.ZH_CN,
-      locales: { [LocaleType.ZH_CN]: mergeLocales(sheetsCoreZhCN, sheetsDrawingZhCN, sheetsHyperLinkZhCN, sheetsUIInfoZhCN, octoMenuZhCN) },
+      locales: { [LocaleType.ZH_CN]: mergedZhCN },
       darkMode: isDarkTheme(),
       presets: [
         UniverSheetsCorePreset({
