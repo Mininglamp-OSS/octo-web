@@ -30,6 +30,7 @@ import IssueGroupBoard from "../panel/IssueGroupBoard";
 import IssueList from "../panel/IssueList";
 import IssueDetailPage from "../panel/IssueDetailPage";
 import NewLoopPage from "./NewLoopPage";
+import { readView, writeView } from "../ui/viewMode";
 
 type ViewMode = "board" | "grouped" | "list";
 
@@ -63,20 +64,26 @@ interface Filters {
 
 const PAGE_SIZE = 50;
 
+// 筛选/显示字段都挂在工具栏 Dropdown 面板(z-index 1060)里,其弹层默认取 Semi 基准 1030 →
+// 会被面板本体盖在下面(选项看不见也点不到)。统一抬到面板之上。
+const FIELD_POPUP = { dropdownClassName: "loop-fields__dropdown", zIndex: 2000 } as const;
+
 // 「我的回路」复用本页：defaultView="grouped" + defaultScope="involves" 即只看与我相关。
 interface IssuePageProps {
   defaultScope?: IssueScope;
   defaultView?: ViewMode;
+  // 视图偏好持久化 key（按页区分：回路 / 我的回路各存各的，缺省则不持久化）。
+  viewKey?: string;
 }
 
-export default function IssuePage({ defaultScope, defaultView }: IssuePageProps = {}) {
+export default function IssuePage({ defaultScope, defaultView, viewKey }: IssuePageProps = {}) {
   const { t } = useI18n();
   const [issues, setIssues] = useState<Issue[]>([]);
   const [groups, setGroups] = useState<IssueGroup[]>([]);
   const [running, setRunning] = useState<ReadonlySet<string>>(new Set());
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<ViewMode>(defaultView ?? "board");
+  const [view, setView] = useState<ViewMode>(() => viewKey ? readView(viewKey, ["board", "grouped", "list"], defaultView ?? "board") : (defaultView ?? "board"));
   const [scope, setScope] = useState<IssueScope>(defaultScope ?? "all");
   const [f, setF] = useState<Filters>({ keyword: "", gStatuses: [], gPriorities: [], gProjectIds: [], noProject: false, sortBy: "position", sortDir: "desc", dateField: "created_at" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
@@ -214,7 +221,7 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
 
   // 改任一筛选/搜索都回到第一页，避免停在越界的 offset（此规则只此一处表达）。
   const update = (p: Partial<Filters>) => { setF((prev) => ({ ...prev, ...p })); setPage(0); };
-  const switchView = (v: ViewMode) => { setView(v); setPage(0); };
+  const switchView = (v: ViewMode) => { setView(v); setPage(0); if (viewKey) writeView(viewKey, v); };
 
   // 点击 Issue → 跳转独立详情页（push 到右主栏，返回可 pop）。
   // key=id:issueId 变化即整体重挂载 → 详情页所有异步状态从零开始,结构性杜绝跨 issue 陈旧写入
@@ -277,24 +284,24 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
       <div className="loop-fields__row">
         <div className="loop-fields__label">{t("loop.filter.status")}</div>
         {view === "grouped" ? (
-          <Select multiple value={f.gStatuses} onChange={(v) => update({ gStatuses: (v ?? []) as IssueStatus[] })} showClear maxTagCount={2} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.status")}>{statusOpts}</Select>
+          <Select multiple value={f.gStatuses} onChange={(v) => update({ gStatuses: (v ?? []) as IssueStatus[] })} showClear maxTagCount={2} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.status")}>{statusOpts}</Select>
         ) : (
-          <Select value={f.status} onChange={(v) => update({ status: v as IssueStatus | undefined })} showClear disabled={searching} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.status")}>{statusOpts}</Select>
+          <Select value={f.status} onChange={(v) => update({ status: v as IssueStatus | undefined })} showClear disabled={searching} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.status")}>{statusOpts}</Select>
         )}
       </div>
       <div className="loop-fields__row">
         <div className="loop-fields__label">{t("loop.filter.priority")}</div>
         {view === "grouped" ? (
-          <Select multiple value={f.gPriorities} onChange={(v) => update({ gPriorities: (v ?? []) as IssuePriority[] })} showClear maxTagCount={2} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.priority")}>{priorityOpts}</Select>
+          <Select multiple value={f.gPriorities} onChange={(v) => update({ gPriorities: (v ?? []) as IssuePriority[] })} showClear maxTagCount={2} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.priority")}>{priorityOpts}</Select>
         ) : (
-          <Select value={f.priority} onChange={(v) => update({ priority: v as IssuePriority | undefined })} showClear disabled={searching} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.priority")}>{priorityOpts}</Select>
+          <Select value={f.priority} onChange={(v) => update({ priority: v as IssuePriority | undefined })} showClear disabled={searching} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.priority")}>{priorityOpts}</Select>
         )}
       </div>
       {/* assignee 单选仅扁平列表/看板(grouped 用 scope 按类型收窄)。 */}
       {view !== "grouped" && (
         <div className="loop-fields__row">
           <div className="loop-fields__label">{t("loop.filter.assignee")}</div>
-          <Select value={f.assignee} onChange={(v) => update({ assignee: v as string | undefined })} showClear filter disabled={searching} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.assignee")}>
+          <Select value={f.assignee} onChange={(v) => update({ assignee: v as string | undefined })} showClear filter disabled={searching} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.assignee")}>
             {cands.map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>))}
           </Select>
         </div>
@@ -303,7 +310,7 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
       {!(view === "grouped" && scope === "involves") && (
         <div className="loop-fields__row">
           <div className="loop-fields__label">{t("loop.filter.creator")}</div>
-          <Select value={f.creator} onChange={(v) => update({ creator: v as string | undefined })} showClear filter disabled={searching} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.creator")}>
+          <Select value={f.creator} onChange={(v) => update({ creator: v as string | undefined })} showClear filter disabled={searching} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.creator")}>
             {cands.filter((c) => c.type === "member").map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>))}
           </Select>
         </div>
@@ -312,9 +319,9 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
         <div className="loop-fields__row">
           <div className="loop-fields__label">{t("loop.filter.project")}</div>
           {view === "grouped" ? (
-            <Select multiple value={f.gProjectIds} onChange={(v) => update({ gProjectIds: (v ?? []) as string[] })} showClear filter maxTagCount={1} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.project")}>{projectOpts}</Select>
+            <Select multiple value={f.gProjectIds} onChange={(v) => update({ gProjectIds: (v ?? []) as string[] })} showClear filter maxTagCount={1} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.project")}>{projectOpts}</Select>
           ) : (
-            <Select value={f.project} onChange={(v) => update({ project: v as string | undefined })} showClear filter disabled={searching} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.project")}>{projectOpts}</Select>
+            <Select value={f.project} onChange={(v) => update({ project: v as string | undefined })} showClear filter disabled={searching} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={t("loop.filter.project")}>{projectOpts}</Select>
           )}
         </div>
       )}
@@ -327,10 +334,10 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
       <div className="loop-fields__row">
         <div className="loop-fields__label">{t("loop.filter.dateRange")}</div>
         <div className="loop-fields__inline">
-          <Select value={f.dateField} onChange={(v) => update({ dateField: v as IssueDateField })} disabled={searching} dropdownClassName="loop-fields__dropdown" style={{ width: 104 }}>
+          <Select value={f.dateField} onChange={(v) => update({ dateField: v as IssueDateField })} disabled={searching} {...FIELD_POPUP} style={{ width: 104 }}>
             {ISSUE_DATE_FIELDS.map((d) => (<Select.Option key={d} value={d}>{t(`loop.dateField.${d}`)}</Select.Option>))}
           </Select>
-          <DatePicker type="dateRange" density="compact" disabled={searching} value={f.dateRange} onChange={(d) => update({ dateRange: Array.isArray(d) && d.length === 2 && d[0] && d[1] ? (d as Date[]) : undefined })} placeholder={t("loop.filter.dateRange")} style={{ flex: 1 }} />
+          <DatePicker type="dateRange" density="compact" disabled={searching} value={f.dateRange} onChange={(d) => update({ dateRange: Array.isArray(d) && d.length === 2 && d[0] && d[1] ? (d as Date[]) : undefined })} placeholder={t("loop.filter.dateRange")} zIndex={FIELD_POPUP.zIndex} style={{ flex: 1 }} />
         </div>
       </div>
       {/* 关键词走全文搜索(独立语义,不与 grouped 组合),故分组视图隐藏。 */}
@@ -362,7 +369,7 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
         <div className="loop-fields__row">
           <div className="loop-fields__label">{t("loop.sort.direction")}</div>
           <div className="loop-fields__inline">
-            <Select value={f.sortBy} onChange={(v) => update({ sortBy: v as IssueSortField })} disabled={searching} dropdownClassName="loop-fields__dropdown" style={{ flex: 1 }}>
+            <Select value={f.sortBy} onChange={(v) => update({ sortBy: v as IssueSortField })} disabled={searching} {...FIELD_POPUP} style={{ flex: 1 }}>
               {ISSUE_SORT_FIELDS.map((s) => (<Select.Option key={s} value={s}>{t(`loop.sort.${s}`)}</Select.Option>))}
             </Select>
             <Button theme="borderless" disabled={searching || f.sortBy === "position"} icon={f.sortDir === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />} aria-label={t("loop.sort.direction")} onClick={() => update({ sortDir: f.sortDir === "asc" ? "desc" : "asc" })} />

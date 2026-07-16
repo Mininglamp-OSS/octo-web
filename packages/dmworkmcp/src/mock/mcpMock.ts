@@ -35,17 +35,22 @@ function tools(
   return names.map(([name, description]) => ({ name, description }));
 }
 
-/** Helper: a hosted (remote) quick-start with bearer auth. */
+/** Helper: a hosted (remote) quick-start with bearer auth. `name` doubles as
+ *  the slug because all built-in fixtures already use ASCII slugs (github,
+ *  postgres, etc.) — same behaviour as the real backend which auto-slugifies
+ *  when the client omits `slug`. */
 function remoteQuickStart(name: string): McpQuickStart {
   return {
     transport: "streamable-http",
     serverName: name,
+    slug: name,
     url: `https://mcp.deepminer.com.cn/${name}/mcp`,
     authType: "bearer",
   };
 }
 
-/** Helper: a stdio (local command) quick-start. */
+/** Helper: a stdio (local command) quick-start. Same slug=name convention as
+ *  the remote helper (see comment above). */
 function stdioQuickStart(
   name: string,
   args: string[],
@@ -54,6 +59,7 @@ function stdioQuickStart(
   return {
     transport: "stdio",
     serverName: name,
+    slug: name,
     command: "npx",
     args,
     env,

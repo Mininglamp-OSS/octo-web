@@ -1,13 +1,29 @@
 {
   "menu": {
-    "title": "MCP Market"
+    "title": "Markets"
   },
   "sidebar": {
     "header": "Markets",
-    "mcp": "MCP Market"
+    "mcp": "MCP Market",
+    "skills": "Skills Market"
   },
   "common": {
     "loadFailed": "Failed to load"
+  },
+  "errors": {
+    "nameTaken": "This name is already taken",
+    "slugTaken": "This service slug is already taken in the current Space",
+    "slugInvalid": "Slug must match ^[a-z0-9-]{1,64}$",
+    "secretLeaked": "Please remove the real token and use the placeholder before submitting",
+    "forbidden": "You are not allowed to modify this MCP",
+    "notFound": "MCP not found or has been removed",
+    "invalidVisibility": "Visibility must be Public or Only me",
+    "invalidTransport": "Transport is not supported",
+    "invalidRequest": "Request payload is invalid",
+    "probeUnsupported": "Server cannot probe this transport (stdio must run in the desktop client)",
+    "unauthorized": "Session expired, please sign in again",
+    "forbiddenSpace": "You are not a member of this space",
+    "internal": "Server is busy, please try again later"
   },
   "category": {
     "all": "All",
@@ -21,7 +37,13 @@
     "desc": "Browse and connect MCP servers to extend your agent's tools.",
     "create": "New MCP",
     "searchPlaceholder": "Search by name / summary",
-    "empty": "No matching MCP servers"
+    "empty": "No matching MCP servers",
+    "loadMore": "Scroll down to load more",
+    "reachedEnd": "You've reached the end",
+    "mode": {
+      "all": "All",
+      "mine": "Mine"
+    }
   },
   "card": {
     "toolCount": "Tools: {{count}}",
@@ -41,7 +63,23 @@
     "tools": "Tools",
     "example": "Usage examples",
     "faq": "FAQ",
-    "notes": "Notes"
+    "notes": "Notes",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "edit": {
+    "title": "Edit MCP",
+    "submit": "Save",
+    "success": "Saved",
+    "failed": "Save failed"
+  },
+  "delete": {
+    "confirmTitle": "Delete this MCP?",
+    "confirmBody": "It will disappear from the market. Any configs already copied out will keep working.",
+    "ok": "Delete",
+    "cancel": "Cancel",
+    "success": "Deleted",
+    "failed": "Delete failed"
   },
   "create": {
     "title": "New MCP",
@@ -72,6 +110,15 @@
     "name": "Name",
     "namePlaceholder": "e.g. GitHub MCP",
     "nameRequired": "Name is required",
+    "slug": "Server slug",
+    "slugHint": "Used as the key in the generated mcpServers JSON; lowercase letters, digits and hyphens only. Leave blank to derive it from the name.",
+    "slugPlaceholder": "e.g. github-mcp",
+    "urlRequired": "Service URL is required",
+    "commandRequired": "Start command is required",
+    "argTooLong": "Each command argument must be at most {{max}} characters",
+    "headerKeyTooLong": "Each header name must be at most {{max}} characters",
+    "headerValueTooLong": "Each header value must be at most {{max}} characters",
+    "iconUploadFailed": "Icon upload failed, please try again",
     "category": "Category",
     "transportLabel": "Transport",
     "transport": {
@@ -139,9 +186,9 @@
       "no_tools_capability": "This MCP does not expose a tool list."
     },
     "toolsEmpty": "No tools yet. Click \"Test / fetch tools\" to probe automatically, or add them manually.",
-    "toolsHint": "Before the real backend is wired up, probing hits the local mock and returns a sample tool set.",
+    "toolsHint": "Click \"Test / fetch tools\" to probe the remote server and sync its tool list.",
     "submit": "Submit",
-    "success": "Created (mock)",
+    "success": "Created",
     "failed": "Create failed"
   }
 }

@@ -36,6 +36,30 @@ export function isSecretKey(key: string): boolean {
 }
 
 /**
+ * Safe fallback slug when a name slugifies to the empty string (all non-ASCII,
+ * e.g. a pure-Chinese name). A JSON `mcpServers` key must be a stable ASCII
+ * identifier, so we never emit an empty key.
+ */
+export const DEFAULT_SERVER_SLUG = "mcp-server";
+
+/**
+ * Turn a display name into an ASCII slug usable as a `mcpServers` JSON key:
+ * lowercase, spaces → `-`, drop every non-ASCII char (Chinese names break the
+ * copy-paste config), collapse repeated / edge dashes. Returns
+ * {@link DEFAULT_SERVER_SLUG} when the result would be empty.
+ */
+export function slugifyServerName(name: string): string {
+  const slug = (name ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || DEFAULT_SERVER_SLUG;
+}
+
+/**
  * Replace blank / already-sentinel secret values with the sentinel so the
  * backend accepts them, while leaving a user-typed real value untouched (the
  * backend will then reject it with `secret_leaked`, surfacing the mistake).

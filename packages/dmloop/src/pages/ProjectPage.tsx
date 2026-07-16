@@ -8,17 +8,12 @@ import ProjectDetailPage from "../panel/ProjectDetailPage";
 import { PROJECT_STATUS_COLOR } from "../ui/meta";
 import { confirmDelete } from "../ui/confirmDelete";
 import { formatRelativeTime } from "../ui/time";
+import { readView, writeView } from "../ui/viewMode";
 
 const { Title, Text } = Typography;
 
 type ViewMode = "list" | "card";
 const VIEW_KEY = "loop.project.viewMode";
-function readViewMode(): ViewMode {
-  try { return localStorage.getItem(VIEW_KEY) === "card" ? "card" : "list"; } catch { return "list"; }
-}
-function writeViewMode(v: ViewMode): void {
-  try { localStorage.setItem(VIEW_KEY, v); } catch { /* ignore */ }
-}
 
 function Ring({ done, total }: { done: number; total: number }) {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -49,7 +44,7 @@ export default function ProjectPage() {
   const [rows, setRows] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
-  const [view, setView] = useState<ViewMode>(readViewMode);
+  const [view, setView] = useState<ViewMode>(() => readView(VIEW_KEY, ["list", "card"], "list"));
   const [createOpen, setCreateOpen] = useState(false);
   const [nTitle, setNTitle] = useState("");
   const [nDesc, setNDesc] = useState("");
@@ -60,7 +55,7 @@ export default function ProjectPage() {
   }, []);
   useEffect(reload, [reload]);
 
-  const setViewMode = (v: ViewMode) => { setView(v); writeViewMode(v); };
+  const setViewMode = (v: ViewMode) => { setView(v); writeView(VIEW_KEY, v); };
   const openDetail = (id: string) => WKApp.routeRight.push(<ProjectDetailPage projectId={id} onChanged={reload} />);
 
   const filtered = useMemo(() => {

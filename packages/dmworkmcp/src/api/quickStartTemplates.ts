@@ -1,3 +1,4 @@
+import { isSecretKey, slugifyServerName } from "../utils/constants";
 import type { McpQuickStart } from "../types/mcp";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -7,12 +8,14 @@ import type { McpQuickStart } from "../types/mcp";
 // structured `quickStart` payload plus the client-agnostic templates below.
 // No MCP ships hand-written snippets. Per the LSC-71 conclusion:
 //   - default tab = 提示词 (natural-language instruction for agent clients)
-//   - JSON = `mcpServers` snippet; remote servers MUST carry a `type` field
+//   - JSON = `mcpServers` snippet — Cursor / Claude Desktop shape:
+//       stdio  → { command, args, env }              (NO `type` field)
+//       remote → { type: "streamable_http" | "sse", url, headers }
+//     Claude Code also accepts `type: "stdio"`, but Cursor / Claude Desktop /
+//     Codex etc. don't — omitting it keeps one snippet copy-pasteable across
+//     the whole ecosystem, which is what users actually do.
 //   - the token position always renders as the placeholder below (never a real
 //     token, never pre-filled)
-//
-// TODO(backend): the backend only needs to return the `quickStart` structure;
-// this templating stays on the frontend so client formats can evolve here.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** The visible token placeholder. Never pre-fill a real token. */
@@ -36,47 +39,63 @@ function isRemote(qs: McpQuickStart): boolean {
 }
 
 /**
- * The `type` value Claude Code expects in `.mcp.json` for remote servers.
- * (Only url without type is treated as stdio and errors — see LSC-71.)
+ * The `type` value emitted for remote transports. `.mcp.json` (Claude Code)
+ * requires it; Cursor / Claude Desktop tolerate it. stdio gets no `type` at all
+ * (Cursor / Claude Desktop reject unknown fields on stdio; Claude Code accepts
+ * the omission). streamable-http emits the canonical `streamable_http` value
+ * (the ecosystem's own key), not the shorthand `http`.
  */
-function jsonTypeField(qs: McpQuickStart): string {
+function jsonTypeField(qs: McpQuickStart): "sse" | "streamable_http" | null {
   if (qs.transport === "sse") return "sse";
-  if (qs.transport === "streamable-http") return "http";
-  return "stdio";
+  if (qs.transport === "streamable-http") return "streamable_http";
+  return null;
 }
 
-/** Build the JSON `mcpServers` snippet. */
+/** The `mcpServers` JSON key — an ASCII slug, never the Chinese display name.
+ *  A manually-supplied slug is run through the same slugify as the auto one, so
+ *  Chinese / uppercase / spaces / underscores can never leak into the JSON key. */
+function serverKey(qs: McpQuickStart): string {
+  const source = qs.slug?.trim() ? qs.slug : qs.serverName;
+  return slugifyServerName(source);
+}
+
+/** Build the JSON `mcpServers` snippet — Cursor / Claude Desktop shape. */
 function buildJson(qs: McpQuickStart): string {
-  const type = jsonTypeField(qs);
+  const key = serverKey(qs);
   if (isRemote(qs)) {
     // User-supplied headers first, so the auth line (if any) wins on collision.
-    const merged: Record<string, string> = { ...(qs.headers ?? {}) };
+    const merged: Record<string, string> = maskSecrets(qs.headers ?? {});
     if (qs.authType === "bearer") {
       merged.Authorization = `Bearer ${TOKEN_PLACEHOLDER}`;
     }
-    const server: Record<string, unknown> = { type, url: qs.url ?? "" };
+    const server: Record<string, unknown> = {
+      type: jsonTypeField(qs),
+      url: qs.url ?? "",
+    };
     if (Object.keys(merged).length > 0) {
       server.headers = merged;
     }
-    return JSON.stringify({ mcpServers: { [qs.serverName]: server } }, null, 2);
+    return JSON.stringify({ mcpServers: { [key]: server } }, null, 2);
   }
-  // stdio
+  // stdio — no `type` field per Cursor / Claude Desktop convention.
   const server: Record<string, unknown> = {
-    type,
     command: qs.command ?? "npx",
     args: qs.args ?? [],
   };
   if (qs.env && Object.keys(qs.env).length > 0) {
-    server.env = maskEnv(qs.env);
+    server.env = maskSecrets(qs.env);
   }
-  return JSON.stringify({ mcpServers: { [qs.serverName]: server } }, null, 2);
+  return JSON.stringify({ mcpServers: { [key]: server } }, null, 2);
 }
 
-/** Replace secret-looking env values with the token placeholder. */
-function maskEnv(env: Record<string, string>): Record<string, string> {
+/** Replace secret-looking values with the token placeholder so the snippet is
+ *  copy-pasteable without leaking anything the user's browser echoed back. Uses
+ *  the same key pattern as the backend redaction rule (mcp-v1.md §5.1) so the
+ *  frontend's "this is a secret" judgement matches the wire. */
+function maskSecrets(m: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(env)) {
-    out[k] = /token|key|secret|password|pwd/i.test(k) ? TOKEN_PLACEHOLDER : v;
+  for (const [k, v] of Object.entries(m)) {
+    out[k] = isSecretKey(k) ? TOKEN_PLACEHOLDER : v;
   }
   return out;
 }
@@ -92,7 +111,9 @@ function buildPrompt(qs: McpQuickStart): string {
       qs.headers && Object.keys(qs.headers).length > 0
         ? "\n请求头：" +
           Object.entries(qs.headers)
-            .map(([k, v]) => `${k}: ${v}`)
+            .map(([k, v]) =>
+              isSecretKey(k) ? `${k}: ${TOKEN_PLACEHOLDER}` : `${k}: ${v}`
+            )
             .join("，")
         : "";
     return `帮我接入一个 MCP server：
@@ -102,16 +123,15 @@ function buildPrompt(qs: McpQuickStart): string {
 请把它加到我的 MCP 配置里并确认连接可用。`;
   }
   const args = (qs.args ?? []).join(" ");
-  const env = qs.env
-    ? "\n环境变量：" +
-      Object.keys(qs.env)
-        .map((k) =>
-          /token|key|secret|password|pwd/i.test(k)
-            ? `${k}=${TOKEN_PLACEHOLDER}`
-            : `${k}=${qs.env?.[k] ?? ""}`
-        )
-        .join("，")
-    : "";
+  const env =
+    qs.env && Object.keys(qs.env).length > 0
+      ? "\n环境变量：" +
+        Object.entries(qs.env)
+          .map(([k, v]) =>
+            isSecretKey(k) ? `${k}=${TOKEN_PLACEHOLDER}` : `${k}=${v}`
+          )
+          .join("，")
+      : "";
   return `帮我接入一个本地（stdio）MCP server：
 - 名称：${qs.serverName}
 - 启动命令：${qs.command ?? "npx"} ${args}${env}

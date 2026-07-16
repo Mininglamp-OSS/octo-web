@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { WKModal, WKButton, t } from "@octo/base";
 import { Toast, Spin } from "@douyinfe/semi-ui";
-import { fetchMcpDetail } from "../api/mcpService";
+import { deleteMcp, fetchMcpDetail } from "../api/mcpService";
 import { buildQuickStartTabs } from "../api/quickStartTemplates";
 import type { McpDetail, McpQuickStart } from "../types/mcp";
 import { IconGlyph } from "../utils/icon";
@@ -10,6 +10,14 @@ interface McpDetailModalProps {
   /** The id of the MCP to show; null closes the modal. */
   mcpId: string | null;
   onClose: () => void;
+  /** When true, show Edit + Delete buttons in the footer. Passed by the
+   *  parent when the detail was opened from a context that guarantees the
+   *  caller owns the record (the "我的" tab). */
+  canManage?: boolean;
+  /** Fired when the user clicks Edit — parent opens the edit modal. */
+  onEdit?: (detail: McpDetail) => void;
+  /** Fired after a successful delete — parent refreshes the list. */
+  onDeleted?: (id: string) => void;
 }
 
 /**
@@ -70,15 +78,27 @@ const QuickAccess: React.FC<{ quickStart: McpQuickStart }> = ({
  * Section order (per product spec):
  * ⚡快速接入 → 🔧工具清单 → 💬使用示例 → ❓常见问题 → ⚠️注意事项.
  */
-const McpDetailModal: React.FC<McpDetailModalProps> = ({ mcpId, onClose }) => {
+const McpDetailModal: React.FC<McpDetailModalProps> = ({
+  mcpId,
+  onClose,
+  canManage,
+  onEdit,
+  onDeleted,
+}) => {
   const [detail, setDetail] = useState<McpDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  /** 就地内联删除确认：footer 切换成「确认删除 / 取消」而非再叠一层弹窗。 */
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!mcpId) {
       setDetail(null);
       return;
     }
+    // 每次打开新的详情都重置内联确认态，避免残留上一次的确认条。
+    setConfirmingDelete(false);
+    setDeleting(false);
     let cancelled = false;
     setLoading(true);
     fetchMcpDetail(mcpId)
@@ -100,15 +120,90 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({ mcpId, onClose }) => {
     };
   }, [mcpId]);
 
+  const handleEdit = () => {
+    if (!detail || !onEdit) return;
+    onEdit(detail);
+  };
+
+  /** 就地内联确认删除：第一次点「删除」只把 footer 切成确认态，不弹新窗，
+   *  从根本上避免 modal 套 modal（详情 WKModal 上再叠一层 wkConfirm 遮罩）。
+   *  第二次点「确认删除」才真正发起网络请求，成功后通知父组件并关闭详情。 */
+  const handleDeleteClick = () => {
+    if (!detail) return;
+    setConfirmingDelete(true);
+  };
+
+  const handleCancelDelete = () => {
+    if (deleting) return;
+    setConfirmingDelete(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!detail || deleting) return;
+    setDeleting(true);
+    try {
+      await deleteMcp(detail.id);
+      Toast.success(t("mcp.delete.success"));
+      onDeleted?.(detail.id);
+      onClose();
+    } catch (err: unknown) {
+      Toast.error(err instanceof Error ? err.message : t("mcp.delete.failed"));
+      // 失败时保持在确认态，让用户可以重试或取消。
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const showActions = canManage && !!detail;
+
+  const handleModalCancel = () => {
+    if (deleting) return;
+    setConfirmingDelete(false);
+    onClose();
+  };
+
   return (
     <WKModal
       visible={!!mcpId}
-      onCancel={onClose}
+      onCancel={handleModalCancel}
       width={900}
       className="wk-mcp-detail-modal"
       bodyStyle={{ height: "70vh", overflowY: "auto" }}
       title={detail ? detail.name : t("mcp.detail.title")}
-      footer={null}
+      footer={
+        showActions ? (
+          confirmingDelete ? (
+            <div className="wk-mcp-detail-actions wk-mcp-detail-actions--confirm">
+              <span className="wk-mcp-detail-actions__hint">
+                {t("mcp.delete.confirmBody")}
+              </span>
+              <WKButton
+                variant="secondary"
+                disabled={deleting}
+                onClick={handleCancelDelete}
+              >
+                {t("mcp.delete.cancel")}
+              </WKButton>
+              <WKButton
+                variant="danger"
+                loading={deleting}
+                onClick={handleConfirmDelete}
+              >
+                {t("mcp.delete.ok")}
+              </WKButton>
+            </div>
+          ) : (
+            <div className="wk-mcp-detail-actions">
+              <WKButton variant="danger" onClick={handleDeleteClick}>
+                {t("mcp.detail.delete")}
+              </WKButton>
+              <WKButton variant="primary" onClick={handleEdit}>
+                {t("mcp.detail.edit")}
+              </WKButton>
+            </div>
+          )
+        ) : null
+      }
     >
       {loading || !detail ? (
         <div className="wk-mcp__state">

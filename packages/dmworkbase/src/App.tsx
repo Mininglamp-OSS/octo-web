@@ -152,8 +152,13 @@ import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { TypingManager } from "./Service/TypingManager";
-import { ImConnectAddressManager } from "./im-runtime/connectAddress";
-import { createImConnectStatusListener } from "./im-runtime/connectStatus";
+import { syncClientMsgDeviceId } from "./im-runtime/clientMsgDevice";
+import {
+  ImConnectAddressManager,
+  registerImConnectAddressProvider,
+} from "./im-runtime/connectAddress";
+import { connectImClient } from "./im-runtime/connectClient";
+import { registerImConnectStatusListener } from "./im-runtime/connectStatus";
 import {
   clearAuthStorage,
   consumeOidcPostLogoutCleanup,
@@ -812,8 +817,10 @@ export default class WKApp extends ProviderListener {
     // 暗黑模式已关闭，强制亮色
     WKApp.config.themeMode = ThemeMode.light;
 
-    WKSDK.shared().config.provider.connectAddrCallback =
-      this.imConnectAddressManager.connectAddrCallback;
+    registerImConnectAddressProvider(
+      WKSDK.shared(),
+      this.imConnectAddressManager.connectAddrCallback
+    );
 
     WKApp.endpoints.addOnLogin(() => {
       this.startMain();
@@ -823,14 +830,12 @@ export default class WKApp extends ProviderListener {
       this.startMain();
     }
 
-    WKSDK.shared().connectManager.addConnectStatusListener(
-      createImConnectStatusListener({
-        logout: () => WKApp.shared.logout(),
-        resetTyping: () => TypingManager.shared.resetAll(),
-        rotateConnectAddress: () =>
-          this.imConnectAddressManager.rotateAfterDisconnect(),
-      })
-    );
+    registerImConnectStatusListener(WKSDK.shared(), {
+      logout: () => WKApp.shared.logout(),
+      resetTyping: () => TypingManager.shared.resetAll(),
+      rotateConnectAddress: () =>
+        this.imConnectAddressManager.rotateAfterDisconnect(),
+    });
 
     // 通知设置
     const notificationIsClose = StorageService.shared.getItem(
@@ -962,29 +967,23 @@ export default class WKApp extends ProviderListener {
     WKApp.dataSource.contactsSync(); // 同步通讯录
     ProhibitwordsService.shared.sync(); // 同步敏感词
 
-    WKApp.apiClient
-      .get(`/user/devices/${WKApp.shared.deviceId}`)
-      .then((res) => {
-        if (res.id) {
-          WKSDK.shared().config.clientMsgDeviceId = res.id;
-        }
-      })
-      .catch((err) => {
-        // 设备记录不存在（status===400）或其它读取失败时，仅记录告警以消除
-        // unhandled promise rejection；不写 clientMsgDeviceId，保持原值降级运行。
-        // 服务端暂无设备注册端点，此处不做注册，仅兜底。
-        const notFound = err?.status === 400;
-        console.warn(
-          `[startMain] fetch device record failed${notFound ? " (device not found)" : ""}`,
-          { deviceId: WKApp.shared.deviceId, status: err?.status, code: err?.code }
-        );
-      });
+    // 设备记录不存在（status===400）或其它读取失败时，仅记录告警以消除
+    // unhandled promise rejection；不写 clientMsgDeviceId，保持原值降级运行。
+    // 服务端暂无设备注册端点，此处不做注册，仅兜底。
+    syncClientMsgDeviceId({
+      deviceId: WKApp.shared.deviceId,
+      fetchDevice: (path) => WKApp.apiClient.get(path),
+      setClientMsgDeviceId: (id) => {
+        WKSDK.shared().config.clientMsgDeviceId = id;
+      },
+    });
   }
 
   connectIM() {
-    WKSDK.shared().config.uid = WKApp.loginInfo.uid;
-    WKSDK.shared().config.token = WKApp.loginInfo.token;
-    WKSDK.shared().connect();
+    connectImClient({
+      sdk: WKSDK.shared(),
+      loginInfo: WKApp.loginInfo,
+    });
   }
 
   registerModule(module: IModule) {

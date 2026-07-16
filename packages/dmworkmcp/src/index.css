@@ -16,21 +16,66 @@
   font-size: var(--wk-text-size-md);
 }
 
-/* ── Top bar ─────────────────────────────────────────────────────────────── */
+/* ── Top bar ─────────────────────────────────────────────────────────────
+   Mirrors dmworkskillmarket's `.skill-market-topbar`: tabs on the left,
+   action cluster (primary button + search) on the right, single border-
+   bottom separator. Keeps the two market pages visually consistent under
+   the shared "/mcp-market" shell. */
 .wk-mcp__topbar {
   flex: none;
-  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--wk-sp-6);
+  gap: var(--wk-sp-4);
+  min-height: 64px;
+  padding: var(--wk-sp-3) var(--wk-sp-4);
   border-bottom: 1px solid var(--wk-border-subtle);
 }
 
-.wk-mcp__title {
-  font-size: var(--wk-text-size-xl);
-  font-weight: var(--wk-font-semibold);
+.wk-mcp__topbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
+
+/* Underline-style tabs — matches skill-market-tabs. Active tab uses
+   --wk-text-accent with a 2px underline pseudo-element. */
+.wk-mcp__tabs {
+  display: flex;
+  gap: 0;
+}
+
+.wk-mcp__tabs button {
+  position: relative;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--wk-text-secondary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.wk-mcp__tabs button:hover {
   color: var(--wk-text-primary);
+}
+
+.wk-mcp__tabs button.is-active {
+  color: var(--wk-text-accent);
+  font-weight: 600;
+}
+
+.wk-mcp__tabs button.is-active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 16px;
+  right: 16px;
+  height: 2px;
+  background: var(--wk-text-accent);
+  border-radius: 1px;
 }
 
 /* ── Scroll body ─────────────────────────────────────────────────────────── */
@@ -67,35 +112,23 @@
   gap: var(--wk-sp-2);
 }
 
-/* ── Page head ───────────────────────────────────────────────────────────── */
-.wk-mcp__head {
-  margin-bottom: var(--wk-sp-4);
-}
+/* ── Page head ─── (removed, header now lives in .wk-mcp__topbar) ────── */
 
-.wk-mcp__head-title {
-  font-size: var(--wk-text-size-3xl);
-  font-weight: var(--wk-font-semibold);
-  margin: 0 0 var(--wk-sp-1) 0;
-  color: var(--wk-text-primary);
-}
-
-.wk-mcp__head-desc {
-  font-size: var(--wk-text-size-base);
-  color: var(--wk-text-tertiary);
-  margin: 0;
-}
-
-/* ── Toolbar (search + filter pills) ─────────────────────────────────────── */
+/* ── Toolbar (category pills) ────────────────────────────────────────────
+   Sits below the topbar as its own row — mirrors dmworkskillmarket's
+   `.skill-market-toolbar`. Hidden on the "mine" tab, same as skillmarket. */
 .wk-mcp__toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--wk-sp-4);
-  flex-wrap: wrap;
-  margin: var(--wk-sp-4) 0 var(--wk-sp-6);
+  flex: none;
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-mcp__toolbar--mine {
+  display: none;
 }
 
 .wk-mcp__search {
-  width: 280px;
+  width: 240px;
   max-width: 100%;
 }
 
@@ -122,7 +155,11 @@
   white-space: nowrap;
 }
 
+/* 未选中 chip 的 hover：显式给出浅色底 + 主文本色，
+   不再只依赖基础态背景被继承——避免任何祖先/全局 button:hover
+   规则把底色改成深色、或 token 缺失时坍缩成黑底黑字（本次 bug）。 */
 .wk-mcp__pill:hover {
+  background: var(--wk-bg-elevated, var(--wk-bg-surface));
   border-color: var(--wk-border-strong, var(--wk-border-default));
   color: var(--wk-text-primary);
 }
@@ -130,6 +167,14 @@
 .wk-mcp__pill--active {
   background: var(--wk-brand-primary);
   border-color: var(--wk-brand-primary);
+  color: var(--wk-text-inverse);
+}
+
+/* 选中态的 hover 单独定义，保持品牌黑底 + 反色文字，
+   优先级高于通用 :hover，避免选中 chip 悬停时被改成浅色。 */
+.wk-mcp__pill--active:hover {
+  background: var(--wk-brand-primary-hover, var(--wk-brand-primary));
+  border-color: var(--wk-brand-primary-hover, var(--wk-brand-primary));
   color: var(--wk-text-inverse);
 }
 
@@ -513,7 +558,6 @@
   display: block;
 }
 
-
 /* ═══ Create form (redesigned) ═════════════════════════════════════════════
    Single-column, section-card layout — mirrors the density of SpaceCreate /
    WebhookEditModal but scales to a longer form via clearly demarcated cards.
@@ -530,6 +574,7 @@
 .wk-mcp-form-steps {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--wk-sp-2);
   padding: var(--wk-sp-1) 0 var(--wk-sp-3);
   border-bottom: 1px solid var(--wk-border-subtle);
@@ -548,7 +593,7 @@
   background: none;
   border: none;
   transition: color var(--wk-dur-fast) var(--wk-ease),
-              background var(--wk-dur-fast) var(--wk-ease);
+    background var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-mcp-form-step:hover {
@@ -608,6 +653,30 @@
 .wk-mcp-form-footer__right {
   display: flex;
   gap: var(--wk-sp-2);
+}
+
+/* Detail-modal footer row for owner actions (edit/delete). */
+.wk-mcp-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+  width: 100%;
+}
+
+/* Inline delete-confirm state: 提示文案居左、确认/取消按钮居右，
+   footer 内就地二次确认，不再叠加新的确认弹窗。 */
+.wk-mcp-detail-actions--confirm {
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.wk-mcp-detail-actions__hint {
+  flex: 1;
+  min-width: 0;
+  margin-right: var(--wk-sp-2);
+  font-size: 13px;
+  color: var(--wk-text-secondary);
+  text-align: left;
 }
 
 /* ── Section card ────────────────────────────────────────────────────────── */
@@ -744,7 +813,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--wk-sp-2);
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--wk-black-alpha-50);
   color: var(--wk-color-white);
   font-size: var(--wk-text-size-xs);
   opacity: 0;
@@ -759,13 +828,13 @@
 .wk-mcp-icon-picker__action {
   padding: 2px 6px;
   border-radius: var(--wk-r-sm);
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--wk-white-alpha-12);
   cursor: pointer;
   user-select: none;
 }
 
 .wk-mcp-icon-picker__action:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: var(--wk-white-alpha-40);
 }
 
 /* ── Chip / tag input ────────────────────────────────────────────────────── */
@@ -848,7 +917,7 @@
   color: var(--wk-text-secondary);
   cursor: pointer;
   transition: background var(--wk-dur-fast) var(--wk-ease),
-              color var(--wk-dur-fast) var(--wk-ease);
+    color var(--wk-dur-fast) var(--wk-ease);
   text-align: center;
   white-space: nowrap;
 }
@@ -968,14 +1037,14 @@
    as ConversationList's default state. */
 .wk-mcp-create-modal .wk-modal-body,
 .wk-mcp-detail-modal .wk-modal-body {
-  scrollbar-width: none;           /* Firefox */
-  -ms-overflow-style: none;        /* legacy Edge / IE */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge / IE */
 }
 .wk-mcp-create-modal .wk-modal-body::-webkit-scrollbar,
 .wk-mcp-detail-modal .wk-modal-body::-webkit-scrollbar {
   width: 0;
   height: 0;
-  display: none;                   /* WebKit */
+  display: none; /* WebKit */
 }
 
 /* ── Create form: tool editor row ────────────────────────────────────────
@@ -996,4 +1065,20 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--wk-sp-2);
+}
+
+/* ── Market page: 全部 / 我的 mode toggle ─────────────────────────────────
+   Removed — the segmented pill was replaced by the underline-style
+   `.wk-mcp__tabs` in the topbar (see the top of this file). Kept this
+   comment as a signpost so future grep-by-classname lands somewhere. */
+
+/* ── Infinite scroll footer note (loading spinner / reached end / hint) ── */
+.wk-mcp__footnote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-4) 0 var(--wk-sp-2);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
 }

@@ -10,6 +10,7 @@ import type {
   McpProbeRequest,
   McpProbeResult,
   McpQuickStart,
+  UpdateMcpParams,
 } from "../types/mcp";
 import {
   MCP_CATEGORY_LABELS,
@@ -18,7 +19,7 @@ import {
   MOCK_MCP_LIST,
   MOCK_PROBED_TOOLS,
 } from "../mock/mcpMock";
-import { CATEGORY_KEY_ALL } from "../utils/constants";
+import { CATEGORY_KEY_ALL, slugifyServerName } from "../utils/constants";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MCP Market service layer
@@ -35,9 +36,12 @@ import { CATEGORY_KEY_ALL } from "../utils/constants";
 //
 // Public surface (stable signatures — the UI never sees mock vs real):
 //   fetchMcpList(params)   → list + categories
+//   fetchMcpMine(params)   → list restricted to caller-owned records
 //   fetchMcpDetail(id)     → full detail
 //   probeMcpTools(req)     → "try connect / fetch tool list" (see LSC-70)
 //   createMcp(params)      → create a new MCP entry
+//   updateMcp(id, params)  → PATCH — owner-only partial update
+//   deleteMcp(id)          → DELETE — owner-only soft delete
 //
 // The real implementations target the octo-marketplace MCP catalog v1
 // (octo-marketplace/docs/api/mcp-v1.md). USE_MOCK toggles the whole surface;
@@ -77,9 +81,28 @@ function buildCategories(): McpCategory[] {
 async function fetchMcpListMock(
   params: ListMcpParams
 ): Promise<ListMcpResponse> {
+  return fetchMcpListMockFiltered(params, MOCK_MCP_LIST);
+}
+
+/** Mock counterpart of /mcps/mine — restricts to items whose `creatorName`
+ *  matches the current login name. Mock has no real owner_uid, but new
+ *  creates stamp the login name (see buildDetailFromCreate), so this
+ *  faithfully echoes "MCPs I created in this session". */
+async function fetchMcpMineMock(
+  params: ListMcpParams
+): Promise<ListMcpResponse> {
+  const me = WKApp.loginInfo?.name || "";
+  const mine = MOCK_MCP_LIST.filter((item) => item.creatorName === me);
+  return fetchMcpListMockFiltered(params, mine);
+}
+
+async function fetchMcpListMockFiltered(
+  params: ListMcpParams,
+  source: McpListItem[]
+): Promise<ListMcpResponse> {
   const keyword = (params.keyword ?? "").trim().toLowerCase();
   const category = params.category ?? "all";
-  const items = MOCK_MCP_LIST.filter((item) => {
+  const filtered = source.filter((item) => {
     const matchCategory = category === "all" || item.category === category;
     const matchKeyword =
       !keyword ||
@@ -87,7 +110,15 @@ async function fetchMcpListMock(
       item.slogan.toLowerCase().includes(keyword);
     return matchCategory && matchKeyword;
   });
-  return delay({ items, total: items.length, categories: buildCategories() });
+  const offset = params.offset && params.offset > 0 ? params.offset : 0;
+  const limit =
+    params.limit && params.limit > 0 ? params.limit : filtered.length;
+  const items = filtered.slice(offset, offset + limit);
+  return delay({
+    items,
+    total: filtered.length,
+    categories: buildCategories(),
+  });
 }
 
 async function fetchMcpDetailMock(id: string): Promise<McpDetail> {
@@ -146,11 +177,41 @@ async function createMcpMock(params: CreateMcpParams): Promise<{ id: string }> {
   return delay({ id: uniqueId }, 400);
 }
 
+/** Mock counterpart of PATCH /mcps/{id}. Full-replace semantics: the UI
+ *  always sends every field, so we rebuild the detail from the params and
+ *  swap the list projection in place. */
+async function updateMcpMock(
+  id: string,
+  params: UpdateMcpParams
+): Promise<McpDetail> {
+  const idx = MOCK_MCP_DETAILS.findIndex((d) => d.id === id);
+  if (idx === -1) throw new Error(`MCP not found: ${id}`);
+  const prev = MOCK_MCP_DETAILS[idx];
+  const next = buildDetailFromCreate(id, params);
+  // Preserve creator identity — the wire never lets the client change it.
+  next.creatorName = prev.creatorName;
+  MOCK_MCP_DETAILS[idx] = next;
+  const listIdx = MOCK_MCP_LIST.findIndex((it) => it.id === id);
+  if (listIdx !== -1) MOCK_MCP_LIST[listIdx] = projectListItem(next);
+  return delay(next, 300);
+}
+
+/** Mock counterpart of DELETE /mcps/{id}. Owner-only in the real service;
+ *  the mock has no owner model so we always allow. */
+async function deleteMcpMock(id: string): Promise<void> {
+  const dIdx = MOCK_MCP_DETAILS.findIndex((d) => d.id === id);
+  if (dIdx !== -1) MOCK_MCP_DETAILS.splice(dIdx, 1);
+  const lIdx = MOCK_MCP_LIST.findIndex((it) => it.id === id);
+  if (lIdx !== -1) MOCK_MCP_LIST.splice(lIdx, 1);
+  return delay(undefined, 300);
+}
+
 /** Turn a create-form payload into a fully-populated detail record. */
 function buildDetailFromCreate(id: string, params: CreateMcpParams): McpDetail {
   const quickStart: McpQuickStart = {
     transport: params.transport,
     serverName: params.name.trim(),
+    slug: slugifyServerName(params.slug?.trim() ? params.slug : params.name),
     url: params.url || undefined,
     authType: params.authType,
     headers:
@@ -247,20 +308,49 @@ mcpAxios.interceptors.response.use(
 
 /**
  * Marketplace error envelope is `{err:{code,message,details}}` (mcp-v1.md §2) —
- * distinct from the summary/matter `{code,message,data}` shape. Surface the
- * human-readable `message` for a toast; callers switch on `code` if they need
- * to. Falls back to the axios error string when the body is missing.
+ * distinct from the summary/matter `{code,message,data}` shape. When we
+ * recognize the wire `code` we surface a localized copy so a Chinese UI
+ * doesn't show the backend's English `message`; unknown codes fall through to
+ * the wire message. Falls back to the axios error string when the body is
+ * missing.
  */
 function extractErrorMessage(err: unknown): string {
   const axiosErr = err as {
     response?: { data?: { err?: { message?: string; code?: string } } };
   };
   const wire = axiosErr?.response?.data?.err;
+  const code = wire?.code;
+  const localized = code ? localizedForCode(code) : "";
   const raw =
+    localized ||
     wire?.message ||
-    wire?.code ||
+    code ||
     (err instanceof Error ? err.message : "Request failed");
   return raw.length > 200 ? raw.slice(0, 200) + "…" : raw;
+}
+
+/** Map a `err.marketplace.*` code to a localized string via i18n. Returns
+ *  empty string if the code is unknown; caller falls back to the wire
+ *  message. Keeping the mapping table here keeps the i18n keys colocated
+ *  with the codes and greppable. */
+function localizedForCode(code: string): string {
+  const KNOWN: Record<string, string> = {
+    "err.marketplace.mcp.name_taken": "mcp.errors.nameTaken",
+    "err.marketplace.mcp.slug_taken": "mcp.errors.slugTaken",
+    "err.marketplace.mcp.slug_invalid": "mcp.errors.slugInvalid",
+    "err.marketplace.mcp.secret_leaked": "mcp.errors.secretLeaked",
+    "err.marketplace.mcp.forbidden": "mcp.errors.forbidden",
+    "err.marketplace.mcp.not_found": "mcp.errors.notFound",
+    "err.marketplace.mcp.invalid_visibility": "mcp.errors.invalidVisibility",
+    "err.marketplace.mcp.invalid_transport": "mcp.errors.invalidTransport",
+    "err.marketplace.mcp.invalid_request": "mcp.errors.invalidRequest",
+    "err.marketplace.mcp.probe_unsupported": "mcp.errors.probeUnsupported",
+    "err.marketplace.auth.unauthorized": "mcp.errors.unauthorized",
+    "err.marketplace.auth.forbidden_space": "mcp.errors.forbiddenSpace",
+    "err.marketplace.internal": "mcp.errors.internal",
+  };
+  const key = KNOWN[code];
+  return key ? t(key) : "";
 }
 
 /**
@@ -291,6 +381,25 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
   }
 }
 
+async function patch<T>(path: string, data?: unknown): Promise<T> {
+  try {
+    const resp = await mcpAxios.patch(`${BASE}${path}`, data);
+    return resp.data as T;
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
+async function del(path: string): Promise<void> {
+  try {
+    await mcpAxios.delete(`${BASE}${path}`);
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
 /**
  * Resolve a category label from the frontend i18n bundle. The backend returns
  * `{key,count}` only (mcp-v1.md §4.2); labels are the frontend's job so locales
@@ -314,12 +423,29 @@ interface McpListResponseWire {
 async function fetchMcpListReal(
   params: ListMcpParams
 ): Promise<ListMcpResponse> {
+  return fetchMcpListPath("/mcps", params);
+}
+
+/** GET /mcps/mine — same shape, restricted to owner=caller (mcp-v1.md §4.3). */
+async function fetchMcpMineReal(
+  params: ListMcpParams
+): Promise<ListMcpResponse> {
+  return fetchMcpListPath("/mcps/mine", params);
+}
+
+/** Shared list-body handling: build query, hit path, enrich labels. */
+async function fetchMcpListPath(
+  path: string,
+  params: ListMcpParams
+): Promise<ListMcpResponse> {
   const query: Record<string, unknown> = {};
   const keyword = params.keyword?.trim();
   if (keyword) query.keyword = keyword;
   // `all` disables the filter server-side; send it verbatim per §0.
   query.category = params.category ?? CATEGORY_KEY_ALL;
-  const resp = await get<McpListResponseWire>("/mcps", query);
+  if (params.limit && params.limit > 0) query.limit = params.limit;
+  if (params.offset && params.offset > 0) query.offset = params.offset;
+  const resp = await get<McpListResponseWire>(path, query);
   const categories: McpCategory[] = (resp.categories ?? []).map((c) => ({
     key: c.key,
     label: categoryLabel(c.key),
@@ -335,12 +461,28 @@ async function fetchMcpDetailReal(id: string): Promise<McpDetail> {
 async function probeMcpToolsReal(
   req: McpProbeRequest
 ): Promise<McpProbeResult> {
-  // stdio probing must run in the Electron main process (LSC-70); the
-  // marketplace REST surface does not expose a probe. This placeholder keeps
-  // the signature stable and is not reached by the browse+create flow — the
-  // create wizard's probe still hits the mock until the IPC path lands.
-  // TODO(LSC-70): route to the `mcp:probeTools` IPC instead of this endpoint.
-  return post<McpProbeResult>("/probe", req);
+  // POST /mcps/probe runs an MCP initialize + tools/list handshake against a
+  // remote server and returns the wire shape below (mcp-v1.md §4.7). The
+  // endpoint returns HTTP 200 in both success and operational-failure cases
+  // (ok=false + in-body error). Only auth / malformed body / stdio transport
+  // return the standard error envelope with a non-2xx status; those become
+  // thrown Errors via post(), which the caller renders as a Toast.
+  //
+  // stdio transport is short-circuited here so we don't round-trip a request
+  // the server is guaranteed to reject with `probe_unsupported`. The wizard
+  // hides the button under `isProbeAvailable` anyway; this belt+braces path
+  // just returns a clean in-body error for any programmatic caller.
+  if (req.transport === "stdio") {
+    return {
+      ok: false,
+      tools: [],
+      error: {
+        code: "command_not_found",
+        message: "stdio probe must run in the desktop client",
+      },
+    };
+  }
+  return post<McpProbeResult>("/mcps/probe", req);
 }
 
 async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
@@ -352,6 +494,96 @@ async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
   return { id: detail.id };
 }
 
+/** PATCH /mcps/{id} — owner-only partial update (mcp-v1.md §4.5). The UI
+ *  always sends the full form, so every field is present and the backend
+ *  effectively replaces all mutable fields; returns 200 with the updated
+ *  McpDetail. 403 → forbidden, 404 → not_found are surfaced by the shared
+ *  error mapper. */
+async function updateMcpReal(
+  id: string,
+  params: UpdateMcpParams
+): Promise<McpDetail> {
+  return patch<McpDetail>(`/mcps/${encodeURIComponent(id)}`, params);
+}
+
+/** DELETE /mcps/{id} — owner-only soft delete (mcp-v1.md §4.6). Returns
+ *  204 No Content on success. */
+async function deleteMcpReal(id: string): Promise<void> {
+  return del(`/mcps/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Upload an MCP icon and return the persisted URL to write onto the `icon`
+ * field.
+ *
+ * Why: the marketplace service is stateless and does not carry its own object
+ * storage credentials in dev/prod; wiring a second S3 stack just for icons
+ * duplicates config and adds an outage surface. The main IM already exposes a
+ * pre-signed direct-upload flow (`file/upload/credentials` → PUT S3) used by
+ * chat images and avatars, so MCP icons ride the same rail. The `id`
+ * parameter is used only as an object-key prefix for organization; upload is
+ * otherwise independent of the MCP record.
+ */
+async function uploadMcpIconReal(id: string, file: File): Promise<string> {
+  const contentType = file.type || "application/octet-stream";
+  const fileName = file.name || "icon";
+  const dot = fileName.lastIndexOf(".");
+  const ext = dot > 0 ? fileName.slice(dot) : "";
+  const path = `/mcp/${encodeURIComponent(id)}/${genUploadUUID()}${ext}`;
+
+  const cred = await WKApp.apiClient.get<{
+    uploadUrl?: string;
+    downloadUrl?: string;
+    contentType?: string;
+    contentDisposition?: string;
+  }>(
+    `file/upload/credentials?path=${encodeURIComponent(path)}` +
+      `&type=chat` +
+      `&filename=${encodeURIComponent(fileName)}` +
+      `&contentType=${encodeURIComponent(contentType)}` +
+      `&fileSize=${file.size}`
+  );
+  if (
+    !cred ||
+    typeof cred.uploadUrl !== "string" ||
+    typeof cred.downloadUrl !== "string"
+  ) {
+    throw new Error(t("mcp.create.iconUploadFailed"));
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": cred.contentType || contentType,
+  };
+  if (cred.contentDisposition) {
+    headers["Content-Disposition"] = cred.contentDisposition;
+  }
+  const resp = await axios.put(cred.uploadUrl, file, {
+    headers,
+    timeout: 2 * 60 * 1000,
+  });
+  if (!(resp.status >= 200 && resp.status < 300)) {
+    throw new Error(t("mcp.create.iconUploadFailed"));
+  }
+  return cred.downloadUrl;
+}
+
+// 32-char hex, generated via crypto.getRandomValues — same shape used by the
+// IM chat upload flow so object keys look uniform in the storage bucket.
+function genUploadUUID(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const chars = "0123456789ABCDEF";
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) out += chars[bytes[i] % 16];
+  return out;
+}
+
+/** Mock icon upload — returns an object URL so the mock detail renders the
+ *  freshly-picked image without a backend round-trip. */
+async function uploadMcpIconMock(_id: string, file: File): Promise<string> {
+  return delay(URL.createObjectURL(file), 200);
+}
+
 // ─── Public API (the only surface the UI imports) ──────────────────────────
 
 export function fetchMcpList(
@@ -360,19 +592,56 @@ export function fetchMcpList(
   return USE_MOCK ? fetchMcpListMock(params) : fetchMcpListReal(params);
 }
 
+/** GET /mcps/mine — restricted to the caller's own records. */
+export function fetchMcpMine(
+  params: ListMcpParams = {}
+): Promise<ListMcpResponse> {
+  return USE_MOCK ? fetchMcpMineMock(params) : fetchMcpMineReal(params);
+}
+
 export function fetchMcpDetail(id: string): Promise<McpDetail> {
   return USE_MOCK ? fetchMcpDetailMock(id) : fetchMcpDetailReal(id);
 }
 
 /**
  * Try-connect + fetch tool list. Mock returns a fake tool set after a delay;
- * the real implementation is provided by the Electron main process.
- * TODO: 后端提供真实探测接口
+ * the real implementation is provided by the Electron main process (LSC-70).
  */
 export function probeMcpTools(req: McpProbeRequest): Promise<McpProbeResult> {
   return USE_MOCK ? probeMcpToolsMock(req) : probeMcpToolsReal(req);
 }
 
+/**
+ * Whether "try connect / fetch tool list" is actually wired up. Real remote
+ * probing (streamable-http / sse) is served by POST /mcps/probe on the
+ * marketplace backend (mcp-v1.md §4.7). stdio probing still requires the
+ * desktop client's Electron IPC (LSC-70) and is short-circuited to an in-body
+ * `command_not_found` error inside probeMcpToolsReal — the button surfaces
+ * regardless so the user can always kick off a remote probe.
+ */
+export const isProbeAvailable = true;
+
 export function createMcp(params: CreateMcpParams): Promise<{ id: string }> {
   return USE_MOCK ? createMcpMock(params) : createMcpReal(params);
+}
+
+/** PATCH /mcps/{id} — owner-only partial update. Returns the updated detail. */
+export function updateMcp(
+  id: string,
+  params: UpdateMcpParams
+): Promise<McpDetail> {
+  return USE_MOCK ? updateMcpMock(id, params) : updateMcpReal(id, params);
+}
+
+/** DELETE /mcps/{id} — owner-only soft delete. */
+export function deleteMcp(id: string): Promise<void> {
+  return USE_MOCK ? deleteMcpMock(id) : deleteMcpReal(id);
+}
+
+/**
+ * Upload an MCP icon to object storage (POST /mcps/{id}/icon, multipart).
+ * Returns the persisted storage URL to store on the `icon` field.
+ */
+export function uploadMcpIcon(id: string, file: File): Promise<string> {
+  return USE_MOCK ? uploadMcpIconMock(id, file) : uploadMcpIconReal(id, file);
 }

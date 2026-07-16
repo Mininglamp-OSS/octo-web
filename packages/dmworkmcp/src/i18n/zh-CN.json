@@ -1,13 +1,29 @@
 {
   "menu": {
-    "title": "MCP 市场"
+    "title": "市场"
   },
   "sidebar": {
     "header": "市场",
-    "mcp": "MCP 市场"
+    "mcp": "MCP 市场",
+    "skills": "Skills 市场"
   },
   "common": {
     "loadFailed": "加载失败"
+  },
+  "errors": {
+    "nameTaken": "此名称已被占用",
+    "slugTaken": "此服务标识 (slug) 在当前空间已被占用",
+    "slugInvalid": "服务标识 (slug) 只能包含小写字母、数字与连字符，且 1-64 位",
+    "secretLeaked": "请勿提交真实密钥，把它替换成占位符再试",
+    "forbidden": "无权操作该 MCP",
+    "notFound": "MCP 不存在或已被删除",
+    "invalidVisibility": "可见范围只能是「公开」或「仅自己」",
+    "invalidTransport": "传输方式不支持",
+    "invalidRequest": "请求参数不合法",
+    "probeUnsupported": "服务器不支持此传输方式的探测（stdio 需在桌面客户端探测）",
+    "unauthorized": "登录已过期，请重新登录",
+    "forbiddenSpace": "当前空间无权访问",
+    "internal": "服务器繁忙，请稍后重试"
   },
   "category": {
     "all": "全部",
@@ -21,7 +37,13 @@
     "desc": "浏览并接入 MCP 服务，为你的智能体扩展工具能力。",
     "create": "新建 MCP",
     "searchPlaceholder": "搜索 MCP 名称 / 简介",
-    "empty": "没有匹配的 MCP 服务"
+    "empty": "没有匹配的 MCP 服务",
+    "loadMore": "向下滚动加载更多",
+    "reachedEnd": "已经到底了",
+    "mode": {
+      "all": "全部",
+      "mine": "我的"
+    }
   },
   "card": {
     "toolCount": "工具数量: {{count}} 个",
@@ -41,7 +63,23 @@
     "tools": "工具清单",
     "example": "使用示例",
     "faq": "常见问题",
-    "notes": "注意事项"
+    "notes": "注意事项",
+    "edit": "编辑",
+    "delete": "删除"
+  },
+  "edit": {
+    "title": "编辑 MCP",
+    "submit": "保存修改",
+    "success": "已保存",
+    "failed": "保存失败"
+  },
+  "delete": {
+    "confirmTitle": "删除该 MCP？",
+    "confirmBody": "删除后将无法在市场中被找到，已复制的接入配置仍可使用。",
+    "ok": "删除",
+    "cancel": "取消",
+    "success": "已删除",
+    "failed": "删除失败"
   },
   "create": {
     "title": "新建 MCP",
@@ -72,6 +110,15 @@
     "name": "名称",
     "namePlaceholder": "例如 GitHub MCP",
     "nameRequired": "请填写名称",
+    "slug": "服务标识 (slug)",
+    "slugHint": "生成 mcpServers JSON 时用作 key，仅限英文小写、数字、连字符；留空自动根据名称生成",
+    "slugPlaceholder": "例如 github-mcp",
+    "urlRequired": "请填写服务地址",
+    "commandRequired": "请填写启动命令",
+    "argTooLong": "单条命令参数长度不能超过 {{max}} 个字符",
+    "headerKeyTooLong": "单个 Header 名称长度不能超过 {{max}} 个字符",
+    "headerValueTooLong": "单个 Header 值长度不能超过 {{max}} 个字符",
+    "iconUploadFailed": "图标上传失败，请稍后重试",
     "category": "分类",
     "transportLabel": "传输方式",
     "transport": {
@@ -139,9 +186,9 @@
       "no_tools_capability": "该 MCP 未提供工具列表能力。"
     },
     "toolsEmpty": "尚未获取工具，可点击「试连 / 获取工具列表」自动探测，或手动补充。",
-    "toolsHint": "接入真实后端前，探测走本地 Mock，返回一组示例工具。",
+    "toolsHint": "点击「试连 / 获取工具列表」，探测远端服务并同步工具清单。",
     "submit": "提交",
-    "success": "创建成功（Mock）",
+    "success": "创建成功",
     "failed": "创建失败"
   }
 }

@@ -189,6 +189,7 @@
     "none": "无工作区",
     "nameRequired": "请填写工作区名称",
     "slugRequired": "请填写 slug",
+    "slugTaken": "该 slug 已被占用，请换一个",
     "emptyTitle": "还没有工作区",
     "emptyDesc": "创建一个工作区开始使用回路。"
   },
@@ -306,10 +307,14 @@
     "deleteConfirm": "确定删除这条评论？",
     "replyPlaceholder": "回复…",
     "empty": "暂无评论",
-    "placeholder": "写下评论…",
+    "placeholder": "留下评论…",
     "send": "发送",
-    "willWake": "将唤醒：",
-    "tapToSuppress": "(点击可跳过某个)",
+    "triggerWillStart": "发送后开始工作",
+    "triggerWontStart": "本次不会开始",
+    "triggerWillStartCount": "发送后 {{count}} 个智能体开始工作",
+    "triggerNoneStart": "都不会开始",
+    "triggerClickSkip": "点击本次跳过。",
+    "triggerClickRestore": "本次不会开始，点击恢复。",
     "resolve": "标记解决",
     "unresolve": "取消解决",
     "resolved": "已解决",
@@ -454,7 +459,9 @@
     "add": "添加反应"
   },
   "mention": {
-    "add": "@ 提及"
+    "groupUsers": "用户",
+    "groupIssues": "事项",
+    "allMembers": "所有成员"
   },
   "agent": {
     "runtime": "运行环境",

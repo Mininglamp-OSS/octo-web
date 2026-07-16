@@ -1,5 +1,6 @@
 import React, { Component } from "react";
 import { I18nContext, t, WKApp } from "@octo/base";
+import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "../pages/McpMarketListPage";
 
 interface MarketItem {
@@ -9,12 +10,23 @@ interface MarketItem {
   render: () => React.ReactElement;
 }
 
+// Order below controls the sidebar tab order. Keep MCP first — it's the
+// original tenant of "/mcp-market" and the NavRail's onPress boots into it.
+// Skills was folded in from the standalone /skill-market module (which now
+// only registers i18n + this page) so users see a single "市场" entry with
+// two tabs, not two navrail icons.
 const MARKET_ITEMS: MarketItem[] = [
   {
     id: "mcp",
     routePath: "/mcp-market/mcp",
     label: () => t("mcp.sidebar.mcp"),
     render: () => <McpMarketListPage />,
+  },
+  {
+    id: "skills",
+    routePath: "/mcp-market/skills",
+    label: () => t("mcp.sidebar.skills"),
+    render: () => <SkillListPage />,
   },
 ];
 

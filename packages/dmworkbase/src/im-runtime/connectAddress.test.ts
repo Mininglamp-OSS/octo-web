@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ImConnectAddressManager } from "./connectAddress";
+import {
+  ImConnectAddressManager,
+  registerImConnectAddressProvider,
+} from "./connectAddress";
 
 function createDeps(addrs: string[]) {
   return {
@@ -68,5 +71,18 @@ describe("ImConnectAddressManager", () => {
     await manager.connectAddrCallback(callback);
 
     expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("registers the connect address callback on the SDK provider", () => {
+    const sdk = {
+      config: {
+        provider: {},
+      },
+    };
+    const connectAddrCallback = vi.fn();
+
+    registerImConnectAddressProvider(sdk, connectAddrCallback);
+
+    expect(sdk.config.provider.connectAddrCallback).toBe(connectAddrCallback);
   });
 });

@@ -38,22 +38,53 @@ export async function getAgent(id: string): Promise<Agent> {
   return (await enrich([a]))[0];
 }
 
+// 共享的 agent 在线状态缓存（id → status）：供 @提及菜单画在线点,避免每个评论/回复编辑器
+// 各自拉一次 /agents（一个 issue 有 N 条评论就 N 次）。仿 runtimeMap。
+let _agentStatus: Map<string, string> | null = null;
+let _agentStatusPromise: Promise<Map<string, string>> | null = null;
+export function agentStatusMap(): Promise<Map<string, string>> {
+  if (_agentStatus) return Promise.resolve(_agentStatus);
+  if (!_agentStatusPromise) {
+    _agentStatusPromise = listAgents()
+      .then((agents) => {
+        _agentStatus = new Map(agents.map((a) => [a.id, a.status]));
+        return _agentStatus;
+      })
+      .catch(() => {
+        _agentStatusPromise = null; // allow retry after a transient failure
+        return new Map<string, string>();
+      });
+  }
+  return _agentStatusPromise;
+}
+export function invalidateAgentStatus(): void {
+  _agentStatus = null;
+  _agentStatusPromise = null;
+}
+
+// agent 增改会改变工作区的 agent 集合,除清目录缓存外一并清 agent 状态缓存,
+// 否则新建/恢复的 agent 在 @ 菜单里读到陈旧的在线状态。
+function afterAgentMutation<T>(r: T): T {
+  invalidateAgentStatus();
+  return afterDirectoryMutation(r);
+}
+
 export function createAgent(req: CreateAgentReq): Promise<Agent> {
-  return httpPost<Agent>("/agents", req).then(afterDirectoryMutation);
+  return httpPost<Agent>("/agents", req).then(afterAgentMutation);
 }
 
 export function updateAgent(id: string, req: UpdateAgentReq): Promise<Agent> {
-  return httpPut<Agent>(`/agents/${id}`, req).then(afterDirectoryMutation);
+  return httpPut<Agent>(`/agents/${id}`, req).then(afterAgentMutation);
 }
 
 // 后端不支持 DELETE /agents/:id（405）；改用归档。
 export function archiveAgent(id: string): Promise<void> {
-  return httpPost<void>(`/agents/${id}/archive`, {}).then(afterDirectoryMutation);
+  return httpPost<void>(`/agents/${id}/archive`, {}).then(afterAgentMutation);
 }
 
 // 恢复已归档 agent（软删除的逆操作）。
 export function restoreAgent(id: string): Promise<void> {
-  return httpPost<void>(`/agents/${id}/restore`, {}).then(afterDirectoryMutation);
+  return httpPost<void>(`/agents/${id}/restore`, {}).then(afterAgentMutation);
 }
 
 /* ---------- 环境变量（密钥） ---------- */

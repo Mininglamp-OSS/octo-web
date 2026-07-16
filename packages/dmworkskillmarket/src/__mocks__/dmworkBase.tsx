@@ -72,6 +72,11 @@ export const Toast = {
 };
 
 export const WKApp = {
+  apiClient: {
+    config: {
+      apiURL: "/api/v1/",
+    },
+  },
   loginInfo: {
     token: "test-token",
     uid: "test-uid",

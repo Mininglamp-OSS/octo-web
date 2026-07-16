@@ -189,6 +189,7 @@
     "none": "No workspace",
     "nameRequired": "Workspace name is required",
     "slugRequired": "Slug is required",
+    "slugTaken": "That slug is already taken, please try another",
     "emptyTitle": "No workspace yet",
     "emptyDesc": "Create a workspace to start using Loop."
   },
@@ -306,10 +307,14 @@
     "deleteConfirm": "Delete this comment?",
     "replyPlaceholder": "Reply…",
     "empty": "No comments yet",
-    "placeholder": "Write a comment…",
+    "placeholder": "Leave a comment…",
     "send": "Send",
-    "willWake": "Will wake:",
-    "tapToSuppress": "(tap to skip one)",
+    "triggerWillStart": "Will start when sent",
+    "triggerWontStart": "Won't start this time",
+    "triggerWillStartCount": "{{count}} agents will start when sent",
+    "triggerNoneStart": "No agents will start",
+    "triggerClickSkip": "Click to skip this time.",
+    "triggerClickRestore": "Won't start this time. Click to restore.",
     "resolve": "Resolve",
     "unresolve": "Unresolve",
     "resolved": "Resolved",
@@ -454,7 +459,9 @@
     "add": "Add reaction"
   },
   "mention": {
-    "add": "Mention"
+    "groupUsers": "Users",
+    "groupIssues": "Issues",
+    "allMembers": "All members"
   },
   "agent": {
     "runtime": "Runtime",

@@ -1,6 +1,7 @@
 import React from "react";
 import type { IModule } from "@octo/base";
 import { i18n, I18nProvider, WKApp, Menus, t as translate } from "@octo/base";
+import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "./pages/McpMarketListPage";
 import MarketSidebar from "./components/MarketSidebar";
 import enUS from "./i18n/en-US.json";
@@ -54,6 +55,15 @@ export class McpMarketModule implements IModule {
     // one.
     WKApp.route.register("/mcp-market/mcp", () => {
       return <McpMarketListPage />;
+    });
+
+    // Skills market tab — physically owned by @dmwork/skillmarket (i18n +
+    // page live there), but mounted under the shared "/mcp-market" shell so
+    // both markets share one NavRail entry + one sidebar. dmworkskillmarket's
+    // module no longer registers its own NavRail icon; this route is the
+    // single source of truth for the Skills market URL.
+    WKApp.route.register("/mcp-market/skills", () => {
+      return <SkillListPage />;
     });
 
     // 顶层 NavRail 菜单入口。sort=5003 紧跟在 summary(4002/5000) 之后，

@@ -31,8 +31,14 @@ export interface McpFaq {
  */
 export interface McpQuickStart {
   transport: McpTransport;
-  /** Server name used as the key in the generated config. */
+  /** Server display name (shown in the generated prompt). */
   serverName: string;
+  /** English slug used as the KEY in the generated `mcpServers` JSON. A JSON
+   *  key must be a stable ASCII identifier (Chinese display names break the
+   *  copy-paste config), so this is derived by slugifying `serverName` and may
+   *  be overridden by the user in the create form. Optional so legacy records
+   *  without it still type-check; callers fall back to slugifying serverName. */
+  slug?: string;
   /** Remote endpoint (streamable-http / sse). */
   url?: string;
   /** Whether the remote endpoint needs a bearer token. */
@@ -65,6 +71,9 @@ export interface McpListItem {
    *  fixtures without the field still type-check; list cards may promote it to
    *  a badge. */
   visibility?: McpVisibility;
+  /** Snapshot of the publisher's nickname at create time (mcp-v1.md §3.2).
+   *  Optional so legacy fixtures without the field still type-check. */
+  creatorName?: string;
 }
 
 /** Full detail payload shown in the centered detail modal. */
@@ -100,6 +109,10 @@ export interface McpCategory {
 export interface ListMcpParams {
   keyword?: string;
   category?: string;
+  /** Page size; backend clamps to [1, 100], defaulting to 20 when 0/absent. */
+  limit?: number;
+  /** Row offset; defaults to 0. */
+  offset?: number;
 }
 
 /** Response envelope for the list endpoint. */
@@ -148,6 +161,10 @@ export interface McpProbeResult {
  */
 export interface CreateMcpParams {
   name: string;
+  /** English slug used as the KEY in the generated `mcpServers` JSON snippet.
+   *  Auto-derived from `name` (slugify) and user-overridable in the form.
+   *  Falls back to a safe default when slugifying yields an empty string. */
+  slug?: string;
   category: string;
   /** Icon: single emoji/char OR uploaded image (data URL). */
   icon: string;
@@ -181,3 +198,14 @@ export interface CreateMcpParams {
 }
 
 export type McpVisibility = "public" | "private";
+
+/**
+ * Payload for updating an existing MCP server entry (PATCH /mcps/{id}).
+ * Wire-wise the backend accepts partial updates (fields are pointer types,
+ * omitted fields stay unchanged — mcp-v1.md §4.5). The UI always sends the
+ * full form, so the shape is identical to CreateMcpParams and every field
+ * gets rewritten. Kept as a distinct type alias so callers self-document
+ * "I'm editing" vs "I'm creating" — and so a future partial-update UI can
+ * narrow to `Partial<CreateMcpParams>` without a signature churn.
+ */
+export type UpdateMcpParams = CreateMcpParams;

@@ -3,6 +3,13 @@ import { WKSDK, ConnectStatus } from "wukongimjssdk"
 import WKApp from "../../App"
 import { I18nContext } from "../../i18n"
 import { apiFetch } from "../../Service/apiFetch"
+import {
+    addImConnectStatusListener,
+    getImConnectStatus,
+    isImConnected,
+    reconnectImWhenNotConnected,
+    removeImConnectStatusListener,
+} from "../../im-runtime/connectStatus"
 import "./index.css"
 
 interface ConnectionStatusProps {
@@ -27,7 +34,7 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
     private connectedTime: number = 0
 
     state: ConnectionStatusState = {
-        status: WKSDK.shared().connectManager.status,
+        status: getImConnectStatus(WKSDK.shared()),
         latency: null,
         connectedSince: null,
         showTooltip: false,
@@ -46,9 +53,9 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
             }
             this.setState(newState as any)
         }
-        WKSDK.shared().connectManager.addConnectStatusListener(this.statusListener)
+        addImConnectStatusListener(WKSDK.shared(), this.statusListener)
 
-        if (WKSDK.shared().connectManager.status === ConnectStatus.Connected) {
+        if (isImConnected(WKSDK.shared())) {
             this.connectedTime = Date.now()
             this.setState({ connectedSince: this.connectedTime })
             this.startPing()
@@ -56,7 +63,7 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
     }
 
     componentWillUnmount() {
-        WKSDK.shared().connectManager.removeConnectStatusListener(this.statusListener)
+        removeImConnectStatusListener(WKSDK.shared(), this.statusListener)
         this.stopPing()
     }
 
@@ -82,11 +89,24 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
                 cache: "no-cache",
             })
             const latency = Date.now() - start
-            if (WKSDK.shared().connectManager.status === ConnectStatus.Connected) {
-                this.setState({ latency })
+            if (isImConnected(WKSDK.shared())) {
+                const nextState: Partial<ConnectionStatusState> = {
+                    status: ConnectStatus.Connected,
+                    latency,
+                }
+                if (!this.state.connectedSince) {
+                    this.connectedTime = Date.now()
+                    nextState.connectedSince = this.connectedTime
+                }
+                this.setState(nextState as any)
             }
         } catch {
-            // ignore
+            this.connectedTime = 0
+            this.setState({
+                status: ConnectStatus.Disconnect,
+                latency: null,
+                connectedSince: null,
+            })
         }
     }
 
@@ -115,9 +135,7 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
     }
 
     handleClick = () => {
-        if (this.state.status !== ConnectStatus.Connected) {
-            WKSDK.shared().connectManager.connect()
-        }
+        reconnectImWhenNotConnected(WKSDK.shared(), this.state.status)
     }
 
     render() {

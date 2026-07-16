@@ -8,8 +8,6 @@
   },
   "workspace": {
     "loading": "Loading workspace...",
-    "requiredTitle": "Join a workspace first",
-    "requiredDesc": "Runtimes and Skills are currently managed within a workspace. Join or create one, then come back.",
     "loadFailed": "Failed to load workspaces"
   }
 }

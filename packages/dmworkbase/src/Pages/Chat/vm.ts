@@ -15,6 +15,12 @@ import { ShowConversationOptions } from "../../EndpointCommon";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import { isSafeUrl } from "../../Utils/security";
 import { downloadFile } from "../../Utils/download";
+import {
+    addImConnectStatusListener,
+    getImConnectStatus,
+    isImConnected,
+    removeImConnectStatusListener,
+} from "../../im-runtime/connectStatus";
 
 
 const TOP_CONVERSATION_SCORE_BOOST = 1000000000000;
@@ -156,21 +162,21 @@ export class ChatVM extends ProviderListener {
         WKApp.mittBus.on('space-changed', this.spaceChangedHandler)
 
         // 根据连接状态设置标题
-        this.setConnectTitleWithConnectStatus(WKSDK.shared().connectManager.status)
+        this.setConnectTitleWithConnectStatus(getImConnectStatus(WKSDK.shared()))
 
-        if (WKSDK.shared().connectManager.status == ConnectStatus.Connected) { // 如果已经连接则直接加载
+        if (isImConnected(WKSDK.shared())) { // 如果已经连接则直接加载
             this.reloadRequestConversationList()
         }
 
         // 监听im连接状态
         this.connectStatusListener = (status: ConnectStatus, reasonCode?: number) => {
-            this.setConnectTitleWithConnectStatus(WKSDK.shared().connectManager.status)
+            this.setConnectTitleWithConnectStatus(getImConnectStatus(WKSDK.shared()))
             if (status === ConnectStatus.Connected) {
                 // 请求最近会话列表
                 this.reloadRequestConversationList()
             }
         }
-        WKSDK.shared().connectManager.addConnectStatusListener(this.connectStatusListener)
+        addImConnectStatusListener(WKSDK.shared(), this.connectStatusListener)
 
         // ---------- 最近会话 ----------
         this.conversationListener = (conversation: Conversation, action: ConversationAction) => {
@@ -366,7 +372,7 @@ export class ChatVM extends ProviderListener {
 
     }
     didUnMount(): void {
-        WKSDK.shared().connectManager.removeConnectStatusListener(this.connectStatusListener)
+        removeImConnectStatusListener(WKSDK.shared(), this.connectStatusListener)
         WKSDK.shared().conversationManager.removeConversationListener(this.conversationListener)
         WKSDK.shared().channelManager.removeListener(this.channelListener)
         WKApp.shared.removeMessageDeleteListener(this.messageDeleteListener)
