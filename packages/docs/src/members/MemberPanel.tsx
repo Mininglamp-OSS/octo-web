@@ -195,7 +195,9 @@ export function MemberPanel({
               <span className="octo-uid">
                 {displayName(m.uid)}{' '}
                 {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
-                {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {m.source}</small>}
+                {!isOwner && (
+                  <small style={{ color: 'var(--octo-muted)' }}> · {t(`docs.member.source.${m.source}`)}</small>
+                )}
               </span>
               <select
                 value={m.role}

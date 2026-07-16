@@ -385,6 +385,10 @@
     "remove": "Remove",
     "owner": "owner",
     "ownerBadge": "Owner",
+    "source": {
+      "direct": "Direct",
+      "invite": "Invite"
+    },
     "ownerCannotRemove": "The owner cannot be removed",
     "errorAdd": "Failed to add member.",
     "errorRemove": "Failed to remove member.",

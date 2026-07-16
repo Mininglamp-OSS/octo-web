@@ -48,6 +48,16 @@ describe('docs i18n', () => {
     expect(zhCN.toolbar.fontFamilyDefault).not.toBe(zhCN.toolbar.fontSizeDefault)
     expect(enUS.toolbar.fontFamilyDefault).not.toBe(enUS.toolbar.fontSizeDefault)
   })
+
+  // The member row shows the join source ("direct" / "invite") after a non-owner's name. Those
+  // values were rendered as the raw enum key, so a zh-CN user saw the English word " · direct".
+  // They are now localized through docs.member.source.*.
+  it('localizes the member source label in both locales', () => {
+    expect(zhCN.member.source.direct).toBe('直接添加')
+    expect(zhCN.member.source.invite).toBe('邀请加入')
+    expect(enUS.member.source.direct).toBe('Direct')
+    expect(enUS.member.source.invite).toBe('Invite')
+  })
 })
 
 describe('DocsModule i18n registration', () => {

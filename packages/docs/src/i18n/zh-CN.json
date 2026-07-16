@@ -385,6 +385,10 @@
     "remove": "移除",
     "owner": "所有者",
     "ownerBadge": "所有者",
+    "source": {
+      "direct": "直接添加",
+      "invite": "邀请加入"
+    },
     "ownerCannotRemove": "无法移除所有者",
     "errorAdd": "添加成员失败。",
     "errorRemove": "移除成员失败。",
