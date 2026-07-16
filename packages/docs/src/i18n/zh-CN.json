@@ -147,6 +147,7 @@
     "hexInput": "十六进制颜色",
     "hexPlaceholder": "#rrggbb",
     "table": "表格",
+    "freeze": "冻结",
     "image": "图片",
     "file": "文件",
     "bookmark": "书签",

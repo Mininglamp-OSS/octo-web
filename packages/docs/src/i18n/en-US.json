@@ -147,6 +147,7 @@
     "hexInput": "Hex color",
     "hexPlaceholder": "#rrggbb",
     "table": "Table",
+    "freeze": "Freeze",
     "image": "Image",
     "file": "File",
     "bookmark": "Bookmark",
