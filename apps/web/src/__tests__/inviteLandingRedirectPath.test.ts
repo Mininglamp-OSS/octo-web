@@ -16,27 +16,27 @@ function getAppBasePath(pathname: string): string {
   return stripped.replace(/\/+$/, '')
 }
 
-function buildRedirect(pathname: string, sid: string): string {
+function buildRedirect(pathname: string): string {
   const basePath = getAppBasePath(pathname)
-  return `https://host${basePath}/${sid ? `?sid=${sid}` : ''}`
+  return `https://host${basePath}/`
 }
 
 describe('InviteLanding redirect basePath (#1006)', () => {
   it('normal root pathname → redirects to "/"', () => {
-    expect(buildRedirect('/', 'abc')).toBe('https://host/?sid=abc')
+    expect(buildRedirect('/')).toBe('https://host/')
   })
 
   it('"/api/" pathname no longer lands on backend 404 route', () => {
     // Bug repro: before the fix this returned "/api/?sid=abc" → 404.
-    expect(buildRedirect('/api/', 'abc')).toBe('https://host/?sid=abc')
+    expect(buildRedirect('/api/')).toBe('https://host/')
   })
 
   it('"/api" (no trailing slash) is also stripped', () => {
-    expect(buildRedirect('/api', 'abc')).toBe('https://host/?sid=abc')
+    expect(buildRedirect('/api')).toBe('https://host/')
   })
 
   it('"/api/v1/" is stripped (versioned API path)', () => {
-    expect(buildRedirect('/api/v1/', 'abc')).toBe('https://host/?sid=abc')
+    expect(buildRedirect('/api/v1/')).toBe('https://host/')
   })
 
   it('"/api/v2/space/invite/xxx" strips the /api/vN prefix only', () => {
@@ -44,23 +44,18 @@ describe('InviteLanding redirect basePath (#1006)', () => {
     // never accidentally chop off a legitimate sibling deployment path.
     // For the #1006 repro, this branch is defensive; the user normally lands
     // on /api/?invite=xxx, which fully collapses to '/' (covered above).
-    expect(buildRedirect('/api/v2/space/invite/xxx', 'abc')).toBe(
-      'https://host/space/invite/xxx/?sid=abc'
+    expect(buildRedirect('/api/v2/space/invite/xxx')).toBe(
+      'https://host/space/invite/xxx/'
     )
   })
 
   it('subpath deployment ("/web/") is preserved', () => {
     // Non-/api subpath must still be preserved for legacy deployments.
-    expect(buildRedirect('/web/', 'abc')).toBe('https://host/web/?sid=abc')
+    expect(buildRedirect('/web/')).toBe('https://host/web/')
   })
 
   it('"/apiary/" is NOT stripped (only matches exact /api segment)', () => {
     // Regex uses boundary `(?=\/|$)` so /apiary is left alone.
-    expect(buildRedirect('/apiary/', 'abc')).toBe('https://host/apiary/?sid=abc')
-  })
-
-  it('empty sid produces no query string', () => {
-    expect(buildRedirect('/', '')).toBe('https://host/')
-    expect(buildRedirect('/api/', '')).toBe('https://host/')
+    expect(buildRedirect('/apiary/')).toBe('https://host/apiary/')
   })
 })

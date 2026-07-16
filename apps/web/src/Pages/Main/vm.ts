@@ -1,4 +1,4 @@
-import { WKApp, Menus, ProviderListener, startVersionCheck, t } from "@octo/base";
+import { WKApp, Menus, ProviderListener, normalizeRoutePath, startVersionCheck, t } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 import { reconcileMenuState, resolvePendingRouteActivation } from "./menuReconcile";
 
@@ -64,10 +64,13 @@ export default class MainVM extends ProviderListener {
   // first appconfig load, then cleared. Any explicit user navigation also clears it (see the
   // currentMenus setter) so a late toggle never yanks the user off a view they chose.
   private _pendingRouteActivation?: string;
+  private _onBrowserRouteChange = () => {
+    this.syncMenuFromBrowserPath();
+  };
 
   didMount(): void {
     let found = false;
-    const bootPath = WKApp.route.currentPath;
+    const bootPath = normalizeRoutePath(window.location.pathname || WKApp.route.currentPath);
     if (bootPath) {
       for (const menus of this.menusList) {
         if (menus.routePath === bootPath) {
@@ -104,6 +107,7 @@ export default class MainVM extends ProviderListener {
         this.notifyListener();
       }
     });
+    window.addEventListener("popstate", this._onBrowserRouteChange);
 
     if ((window as any).__POWERED_ELECTRON__) {
       this.appUpdateInit();
@@ -184,6 +188,30 @@ export default class MainVM extends ProviderListener {
     this.ipcListeners = [];
     this.stopVersionCheck?.();
     this._unsubscribeMenuReconcile?.();
+    window.removeEventListener("popstate", this._onBrowserRouteChange);
+  }
+
+  private syncMenuFromBrowserPath(): boolean {
+    const routePath = normalizeRoutePath(window.location.pathname);
+    const target = this.menusList.find((menus) => menus.routePath === routePath);
+    if (!target) {
+      if (routePath !== "/") {
+        this._pendingRouteActivation = routePath;
+      }
+      return false;
+    }
+    if (this._currentMenus?.id === target.id) {
+      return false;
+    }
+    this._currentMenus = target;
+    if (this._historyRoutePaths.indexOf(target.routePath) === -1) {
+      this._historyRoutePaths.push(target.routePath);
+    }
+    WKApp.currentMenuId = target.id;
+    this._pendingRouteActivation = undefined;
+    this.notifyListener();
+    WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: target.id });
+    return true;
   }
 
   /**

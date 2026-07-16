@@ -1,4 +1,5 @@
 import mitt, { Emitter } from "mitt";
+import { getSessionSid, setSessionSid } from "./Service/SessionScope";
 
 /** mittBus 全局事件类型表 */
 export type MittEvents = {
@@ -543,8 +544,7 @@ export class LoginInfo {
   }
 
   public getSID(): string {
-    let sid = this.getQueryVariable("sid") || "";
-    return sid;
+    return getSessionSid();
   }
 
   public setStorageItem(key: string, value: string) {
@@ -987,6 +987,7 @@ export default class WKApp extends ProviderListener {
   private clearLocalLoginState() {
     WKApp.loginInfo.logout();
     clearAuthStorage();
+    setSessionSid("");
     this.currentSpaceId = "";
     this.channelSpaceMap.clear();
     this.channelMySourceSpaceMap.clear();
@@ -996,7 +997,7 @@ export default class WKApp extends ProviderListener {
   // 登出
   logout() {
     this.clearLocalLoginState();
-    window.location.reload();
+    window.location.replace("/login");
   }
 
   async logoutUserInitiated() {

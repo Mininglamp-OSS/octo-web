@@ -1,4 +1,4 @@
-
+import { getSessionSid } from "../Service/SessionScope";
 
 export function getQueryParam(key: string) {
   const params = new URLSearchParams(window.location.search);
@@ -6,10 +6,5 @@ export function getQueryParam(key: string) {
 }
 
 export function getSid() {
-  let sid = getQueryParam("sid");
-  if (!sid || sid === "") {
-   // 如果为空 则随机生成一个6位数的字符串
-   sid = Math.random().toString(36).slice(-6);
-  }
-  return sid;
+  return getSessionSid();
 }

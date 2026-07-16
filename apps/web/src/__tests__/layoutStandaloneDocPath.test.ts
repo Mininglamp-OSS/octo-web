@@ -119,6 +119,7 @@ describe('Layout — standalone /s/:taskNo summary clean cold-load path', () => 
     expect(layout).toMatch(/const\s+forwardSp\s*=\s*getQueryParam\("sp"\)\s*\|\|\s*""/)
     expect(layout).toMatch(/redirectQuery\.set\("sp",\s*forwardSp\)/)
     expect(layout).toMatch(/consumeStandaloneReturn\(\)/)
-    expect(layout).toMatch(/withReturnSid\(standaloneReturn,\s*sessionSid\)/)
+    expect(layout).toMatch(/setSessionSid\(sessionSid\)/)
+    expect(layout).toMatch(/removeSidFromPath\(standaloneReturn\)/)
   })
 })

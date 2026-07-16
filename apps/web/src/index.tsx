@@ -4,7 +4,7 @@ import '@octo/base/src/theme/tokens.css';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import  { BaseModule, I18nProvider, i18n, WKApp } from '@octo/base';
+import  { BaseModule, I18nProvider, ensureSessionSid, i18n, stripSessionSidFromUrl, WKApp } from '@octo/base';
 import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
@@ -53,6 +53,8 @@ WKApp.apiClient.config.spaceIdCallback = () => {
 WKApp.config.appVersion = import.meta.env.VITE_VERSION || pkgVersion
 WKApp.config.appName = "Octo"
 
+ensureSessionSid()
+stripSessionSidFromUrl()
 WKApp.loginInfo.load() // 加载登录信息
 i18n.registerNamespace("app", {
   "zh-CN": appZhCN,
