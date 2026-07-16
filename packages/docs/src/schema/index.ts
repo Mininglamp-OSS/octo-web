@@ -65,7 +65,15 @@
 //        sink/lift is untouched). Same class of change as v5 textAlign / v7 fontSize: attribute,
 //        version bump only, byte-aligned with the backend stub + SCHEMA-SPEC. Missing attr = 0.
 //        The v18 margin-left declaration is appended AFTER the v17 line-spacing declarations.
-export const SCHEMA_VERSION = 18
+//   v19 — SCHEMA-SPEC §4: add a `height` ATTRIBUTE to the `tableRow` node (not a new node/mark) —
+//        an integer pixel row height driving the self-built "drag the horizontal row line" resize
+//        handle, the row-wise counterpart of the v4 column `colwidth` resize. Type `number | null`,
+//        default `null`: with a height set the row renders `<tr style="height:Npx">`; with null/unset
+//        it renders `<tr>` with no style (row height driven by content — identical to v18, no
+//        migration). parseDOM reads an integer px back from the `tr` inline `style="height:Npx"`.
+//        Unlike the v4 cell `colwidth` (a `number[]` across the spanned columns), this is a single
+//        integer SCALAR per row. Byte-aligned with the backend stub + SCHEMA-SPEC.md at v19.
+export const SCHEMA_VERSION = 19
 
 // Node names present in the schema at the current SCHEMA_VERSION. Mirrors the
 // backend stub's node set (SCHEMA-SPEC); kept here so the set is auditable against
@@ -86,7 +94,7 @@ export const SCHEMA_NODES = [
   'horizontalRule',
   'image', // v2 — attrs attachId/src/alt/title/width/align (camelCase); data-attach-id; never base64
   'table', // v4 — group block, content tableRow+
-  'tableRow', // v4 — content (tableCell | tableHeader)+
+  'tableRow', // v4 — content (tableCell | tableHeader)+; v19 adds the `height` attr (px scalar | null)
   'tableCell', // v4 — attrs colspan/rowspan/colwidth; content block+
   'tableHeader', // v4 — attrs colspan/rowspan/colwidth; content block+
   'emoji', // v9 — inline atom; attrs name (shortcode); bundled GitHub emoji set
@@ -106,9 +114,10 @@ export const SCHEMA_NODES = [
 // against the spec without importing the editor extensions.
 //
 // NOTE: v5 `textAlign`, v7 `fontSize`, v16 `fontFamily`, v17 `lineHeight`/`spaceBefore`/
-// `spaceAfter`, and v18 `indent` are ATTRIBUTES (textAlign + line-spacing + indent on
-// heading/paragraph, fontSize + fontFamily on the textStyle mark), not new nodes/marks, so they
-// add no entry here — only a version bump. They still round-trip through the Y.Doc as node/mark attrs.
+// `spaceAfter`, v18 `indent`, and v19 `height` (on tableRow) are ATTRIBUTES (textAlign + line-spacing
+// + indent on heading/paragraph, fontSize + fontFamily on the textStyle mark, height on tableRow),
+// not new nodes/marks, so they add no entry here — only a version bump. They still round-trip through
+// the Y.Doc as node/mark attrs.
 export const SCHEMA_MARKS = [
   'bold',
   'italic',

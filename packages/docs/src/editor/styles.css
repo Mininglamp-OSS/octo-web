@@ -707,6 +707,44 @@ body.octo-table-reordering {
   user-select: none !important;
 }
 
+/* Table row-height resize handle (SCHEMA_VERSION 19). The row-wise counterpart of the column-resize
+   handle (#749): a slim horizontal grab bar pinned to the hovered row's BOTTOM edge, spanning the
+   table width, with a row-resize cursor. Lives in the editor wrapper (outside the document) and is
+   positioned inline by the TableRowResize plugin. Orthogonal to the column-resize handle (interior
+   vertical cell borders), the reorder handles (left/top gutters, z-index 5) and the block drag handle
+   (z-index 4); it defers to the column-resize handle on a shared cell corner (see TableRowResize). */
+.octo-table-row-resize {
+  display: none;
+  cursor: row-resize;
+  z-index: 5;
+  background: transparent;
+}
+.octo-table-row-resize:hover {
+  /* A faint accent line on the row's bottom edge so the grab target is discoverable on hover. */
+  background: linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(50% - 1px),
+    var(--octo-accent, #3370ff) calc(50% - 1px),
+    var(--octo-accent, #3370ff) calc(50% + 1px),
+    transparent calc(50% + 1px),
+    transparent 100%
+  );
+}
+/* Live guide line drawn at the dragged row height while resizing (accent, above the handle). */
+.octo-table-row-resize-guide {
+  display: none;
+  background: var(--octo-accent, #3370ff);
+  border-radius: 1px;
+  z-index: 6;
+  pointer-events: none;
+}
+/* While a row-resize drag is in flight, suppress text selection and force the row-resize cursor. */
+body.octo-row-resizing {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+
 /* Document outline / table of contents (LEFT rail, #3). Rendered before the editor main
    column so it sits to its left; default collapsed to a slim title bar. */
 .octo-outline {
