@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Typography, Input, Button, Spin, Modal, Toast } from "@douyinfe/semi-ui";
+import { Input, Button, Spin, Modal, Toast } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Briefcase, List, LayoutGrid, ListChecks } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Project, UpsertProjectReq } from "../api/types";
@@ -14,7 +14,6 @@ import { formatRelativeTime } from "../ui/time";
 import { readView, writeView } from "../ui/viewMode";
 import { useIsWorkspaceAdmin } from "../ui/useWorkspaceAdmin";
 
-const { Text } = Typography;
 
 type ViewMode = "list" | "card";
 const VIEW_KEY = "loop.project.viewMode";
@@ -197,7 +196,6 @@ export default function ProjectPage() {
     <div className="loop-page">
       <div className="loop-page__head">
         <h2 className="loop-page__title">{t("loop.nav.project")}</h2>
-        <Text type="tertiary" style={{ fontSize: 13 }}>{rows.length}</Text>
         <div className="loop-page__spacer" />
         <LoopButton icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.action.newProject")}</LoopButton>
       </div>
