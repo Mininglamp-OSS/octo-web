@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Typography, Dropdown, Avatar, Modal, Toast } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
 import {
@@ -61,6 +61,14 @@ export default function LoopPage() {
   const [wsBusy, setWsBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
+  // tab 的同步镜像:mount-once 的 space-changed 副作用闭包(deps=[])会冻结当时的 tab,
+  // 用 ref 让 applyWorkspace 始终读到最新 tab,避免切 space 后右栏恒被铺成初始 issue。
+  const tabRef = useRef<TabKey>("issue");
+  tabRef.current = tab;
+  // space-changed 重解析的过期守卫:快速连切 space 时并发的 listWorkspaces 可能乱序返回,
+  // 只有最后一次解析允许写回 workspace context,否则慢的旧响应会把旧 slug 落回、撞新 space 的 403。
+  const spaceResolveSeqRef = useRef(0);
+
   const findWs = (list: Workspace[], id: string) => list.find((w) => w.id === id) ?? null;
 
   const renderTab = (key: TabKey, ws: Workspace | null): JSX.Element => {
@@ -80,12 +88,15 @@ export default function LoopPage() {
   };
 
   const openTab = (key: TabKey) => {
+    // 重解析窗口期(切 space 后 loaded=false 直到新 space 的 workspace 解析完成)不响应:
+    // 此时 workspaces/wsId 尚属旧 space,点击会用旧作用域渲染 workspace 级页面。
+    if (!loaded) return;
     setTab(key);
     WKApp.routeRight.replaceToRoot(renderTab(key, findWs(workspaces, wsId)));
   };
 
   // 新建回路 → 唤起统一建单弹窗（对齐 multica，不再拉起独立 AI 页）。成功后落回路看板并刷新。
-  const openNewLoop = () => setCreateOpen(true);
+  const openNewLoop = () => { if (!loaded) return; setCreateOpen(true); };
 
   // 空态引导：无 workspace 时右栏提示创建
   const showEmptyGuide = () => {
@@ -103,7 +114,7 @@ export default function LoopPage() {
       setWorkspaceContext(ws.slug, ws.id, ws.name);
       setWsId(ws.id);
       resetWorkspaceCaches();
-      WKApp.routeRight.replaceToRoot(renderTab(tab, ws));
+      WKApp.routeRight.replaceToRoot(renderTab(tabRef.current, ws));
     } else {
       setWorkspaceContext("", "");
       setWsId("");
@@ -119,13 +130,22 @@ export default function LoopPage() {
   };
 
   useEffect(() => {
+    // mount 初始解析也纳入 spaceResolveSeqRef 域:若初始 listWorkspaces 尚未返回、
+    // 用户就切了 space,space-changed 会递增 seq 使这次 mount 响应过期被丢弃,避免旧 space
+    // 的 workspace slug 被写回 http 层、撞新 space 的隔离 403(与 space-changed 共享守卫)。
+    const seq = ++spaceResolveSeqRef.current;
     listWorkspaces()
       .then((list) => {
+        if (seq !== spaceResolveSeqRef.current) return;
         setLoaded(true);
         const first = findWs(list, currentWorkspaceId()) ?? list[0] ?? null;
         applyWorkspace(first, list);
       })
-      .catch(() => { setLoaded(true); showEmptyGuide(); });
+      .catch(() => {
+        if (seq !== spaceResolveSeqRef.current) return;
+        setLoaded(true);
+        showEmptyGuide();
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -150,11 +170,48 @@ export default function LoopPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaces, wsId, loaded]);
 
+  // 切换 octo space 时,当前 wsId + @octo/loop 模块级 workspace 全局属于上一个 space,
+  // 必须作废重判 —— 否则会带旧 workspace 作用域向新 space 发 workspace 维度请求,撞后端
+  // space 隔离闸门(workspace does not belong to this space / not a member of this space)。
+  // 先 setWorkspaceContext("","") 清 http 层旧 slug,避免重列期间任何请求带旧作用域;再重新
+  // listWorkspaces 并铺新 space 的默认 workspace,新 space 无 workspace 时 applyWorkspace(null)
+  // 自然落入空态引导(showEmptyGuide)。
+  useEffect(() => {
+    const onSpaceChanged = () => {
+      const seq = ++spaceResolveSeqRef.current;
+      setWorkspaceContext("", "");
+      setWsId("");
+      // setLoaded(false):重解析窗口期把页面标回"未加载",wk:nav-menu-activated 的
+      // `if (!loaded) return` 守卫随之生效,避免窗口期用旧 workspaces 闭包渲染 workspace 级页面。
+      setLoaded(false);
+      resetWorkspaceCaches();
+      listWorkspaces()
+        .then((list) => {
+          // 过期守卫:快速连切 space 时只让最后一次解析落地,丢弃乱序返回的旧响应,
+          // 否则旧响应的 applyWorkspace 会把旧 slug 落回 http 层、撞新 space 的隔离 403。
+          if (seq !== spaceResolveSeqRef.current) return;
+          setLoaded(true);
+          const first = findWs(list, currentWorkspaceId()) ?? list[0] ?? null;
+          applyWorkspace(first, list);
+        })
+        .catch(() => {
+          if (seq !== spaceResolveSeqRef.current) return;
+          setLoaded(true);
+          showEmptyGuide();
+        });
+    };
+    WKApp.mittBus.on("space-changed", onSpaceChanged);
+    return () => WKApp.mittBus.off("space-changed", onSpaceChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const switchWorkspace = (w: Workspace) => {
+    // 重解析窗口期不响应:下拉里的 w 属于旧 space 的 workspaces,选它会把旧 slug 写回。
+    if (!loaded) return;
     setWorkspaceContext(w.slug, w.id, w.name);
     setWsId(w.id);
     resetWorkspaceCaches();
-    WKApp.routeRight.replaceToRoot(renderTab(tab, w));
+    WKApp.routeRight.replaceToRoot(renderTab(tabRef.current, w));
   };
 
   const openCreateWs = () => {

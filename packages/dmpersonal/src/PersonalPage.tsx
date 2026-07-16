@@ -137,6 +137,31 @@ export default function PersonalPage() {
     return () => WKApp.mittBus.off("wk:nav-menu-activated", onNavMenuActivated);
   }, []);
 
+  // 切换 octo space 时,本页存的 workspace 归属(selectedWsRef + @octo/loop 模块级
+  // workspace 全局)属于上一个 space,必须作废重判 —— 否则会带旧 workspace 作用域向新
+  // space 发 workspace 维度请求,撞后端 space 隔离闸门(workspace does not belong to
+  // this space / not a member of this space)。
+  //
+  // 三份 workspace 状态必须一起复位,缺一不可:
+  //  - selectedWsRef:本页自留、优先于共享全局的选择(#619 防污染),不清则重解析仍选中旧 ws;
+  //  - machineModeRef:决定 openTab 的分支,不清则窗口期分支判断用旧值;
+  //  - setWorkspaceContext("",""):清 @octo/loop 的 http 层模块级 slug/id。这一步关键——
+  //    resolveAndPaint(showLoading=true) 不置 workspaceReady=false,从 emit 到重解析完成的
+  //    loading 窗口内 nav 按钮不禁用,用户此刻点 tab 会走 openTab;若 http 层仍留旧 slug,
+  //    RuntimePage 会用旧 slug 打 /runtimes(consistency group 内)→ 403 重现本 bug。
+  //    先把 http 作用域降为空(machine),窗口期任何请求都无 slug 发出、安全走 /machine-runtimes。
+  // 复位后 resolveAndPaint 重新 listWorkspaces:新 space 无 workspace 时自然落入 machine 空态。
+  useEffect(() => {
+    const onSpaceChanged = () => {
+      selectedWsRef.current = null;
+      machineModeRef.current = false;
+      setWorkspaceContext("", "");
+      resolveRef.current(true);
+    };
+    WKApp.mittBus.on("space-changed", onSpaceChanged);
+    return () => WKApp.mittBus.off("space-changed", onSpaceChanged);
+  }, []);
+
   return (
     <div className="dmpersonal-sidebar">
       <div className="dmpersonal-sidebar__title">{t("personal.menu.title")}</div>
