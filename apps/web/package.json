@@ -39,8 +39,6 @@
     "test:e2e:bind:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
     "test:e2e:standalone": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test -c e2e/standalone-doc.config.ts",
     "test:e2e:standalone:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
-    "test:e2e:status-dot": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test -c e2e/status-dot.config.ts",
-    "test:e2e:status-dot:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
     "test:arch-builds": "./scripts/test-arch-builds.sh",
     "debug:build-structure": "./scripts/debug-build-structure.sh",
     "test:arch-specific": "./scripts/test-arch-specific-builds.sh",
