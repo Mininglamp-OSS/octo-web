@@ -328,6 +328,12 @@ export const TableRowResize = Extension.create({
     // True only while WE dispatch the commit, so the guard does not mistake our own setNodeMarkup for a
     // concurrent remote edit (belt-and-braces: the height attr is not part of a table signature anyway).
     let committing = false
+    // Latches true once a mid-drag move has actually reported the primary button held (`buttons & 1`).
+    // Gates the "released outside the window" abort in onDocMove so it fires only on a GENUINE release
+    // (after the button was seen down), never on an event source whose moves omit `buttons` and report 0
+    // throughout — the same latch TableReorderHandle uses to keep its FAIL-1 guard intact without
+    // breaking synthetic/CDP-driven drags (#76). Reset in resetDrag / beginDrag.
+    let pointerHeldSeen = false
 
     const hideHandle = () => {
       if (handle) handle.style.display = 'none'
@@ -383,6 +389,7 @@ export const TableRowResize = Extension.create({
     const removeDragListeners = () => {
       document.removeEventListener('mousemove', onDocMove, true)
       document.removeEventListener('mouseup', onDocUp, true)
+      document.removeEventListener('pointercancel', onDocCancel, true)
       document.removeEventListener('keydown', onDocKey, true)
       window.removeEventListener('blur', onWindowBlur)
     }
@@ -391,6 +398,7 @@ export const TableRowResize = Extension.create({
       drag = null
       concurrentEdit = false
       committing = false
+      pointerHeldSeen = false
       dragBaselineSigs = []
       document.body.classList.remove('octo-row-resizing')
       hideGuide()
@@ -426,6 +434,19 @@ export const TableRowResize = Extension.create({
 
     function onDocMove(event: MouseEvent) {
       if (!drag || !activeView) return
+      // Interrupt guard (mirrors TableReorderHandle FAIL-1, #76): the primary button was released while
+      // we could not see it — the "let go outside the window, then move back in" path. The mouseup fired
+      // over another app so our document `mouseup` never ran; the button is now up as the pointer
+      // re-enters. Treat it as an interruption, NOT a drop: abort with zero commit. Without this the drag
+      // stays armed and the next stray mouseup commits a STALE row height (#823 RC2). Gate on
+      // `pointerHeldSeen` so a synthetic/CDP drag whose moves omit `buttons` (reporting 0 throughout) is
+      // not mistaken for a release on its first move; a genuine release always follows a held move.
+      if ((event.buttons & 1) !== 0) {
+        pointerHeldSeen = true
+      } else if (pointerHeldSeen) {
+        cancelDrag()
+        return
+      }
       event.preventDefault()
       const delta = event.clientY - drag.startY
       drag.height = Math.max(MIN_ROW_HEIGHT, Math.round(drag.startHeight + delta))
@@ -437,11 +458,15 @@ export const TableRowResize = Extension.create({
       commitDrag(activeView)
       resetDrag()
     }
+    // Abort an in-flight drag WITHOUT committing — a pure early return, no dispatch, so an interrupted
+    // drag can never write a stale height. Used by every interruption path below.
     const cancelDrag = () => {
       if (!drag) return
       removeDragListeners()
       resetDrag()
     }
+    // Interruption handlers: an interrupted drag must abort cleanly, never commit a stale row height.
+    const onDocCancel = () => cancelDrag()
     function onWindowBlur() {
       cancelDrag()
     }
@@ -469,10 +494,12 @@ export const TableRowResize = Extension.create({
       dragBaselineSigs = tableSignatures(view.state.doc)
       concurrentEdit = false
       committing = false
+      pointerHeldSeen = false
       activeView = view
       document.body.classList.add('octo-row-resizing')
       document.addEventListener('mousemove', onDocMove, true)
       document.addEventListener('mouseup', onDocUp, true)
+      document.addEventListener('pointercancel', onDocCancel, true)
       document.addEventListener('keydown', onDocKey, true)
       window.addEventListener('blur', onWindowBlur)
     }
@@ -530,6 +557,7 @@ export const TableRowResize = Extension.create({
               drag = null
               concurrentEdit = false
               committing = false
+              pointerHeldSeen = false
               dragBaselineSigs = []
             },
           }

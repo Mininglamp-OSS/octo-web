@@ -166,6 +166,64 @@ if (!rc.rect) {
   }
 }
 
+// RH05 (#823 RC2 / XIN-1244) — an INTERRUPTED drag must NOT commit a stale height (the row-resize
+// analogue of TableReorderHandle FAIL-1). Remount fresh, start a real left-button drag that would grow
+// row 1, then reproduce "released outside the window, then move back in": the pointer re-enters with no
+// button pressed (a mousemove whose `buttons` is 0 — the real-window signal that the mouseup fired over
+// another app and never reached us) followed by a stray mouseup. The guard must abort, leaving the row
+// height untouched (null) on both peers.
+console.log('\nRH05 — interrupted drag (release outside window, then return) must not commit a stale height')
+await page.evaluate(() => window.__rowHeightHarness.mount())
+await page.waitForTimeout(250)
+
+const beforeI = await page.evaluate(() => ({
+  a0: window.__rowHeightHarness.rowHeightA(0),
+  rect: window.__rowHeightHarness.rowRectA(0),
+}))
+if (beforeI.a0 !== null) {
+  fail(`RH05 precondition: row 1 height should start null, was ${JSON.stringify(beforeI.a0)}`)
+} else if (!beforeI.rect) {
+  fail('RH05 precondition: row 0 rect not found')
+} else {
+  const grabXi = beforeI.rect.left + beforeI.rect.width / 4
+  const bottomYi = beforeI.rect.top + beforeI.rect.height
+  await page.mouse.move(grabXi, bottomYi - 1)
+  await page.waitForTimeout(120)
+  const handleI = await page.evaluate(() => window.__rowHeightHarness.handleRect())
+  if (!handleI) {
+    fail('RH05 row-resize handle not visible after hovering the row bottom edge')
+  } else {
+    const sx = handleI.left + handleI.width / 2
+    const sy = handleI.top + handleI.height / 2
+    await page.mouse.move(sx, sy)
+    await page.mouse.down()
+    // Real held moves so a fresh (stale-to-be) height of ~+60px is pending in the drag.
+    await page.mouse.move(sx, sy + 30, { steps: 4 })
+    await page.mouse.move(sx, sy + 60, { steps: 4 })
+    await page.waitForTimeout(40)
+    // Pointer re-enters the window with NO button held — the release happened outside and was never
+    // delivered as a mouseup. This dispatches the exact real-window event the browser fires on re-entry.
+    await page.evaluate(({ x, y }) => {
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y + 100, buttons: 0, bubbles: true }))
+    }, { x: sx, y: sy })
+    // A stray mouseup after the interruption must be inert (old code committed the stale height here).
+    await page.mouse.up()
+    await page.waitForTimeout(150)
+
+    const afterI = await page.evaluate(() => ({
+      a0: window.__rowHeightHarness.rowHeightA(0),
+      b0: window.__rowHeightHarness.rowHeightB(0),
+    }))
+    console.log('  row 1 height after interrupt (A/B):', JSON.stringify(afterI))
+    if (afterI.a0 === null && afterI.b0 === null) {
+      ok('RH05 interrupted drag committed nothing — row height stayed null on both peers')
+    } else {
+      fail(`RH05 interrupted drag committed a stale height: A=${afterI.a0} B=${afterI.b0}`)
+    }
+    await page.screenshot({ path: `${OUT}/rowheight-interrupt.png` })
+  }
+}
+
 await browser.close()
 if (failed) {
   console.error(`\n=== ROW-HEIGHT HARNESS FAILED (${failed}) ===`)
