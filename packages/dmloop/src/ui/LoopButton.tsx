@@ -1,7 +1,7 @@
 import React from "react";
 import { Loader2 } from "lucide-react";
 
-type LoopButtonVariant = "primary" | "secondary" | "ghost";
+type LoopButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type LoopButtonSize = "sm" | "md";
 
 export interface LoopButtonProps

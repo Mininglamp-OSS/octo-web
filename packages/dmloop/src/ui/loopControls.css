@@ -369,6 +369,14 @@
   color: var(--semi-color-text-0, #1c1f23);
 }
 
+/* danger：无边框红字（删除/破坏性内联操作），hover 叠浅红底、色相锁死只加深 */
+.loop-btn--danger { background: transparent; color: var(--semi-color-danger, #d0453e); }
+.loop-btn--danger:hover:not(:disabled) {
+  background: var(--semi-color-danger-light-default, #fdeceb);
+  color: var(--semi-color-danger-hover, #b83a34);
+}
+.loop-btn--danger:active:not(:disabled) { color: var(--semi-color-danger-active, #a1322d); }
+
 .loop-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .loop-btn__spin { animation: loop-btn-spin 0.7s linear infinite; }

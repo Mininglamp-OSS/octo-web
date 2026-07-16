@@ -5,7 +5,7 @@ import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Project } from "../api/types";
 import { getProject, updateProject, deleteProject } from "../api/projectApi";
-import ProjectWebhooksSection from "./ProjectWebhooksSection";
+import WebhooksSection from "./WebhooksSection";
 import { useIsWorkspaceAdmin } from "../ui/useWorkspaceAdmin";
 import "./sideDetail.css";
 
@@ -93,7 +93,7 @@ export default function ProjectDetailPage({ projectId, onChanged }: { projectId:
             </div>
             <div className="loop-fields__row">
               <div className="loop-fields__label">{t("loop.webhook.title")}</div>
-              <ProjectWebhooksSection projectId={row.id} isAdmin={isAdmin} />
+              <WebhooksSection projectId={row.id} isAdmin={isAdmin} />
             </div>
           </div>
         </section>

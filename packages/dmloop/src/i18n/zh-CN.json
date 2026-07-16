@@ -642,6 +642,7 @@
   "settings": {
     "general": "通用",
     "members": "成员管理",
+    "webhooks": "Webhook",
     "noWorkspace": "请先选择或创建工作区",
     "wsName": "工作区名称",
     "wsSlug": "工作区 slug",

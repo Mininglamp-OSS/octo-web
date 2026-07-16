@@ -13,6 +13,8 @@ import {
 import { invalidateDirectory } from "../api/directory";
 import LoopTag from "../ui/LoopTag";
 import LoopButton from "../ui/LoopButton";
+import { useIsWorkspaceAdmin } from "../ui/useWorkspaceAdmin";
+import WebhooksSection from "../panel/WebhooksSection";
 
 const { Text } = Typography;
 const ROLES = ["admin", "member"];
@@ -48,6 +50,9 @@ export default function SettingsPage({
           </TabPane>
           <TabPane tab={t("loop.settings.members")} itemKey="members">
             <MembersTab workspaceId={workspace.id} />
+          </TabPane>
+          <TabPane tab={t("loop.settings.webhooks")} itemKey="webhooks">
+            <WebhooksTab />
           </TabPane>
         </Tabs>
       </div>
@@ -100,6 +105,16 @@ function GeneralTab({ workspace, onUpdated }: { workspace: Workspace; onUpdated?
       <div className="loop-fields__row">
         <LoopButton icon={<Save size={14} />} loading={saving} onClick={save}>{t("loop.action.save")}</LoopButton>
       </div>
+    </div>
+  );
+}
+
+/* ---------- Webhook（workspace 级） ---------- */
+function WebhooksTab() {
+  const isAdmin = useIsWorkspaceAdmin();
+  return (
+    <div className="loop-fields" style={{ maxWidth: 560, paddingTop: 12 }}>
+      <WebhooksSection isAdmin={isAdmin} />
     </div>
   );
 }

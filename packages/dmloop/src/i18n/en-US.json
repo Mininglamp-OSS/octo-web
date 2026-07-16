@@ -642,6 +642,7 @@
   "settings": {
     "general": "General",
     "members": "Members",
+    "webhooks": "Webhook",
     "noWorkspace": "Select or create a workspace first",
     "wsName": "Workspace name",
     "wsSlug": "Workspace slug",
