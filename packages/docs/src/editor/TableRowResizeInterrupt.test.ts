@@ -18,10 +18,11 @@ import { TableRowHeight, TableRowResize, ROW_HANDLE_BAND } from './TableRowHeigh
 // genuinely show the commit was suppressed.
 //
 // The headline regression is "release outside the window, then move back in": the pointer leaves
-// mid-drag, the button is released over another app (no document `mouseup` reaches us), and — before
-// this fix — the drag was left armed so the NEXT stray mouseup committed a STALE row height. The guard
-// is a `buttons === 0` check in the document mousemove handler (plus pointercancel/blur/Escape) that
-// aborts as the pointer re-enters with no button pressed.
+// mid-drag and the button is released OUTSIDE the window. The drag now runs on POINTER events and the
+// handle captures the pointer at drag start, so the terminal pointerup is delivered to us with
+// out-of-viewport coordinates — we abort on that (a release outside the window is an interruption, not a
+// drop) instead of committing the last tracked height. Pointercancel/blur/Escape and a fallback
+// buttons===0 check on the document pointermove cover the remaining interruption paths.
 
 const TABLE_2x2 =
   '<table><tbody>' +
@@ -98,62 +99,93 @@ function pointPosAt(ed: Editor): void {
 /** Arm a row-height drag on row `srcRow`, then move (button held) to a new Y so a fresh height is
  * pending. Leaves the drag in flight. clientX stays outside the column-resize band (> ROW_HANDLE_BAND
  * from a cell edge, whose rect is 0 in jsdom) so the row handle arms instead of deferring to columns;
- * clientY sits within the bottom band of the row (rect bottom is 0 in jsdom, so a small Y arms it). */
+ * clientY sits within the bottom band of the row (rect bottom is 0 in jsdom, so a small Y arms it).
+ * The drag now runs on POINTER events (pointerdown/pointermove/pointerup) with the handle capturing the
+ * pointer, so the terminal release is delivered even outside the window (#823 RC2 / XIN-1252). */
+const PID = 7
 function armRowResize(ed: Editor, srcRow: number, toY: number): void {
   pointPosAt(ed)
   stubPos = insideCell(ed, srcRow, 0)
   const x = ROW_HANDLE_BAND + 40
-  // 1. hover the row's bottom band → placeHandle arms the row.
+  // 1. hover the row's bottom band → placeHandle arms the row (hover stays a mousemove).
   ed.view.dom.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: 0, bubbles: true }))
   // 2. press the row-resize handle (primary button, clientY 0 = drag start) → beginDrag.
   const handle = host?.querySelector('.octo-table-row-resize')
   if (!handle) throw new Error('row-resize handle not rendered')
-  handle.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: x, clientY: 0, bubbles: true }))
+  handle.dispatchEvent(new PointerEvent('pointerdown', { pointerId: PID, button: 0, buttons: 1, clientX: x, clientY: 0, bubbles: true }))
   // 3. drag down with the button held → establishes pointerHeldSeen and a pending height.
-  document.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: toY, buttons: 1 }))
+  document.dispatchEvent(new PointerEvent('pointermove', { pointerId: PID, clientX: x, clientY: toY, buttons: 1 }))
 }
 
 describe('row-resize interrupt guard: an interrupted drag never commits a stale height', () => {
-  it('positive control: a real mouseup after the drag DOES commit the new height', () => {
+  it('positive control: a real pointerup inside the window DOES commit the new height', () => {
     editor = mount(TABLE_2x2)
     expect(rowHeight(editor, 0)).toBeNull()
     armRowResize(editor, 0, 60)
-    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    document.dispatchEvent(new PointerEvent('pointerup', { pointerId: PID, clientX: ROW_HANDLE_BAND + 40, clientY: 60, bubbles: true }))
     // The drop committed: the dragged row now carries an explicit height.
     expect(rowHeight(editor, 0)).toBe(60)
+  })
+
+  it('release OUTSIDE the window (pointerup past the viewport edge) aborts: no stale height committed', () => {
+    editor = mount(TABLE_2x2)
+    armRowResize(editor, 0, 60)
+    // The headline real-machine path: the pointer left the viewport mid-drag and the button was released
+    // OUTSIDE the window. Pointer capture routes that terminal pointerup to us with out-of-viewport
+    // coordinates — we must treat it as an interruption and commit nothing, not write the last (stale)
+    // tracked height. Before the fix the mouseup at any location committed it.
+    document.dispatchEvent(
+      new PointerEvent('pointerup', { pointerId: PID, clientX: ROW_HANDLE_BAND + 40, clientY: window.innerHeight + 500, bubbles: true }),
+    )
+    // A stray mouseup afterwards must be inert — the drag is no longer armed.
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    expect(rowHeight(editor, 0)).toBeNull()
   })
 
   it('release-outside-then-return (buttons === 0 on re-entry) aborts: no stale height committed', () => {
     editor = mount(TABLE_2x2)
     armRowResize(editor, 0, 60)
-    // Pointer re-enters with no button pressed — the mouseup happened outside the window and was never
-    // delivered. Before the fix the drag stayed armed and the next mouseup committed this stale 60px.
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: ROW_HANDLE_BAND + 40, clientY: 120, buttons: 0 }))
+    // Fallback path (no live pointer capture): the pointer re-enters with no button pressed — the release
+    // happened outside and was never delivered as a pointerup. The buttons===0 move aborts the drag.
+    document.dispatchEvent(new PointerEvent('pointermove', { pointerId: PID, clientX: ROW_HANDLE_BAND + 40, clientY: 120, buttons: 0 }))
     document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    document.dispatchEvent(new PointerEvent('pointerup', { pointerId: PID, clientX: ROW_HANDLE_BAND + 40, clientY: 120, buttons: 0 }))
     expect(rowHeight(editor, 0)).toBeNull()
   })
 
-  it('pointercancel aborts: table row height unchanged, later mouseup is inert', () => {
+  it('a stray plain mouseup during a drag never commits (only a genuine pointerup can drop)', () => {
+    editor = mount(TABLE_2x2)
+    armRowResize(editor, 0, 60)
+    // The old mouse-driven drag committed on ANY document mouseup — the exact stray event a recovered
+    // outside-window release delivers. The pointer-driven drag ignores plain mouseups entirely.
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    expect(rowHeight(editor, 0)).toBeNull()
+    // …and the genuine pointerup that follows a real drop still commits.
+    document.dispatchEvent(new PointerEvent('pointerup', { pointerId: PID, clientX: ROW_HANDLE_BAND + 40, clientY: 60, bubbles: true }))
+    expect(rowHeight(editor, 0)).toBe(60)
+  })
+
+  it('pointercancel aborts: table row height unchanged, later pointerup is inert', () => {
     editor = mount(TABLE_2x2)
     armRowResize(editor, 0, 60)
     document.dispatchEvent(new Event('pointercancel'))
-    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    document.dispatchEvent(new PointerEvent('pointerup', { pointerId: PID, clientX: ROW_HANDLE_BAND + 40, clientY: 60, bubbles: true }))
     expect(rowHeight(editor, 0)).toBeNull()
   })
 
-  it('window blur aborts: table row height unchanged, later mouseup is inert', () => {
+  it('window blur aborts: table row height unchanged, later pointerup is inert', () => {
     editor = mount(TABLE_2x2)
     armRowResize(editor, 0, 60)
     window.dispatchEvent(new Event('blur'))
-    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    document.dispatchEvent(new PointerEvent('pointerup', { pointerId: PID, clientX: ROW_HANDLE_BAND + 40, clientY: 60, bubbles: true }))
     expect(rowHeight(editor, 0)).toBeNull()
   })
 
-  it('Escape aborts: table row height unchanged, later mouseup is inert', () => {
+  it('Escape aborts: table row height unchanged, later pointerup is inert', () => {
     editor = mount(TABLE_2x2)
     armRowResize(editor, 0, 60)
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    document.dispatchEvent(new PointerEvent('pointerup', { pointerId: PID, clientX: ROW_HANDLE_BAND + 40, clientY: 60, bubbles: true }))
     expect(rowHeight(editor, 0)).toBeNull()
   })
 })

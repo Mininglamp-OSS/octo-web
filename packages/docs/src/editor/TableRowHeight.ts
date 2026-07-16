@@ -373,6 +373,12 @@ export const TableRowResize = Extension.create({
     // throughout — the same latch TableReorderHandle uses to keep its FAIL-1 guard intact without
     // breaking synthetic/CDP-driven drags (#76). Reset in resetDrag / beginDrag.
     let pointerHeldSeen = false
+    // Pointer id we captured on the handle at drag start (via setPointerCapture). Capturing routes the
+    // terminal pointerup/pointercancel to us EVEN when the pointer is released outside the window, so a
+    // drag can never be left silently armed for a later stray event to commit (#823 RC2 / XIN-1252).
+    // null when capture was unavailable (jsdom / a synthetic pointer with no live id) — the buttons and
+    // release-outside guards below still cover that fallback path.
+    let capturedPointerId: number | null = null
 
     const hideHandle = () => {
       if (handle) handle.style.display = 'none'
@@ -426,11 +432,24 @@ export const TableRowResize = Extension.create({
     }
 
     const removeDragListeners = () => {
-      document.removeEventListener('mousemove', onDocMove, true)
-      document.removeEventListener('mouseup', onDocUp, true)
+      document.removeEventListener('pointermove', onDocMove, true)
+      document.removeEventListener('pointerup', onDocUp, true)
       document.removeEventListener('pointercancel', onDocCancel, true)
       document.removeEventListener('keydown', onDocKey, true)
       window.removeEventListener('blur', onWindowBlur)
+      // Detach the capture-loss listener BEFORE we release the pointer ourselves, so our own
+      // releasePointerCapture does not re-enter cancelDrag mid-teardown (which would null `drag`
+      // out from under a legitimate commit). A genuine external capture loss still aborts via the
+      // listener while it is attached.
+      if (handle) handle.removeEventListener('lostpointercapture', onLostCapture)
+      if (handle && capturedPointerId != null) {
+        try {
+          handle.releasePointerCapture(capturedPointerId)
+        } catch {
+          /* pointer already gone (release outside / synthetic id) — nothing to release */
+        }
+      }
+      capturedPointerId = null
     }
 
     const resetDrag = () => {
@@ -438,6 +457,7 @@ export const TableRowResize = Extension.create({
       concurrentEdit = false
       committing = false
       pointerHeldSeen = false
+      capturedPointerId = null
       dragBaselineSigs = []
       document.body.classList.remove('octo-row-resizing')
       hideGuide()
@@ -474,10 +494,10 @@ export const TableRowResize = Extension.create({
     function onDocMove(event: MouseEvent) {
       if (!drag || !activeView) return
       // Interrupt guard (mirrors TableReorderHandle FAIL-1, #76): the primary button was released while
-      // we could not see it — the "let go outside the window, then move back in" path. The mouseup fired
-      // over another app so our document `mouseup` never ran; the button is now up as the pointer
+      // we could not see it — the "let go outside the window, then move back in" path. The pointerup
+      // fired over another app so our document `pointerup` never ran; the button is now up as the pointer
       // re-enters. Treat it as an interruption, NOT a drop: abort with zero commit. Without this the drag
-      // stays armed and the next stray mouseup commits a STALE row height (#823 RC2). Gate on
+      // stays armed and the next stray release commits a STALE row height (#823 RC2). Gate on
       // `pointerHeldSeen` so a synthetic/CDP drag whose moves omit `buttons` (reporting 0 throughout) is
       // not mistaken for a release on its first move; a genuine release always follows a held move.
       if ((event.buttons & 1) !== 0) {
@@ -491,9 +511,31 @@ export const TableRowResize = Extension.create({
       drag.height = Math.max(MIN_ROW_HEIGHT, Math.round(drag.startHeight + delta))
       placeGuide(activeView)
     }
-    function onDocUp() {
+    // True when a release happened OUTSIDE the window's viewport. Pointer capture (see beginDrag) routes
+    // the terminal pointerup to us even when the user lets go past the window edge — the exact real-machine
+    // path the tester hit (drag the row line, move the pointer out of the viewport, release, move back).
+    // A release outside the window is an INTERRUPTION, not a drop: the user did not drop on a row edge, so
+    // we abort and keep the original height rather than commit the last tracked (stale) height (#823 RC2 /
+    // XIN-1252). A drop just inside the edge still commits normally.
+    const releasedOutsideViewport = (event: MouseEvent): boolean => {
+      if (typeof window === 'undefined') return false
+      return (
+        event.clientX < 0 ||
+        event.clientY < 0 ||
+        event.clientX > window.innerWidth ||
+        event.clientY > window.innerHeight
+      )
+    }
+    function onDocUp(event: MouseEvent) {
       if (!activeView || !drag) return
+      const outside = releasedOutsideViewport(event)
       removeDragListeners()
+      if (outside) {
+        // Released outside the window — abort without committing (the drag was interrupted, not dropped).
+        resetDrag()
+        activeView.focus()
+        return
+      }
       commitDrag(activeView)
       resetDrag()
     }
@@ -506,6 +548,10 @@ export const TableRowResize = Extension.create({
     }
     // Interruption handlers: an interrupted drag must abort cleanly, never commit a stale row height.
     const onDocCancel = () => cancelDrag()
+    // The OS/browser revoked our pointer capture (pointer stolen, tab hidden, gesture recognised) without
+    // a pointerup reaching us — treat it exactly like pointercancel and abort. removeDragListeners detaches
+    // this before our own releasePointerCapture, so this only fires for genuine EXTERNAL capture loss.
+    const onLostCapture = () => cancelDrag()
     function onWindowBlur() {
       cancelDrag()
     }
@@ -513,7 +559,7 @@ export const TableRowResize = Extension.create({
       if (event.key === 'Escape') cancelDrag()
     }
 
-    const beginDrag = (view: EditorView, event: MouseEvent) => {
+    const beginDrag = (view: EditorView, event: PointerEvent) => {
       if (event.button !== 0 || !view.editable || !armed) return
       event.preventDefault()
       const startHeight = armed.rowDom.getBoundingClientRect().height
@@ -534,10 +580,28 @@ export const TableRowResize = Extension.create({
       concurrentEdit = false
       committing = false
       pointerHeldSeen = false
+      capturedPointerId = null
       activeView = view
       document.body.classList.add('octo-row-resizing')
-      document.addEventListener('mousemove', onDocMove, true)
-      document.addEventListener('mouseup', onDocUp, true)
+      // Capture the pointer on the handle so the terminal pointerup/pointercancel is delivered to US even
+      // when the user releases OUTSIDE the window — the real-machine path where the old mouse-only drag
+      // lost the release and left the drag armed for a stray mouseup to commit a stale height (#823 RC2 /
+      // XIN-1252). Best-effort: a synthetic pointer (jsdom / a hand-built event) has no live id to capture,
+      // so we swallow the throw and fall back to the buttons + release-outside guards, which still hold.
+      if (handle && typeof event.pointerId === 'number') {
+        try {
+          handle.setPointerCapture(event.pointerId)
+          capturedPointerId = event.pointerId
+          handle.addEventListener('lostpointercapture', onLostCapture)
+        } catch {
+          capturedPointerId = null
+        }
+      }
+      // Drive the drag off POINTER events (not mouse): with capture above, pointerup fires wherever the
+      // release happens, so no interruption path can leave the drag silently armed. Listeners stay at the
+      // document (capture phase) so captured pointer events — retargeted to the handle — still reach them.
+      document.addEventListener('pointermove', onDocMove, true)
+      document.addEventListener('pointerup', onDocUp, true)
       document.addEventListener('pointercancel', onDocCancel, true)
       document.addEventListener('keydown', onDocKey, true)
       window.addEventListener('blur', onWindowBlur)
@@ -583,13 +647,13 @@ export const TableRowResize = Extension.create({
             wrapper.appendChild(handle)
             wrapper.appendChild(guide)
           }
-          const onHandleDown = (e: MouseEvent) => beginDrag(view, e)
-          handle.addEventListener('mousedown', onHandleDown)
+          const onHandleDown = (e: PointerEvent) => beginDrag(view, e)
+          handle.addEventListener('pointerdown', onHandleDown)
           return {
             destroy() {
               removeDragListeners()
               document.body.classList.remove('octo-row-resizing')
-              handle?.removeEventListener('mousedown', onHandleDown)
+              handle?.removeEventListener('pointerdown', onHandleDown)
               handle?.remove()
               guide?.remove()
               handle = guide = null
@@ -598,6 +662,7 @@ export const TableRowResize = Extension.create({
               concurrentEdit = false
               committing = false
               pointerHeldSeen = false
+              capturedPointerId = null
               dragBaselineSigs = []
             },
           }

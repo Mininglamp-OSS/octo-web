@@ -166,13 +166,14 @@ if (!rc.rect) {
   }
 }
 
-// RH05 (#823 RC2 / XIN-1244) — an INTERRUPTED drag must NOT commit a stale height (the row-resize
-// analogue of TableReorderHandle FAIL-1). Remount fresh, start a real left-button drag that would grow
-// row 1, then reproduce "released outside the window, then move back in": the pointer re-enters with no
-// button pressed (a mousemove whose `buttons` is 0 — the real-window signal that the mouseup fired over
-// another app and never reached us) followed by a stray mouseup. The guard must abort, leaving the row
-// height untouched (null) on both peers.
-console.log('\nRH05 — interrupted drag (release outside window, then return) must not commit a stale height')
+// RH05 (#823 RC2 / XIN-1244 / XIN-1252) — an INTERRUPTED drag must NOT commit a stale height (the
+// row-resize analogue of TableReorderHandle FAIL-1). This reproduces the EXACT real-machine path the
+// tester hit: grab row 1's bottom line, drag DOWN and OUT past the bottom of the viewport, RELEASE the
+// button outside the window, then move the pointer back into the table. The drag captures the pointer,
+// so the terminal pointerup is delivered with out-of-viewport coordinates — a release outside the window
+// is an interruption, not a drop, so the commit is aborted and the row keeps its original (null) height.
+// Before this fix the release committed the last tracked (stale) height, e.g. ~1089px onto row 1.
+console.log('\nRH05 — release the drag OUTSIDE the viewport, then return: must not commit a stale height')
 await page.evaluate(() => window.__rowHeightHarness.mount())
 await page.waitForTimeout(250)
 
@@ -180,6 +181,7 @@ const beforeI = await page.evaluate(() => ({
   a0: window.__rowHeightHarness.rowHeightA(0),
   rect: window.__rowHeightHarness.rowRectA(0),
 }))
+const viewport = page.viewportSize() || { width: 1400, height: 900 }
 if (beforeI.a0 !== null) {
   fail(`RH05 precondition: row 1 height should start null, was ${JSON.stringify(beforeI.a0)}`)
 } else if (!beforeI.rect) {
@@ -197,28 +199,24 @@ if (beforeI.a0 !== null) {
     const sy = handleI.top + handleI.height / 2
     await page.mouse.move(sx, sy)
     await page.mouse.down()
-    // Real held moves so a fresh (stale-to-be) height of ~+60px is pending in the drag.
-    await page.mouse.move(sx, sy + 30, { steps: 4 })
-    await page.mouse.move(sx, sy + 60, { steps: 4 })
-    await page.waitForTimeout(40)
-    // Pointer re-enters the window with NO button held — the release happened outside and was never
-    // delivered as a mouseup. This dispatches the exact real-window event the browser fires on re-entry.
-    await page.evaluate(({ x, y }) => {
-      document.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y + 100, buttons: 0, bubbles: true }))
-    }, { x: sx, y: sy })
-    // A stray mouseup after the interruption must be inert (old code committed the stale height here).
+    // Real held moves that grow the pending height, then drag the pointer BELOW the viewport bottom.
+    await page.mouse.move(sx, sy + 200, { steps: 4 })
+    await page.mouse.move(sx, viewport.height + 300, { steps: 4 }) // pointer now OUTSIDE the window
+    // Release the button OUTSIDE the window. Pointer capture still delivers this terminal pointerup.
     await page.mouse.up()
+    // Move the pointer back into the table (the "移回表格" step). Must not resurrect a commit.
+    await page.mouse.move(sx, sy + 40, { steps: 3 })
     await page.waitForTimeout(150)
 
     const afterI = await page.evaluate(() => ({
       a0: window.__rowHeightHarness.rowHeightA(0),
       b0: window.__rowHeightHarness.rowHeightB(0),
     }))
-    console.log('  row 1 height after interrupt (A/B):', JSON.stringify(afterI))
+    console.log('  row 1 height after outside-window release (A/B):', JSON.stringify(afterI))
     if (afterI.a0 === null && afterI.b0 === null) {
-      ok('RH05 interrupted drag committed nothing — row height stayed null on both peers')
+      ok('RH05 outside-window release aborted — row height stayed null on both peers')
     } else {
-      fail(`RH05 interrupted drag committed a stale height: A=${afterI.a0} B=${afterI.b0}`)
+      fail(`RH05 outside-window release committed a stale height: A=${afterI.a0} B=${afterI.b0}`)
     }
     await page.screenshot({ path: `${OUT}/rowheight-interrupt.png` })
   }
