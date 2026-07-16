@@ -21,8 +21,16 @@ import type {
   TriggerParseResult,
   UpdateSkillForm,
   UploadInitResult,
-  ApiResponse,
 } from "../types/skill";
+
+interface SuccessEnvelope<T> {
+  data: T;
+  pagination?: { has_more: boolean; next_cursor?: string };
+}
+
+interface ErrorEnvelope {
+  error?: { code?: string; message?: string; details?: unknown; hint?: string };
+}
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -31,7 +39,7 @@ export class SkillMarketApiError extends Error {
     public code: string | number,
     message: string,
     public status?: number,
-    public details?: unknown,
+    public details?: unknown
   ) {
     super(message);
     this.name = "SkillMarketApiError";
@@ -39,7 +47,9 @@ export class SkillMarketApiError extends Error {
 }
 
 function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   const token = WKApp.loginInfo?.token;
   if (token) headers.token = token;
   const spaceId = WKApp.shared?.currentSpaceId;
@@ -65,17 +75,23 @@ function normalizeError(input: {
     input.code ?? (input.status ? `http_${input.status}` : "unknown_error"),
     input.message || "Request failed",
     input.status,
-    input.details,
+    input.details
   );
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestEnvelope<T>(
+  path: string,
+  init?: RequestInit
+): Promise<SuccessEnvelope<T>> {
   const url = `${API_BASE_URL}${path}`;
   let res: Response;
   try {
     res = await fetch(url, {
       ...init,
-      headers: { ...getAuthHeaders(), ...(init?.headers as Record<string, string> | undefined) },
+      headers: {
+        ...getAuthHeaders(),
+        ...(init?.headers as Record<string, string> | undefined),
+      },
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
@@ -85,41 +101,59 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw normalizeError({ code: "network_error", message, details: err });
   }
 
-  if (res.status === 204) return undefined as unknown as T;
-
   // Handle 401 — redirect to login
   if (res.status === 401) {
-    const loginPath = (WKApp.loginInfo as Record<string, unknown>)?.loginUrl as string | undefined ?? "/login";
+    const loginPath =
+      ((WKApp.loginInfo as Record<string, unknown>)?.loginUrl as
+        | string
+        | undefined) ?? "/login";
     if (typeof window !== "undefined") window.location.href = loginPath;
-    throw normalizeError({ code: "unauthorized", message: "登录已过期，请重新登录", status: 401 });
+    throw normalizeError({
+      code: "unauthorized",
+      message: "登录已过期，请重新登录",
+      status: 401,
+    });
   }
 
   // Handle 413 — file too large
   if (res.status === 413) {
-    throw normalizeError({ code: "file_too_large", message: "文件过大，请压缩后重试", status: 413 });
+    throw normalizeError({
+      code: "file_too_large",
+      message: "文件过大，请压缩后重试",
+      status: 413,
+    });
   }
 
-  const body = (await parseJson(res)) as Partial<ApiResponse<T>> | null;
-  const ok = typeof res.ok === "boolean" ? res.ok : res.status >= 200 && res.status < 300;
+  const body = (await parseJson(res)) as
+    | (Partial<SuccessEnvelope<T>> & ErrorEnvelope)
+    | null;
+  const ok =
+    typeof res.ok === "boolean"
+      ? res.ok
+      : res.status >= 200 && res.status < 300;
   if (!ok) {
     throw normalizeError({
-      code: body?.code ?? `http_${res.status}`,
-      message: body?.message ?? res.statusText ?? "Request failed",
+      code: body?.error?.code ?? `http_${res.status}`,
+      message: body?.error?.message ?? res.statusText ?? "Request failed",
       status: res.status,
-      details: body,
+      details: body?.error?.details ?? body,
     });
   }
 
-  if (!body || body.code !== 0) {
+  if (!body || !("data" in body)) {
     throw normalizeError({
-      code: body?.code ?? "invalid_response",
-      message: body?.message ?? "Invalid response",
+      code: body?.error?.code ?? "invalid_response",
+      message: body?.error?.message ?? "Invalid response",
       status: res.status,
       details: body,
     });
   }
 
-  return body.data;
+  return body as SuccessEnvelope<T>;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await requestEnvelope<T>(path, init)).data;
 }
 
 function wait(ms: number): Promise<void> {
@@ -130,7 +164,7 @@ function wait(ms: number): Promise<void> {
 
 function mapCategory(raw: RawCategory, index: number): Category {
   return {
-    id: raw.id,
+    id: raw.skill_category_id,
     name: raw.name,
     iconKey: raw.icon_key,
     sortOrder: index + 1,
@@ -140,12 +174,16 @@ function mapCategory(raw: RawCategory, index: number): Category {
 
 /** Safely coerce tags to string[]. Backend may return a JSON-encoded string. */
 function normalizeTags(tags: unknown): string[] {
-  if (Array.isArray(tags)) return tags.filter((t): t is string => typeof t === "string");
+  if (Array.isArray(tags))
+    return tags.filter((t): t is string => typeof t === "string");
   if (typeof tags === "string") {
     try {
       const parsed = JSON.parse(tags);
-      if (Array.isArray(parsed)) return parsed.filter((t): t is string => typeof t === "string");
-    } catch { /* not valid JSON, treat as a single tag */ }
+      if (Array.isArray(parsed))
+        return parsed.filter((t): t is string => typeof t === "string");
+    } catch {
+      /* not valid JSON, treat as a single tag */
+    }
     return tags.trim() ? [tags.trim()] : [];
   }
   return [];
@@ -153,7 +191,7 @@ function normalizeTags(tags: unknown): string[] {
 
 function mapSkill(raw: RawSkill): Skill {
   return {
-    id: raw.id,
+    id: raw.skill_id,
     name: raw.name,
     displayName: raw.display_name ?? "",
     description: raw.description ?? "",
@@ -189,41 +227,60 @@ export interface RequestOptions {
 }
 
 export function getCategories(opts?: RequestOptions): Promise<Category[]> {
-  return request<RawCategory[]>("/skill/categories", opts?.signal ? { signal: opts.signal } : undefined).then((items) =>
-    items.map(mapCategory),
-  );
+  return request<RawCategory[]>(
+    "/skill_categories",
+    opts?.signal ? { signal: opts.signal } : undefined
+  ).then((items) => items.map(mapCategory));
 }
 
-export function getSkills(query: SkillListQuery = {}, opts?: RequestOptions): Promise<PagedResult<Skill>> {
+export function getSkills(
+  query: SkillListQuery = {},
+  opts?: RequestOptions
+): Promise<PagedResult<Skill>> {
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
   if (query.categoryId && query.categoryId !== "all")
     params.set("category_id", query.categoryId);
   if (query.cursor) params.set("cursor", query.cursor);
-  if (query.limit) params.set("limit", String(query.limit));
+  if (query.limit) params.set("page_size", String(query.limit));
   const qs = params.toString();
-  return request<RawPagedResult<RawSkill>>(`/skill${qs ? `?${qs}` : ""}`, opts?.signal ? { signal: opts.signal } : undefined).then(
-    mapPagedResult,
+  return requestEnvelope<RawSkill[]>(
+    `/skills${qs ? `?${qs}` : ""}`,
+    opts?.signal ? { signal: opts.signal } : undefined
+  ).then(({ data, pagination }) =>
+    mapPagedResult({
+      items: data,
+      next_cursor: pagination?.next_cursor ?? null,
+    })
   );
 }
 
-export function getMySkills(query: SkillListQuery = {}, opts?: RequestOptions): Promise<PagedResult<Skill>> {
+export function getMySkills(
+  query: SkillListQuery = {},
+  opts?: RequestOptions
+): Promise<PagedResult<Skill>> {
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
   if (query.cursor) params.set("cursor", query.cursor);
-  if (query.limit) params.set("limit", String(query.limit));
+  if (query.limit) params.set("page_size", String(query.limit));
   const qs = params.toString();
-  return request<RawPagedResult<RawSkill>>(
-    `/skill/mine${qs ? `?${qs}` : ""}`, opts?.signal ? { signal: opts.signal } : undefined,
-  ).then(mapPagedResult);
+  return requestEnvelope<RawSkill[]>(
+    `/skills/mine${qs ? `?${qs}` : ""}`,
+    opts?.signal ? { signal: opts.signal } : undefined
+  ).then(({ data, pagination }) =>
+    mapPagedResult({
+      items: data,
+      next_cursor: pagination?.next_cursor ?? null,
+    })
+  );
 }
 
 export function getSkill(id: string): Promise<Skill> {
-  return request<RawSkill>(`/skill/${encodeURIComponent(id)}`).then(mapSkill);
+  return request<RawSkill>(`/skills/${encodeURIComponent(id)}`).then(mapSkill);
 }
 
 export function createSkill(form: NewSkillForm): Promise<Skill> {
-  return request<RawSkill>("/skill", {
+  return request<RawSkill>("/skills", {
     method: "POST",
     body: JSON.stringify({
       parse_task_id: form.parseTaskId,
@@ -252,29 +309,31 @@ export function updateSkill(id: string, form: UpdateSkillForm): Promise<Skill> {
   if (form.changelog !== undefined) body.changelog = form.changelog;
   if (form.iconUrl !== undefined) body.icon_url = form.iconUrl;
 
-  return request<RawSkill>(`/skill/${encodeURIComponent(id)}`, {
-    method: "PUT",
+  return request<RawSkill>(`/skills/${encodeURIComponent(id)}`, {
+    method: "PATCH",
     body: JSON.stringify(body),
   }).then(mapSkill);
 }
 
 export function deleteSkill(id: string): Promise<void> {
-  return request<void>(`/skill/${encodeURIComponent(id)}`, {
+  return request<void>(`/skills/${encodeURIComponent(id)}`, {
     method: "DELETE",
-  });
+  }).then(() => undefined);
 }
 
 export function getDownloadUrl(id: string): string {
-  return `${API_BASE_URL}/skill/${encodeURIComponent(id)}/download`;
+  return `${API_BASE_URL}/skills/${encodeURIComponent(id)}/download`;
 }
 
 export async function downloadSkill(id: string): Promise<void> {
-  const result = await request<{ url: string }>(`/skill/${encodeURIComponent(id)}/download?format=json`);
-  if (!result.url) {
+  const result = await request<{ download_url: string }>(
+    `/skills/${encodeURIComponent(id)}/download?format=json`
+  );
+  if (!result.download_url) {
     throw normalizeError({ code: "invalid_response", message: "下载地址无效" });
   }
   const anchor = document.createElement("a");
-  anchor.href = result.url;
+  anchor.href = result.download_url;
   anchor.target = "_blank";
   anchor.rel = "noopener noreferrer";
   anchor.click();
@@ -283,12 +342,21 @@ export async function downloadSkill(id: string): Promise<void> {
 // ─── Upload / Parse flow ───────────────────────────────────────────────────
 
 /** Step 1: Get a pre-signed upload URL from the backend. */
-export function initUpload(fileName: string, fileSize: number): Promise<UploadInitResult> {
-  return request<{ upload_id: string; presigned_url: string; method: string; headers: Record<string, string>; expires_in: number }>("/skill/upload/init", {
+export function initUpload(
+  fileName: string,
+  fileSize: number
+): Promise<UploadInitResult> {
+  return request<{
+    skill_upload_id: string;
+    presigned_url: string;
+    method: string;
+    headers: Record<string, string>;
+    expires_in: number;
+  }>("/skill_uploads", {
     method: "POST",
     body: JSON.stringify({ file_name: fileName, file_size: fileSize }),
   }).then((raw) => ({
-    uploadId: raw.upload_id,
+    uploadId: raw.skill_upload_id,
     presignedUrl: raw.presigned_url,
     method: raw.method,
     headers: raw.headers ?? {},
@@ -297,7 +365,12 @@ export function initUpload(fileName: string, fileSize: number): Promise<UploadIn
 }
 
 /** Step 2: Upload the file to the pre-signed URL (PUT). */
-export async function uploadFile(presignedUrl: string, file: File, headers?: Record<string, string>, onProgress?: (percent: number) => void): Promise<void> {
+export async function uploadFile(
+  presignedUrl: string,
+  file: File,
+  headers?: Record<string, string>,
+  onProgress?: (percent: number) => void
+): Promise<void> {
   // Use XMLHttpRequest for progress support
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -319,7 +392,9 @@ export async function uploadFile(presignedUrl: string, file: File, headers?: Rec
         reject(new Error(`Upload failed: HTTP ${xhr.status}`));
       }
     });
-    xhr.addEventListener("error", () => reject(new Error("Upload network error")));
+    xhr.addEventListener("error", () =>
+      reject(new Error("Upload network error"))
+    );
     xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
     xhr.send(file);
   });
@@ -330,13 +405,14 @@ export async function uploadIcon(blob: Blob): Promise<string> {
   const fileName = `icon-${Date.now()}.png`;
 
   // Step 1: Get presigned URL via icon-specific endpoint
-  const initResp = await request<{ object_key: string; presigned_url: string; headers: Record<string, string> }>(
-    "/skill/upload/icon",
-    {
-      method: "POST",
-      body: JSON.stringify({ file_name: fileName, file_size: blob.size }),
-    },
-  );
+  const initResp = await request<{
+    object_key: string;
+    presigned_url: string;
+    headers: Record<string, string>;
+  }>("/skill_icon_uploads", {
+    method: "POST",
+    body: JSON.stringify({ file_name: fileName, file_size: blob.size }),
+  });
 
   // Step 2: Upload the file to presigned URL
   const file = new File([blob], fileName, { type: "image/png" });
@@ -348,16 +424,19 @@ export async function uploadIcon(blob: Blob): Promise<string> {
 
 /** Step 3: Trigger server-side parsing of the uploaded zip. */
 export function triggerParse(uploadId: string): Promise<TriggerParseResult> {
-  return request<{ task_id: string }>(`/skill/upload/${encodeURIComponent(uploadId)}/parse`, {
-    method: "POST",
-  }).then((raw) => ({
-    taskId: raw.task_id,
+  return request<{ skill_parse_task_id: string }>(
+    `/skill_uploads/${encodeURIComponent(uploadId)}/parse`,
+    {
+      method: "POST",
+    }
+  ).then((raw) => ({
+    taskId: raw.skill_parse_task_id,
   }));
 }
 
 type RawParseStatusResult = {
   status: string;
-  task_id: string;
+  skill_parse_task_id: string;
   result?: {
     name: string;
     description?: string;
@@ -400,7 +479,9 @@ function mapParseStatus(raw: RawParseStatusResult): ParseStatusResult {
 }
 
 async function fetchParseStatus(taskId: string): Promise<ParseStatusResult> {
-  return request<RawParseStatusResult>(`/skill/parse/${encodeURIComponent(taskId)}`).then(mapParseStatus);
+  return request<RawParseStatusResult>(
+    `/skill_parse_tasks/${encodeURIComponent(taskId)}`
+  ).then(mapParseStatus);
 }
 
 /** Step 4: Poll parse status every 2 seconds until success, failure, or timeout. */
@@ -421,15 +502,22 @@ export async function pollParse(taskId: string): Promise<ParseStatusResult> {
 }
 
 /** Reupload init for an existing skill. */
-export function initReupload(skillId: string, fileName: string, fileSize: number): Promise<UploadInitResult> {
-  return request<{ upload_id: string; presigned_url: string; method: string; headers: Record<string, string>; expires_in: number }>(
-    `/skill/${encodeURIComponent(skillId)}/reupload/init`,
-    {
-      method: "POST",
-      body: JSON.stringify({ file_name: fileName, file_size: fileSize }),
-    },
-  ).then((raw) => ({
-    uploadId: raw.upload_id,
+export function initReupload(
+  skillId: string,
+  fileName: string,
+  fileSize: number
+): Promise<UploadInitResult> {
+  return request<{
+    skill_upload_id: string;
+    presigned_url: string;
+    method: string;
+    headers: Record<string, string>;
+    expires_in: number;
+  }>(`/skills/${encodeURIComponent(skillId)}/reuploads`, {
+    method: "POST",
+    body: JSON.stringify({ file_name: fileName, file_size: fileSize }),
+  }).then((raw) => ({
+    uploadId: raw.skill_upload_id,
     presignedUrl: raw.presigned_url,
     method: raw.method,
     headers: raw.headers ?? {},
@@ -439,7 +527,7 @@ export function initReupload(skillId: string, fileName: string, fileSize: number
 
 function mapVersion(raw: RawSkillVersion): SkillVersion {
   return {
-    id: raw.id,
+    id: raw.skill_version_id,
     skillId: raw.skill_id,
     version: raw.version,
     changelog: raw.changelog ?? "",
@@ -451,7 +539,7 @@ function mapVersion(raw: RawSkillVersion): SkillVersion {
 
 /** Fetch version history for a skill. */
 export function listVersions(skillId: string): Promise<SkillVersion[]> {
-  return request<{ items: RawSkillVersion[] }>(`/skill/${encodeURIComponent(skillId)}/versions`).then(
-    (data) => (data.items ?? []).map(mapVersion),
-  );
+  return request<{ items: RawSkillVersion[] }>(
+    `/skills/${encodeURIComponent(skillId)}/versions`
+  ).then((data) => (data.items ?? []).map(mapVersion));
 }

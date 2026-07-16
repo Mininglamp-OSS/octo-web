@@ -31,10 +31,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function jsonResponse(data: unknown, status = 200) {
+function jsonResponse(data: unknown, status = 200, pagination?: unknown) {
   return Promise.resolve({
     status,
-    json: () => Promise.resolve({ code: 0, data }),
+    json: () =>
+      Promise.resolve({ data, ...(pagination ? { pagination } : {}) }),
   });
 }
 
@@ -42,26 +43,48 @@ describe("skillApiReal", () => {
   it("getCategories maps snake_case to camelCase", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse([
-        { id: "dev-tools", name: "开发工具", icon_key: "Terminal", skill_count: 6 },
-        { id: "starter", name: "装机必备", icon_key: "Box", skill_count: 3 },
-      ]),
+        {
+          skill_category_id: "dev-tools",
+          name: "开发工具",
+          icon_key: "Terminal",
+          skill_count: 6,
+        },
+        {
+          skill_category_id: "starter",
+          name: "装机必备",
+          icon_key: "Box",
+          skill_count: 3,
+        },
+      ])
     );
 
     const categories = await getCategories();
 
     expect(categories).toEqual([
-      { id: "dev-tools", name: "开发工具", iconKey: "Terminal", sortOrder: 1, skillCount: 6 },
-      { id: "starter", name: "装机必备", iconKey: "Box", sortOrder: 2, skillCount: 3 },
+      {
+        id: "dev-tools",
+        name: "开发工具",
+        iconKey: "Terminal",
+        sortOrder: 1,
+        skillCount: 6,
+      },
+      {
+        id: "starter",
+        name: "装机必备",
+        iconKey: "Box",
+        sortOrder: 2,
+        skillCount: 3,
+      },
     ]);
     expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skill/categories",
+      "/market/api/v1/skill_categories",
       expect.objectContaining({
         headers: expect.objectContaining({
           "Content-Type": "application/json",
           token: "test-token",
           "X-Space-Id": "space-123",
         }),
-      }),
+      })
     );
   });
 
@@ -78,10 +101,10 @@ describe("skillApiReal", () => {
 
   it("getSkills maps paged result and passes query params", async () => {
     mockFetch.mockReturnValueOnce(
-      jsonResponse({
-        items: [
+      jsonResponse(
+        [
           {
-            id: "ci-failure-map",
+            skill_id: "ci-failure-map",
             name: "ci-failure-map",
             description: "Analyze CI logs",
             category_id: "dev-tools",
@@ -100,44 +123,47 @@ describe("skillApiReal", () => {
             updated_at: "2026-07-10T00:00:00Z",
           },
         ],
-        next_cursor: "abc",
-      }),
+        200,
+        { has_more: true, next_cursor: "abc" }
+      )
     );
 
-    const result = await getSkills({ q: "CI", categoryId: "dev-tools", limit: 10 });
+    const result = await getSkills({
+      q: "CI",
+      categoryId: "dev-tools",
+      limit: 10,
+    });
 
     expect(result.items).toHaveLength(1);
     expect(result.items[0].categoryId).toBe("dev-tools");
     expect(result.items[0].fileSha256).toBe("abc123");
     expect(result.nextCursor).toBe("abc");
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/market/api/v1/skill?"),
-      expect.anything(),
+      expect.stringContaining("/market/api/v1/skills?"),
+      expect.anything()
     );
     const url = mockFetch.mock.calls[0][0] as string;
     expect(url).toContain("q=CI");
     expect(url).toContain("category_id=dev-tools");
-    expect(url).toContain("limit=10");
+    expect(url).toContain("page_size=10");
   });
 
   it("getMySkills calls /skill/mine endpoint", async () => {
-    mockFetch.mockReturnValueOnce(
-      jsonResponse({ items: [], next_cursor: null }),
-    );
+    mockFetch.mockReturnValueOnce(jsonResponse([], 200, { has_more: false }));
 
     const result = await getMySkills({ q: "test" });
 
     expect(result.items).toEqual([]);
     expect(result.nextCursor).toBeNull();
     const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toContain("/market/api/v1/skill/mine");
+    expect(url).toContain("/market/api/v1/skills/mine");
     expect(url).toContain("q=test");
   });
 
   it("getSkill maps a single skill", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        id: "test-skill",
+        skill_id: "test-skill",
         name: "Test",
         description: "desc",
         category_id: "other",
@@ -154,7 +180,7 @@ describe("skillApiReal", () => {
         file_sha256: "def456",
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-02T00:00:00Z",
-      }),
+      })
     );
 
     const skill = await getSkill("test-skill");
@@ -165,22 +191,23 @@ describe("skillApiReal", () => {
     expect(skill.fileSha256).toBe("def456");
   });
 
-  it("deleteSkill handles 204 response", async () => {
-    mockFetch.mockReturnValueOnce(
-      Promise.resolve({ status: 204, json: () => Promise.resolve({}) }),
-    );
+  it("deleteSkill handles empty success envelope", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({}));
 
     await expect(deleteSkill("some-id")).resolves.toBeUndefined();
     const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toContain("/market/api/v1/skill/some-id");
+    expect(url).toContain("/market/api/v1/skills/some-id");
   });
 
   it("throws ApiError on non-zero code", async () => {
     mockFetch.mockReturnValueOnce(
       Promise.resolve({
         status: 404,
-        json: () => Promise.resolve({ code: "err.marketplace.not_found", message: "not found" }),
-      }),
+        json: () =>
+          Promise.resolve({
+            error: { code: "NOT_FOUND", message: "not found", details: {} },
+          }),
+      })
     );
 
     const request = getSkill("nonexistent");
@@ -188,7 +215,7 @@ describe("skillApiReal", () => {
     await expect(request).rejects.toThrow("not found");
     await expect(request).rejects.toMatchObject({
       name: "SkillMarketApiError",
-      code: "err.marketplace.not_found",
+      code: "NOT_FOUND",
       status: 404,
       message: "not found",
     });
@@ -199,12 +226,19 @@ describe("skillApiReal", () => {
       Promise.resolve({
         ok: false,
         status: 500,
-        json: () => Promise.resolve({ message: "server exploded" }),
-      }),
+        json: () =>
+          Promise.resolve({
+            error: {
+              code: "INTERNAL_ERROR",
+              message: "server exploded",
+              details: {},
+            },
+          }),
+      })
     );
     await expect(getCategories()).rejects.toMatchObject({
       name: "SkillMarketApiError",
-      code: "http_500",
+      code: "INTERNAL_ERROR",
       status: 500,
       message: "server exploded",
     });
@@ -219,7 +253,7 @@ describe("skillApiReal", () => {
 
   it("createSkill and updateSkill send backend snake_case payloads", async () => {
     const rawSkill = {
-      id: "new-skill",
+      skill_id: "new-skill",
       name: "New Skill",
       description: "desc",
       category_id: "dev-tools",
@@ -252,7 +286,7 @@ describe("skillApiReal", () => {
       fileSize: 512,
     });
     expect(mockFetch).toHaveBeenLastCalledWith(
-      "/market/api/v1/skill",
+      "/market/api/v1/skills",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -266,29 +300,35 @@ describe("skillApiReal", () => {
           version: "1.0.0",
           icon_url: "",
         }),
-      }),
+      })
     );
 
     mockFetch.mockReturnValueOnce(jsonResponse(rawSkill));
-    await updateSkill("new-skill", { parseTaskId: "task-2", visibility: "private" });
+    await updateSkill("new-skill", {
+      parseTaskId: "task-2",
+      visibility: "private",
+    });
     expect(mockFetch).toHaveBeenLastCalledWith(
-      "/market/api/v1/skill/new-skill",
+      "/market/api/v1/skills/new-skill",
       expect.objectContaining({
-        method: "PUT",
-        body: JSON.stringify({ parse_task_id: "task-2", visibility: "private" }),
-      }),
+        method: "PATCH",
+        body: JSON.stringify({
+          parse_task_id: "task-2",
+          visibility: "private",
+        }),
+      })
     );
   });
 
   it("initUpload maps backend presigned upload fields", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        upload_id: "upload-123",
+        skill_upload_id: "upload-123",
         presigned_url: "http://127.0.0.1:9000/bucket/upload-123.zip",
         method: "PUT",
         headers: { "Content-Type": "application/zip" },
         expires_in: 3600,
-      }),
+      })
     );
 
     const result = await initUpload("skill-pack.zip", 2048);
@@ -301,23 +341,23 @@ describe("skillApiReal", () => {
       expiresIn: 3600,
     });
     expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skill/upload/init",
+      "/market/api/v1/skill_uploads",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ file_name: "skill-pack.zip", file_size: 2048 }),
-      }),
+      })
     );
   });
 
   it("initReupload maps backend presigned upload fields", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        upload_id: "reupload-456",
+        skill_upload_id: "reupload-456",
         presigned_url: "http://127.0.0.1:9000/bucket/reupload-456.zip",
         method: "PUT",
         headers: { "Content-Type": "application/zip", "X-Amz-Acl": "private" },
         expires_in: 1800,
-      }),
+      })
     );
 
     const result = await initReupload("skill-1", "updated.zip", 4096);
@@ -330,11 +370,11 @@ describe("skillApiReal", () => {
       expiresIn: 1800,
     });
     expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skill/skill-1/reupload/init",
+      "/market/api/v1/skills/skill-1/reuploads",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ file_name: "updated.zip", file_size: 4096 }),
-      }),
+      })
     );
   });
 
@@ -363,11 +403,13 @@ describe("skillApiReal", () => {
 
       send(body: File) {
         expect(body.name).toBe("skill.zip");
-        this.upload.dispatchEvent(new ProgressEvent("progress", {
-          lengthComputable: true,
-          loaded: 50,
-          total: 100,
-        }));
+        this.upload.dispatchEvent(
+          new ProgressEvent("progress", {
+            lengthComputable: true,
+            loaded: 50,
+            total: 100,
+          })
+        );
         this.listeners.load?.forEach((listener) => listener());
       }
     }
@@ -378,10 +420,15 @@ describe("skillApiReal", () => {
     });
     const onProgress = vi.fn();
 
-    await uploadFile("https://storage/upload", new File(["zip"], "skill.zip", { type: "application/zip" }), {
-      "Content-Type": "application/zip",
-      "x-amz-meta-id": "upload-1",
-    }, onProgress);
+    await uploadFile(
+      "https://storage/upload",
+      new File(["zip"], "skill.zip", { type: "application/zip" }),
+      {
+        "Content-Type": "application/zip",
+        "x-amz-meta-id": "upload-1",
+      },
+      onProgress
+    );
 
     expect(xhrInstances[0].method).toBe("PUT");
     expect(xhrInstances[0].url).toBe("https://storage/upload");
@@ -393,24 +440,32 @@ describe("skillApiReal", () => {
   });
 
   it("triggerParse returns the backend task id", async () => {
-    mockFetch.mockReturnValueOnce(jsonResponse({ task_id: "task-123" }));
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ skill_parse_task_id: "task-123" })
+    );
 
-    await expect(triggerParse("upload-123")).resolves.toEqual({ taskId: "task-123" });
+    await expect(triggerParse("upload-123")).resolves.toEqual({
+      taskId: "task-123",
+    });
     expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skill/upload/upload-123/parse",
-      expect.objectContaining({ method: "POST" }),
+      "/market/api/v1/skill_uploads/upload-123/parse",
+      expect.objectContaining({ method: "POST" })
     );
   });
 
   it("pollParse polls every 2s until success and maps nested result", async () => {
     vi.useFakeTimers();
     mockFetch
-      .mockReturnValueOnce(jsonResponse({ status: "pending", task_id: "task-123" }))
-      .mockReturnValueOnce(jsonResponse({ status: "parsing", task_id: "task-123" }))
+      .mockReturnValueOnce(
+        jsonResponse({ status: "pending", skill_parse_task_id: "task-123" })
+      )
+      .mockReturnValueOnce(
+        jsonResponse({ status: "parsing", skill_parse_task_id: "task-123" })
+      )
       .mockReturnValueOnce(
         jsonResponse({
           status: "success",
-          task_id: "task-123",
+          skill_parse_task_id: "task-123",
           result: {
             name: "ci-failure-map",
             description: "Analyze CI logs",
@@ -421,7 +476,7 @@ describe("skillApiReal", () => {
             file_size: 8192,
             file_sha256: "abc123",
           },
-        }),
+        })
       );
 
     const pending = pollParse("task-123");
@@ -443,8 +498,8 @@ describe("skillApiReal", () => {
       },
     });
     expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skill/parse/task-123",
-      expect.anything(),
+      "/market/api/v1/skill_parse_tasks/task-123",
+      expect.anything()
     );
     expect(mockFetch).toHaveBeenCalledTimes(3);
     vi.useRealTimers();
@@ -454,12 +509,12 @@ describe("skillApiReal", () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
         status: "failed",
-        task_id: "task-404",
+        skill_parse_task_id: "task-404",
         error: {
           code: "err.marketplace.parse.invalid_zip",
           message: "invalid zip",
         },
-      }),
+      })
     );
 
     await expect(pollParse("task-404")).rejects.toMatchObject({
@@ -472,7 +527,9 @@ describe("skillApiReal", () => {
   it("pollParse times out after 60 pending attempts", async () => {
     vi.useFakeTimers();
     for (let i = 0; i < 60; i += 1) {
-      mockFetch.mockReturnValueOnce(jsonResponse({ status: "pending", task_id: "task-timeout" }));
+      mockFetch.mockReturnValueOnce(
+        jsonResponse({ status: "pending", skill_parse_task_id: "task-timeout" })
+      );
     }
 
     const pending = pollParse("task-timeout");
@@ -490,21 +547,28 @@ describe("skillApiReal", () => {
 
   it("getDownloadUrl exposes the backend 302 download endpoint", () => {
     expect(getDownloadUrl("skill/with space")).toBe(
-      "/market/api/v1/skill/skill%2Fwith%20space/download",
+      "/market/api/v1/skills/skill%2Fwith%20space/download"
     );
   });
 
   it("downloads through an authenticated JSON URL request", async () => {
-    mockFetch.mockReturnValueOnce(jsonResponse({ url: "https://cdn.example.com/skills/demo.zip" }));
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ download_url: "https://cdn.example.com/skills/demo.zip" })
+    );
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
 
     await downloadSkill("skill/with space");
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skill/skill%2Fwith%20space/download?format=json",
+      "/market/api/v1/skills/skill%2Fwith%20space/download?format=json",
       expect.objectContaining({
-        headers: expect.objectContaining({ token: "test-token", "X-Space-Id": "space-123" }),
-      }),
+        headers: expect.objectContaining({
+          token: "test-token",
+          "X-Space-Id": "space-123",
+        }),
+      })
     );
     expect(click).toHaveBeenCalledOnce();
   });
@@ -512,7 +576,7 @@ describe("skillApiReal", () => {
   it("normalizes tags when backend returns a JSON-encoded string", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        id: "test-skill",
+        skill_id: "test-skill",
         name: "Test",
         description: "desc",
         category_id: "other",
@@ -529,7 +593,7 @@ describe("skillApiReal", () => {
         file_sha256: "def456",
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-02T00:00:00Z",
-      }),
+      })
     );
 
     const skill = await getSkill("test-skill");
@@ -540,7 +604,7 @@ describe("skillApiReal", () => {
   it("normalizes tags when backend returns null or undefined", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        id: "test-skill",
+        skill_id: "test-skill",
         name: "Test",
         description: "desc",
         category_id: "other",
@@ -557,7 +621,7 @@ describe("skillApiReal", () => {
         file_sha256: "def456",
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-02T00:00:00Z",
-      }),
+      })
     );
 
     const skill = await getSkill("test-skill");
@@ -569,8 +633,9 @@ describe("skillApiReal", () => {
     mockFetch.mockReturnValueOnce(
       Promise.resolve({
         status: 401,
-        json: () => Promise.resolve({ code: "unauthorized", message: "token expired" }),
-      }),
+        json: () =>
+          Promise.resolve({ code: "unauthorized", message: "token expired" }),
+      })
     );
 
     // Mock window.location
@@ -599,7 +664,7 @@ describe("skillApiReal", () => {
       Promise.resolve({
         status: 413,
         json: () => Promise.resolve({}),
-      }),
+      })
     );
 
     await expect(getSkill("big-file")).rejects.toMatchObject({
@@ -613,7 +678,7 @@ describe("skillApiReal", () => {
   it("defaults missing skill fields to safe values", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        id: "minimal-skill",
+        skill_id: "minimal-skill",
         name: "Minimal",
         description: null,
         category_id: "other",
@@ -630,7 +695,7 @@ describe("skillApiReal", () => {
         file_sha256: "abc",
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-02T00:00:00Z",
-      }),
+      })
     );
 
     const skill = await getSkill("minimal-skill");
@@ -661,35 +726,31 @@ describe("skillApiReal", () => {
     await expect(promise).rejects.toMatchObject({ name: "AbortError" });
     expect(mockFetch).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ signal: controller.signal }),
+      expect.objectContaining({ signal: controller.signal })
     );
   });
 
   it("getSkills passes signal to fetch", async () => {
-    mockFetch.mockReturnValueOnce(
-      jsonResponse({ items: [], next_cursor: null }),
-    );
+    mockFetch.mockReturnValueOnce(jsonResponse([], 200, { has_more: false }));
 
     const controller = new AbortController();
     await getSkills({ q: "test" }, { signal: controller.signal });
 
     expect(mockFetch).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ signal: controller.signal }),
+      expect.objectContaining({ signal: controller.signal })
     );
   });
 
   it("getMySkills passes signal to fetch", async () => {
-    mockFetch.mockReturnValueOnce(
-      jsonResponse({ items: [], next_cursor: null }),
-    );
+    mockFetch.mockReturnValueOnce(jsonResponse([], 200, { has_more: false }));
 
     const controller = new AbortController();
     await getMySkills({}, { signal: controller.signal });
 
     expect(mockFetch).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ signal: controller.signal }),
+      expect.objectContaining({ signal: controller.signal })
     );
   });
 
@@ -699,11 +760,15 @@ describe("skillApiReal", () => {
 
     mockFetch.mockImplementation((_url: string, init?: RequestInit) => {
       if (init?.signal?.aborted) {
-        return Promise.reject(new DOMException("The operation was aborted.", "AbortError"));
+        return Promise.reject(
+          new DOMException("The operation was aborted.", "AbortError")
+        );
       }
       return jsonResponse([]);
     });
 
-    await expect(getCategories({ signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+    await expect(
+      getCategories({ signal: controller.signal })
+    ).rejects.toMatchObject({ name: "AbortError" });
   });
 });

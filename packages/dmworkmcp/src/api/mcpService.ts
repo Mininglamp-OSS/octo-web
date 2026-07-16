@@ -307,8 +307,7 @@ mcpAxios.interceptors.response.use(
 );
 
 /**
- * Marketplace error envelope is `{err:{code,message,details}}` (mcp-v1.md §2) —
- * distinct from the summary/matter `{code,message,data}` shape. When we
+ * Marketplace errors use the OCTO `{error:{code,message,details,hint}}` envelope. When we
  * recognize the wire `code` we surface a localized copy so a Chinese UI
  * doesn't show the backend's English `message`; unknown codes fall through to
  * the wire message. Falls back to the axios error string when the body is
@@ -316,9 +315,9 @@ mcpAxios.interceptors.response.use(
  */
 function extractErrorMessage(err: unknown): string {
   const axiosErr = err as {
-    response?: { data?: { err?: { message?: string; code?: string } } };
+    response?: { data?: { error?: { message?: string; code?: string } } };
   };
-  const wire = axiosErr?.response?.data?.err;
+  const wire = axiosErr?.response?.data?.error;
   const code = wire?.code;
   const localized = code ? localizedForCode(code) : "";
   const raw =
@@ -329,33 +328,25 @@ function extractErrorMessage(err: unknown): string {
   return raw.length > 200 ? raw.slice(0, 200) + "…" : raw;
 }
 
-/** Map a `err.marketplace.*` code to a localized string via i18n. Returns
+/** Map a standard OCTO error code to a localized string via i18n. Returns
  *  empty string if the code is unknown; caller falls back to the wire
  *  message. Keeping the mapping table here keeps the i18n keys colocated
  *  with the codes and greppable. */
 function localizedForCode(code: string): string {
   const KNOWN: Record<string, string> = {
-    "err.marketplace.mcp.name_taken": "mcp.errors.nameTaken",
-    "err.marketplace.mcp.slug_taken": "mcp.errors.slugTaken",
-    "err.marketplace.mcp.slug_invalid": "mcp.errors.slugInvalid",
-    "err.marketplace.mcp.secret_leaked": "mcp.errors.secretLeaked",
-    "err.marketplace.mcp.forbidden": "mcp.errors.forbidden",
-    "err.marketplace.mcp.not_found": "mcp.errors.notFound",
-    "err.marketplace.mcp.invalid_visibility": "mcp.errors.invalidVisibility",
-    "err.marketplace.mcp.invalid_transport": "mcp.errors.invalidTransport",
-    "err.marketplace.mcp.invalid_request": "mcp.errors.invalidRequest",
-    "err.marketplace.mcp.probe_unsupported": "mcp.errors.probeUnsupported",
-    "err.marketplace.auth.unauthorized": "mcp.errors.unauthorized",
-    "err.marketplace.auth.forbidden_space": "mcp.errors.forbiddenSpace",
-    "err.marketplace.internal": "mcp.errors.internal",
+    DUPLICATE: "mcp.errors.nameTaken",
+    VALIDATION_ERROR: "mcp.errors.invalidRequest",
+    FORBIDDEN: "mcp.errors.forbidden",
+    NOT_FOUND: "mcp.errors.notFound",
+    AUTH_REQUIRED: "mcp.errors.unauthorized",
+    INTERNAL_ERROR: "mcp.errors.internal",
   };
   const key = KNOWN[code];
   return key ? t(key) : "";
 }
 
 /**
- * Marketplace success bodies are the resource object directly (no
- * `{code,message,data}` wrapper — mcp-v1.md §3/§4). Return `resp.data` as-is.
+ * Marketplace success bodies use the OCTO `{data:...}` envelope.
  */
 async function get<T>(
   path: string,
@@ -364,7 +355,7 @@ async function get<T>(
 ): Promise<T> {
   try {
     const resp = await mcpAxios.get(`${BASE}${path}`, { params, ...config });
-    return resp.data as T;
+    return resp.data.data as T;
   } catch (err) {
     if (axios.isCancel(err)) throw err;
     throw new Error(extractErrorMessage(err));
@@ -374,7 +365,7 @@ async function get<T>(
 async function post<T>(path: string, data?: unknown): Promise<T> {
   try {
     const resp = await mcpAxios.post(`${BASE}${path}`, data);
-    return resp.data as T;
+    return resp.data.data as T;
   } catch (err) {
     if (axios.isCancel(err)) throw err;
     throw new Error(extractErrorMessage(err));
@@ -384,7 +375,7 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
 async function patch<T>(path: string, data?: unknown): Promise<T> {
   try {
     const resp = await mcpAxios.patch(`${BASE}${path}`, data);
-    return resp.data as T;
+    return resp.data.data as T;
   } catch (err) {
     if (axios.isCancel(err)) throw err;
     throw new Error(extractErrorMessage(err));
@@ -414,10 +405,102 @@ function categoryLabel(key: string): string {
 }
 
 /** Wire shape of the list response before frontend label enrichment. */
+interface McpListItemWire {
+  mcp_id: string;
+  name: string;
+  slogan: string;
+  category: string;
+  icon: string;
+  tags: string[];
+  tool_count: number;
+  visibility?: McpListItem["visibility"];
+  creator_name?: string;
+}
+
+interface McpDetailWire extends McpListItemWire {
+  quick_start: {
+    transport: McpQuickStart["transport"];
+    server_name: string;
+    slug?: string;
+    url?: string;
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    headers?: Record<string, string>;
+    auth_type?: "bearer" | "none";
+  };
+  tools: McpDetail["tools"];
+  usage_examples: string[];
+  faqs: McpDetail["faqs"];
+  notes: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface McpListResponseWire {
-  items: McpListItem[];
-  total: number;
-  categories: { key: string; count: number }[];
+  data: McpListItemWire[];
+  pagination: { total: number; page: number; page_size: number };
+}
+
+function mapListItem(raw: McpListItemWire): McpListItem {
+  return {
+    id: raw.mcp_id,
+    name: raw.name,
+    slogan: raw.slogan,
+    category: raw.category,
+    icon: raw.icon,
+    tags: raw.tags ?? [],
+    toolCount: raw.tool_count,
+    visibility: raw.visibility,
+    creatorName: raw.creator_name,
+  };
+}
+
+function mapDetail(raw: McpDetailWire): McpDetail {
+  const item = mapListItem(raw);
+  return {
+    ...item,
+    quickStart: {
+      transport: raw.quick_start.transport,
+      serverName: raw.quick_start.server_name,
+      slug: raw.quick_start.slug,
+      url: raw.quick_start.url,
+      command: raw.quick_start.command,
+      args: raw.quick_start.args,
+      env: raw.quick_start.env,
+      headers: raw.quick_start.headers,
+      authType: raw.quick_start.auth_type,
+    },
+    tools: raw.tools ?? [],
+    usageExamples: raw.usage_examples ?? [],
+    faqs: raw.faqs ?? [],
+    notes: raw.notes ?? [],
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+function toWireParams(params: CreateMcpParams | UpdateMcpParams) {
+  return {
+    name: params.name,
+    slug: params.slug,
+    slogan: params.slogan,
+    category: params.category,
+    icon: params.icon,
+    tags: params.tags,
+    transport: params.transport,
+    url: params.url,
+    command: params.command,
+    args: params.args,
+    env: params.env,
+    headers: params.headers,
+    auth_type: params.authType,
+    tools: params.tools,
+    usage_examples: params.usageExamples,
+    faqs: params.faqs,
+    notes: params.notes,
+    visibility: params.visibility,
+  };
 }
 
 async function fetchMcpListReal(
@@ -443,19 +526,34 @@ async function fetchMcpListPath(
   if (keyword) query.keyword = keyword;
   // `all` disables the filter server-side; send it verbatim per §0.
   query.category = params.category ?? CATEGORY_KEY_ALL;
-  if (params.limit && params.limit > 0) query.limit = params.limit;
-  if (params.offset && params.offset > 0) query.offset = params.offset;
-  const resp = await get<McpListResponseWire>(path, query);
-  const categories: McpCategory[] = (resp.categories ?? []).map((c) => ({
-    key: c.key,
-    label: categoryLabel(c.key),
-    count: c.count,
+  const pageSize = params.limit && params.limit > 0 ? params.limit : 20;
+  query.page_size = pageSize;
+  query.page = Math.floor((params.offset ?? 0) / pageSize) + 1;
+  let resp;
+  let categoryWire: { key: string; count: number }[];
+  try {
+    [resp, categoryWire] = await Promise.all([
+      mcpAxios.get<McpListResponseWire>(`${BASE}${path}`, { params: query }),
+      get<{ key: string; count: number }[]>("/mcp_categories"),
+    ]);
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(extractErrorMessage(err));
+  }
+  const items = (resp.data.data ?? []).map(mapListItem);
+  const categoryCounts = new Map(
+    categoryWire.map((item) => [item.key, item.count])
+  );
+  const categories: McpCategory[] = MCP_CATEGORY_ORDER.map((key) => ({
+    key,
+    label: categoryLabel(key),
+    count: categoryCounts.get(key) ?? 0,
   }));
-  return { items: resp.items ?? [], total: resp.total ?? 0, categories };
+  return { items, total: resp.data.pagination.total, categories };
 }
 
 async function fetchMcpDetailReal(id: string): Promise<McpDetail> {
-  return get<McpDetail>(`/mcps/${encodeURIComponent(id)}`);
+  return get<McpDetailWire>(`/mcps/${encodeURIComponent(id)}`).then(mapDetail);
 }
 
 async function probeMcpToolsReal(
@@ -482,7 +580,18 @@ async function probeMcpToolsReal(
       },
     };
   }
-  return post<McpProbeResult>("/mcps/probe", req);
+  const raw = await post<{
+    is_ok: boolean;
+    tools: McpProbeResult["tools"];
+    server_info?: McpProbeResult["serverInfo"];
+    error?: McpProbeResult["error"];
+  }>("/mcps/_probe", req);
+  return {
+    ok: raw.is_ok,
+    tools: raw.tools ?? [],
+    serverInfo: raw.server_info,
+    error: raw.error,
+  };
 }
 
 async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
@@ -490,8 +599,8 @@ async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
   // from the response (mcp-v1.md §4.1). Server derives id / creatorName /
   // toolCount / timestamps and ignores any client-supplied values for them, so
   // the flat create body is sent as-is (§3.3).
-  const detail = await post<McpDetail>("/mcps", params);
-  return { id: detail.id };
+  const detail = await post<McpDetailWire>("/mcps", toWireParams(params));
+  return { id: detail.mcp_id };
 }
 
 /** PATCH /mcps/{id} — owner-only partial update (mcp-v1.md §4.5). The UI
@@ -503,7 +612,10 @@ async function updateMcpReal(
   id: string,
   params: UpdateMcpParams
 ): Promise<McpDetail> {
-  return patch<McpDetail>(`/mcps/${encodeURIComponent(id)}`, params);
+  return patch<McpDetailWire>(
+    `/mcps/${encodeURIComponent(id)}`,
+    toWireParams(params)
+  ).then(mapDetail);
 }
 
 /** DELETE /mcps/{id} — owner-only soft delete (mcp-v1.md §4.6). Returns
