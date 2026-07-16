@@ -172,6 +172,40 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
     });
 });
 
+describe('SummaryDetailPage — mark-read list synchronization', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('dispatches the numeric task id for a task_no deep-link and preserves server attention state', async () => {
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({
+            task_id: 740,
+            task_no: 'SUM-740',
+            status: 3,
+            result_id: 91,
+            result: 'summary',
+        }) as any);
+        vi.mocked(api.markSummaryRead).mockResolvedValue({
+            is_unread: false,
+            has_pending_invitation: true,
+            needs_attention: true,
+        });
+        const listener = vi.fn();
+        window.addEventListener('summary-read', listener);
+
+        const page = makePage('SUM-740');
+        await page.loadDetail();
+        await Promise.resolve();
+
+        expect(api.markSummaryRead).toHaveBeenCalledWith(740, { team_result_id: 91 });
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({
+            taskId: 740,
+            isUnread: false,
+            needsAttention: true,
+        });
+        window.removeEventListener('summary-read', listener);
+    });
+});
+
 // ─── FE-1（blocking）：切任务竞态——旧任务 members/personalResult 迟到返回不得 setState 到新任务 ───
 //
 // 背景：loadDetail 拿到 detail 后，loadPersonalResult / loadMembers 是二次异步请求。

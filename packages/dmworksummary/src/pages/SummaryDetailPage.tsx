@@ -491,8 +491,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (detail.status === TaskStatus.COMPLETED && detail.result_id) {
                 const markRead = api.markSummaryRead;
                 if (markRead) void markRead(detail.task_id, { team_result_id: detail.result_id }).then((attention) => {
-                    if (this.taskId === requestTaskId && !attention.needs_attention) {
-                        window.dispatchEvent(new CustomEvent("summary-read", { detail: { taskId: detail.task_id } }));
+                    // Guard with the request sequence/lookup key rather than
+                    // comparing numeric detail.task_id with a task_no deep-link.
+                    if (this.scheduleLoadSeq === seq && this.detailLookupId === requestTaskId) {
+                        window.dispatchEvent(new CustomEvent("summary-read", {
+                            detail: {
+                                taskId: detail.task_id,
+                                isUnread: attention.is_unread,
+                                needsAttention: attention.needs_attention,
+                            },
+                        }));
                     }
                 }).catch(() => { /* keep unread on failure */ });
             }
@@ -608,11 +616,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (result.current_version_id && result.content?.trim()) {
                 const markRead = api.markSummaryRead;
                 if (markRead) void markRead(requestTaskId, { personal_version_id: result.current_version_id }).then((attention) => {
-                    if (this.taskId === requestTaskId && !attention.needs_attention) {
-                        const numericTaskId = this.state.detail?.task_id;
-                        if (numericTaskId) {
-                            window.dispatchEvent(new CustomEvent("summary-read", { detail: { taskId: numericTaskId } }));
-                        }
+                    if (this.scheduleLoadSeq === reqSeq && (this.taskId == null || this.taskId === requestTaskId)) {
+                        window.dispatchEvent(new CustomEvent("summary-read", {
+                            detail: {
+                                taskId: requestTaskId,
+                                isUnread: attention.is_unread,
+                                needsAttention: attention.needs_attention,
+                            },
+                        }));
                     }
                 }).catch(() => { /* keep unread on failure */ });
             }

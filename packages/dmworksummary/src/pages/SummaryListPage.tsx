@@ -79,11 +79,28 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     };
 
     private handleSummaryRead_ = (event: Event) => {
-        const taskId = (event as CustomEvent<{ taskId: number }>).detail?.taskId;
-        if (!taskId) return;
+        const detail = (event as CustomEvent<{
+            taskId: number;
+            isUnread?: boolean;
+            needsAttention?: boolean;
+        }>).detail;
+        const taskId = detail?.taskId;
+        if (!detail || !taskId) return;
+        const current = this.state.items.find(item => item.task_id === taskId);
+        const nextNeedsAttention = detail.needsAttention ?? Boolean(current?.has_pending_invitation);
+        if (current?.needs_attention && !nextNeedsAttention) {
+            // Keep the local count aligned with the successful mark-read
+            // response so the next global poll does not trigger a redundant
+            // full-list reload and lose the user's scroll position.
+            this.attentionCount = Math.max(0, this.attentionCount - 1);
+        }
         this.setState(({ items }) => ({
             items: items.map(item => item.task_id === taskId
-                ? { ...item, is_unread: false, needs_attention: Boolean(item.has_pending_invitation) }
+                ? {
+                    ...item,
+                    is_unread: detail.isUnread ?? false,
+                    needs_attention: detail.needsAttention ?? Boolean(item.has_pending_invitation),
+                }
                 : item),
         }));
         this.emitBadgeUpdate();
@@ -221,7 +238,9 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
             return;
         }
         api.listSummaries({ page_size: 1 }).then(resp => {
-            WKApp.mittBus.emit("summary-badge-update" as any, { count: resp.attention_count ?? 0 });
+            const count = resp.attention_count ?? 0;
+            this.attentionCount = count;
+            WKApp.mittBus.emit("summary-badge-update" as any, { count });
         }).catch(() => { /* ignore */ });
     }
 
