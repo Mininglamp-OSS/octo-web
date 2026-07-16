@@ -980,33 +980,69 @@ export const TableReorderHandle = Extension.create({
           rowHandle.addEventListener('mousedown', onRowDown)
           colHandle.addEventListener('mousedown', onColDown)
 
-          // The pointer resting on a handle must keep it (and its sibling) visible. Because the
-          // handles sit outside the editor DOM, the editor's mouseleave fires as the pointer arrives;
-          // this mouseenter cancels the resulting deferred hide so the handle stays put (XIN-1233).
-          const onHandleEnter = () => cancelHide()
-          // Leaving a handle (not back toward the other handle) starts the grace timer; a return to a
-          // cell re-cancels it via placeHandles.
-          const onHandleLeave = (e: MouseEvent) => {
-            const to = e.relatedTarget as Node | null
-            if (to && (rowHandle?.contains(to) || colHandle?.contains(to))) return
-            scheduleHide()
+          // Resting-handle placement is driven from a DOCUMENT-level mousemove, NOT the editor's own
+          // handleDOMEvents (mousemove/mouseleave on view.dom). The reorder handles AND the row-height
+          // resize bar (#823) are absolutely-positioned SIBLINGS of the ProseMirror DOM inside the
+          // editor wrapper, and they sit ON TOP of the table cells (z-index 5). When the pointer moves
+          // onto such an overlay the editor fires `mouseleave` and stops receiving `mousemove`, so a
+          // handler bound to view.dom would hide the reorder handles the instant the pointer grazed
+          // the row-resize bar straddling a row's bottom edge — then never get the moves to bring them
+          // back. That is the #822/#823 first-same-build coexistence regression: handles that showed
+          // in the standalone build stayed hidden (display:none / 0x0) and could not be grabbed on the
+          // real :3000 build (XIN-1253). Reading the pointer at the document level is immune to which
+          // sibling happens to be topmost, so the handles track the table regardless of the overlay.
+          const onIdleDocMove = (event: MouseEvent) => {
+            // While a drag is in flight the document drag listeners own the pointer.
+            if (drag) return
+            if (!rowHandle || !colHandle || !view.editable) return
+            const shown = rowHandle.style.display !== 'none' || colHandle.style.display !== 'none'
+            // Read the editor geometry LIVE from view.dom each move. The `wrapper` captured at view()
+            // time is the temporary detached div tiptap mounts into before @tiptap/react moves the DOM
+            // into `.octo-prose`, so its rect is 0×0 and must not be used here. view.dom is always the
+            // live, correctly-positioned editor element (the same box placeHandles measures against).
+            const liveWrapper = view.dom.parentElement
+            const vr = (view.dom as HTMLElement).getBoundingClientRect()
+            // Cheap bounds gate so we only probe the document near the editor. Expand by BAR to
+            // include the left/top gutters where the handles themselves live.
+            const near =
+              event.clientX >= vr.left - BAR - 4 &&
+              event.clientX <= vr.right + 4 &&
+              event.clientY >= vr.top - BAR - 4 &&
+              event.clientY <= vr.bottom + 4
+            if (!near) {
+              if (shown) scheduleHide()
+              return
+            }
+            const ctx = cellContextAt(view, event.clientX, event.clientY)
+            if (ctx) {
+              placeHandles(view, ctx)
+              return
+            }
+            // No cell resolved under the pointer. If the pointer is over one of the plugin overlays
+            // that sit on top of the table — our own handles, or the #823 row-resize bar — i.e. an
+            // element inside the editor wrapper but OUTSIDE the ProseMirror content, the pointer has
+            // NOT left the table, so keep the handles up (this is also the cell→gutter-handle glide
+            // the XIN-1233 grace period was for). Only a move to genuine editor content that is not a
+            // cell, or off the editor entirely, schedules the hide.
+            const target = document.elementFromPoint(event.clientX, event.clientY) as Node | null
+            const overOverlay =
+              target != null && liveWrapper != null && liveWrapper.contains(target) && !view.dom.contains(target)
+            if (overOverlay) {
+              cancelHide()
+              return
+            }
+            if (shown) scheduleHide()
           }
-          rowHandle.addEventListener('mouseenter', onHandleEnter)
-          colHandle.addEventListener('mouseenter', onHandleEnter)
-          rowHandle.addEventListener('mouseleave', onHandleLeave)
-          colHandle.addEventListener('mouseleave', onHandleLeave)
+          document.addEventListener('mousemove', onIdleDocMove, true)
 
           return {
             destroy() {
               removeDragListeners()
               cancelHide()
               document.body.classList.remove('octo-table-reordering')
+              document.removeEventListener('mousemove', onIdleDocMove, true)
               rowHandle?.removeEventListener('mousedown', onRowDown)
               colHandle?.removeEventListener('mousedown', onColDown)
-              rowHandle?.removeEventListener('mouseenter', onHandleEnter)
-              colHandle?.removeEventListener('mouseenter', onHandleEnter)
-              rowHandle?.removeEventListener('mouseleave', onHandleLeave)
-              colHandle?.removeEventListener('mouseleave', onHandleLeave)
               rowHandle?.remove()
               colHandle?.remove()
               indicator?.remove()
@@ -1017,40 +1053,6 @@ export const TableReorderHandle = Extension.create({
               pointerHeldSeen = false
             },
           }
-        },
-        props: {
-          handleDOMEvents: {
-            mousemove(view, event) {
-              // Freeze the resting handles while a drag is in flight (the document-level
-              // listeners own the pointer then).
-              if (drag) return false
-              if (!view.editable) return false
-              const ctx = cellContextAt(view, event.clientX, event.clientY)
-              if (!ctx) {
-                // Pointer is over the editor but not a table cell. Defer the hide instead of
-                // clearing instantly so a quick glide from a cell to the gutter handle (or into a
-                // neighbouring cell) does not flicker the handle away (XIN-1233).
-                scheduleHide()
-                return false
-              }
-              placeHandles(view, ctx)
-              return false
-            },
-            mouseleave(_view, event) {
-              if (drag) return false
-              // Keep the handles up when the pointer moves onto one of them (they live outside
-              // the editor DOM, so leaving the prose region toward a handle must not hide it).
-              const to = (event as MouseEvent).relatedTarget as Node | null
-              if (to && (rowHandle?.contains(to) || colHandle?.contains(to))) {
-                cancelHide()
-                return false
-              }
-              // Otherwise defer: the pointer may be crossing the sliver of dead space on its way to
-              // the handle. The handle's own mouseenter cancels this if it lands there (XIN-1233).
-              scheduleHide()
-              return false
-            },
-          },
         },
       }),
     ]

@@ -148,23 +148,25 @@ describe('handle usability (octo-docs-backend#76 / XIN-1216)', () => {
   })
 })
 
-// octo-docs-backend#76 handle-discoverability regression (XIN-1233). The grab handle sits in the
-// gutter OUTSIDE the editor DOM, so moving the pointer from a cell toward the handle briefly crosses
-// dead space and fires the editor's `mouseleave`. The old code hid the handle synchronously there, so
-// the handle vanished before the pointer could reach it ("鼠标一移开就消失") — users could not
-// reliably trigger a move. The fix defers the hide by a grace period that the handle's own mouseenter
-// (or the pointer returning to a cell) cancels. These tests pin that behaviour with fake timers.
-describe('handle stability / discoverability (octo-docs-backend#76 / XIN-1233)', () => {
-  it('does not hide the handle synchronously when the pointer leaves the prose toward the gutter', () => {
+// octo-docs-backend#76 handle-discoverability + coexistence regression (XIN-1233 → XIN-1253). The
+// grab handle and the #823 row-height resize bar are absolutely-positioned SIBLINGS of the editor
+// DOM that sit ON TOP of the table. A hide driven by the editor's own `mouseleave` fired the moment
+// the pointer crossed onto ANY such overlay (the gutter dead space, or #823's full-width bar at a
+// row's bottom edge), so the handle vanished before it could be grabbed. The fix drives resting-handle
+// visibility from a DOCUMENT-level mousemove that reads the pointer directly: it re-places the handle
+// while the pointer resolves to a cell, keeps it while the pointer is over a plugin overlay inside the
+// editor wrapper, and hides it (after a short grace period) only once the pointer genuinely leaves.
+describe('handle stability / discoverability (octo-docs-backend#76 / XIN-1233, XIN-1253)', () => {
+  it('hides the handle after the grace period once the pointer genuinely leaves the table', () => {
     vi.useFakeTimers()
     try {
       editor = mount(TABLE_3x2)
       hoverCell(editor, 2, 0)
       const rowHandle = host?.querySelector('.octo-table-reorder--row') as HTMLElement | null
       expect(rowHandle?.style.display).not.toBe('none')
-      // Pointer leaves the editor prose heading for the gutter handle (relatedTarget is not a handle).
-      editor.view.dom.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
-      // Must NOT vanish immediately — this is the regression: it used to hide right here.
+      // Pointer moves well away from the editor (no cell, outside the editor region): schedule hide.
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 9999, clientY: 9999 }))
+      // Must NOT vanish synchronously — the grace period keeps it up briefly.
       expect(rowHandle?.style.display, 'handle stays visible during the grace period').not.toBe('none')
       // After the grace period elapses with no rescue, it clears.
       vi.advanceTimersByTime(500)
@@ -174,19 +176,26 @@ describe('handle stability / discoverability (octo-docs-backend#76 / XIN-1233)',
     }
   })
 
-  it('keeps the handle visible when the pointer lands on it (mouseenter cancels the deferred hide)', () => {
+  it('keeps the handle visible while the pointer is over a plugin overlay on top of the table (#823 coexistence, XIN-1253)', () => {
     vi.useFakeTimers()
     try {
       editor = mount(TABLE_3x2)
       hoverCell(editor, 2, 0)
       const rowHandle = host?.querySelector('.octo-table-reorder--row') as HTMLElement | null
       if (!rowHandle) throw new Error('row handle not rendered')
-      // Leave the prose (arms the deferred hide)...
-      editor.view.dom.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
-      // ...then the pointer arrives on the handle before the timer fires.
-      rowHandle.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }))
+      // The pointer moves onto a sibling overlay that sits ON TOP of a cell — e.g. #823's row-resize
+      // bar at the row's bottom edge. No cell resolves under the pointer, but elementFromPoint is an
+      // element inside the editor wrapper (here the reorder handle itself stands in for that overlay)
+      // and OUTSIDE the prose. The editor's mouseleave used to hide the handle here; it must not now.
+      ;(editor.view as unknown as { posAtCoords: () => null }).posAtCoords = () => null
+      // jsdom does not implement elementFromPoint; stub it to report the overlay under the pointer.
+      const doc = document as unknown as { elementFromPoint?: (x: number, y: number) => Element | null }
+      const prev = doc.elementFromPoint
+      doc.elementFromPoint = () => rowHandle
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 3, clientY: 3 }))
       vi.advanceTimersByTime(500)
-      expect(rowHandle.style.display, 'handle stays put while the pointer rests on it').not.toBe('none')
+      expect(rowHandle.style.display, 'handle stays put over the overlay').not.toBe('none')
+      doc.elementFromPoint = prev
     } finally {
       vi.useRealTimers()
     }
