@@ -89,3 +89,45 @@ describe('MemberPicker (Problem 1)', () => {
     expect(addBtn.disabled).toBe(true)
   })
 })
+
+// #839: the candidate roster merges the caller's friend-added agents (GET /robot/my_bots) with
+// the space members, so an agent owned by someone else but befriended by the caller — which the
+// space-member query filters out — becomes selectable, while non-friend agents never appear.
+describe('MemberPicker friend-agent roster (#839)', () => {
+  it('merges friend agents from my_bots and dedups by uid', async () => {
+    // my_bots returns a friend agent owned by someone else (not in spaceMembers) plus a duplicate
+    // of an existing space bot (u_bot) that must NOT render twice.
+    wk.apiClient.responder = (_m, url) =>
+      url.startsWith('/robot/my_bots')
+        ? {
+            data: [
+              { uid: 'u_friendbot', name: 'Friend Bot' },
+              { uid: 'u_bot', name: 'Helper Bot (dup)' },
+            ],
+            status: 200,
+          }
+        : { data: {}, status: 200 }
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Friend Bot')).toBeTruthy())
+    // The space-member entry wins on the uid collision (its name, rendered once).
+    expect(screen.getAllByText('Helper Bot')).toHaveLength(1)
+    expect(screen.queryByText('Helper Bot (dup)')).toBeNull()
+    // The friend agent carries the AI badge (one for u_bot, one for u_friendbot).
+    expect(screen.getAllByText('docs.member.aiTag')).toHaveLength(2)
+    // It is selectable and adds by its uid.
+    const addBtn = screen.getByText('docs.member.add').closest('button') as HTMLButtonElement
+    fireEvent.click(screen.getByText('Friend Bot'))
+    expect(addBtn.disabled).toBe(false)
+  })
+
+  it('renders the space roster unchanged when my_bots fails', async () => {
+    wk.apiClient.responder = (_m, url) => {
+      if (url.startsWith('/robot/my_bots')) throw new Error('boom')
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
+    expect(screen.getByText('Ada Lovelace')).toBeTruthy()
+    expect(screen.getByText('Helper Bot')).toBeTruthy()
+  })
+})

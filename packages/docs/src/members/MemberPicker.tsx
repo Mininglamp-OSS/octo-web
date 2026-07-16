@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
-import { fetchAllSpaceMembers, t, type SpaceMemberLite } from '../octoweb/index.ts'
+import { fetchAllSpaceMembers, fetchMyBots, t, type SpaceMemberLite } from '../octoweb/index.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { sortPickerMembers } from './sort.ts'
 
@@ -10,6 +10,27 @@ const ROLES: Role[] = ['reader', 'writer', 'admin']
 function initial(name: string): string {
   const ch = name.trim().charAt(0)
   return ch ? ch.toUpperCase() : '?'
+}
+
+/**
+ * Candidate roster = space members (fetchAllSpaceMembers) ∪ the caller's friend-added agents
+ * (fetchMyBots), de-duplicated by uid (octo-web #839). The space-member entry wins on a uid
+ * collision because it carries the richer host data (avatar / robot flag); a friend agent not
+ * already in the space roster is appended, flagged isBot. `my_bots` is a pure friend-dimension
+ * query, so this never surfaces a non-friend agent owned by others — the picker still cannot
+ * offer, and the admin cannot authorize, an agent the user has not befriended and did not create.
+ *
+ * A my_bots failure resolves to [] so it can never break the human-member roster path.
+ */
+async function fetchCandidateRoster(space: string): Promise<SpaceMemberLite[]> {
+  const [members, myBots] = await Promise.all([
+    fetchAllSpaceMembers(space),
+    space ? fetchMyBots(space).catch(() => [] as SpaceMemberLite[]) : Promise.resolve([]),
+  ])
+  const byUid = new Map<string, SpaceMemberLite>()
+  for (const m of members) byUid.set(m.uid, m)
+  for (const b of myBots) if (!byUid.has(b.uid)) byUid.set(b.uid, b)
+  return [...byUid.values()]
 }
 
 /**
@@ -46,7 +67,7 @@ export function MemberPicker({
   useEffect(() => {
     let active = true
     setLoading(true)
-    void fetchAllSpaceMembers(space ?? '')
+    void fetchCandidateRoster(space ?? '')
       .then((list) => {
         if (active) setMembers(list)
       })

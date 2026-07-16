@@ -211,6 +211,44 @@ export async function fetchSpaceBotNames(spaceId: string): Promise<SpaceMemberLi
     .map((b) => ({ uid: b.uid, name: b.name || b.uid }))
 }
 
+/** Minimal view of a `/robot/my_bots` entry the docs seam reads (uid + display name). */
+interface HostMyBot {
+  uid: string
+  name?: string
+}
+
+/**
+ * Fetch the current user's friend-added agents via `GET /robot/my_bots` (octo-server
+ * modules/robot/api.go myBots) and map them to the lite member shape, flagged `isBot`.
+ *
+ * WHY: the doc-authorize candidate roster is sourced from `queryMembers`
+ * (GET /space/{id}/members), whose WHERE clause drops bots the caller did NOT create
+ * (`r.robot_id IS NULL OR r.creator_uid = loginUID`, octo-web #839). So an agent owned by
+ * someone else but added as a friend by the current user never reaches the picker and can
+ * never be authorized, even though the doc write path (PUT /docs/:docId/members) accepts any
+ * uid. `my_bots` is a pure friend-dimension query (`FROM friend WHERE f.uid = loginUID`), so
+ * it returns exactly the caller's friend-added agents and NEVER a non-friend agent owned by
+ * others — merging it into the roster satisfies the security boundary by construction.
+ *
+ * `spaceId`, when supplied, scopes the result to friend agents that are also members of that
+ * space (the backend's optional `space_id` filter), keeping the candidate list relevant to the
+ * doc's space; omit it to list all friend agents.
+ *
+ * Returns `{ uid, name, isBot: true }` triples (name falls back to the uid so an agent with no
+ * display name is never blank). Resolves to an EMPTY list on a non-array body; callers wrap the
+ * call in `.catch(() => [])` so a my_bots failure never breaks the human-member roster path.
+ */
+export async function fetchMyBots(spaceId?: string): Promise<SpaceMemberLite[]> {
+  const path = spaceId
+    ? `/robot/my_bots?space_id=${encodeURIComponent(spaceId)}`
+    : '/robot/my_bots'
+  const { data } = await apiClient().get<HostMyBot[]>(path)
+  const bots = Array.isArray(data) ? data : []
+  return bots
+    .filter((b): b is HostMyBot => !!b && !!b.uid)
+    .map((b) => ({ uid: b.uid, name: b.name || b.uid, isBot: true }))
+}
+
 /**
  * Re-wrap the REAL host APIClient so its responses look axios-style to docs callers.
  *

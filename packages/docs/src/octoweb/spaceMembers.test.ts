@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { setWKApp, getSpaceMembers, fetchAllSpaceMembers, fetchSpaceBotNames } from './index.ts'
+import { setWKApp, getSpaceMembers, fetchAllSpaceMembers, fetchSpaceBotNames, fetchMyBots } from './index.ts'
 import { createMockWKApp } from './mock.ts'
 
 // Seam spike acceptance (#7): prove the docs package can reach the host's space-member source
@@ -101,5 +101,50 @@ describe('octoweb fetchSpaceBotNames seam', () => {
   it('returns an empty list for a blank space id without touching the host', async () => {
     expect(await fetchSpaceBotNames('')).toEqual([])
     expect(wk.apiClient.calls).toHaveLength(0)
+  })
+})
+
+// #839: friend-added agents (including ones owned by others) reach the doc-authorize roster via
+// GET /robot/my_bots, a pure friend-dimension query that never surfaces non-friend agents.
+describe('octoweb fetchMyBots seam', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  it('maps friend agents to {uid, name, isBot} and scopes the request to the space', async () => {
+    wk.apiClient.responder = (_m, url) =>
+      url.startsWith('/robot/my_bots')
+        ? { data: [{ uid: 'bot_friend', name: "Someone's Bot" }, { uid: 'bot_mine', name: 'My Bot' }], status: 200 }
+        : { data: {}, status: 200 }
+    const bots = await fetchMyBots('s_1')
+    expect(bots).toEqual([
+      { uid: 'bot_friend', name: "Someone's Bot", isBot: true },
+      { uid: 'bot_mine', name: 'My Bot', isBot: true },
+    ])
+    const calls = wk.apiClient.calls.filter((c) => c.url.startsWith('/robot/my_bots'))
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('/robot/my_bots?space_id=s_1')
+  })
+
+  it('omits the space_id param when no space is given', async () => {
+    wk.apiClient.responder = () => ({ data: [], status: 200 })
+    await fetchMyBots()
+    expect(wk.apiClient.calls[0].url).toBe('/robot/my_bots')
+  })
+
+  it('falls back to the uid for an agent with no name and skips entries without a uid', async () => {
+    wk.apiClient.responder = () => ({
+      data: [{ uid: 'bot1', name: '' }, { name: 'ghost' }],
+      status: 200,
+    })
+    expect(await fetchMyBots('s_1')).toEqual([{ uid: 'bot1', name: 'bot1', isBot: true }])
+  })
+
+  it('returns an empty list for a non-array body', async () => {
+    wk.apiClient.responder = () => ({ data: { nope: true }, status: 200 })
+    expect(await fetchMyBots('s_1')).toEqual([])
   })
 })
