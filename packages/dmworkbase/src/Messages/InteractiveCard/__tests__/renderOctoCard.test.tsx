@@ -137,6 +137,43 @@ describe("renderOctoCard", () => {
     target.remove();
   });
 
+  it("Action.OpenUrl 渲染出 role=link、Submit 渲染出 role=button（查看详情超链样式依赖此 SDK 契约）", () => {
+    const target = mountTarget();
+    renderOctoCard({
+      card: {
+        type: "AdaptiveCard",
+        version: "1.5",
+        body: [
+          {
+            type: "ActionSet",
+            actions: [
+              { type: "Action.OpenUrl", id: "open", title: "查看详情", url: "https://example.com" },
+            ],
+          },
+        ],
+        actions: [{ type: "Action.Submit", id: "ok", title: "允许" }],
+      },
+      target,
+      onAction: () => {},
+    });
+    // index.css 的 .ac-pushButton[role="link"] 超链样式依赖 SDK 给 Action.OpenUrl 打
+    // role="link"、给 Submit/Toggle/Copy 打 role="button"；SDK 升级若改了 role，超链会
+    // 失效或误伤决策按钮——此测试兜底锁死该契约。
+    // 按 title 绑定 role↔action：只断言「有一个 link + 一个 button」不够——SDK 若把两者
+    // role 对调（OpenUrl→button、Submit→link）仍会误过；这里钉死到具体按钮。
+    const roleByTitle = new Map(
+      Array.from(
+        target.querySelectorAll<HTMLButtonElement>(".ac-pushButton")
+      ).map((b) => [
+        b.getAttribute("title") ?? b.textContent?.trim() ?? "",
+        b.getAttribute("role"),
+      ])
+    );
+    expect(roleByTitle.get("查看详情")).toBe("link"); // Action.OpenUrl → 超链
+    expect(roleByTitle.get("允许")).toBe("button"); // Action.Submit → 按钮
+    target.remove();
+  });
+
   it("Action.ToggleVisibility 由 SDK 原生切换 isVisible", () => {
     const target = mountTarget();
     const types: string[] = [];
