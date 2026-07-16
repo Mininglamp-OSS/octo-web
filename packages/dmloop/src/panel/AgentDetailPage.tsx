@@ -278,7 +278,8 @@ export default function AgentDetailPage({
 
   const skills = agent.skills ?? [];
   const activeCount = tasks.filter((x) => isActiveRun(x.status)).length;
-  const thinking = agent.thinking_level ? t(`loop.agent.thinkingLevel.${agent.thinking_level}`) : "—";
+  // 属性仅归属人可改（agent 对工作区其他人可见但只读）。
+  const canEdit = !!agent.owner_id && agent.owner_id === myMemberId;
 
   return (
     <div className="loop-adp">
@@ -478,6 +479,7 @@ export default function AgentDetailPage({
                   value={agent.name}
                   placeholder={t("loop.agent.namePlaceholder")}
                   ariaLabel={t("loop.field.name")}
+                  canEdit={canEdit}
                   onSave={(v) => (v ? patch({ name: v }) : undefined)}
                 />
               </div>
@@ -487,6 +489,7 @@ export default function AgentDetailPage({
                   placeholder={t("loop.agent.noDescription")}
                   ariaLabel={t("loop.field.description")}
                   kind="textarea"
+                  canEdit={canEdit}
                   onSave={(v) => patch({ description: v })}
                 />
               </div>
@@ -501,15 +504,14 @@ export default function AgentDetailPage({
                     value={agent.runtime_id}
                     runtimes={runtimes}
                     currentUserId={myMemberId ?? null}
+                    canEdit={canEdit}
                     onChange={(id) => patch({ runtime_id: id })}
                   />
                 </dd>
                 <dt>{t("loop.agent.model")}</dt>
                 <dd>
-                  <ModelPicker value={agent.model ?? ""} onChange={(v) => patch({ model: v })} />
+                  <ModelPicker value={agent.model ?? ""} canEdit={canEdit} onChange={(v) => patch({ model: v })} />
                 </dd>
-                <dt>{t("loop.agent.thinking")}</dt>
-                <dd>{thinking}</dd>
                 <dt>{t("loop.agent.concurrency")}</dt>
                 <dd>
                   <InlineEdit
@@ -518,6 +520,7 @@ export default function AgentDetailPage({
                     ariaLabel={t("loop.agent.concurrency")}
                     kind="number"
                     min={1}
+                    canEdit={canEdit}
                     onSave={(v) => {
                       const n = Number(v);
                       return Number.isFinite(n) && n >= 1 ? patch({ max_concurrent_tasks: n }) : undefined;

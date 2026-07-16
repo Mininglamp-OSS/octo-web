@@ -11,9 +11,11 @@ import { useI18n } from "@octo/base";
 export default function ModelPicker({
   value,
   onChange,
+  canEdit = true,
 }: {
   value: string;
   onChange: (next: string) => void | Promise<void>;
+  canEdit?: boolean;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -21,6 +23,11 @@ export default function ModelPicker({
 
   const trimmed = search.trim();
   const canCreate = trimmed.length > 0 && trimmed !== value;
+
+  // 非 owner 只读：静态展示当前模型或「默认」，无弹框。
+  if (!canEdit) {
+    return <span className="loop-adp__ro loop-mono-text">{value || t("loop.agent.modelDefault")}</span>;
+  }
 
   const commit = async (next: string) => {
     setOpen(false);
@@ -54,9 +61,12 @@ export default function ModelPicker({
         <p className="loop-mdp__hint">{t("loop.agent.modelInputHint")}</p>
       )}
       {value && (
-        <button type="button" className="loop-mdp__clear" onClick={() => void commit("")}>
-          {t("loop.agent.modelClear")}
-        </button>
+        <>
+          <div className="loop-mdp__sep" />
+          <button type="button" className="loop-mdp__clear" onClick={() => void commit("")}>
+            {t("loop.agent.modelClear")}
+          </button>
+        </>
       )}
     </div>
   );

@@ -19,6 +19,7 @@ export default function InlineEdit({
   mono = false,
   min,
   ariaLabel,
+  canEdit = true,
 }: {
   value: string;
   placeholder: string;
@@ -27,6 +28,7 @@ export default function InlineEdit({
   mono?: boolean;
   min?: number;
   ariaLabel?: string;
+  canEdit?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -36,6 +38,16 @@ export default function InlineEdit({
   useEffect(() => {
     if (!editing) setDraft(value);
   }, [value, editing]);
+
+  // 非 owner 只读：渲染纯文本值（空则占位），无 hover 铅笔、不可点。
+  if (!canEdit) {
+    const empty = value.trim() === "";
+    return (
+      <span className={`loop-adp__ro${empty ? " loop-adp__ro--empty" : ""}${mono ? " loop-mono-text" : ""}`}>
+        {empty ? placeholder : value}
+      </span>
+    );
+  }
 
   const commit = async () => {
     if (busy) return;

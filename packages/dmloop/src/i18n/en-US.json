@@ -487,13 +487,6 @@
     "visibility": "Visibility",
     "visWorkspace": "Workspace",
     "visPrivate": "Private",
-    "thinking": "Thinking",
-    "thinkingLevel": {
-      "none": "Off",
-      "light": "Light",
-      "medium": "Medium",
-      "deep": "Deep"
-    },
     "concurrency": "Concurrency",
     "runtimeRequired": "Please select a runtime",
     "customArgs": "Custom args",

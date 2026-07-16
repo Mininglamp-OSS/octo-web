@@ -491,6 +491,12 @@
 .loop-adp__edit:hover .loop-adp__edit-ico { opacity: 1; }
 .loop-adp__edit-input { width: 100%; }
 
+/* 非 owner 只读：纯文本值（继承所在上下文的字号/颜色），空值走浅灰占位 */
+.loop-adp__ro { font: inherit; color: inherit; word-break: break-word; }
+.loop-adp__ro--empty { color: var(--semi-color-text-3, #b8bcc8); }
+.loop-adp__rt-ro { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; }
+.loop-adp__rt-ro .loop-adp__edit-val { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* ---- 运行时触发器：Monitor/Cloud 图标 + 名字(mono) + 右侧在线点 ---- */
 .loop-adp__rt-trigger { width: 100%; }
 .loop-adp__rt-trigger .loop-adp__edit-val { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -612,14 +618,14 @@
 .loop-mdp__plus { flex: 0 0 auto; }
 .loop-mdp__custom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .loop-mdp__hint { margin: 0; padding: 8px; text-align: center; font-size: 12px; color: var(--semi-color-text-2, #6b7075); }
+.loop-mdp__sep { height: 1px; margin: 4px 6px; background: var(--semi-color-border, rgba(0, 0, 0, 0.08)); }
 .loop-mdp__clear {
   display: block;
   width: 100%;
-  margin-top: 4px;
   border: none;
-  border-top: 1px solid var(--semi-color-border, rgba(0, 0, 0, 0.08));
   background: transparent;
-  padding: 8px;
+  border-radius: 6px;
+  padding: 7px 8px;
   text-align: left;
   font-size: 12px;
   color: var(--semi-color-text-2, #6b7075);
@@ -627,6 +633,30 @@
   transition: background-color 120ms ease;
 }
 .loop-mdp__clear:hover { background: var(--semi-color-fill-0, #f5f6f8); }
+
+/* ---- loop 皮肤覆盖：模型弹框输入 + 并发数字框，静态细边 + focus 外发光环（对齐 dmloop 搜索框的动态手感） ---- */
+.loop-mdp__search .semi-input-wrapper,
+.loop-adp__edit-input.semi-input-wrapper,
+.loop-adp__edit-input .semi-input-wrapper {
+  background-color: var(--semi-color-bg-0, #fff);
+  border: 1px solid var(--semi-color-border, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  box-shadow: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.loop-mdp__search .semi-input-wrapper:hover,
+.loop-adp__edit-input.semi-input-wrapper:hover,
+.loop-adp__edit-input .semi-input-wrapper:hover {
+  border-color: var(--semi-color-primary, #6a5cff);
+}
+.loop-mdp__search .semi-input-wrapper:focus-within,
+.loop-adp__edit-input.semi-input-wrapper:focus-within,
+.loop-adp__edit-input .semi-input-wrapper:focus-within {
+  border-color: var(--semi-color-primary, #6a5cff);
+  box-shadow: 0 0 0 3px var(--semi-color-primary-light-default, rgba(106, 92, 255, 0.18));
+}
+/* 并发数字框：隐藏 Semi 步进按钮，纯手填，视觉更干净 */
+.loop-adp__edit-input .semi-input-number-suffix-btns { display: none; }
 
 .loop-adp__owner { display: inline-flex; align-items: center; gap: 6px; }
 .loop-adp__owner-ava {

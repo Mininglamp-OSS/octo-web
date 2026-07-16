@@ -24,11 +24,13 @@ export default function RuntimePicker({
   runtimes,
   currentUserId,
   onChange,
+  canEdit = true,
 }: {
   value: string;
   runtimes: RuntimeDevice[];
   currentUserId: string | null;
   onChange: (runtimeId: string) => void | Promise<void>;
+  canEdit?: boolean;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -83,6 +85,17 @@ export default function RuntimePicker({
   const dot = (online: boolean) => (
     <span className={`loop-rtp__dot${online ? " is-online" : ""}`} aria-hidden />
   );
+
+  // 非 owner 只读：静态展示当前运行时（图标 + 名字 + 在线点），无下拉。
+  if (!canEdit) {
+    return (
+      <span className="loop-adp__rt-ro">
+        <TriggerIcon size={13} className="loop-adp__rt-ico" />
+        <span className="loop-adp__edit-val loop-mono-text">{selected?.name ?? "—"}</span>
+        {selected && dot(selected.status === "online")}
+      </span>
+    );
+  }
 
   const menu = (
     <div className="loop-rtp__pop">

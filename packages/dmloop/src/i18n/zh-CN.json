@@ -487,13 +487,6 @@
     "visibility": "可见性",
     "visWorkspace": "工作区",
     "visPrivate": "私有",
-    "thinking": "思考等级",
-    "thinkingLevel": {
-      "none": "关闭",
-      "light": "轻度",
-      "medium": "中度",
-      "deep": "深度"
-    },
     "concurrency": "并发数",
     "runtimeRequired": "请选择运行环境",
     "customArgs": "自定义参数",
