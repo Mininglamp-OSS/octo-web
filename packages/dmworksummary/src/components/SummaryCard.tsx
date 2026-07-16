@@ -37,6 +37,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
 
     return (
         <div className="summary-card" onClick={() => onClick(task.task_id)}>
+            {task.needs_attention && <span className="summary-card-attention-dot" aria-label={t("summary.list.needsAttention")} />}
             <div className="summary-card-header">
                 <OverflowTooltip className="summary-card-title" title={task.title || task.task_no}>
                     {task.title || task.task_no}

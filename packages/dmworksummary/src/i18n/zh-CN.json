@@ -122,6 +122,7 @@
     "title": "智能总结"
   },
   "list": {
+    "needsAttention": "需要关注",
     "title": "智能总结",
     "allStatus": "全部状态",
     "createTooltip": "新建总结",

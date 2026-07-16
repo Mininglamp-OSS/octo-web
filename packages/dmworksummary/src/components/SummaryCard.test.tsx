@@ -65,6 +65,22 @@ function makeItem(overrides: Record<string, unknown> = {}) {
 
 const noop = () => {};
 
+describe('SummaryCard attention dot', () => {
+    it('needs_attention=true 时显示关注红点', () => {
+        const { container } = render(
+            <SummaryCard task={makeItem({ needs_attention: true }) as any} onClick={noop} onDelete={noop} />,
+        );
+        expect(container.querySelector('.summary-card-attention-dot')).not.toBeNull();
+    });
+
+    it('无需关注时不显示红点', () => {
+        const { container } = render(
+            <SummaryCard task={makeItem({ needs_attention: false }) as any} onClick={noop} onDelete={noop} />,
+        );
+        expect(container.querySelector('.summary-card-attention-dot')).toBeNull();
+    });
+});
+
 describe('SummaryCard isScheduledTask', () => {
     it('schedule_id > 0 时使用定时删除确认文案', () => {
         render(

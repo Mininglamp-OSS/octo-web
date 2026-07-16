@@ -150,6 +150,7 @@ export interface PersonalResult {
     submitted_at: string | null;
     generated_at: string | null;
     msg_count: number;
+    current_version_id?: number | null;
 }
 
 /** 成员状态（BY_PERSON 模式） */
@@ -184,6 +185,12 @@ export interface SummaryListItem {
     origin_channel_type: number;
     created_at: string;
     completed_at: string | null;
+    is_unread?: boolean;
+    has_pending_invitation?: boolean;
+    needs_attention?: boolean;
+    current_result_id?: number | null;
+    current_personal_version_id?: number | null;
+    activity_at?: string | null;
 }
 
 /** 详情 */
@@ -260,6 +267,9 @@ export interface ListSummariesParams {
 export interface ListSummariesResponse {
     items: SummaryListItem[];
     total: number;
+    attention_count: number;
+    unread_count: number;
+    pending_invitation_count: number;
 }
 
 /** 定时配置参与者（participant_config 内嵌，含 V5 一次性确认态） */

@@ -291,6 +291,13 @@ export async function getSummaryDetail(taskId: number | string): Promise<Summary
     return get(`/summaries/${encodeURIComponent(String(taskId))}`);
 }
 
+export async function markSummaryRead(
+    taskId: number,
+    cursors: { team_result_id?: number; personal_version_id?: number },
+): Promise<{ is_unread: boolean; has_pending_invitation: boolean; needs_attention: boolean }> {
+    return post(`/summaries/${taskId}/read`, cursors);
+}
+
 export async function deleteSummary(taskId: number): Promise<void> {
     return del(`/summaries/${taskId}`);
 }

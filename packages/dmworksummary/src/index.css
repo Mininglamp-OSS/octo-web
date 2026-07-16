@@ -132,6 +132,7 @@
 
 /* ========== Summary Card ========== */
 .summary-card {
+    position: relative;
     border: 1px solid var(--semi-color-border);
     border-radius: 12px;
     padding: 18px;
@@ -139,6 +140,20 @@
     transition: all 0.2s;
     background: transparent;
     box-shadow: none;
+}
+
+.summary-card-attention-dot {
+    position: absolute;
+    top: var(--wk-sp-2);
+    right: var(--wk-sp-2);
+    width: var(--wk-sp-2);
+    height: var(--wk-sp-2);
+    border-radius: 50%;
+    background: var(--semi-color-danger);
+}
+
+.summary-card .summary-card-header {
+    padding-right: var(--wk-sp-3);
 }
 
 .summary-card:hover {

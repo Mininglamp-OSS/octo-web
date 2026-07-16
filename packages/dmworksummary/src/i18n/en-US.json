@@ -122,6 +122,7 @@
     "title": "AI Summary"
   },
   "list": {
+    "needsAttention": "Needs attention",
     "title": "AI Summary",
     "allStatus": "All statuses",
     "createTooltip": "New summary",

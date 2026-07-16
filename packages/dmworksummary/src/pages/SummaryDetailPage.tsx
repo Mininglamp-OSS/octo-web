@@ -488,6 +488,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 lastKnownStatus: detail.status,
                 workflowGateContent: false,
             });
+            if (detail.status === TaskStatus.COMPLETED && detail.result_id) {
+                const markRead = api.markSummaryRead;
+                if (markRead) void markRead(detail.task_id, { team_result_id: detail.result_id }).then((attention) => {
+                    if (this.taskId === requestTaskId && !attention.needs_attention) {
+                        window.dispatchEvent(new CustomEvent("summary-read", { detail: { taskId: detail.task_id } }));
+                    }
+                }).catch(() => { /* keep unread on failure */ });
+            }
             if (detail.status === TaskStatus.COMPLETED && detail.result) {
                 this.loadVersions(detail.task_id);
             }
@@ -597,6 +605,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 });
             }
             this.startPersonalPoll(result.worker_status);
+            if (result.current_version_id && result.content?.trim()) {
+                const markRead = api.markSummaryRead;
+                if (markRead) void markRead(requestTaskId, { personal_version_id: result.current_version_id }).then((attention) => {
+                    if (this.taskId === requestTaskId && !attention.needs_attention) {
+                        const numericTaskId = this.state.detail?.task_id;
+                        if (numericTaskId) {
+                            window.dispatchEvent(new CustomEvent("summary-read", { detail: { taskId: numericTaskId } }));
+                        }
+                    }
+                }).catch(() => { /* keep unread on failure */ });
+            }
             if (result.content?.trim()) {
                 this.loadPersonalVersions(requestTaskId);
             } else if (this.taskId == null || this.taskId === requestTaskId) {
@@ -3109,6 +3128,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // 迟到（已切 task）：不回显新 task（confirmingSchedule 由 finally 复位）。
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.scheduleConfirmed"));
+            WKApp.mittBus.emit("summary-attention-refresh-requested" as any);
             // 复用现有加载路径刷新（不新增任何出站推送）：重拉 schedule 让按钮消失。
             this.loadSchedule(scheduleItem.schedule_id);
         } catch (err: any) {
