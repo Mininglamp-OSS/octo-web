@@ -826,8 +826,16 @@ export const TableReorderHandle = Extension.create({
 
     // Bound once so add/removeEventListener pair up; `activeView` is set on drag start.
     let activeView: EditorView | null = null
-    const onDocMove = (event: MouseEvent) => {
+    const onDocMove = (event: PointerEvent) => {
       if (!drag || !activeView) return
+      // Only the CAPTURED pointer drives the drag. Listeners sit at the document capture phase, and
+      // setPointerCapture only RETARGETS the owning pointer's events to the handle — it does not
+      // suppress a second, uncaptured pointer's events. Without this filter a second finger's
+      // pointermove would drive the drop-target probe (and `releasedOutsideViewport`) against the
+      // wrong pointer's coordinates. When there is no live capture id (`capturedPointerId == null` —
+      // a synthetic / jsdom pointer that could not be captured) we keep the original unfiltered
+      // behaviour so those paths still work (octo-docs-backend#76 P1-2).
+      if (capturedPointerId != null && event.pointerId !== capturedPointerId) return
       // The primary button was released while we could not see it — the classic "let go outside the
       // window" interruption: the pointer left the window mid-drag, the mouseup fired over another
       // app (so our document `mouseup` listener never ran), and the button is now up as the pointer
@@ -908,8 +916,13 @@ export const TableReorderHandle = Extension.create({
         event.clientY > window.innerHeight
       )
     }
-    const onDocUp = (event: MouseEvent) => {
+    const onDocUp = (event: PointerEvent) => {
       if (!activeView) return
+      // Ignore a foreign pointer's release: a second, uncaptured pointer's `pointerup` still reaches
+      // this capture-phase listener, and without the filter it would call endDrag() and commit the
+      // reorder mid-first-pointer-drag. Only the captured pointer ends the drag; the null-capture
+      // (synthetic / jsdom) path keeps the original behaviour (octo-docs-backend#76 P1-2).
+      if (capturedPointerId != null && event.pointerId !== capturedPointerId) return
       if (releasedOutsideViewport(event)) {
         cancelDrag()
         return
@@ -917,7 +930,12 @@ export const TableReorderHandle = Extension.create({
       endDrag(activeView)
     }
     // Interruption handlers: an interrupted drag must abort cleanly, never commit a move.
-    const onDocCancel = () => cancelDrag()
+    const onDocCancel = (event: PointerEvent) => {
+      // A pointercancel for an UNRELATED pointer (a second finger the OS cancelled) must not abort our
+      // drag. Only the captured pointer's cancel aborts; null-capture keeps the original behaviour.
+      if (capturedPointerId != null && event.pointerId !== capturedPointerId) return
+      cancelDrag()
+    }
     // The OS/browser revoked our pointer capture (pointer stolen, tab hidden, gesture recognised) without
     // a pointerup reaching us — treat it exactly like pointercancel and abort. removeDragListeners detaches
     // this before our own releasePointerCapture, so it only fires for genuine EXTERNAL capture loss.
@@ -928,6 +946,14 @@ export const TableReorderHandle = Extension.create({
     }
 
     const beginDrag = (view: EditorView, kind: 'row' | 'col', event: PointerEvent) => {
+      // A drag is already in flight — bail. Both rowHandle and colHandle carry live `pointerdown`
+      // listeners at once, so a SECOND pointerdown (a second finger on the other handle, a stylus, or
+      // a stray re-entry) while a drag is active would otherwise overwrite `drag`/`ordinal`/
+      // `capturedPointerId`/`capturedHandle` in place — leaking the first pointer's setPointerCapture
+      // (never released) and corrupting the drag identity so the move commits to the wrong row/column
+      // (multi-touch re-entrancy). One drag owns the pipeline until it ends; the second pointerdown is
+      // a no-op (octo-docs-backend#76 P1-1).
+      if (drag) return
       // Only a primary (left) button starts a reorder. A right/middle-click on the grab handle must
       // not begin a drag — it would fight the context menu and, with no matching left mouseup, could
       // strand the drag state (octo-docs-backend#76 review).
