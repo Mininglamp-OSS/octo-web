@@ -222,8 +222,7 @@
     "bookmark": "Bookmark",
     "collapsible": "Collapsible block",
     "callout": "Callout",
-    "mathBlock": "Block formula",
-    "freeze": "Freeze panes"
+    "mathBlock": "Block formula"
   },
   "table": {
     "addRowBefore": "Insert row above",
@@ -235,12 +234,6 @@
     "deleteTable": "Delete table",
     "pickerHint": "Pick a size",
     "pickerLabel": "Table size",
-    "freeze": "Freeze",
-    "freezeHeaderRow": "Freeze header row",
-    "freezeThroughRow": "Freeze up to this row",
-    "freezeFirstColumn": "Freeze first column",
-    "freezeThroughColumn": "Freeze up to this column",
-    "unfreeze": "Unfreeze",
     "reorderConflict": "The table was changed by a collaborator, so the reorder was cancelled. Please try again."
   },
   "callout": {

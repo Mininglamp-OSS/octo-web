@@ -12,7 +12,7 @@ import { promptAndInsertMath } from './mathInsert.ts'
 import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { INDENT_MAX_LEVEL } from './ParagraphIndent.ts'
-import { TableGridPicker, TableFreezeControl } from './TableControls.tsx'
+import { TableGridPicker } from './TableControls.tsx'
 import { capturePaintMarks, applyPaintMarks } from './formatPainter.ts'
 import { HIGHLIGHT_COLORS, TEXT_COLORS, normalizeHexColor } from './colorPalette.ts'
 import { t } from '../octoweb/index.ts'
@@ -1594,7 +1594,6 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <HighlightControl editor={editor} />
       <TextColorControl editor={editor} />
       <TableGridPicker editor={editor} />
-      <TableFreezeControl editor={editor} />
       <Btn label="Image" title={t('docs.toolbar.image')} onClick={() => void pickAndUploadImage(editor)} />
       <Btn label="File" title={t('docs.toolbar.file')} onClick={() => void pickAndUploadFile(editor)} />
       <Btn label="Bookmark" title={t('docs.toolbar.bookmark')} onClick={() => void promptAndInsertBookmark(editor)} />
