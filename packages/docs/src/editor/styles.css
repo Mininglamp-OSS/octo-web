@@ -2052,6 +2052,21 @@ body.octo-row-resizing {
   /* Inert by default: a plain block wrapper around the cell's content (matches the pre-v19 flow). */
   display: block;
 }
+/* XIN-1289: keep the cell's content flush to the top edge so a shrunk (clipped) row shows its FIRST
+   line from the top and clips the overflow at the row's bottom edge — the Sheets/Word behaviour the
+   product signed off on. Without this the block child's default vertical margin (paragraphs carry
+   `margin: 1em 0`) pushes the first line down INSIDE the clip window; and because the fixed-row clip
+   below sets `overflow:hidden` it forms a block-formatting context that suppresses margin-collapse, so
+   that top margin becomes real space and the first line ends up sliced mid-glyph ("露半截") instead of
+   starting at the top. Zeroing the leading/trailing margins (not the inter-block gaps) lands the first
+   line on the cell top in all three states (editor, read-only preview, version diff — all share this
+   NodeView wrapper) while preserving spacing between stacked paragraphs. */
+.octo-cell-clip > :first-child {
+  margin-top: 0;
+}
+.octo-cell-clip > :last-child {
+  margin-bottom: 0;
+}
 .octo-prose table tr.octo-row-fixed .octo-cell-clip {
   max-height: calc(var(--octo-row-h) - 12px);
   overflow: hidden;
