@@ -23,6 +23,8 @@ import Collaboration from '@tiptap/extension-collaboration'
 import { Table } from '@tiptap/extension-table'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
+import { TextSelection } from '@tiptap/pm/state'
+import { TableMap, addRowBefore } from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { TableRowHeight, TableRowResize } from '../src/editor/TableRowHeight.ts'
 
@@ -62,6 +64,19 @@ function rowsOf(editor: Editor): { pos: number; node: PMNode }[] {
     return true
   })
   return rows
+}
+
+/** The first table node + the position just before it (for a concurrent structural edit). */
+function firstTable(editor: Editor): { node: PMNode; pos: number } | null {
+  let found: { node: PMNode; pos: number } | null = null
+  editor.state.doc.descendants((node, pos) => {
+    if (!found && node.type.name === 'table') {
+      found = { node, pos }
+      return false
+    }
+    return true
+  })
+  return found
 }
 
 const DOC =
@@ -121,6 +136,22 @@ function Harness(): React.ReactElement {
         if (!el || el.style.display === 'none') return null
         const r = el.getBoundingClientRect()
         return { left: r.left, top: r.top, width: r.width, height: r.height }
+      },
+      // First-cell text of the Nth row on peer A (to identify which row a height landed on).
+      rowTextA: (i: number): string | null => rowsOf(edA!)[i]?.node.textContent ?? null,
+      // Number of rows in peer A's first table.
+      rowCountA: (): number => rowsOf(edA!).length,
+      // Concurrent REMOTE structural edit: peer B inserts a fresh row above its first row. Used mid-drag
+      // by the driver to reproduce the #823 RC race (a remote insert that shifts the dragged row while
+      // A holds the drag). It bridges to A exactly like a real collaborator's edit.
+      insertRowTopB: (): void => {
+        if (!edB) return
+        const table = firstTable(edB)
+        if (!table) return
+        const map = TableMap.get(table.node)
+        const $inside = edB.state.doc.resolve(table.pos + 1 + map.map[0] + 1)
+        edB.view.dispatch(edB.state.tr.setSelection(TextSelection.near($inside)))
+        addRowBefore(edB.state, edB.view.dispatch)
       },
     }
     ;(window as unknown as { __rowHeightHarness: typeof harness }).__rowHeightHarness = harness

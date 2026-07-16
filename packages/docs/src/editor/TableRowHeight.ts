@@ -23,9 +23,21 @@
 //
 // COLLABORATION: `height` is an ordinary node attribute, so a resize lands as one plain transaction
 // (`setNodeMarkup`) that y-prosemirror syncs like any other edit — no bespoke collab code. It is a
-// Yjs scalar with last-write-wins semantics and involves NO structural change to the table grid, so
-// (unlike the #76 reorder) two peers resizing the same row concurrently simply converge on the last
-// write; there is no grid-rebuild race to guard against.
+// Yjs scalar with last-write-wins semantics and involves NO grid REBUILD (unlike the #76 reorder's
+// whole-table replace), so two peers resizing the same row simply converge on the last write.
+//
+// There is, however, one concurrency race the drag DOES have to guard against — the exact RC blocker
+// the #823 review flagged: `beginDrag` captures the dragged row's document position at mousedown, but
+// the height is only committed on mouseup. If a remote peer inserts or deletes a row (or otherwise
+// changes the dragged table's structure) DURING the drag, that captured absolute position is remapped
+// under us and now addresses a DIFFERENT row — committing to it would silently write the height to the
+// wrong row. So, mirroring TableReorderHandle's plan-B guard (#76 / XIN-1225), the drag pins the row by
+// a STABLE IDENTITY (the dragged table's ORDINAL among tables in document order + the row's index within
+// it) and snapshots every table's signature at drag start; a mid-drag transaction that changes the
+// dragged table's signature latches `concurrentEdit`, and the commit then ABORTS (a clear toast, zero
+// dispatch) rather than write the height to a row the collaborator moved. When nothing concurrent
+// touches the dragged table, the row is re-resolved by that ordinal + index at commit, so the write
+// always lands on the row the user actually grabbed. See `resolveRowByOrdinal` / `rowIdentity` below.
 //
 // COEXISTENCE (hit-zone / z-index): the row handle sits on the row's BOTTOM edge (horizontal,
 // `row-resize` cursor). That is spatially ORTHOGONAL to the column-resize handle (#749 — interior
@@ -42,6 +54,8 @@ import TableRow from '@tiptap/extension-table-row'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Node as PMNode } from '@tiptap/pm/model'
+import { draggedTableConflict, tableSignatures } from './TableReorderHandle.ts'
+import { t } from '../octoweb/index.ts'
 
 /** Minimum row height (px) a drag can shrink a row to — the row-height analogue of prosemirror's
  * `cellMinWidth` (25). Kept comfortably above a single line's content box so a row can never be
@@ -198,6 +212,96 @@ function cellDomAt(view: EditorView, clientX: number, clientY: number): HTMLElem
   return null
 }
 
+/** The STABLE IDENTITY of the row being resized, captured at drag start: the dragged table's ORDINAL
+ * among tables in document order + the row's index within that table. This is the row-height analogue
+ * of TableReorderHandle's `draggedTableIndex` (#76 / XIN-1225): under real collaboration y-prosemirror
+ * delivers a remote edit as ONE coarse whole-document ReplaceStep that collapses any absolute position,
+ * so the drag-start `rowPos` cannot be trusted at commit — but a table's ordinal and a row's index
+ * within it both survive that step (tree order is preserved). Returns null when `rowPos` no longer
+ * resolves to a table row. */
+export function rowIdentity(doc: PMNode, rowPos: number): { ordinal: number; rowIndex: number } | null {
+  if (rowPos < 0 || rowPos + 1 > doc.content.size) return null
+  let $inside
+  try {
+    $inside = doc.resolve(rowPos + 1)
+  } catch {
+    return null
+  }
+  let tableDepth = -1
+  for (let d = $inside.depth; d > 0; d--) {
+    if ($inside.node(d).type.spec.tableRole === 'table') {
+      tableDepth = d
+      break
+    }
+  }
+  if (tableDepth < 0) return null
+  const rowIndex = $inside.index(tableDepth) // index of the tableRow child holding rowPos
+  const tablePos = $inside.before(tableDepth)
+  let seen = 0
+  let ordinal = -1
+  doc.descendants((node, pos) => {
+    if (node.type.spec.tableRole === 'table') {
+      if (pos === tablePos) ordinal = seen
+      seen++
+      return false // tables don't nest
+    }
+    return true
+  })
+  return ordinal < 0 ? null : { ordinal, rowIndex }
+}
+
+/** Re-resolve the dragged row's document position by its STABLE IDENTITY (table ordinal + row index)
+ * against `doc`, returning the row node + the position just before it (what `setNodeMarkup` needs).
+ * The row-height analogue of TableReorderHandle's `resolveDragSourceByOrdinal`: the ordinal survives a
+ * coarse remote ReplaceStep that would collapse a remapped absolute position, and the row index stays
+ * valid because ANY structural change to the dragged table aborts the commit (see the guard), so if we
+ * reach a commit the dragged table's rows are exactly as they were at drag start. Returns null when the
+ * ordinal no longer resolves to a table or the row index is out of range — a safe no-op. */
+export function resolveRowByOrdinal(
+  doc: PMNode,
+  ordinal: number,
+  rowIndex: number,
+): { rowPos: number; rowNode: PMNode } | null {
+  if (ordinal < 0 || rowIndex < 0) return null
+  let seen = 0
+  let table: { node: PMNode; pos: number } | null = null
+  doc.descendants((node, pos) => {
+    if (node.type.spec.tableRole === 'table') {
+      if (seen === ordinal) table = { node, pos }
+      seen++
+      return false // tables don't nest
+    }
+    return true
+  })
+  if (!table) return null
+  const found: { node: PMNode; pos: number } = table
+  const tableStart = found.pos + 1
+  let rowSeen = 0
+  let result: { rowPos: number; rowNode: PMNode } | null = null
+  found.node.forEach((child, offset) => {
+    if (result || child.type.name !== 'tableRow') {
+      if (child.type.name === 'tableRow') rowSeen++
+      return
+    }
+    if (rowSeen === rowIndex) result = { rowPos: tableStart + offset, rowNode: child }
+    rowSeen++
+  })
+  return result
+}
+
+/** Transient, document-external toast telling the user their row resize was cancelled because a
+ * collaborator changed the same table mid-drag. Lives in <body> (never the Y.Doc), so it cannot
+ * desync collab content — mirrors TableReorderHandle.notifyReorderConflict. */
+function notifyRowResizeConflict(): void {
+  if (typeof document === 'undefined') return
+  const el = document.createElement('div')
+  el.className = 'octo-table-row-resize-error'
+  el.setAttribute('role', 'alert')
+  el.textContent = t('docs.table.rowResizeConflict')
+  document.body.appendChild(el)
+  setTimeout(() => el.remove(), 4000)
+}
+
 /** Self-built table row-height resize handle. */
 export const TableRowResize = Extension.create({
   name: 'tableRowResize',
@@ -207,9 +311,23 @@ export const TableRowResize = Extension.create({
     let guide: HTMLElement | null = null
     // Row armed for resize while idle (the source of a drag that starts on the handle).
     let armed: RowTarget | null = null
-    // Non-null only while a drag is in flight.
-    let drag: { rowPos: number; startY: number; startHeight: number; height: number } | null = null
+    // Non-null only while a drag is in flight. `rowPos` is the drag-start position, kept live for the
+    // guide geometry by remapping it through each mid-drag transaction (a fine-grained fast path); the
+    // COMMIT never trusts it — it re-resolves the row by the coarse-ReplaceStep-proof `ordinal` +
+    // `rowIndex` identity instead (see `commitDrag`).
+    let drag: { rowPos: number; ordinal: number; rowIndex: number; startY: number; startHeight: number; height: number } | null = null
     let activeView: EditorView | null = null
+    // Concurrency guard (mirrors TableReorderHandle's plan-B, #76 / XIN-1225). `concurrentEdit` latches
+    // true when a transaction landing during the drag changes the DRAGGED table's signature — a remote
+    // insert/delete row·column, reorder, merge/split or cell edit on THAT table (see the plugin
+    // `state.apply`). The dragged table is pinned by its stable ORDINAL against `dragBaselineSigs`
+    // (the drag-start signature list), so an edit to prose or another table never latches. When latched,
+    // `commitDrag` aborts rather than write the height to a row the collaborator moved out from under it.
+    let concurrentEdit = false
+    let dragBaselineSigs: (string | null)[] = []
+    // True only while WE dispatch the commit, so the guard does not mistake our own setNodeMarkup for a
+    // concurrent remote edit (belt-and-braces: the height attr is not part of a table signature anyway).
+    let committing = false
 
     const hideHandle = () => {
       if (handle) handle.style.display = 'none'
@@ -271,20 +389,36 @@ export const TableRowResize = Extension.create({
 
     const resetDrag = () => {
       drag = null
+      concurrentEdit = false
+      committing = false
+      dragBaselineSigs = []
       document.body.classList.remove('octo-row-resizing')
       hideGuide()
       hideHandle()
     }
 
     // Commit the dragged height as a single setNodeMarkup transaction (y-prosemirror syncs it like any
-    // edit). Skipped when the height did not change or the row no longer resolves (a safe no-op).
+    // edit). Two ways this is NOT committed, both safe no-ops rather than a wrong write:
+    //   • a collaborator changed the dragged table mid-drag (`concurrentEdit`) — the captured row may
+    //     have moved or been deleted, so we ABORT with a toast instead of writing the height to whatever
+    //     row now sits at the stale position (the #823 RC blocker), and
+    //   • the row no longer resolves by its stable identity, or the height did not actually change.
+    // The target row is re-resolved by the coarse-ReplaceStep-proof `ordinal` + `rowIndex` identity, so
+    // when nothing concurrent touched the table the write lands on exactly the row the user grabbed.
     const commitDrag = (view: EditorView) => {
       if (!drag) return
-      const node = view.state.doc.nodeAt(drag.rowPos)
-      if (node && node.type.name === 'tableRow') {
+      if (concurrentEdit) {
+        notifyRowResizeConflict()
+        view.focus()
+        return
+      }
+      const target = resolveRowByOrdinal(view.state.doc, drag.ordinal, drag.rowIndex)
+      if (target) {
         const next = normalizeRowHeight(drag.height)
-        if ((node.attrs.height ?? null) !== next) {
-          view.dispatch(view.state.tr.setNodeMarkup(drag.rowPos, undefined, { ...node.attrs, height: next }))
+        if ((target.rowNode.attrs.height ?? null) !== next) {
+          committing = true
+          view.dispatch(view.state.tr.setNodeMarkup(target.rowPos, undefined, { ...target.rowNode.attrs, height: next }))
+          committing = false
         }
       }
       view.focus()
@@ -319,7 +453,22 @@ export const TableRowResize = Extension.create({
       if (event.button !== 0 || !view.editable || !armed) return
       event.preventDefault()
       const startHeight = armed.rowDom.getBoundingClientRect().height
-      drag = { rowPos: armed.rowPos, startY: event.clientY, startHeight, height: Math.round(startHeight) }
+      // Pin the dragged row by its stable identity (table ordinal + row index) so the commit survives a
+      // concurrent remote edit that remaps absolute positions (#823 RC / mirrors #76 XIN-1225).
+      const identity = rowIdentity(view.state.doc, armed.rowPos)
+      drag = {
+        rowPos: armed.rowPos,
+        ordinal: identity ? identity.ordinal : -1,
+        rowIndex: identity ? identity.rowIndex : -1,
+        startY: event.clientY,
+        startHeight,
+        height: Math.round(startHeight),
+      }
+      // Snapshot every table's signature so the guard can compare the dragged table's slot (by ordinal)
+      // on each mid-drag transaction. Reset the latch for this fresh drag.
+      dragBaselineSigs = tableSignatures(view.state.doc)
+      concurrentEdit = false
+      committing = false
       activeView = view
       document.body.classList.add('octo-row-resizing')
       document.addEventListener('mousemove', onDocMove, true)
@@ -331,6 +480,25 @@ export const TableRowResize = Extension.create({
     return [
       new Plugin({
         key: tableRowResizePluginKey,
+        // Detect a concurrent edit to the DRAGGED table on every transaction that lands during the drag
+        // — crucially the REMOTE ones y-prosemirror applies for collaborators. The dragged table is
+        // pinned by its stable ORDINAL (drag.ordinal) against the drag-start signature list, which
+        // survives the coarse whole-document ReplaceStep y-tiptap emits for a remote edit (#76 XIN-1225).
+        // This plugin state holds no value of its own; it exists only for the guard side effect + to keep
+        // the guide's `rowPos` live for fine-grained (local) edits. `committing` skips our own commit.
+        state: {
+          init: () => null,
+          apply: (tr, _value, _oldState, newState) => {
+            if (drag && tr.docChanged && !committing) {
+              if (!concurrentEdit && draggedTableConflict(newState.doc, dragBaselineSigs, drag.ordinal)) {
+                concurrentEdit = true
+              }
+              // Best-effort remap for the guide geometry only; the commit never trusts this position.
+              drag.rowPos = tr.mapping.map(drag.rowPos)
+            }
+            return null
+          },
+        },
         view(view) {
           const wrapper = view.dom.parentElement
           handle = document.createElement('div')
@@ -360,6 +528,9 @@ export const TableRowResize = Extension.create({
               handle = guide = null
               activeView = null
               drag = null
+              concurrentEdit = false
+              committing = false
+              dragBaselineSigs = []
             },
           }
         },

@@ -3127,7 +3127,8 @@ body.octo-row-resizing {
 .octo-file-error,
 .octo-bookmark-status,
 .octo-bookmark-error,
-.octo-table-reorder-error {
+.octo-table-reorder-error,
+.octo-table-row-resize-error {
   position: fixed;
   bottom: 16px;
   left: 50%;
@@ -3145,7 +3146,8 @@ body.octo-row-resizing {
 }
 .octo-file-error,
 .octo-bookmark-error,
-.octo-table-reorder-error {
+.octo-table-reorder-error,
+.octo-table-row-resize-error {
   background: #e03131;
 }
 

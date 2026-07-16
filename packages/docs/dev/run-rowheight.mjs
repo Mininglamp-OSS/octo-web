@@ -102,6 +102,70 @@ if (!handle) {
   await page.screenshot({ path: `${OUT}/rowheight-after.png` })
 }
 
+// RH04 (#823 RC) — a concurrent REMOTE row insert during the drag must never write the height to the
+// wrong row. Re-mount fresh, grab row 1's bottom edge, hold the drag, have peer B insert a row ABOVE
+// row 1 (which shifts the dragged row down), then release. With the concurrency guard the commit ABORTS
+// (data-safe): no row is left with a wrongly-applied explicit height. Before the fix, the commit wrote
+// the dragged height to the stale absolute position — i.e. onto the wrong row — which this catches.
+await page.evaluate(() => window.__rowHeightHarness.mount())
+await page.waitForTimeout(250)
+
+console.log('\nRH04 — concurrent remote insert-row-above during the drag must not resize the wrong row')
+const rc = await page.evaluate(() => ({ rect: window.__rowHeightHarness.rowRectA(0), count: window.__rowHeightHarness.rowCountA() }))
+if (!rc.rect) {
+  fail('RH04 row 0 rect not found')
+} else {
+  const grabX = rc.rect.left + rc.rect.width / 4
+  const bottomY = rc.rect.top + rc.rect.height
+  await page.mouse.move(grabX, bottomY - 1)
+  await page.waitForTimeout(120)
+  const handle = await page.evaluate(() => window.__rowHeightHarness.handleRect())
+  if (!handle) {
+    fail('RH04 row-resize handle not visible on hover')
+  } else {
+    const startX = handle.left + handle.width / 2
+    const startY = handle.top + handle.height / 2
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(startX, startY + 30, { steps: 4 })
+    // Mid-drag: a remote collaborator inserts a row above the dragged row (shifts it down by one).
+    await page.evaluate(() => window.__rowHeightHarness.insertRowTopB())
+    await page.waitForTimeout(60)
+    await page.mouse.move(startX, startY + 60, { steps: 4 })
+    await page.mouse.up()
+    await page.waitForTimeout(150)
+
+    const res = await page.evaluate(() => {
+      const n = window.__rowHeightHarness.rowCountA()
+      const heights = []
+      const texts = []
+      for (let i = 0; i < n; i++) {
+        heights.push(window.__rowHeightHarness.rowHeightA(i))
+        texts.push(window.__rowHeightHarness.rowTextA(i))
+      }
+      return { n, heights, texts }
+    })
+    console.log('  after concurrent insert — rows:', JSON.stringify(res))
+
+    // The remote insert landed (row count grew), so the drag genuinely raced a structural change.
+    if (res.n === rc.count + 1) {
+      ok(`RH04 remote insert applied mid-drag (rows ${rc.count} → ${res.n})`)
+    } else {
+      fail(`RH04 expected the remote insert to add a row (was ${rc.count}, now ${res.n})`)
+    }
+    // Data-safety: the originally-dragged row ("r1…") must NOT have been given an explicit height on the
+    // wrong row. With the guard the commit aborts, so every row stays height=null.
+    const wrongWrite = res.texts.some((t, i) => res.heights[i] != null)
+    if (!wrongWrite) {
+      ok('RH04 concurrent structural edit → resize safely aborted, no row got a wrong height')
+    } else {
+      const i = res.heights.findIndex((h) => h != null)
+      fail(`RH04 height ${res.heights[i]} written to row "${res.texts[i]}" despite a concurrent structural edit (wrong-row write)`)
+    }
+    await page.screenshot({ path: `${OUT}/rowheight-concurrent.png` })
+  }
+}
+
 await browser.close()
 if (failed) {
   console.error(`\n=== ROW-HEIGHT HARNESS FAILED (${failed}) ===`)
