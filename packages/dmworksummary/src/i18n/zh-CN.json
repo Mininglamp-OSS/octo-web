@@ -30,8 +30,21 @@
       "generationTime": "生成用时",
       "generating": "生成中…",
       "error": "出错",
-      "streamInterrupted": "流式连接已断,已切换到普通模式"
-    }
+      "streamInterrupted": "流式连接已断,已切换到普通模式",
+      "progress": {
+        "distill": "正在分段提炼要点",
+        "understand": "正在理解需求",
+        "retrieve": "正在检索聊天记录",
+        "filter": "正在筛选相关内容",
+        "compose": "正在汇总生成总结",
+        "reply": "正在生成回复",
+        "fallback": "处理中"
+      },
+      "errorMessage": {
+        "sseNeedsProfile": "SSE 模式需要 profile"
+      }
+    },
+    "untitled": "无标题"
   },
   "action": {
     "accept": "同意",
@@ -415,7 +428,7 @@
     "regenerateTopicLabel": "提示词",
     "adjustSummaryTitle": "调整总结",
     "refineAction": "按意见调整",
-    "refineSuccess": "已按意见调整总结",
+    "refineSuccess": "修改成功，已更新到版本 {{version}}",
     "refineModeTitle": "按意见调整当前结果",
     "refineModeDesc": "基于当前总结局部修改，不重新获取消息，尽量保留未提到的内容。",
     "fullRegenerateModeTitle": "全部重新生成",
@@ -492,7 +505,6 @@
     "refineEmptyInput": "请输入修改需求",
     "refinePlaceholder": "输入修改需求，如「把风险章节扩充成一整段」",
     "refineSubmit": "提交修改",
-    "refineSuccess": "修改成功，已更新到版本 {{version}}",
     "refineNotSupported": "本总结不支持增量修改",
     "refineNotCreator": "你不是本总结的创建者，无法修改",
     "refineNoSnapshot": "本总结数据版本较老，无法增量修改",

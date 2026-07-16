@@ -30,8 +30,21 @@
       "generationTime": "Generation time",
       "generating": "Generating...",
       "error": "Error",
-      "streamInterrupted": "Stream interrupted, fell back to normal mode"
-    }
+      "streamInterrupted": "Stream interrupted, fell back to normal mode",
+      "progress": {
+        "distill": "Distilling key points",
+        "understand": "Understanding your request",
+        "retrieve": "Retrieving chat history",
+        "filter": "Filtering relevant content",
+        "compose": "Composing the summary",
+        "reply": "Generating reply",
+        "fallback": "Processing"
+      },
+      "errorMessage": {
+        "sseNeedsProfile": "SSE mode requires a profile"
+      }
+    },
+    "untitled": "Untitled"
   },
   "action": {
     "accept": "Accept",
@@ -415,7 +428,7 @@
     "regenerateTopicLabel": "Prompt",
     "adjustSummaryTitle": "Adjust summary",
     "refineAction": "Apply feedback",
-    "refineSuccess": "Summary adjusted",
+    "refineSuccess": "Refinement successful, updated to version {{version}}",
     "refineModeTitle": "Adjust current result",
     "refineModeDesc": "Make local changes based on the current summary without fetching messages again.",
     "fullRegenerateModeTitle": "Regenerate from scratch",
@@ -492,7 +505,6 @@
     "refineEmptyInput": "Please enter refinement instructions",
     "refinePlaceholder": "Enter refinement instructions, e.g. \"Expand the risk section into a full paragraph\"",
     "refineSubmit": "Submit Refinement",
-    "refineSuccess": "Refinement successful, updated to version {{version}}",
     "refineNotSupported": "This summary does not support refinement",
     "refineNotCreator": "You are not the creator of this summary and cannot modify it",
     "refineNoSnapshot": "This summary data version is too old and cannot be refined",

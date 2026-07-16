@@ -295,11 +295,34 @@ export async function createSummary(params: CreateSummaryParams): Promise<{ task
  * POST /summary/api/v1/summaries/agent
  * 让后端 agent 自主总结当前对话的产出内容，落库为可检索的交付物。
  * 响应与传统 createSummary 同构：{ task_id, task_no, status, created_at }
+ *
+ * SUM-850 blocker F2：严格校验信封 code + task_id，避免后端返 2xx 但业务失败
+ * （{code: 非零, data: null}）时前端误报成功、清空聊天造成数据丢失。
+ * post() helper 只吃 HTTP 错误（transport 层），不校验业务 code，所以此处
+ * 显式走 summaryAxios + 检查 envelope，非 0 code / data 缺 task_id 都抛错，
+ * 让 UI 层 catch 后能保留 chat 状态。参考 agentChat 里的同样模式。
  */
 export async function createAgentSummary(
     params: CreateAgentSummaryParams,
 ): Promise<{ task_id: number; task_no: string; status: number; created_at: string }> {
-    return post('/summaries/agent', params);
+    const resp = await summaryAxios.post(`${BASE}/summaries/agent`, params);
+    const envelopeCode = resp.data?.code;
+    if (envelopeCode !== 0 && envelopeCode !== undefined) {
+        // 业务失败（如 40004 session 无产出）——保留 envelope code 让上层 switch
+        const err = new Error(resp.data?.message || 'create agent summary failed') as Error & {
+            response?: { data?: { code?: number; message?: string } };
+        };
+        err.response = { data: resp.data };
+        throw err;
+    }
+    const data = (resp.data?.data ?? resp.data) as {
+        task_id: number; task_no: string; status: number; created_at: string;
+    } | undefined;
+    if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
+        // 后端返成功但 task_id 缺失/非法 —— 视为保存失败,不能清 chat
+        throw new Error(resp.data?.message || 'create agent summary returned no task_id');
+    }
+    return data;
 }
 
 // Agent 交互式问答（非流式一问一答）。POST /summary/api/v1/agent/chat。

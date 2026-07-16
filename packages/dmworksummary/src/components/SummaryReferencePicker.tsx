@@ -146,7 +146,7 @@ export default class SummaryReferencePicker extends Component<
                                     onClick={() => this.handleSelect(item)}
                                 >
                                     <div className="summary-reference-picker-item-title">
-                                        {item.title || t('summary.common.untitled') || '(无标题)'}
+                                        {item.title || t('summary.common.untitled')}
                                     </div>
                                     <div className="summary-reference-picker-item-meta">
                                         task_id={item.task_id}

@@ -32,18 +32,19 @@ interface AgentChatPanelProps {
 }
 
 /**
- * 抽象阶段 → 用户可见中文文案（前端持有措辞）。
- * 与后端脱敏后的 phase 安全枚举一一对应；后端绝不下发原始工具名。
- * 未知 phase 走兜底"处理中"。
+ * 抽象阶段 → 用户可见文案（前端持有措辞），存 i18n key path，让 t() 在 render
+ * 时查表；与后端脱敏后的 phase 安全枚举一一对应，后端绝不下发原始工具名。
+ * 未知 phase 走兜底 progress.fallback。SUM-850 blocker F1：所有用户可见字符串必须走 i18n。
  */
-const PHASE_LABELS: Record<string, string> = {
-    understand: '正在理解需求',
-    retrieve: '正在检索聊天记录',
-    filter: '正在筛选相关内容',
-    distill: '正在分段提炼要点',
-    compose: '正在汇总生成总结',
-    reply: '正在生成回复',
+const PHASE_LABEL_KEYS: Record<string, string> = {
+    understand: 'summary.common.agentChat.progress.understand',
+    retrieve: 'summary.common.agentChat.progress.retrieve',
+    filter: 'summary.common.agentChat.progress.filter',
+    distill: 'summary.common.agentChat.progress.distill',
+    compose: 'summary.common.agentChat.progress.compose',
+    reply: 'summary.common.agentChat.progress.reply',
 };
+const PHASE_FALLBACK_KEY = 'summary.common.agentChat.progress.fallback';
 
 interface ProgressStep {
     phase: string;
@@ -120,9 +121,10 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
 
     private startSSEStream = async (text: string) => {
         const { sessionId: propsSessionId, profile, onUserMessage, onAssistantMessage } = this.props;
+        const { t } = this.context;
         if (!profile) {
             console.error('[AgentChatPanel] useStream=true but missing profile');
-            Toast.error('SSE 模式需要 profile');
+            Toast.error(t('summary.common.agentChat.errorMessage.sseNeedsProfile'));
             return;
         }
 
@@ -298,7 +300,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                             {progressSteps.map((step, i) => (
                                 <div key={i} className="agent-chat-process-item">
                                     <span className="agent-chat-process-label">
-                                        {PHASE_LABELS[step.phase] || '处理中'}
+                                        {t(PHASE_LABEL_KEYS[step.phase] || PHASE_FALLBACK_KEY)}
                                     </span>
                                     {step.count ? (
                                         <span className="agent-chat-process-detail">
