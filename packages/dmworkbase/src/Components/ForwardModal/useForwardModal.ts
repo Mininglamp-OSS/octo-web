@@ -139,7 +139,8 @@ export function useForwardModal(
   const [keyword, setKeyword] = useState("")
   const [loading, setLoading] = useState(true)
   // 四 Tab：关注 / 最近 / 全部群聊 / 全部私聊（对齐智能纪要选择器）。默认「最近」，
-  // 因转发本地数据源以最近会话为主，落地即有内容，避免默认「关注」空集。
+  // 与转发的高频场景一致（多数转发目标是最近聊过的会话）。「最近」集合走后端
+  // SidebarService recent 权威源（见下方同步 effect），resolve 前 / 无 deviceId 时为空态。
   const [activeTab, setActiveTab] = useState<ChatSelectorTab>("recent")
   // 关注集合（复合 key）：来自 SidebarService follow 同步，供「关注」Tab 过滤。
   const [followedKeys, setFollowedKeys] = useState<Set<string>>(new Set())
