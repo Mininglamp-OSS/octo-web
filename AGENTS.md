@@ -12,6 +12,8 @@
 
 在分配的 worktree 里工作，不要动主仓库目录。
 
+新增业务能力、新页面、新模块，或对既有模块做结构化迁移时，先读 `docs/new-module-development-guide.md`，并在动代码前产出"行为清单、文件地图、PR 范围、验证计划"四件套。
+
 涉及国际化、多语言或用户可见文案时，先读 `docs/i18n-agent-guide.md`，再运行相关校验。
 
 涉及业务代码修改时，先确认模块归属和现有入口。不要因为历史目录里已有相似代码，就默认把新能力继续塞进 `Components/`、`Messages/` 或 `packages/dmwork*`。

@@ -6,7 +6,9 @@ Thanks for your interest in contributing to OCTO! 🐙 We welcome contributions 
 
 1. **Fork** the repo and create your branch from `main`.
 2. **Install dependencies** — see the project's README for setup instructions.
-3. **Make your changes** — follow existing code style.
+3. **Make your changes** — follow existing code style. For frontend feature or module work, read
+   [DEVELOPMENT.md](DEVELOPMENT.md) and
+   [docs/new-module-development-guide.md](docs/new-module-development-guide.md) before coding.
 4. **Add tests** — if you're fixing a bug or adding a feature, please add tests.
 5. **Update docs** — if behavior changes, update the README/docs accordingly.
 6. **Open a Pull Request** — fill in the PR template.
