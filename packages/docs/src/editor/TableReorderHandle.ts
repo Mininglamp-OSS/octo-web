@@ -600,6 +600,13 @@ export const TableReorderHandle = Extension.create({
     // whole drag even though a real button is logically down, and treating the first such move as a
     // release wrongly cancelled the reorder (octo-docs-backend#76 / XIN-1215 headed-Chromium repro).
     let pointerHeldSeen = false
+    // Pointer id + handle we captured at drag start (via setPointerCapture). Capturing routes the
+    // terminal pointerup/pointercancel to us EVEN when the user releases OUTSIDE the window, so a drag
+    // can never be left silently armed for a later stray event to commit (octo-docs-backend#76 FAIL-1 /
+    // XIN-1252). null when capture was unavailable (jsdom / a synthetic pointer with no live id) — the
+    // buttons and release-outside guards below still cover that fallback path.
+    let capturedPointerId: number | null = null
+    let capturedHandle: HTMLElement | null = null
 
     const cancelHide = () => {
       if (hideTimer !== null) {
@@ -760,11 +767,24 @@ export const TableReorderHandle = Extension.create({
     // completed drop), cancelDrag (an interrupted drag) and the plugin destroy all detach the SAME
     // set — a listener left attached after the drag ends would keep firing against stale state.
     const removeDragListeners = () => {
-      document.removeEventListener('mousemove', onDocMove, true)
-      document.removeEventListener('mouseup', onDocUp, true)
+      document.removeEventListener('pointermove', onDocMove, true)
+      document.removeEventListener('pointerup', onDocUp, true)
       document.removeEventListener('pointercancel', onDocCancel, true)
       document.removeEventListener('keydown', onDocKey, true)
       window.removeEventListener('blur', onWindowBlur)
+      // Detach the capture-loss listener BEFORE we release the pointer ourselves, so our own
+      // releasePointerCapture does not re-enter cancelDrag mid-teardown. A genuine external capture loss
+      // still aborts via the listener while it is attached.
+      if (capturedHandle) capturedHandle.removeEventListener('lostpointercapture', onLostCapture)
+      if (capturedHandle && capturedPointerId != null) {
+        try {
+          capturedHandle.releasePointerCapture(capturedPointerId)
+        } catch {
+          /* pointer already gone (release outside / synthetic id) — nothing to release */
+        }
+      }
+      capturedPointerId = null
+      capturedHandle = null
     }
 
     // Clear all drag bookkeeping and restore the resting UI. Critically this un-freezes handle
@@ -778,6 +798,8 @@ export const TableReorderHandle = Extension.create({
       committing = false
       dragBaselineSigs = []
       pointerHeldSeen = false
+      capturedPointerId = null
+      capturedHandle = null
       document.body.classList.remove('octo-table-reordering')
       hideIndicator()
       hideHandles()
@@ -872,17 +894,40 @@ export const TableReorderHandle = Extension.create({
         dropIndex,
       })
     }
-    const onDocUp = () => {
-      if (activeView) endDrag(activeView)
+    // True when a release happened OUTSIDE the window's viewport. Pointer capture (see beginDrag) routes
+    // the terminal pointerup to us even when the user lets go past the window edge. A release outside the
+    // window is an INTERRUPTION, not a drop — the reorder drop target is whatever the mid-drag clamp last
+    // resolved, so committing it moves a row/column the user never intended to drop (octo-docs-backend#76
+    // FAIL-1 / XIN-1252). Abort instead. A drop inside the window resolves normally.
+    const releasedOutsideViewport = (event: MouseEvent): boolean => {
+      if (typeof window === 'undefined') return false
+      return (
+        event.clientX < 0 ||
+        event.clientY < 0 ||
+        event.clientX > window.innerWidth ||
+        event.clientY > window.innerHeight
+      )
+    }
+    const onDocUp = (event: MouseEvent) => {
+      if (!activeView) return
+      if (releasedOutsideViewport(event)) {
+        cancelDrag()
+        return
+      }
+      endDrag(activeView)
     }
     // Interruption handlers: an interrupted drag must abort cleanly, never commit a move.
     const onDocCancel = () => cancelDrag()
+    // The OS/browser revoked our pointer capture (pointer stolen, tab hidden, gesture recognised) without
+    // a pointerup reaching us — treat it exactly like pointercancel and abort. removeDragListeners detaches
+    // this before our own releasePointerCapture, so it only fires for genuine EXTERNAL capture loss.
+    const onLostCapture = () => cancelDrag()
     const onWindowBlur = () => cancelDrag()
     const onDocKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') cancelDrag()
     }
 
-    const beginDrag = (view: EditorView, kind: 'row' | 'col', event: MouseEvent) => {
+    const beginDrag = (view: EditorView, kind: 'row' | 'col', event: PointerEvent) => {
       // Only a primary (left) button starts a reorder. A right/middle-click on the grab handle must
       // not begin a drag — it would fight the context menu and, with no matching left mouseup, could
       // strand the drag state (octo-docs-backend#76 review).
@@ -901,12 +946,34 @@ export const TableReorderHandle = Extension.create({
       dragBaselineSigs = tableSignatures(view.state.doc)
       concurrentEdit = false
       pointerHeldSeen = false
+      capturedPointerId = null
+      capturedHandle = null
       reorderDebug({ phase: 'begin', kind, index: kind === 'col' ? hover.rect.left : hover.rect.top })
       dropIndex = null
       activeView = view
       document.body.classList.add('octo-table-reordering')
-      document.addEventListener('mousemove', onDocMove, true)
-      document.addEventListener('mouseup', onDocUp, true)
+      // Capture the pointer on the grabbed handle so the terminal pointerup/pointercancel is delivered to
+      // US even when the user releases OUTSIDE the window — the real-machine path the old mouse-only drag
+      // lost, leaving the drag armed to commit a wrong move (octo-docs-backend#76 FAIL-1 / XIN-1252).
+      // Best-effort: a synthetic pointer (jsdom / a hand-built event) has no live id, so we swallow the
+      // throw and fall back to the buttons + release-outside guards, which still hold.
+      const grabbed = kind === 'row' ? rowHandle : colHandle
+      if (grabbed && typeof event.pointerId === 'number') {
+        try {
+          grabbed.setPointerCapture(event.pointerId)
+          capturedPointerId = event.pointerId
+          capturedHandle = grabbed
+          grabbed.addEventListener('lostpointercapture', onLostCapture)
+        } catch {
+          capturedPointerId = null
+          capturedHandle = null
+        }
+      }
+      // Drive the drag off POINTER events (not mouse): with capture above, pointerup fires wherever the
+      // release happens, so no interruption path can leave the drag silently armed. Listeners stay at the
+      // document (capture phase) so captured pointer events — retargeted to the handle — still reach them.
+      document.addEventListener('pointermove', onDocMove, true)
+      document.addEventListener('pointerup', onDocUp, true)
       document.addEventListener('pointercancel', onDocCancel, true)
       document.addEventListener('keydown', onDocKey, true)
       window.addEventListener('blur', onWindowBlur)
@@ -975,10 +1042,10 @@ export const TableReorderHandle = Extension.create({
             wrapper.appendChild(indicator)
           }
 
-          const onRowDown = (e: MouseEvent) => beginDrag(view, 'row', e)
-          const onColDown = (e: MouseEvent) => beginDrag(view, 'col', e)
-          rowHandle.addEventListener('mousedown', onRowDown)
-          colHandle.addEventListener('mousedown', onColDown)
+          const onRowDown = (e: PointerEvent) => beginDrag(view, 'row', e)
+          const onColDown = (e: PointerEvent) => beginDrag(view, 'col', e)
+          rowHandle.addEventListener('pointerdown', onRowDown)
+          colHandle.addEventListener('pointerdown', onColDown)
 
           // Resting-handle placement is driven from a DOCUMENT-level mousemove, NOT the editor's own
           // handleDOMEvents (mousemove/mouseleave on view.dom). The reorder handles AND the row-height
@@ -1041,8 +1108,8 @@ export const TableReorderHandle = Extension.create({
               cancelHide()
               document.body.classList.remove('octo-table-reordering')
               document.removeEventListener('mousemove', onIdleDocMove, true)
-              rowHandle?.removeEventListener('mousedown', onRowDown)
-              colHandle?.removeEventListener('mousedown', onColDown)
+              rowHandle?.removeEventListener('pointerdown', onRowDown)
+              colHandle?.removeEventListener('pointerdown', onColDown)
               rowHandle?.remove()
               colHandle?.remove()
               indicator?.remove()
@@ -1051,6 +1118,8 @@ export const TableReorderHandle = Extension.create({
               drag = null
               concurrentEdit = false
               pointerHeldSeen = false
+              capturedPointerId = null
+              capturedHandle = null
             },
           }
         },

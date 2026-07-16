@@ -104,6 +104,8 @@ function hoverCell(ed: Editor, row: number, col: number): void {
   ed.view.dom.dispatchEvent(new MouseEvent('mousemove', { clientX: 3, clientY: 3, bubbles: true }))
 }
 
+const PID = 9
+
 describe('handle usability (octo-docs-backend#76 / XIN-1216)', () => {
   it('renders the static row and column handles on a fresh document when a cell is hovered', () => {
     editor = mount(TABLE_3x2)
@@ -122,12 +124,12 @@ describe('handle usability (octo-docs-backend#76 / XIN-1216)', () => {
     hoverCell(editor, 2, 0) // hover row 3
     const handle = host?.querySelector('.octo-table-reorder--row')
     if (!handle) throw new Error('row handle not rendered')
-    handle.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }))
+    handle.dispatchEvent(new PointerEvent('pointerdown', { pointerId: PID, button: 0, buttons: 1, clientX: 3, clientY: 3, bubbles: true }))
     // Move over row 1 with NO `buttons` set (defaults to 0) — this is the automation / synthetic
     // path. Before the fix the guard aborted here; now the reorder proceeds.
     stubPos = insideCell(editor, 0, 0)
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 9, clientY: 9 }))
-    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    document.dispatchEvent(new PointerEvent('pointermove', { pointerId: PID, clientX: 9, clientY: 9 }))
+    document.dispatchEvent(new PointerEvent('pointerup', { pointerId: PID, clientX: 9, clientY: 9, bubbles: true }))
     expect(grid(editor)[0]).toEqual(['r3c1', 'r3c2'])
   })
 
@@ -137,13 +139,13 @@ describe('handle usability (octo-docs-backend#76 / XIN-1216)', () => {
     hoverCell(editor, 2, 0)
     const handle = host?.querySelector('.octo-table-reorder--row')
     if (!handle) throw new Error('row handle not rendered')
-    handle.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }))
+    handle.dispatchEvent(new PointerEvent('pointerdown', { pointerId: PID, button: 0, buttons: 1, clientX: 3, clientY: 3, bubbles: true }))
     // A real held-button move (buttons:1) arms the drag...
     stubPos = insideCell(editor, 0, 0)
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 9, clientY: 9, buttons: 1 }))
+    document.dispatchEvent(new PointerEvent('pointermove', { pointerId: PID, clientX: 9, clientY: 9, buttons: 1 }))
     // ...then the pointer re-enters with the button released outside the window (buttons:0): abort.
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 9, clientY: 9, buttons: 0 }))
-    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    document.dispatchEvent(new PointerEvent('pointermove', { pointerId: PID, clientX: 9, clientY: 9, buttons: 0 }))
+    document.dispatchEvent(new PointerEvent('pointerup', { pointerId: PID, clientX: 9, clientY: 9, bubbles: true }))
     expect(grid(editor)).toEqual(before)
   })
 })
