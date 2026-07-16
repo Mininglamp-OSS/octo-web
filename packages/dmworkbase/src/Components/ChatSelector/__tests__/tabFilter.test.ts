@@ -64,6 +64,43 @@ describe("filterChatSelectorItems — Tab 作用域", () => {
     expect(run("recent", "", [], [key("group", "g1"), key("direct", "d2")])).toEqual(["g1", "d2"])
   })
 
+  it("recent Tab 提供 recentOrder 时按后端 timestamp 降序（对齐 ChatSelectorModal）", () => {
+    // g1 传入顺序在前，但 d2 timestamp 更大 → d2 应排在 g1 之前。
+    const recentOrder = new Map<string, number>([
+      [key("group", "g1"), 100],
+      [key("direct", "d2"), 200],
+    ])
+    const out = filterChatSelectorItems(
+      ITEMS,
+      {
+        activeTab: "recent",
+        keyword: "",
+        followedKeys: new Set(),
+        recentKeys: new Set([key("group", "g1"), key("direct", "d2")]),
+        recentOrder,
+      },
+      acc,
+    )
+    expect(out.map((i) => i.id)).toEqual(["d2", "g1"])
+  })
+
+  it("recent Tab recentOrder 缺失的项排序权重按 0 处理", () => {
+    // g1 无权重(→0)，d2 有权重(50) → d2 在前，g1 在后。
+    const recentOrder = new Map<string, number>([[key("direct", "d2"), 50]])
+    const out = filterChatSelectorItems(
+      ITEMS,
+      {
+        activeTab: "recent",
+        keyword: "",
+        followedKeys: new Set(),
+        recentKeys: new Set([key("group", "g1"), key("direct", "d2")]),
+        recentOrder,
+      },
+      acc,
+    )
+    expect(out.map((i) => i.id)).toEqual(["d2", "g1"])
+  })
+
   it("复合 key 跨类型不碰撞：同 id 不同类型互不干扰", () => {
     const items: TestItem[] = [
       { id: "42", name: "Group42", kind: "group" },

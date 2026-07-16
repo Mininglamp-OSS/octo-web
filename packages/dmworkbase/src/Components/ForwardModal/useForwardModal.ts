@@ -139,13 +139,16 @@ export function useForwardModal(
   const [keyword, setKeyword] = useState("")
   const [loading, setLoading] = useState(true)
   // 四 Tab：关注 / 最近 / 全部群聊 / 全部私聊（对齐智能纪要选择器）。默认「最近」，
-  // 因转发本地数据源以最近会话为主，落地即有内容，避免默认「关注」空集。
+  // 与转发的高频使用场景一致（多数转发目标是最近聊过的会话）。「最近」集合走
+  // SidebarService recent 服务端权威源（见下方同步 effect），与纪要选择器一致。
   const [activeTab, setActiveTab] = useState<ChatSelectorTab>("recent")
   // 关注集合（复合 key）：来自 SidebarService follow 同步，供「关注」Tab 过滤。
   const [followedKeys, setFollowedKeys] = useState<Set<string>>(new Set())
-  // 最近集合（复合 key）：由本地最近会话（wrapsRef）派生，供「最近」Tab 过滤。
-  // 方案 (b) 下「最近」直接等价于最近会话，不依赖后端 recent 同步。
+  // 最近集合（复合 key）：来自 SidebarService recent 同步（服务端权威「最近访问」），
+  // 供「最近」Tab 过滤，与 ChatSelectorModal 完全对齐；不再由本地会话列表派生。
   const [recentKeys, setRecentKeys] = useState<Set<string>>(new Set())
+  // 最近集合排序权重（复合 key → 后端 timestamp）：「最近」Tab 按其降序，与纪要一致。
+  const [recentOrder, setRecentOrder] = useState<Map<string, number>>(new Map())
   // 授权区状态：开关默认关闭（不勾选，需用户主动打开才走授权），角色默认 reader。
   // 仅在传入 grantOptions 时生效。
   const grantActive = !!grantOptions
@@ -215,11 +218,8 @@ export function useForwardModal(
     const spaceId = WKApp.shared.currentSpaceId
     // 已并入的群 ID（recents 群 + extraGroups 群），用于去重与子区挂回。
     const seenGroupIDs = new Set<string>()
-    // 最近集合：最近会话即「最近」Tab 的作用域，用复合 key 记录（含群/子区/私聊）。
-    const recentKeySet = new Set<string>()
     for (const wrap of wrapsRef.current) {
       channelMapRef.current.set(wrap.channel.channelID, wrap.channel)
-      recentKeySet.add(`${wrap.channel.channelType}::${wrap.channel.channelID}`)
       if (wrap.channel.channelType === ChannelTypeCommunityTopic) {
         threadWraps.push(wrap)
       } else {
@@ -322,7 +322,6 @@ export function useForwardModal(
     }
 
     setConversationItems(items)
-    setRecentKeys(recentKeySet)
   }, [])
 
   useEffect(() => {
@@ -402,16 +401,19 @@ export function useForwardModal(
     }
   }, [rebuildConvItems])
 
-  // 关注集合同步：与智能纪要选择器一致，走 SidebarService follow 同步。
-  // 数据源采用方案 (b)：转发列表主体仍复用本地会话 + group/my + 好友装配
-  // （保证零权限回归、无新后端依赖），仅「关注」Tab 需要额外的关注集合，故
-  // 这里只拉 follow（不拉 recent —— 转发「最近」直接映射本地最近会话/群列表）。
-  // deviceId 为空时后端 validateSidebarRequest 必拒，跳过注定失败的请求，
-  // 关注集合退化为空集（关注 Tab 显示空态）。
+  // 关注 / 最近集合同步：与智能纪要选择器（ChatSelectorModal）完全对齐，均走
+  // SidebarService 服务端权威源——「关注」拉 follow tab，「最近」拉 recent tab
+  // （服务端维护的「最近访问」，而非本地 IM 会话列表）。转发列表主体仍复用本地
+  // 会话 + group/my + 好友装配（零权限回归、无新后端依赖），这两个集合只用于对应
+  // Tab 的作用域过滤：命中集合的本地 item 才展示，故不引入新的可转发目标。
+  // deviceId 为空时后端 validateSidebarRequest 必拒，跳过注定失败的请求，两个集合
+  // 退化为空集（对应 Tab 显示空态）。
   useEffect(() => {
     const deviceUuid = WKApp.shared.deviceId || ""
     if (deviceUuid === "") {
       setFollowedKeys(new Set())
+      setRecentKeys(new Set())
+      setRecentOrder(new Map())
       return
     }
     let cancelled = false
@@ -426,6 +428,25 @@ export function useForwardModal(
       })
       .catch(() => {
         if (!cancelled) setFollowedKeys(new Set())
+      })
+    SidebarService.sync({ tab: "recent", device_uuid: deviceUuid })
+      .then((resp) => {
+        if (cancelled) return
+        const keys = new Set<string>()
+        const order = new Map<string, number>()
+        for (const item of resp?.items ?? []) {
+          const key = `${item.target_type}::${item.target_id}`
+          keys.add(key)
+          order.set(key, item.timestamp)
+        }
+        setRecentKeys(keys)
+        setRecentOrder(order)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRecentKeys(new Set())
+          setRecentOrder(new Map())
+        }
       })
     return () => {
       cancelled = true
@@ -479,7 +500,7 @@ export function useForwardModal(
   // 集合过滤（搜后端全库群不应污染关注/最近作用域），与纪要行为一致。
   const filtered = filterChatSelectorItems(
     allItems,
-    { activeTab, keyword, followedKeys, recentKeys },
+    { activeTab, keyword, followedKeys, recentKeys, recentOrder },
     FORWARD_ITEM_ACCESSORS,
   )
 

@@ -8,7 +8,8 @@
  *
  * Tab 语义（对齐 dmworksummary/ChatSelectorModal）：
  *   - followed 关注：仅复合 key 命中关注集合的项（群/子区/私聊皆可）。
- *   - recent   最近：仅复合 key 命中最近集合的项，保持输入顺序（调用方已按时间排好）。
+ *   - recent   最近：仅复合 key 命中最近集合的项，按后端 recentOrder 时间戳降序
+ *               （与 ChatSelectorModal 一致）；未提供 recentOrder 时保持传入顺序。
  *   - group    全部群聊：群 + 子区（子区嵌套在父群下），不含私聊。
  *   - direct   全部私聊：仅私聊。
  *
@@ -44,6 +45,9 @@ export interface ChatSelectorFilterOptions {
   followedKeys: Set<string>
   /** 最近集合（复合 key）。 */
   recentKeys: Set<string>
+  /** 最近集合排序权重（复合 key → 后端 timestamp）。提供时「最近」Tab 按其降序，
+   *  与 ChatSelectorModal 对齐；省略时保持传入顺序。 */
+  recentOrder?: Map<string, number>
 }
 
 /** 按 Tab 把整表收敛到当前作用域，保持传入顺序（转发列表已是「父群→子区」树序）。 */
@@ -55,8 +59,15 @@ function scopeByTab<T>(
   switch (opts.activeTab) {
     case "followed":
       return items.filter((i) => opts.followedKeys.has(acc.getKey(i)))
-    case "recent":
-      return items.filter((i) => opts.recentKeys.has(acc.getKey(i)))
+    case "recent": {
+      const scoped = items.filter((i) => opts.recentKeys.has(acc.getKey(i)))
+      // 有后端排序权重时按 timestamp 降序（对齐 ChatSelectorModal）；否则保持传入顺序。
+      if (!opts.recentOrder) return scoped
+      const order = opts.recentOrder
+      return [...scoped].sort(
+        (a, b) => (order.get(acc.getKey(b)) ?? 0) - (order.get(acc.getKey(a)) ?? 0),
+      )
+    }
     case "direct":
       return items.filter((i) => acc.getKind(i) === "direct")
     case "group":

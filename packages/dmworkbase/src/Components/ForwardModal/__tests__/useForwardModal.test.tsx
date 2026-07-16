@@ -830,19 +830,87 @@ describe("useForwardModal — four-Tab selector (issue #661)", () => {
         return { channel: { channelID, channelType: 1 }, orgData: { displayName } }
     }
 
-    it("default tab is 'recent' and scopes to local recent conversations (directs from friends excluded)", async () => {
-        hoisted.conversations = [makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 })]
+    it("default tab is 'recent' and scopes to the SidebarService recent set (not local conversations)", async () => {
+        hoisted.deviceId = "dev-uuid"
+        hoisted.conversations = [
+            makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 }),
+            makeConv("g2", CT_GROUP, "Group 2", { timestamp: 90 }),
+        ]
         hoisted.searchFriends.mockResolvedValue([makeFriend("d1", "Alice")] as any)
+        // 后端 recent 只含 g1（复合 key = 群类型 2 :: g1）；g2 是本地会话但不在后端最近集合。
+        hoisted.sidebarSync.mockImplementation(async (req: any) => {
+            if (req.tab === "recent") {
+                return {
+                    items: [{ target_type: 2, target_id: "g1", timestamp: 500 }],
+                    version: 0,
+                    follow_version: 0,
+                }
+            }
+            return { items: [], version: 0, follow_version: 0 }
+        })
 
         const view = await renderForward()
 
         expect(view.current.activeTab).toBe("recent")
         const ids = view.current.items.map((i) => i.channelID)
-        // 最近 = 本地最近会话 → 含群 g1；好友 d1 不在最近会话集合内 → 不出现在最近 Tab。
+        // 最近 = 后端权威最近集合 → 含 g1；本地会话 g2 不在后端最近集合 → 不出现。
         expect(ids).toContain("g1")
+        expect(ids).not.toContain("g2")
+        // 好友 d1 也不在最近集合内 → 不出现在最近 Tab。
         expect(ids).not.toContain("d1")
-        // 但 allItems（已选头像区）仍是全量，含好友。
+        // 但 allItems（已选头像区）仍是全量，含本地会话与好友。
+        expect(view.current.allItems.map((i) => i.channelID)).toContain("g2")
         expect(view.current.allItems.map((i) => i.channelID)).toContain("d1")
+        // 最近同步以 recent tab + 设备 UUID 发起。
+        expect(hoisted.sidebarSync).toHaveBeenCalledWith(
+            expect.objectContaining({ tab: "recent", device_uuid: "dev-uuid" }),
+        )
+
+        view.unmount()
+    })
+
+    it("recent tab is empty when deviceId is empty (doomed request guard, no local fallback)", async () => {
+        hoisted.deviceId = ""
+        hoisted.conversations = [makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 })]
+
+        const view = await renderForward()
+
+        expect(view.current.activeTab).toBe("recent")
+        // deviceId 空 → 跳过 recent 同步，最近集合为空，本地会话不再兜底。
+        expect(hoisted.sidebarSync).not.toHaveBeenCalled()
+        expect(view.current.items.map((i) => i.channelID)).not.toContain("g1")
+        // 但 g1 仍在全量 allItems 里（供其他 Tab / 已选区）。
+        expect(view.current.allItems.map((i) => i.channelID)).toContain("g1")
+
+        view.unmount()
+    })
+
+    it("recent tab orders items by the backend timestamp (descending), not local conversation order", async () => {
+        hoisted.deviceId = "dev-uuid"
+        // 本地会话顺序 g1 → g2（g1 timestamp 更大），但后端 recent 让 g2 更靠前。
+        hoisted.conversations = [
+            makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 }),
+            makeConv("g2", CT_GROUP, "Group 2", { timestamp: 90 }),
+        ]
+        hoisted.sidebarSync.mockImplementation(async (req: any) => {
+            if (req.tab === "recent") {
+                return {
+                    items: [
+                        { target_type: 2, target_id: "g1", timestamp: 100 },
+                        { target_type: 2, target_id: "g2", timestamp: 999 },
+                    ],
+                    version: 0,
+                    follow_version: 0,
+                }
+            }
+            return { items: [], version: 0, follow_version: 0 }
+        })
+
+        const view = await renderForward()
+
+        const ids = view.current.items.map((i) => i.channelID)
+        // g2 后端 timestamp 更大 → 排在 g1 之前（与本地 timestamp 顺序相反）。
+        expect(ids).toEqual(["g2", "g1"])
 
         view.unmount()
     })
