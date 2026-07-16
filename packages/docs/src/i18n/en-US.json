@@ -17,6 +17,7 @@
     "viewedAt": "Viewed",
     "createdBy": "Created by",
     "viewedBySelf": "You viewed",
+    "updatedBy": "Updated by {{name}} ·",
     "loadingMore": "Loading more…",
     "end": "No more documents",
     "loadMoreFailed": "Couldn't load more",

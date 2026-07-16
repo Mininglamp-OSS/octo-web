@@ -31,6 +31,14 @@ export interface DocListItem {
    */
   viewedAt?: string
   /**
+   * Last-updater identity, resolved server-side to `{uid, name}` (XIN-1240, sourced from
+   * `doc_meta.updated_by`). Present ONLY on "recent" (最近查看) rows; `null` when the document has
+   * no recorded last-updater. The recent tab uses it to label the merged time line — when the doc
+   * was updated after the current user last viewed it, the line reads "<name> 更新于 X" instead of
+   * "你查看于 X". A missing / null value degrades to an unnamed "更新于 X" line (never guesses).
+   */
+  updatedBy?: { uid: string; name: string } | null
+  /**
    * Document kind — one of {@link DocType}: `'doc'` (Tiptap rich text, the default), `'sheet'`
    * (Univer spreadsheet), or `'board'` (Excalidraw whiteboard). Optional because older records and
    * backends that predate a given kind omit it; a missing value is treated as a plain document. The

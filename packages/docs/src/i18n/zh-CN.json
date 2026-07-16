@@ -17,6 +17,7 @@
     "viewedAt": "查看于",
     "createdBy": "创建者",
     "viewedBySelf": "你查看于",
+    "updatedBy": "{{name}} 更新于",
     "loadingMore": "加载中…",
     "end": "没有更多了",
     "loadMoreFailed": "加载更多失败",
