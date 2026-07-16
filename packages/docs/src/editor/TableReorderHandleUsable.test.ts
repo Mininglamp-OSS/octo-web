@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Table } from '@tiptap/extension-table'
@@ -145,5 +145,50 @@ describe('handle usability (octo-docs-backend#76 / XIN-1216)', () => {
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 9, clientY: 9, buttons: 0 }))
     document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
     expect(grid(editor)).toEqual(before)
+  })
+})
+
+// octo-docs-backend#76 handle-discoverability regression (XIN-1233). The grab handle sits in the
+// gutter OUTSIDE the editor DOM, so moving the pointer from a cell toward the handle briefly crosses
+// dead space and fires the editor's `mouseleave`. The old code hid the handle synchronously there, so
+// the handle vanished before the pointer could reach it ("鼠标一移开就消失") — users could not
+// reliably trigger a move. The fix defers the hide by a grace period that the handle's own mouseenter
+// (or the pointer returning to a cell) cancels. These tests pin that behaviour with fake timers.
+describe('handle stability / discoverability (octo-docs-backend#76 / XIN-1233)', () => {
+  it('does not hide the handle synchronously when the pointer leaves the prose toward the gutter', () => {
+    vi.useFakeTimers()
+    try {
+      editor = mount(TABLE_3x2)
+      hoverCell(editor, 2, 0)
+      const rowHandle = host?.querySelector('.octo-table-reorder--row') as HTMLElement | null
+      expect(rowHandle?.style.display).not.toBe('none')
+      // Pointer leaves the editor prose heading for the gutter handle (relatedTarget is not a handle).
+      editor.view.dom.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
+      // Must NOT vanish immediately — this is the regression: it used to hide right here.
+      expect(rowHandle?.style.display, 'handle stays visible during the grace period').not.toBe('none')
+      // After the grace period elapses with no rescue, it clears.
+      vi.advanceTimersByTime(500)
+      expect(rowHandle?.style.display, 'handle hides once the grace period lapses').toBe('none')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the handle visible when the pointer lands on it (mouseenter cancels the deferred hide)', () => {
+    vi.useFakeTimers()
+    try {
+      editor = mount(TABLE_3x2)
+      hoverCell(editor, 2, 0)
+      const rowHandle = host?.querySelector('.octo-table-reorder--row') as HTMLElement | null
+      if (!rowHandle) throw new Error('row handle not rendered')
+      // Leave the prose (arms the deferred hide)...
+      editor.view.dom.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
+      // ...then the pointer arrives on the handle before the timer fires.
+      rowHandle.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }))
+      vi.advanceTimersByTime(500)
+      expect(rowHandle.style.display, 'handle stays put while the pointer rests on it').not.toBe('none')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

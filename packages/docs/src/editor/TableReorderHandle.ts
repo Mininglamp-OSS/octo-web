@@ -104,10 +104,20 @@ function reorderAbortDebug(event: ReorderAbortDebugEvent): void {
   if (Array.isArray(sink)) sink.push(event)
 }
 
-// Thickness (px) of the grab bar that sits in the gutter above a column / left of a row. Kept
-// slim so it hugs the table edge and stays clear of the column-resize handle (interior, right
-// edge of each cell) and the block drag handle (further out in the left gutter).
-const BAR = 14
+// Thickness (px) of the grab bar that sits in the gutter above a column / left of a row. Wide
+// enough to be an easy pointer target (the XIN-1233 UX gate: "命中区太小" made it hard to hit)
+// while still hugging the table edge and staying clear of the column-resize handle (interior,
+// right edge of each cell) and the block drag handle (further out in the left gutter).
+const BAR = 18
+
+// Grace period (ms) before a handle is hidden after the pointer leaves the table region. Without
+// it the handle vanished the instant the pointer left a cell — and because the handle sits in the
+// gutter OUTSIDE the editor DOM, the pointer must cross a sliver of dead space to reach it, so a
+// user moving toward the handle saw it disappear before arriving ("鼠标一移开就消失", XIN-1233).
+// The delay lets that crossing land on the handle (whose own mouseenter cancels the pending hide)
+// instead of racing it away. Kept short so the handle still clears promptly when the pointer
+// genuinely leaves the table.
+const HIDE_DELAY = 220
 
 /** Resolved geometry for the table cell under a screen point. `rect` holds TableMap grid
  * indices ({left,top,right,bottom} as column/row indices), `cellPos` is the document position
@@ -575,6 +585,13 @@ export const TableReorderHandle = Extension.create({
     // whole-table replace for a concurrent remote conflict (the local move lands while `drag` is still
     // set, and it obviously changes the dragged table).
     let committing = false
+    // Deferred-hide timer for the resting handles (XIN-1233). The handles live in the gutter OUTSIDE
+    // the editor DOM, so moving the pointer from a cell onto a handle briefly crosses dead space and
+    // fires the editor's `mouseleave`. Hiding immediately there made the handle vanish before the
+    // pointer could reach it. Instead we schedule the hide and let the handle's own mouseenter (or the
+    // pointer returning to a cell) cancel it — so a deliberate move toward the handle keeps it up while
+    // an actual departure still clears it after the grace period.
+    let hideTimer: ReturnType<typeof setTimeout> | null = null
     // Latches true once we have seen a mid-drag mousemove that actually reports the primary button
     // held (`buttons & 1`). It gates the "released outside the window" abort below: that abort must
     // only fire on a genuine release, i.e. AFTER the button was observed down. Some event sources
@@ -584,10 +601,27 @@ export const TableReorderHandle = Extension.create({
     // release wrongly cancelled the reorder (octo-docs-backend#76 / XIN-1215 headed-Chromium repro).
     let pointerHeldSeen = false
 
+    const cancelHide = () => {
+      if (hideTimer !== null) {
+        clearTimeout(hideTimer)
+        hideTimer = null
+      }
+    }
     const hideHandles = () => {
+      cancelHide()
       if (rowHandle) rowHandle.style.display = 'none'
       if (colHandle) colHandle.style.display = 'none'
       hover = null
+    }
+    // Hide the resting handles after the grace period unless something cancels first (the pointer
+    // returning to a cell, or landing on a handle). Idempotent — re-arming just resets the clock.
+    const scheduleHide = () => {
+      if (drag) return
+      cancelHide()
+      hideTimer = setTimeout(() => {
+        hideTimer = null
+        hideHandles()
+      }, HIDE_DELAY)
     }
     const hideIndicator = () => {
       if (indicator) indicator.style.display = 'none'
@@ -597,6 +631,8 @@ export const TableReorderHandle = Extension.create({
     // from the DOM each move so the handles track scrolling inside .tableWrapper.
     const placeHandles = (view: EditorView, ctx: CellContext) => {
       if (!rowHandle || !colHandle) return
+      // The pointer is live over the table — keep the handles up and abort any pending hide.
+      cancelHide()
       const cellDom = view.nodeDOM(ctx.cellPos)
       const tableDom = tableElementAt(view, ctx.tablePos)
       if (!(cellDom instanceof HTMLElement) || !tableDom) {
@@ -607,16 +643,19 @@ export const TableReorderHandle = Extension.create({
       const cell = cellDom.getBoundingClientRect()
       const table = tableDom.getBoundingClientRect()
 
-      // Column handle: a bar spanning the hovered column's width, just above the table.
+      // Column handle: a bar spanning the hovered column's width, flush against the top table edge.
+      // No gap between the bar and the table (it used to sit 2px above): the gap was uncovered space
+      // the pointer had to cross to reach the handle, which fired the editor's mouseleave and hid the
+      // handle mid-approach (XIN-1233). Flush + the deferred hide make the cell→handle move seamless.
       colHandle.style.display = 'flex'
       colHandle.style.left = `${cell.left - base.left}px`
-      colHandle.style.top = `${table.top - base.top - BAR - 2}px`
+      colHandle.style.top = `${table.top - base.top - BAR}px`
       colHandle.style.width = `${cell.width}px`
       colHandle.style.height = `${BAR}px`
 
-      // Row handle: a bar spanning the hovered row's height, just left of the table.
+      // Row handle: a bar spanning the hovered row's height, flush against the left table edge.
       rowHandle.style.display = 'flex'
-      rowHandle.style.left = `${table.left - base.left - BAR - 2}px`
+      rowHandle.style.left = `${table.left - base.left - BAR}px`
       rowHandle.style.top = `${cell.top - base.top}px`
       rowHandle.style.width = `${BAR}px`
       rowHandle.style.height = `${cell.height}px`
@@ -850,6 +889,7 @@ export const TableReorderHandle = Extension.create({
       if (event.button !== 0) return
       if (!view.editable || !hover) return
       event.preventDefault()
+      cancelHide()
       drag = {
         kind,
         // Stable, coarse-ReplaceStep-proof identity for the dragged table + source line.
@@ -940,12 +980,33 @@ export const TableReorderHandle = Extension.create({
           rowHandle.addEventListener('mousedown', onRowDown)
           colHandle.addEventListener('mousedown', onColDown)
 
+          // The pointer resting on a handle must keep it (and its sibling) visible. Because the
+          // handles sit outside the editor DOM, the editor's mouseleave fires as the pointer arrives;
+          // this mouseenter cancels the resulting deferred hide so the handle stays put (XIN-1233).
+          const onHandleEnter = () => cancelHide()
+          // Leaving a handle (not back toward the other handle) starts the grace timer; a return to a
+          // cell re-cancels it via placeHandles.
+          const onHandleLeave = (e: MouseEvent) => {
+            const to = e.relatedTarget as Node | null
+            if (to && (rowHandle?.contains(to) || colHandle?.contains(to))) return
+            scheduleHide()
+          }
+          rowHandle.addEventListener('mouseenter', onHandleEnter)
+          colHandle.addEventListener('mouseenter', onHandleEnter)
+          rowHandle.addEventListener('mouseleave', onHandleLeave)
+          colHandle.addEventListener('mouseleave', onHandleLeave)
+
           return {
             destroy() {
               removeDragListeners()
+              cancelHide()
               document.body.classList.remove('octo-table-reordering')
               rowHandle?.removeEventListener('mousedown', onRowDown)
               colHandle?.removeEventListener('mousedown', onColDown)
+              rowHandle?.removeEventListener('mouseenter', onHandleEnter)
+              colHandle?.removeEventListener('mouseenter', onHandleEnter)
+              rowHandle?.removeEventListener('mouseleave', onHandleLeave)
+              colHandle?.removeEventListener('mouseleave', onHandleLeave)
               rowHandle?.remove()
               colHandle?.remove()
               indicator?.remove()
@@ -966,7 +1027,10 @@ export const TableReorderHandle = Extension.create({
               if (!view.editable) return false
               const ctx = cellContextAt(view, event.clientX, event.clientY)
               if (!ctx) {
-                hideHandles()
+                // Pointer is over the editor but not a table cell. Defer the hide instead of
+                // clearing instantly so a quick glide from a cell to the gutter handle (or into a
+                // neighbouring cell) does not flicker the handle away (XIN-1233).
+                scheduleHide()
                 return false
               }
               placeHandles(view, ctx)
@@ -977,8 +1041,13 @@ export const TableReorderHandle = Extension.create({
               // Keep the handles up when the pointer moves onto one of them (they live outside
               // the editor DOM, so leaving the prose region toward a handle must not hide it).
               const to = (event as MouseEvent).relatedTarget as Node | null
-              if (to && (rowHandle?.contains(to) || colHandle?.contains(to))) return false
-              hideHandles()
+              if (to && (rowHandle?.contains(to) || colHandle?.contains(to))) {
+                cancelHide()
+                return false
+              }
+              // Otherwise defer: the pointer may be crossing the sliver of dead space on its way to
+              // the handle. The handle's own mouseenter cancels this if it lands there (XIN-1233).
+              scheduleHide()
               return false
             },
           },

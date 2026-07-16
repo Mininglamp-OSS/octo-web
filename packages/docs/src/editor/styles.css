@@ -697,6 +697,10 @@
   color: var(--octo-muted, #8a919e);
   z-index: 5;
   box-sizing: border-box;
+  /* A soft shadow lifts the resting bar off the page so it reads as a grabbable control rather
+     than a border artefact — the discoverability half of XIN-1233. */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 .octo-table-reorder:hover {
   background: var(--octo-accent, #3370ff);
@@ -715,12 +719,12 @@
 /* Grip dots: a row of dots on the column bar, a column of dots on the row bar. */
 .octo-table-reorder--col::before {
   content: '⋯';
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
 }
 .octo-table-reorder--row::before {
   content: '⋮';
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
 }
 /* Insertion caret shown while dragging: an accent line at the boundary the row/column lands on. */
