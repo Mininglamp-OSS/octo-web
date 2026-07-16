@@ -126,16 +126,17 @@
   min-width: max-content;
 }
 
+/* 展开/收起按钮：紫色 tinted 胶囊，对齐全站 AI 强调语言（原中性描边过于像普通表单按钮）。 */
 .wk-interactive-card-sdk--agent-progress
   > .ac-adaptiveCard
   > .ac-columnSet:first-child
   .ac-pushButton {
-  min-height: 30px;
+  min-height: 28px;
   padding: 0 var(--wk-sp-3, 12px);
-  color: var(--wk-text-primary);
-  background: var(--wk-bg-surface);
-  border-color: var(--wk-border-default);
-  border-radius: var(--wk-r-sm);
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+  background: var(--wk-bg-selected);
+  border-color: transparent;
+  border-radius: var(--wk-r-full);
 }
 
 .wk-interactive-card-sdk--agent-progress
@@ -143,7 +144,7 @@
   > .ac-columnSet:first-child
   .ac-pushButton:hover {
   color: var(--wk-text-accent, var(--wk-brand-primary));
-  background: var(--wk-bg-elevated);
+  background: var(--wk-accent-tint-12);
   border-color: var(--wk-border-glow);
 }
 
@@ -582,6 +583,36 @@
   outline: none;
   border-color: var(--wk-border-glow);
   box-shadow: 0 0 0 var(--wk-sp-0-5, 2px) var(--wk-border-glow);
+}
+
+/* ── ActionStyle 主/次区分（AdaptiveCards style: positive/destructive） ──
+ * 默认 .ac-pushButton 是「AI 强调」浅紫胶囊,主次不分。审批类卡片(允许/拒绝)由服务端模板
+ * 给动作打 style,这里落成一对**主操作 vs 次操作**:
+ *   - positive（允许）：品牌主色实心,读作「拍板/主操作」；
+ *   - destructive（拒绝）：中性幽灵,刻意不用告警红——「拒绝」是次操作而非危险操作。
+ * 只作用于设了 style 的按钮;未设 style 的其它 bot 卡按钮保持基础样式,零副作用。 */
+.wk-interactive-card-sdk .ac-pushButton.style-positive {
+  color: var(--wk-text-on-brand, #fff);
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+}
+
+.wk-interactive-card-sdk .ac-pushButton.style-positive:hover {
+  color: var(--wk-text-on-brand, #fff);
+  background: var(--wk-brand-primary-hover);
+  border-color: var(--wk-brand-primary-hover);
+}
+
+.wk-interactive-card-sdk .ac-pushButton.style-destructive {
+  color: var(--wk-text-secondary);
+  background: transparent;
+  border-color: var(--wk-border-default);
+}
+
+.wk-interactive-card-sdk .ac-pushButton.style-destructive:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-elevated);
+  border-color: var(--wk-border-strong);
 }
 
 .wk-interactive-card-sdk .ac-textInput,
