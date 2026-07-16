@@ -3,12 +3,16 @@ import { Typography, Button, Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
 import { ChevronRight, Archive, Save, Eraser, Plus, Trash2, FileText, Pencil, Eye } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { Agent, AgentTask, AgentContribution, Issue } from "../api/types";
-import { getAgent, updateAgent, listAgentTasks, getAgentContributions, archiveAgent, setAgentSkills } from "../api/agentApi";
+import type { Agent, AgentTask, AgentContribution, Issue, RuntimeDevice } from "../api/types";
+import { getAgent, updateAgent, listAgentTasks, getAgentContributions, archiveAgent, setAgentSkills, listRuntimesForAgent } from "../api/agentApi";
+import { listAssigneeCandidates } from "../api/directory";
 import { getIssue } from "../api/issueApi";
 import { listSkills } from "../api/skillApi";
 import { isActiveRun, isTerminalRun, normalizeAgentStatus } from "../ui/meta";
 import { StatusDot } from "../ui/StatusDot";
+import InlineEdit from "../ui/InlineEdit";
+import RuntimePicker from "./RuntimePicker";
+import ModelPicker from "./ModelPicker";
 import { formatRelativeTime, formatDurationMs } from "../ui/time";
 import { confirmDelete } from "../ui/confirmDelete";
 import LoopMarkdown from "../ui/LoopMarkdown";
@@ -67,6 +71,11 @@ export default function AgentDetailPage({
   const [tab, setTab] = useState<TopTab>("profile");
   const [section, setSection] = useState<ConfigSection>("instructions");
 
+  // 运行时列表（供属性栏运行环境下拉切换 + 回填名字/在线状态）
+  const [runtimes, setRuntimes] = useState<RuntimeDevice[]>([]);
+  // 当前用户的 member_id（octo_uid===loginInfo.uid），供运行时下拉 Mine/All 与锁定判定，与 Squad 页一致。
+  const [myMemberId, setMyMemberId] = useState<string | null>(null);
+
   // instructions draft
   const [instr, setInstr] = useState("");
   const [instrDirty, setInstrDirty] = useState(false);
@@ -99,13 +108,31 @@ export default function AgentDetailPage({
     listAgentTasks(agentId).then(setTasks).catch(() => setTasks([]));
     getAgentContributions(agentId).then(setContribs).catch(() => setContribs([]));
     listSkills().then((s) => setWsSkillCount(s.length)).catch(() => setWsSkillCount(0));
+    listRuntimesForAgent().then(setRuntimes).catch(() => setRuntimes([]));
+    const uid = WKApp.loginInfo?.uid;
+    if (uid) {
+      listAssigneeCandidates()
+        .then((cs) => setMyMemberId(cs.find((c) => c.type === "member" && c.octo_uid === uid)?.id ?? null))
+        .catch(() => setMyMemberId(null));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
+
+  // updateAgent 返回的 agent 不带回填字段（runtime_name/owner_*）；合并旧值并按 runtime_id 从
+  // 已加载的 runtimes 重算 runtime_name，避免就地编辑后属性栏丢失运行环境名字与在线点。
+  const mergeAgentDisplayFields = (next: Agent) => {
+    setAgent((prev) => ({
+      ...next,
+      runtime_name: runtimes.find((r) => r.id === next.runtime_id)?.name ?? prev?.runtime_name ?? next.runtime_name ?? null,
+      owner_name: next.owner_name ?? prev?.owner_name ?? null,
+      owner_avatar: next.owner_avatar ?? prev?.owner_avatar ?? null,
+    }));
+  };
 
   const patch = async (p: Parameters<typeof updateAgent>[1]) => {
     if (!agent) return;
     const next = await updateAgent(agent.id, { name: agent.name, ...p });
-    setAgent(next);
+    mergeAgentDisplayFields(next);
     onChanged?.();
   };
 
@@ -252,7 +279,6 @@ export default function AgentDetailPage({
   const skills = agent.skills ?? [];
   const activeCount = tasks.filter((x) => isActiveRun(x.status)).length;
   const thinking = agent.thinking_level ? t(`loop.agent.thinkingLevel.${agent.thinking_level}`) : "—";
-  const visibility = t(agent.visibility === "private" ? "loop.agent.visPrivate" : "loop.agent.visWorkspace");
 
   return (
     <div className="loop-adp">
@@ -447,23 +473,57 @@ export default function AgentDetailPage({
                 <span>{agent.name.slice(0, 1).toUpperCase()}</span>
                 <StatusDot status={agent.status} className="loop-adp__ins-dot" />
               </div>
-              <div className="loop-adp__ins-name">{agent.name}</div>
-              {agent.description && <div className="loop-adp__ins-desc">{agent.description}</div>}
+              <div className="loop-adp__ins-name">
+                <InlineEdit
+                  value={agent.name}
+                  placeholder={t("loop.agent.namePlaceholder")}
+                  ariaLabel={t("loop.field.name")}
+                  onSave={(v) => (v ? patch({ name: v }) : undefined)}
+                />
+              </div>
+              <div className="loop-adp__ins-desc">
+                <InlineEdit
+                  value={agent.description ?? ""}
+                  placeholder={t("loop.agent.noDescription")}
+                  ariaLabel={t("loop.field.description")}
+                  kind="textarea"
+                  onSave={(v) => patch({ description: v })}
+                />
+              </div>
             </div>
 
             <div className="loop-adp__aside-sec">
               <div className="loop-adp__aside-title">{t("loop.detail.properties")}</div>
               <dl className="loop-adp__props">
-                <dt>{t("loop.agent.device")}</dt>
-                <dd>{agent.runtime_name ?? "—"}</dd>
+                <dt>{t("loop.agent.runtime")}</dt>
+                <dd>
+                  <RuntimePicker
+                    value={agent.runtime_id}
+                    runtimes={runtimes}
+                    currentUserId={myMemberId ?? null}
+                    onChange={(id) => patch({ runtime_id: id })}
+                  />
+                </dd>
                 <dt>{t("loop.agent.model")}</dt>
-                <dd className="loop-mono-text">{agent.model || "—"}</dd>
+                <dd>
+                  <ModelPicker value={agent.model ?? ""} onChange={(v) => patch({ model: v })} />
+                </dd>
                 <dt>{t("loop.agent.thinking")}</dt>
                 <dd>{thinking}</dd>
-                <dt>{t("loop.agent.visibility")}</dt>
-                <dd>{visibility}</dd>
                 <dt>{t("loop.agent.concurrency")}</dt>
-                <dd>{agent.max_concurrent_tasks}</dd>
+                <dd>
+                  <InlineEdit
+                    value={String(agent.max_concurrent_tasks)}
+                    placeholder="1"
+                    ariaLabel={t("loop.agent.concurrency")}
+                    kind="number"
+                    min={1}
+                    onSave={(v) => {
+                      const n = Number(v);
+                      return Number.isFinite(n) && n >= 1 ? patch({ max_concurrent_tasks: n }) : undefined;
+                    }}
+                  />
+                </dd>
               </dl>
             </div>
 

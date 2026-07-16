@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Typography, Spin, Banner, Button, Toast } from "@douyinfe/semi-ui";
-import { Box, Check, Circle, Code2, Copy, Cpu, Monitor, Plus, Terminal } from "lucide-react";
+import { Check, Circle, Copy, Cpu, Monitor, Plus } from "lucide-react";
 import { copyToClipboard, useI18n, WKModal } from "@octo/base";
 import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
 import LoopTag from "../ui/LoopTag";
 import LoopButton from "../ui/LoopButton";
+import { ProviderLogo, providerName } from "../ui/providerLogo";
 import { issueHeadlessCliToken } from "../api/authApi";
 import { INSTALL_SCRIPT_CMD, authCommand, START_CMD } from "./headlessCommand";
 import { deviceVersion, runtimeVersion } from "./runtimeVersion";
@@ -19,8 +20,6 @@ interface Device {
   mode: RuntimeMode;
   runtimes: RuntimeDevice[];
 }
-
-type ProviderTone = "claude" | "codex" | "hermes" | "openclaw" | "opencode" | "default";
 
 function deviceName(r: RuntimeDevice): string {
   const info = r.device_info || "";
@@ -46,29 +45,6 @@ function relTime(iso: string | null): string {
 function shortDaemon(id?: string | null): string {
   if (!id) return "-";
   return `daemon ${id.slice(0, 8)}`;
-}
-
-function providerName(provider: string): string {
-  if (!provider) return "-";
-  return provider.slice(0, 1).toUpperCase() + provider.slice(1);
-}
-
-function providerTone(provider: string): ProviderTone {
-  const key = provider.toLowerCase();
-  if (key.includes("claude")) return "claude";
-  if (key.includes("codex")) return "codex";
-  if (key.includes("hermes")) return "hermes";
-  if (key.includes("openclaw")) return "openclaw";
-  if (key.includes("opencode")) return "opencode";
-  return "default";
-}
-
-function providerIcon(provider: string) {
-  const tone = providerTone(provider);
-  if (tone === "codex") return <Box size={12} />;
-  if (tone === "opencode") return <Code2 size={12} />;
-  if (tone === "default") return <Terminal size={12} />;
-  return <span aria-hidden>{providerName(provider).slice(0, 1)}</span>;
 }
 
 /** Runtime 列表页：机器作为分组，组内展示该机器上的 runtimes。 */
@@ -209,9 +185,7 @@ export default function RuntimePage() {
                   {device.runtimes.map((runtime) => (
                     <div key={runtime.id} className="loop-runtime-row" role="row">
                       <div className="loop-runtime-row__name" role="cell">
-                        <span className={`loop-runtime-row__provider is-${providerTone(runtime.provider)}`}>
-                          {providerIcon(runtime.provider)}
-                        </span>
+                        <ProviderLogo provider={runtime.provider} />
                         <strong>{providerName(runtime.provider)}</strong>
                         <LoopTag tone="grey">{t("loop.runtime.builtIn")}</LoopTag>
                       </div>

@@ -124,6 +124,7 @@
   },
   "scope": {
     "all": "全部",
+    "mine": "我的",
     "members": "成员",
     "agents": "AI",
     "involves": "与我相关"
@@ -467,8 +468,17 @@
     "allMembers": "所有成员"
   },
   "agent": {
-    "runtime": "运行环境",
+    "runtime": "运行时",
     "model": "模型",
+    "modelDefault": "默认",
+    "noDescription": "暂无描述",
+    "runtimeEmpty": "暂无可用运行时",
+    "runtimeCloudBadge": "云端",
+    "runtimePrivateBadge": "私有",
+    "modelSearchPlaceholder": "输入模型名称…",
+    "modelCustomUse": "使用自定义「{{value}}」",
+    "modelInputHint": "输入模型名称，或留空使用默认",
+    "modelClear": "清除（恢复默认）",
     "namePlaceholder": "队友名称，例如 前端小助手",
     "descPlaceholder": "简单描述这个 AI 队友的职责",
     "runs30d": "近 30 天任务",

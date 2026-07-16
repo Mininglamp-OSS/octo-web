@@ -124,6 +124,7 @@
   },
   "scope": {
     "all": "All",
+    "mine": "Mine",
     "members": "Members",
     "agents": "AI",
     "involves": "Involves me"
@@ -469,6 +470,15 @@
   "agent": {
     "runtime": "Runtime",
     "model": "Model",
+    "modelDefault": "Default",
+    "noDescription": "No description",
+    "runtimeEmpty": "No runtime available",
+    "runtimeCloudBadge": "Cloud",
+    "runtimePrivateBadge": "Private",
+    "modelSearchPlaceholder": "Type a model name…",
+    "modelCustomUse": "Use custom \"{{value}}\"",
+    "modelInputHint": "Type a model name, or leave empty for default",
+    "modelClear": "Clear (use default)",
     "namePlaceholder": "Teammate name, e.g. Frontend helper",
     "descPlaceholder": "Briefly describe what this AI teammate does",
     "runs30d": "Runs (30d)",

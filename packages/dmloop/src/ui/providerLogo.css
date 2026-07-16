@@ -1,0 +1,10 @@
+.loop-provider-logo {
+  display: block;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+.loop-provider-logo--rounded {
+  border-radius: var(--wk-r-xs, 4px);
+}

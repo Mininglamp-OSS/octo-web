@@ -461,6 +461,163 @@
 }
 .loop-mono-text { font-family: var(--semi-font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12px; }
 
+/* ---- 就地编辑：hover 灰底 + 小铅笔（对标 multica inspector），只动明度不跳色相 ---- */
+.loop-adp__edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: -6px;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+.loop-adp__edit:hover { background: var(--semi-color-fill-0, #f5f6f8); }
+.loop-adp__edit-val { min-width: 0; word-break: break-word; }
+.loop-adp__edit--empty .loop-adp__edit-val { font-style: italic; color: var(--semi-color-text-3, #b8bcc8); }
+.loop-adp__edit-ico {
+  flex: 0 0 auto;
+  color: var(--semi-color-text-3, #b8bcc8);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.loop-adp__edit:hover .loop-adp__edit-ico { opacity: 1; }
+.loop-adp__edit-input { width: 100%; }
+
+/* ---- 运行时触发器：Monitor/Cloud 图标 + 名字(mono) + 右侧在线点 ---- */
+.loop-adp__rt-trigger { width: 100%; }
+.loop-adp__rt-trigger .loop-adp__edit-val { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loop-adp__rt-ico { flex: 0 0 auto; color: var(--semi-color-text-2, #6b7075); }
+.loop-rtp__dot {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--semi-color-text-3, #b8bcc8);
+}
+.loop-rtp__dot.is-online { background: var(--status-online, #52c41a); }
+
+/* ---- 运行时下拉弹框（对标 multica runtime-picker） ---- */
+.loop-rtp__pop { width: 340px; padding: 4px; }
+.loop-rtp__filter {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--semi-color-fill-0, #f5f6f8);
+}
+.loop-rtp__filter-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--semi-color-text-2, #6b7075);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.loop-rtp__filter-btn.is-active {
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1f2329);
+  box-shadow: 0 1px 2px rgba(9, 30, 66, 0.08);
+}
+.loop-rtp__list { max-height: 300px; overflow: auto; }
+.loop-rtp__empty { padding: 14px 8px; text-align: center; font-size: 12px; color: var(--semi-color-text-2, #6b7075); }
+.loop-rtp__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 7px 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.loop-rtp__item:hover { background: var(--semi-color-fill-0, #f5f6f8); }
+.loop-rtp__item.is-locked { opacity: 0.5; cursor: not-allowed; }
+.loop-rtp__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.loop-rtp__line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.loop-rtp__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--semi-color-text-0, #1f2329);
+}
+.loop-rtp__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+}
+.loop-rtp__badge.is-cloud { background: var(--semi-color-info-light-default); color: var(--semi-color-info); }
+.loop-rtp__badge.is-locked { background: var(--semi-color-fill-1, #eceef0); color: var(--semi-color-text-2, #6b7075); }
+.loop-rtp__line2 { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 10.5px; color: var(--semi-color-text-3, #b8bcc8); }
+.loop-rtp__owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loop-rtp__sep { flex: 0 0 auto; }
+.loop-rtp__device { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--semi-font-family-mono, ui-monospace, Menlo, monospace); }
+.loop-rtp__check { flex: 0 0 auto; color: var(--semi-color-text-2, #6b7075); }
+.loop-rtp__check.is-hidden { visibility: hidden; }
+
+/* ---- 模型下拉弹框（输入 + 使用自定义 + 清除） ---- */
+.loop-mdp__pop { width: 260px; padding: 6px; }
+.loop-mdp__search { margin-bottom: 4px; }
+.loop-mdp__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 7px 8px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--semi-color-primary, #1c1c23);
+  transition: background-color 120ms ease;
+}
+.loop-mdp__item:hover { background: var(--semi-color-fill-0, #f5f6f8); }
+.loop-mdp__plus { flex: 0 0 auto; }
+.loop-mdp__custom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loop-mdp__hint { margin: 0; padding: 8px; text-align: center; font-size: 12px; color: var(--semi-color-text-2, #6b7075); }
+.loop-mdp__clear {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  border: none;
+  border-top: 1px solid var(--semi-color-border, rgba(0, 0, 0, 0.08));
+  background: transparent;
+  padding: 8px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--semi-color-text-2, #6b7075);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.loop-mdp__clear:hover { background: var(--semi-color-fill-0, #f5f6f8); }
+
 .loop-adp__owner { display: inline-flex; align-items: center; gap: 6px; }
 .loop-adp__owner-ava {
   display: inline-flex;
