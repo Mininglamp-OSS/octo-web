@@ -174,3 +174,64 @@ test.describe('standalone /d/:docId — clean cold-load (no in-app sid route)', 
     await expect(page.locator('.octo-doc-standalone')).toHaveCount(0)
   })
 })
+
+test.describe('standalone /d/:docId — records a view in the viewer space (XIN-1238)', () => {
+  test('opening a cross-space share link fires POST /docs/:id/view with X-Space-Id = viewer current space, not the doc space', async ({
+    page,
+  }) => {
+    await seedSignedInSession(page)
+    // The viewer is currently in `space-viewer`; the shell persists that under the shared
+    // `currentSpaceId` key. On a cold `/d/:docId` deep link this is the only source of the viewer's
+    // real space (the live space is not yet restored).
+    await page.addInitScript(() => {
+      try {
+        localStorage.setItem('currentSpaceId', 'space-viewer')
+      } catch {
+        /* noop */
+      }
+    })
+    await stubBackend(page)
+    // Cross-space share: the link carries the DOC's own space (`?sp=space-doc`), which the page uses
+    // to address the preflight — deliberately different from the viewer's current space.
+    await routeDocPreflight(page, 'd_ok', 200, {
+      docId: 'd_ok',
+      title: 'Shared Doc',
+      ownerId: 'u_owner',
+      role: 'reader',
+    })
+
+    // Capture the view-ingest call. Registered after the catch-all so it wins (Playwright runs the
+    // most-recently-added matching handler first).
+    let viewSpaceHeader: string | undefined
+    let viewCalls = 0
+    await page.route('**/api/v1/docs/d_ok/view', (route: Route) => {
+      viewCalls += 1
+      viewSpaceHeader = route.request().headers()['x-space-id']
+      route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+    })
+
+    await page.goto('/d/d_ok?sp=space-doc')
+
+    // The view was recorded once, addressed to the VIEWER's current space so it surfaces in the
+    // viewer's 最近查看 (XIN-1237 write/read contract) — NOT the doc's own space.
+    await expect.poll(() => viewCalls).toBe(1)
+    expect(viewSpaceHeader).toBe('space-viewer')
+  })
+
+  test('does not record a view when the preflight fails to a terminal (403)', async ({ page }) => {
+    await seedSignedInSession(page)
+    await stubBackend(page)
+    await routeDocPreflight(page, 'd_forbidden', 403)
+
+    let viewCalls = 0
+    await page.route('**/api/v1/docs/d_forbidden/view', (route: Route) => {
+      viewCalls += 1
+      route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+    })
+
+    await page.goto('/d/d_forbidden')
+
+    await expect(page.locator('.octo-terminal')).toBeVisible()
+    expect(viewCalls).toBe(0)
+  })
+})

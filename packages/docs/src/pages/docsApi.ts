@@ -204,10 +204,19 @@ export async function listRecentCreators(q?: string): Promise<CreatorOption[]> {
  * failed / not-yet-deployed ingest never blocks opening the doc and never surfaces a toast
  * (frontend-design §3.4). No body — uid is derived server-side. The server UPSERTs on `(uid,docId)`
  * so calling it once per open is idempotent.
+ *
+ * `opts.spaceId` (standalone need, XIN-1237): the backend writes the view into the space carried by
+ * the request's `X-Space-Id` and "最近查看" reads back by that same viewer space. In-shell callers
+ * omit it and rely on the global interceptor (spaceIdCallback → currentSpaceId, the viewer's live
+ * space). The standalone `/d/:docId` page seeds currentSpaceId to the DOC's own space for preflight
+ * addressing, so it must pass the viewer's real current space here explicitly — otherwise the view
+ * would be written under the doc space and never surface in a cross-space recipient's recent list.
+ * Axios merges this header over (and thus wins against) the interceptor's value.
  */
-export async function recordDocView(docId: string): Promise<void> {
+export async function recordDocView(docId: string, opts?: { spaceId?: string }): Promise<void> {
   try {
-    await apiClient().post(`/docs/${encodeURIComponent(docId)}/view`)
+    const config = opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined
+    await apiClient().post(`/docs/${encodeURIComponent(docId)}/view`, undefined, config)
   } catch {
     // Fire-and-forget: ingest is best-effort and must never disrupt the open path. The backend
     // collab-token path also has a best-effort fallback ingest, so a dropped call here is covered.

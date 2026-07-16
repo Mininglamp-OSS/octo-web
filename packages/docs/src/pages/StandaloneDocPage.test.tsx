@@ -886,3 +886,91 @@ describe('StandaloneDocPage — creator name is nickname-only on the shared surf
     expect(screen.getByTestId('editor-creator-nickname-only').textContent).toBe('true')
   })
 })
+
+describe('StandaloneDocPage — records a view so share-link opens surface in 最近查看 (XIN-1238)', () => {
+  it('fires POST /docs/:id/view once the doc is ready, written to the VIEWER current space, not the doc link space', async () => {
+    // XIN-1234 root cause: the standalone page never recorded a view, so a doc opened from a chat
+    // share link never appeared in the opener's 最近查看. XIN-1237 write/read space contract: the
+    // view must be written under the VIEWER's current space (X-Space-Id), which 最近查看 reads back
+    // by — NOT the doc's own space the standalone page seeds for preflight addressing.
+    // Cross-space share: the link carries the doc space `?sp=space-doc`, but the viewer is currently
+    // in space-viewer (their cached/live current space).
+    window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
+    window.localStorage.setItem('currentSpaceId', 'space-viewer')
+
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/docs/d_ok/view')).toBe(true),
+    )
+    const view = wk.apiClient.calls.find((c) => c.method === 'post' && c.url === '/docs/d_ok/view')
+    // The preflight is addressed to the doc's own space (link `?sp`), but the view ingest must go to
+    // the viewer's current space so it surfaces in the viewer's recent list.
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+    expect(view!.config?.headers?.['X-Space-Id']).toBe('space-viewer')
+  })
+
+  it('uses the live current space as the viewer space when the shell already restored it (in-shell mount)', async () => {
+    wk.shared.currentSpaceId = 'space-live'
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/docs/d_ok/view')).toBe(true),
+    )
+    const view = wk.apiClient.calls.find((c) => c.method === 'post' && c.url === '/docs/d_ok/view')
+    expect(view!.config?.headers?.['X-Space-Id']).toBe('space-live')
+  })
+
+  it('records the view at most once (idempotent — never in a render loop)', async () => {
+    window.localStorage.setItem('currentSpaceId', 'space-viewer')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    await waitFor(() =>
+      expect(wk.apiClient.calls.filter((c) => c.method === 'post' && c.url === '/docs/d_ok/view').length).toBe(1),
+    )
+    // Give any stray re-render a chance to double-fire, then re-assert the single call.
+    await new Promise((r) => setTimeout(r, 0))
+    expect(wk.apiClient.calls.filter((c) => c.method === 'post' && c.url === '/docs/d_ok/view').length).toBe(1)
+  })
+
+  it('does NOT record a view when the preflight fails to a terminal (forbidden / not-found)', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_forbidden') {
+        return Promise.reject(apiError(403))
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_forbidden" />)
+
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'get' && c.url === '/docs/d_forbidden')).toBe(true),
+    )
+    expect(wk.apiClient.calls.some((c) => c.url === '/docs/d_forbidden/view')).toBe(false)
+  })
+})

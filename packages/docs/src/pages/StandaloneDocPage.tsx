@@ -7,7 +7,7 @@ import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { terminalForCreateError } from '../collab/useCollabEditor.ts'
-import { getDoc, type DocMeta } from './docsApi.ts'
+import { getDoc, recordDocView, type DocMeta } from './docsApi.ts'
 import { parseDocumentName } from '../documentName/index.ts'
 import { DEFAULT_DOC_SPACE, DEFAULT_DOC_FOLDER } from '../config.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
@@ -310,6 +310,20 @@ export function StandaloneDocPage({
   // addresses the doc correctly when the opener is already in the doc's space (owner / same-space).
   const preflightSpace = standaloneLinkSpace() || standaloneFallbackSpace(wk.shared?.currentSpaceId)
 
+  // XIN-1237 write/read space contract: a view is written into the space carried by the request's
+  // X-Space-Id and "最近查看" reads back by that SAME viewer space. recordDocView must therefore be
+  // written to the VIEWER's current space, NOT the doc's own space. But the seed effect below
+  // overwrites wk.shared.currentSpaceId to the doc's link space (`?sp=`) for preflight/room
+  // addressing, so by the time the doc is ready that value no longer reflects the viewer. Capture
+  // the viewer's real current space ONCE on first render — before the seed effect runs — resolving
+  // live currentSpaceId → cached localStorage → deploy default (the viewer resolution of
+  // standaloneFallbackSpace, WITHOUT the link-space override that preflightSpace applies). Lazy
+  // null-init so the resolution runs exactly once and is immune to the later seed mutation.
+  const viewerSpaceRef = useRef<string | null>(null)
+  if (viewerSpaceRef.current === null) {
+    viewerSpaceRef.current = standaloneFallbackSpace(wk.shared?.currentSpaceId)
+  }
+
   // Genuine defense in depth (second, independent path — NOT the only working one): the standalone
   // page mounts via the Layout early-return, before the app shell restores currentSpaceId from
   // localStorage, so any in-shell-shared logic the EditorShell touches would see an empty space. If —
@@ -384,6 +398,22 @@ export function StandaloneDocPage({
       cancelled = true
     }
   }, [docId, onSessionExpired, preflightSpace])
+
+  // XIN-1238 / XIN-1234: the standalone `/d/:docId` page never recorded a view, so a doc opened from
+  // a chat share link never surfaced in the opener's "最近查看". Mirror the in-shell entry
+  // (DocsHome.commitOpen): once the doc is READY, fire a single view ingest. It is written to the
+  // VIEWER's real current space (viewerSpaceRef), per the XIN-1237 write/read space contract — NOT
+  // the doc space the page seeds for addressing. Guarded by docId so React re-renders and
+  // strict-mode double-invocation record at most once per opened doc, matching the timing of the
+  // normal entry (on open success, not in a render loop). Fire-and-forget: recordDocView swallows
+  // every failure, so a failed / not-yet-deployed ingest never affects the open path.
+  const recordedDocRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (phase.status !== 'ready' || !docId) return
+    if (recordedDocRef.current === docId) return
+    recordedDocRef.current = docId
+    void recordDocView(docId, { spaceId: viewerSpaceRef.current ?? undefined })
+  }, [phase.status, docId])
 
   useEffect(
     () => () => {
