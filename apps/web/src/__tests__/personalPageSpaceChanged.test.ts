@@ -187,6 +187,21 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     expect(body).toMatch(/\+\+\s*spaceResolveSeqRef\.current/);
     expect(body).toMatch(/!==\s*spaceResolveSeqRef\.current/);
   });
+
+  it('clears the workspace list on a failed re-resolve (no stale clickable dropdown)', () => {
+    // showEmptyGuide only repaints the right pane; without setWorkspaces([]) in
+    // the .catch branches, a failed listWorkspaces() during a space switch leaves
+    // the old space's workspaces in the switcher dropdown — re-enabled by
+    // setLoaded(true) and still clickable → switchWorkspace binds an old-space
+    // slug under the new space → cross-space 403. Both resolve paths (mount +
+    // space-changed) must clear the list on error.
+    const catchBlocks = loopPage.match(/\.catch\(\(\)\s*=>\s*\{[\s\S]*?\}\)/g) || [];
+    const resolveCatches = catchBlocks.filter((b) => b.includes('showEmptyGuide'));
+    expect(resolveCatches.length).toBeGreaterThanOrEqual(2);
+    for (const b of resolveCatches) {
+      expect(b).toMatch(/setWorkspaces\(\s*\[\s*\]\s*\)/);
+    }
+  });
 });
 
 /**

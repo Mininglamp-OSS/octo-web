@@ -144,6 +144,10 @@ export default function LoopPage() {
       .catch(() => {
         if (seq !== spaceResolveSeqRef.current) return;
         setLoaded(true);
+        // Clear the switcher list on a failed resolve: showEmptyGuide only
+        // repaints the right pane, so without this the dropdown would keep the
+        // previous list, re-enabled by setLoaded(true) and clickable.
+        setWorkspaces([]);
         showEmptyGuide();
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -201,6 +205,11 @@ export default function LoopPage() {
         .catch(() => {
           if (seq !== spaceResolveSeqRef.current) return;
           setLoaded(true);
+          // Clear the stale old-space list on a failed re-resolve — otherwise the
+          // switcher dropdown keeps the previous space's workspaces, re-enabled by
+          // setLoaded(true) and clickable, so switchWorkspace would bind an
+          // old-space slug under the new space's X-Space-Id → cross-space 403.
+          setWorkspaces([]);
           showEmptyGuide();
         });
     };
