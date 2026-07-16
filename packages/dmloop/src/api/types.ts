@@ -634,8 +634,6 @@ export interface RuntimeDevice {
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
-  // 回填（供 Agent 详情页运行时下拉展示归属人）
-  owner_name?: string | null;
 }
 
 /* ---------- Autopilot（自动化，对接自动化后端契约） ---------- */

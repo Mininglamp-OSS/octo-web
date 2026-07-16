@@ -122,13 +122,6 @@ export async function getAgentContributions(
 }
 
 /* ---------- runtimes（供新建 Agent 选择运行环境） ---------- */
-export async function listRuntimesForAgent(): Promise<RuntimeDevice[]> {
-  const [rows, dir] = await Promise.all([
-    httpGet<RuntimeDevice[]>("/runtimes"),
-    ensureDirectory(),
-  ]);
-  return (rows ?? []).map((r) => ({
-    ...r,
-    owner_name: actorName(dir, "member", r.owner_id),
-  }));
+export function listRuntimesForAgent(): Promise<RuntimeDevice[]> {
+  return httpGet<RuntimeDevice[]>("/runtimes");
 }

@@ -7,11 +7,17 @@ import { ProviderLogo } from "../ui/providerLogo";
 
 type Filter = "mine" | "all";
 
+// 设备（机器）标签：device_info 的首段（"host · 2.1.121 (Claude Code)" → "host"），回落到 runtime 名。
+function deviceLabel(r: RuntimeDevice): string {
+  const head = r.device_info?.split("·")[0]?.trim();
+  return head || r.name;
+}
+
 /**
- * Agent 详情页运行时下拉（对齐 multica 的 runtime-picker）：
+ * Agent 详情页运行时下拉（对齐产品设计）：
  * 触发器 = Monitor/Cloud 图标 + 运行时名（mono）+ 右侧在线点；
- * 弹框 = Mine/All 筛选（仅当存在他人 runtime）+ 富行（ProviderLogo + 名字/徽章 + 归属人/设备 + 在线点 + 选中勾）。
- * 保留 Semi Dropdown 皮肤，仅自定义 render 内容（符合「下拉不重写」约定）。
+ * 弹框 = Mine/All 筛选（仅当存在他人 runtime）+ 按设备分组的富行（ProviderLogo + 名字/徽章 + 在线点 + 选中勾）。
+ * 不展示归属人（属性仅 owner 可改，展示归属人无意义）。保留 Semi Dropdown 皮肤，仅自定义 render 内容。
  */
 export default function RuntimePicker({
   value,
@@ -40,13 +46,13 @@ export default function RuntimePicker({
 
   const hasOtherRuntimes = runtimes.some((r) => r.owner_id !== currentUserId);
 
-  const filtered = useMemo(() => {
+  // 先按「我的优先 → 可用优先」排序，再按设备（daemon_id）聚成分组，组内保持排序顺序。
+  const groups = useMemo(() => {
     const list =
       filter === "mine" && currentUserId
         ? runtimes.filter((r) => r.owner_id === currentUserId)
         : runtimes;
-    // 我的优先 → 可用优先。
-    return [...list].sort((a, b) => {
+    const sorted = [...list].sort((a, b) => {
       const aMine = a.owner_id === currentUserId;
       const bMine = b.owner_id === currentUserId;
       if (aMine !== bMine) return aMine ? -1 : 1;
@@ -55,6 +61,17 @@ export default function RuntimePicker({
       if (aLocked !== bLocked) return aLocked ? 1 : -1;
       return 0;
     });
+    const map = new Map<string, { label: string; items: RuntimeDevice[] }>();
+    for (const r of sorted) {
+      const key = r.daemon_id || deviceLabel(r);
+      let g = map.get(key);
+      if (!g) {
+        g = { label: deviceLabel(r), items: [] };
+        map.set(key, g);
+      }
+      g.items.push(r);
+    }
+    return [...map.values()];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtimes, filter, currentUserId]);
 
@@ -88,25 +105,29 @@ export default function RuntimePicker({
         </div>
       )}
       <div className="loop-rtp__list">
-        {filtered.length === 0 ? (
+        {groups.length === 0 ? (
           <p className="loop-rtp__empty">{t("loop.agent.runtimeEmpty")}</p>
         ) : (
-          filtered.map((rt) => {
-            const online = rt.status === "online";
-            const locked = isLocked(rt);
-            return (
-              <button
-                key={rt.id}
-                type="button"
-                className={`loop-rtp__item${rt.id === value ? " is-selected" : ""}${locked ? " is-locked" : ""}`}
-                disabled={locked}
-                onClick={() => {
-                  if (!locked) void select(rt.id);
-                }}
-              >
-                <ProviderLogo provider={rt.provider} />
-                <span className="loop-rtp__main">
-                  <span className="loop-rtp__line1">
+          groups.map((g) => (
+            <div key={g.label} className="loop-rtp__group">
+              <div className="loop-rtp__group-head">
+                <Monitor size={11} className="loop-rtp__group-ico" />
+                <span className="loop-rtp__group-name">{g.label}</span>
+              </div>
+              {g.items.map((rt) => {
+                const online = rt.status === "online";
+                const locked = isLocked(rt);
+                return (
+                  <button
+                    key={rt.id}
+                    type="button"
+                    className={`loop-rtp__item${rt.id === value ? " is-selected" : ""}${locked ? " is-locked" : ""}`}
+                    disabled={locked}
+                    onClick={() => {
+                      if (!locked) void select(rt.id);
+                    }}
+                  >
+                    <ProviderLogo provider={rt.provider} />
                     <span className="loop-rtp__name">{rt.name}</span>
                     {rt.runtime_mode === "cloud" && (
                       <span className="loop-rtp__badge is-cloud">{t("loop.agent.runtimeCloudBadge")}</span>
@@ -117,20 +138,13 @@ export default function RuntimePicker({
                         {t("loop.agent.runtimePrivateBadge")}
                       </span>
                     )}
-                  </span>
-                  {(rt.owner_name || rt.device_info) && (
-                    <span className="loop-rtp__line2">
-                      {rt.owner_name && <span className="loop-rtp__owner-name">{rt.owner_name}</span>}
-                      {rt.owner_name && rt.device_info && <span className="loop-rtp__sep">·</span>}
-                      {rt.device_info && <span className="loop-rtp__device">{rt.device_info}</span>}
-                    </span>
-                  )}
-                </span>
-                {dot(online)}
-                <Check size={14} className={`loop-rtp__check${rt.id === value ? "" : " is-hidden"}`} />
-              </button>
-            );
-          })
+                    {dot(online)}
+                    <Check size={14} className={`loop-rtp__check${rt.id === value ? "" : " is-hidden"}`} />
+                  </button>
+                );
+              })}
+            </div>
+          ))
         )}
       </div>
     </div>
