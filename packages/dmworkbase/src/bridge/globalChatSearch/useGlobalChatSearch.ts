@@ -368,6 +368,8 @@ export function useGlobalChatSearch({
     ) {
       return;
     }
+    const controller = resultAbortRef.current;
+    if (!controller || controller.signal.aborted) return;
     loadingMoreRef.current = true;
     setResult((current) => ({ ...current, isLoadingMore: true }));
     try {
@@ -377,7 +379,11 @@ export function useGlobalChatSearch({
         filters: drillDownFilters(filters, selectedConversation),
         cursor: result.nextCursor,
         limit: PAGE_SIZE,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted || resultAbortRef.current !== controller) {
+        return;
+      }
       setResult((current) => ({
         status: "ready",
         items: [...current.items, ...response.items],
@@ -385,10 +391,18 @@ export function useGlobalChatSearch({
         nextCursor: response.nextCursor,
         isLoadingMore: false,
       }));
-    } catch {
-      setResult((current) => ({ ...current, isLoadingMore: false }));
+    } catch (error) {
+      if (
+        !controller.signal.aborted &&
+        resultAbortRef.current === controller &&
+        !isCancelledRequest(error)
+      ) {
+        setResult((current) => ({ ...current, isLoadingMore: false }));
+      }
     } finally {
-      loadingMoreRef.current = false;
+      if (resultAbortRef.current === controller) {
+        loadingMoreRef.current = false;
+      }
     }
   }, [
     dataSource,

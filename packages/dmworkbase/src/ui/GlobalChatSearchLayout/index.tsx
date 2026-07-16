@@ -26,7 +26,6 @@ export interface GlobalChatSearchLayoutState {
 }
 
 export interface GlobalChatSearchLayoutResult {
-  title?: string;
   countLabel?: string;
   content: React.ReactNode;
 }
@@ -154,10 +153,10 @@ export function GlobalChatSearchLayout({
       </aside>
 
       <main className="wk-global-chat-search-layout__results">
-        {(result.countLabel || result.title) && (
+        {result.countLabel && (
           <header className="wk-global-chat-search-layout__result-header">
             <div className="wk-global-chat-search-layout__result-title">
-              {result.countLabel || result.title}
+              {result.countLabel}
             </div>
           </header>
         )}

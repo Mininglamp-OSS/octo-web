@@ -143,7 +143,6 @@ export function GlobalChatSearchPanel({
         isTruncated: search.overview.isTruncated,
       }}
       result={{
-        title: selected?.name,
         countLabel: resultCountLabel,
         content: resultContent,
       }}

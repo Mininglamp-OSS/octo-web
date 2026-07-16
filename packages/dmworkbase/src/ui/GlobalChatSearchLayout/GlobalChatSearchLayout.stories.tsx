@@ -41,7 +41,6 @@ const meta = {
     },
     state: { status: "ready" },
     result: {
-      title: "OCTO 研发内部群",
       countLabel: "39 条相关聊天记录",
       content: (
         <div style={{ padding: "var(--wk-sp-4)" }}>
@@ -73,7 +72,6 @@ export const ThreadSelected: Story = {
   args: {
     selectedKey: conversations[1].key,
     result: {
-      title: "IM Native 小分队",
       countLabel: "28 条相关聊天记录",
       content: (
         <div style={{ padding: "var(--wk-sp-4)" }}>
