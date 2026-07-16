@@ -46,6 +46,36 @@
   line-height: var(--wk-leading-normal);
 }
 
+.wk-login-mobile-download-direct-link {
+  display: inline-flex;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  padding: var(--wk-sp-1) var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-leading-normal);
+  text-decoration: none;
+  transition:
+    background var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-login-mobile-download-direct-link:hover {
+  border-color: var(--wk-border-strong);
+  background: var(--wk-bg-hover);
+}
+
+.wk-login-mobile-download-direct-link:focus-visible {
+  outline: 2px solid var(--wk-border-glow);
+  outline-offset: 2px;
+}
+
 .wk-login-android-popover-manual-download {
   width: 100%;
   justify-content: center;

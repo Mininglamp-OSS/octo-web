@@ -226,6 +226,22 @@ describe("AndroidDownloadButton", () => {
     expect(html).toContain('aria-label="打开 GitHub Releases"');
   });
 
+  it("provides a direct APK download action for same-device mobile users", () => {
+    const container = document.createElement("div");
+    container.innerHTML = renderToStaticMarkup(
+      React.createElement(AndroidDownloadPopoverContent)
+    );
+
+    const directDownload = container.querySelector<HTMLAnchorElement>(
+      ".wk-login-mobile-download-direct-link"
+    );
+    expect(directDownload?.href).toBe(
+      `${window.location.origin}${ANDROID_APK_PATH}`
+    );
+    expect(directDownload?.hasAttribute("download")).toBe(true);
+    expect(directDownload?.textContent).toBe("直接下载 APK");
+  });
+
   it("opens GitHub Releases safely in a new tab", () => {
     const openedWindow = { opener: {} };
     const openSpy = vi

@@ -158,4 +158,19 @@ describe("IOSDownloadButton", () => {
     expect(html).toContain(">扫码下载</strong>");
     expect(html).not.toContain("手机扫码安装");
   });
+
+  it("provides a direct TestFlight action for same-device mobile users", () => {
+    const container = document.createElement("div");
+    container.innerHTML = renderToStaticMarkup(
+      React.createElement(IOSDownloadPopoverContent)
+    );
+
+    const directDownload = container.querySelector<HTMLAnchorElement>(
+      ".wk-login-mobile-download-direct-link"
+    );
+    expect(directDownload?.href).toBe(IOS_DOWNLOAD_URL);
+    expect(directDownload?.target).toBe("_blank");
+    expect(directDownload?.rel).toBe("noopener noreferrer");
+    expect(directDownload?.textContent).toBe("打开 TestFlight");
+  });
 });

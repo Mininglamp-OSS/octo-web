@@ -51,6 +51,13 @@ export const AndroidDownloadPopoverContent: React.FC<PopoverHoverProps> = (
     <strong className="wk-login-mobile-download-popover-title">
       {t("download.androidQrTitle")}
     </strong>
+    <a
+      className="wk-login-mobile-download-direct-link"
+      href={resolveAndroidApkUrl()}
+      download
+    >
+      {t("download.androidDirectDownload")}
+    </a>
     <WKButton
       type="button"
       className="wk-login-android-popover-manual-download"

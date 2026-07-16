@@ -78,11 +78,13 @@
   },
   "download": {
     "android": "Android",
+    "androidDirectDownload": "Download APK directly",
     "androidHoverHint": "Hover or click to view the Android download QR code",
     "androidQrTitle": "Scan to download",
     "githubManualDownload": "Or download manually from GitHub",
     "openGithubReleases": "Open GitHub Releases",
     "ios": "iOS",
+    "iosDirectDownload": "Open TestFlight",
     "iosHoverHint": "Hover or click to view the iOS installation QR code",
     "iosQrLabel": "TestFlight installation QR code",
     "iosQrTitle": "Scan to download"

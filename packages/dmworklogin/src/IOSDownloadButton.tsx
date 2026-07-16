@@ -31,6 +31,14 @@ export const IOSDownloadPopoverContent: React.FC<PopoverHoverProps> = (
     <strong className="wk-login-mobile-download-popover-title">
       {t("download.iosQrTitle")}
     </strong>
+    <a
+      className="wk-login-mobile-download-direct-link"
+      href={IOS_DOWNLOAD_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {t("download.iosDirectDownload")}
+    </a>
   </div>
 );
 
