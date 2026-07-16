@@ -185,6 +185,10 @@ export default function LoopPage() {
       // `if (!loaded) return` 守卫随之生效,避免窗口期用旧 workspaces 闭包渲染 workspace 级页面。
       setLoaded(false);
       resetWorkspaceCaches();
+      // Unmount the stale right pane immediately so the previous space's
+      // IssuePage (and its polling / create entry) stops firing requests during
+      // the re-resolve window; applyWorkspace repaints once the new space resolves.
+      WKApp.routeRight.replaceToRoot(<div className="loop-page" />);
       listWorkspaces()
         .then((list) => {
           // 过期守卫:快速连切 space 时只让最后一次解析落地,丢弃乱序返回的旧响应,
@@ -223,6 +227,12 @@ export default function LoopPage() {
     const autoSlug = !wsSlugTouched;
     let slug = wsSlug.trim() || withRandomSuffix(getPinyin(name), wsSlugSuffix);
     if (!slug) { Toast.warning(t("loop.workspace.slugRequired")); return; }
+    // Join the resolve generation: creating a workspace writes workspace context
+    // after awaits, so if the user switches octo space mid-create, the space-changed
+    // handler bumps the seq and the post-await applyWorkspace below is dropped —
+    // otherwise it would write this space's workspace slug under the new space's
+    // X-Space-Id and re-trigger the isolation 403.
+    const seq = ++spaceResolveSeqRef.current;
     setWsBusy(true);
     try {
       // auto slug re-rolls its random suffix on the backend's 409 (slug is
@@ -230,9 +240,15 @@ export default function LoopPage() {
       // slug is surfaced as taken, never silently changed.
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
+          // Re-check before each create so a space switch during a 409 retry
+          // doesn't create a stray workspace in the newly-selected space.
+          if (seq !== spaceResolveSeqRef.current) return;
           const created = await createWorkspace({ name, slug });
           setWsModalOpen(false);
           const list = await reloadWorkspaces();
+          // A space switch during creation invalidates this write; the
+          // space-changed resolve owns the pane now.
+          if (seq !== spaceResolveSeqRef.current) return;
           applyWorkspace(findWs(list, created.id) ?? created, list);
           setTab("issue");
           WKApp.routeRight.replaceToRoot(<IssuePage viewKey="loop.view.issue" />);

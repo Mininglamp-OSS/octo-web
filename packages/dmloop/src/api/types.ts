@@ -629,6 +629,11 @@ export interface RuntimeDevice {
   metadata?: Record<string, unknown>;
   owner_id?: string | null;
   visibility: string;
+  // can_bind: whether the current member may bind an agent to this runtime as
+  // owner (owner-only, matches backend canBindRuntimeAsOwner). Set on the
+  // visibility-scoped /runtimes list. Optional for forward-compat: absent from
+  // older backends, in which case the picker shows the runtime (no regression).
+  can_bind?: boolean;
   profile_id?: string | null;
   last_seen_at: string | null;
   created_at: string;

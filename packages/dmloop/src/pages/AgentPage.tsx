@@ -69,7 +69,19 @@ export default function AgentPage() {
 
   const openCreate = () => {
     setCreateOpen(true);
-    listRuntimesForAgent().then((rs) => { setRuntimes(rs); if (rs[0]) setNRuntimeId(rs[0].id); }).catch(() => setRuntimes([]));
+    // Only bindable runtimes (owner-only, per backend canBindRuntimeAsOwner):
+    // can_bind === false is hidden; undefined (older backend) is kept so the
+    // picker never goes empty on a backend that predates the flag.
+    listRuntimesForAgent()
+      .then((rs) => {
+        const bindable = rs.filter((r) => r.can_bind !== false);
+        setRuntimes(bindable);
+        // Always resync the selection to the filtered list — else a stale
+        // nRuntimeId from a previous open could be submitted and 403 on the
+        // owner-only bind. Empty when nothing is bindable (doCreate then warns).
+        setNRuntimeId(bindable[0]?.id ?? "");
+      })
+      .catch(() => { setRuntimes([]); setNRuntimeId(""); });
   };
 
   const doCreate = async () => {

@@ -156,6 +156,10 @@ export default function PersonalPage() {
       selectedWsRef.current = null;
       machineModeRef.current = false;
       setWorkspaceContext("", "");
+      // Gate the re-resolve window: openTab bails on !workspaceReady, so the
+      // Skills / runtime tabs cannot be opened against the old space's workspace
+      // scope until resolveAndPaint re-establishes the new space's selection.
+      setWorkspaceReady(false);
       resolveRef.current(true);
     };
     WKApp.mittBus.on("space-changed", onSpaceChanged);

@@ -1,6 +1,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Extract the body of the space-changed handler: from `const onSpaceChanged =`
+// up to the `mittBus.on("space-changed"` registration that follows it. Bounding
+// on the registration line (not a fixed char window) keeps these assertions
+// stable as the handler grows with comments/guards.
+function onSpaceChangedBody(src: string): string {
+  const start = src.search(/const\s+onSpaceChanged\s*=/);
+  if (start < 0) return '';
+  const rest = src.slice(start);
+  const end = rest.search(/mittBus\.on\(\s*["']space-changed["']/);
+  return end < 0 ? rest : rest.slice(0, end);
+}
+
 /**
  * Switching octo space must refresh the Personal (我的/运行时) right pane.
  *
@@ -40,7 +52,7 @@ describe('PersonalPage — re-resolve workspace on space switch', () => {
     // Anchor on the handler declaration, then assert the body re-resolves.
     const handlerIdx = personalPage.search(/const\s+onSpaceChanged\s*=/);
     expect(handlerIdx).toBeGreaterThanOrEqual(0);
-    expect(personalPage.slice(handlerIdx, handlerIdx + 400)).toMatch(/resolveRef\.current\(/);
+    expect(onSpaceChangedBody(personalPage)).toMatch(/resolveRef\.current\(/);
   });
 
   it('resets all three workspace states before re-resolving', () => {
@@ -54,7 +66,7 @@ describe('PersonalPage — re-resolve workspace on space switch', () => {
     // ahead of the clears would reopen the bug, so assert order too.
     const handlerIdx = personalPage.search(/const\s+onSpaceChanged\s*=/);
     expect(handlerIdx).toBeGreaterThanOrEqual(0);
-    const body = personalPage.slice(handlerIdx, handlerIdx + 400);
+    const body = onSpaceChangedBody(personalPage);
     expect(body).toMatch(/selectedWsRef\.current\s*=\s*null/);
     expect(body).toMatch(/machineModeRef\.current\s*=\s*false/);
     expect(body).toMatch(/setWorkspaceContext\(\s*["']["']\s*,\s*["']["']\s*\)/);
@@ -68,6 +80,12 @@ describe('PersonalPage — re-resolve workspace on space switch', () => {
 
   it('unsubscribes the space-changed handler on cleanup', () => {
     expect(personalPage).toMatch(/mittBus\.off\(\s*["']space-changed["']/);
+  });
+
+  it('gates the re-resolve window by marking workspace not-ready', () => {
+    // openTab bails on !workspaceReady; the handler must flip it false during the
+    // window so the Skills/runtime tabs cannot open against the old space's scope.
+    expect(onSpaceChangedBody(personalPage)).toMatch(/setWorkspaceReady\(\s*false\s*\)/);
   });
 });
 
@@ -99,7 +117,7 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     // hit the backend isolation gate). It must precede listWorkspaces().
     const handlerIdx = loopPage.search(/const\s+onSpaceChanged\s*=/);
     expect(handlerIdx).toBeGreaterThanOrEqual(0);
-    const body = loopPage.slice(handlerIdx, handlerIdx + 600);
+    const body = onSpaceChangedBody(loopPage);
     expect(body).toMatch(/setWorkspaceContext\(\s*["']["']\s*,\s*["']["']\s*\)/);
     expect(body).toMatch(/listWorkspaces\(/);
     expect(body.search(/setWorkspaceContext\(\s*["']["']/)).toBeLessThan(body.search(/listWorkspaces\(/));
@@ -109,8 +127,7 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     // Fast consecutive space switches race their listWorkspaces() responses; a
     // stale one landing last would write the old slug back and re-trigger 403.
     // Only the latest resolve may apply — assert a seq/generation guard exists.
-    const handlerIdx = loopPage.search(/const\s+onSpaceChanged\s*=/);
-    const body = loopPage.slice(handlerIdx, handlerIdx + 600);
+    const body = onSpaceChangedBody(loopPage);
     expect(body).toMatch(/spaceResolveSeqRef/);
     // The .then must bail when its captured seq is no longer current.
     expect(body).toMatch(/!==\s*spaceResolveSeqRef\.current/);
@@ -150,5 +167,45 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
 
   it('unsubscribes the space-changed handler on cleanup', () => {
     expect(loopPage).toMatch(/mittBus\.off\(\s*["']space-changed["']/);
+  });
+
+  it('unmounts the stale right pane during the re-resolve window', () => {
+    // The previous space's IssuePage keeps polling until unmounted; onSpaceChanged
+    // must replace the right pane before awaiting the new resolve.
+    const body = onSpaceChangedBody(loopPage);
+    expect(body).toMatch(/routeRight\.replaceToRoot/);
+    expect(body.search(/routeRight\.replaceToRoot/)).toBeLessThan(body.search(/listWorkspaces\(/));
+  });
+
+  it('guards doCreateWs against a space switch mid-create', () => {
+    // Creating a workspace writes workspace context after awaits; a space switch
+    // during creation must drop that stale write (same generation guard).
+    const start = loopPage.search(/const\s+doCreateWs\s*=/);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end = loopPage.slice(start).search(/\n  const\s+\w+\s*=/);
+    const body = end < 0 ? loopPage.slice(start) : loopPage.slice(start, start + end);
+    expect(body).toMatch(/\+\+\s*spaceResolveSeqRef\.current/);
+    expect(body).toMatch(/!==\s*spaceResolveSeqRef\.current/);
+  });
+});
+
+/**
+ * The agent runtime picker must not offer runtimes the CreateAgent write would
+ * reject. Backend canBindRuntimeAsOwner is owner-only; the list endpoint now
+ * returns can_bind per runtime, and the picker filters on it (forward-compat:
+ * undefined from an older backend is kept, so the picker never goes empty).
+ */
+describe('AgentPage — runtime picker filters to bindable runtimes', () => {
+  let agentPage: string;
+
+  beforeAll(() => {
+    agentPage = fs.readFileSync(
+      path.join(__dirname, '../../../../packages/dmloop/src/pages/AgentPage.tsx'),
+      'utf-8',
+    );
+  });
+
+  it('drops runtimes explicitly marked can_bind === false', () => {
+    expect(agentPage).toMatch(/can_bind\s*!==\s*false/);
   });
 });
