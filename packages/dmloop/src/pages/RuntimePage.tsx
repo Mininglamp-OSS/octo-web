@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Typography, Spin, Banner, Button, Toast } from "@douyinfe/semi-ui";
+import { Typography, Spin, Banner, Toast } from "@douyinfe/semi-ui";
 import { Check, Circle, Copy, Cpu, Monitor, Plus } from "lucide-react";
 import { copyToClipboard, useI18n, WKModal } from "@octo/base";
 import type { RuntimeDevice, RuntimeMode } from "../api/types";
@@ -210,9 +210,9 @@ export default function RuntimePage() {
         title={t("loop.runtime.addComputerTitle")}
         size="lg"
         footer={(
-          <Button theme="borderless" type="tertiary" onClick={closeAddDialog}>
+          <LoopButton variant="secondary" onClick={closeAddDialog}>
             {t("loop.action.cancel")}
-          </Button>
+          </LoopButton>
         )}
       >
         <div className="loop-runtime-add">

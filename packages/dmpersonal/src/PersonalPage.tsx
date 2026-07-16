@@ -3,6 +3,7 @@ import { AlertCircle, Cpu, Loader2, Sparkles } from "lucide-react";
 import { currentWorkspaceId, resolveWorkspaceSelection, RuntimePage, setWorkspaceContext, SkillPage, workspaceApi } from "@octo/loop";
 import { useI18n, WKApp } from "@octo/base";
 import "@octo/loop/src/pages/loop.css";
+import "@octo/loop/src/ui/loopControls.css";
 import "./personal.css";
 
 type PersonalTabKey = "runtime" | "skill";
