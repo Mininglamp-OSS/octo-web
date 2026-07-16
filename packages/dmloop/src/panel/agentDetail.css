@@ -134,7 +134,11 @@
   overflow-x: auto;
   padding-bottom: 2px;
   flex: 0 1 auto;
+  /* 小屏放不下时仍可横向滚动，但隐藏丑陋的滚动条（默认滚到最右=最新，见 AgentDetailPage） */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.loop-adp__cal::-webkit-scrollbar { display: none; }
 .loop-adp__cal-col { display: flex; flex-direction: column; gap: 3px; flex: 0 0 auto; }
 .loop-adp__cal-cell {
   width: 12px;
@@ -441,7 +445,7 @@
 
 .loop-adp__props {
   display: grid;
-  grid-template-columns: 72px 1fr;
+  grid-template-columns: 72px minmax(0, 1fr);
   gap: 0 8px;
   align-items: baseline;
   margin: 0;
@@ -481,6 +485,15 @@
 }
 .loop-adp__edit:hover { background: var(--semi-color-fill-0, #f5f6f8); }
 .loop-adp__edit-val { min-width: 0; word-break: break-word; }
+/* 单行省略工具类（配合 EllipsisText：仅截断时 hover title 全名）。定义在 __edit-val 之后以覆盖其 word-break。 */
+.loop-ellipsis-1 {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .loop-adp__edit--empty .loop-adp__edit-val { font-style: italic; color: var(--semi-color-text-3, #b8bcc8); }
 .loop-adp__edit-ico {
   flex: 0 0 auto;

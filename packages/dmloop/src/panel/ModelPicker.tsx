@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Dropdown, Input, Toast } from "@douyinfe/semi-ui";
 import { Plus } from "lucide-react";
 import { useI18n } from "@octo/base";
+import EllipsisText from "../ui/EllipsisText";
 
 /**
  * Agent 详情页模型选择（对齐 multica 的 model-picker 体验）：
@@ -26,7 +27,7 @@ export default function ModelPicker({
 
   // 非 owner 只读：静态展示当前模型或「默认」，无弹框。
   if (!canEdit) {
-    return <span className="loop-adp__ro loop-mono-text">{value || t("loop.agent.modelDefault")}</span>;
+    return <EllipsisText className="loop-adp__ro loop-mono-text" text={value || t("loop.agent.modelDefault")} />;
   }
 
   const commit = async (next: string) => {
@@ -89,7 +90,7 @@ export default function ModelPicker({
       render={menu}
     >
       <button type="button" className="loop-adp__edit" aria-label={t("loop.agent.model")}>
-        <span className="loop-adp__edit-val loop-mono-text">{value || t("loop.agent.modelDefault")}</span>
+        <EllipsisText className="loop-adp__edit-val loop-mono-text" text={value || t("loop.agent.modelDefault")} />
       </button>
     </Dropdown>
   );
