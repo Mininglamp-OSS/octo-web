@@ -128,10 +128,14 @@ function wait(ms: number): Promise<void> {
 
 /**
  * Reject presigned upload / download URLs whose scheme is not http(s), or
- * whose http-scheme host is not loopback. Guards against a compromised or
- * misconfigured marketplace returning `javascript:` / `data:` / `file:` /
- * arbitrary internal targets that a browser would otherwise honor
- * (anchor.href / xhr.open both accept unusual schemes).
+ * whose http-scheme host is not loopback. Blocks `javascript:` / `data:` /
+ * `file:` / arbitrary non-web schemes before an anchor.href / xhr.open
+ * accepts them.
+ *
+ * Scope: scheme-level only. `https://10.x` / `https://169.254.169.254`
+ * still passes — internal-host filtering would need a marketplace-side
+ * allowlist not shipped here. Blast radius stays bounded because the PUT
+ * runs with no app credentials (bare XHR / no interceptors).
  */
 function assertSafeExternalURL(raw: string): void {
   let u: URL;
@@ -358,6 +362,12 @@ export async function uploadIcon(blob: Blob): Promise<string> {
       body: JSON.stringify({ file_name: fileName, file_size: blob.size }),
     },
   );
+  // Mirror the presence guard `uploadMcpIconReal` already has — a malformed
+  // response would otherwise dereference `undefined.presigned_url` inside
+  // `uploadFile` as a bare TypeError instead of a normalized Toast error.
+  if (!initResp?.presigned_url || !initResp?.object_key) {
+    throw normalizeError({ code: "invalid_response", message: "上传失败：响应字段缺失" });
+  }
 
   // Step 2: Upload the file to presigned URL
   const file = new File([blob], fileName, { type: "image/png" });

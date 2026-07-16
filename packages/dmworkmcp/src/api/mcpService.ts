@@ -66,10 +66,17 @@ function delay<T>(value: T, ms = MOCK_DELAY_MS): Promise<T> {
 
 /**
  * Reject presigned upload / download URLs whose scheme is not http(s), or
- * whose http-scheme host is not a loopback (dev proxy). Backend-supplied
- * URLs are still trusted for the exact host they name, but we refuse to
- * PUT / GET against `javascript:`, `data:`, `file:` etc. — defense in
- * depth against a misconfigured or compromised marketplace.
+ * whose http-scheme host is not a loopback (dev proxy). Blocks the obvious
+ * bad schemes — `javascript:`, `data:`, `file:` — before an anchor.href /
+ * axios.put reaches them.
+ *
+ * Scope: this is scheme-level defense-in-depth only. An `https://` URL
+ * pointing at an internal / metadata host (`https://10.x`,
+ * `https://169.254.169.254`) still passes; that class of concern needs a
+ * host allowlist against the known storage origin, which the marketplace
+ * hasn't published yet. Blast radius is bounded either way — the PUT
+ * carries only the user-selected icon bytes with no app credentials (raw
+ * axios, no interceptors).
  */
 function assertSafeUploadURL(raw: string): void {
   let u: URL;
