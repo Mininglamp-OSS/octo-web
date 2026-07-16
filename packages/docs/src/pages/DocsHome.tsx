@@ -621,6 +621,11 @@ function DocsList({
         ? creatorName(d.ownerId, recentView.creatorOptions, nameFallback)
         : ''
     const stampIso = activeView === 'recent' ? d.viewedAt || d.updatedAt : d.updatedAt
+    // Recent rows also surface when the DOCUMENT itself was last updated — distinct from when the
+    // current user viewed it. The backend `GET /docs/recent` response carries `updatedAt` per row
+    // (docs-backend listRecentHandler), so this is a pure display addition (XIN-1236 follow-up).
+    // Undefined on "mine" rows, which already show the updated time inline via `stampIso`.
+    const updatedIso = activeView === 'recent' ? d.updatedAt : undefined
     return (
       <li
         key={d.docId}
@@ -664,8 +669,8 @@ function DocsList({
             {activeView === 'recent' ? (
               // Recent rows split the creator and the viewer onto SEPARATE lines so the creator's
               // name never sits next to "viewed at X" (which misread as "the creator viewed it").
-              // Line 1 states who created the doc; line 2 states when the current user viewed it
-              // (XIN-1236).
+              // Line 1 states who created the doc; line 2 states when the current user viewed it;
+              // line 3 states when the document itself was last updated (XIN-1236).
               <>
                 {creator && (
                   <span className="octo-docs-list-row-sub octo-docs-list-row-creator">
@@ -678,6 +683,14 @@ function DocsList({
                     title={formatAbsolute(stampIso)}
                   >
                     {t('docs.list.viewedBySelf')} {formatRelative(stampIso)}
+                  </span>
+                )}
+                {updatedIso && (
+                  <span
+                    className="octo-docs-list-row-sub octo-docs-list-row-updated"
+                    title={formatAbsolute(updatedIso)}
+                  >
+                    {t('docs.list.updatedAt')} {formatRelative(updatedIso)}
                   </span>
                 )}
               </>

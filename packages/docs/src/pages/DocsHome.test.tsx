@@ -1451,3 +1451,78 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     await waitFor(() => expect(screen.getByText('docs.filter.type')).toBeTruthy())
   })
 })
+
+// XIN-1236: recent rows surface three DISTINCT facts on their own lines so none is misread —
+// (1) who created the doc, (2) when the current user viewed it, (3) when the doc was last updated.
+describe('DocsHome — recent row shows creator / viewed / updated on separate lines (XIN-1236)', () => {
+  const recentRows = [
+    {
+      docId: 'd_doc',
+      title: 'A Doc',
+      ownerId: 'u_owner',
+      role: 'admin',
+      docType: 'doc',
+      viewedAt: '2026-07-15T06:00:00.000Z',
+      updatedAt: '2026-07-14T06:00:00.000Z',
+    },
+  ]
+
+  function mountList() {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [{ uid: 'u_owner', name: 'Owner Name' }] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        return { data: { total: recentRows.length, items: recentRows, nextCursor: null }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    return wk
+  }
+
+  it('renders creator, viewed, and updated as three separate sub-lines', async () => {
+    mountList()
+    const row = await waitFor(() => {
+      const el = screen.getByText('A Doc').closest('.octo-docs-list-item')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+
+    // Three distinct sub-lines, each in its own marked span (never concatenated on one line).
+    const creator = row.querySelector('.octo-docs-list-row-creator')
+    const viewed = row.querySelector('.octo-docs-list-row-viewed')
+    const updated = row.querySelector('.octo-docs-list-row-updated')
+    expect(creator).toBeTruthy()
+    expect(viewed).toBeTruthy()
+    expect(updated).toBeTruthy()
+
+    // Correct label prefix on each line (keys resolve to themselves under the test translator).
+    expect(creator!.textContent).toContain('docs.list.createdBy')
+    expect(creator!.textContent).toContain('Owner Name')
+    expect(viewed!.textContent).toContain('docs.list.viewedBySelf')
+    expect(updated!.textContent).toContain('docs.list.updatedAt')
+
+    // The updated line hovers the absolute update time, distinct from the viewed line's title.
+    expect(updated!.getAttribute('title')).toBeTruthy()
+    expect(updated!.getAttribute('title')).not.toBe(viewed!.getAttribute('title'))
+  })
+
+  it('omits the updated line on the "mine" tab (updated is shown inline there instead)', async () => {
+    mountList()
+    await waitFor(() => expect(screen.getByText('A Doc')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('docs.tab.mine'))
+    // The mine tab lists nothing here, so no recent-only markers should linger on screen.
+    await waitFor(() => {
+      expect(document.querySelector('.octo-docs-list-row-creator')).toBeNull()
+      expect(document.querySelector('.octo-docs-list-row-viewed')).toBeNull()
+      expect(document.querySelector('.octo-docs-list-row-updated')).toBeNull()
+    })
+  })
+})
