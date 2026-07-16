@@ -67,6 +67,16 @@ contextBridge.exposeInMainWorld("ipc", {
       console.warn(`[preload] Blocked listener on unknown channel: ${channel}`);
     }
   },
+  removeListener: (
+    channel: string,
+    listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
+  ) => {
+    if (ALLOWED_RECEIVE_CHANNELS.includes(channel)) {
+      ipcRenderer.removeListener(channel, listener);
+    } else {
+      console.warn(`[preload] Blocked removal on unknown channel: ${channel}`);
+    }
+  },
 });
 
 // Expose native notification API

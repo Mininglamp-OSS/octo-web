@@ -230,6 +230,9 @@ importers:
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@18.3.1)
+      ms:
+        specifier: ^2.1.3
+        version: 2.1.3
       ogl:
         specifier: ^1.0.11
         version: 1.0.11

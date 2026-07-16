@@ -6,6 +6,7 @@ import commonjs from "vite-plugin-commonjs";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const apiUrl = env.VITE_API_URL;
+  const isElectronBuild = env.VITE_ELECTRON_BUILD === "true";
 
   // 提取 origin
   let apiOrigin: string;
@@ -29,6 +30,9 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    // Electron loads the production entry through file://, so its assets must
+    // be relative to index.html. Keep the web build rooted at /.
+    base: isElectronBuild ? "./" : "/",
     plugins: [
       // 在 HTML <head> 注入 <meta name="app-version">，供构建后验证版本号是否正确写入
       {

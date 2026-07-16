@@ -16,6 +16,7 @@ import JoinApprovalResult from "../Components/JoinApprovalResult";
 import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
 import { SummaryDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
+import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
 import { isLoopCliAuthorizePath, LOOP_CLI_AUTHORIZE_PATH } from "@octo/loop";
 
 interface AppLayoutState {
@@ -182,7 +183,12 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                     window.location.reload()
                     return
                 }
-                window.location.href = `${window.location.origin}${basePath}/${redirectSearch}`
+                window.location.href = buildPostLoginRedirectUrl(
+                    window.location.href,
+                    window.location.origin,
+                    basePath,
+                    redirectSearch
+                )
             }
 
             // 检查是否有待处理的邀请码（验证格式防止 XSS/Open Redirect）

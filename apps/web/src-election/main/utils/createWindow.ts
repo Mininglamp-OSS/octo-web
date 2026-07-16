@@ -16,7 +16,7 @@ export function createWindow() {
     resizable: true, // 禁止手动修改窗口尺寸
     webPreferences: {
       // 加载脚本
-      preload: join(__dirname, "../..", "preload/index"),
+      preload: join(__dirname, "../..", "preload", "index.js"),
       nodeIntegration: true,
     },
   });
