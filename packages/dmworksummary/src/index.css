@@ -177,6 +177,12 @@
     margin-right: 8px;
 }
 
+.summary-card-header-badges {
+    display: flex;
+    gap: var(--wk-sp-1);
+    align-items: center;
+}
+
 .summary-card-meta {
     display: flex;
     align-items: center;
@@ -1403,6 +1409,13 @@
     box-shadow: none;
 }
 
+/* Agent 模式：给 AgentChatPanel 一个确定的有界高度，panel 自身 height:100%
+   + 内部列表 overflow-y:auto 依赖此高度；min-height 单独不给百分比基准，列表会被撑开。 */
+.summary-workbench-agent-chat {
+    height: 60vh;
+    min-height: 320px;
+}
+
 .summary-workbench-input-area > div:first-child {
     position: relative;
 }
@@ -2279,4 +2292,65 @@ body.summary-version-detail-open .summary-schedule-page {
 
 .summary-detail-team-generating-card {
     background: linear-gradient(135deg, var(--semi-color-primary-light-default) 0%, var(--semi-color-bg-1) 100%);
+}
+/* ─── Chat reference (CHAT-REFERENCE-BASED-DESIGN-v1) ────────────────── */
+/* 引用总结按钮 — chat header 里 */
+.summary-workbench-ref-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--semi-color-fill-0);
+    color: var(--semi-color-primary);
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+    margin-right: 8px;
+}
+.summary-workbench-ref-btn:hover {
+    background: var(--semi-color-fill-1);
+}
+.summary-workbench-ref-btn--disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.summary-workbench-ref-btn--disabled:hover {
+    background: var(--semi-color-fill-0);
+}
+/* 已引用卡片 */
+.summary-workbench-ref-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--semi-color-primary-light-default);
+    font-size: 13px;
+    margin-right: 8px;
+    max-width: 320px;
+}
+.summary-workbench-ref-card-label {
+    color: var(--semi-color-primary);
+    font-weight: 500;
+    flex-shrink: 0;
+}
+.summary-workbench-ref-card-title {
+    color: var(--semi-color-text-0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.summary-workbench-ref-card-remove {
+    cursor: pointer;
+    color: var(--semi-color-text-2);
+    padding: 0 2px;
+    border-radius: 2px;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+.summary-workbench-ref-card-remove:hover {
+    background: var(--semi-color-fill-1);
+    color: var(--semi-color-danger);
 }

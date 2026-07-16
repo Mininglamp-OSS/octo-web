@@ -98,3 +98,10 @@
     align-items: center;
     width: 100%;
 }
+
+/* 分裂按钮（开始总结 + 下拉切换 Agent 总结）。SplitButtonGroup 自带主体/箭头
+   连接样式，这里仅确保下拉箭头按钮不被文案撑开、与主体等高。 */
+.chat-summary-modal-split .semi-button:last-child {
+    padding-left: var(--wk-sp-2, 8px);
+    padding-right: var(--wk-sp-2, 8px);
+}

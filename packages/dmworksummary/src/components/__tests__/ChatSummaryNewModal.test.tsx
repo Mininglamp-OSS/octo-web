@@ -2,7 +2,9 @@ import React from 'react';
 import { render as rtlRender, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ChatSummaryNewModal from '../ChatSummaryNewModal';
+import * as summaryApi from '../../api/summaryApi';
 
+import * as summaryHelpers from '../../utils/summaryHelpers';
 vi.mock('@douyinfe/semi-ui', () => ({
     Modal: ({ children, visible, footer, onCancel }: any) =>
         visible ? (
@@ -12,6 +14,7 @@ vi.mock('@douyinfe/semi-ui', () => ({
             </div>
         ) : null,
     Toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+    Input: ({ value, onChange, ...rest }: any) => <input value={value} onChange={(e) => onChange?.(e.target.value)} {...rest} />,
     Tag: ({ children, closable, onClose }: any) => (
         <span data-testid="tag">
             {children}
@@ -23,11 +26,31 @@ vi.mock('@douyinfe/semi-ui', () => ({
             {icon}{children}
         </button>
     ),
+    SplitButtonGroup: ({ children, className }: any) => (
+        <div data-testid="split-button-group" className={className}>{children}</div>
+    ),
+    Dropdown: Object.assign(
+        ({ children, render }: any) => (
+            <div data-testid="dropdown">
+                {children}
+                <div data-testid="dropdown-menu">{render}</div>
+            </div>
+        ),
+        {
+            Menu: ({ children }: any) => <div data-testid="dropdown-menu-list">{children}</div>,
+            Item: ({ children, onClick, active }: any) => (
+                <button data-testid="dropdown-item" data-active={active} onClick={onClick}>
+                    {children}
+                </button>
+            ),
+        },
+    ),
 }));
 
 vi.mock('@douyinfe/semi-icons', () => ({
     IconPlus: () => <span data-testid="icon-plus" />,
     IconClock: () => <span data-testid="icon-clock" />,
+    IconChevronDown: () => <span data-testid="icon-chevron-down" />,
 }));
 
 vi.mock('@octo/base', async () => {
@@ -54,6 +77,8 @@ vi.mock('../../utils/channelType', () => ({
 vi.mock('../../api/summaryApi', () => ({
     getTopicTemplatesConfig: vi.fn().mockResolvedValue({ templates: [], custom_template_limit: 30 }),
     createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
+    agentChat: vi.fn(),
+    getAgentChatHistory: vi.fn().mockResolvedValue({ session_id: '', messages: [] }),
 }));
 
 vi.mock('../TemplateCard', () => ({
@@ -302,5 +327,305 @@ describe('ChatSummaryNewModal', () => {
     it('does not render when not visible', () => {
         render(<ChatSummaryNewModal {...defaultProps} visible={false} />);
         expect(screen.queryByTestId('modal')).not.toBeInTheDocument();
+    });
+});
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+describe('ChatSummaryNewModal agent multi-turn session_id + single-flight', () => {
+    const defaultProps = {
+        visible: true,
+        channel: { channelID: 'ch1', channelType: 2 },
+        onClose: vi.fn(),
+        onSubmit: vi.fn(),
+    };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('reuses the same (uuid-shaped, non-empty) session_id across two turns', async () => {
+        (summaryApi.agentChat as any).mockImplementation(
+            ({ message, session_id }: { message: string; session_id: string }) =>
+                Promise.resolve({ reply: `echo: ${message}`, session_id }),
+        );
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal {...defaultProps} ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('first question');
+            await flushPromises();
+        });
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('second question');
+            await flushPromises();
+        });
+
+        const calls = (summaryApi.agentChat as any).mock.calls;
+        expect(calls.length).toBe(2);
+        const sid1 = calls[0][0].session_id;
+        const sid2 = calls[1][0].session_id;
+        expect(sid1).toBeTruthy();
+        expect(sid1).toMatch(UUID_RE);
+        expect(sid2).toBe(sid1);
+    });
+
+    it('does not fire a second concurrent request while a send is in-flight', async () => {
+        const deferred: Array<() => void> = [];
+        (summaryApi.agentChat as any).mockImplementation(
+            ({ session_id }: { session_id: string }) =>
+                new Promise((resolve) => {
+                    deferred.push(() => resolve({ reply: 'ok', session_id }));
+                }),
+        );
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal {...defaultProps} ref={ref} />);
+            await flushPromises();
+        });
+
+        // Fire two sends back-to-back without awaiting; the sync in-flight lock
+        // must block the second before it can issue a request.
+        (ref.current as any).handleAgentSend('a');
+        (ref.current as any).handleAgentSend('b');
+        expect((summaryApi.agentChat as any).mock.calls.length).toBe(1);
+
+        await act(async () => {
+            deferred.forEach((r) => r());
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).handleAgentSend('c');
+            await flushPromises();
+        });
+        expect((summaryApi.agentChat as any).mock.calls.length).toBe(2);
+    });
+});
+
+describe('ChatSummaryNewModal agent session_id persistence + history rehydrate + new session (channel-isolated)', () => {
+    const propsFor = (channelID: string) => ({
+        visible: true,
+        channel: { channelID, channelType: 2 },
+        onClose: vi.fn(),
+        onSubmit: vi.fn(),
+    });
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        (summaryApi.getAgentChatHistory as any).mockResolvedValue({ session_id: '', messages: [] });
+    });
+
+    it('persists session_id under a channel-scoped key on send', async () => {
+        (summaryApi.agentChat as any).mockImplementation(
+            ({ message, session_id }: { message: string; session_id: string }) =>
+                Promise.resolve({ reply: `echo: ${message}`, session_id }),
+        );
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal {...propsFor('ch1')} ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('hi');
+            await flushPromises();
+        });
+
+        const stored = localStorage.getItem('agent-chat-session:ch1');
+        expect(stored).toBeTruthy();
+        expect(stored).toMatch(UUID_RE);
+        // A different channel must not see this session (no cross-channel bleed).
+        expect(localStorage.getItem('agent-chat-session:ch2')).toBeNull();
+    });
+
+    it('restores session_id + history for its own channel when switching into agent mode', async () => {
+        localStorage.setItem('agent-chat-session:ch1', 'sid-ch1');
+        (summaryApi.getAgentChatHistory as any).mockResolvedValue({
+            session_id: 'sid-ch1',
+            messages: [{ role: 'user', content: 'ch1 历史' }],
+        });
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal {...propsFor('ch1')} ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).handleSelectMode('agent');
+            await flushPromises();
+        });
+
+        expect((summaryApi.getAgentChatHistory as any).mock.calls[0][0]).toBe('sid-ch1');
+        expect((ref.current as any).state.sessionId).toBe('sid-ch1');
+        expect((ref.current as any).state.messages).toEqual([{ role: 'user', content: 'ch1 历史' }]);
+    });
+
+    it('does not restore another channel\'s session', async () => {
+        localStorage.setItem('agent-chat-session:ch2', 'sid-ch2');
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal {...propsFor('ch1')} ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).handleSelectMode('agent');
+            await flushPromises();
+        });
+
+        // ch1 has no stored session → no history fetch, blank opener.
+        expect((summaryApi.getAgentChatHistory as any).mock.calls.length).toBe(0);
+        expect((ref.current as any).state.sessionId).toBe('');
+        expect((ref.current as any).state.messages).toEqual([]);
+    });
+
+    it('new session clears only this channel\'s stored session and the messages', async () => {
+        (summaryApi.agentChat as any).mockImplementation(
+            ({ message, session_id }: { message: string; session_id: string }) =>
+                Promise.resolve({ reply: `echo: ${message}`, session_id }),
+        );
+        localStorage.setItem('agent-chat-session:ch2', 'sid-ch2');
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal {...propsFor('ch1')} ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('hi');
+            await flushPromises();
+        });
+        expect(localStorage.getItem('agent-chat-session:ch1')).toBeTruthy();
+
+        await act(async () => {
+            (ref.current as any).handleNewSession();
+            await flushPromises();
+        });
+
+        expect(localStorage.getItem('agent-chat-session:ch1')).toBeNull();
+        // Other channel untouched.
+        expect(localStorage.getItem('agent-chat-session:ch2')).toBe('sid-ch2');
+});
+});
+describe('ChatSummaryNewModal agent SSE session_id sync', () => {
+    let writeSessionSpy: any;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        // Spy on the actual writeAgentChatSession from summaryHelpers
+        writeSessionSpy = vi.spyOn(summaryHelpers, 'writeAgentChatSession').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        writeSessionSpy?.mockRestore();
+    });
+    it('updates sessionId and persists when backend returns different session_id', async () => {
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal ref={ref} channel={{channelID: 'ch-123', channelType: 2}} visible={true} onClose={vi.fn()} onSubmit={vi.fn()} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+        
+        // Set initial state with client session
+        await act(async () => {
+            instance.setState({ sessionId: 'client-session-abc', mode: 'agent' });
+        });
+
+        // Simulate SSE onDone calling handleAgentAssistantMessage with different session_id
+        await act(async () => {
+            instance.handleAgentAssistantMessage('Server response', 'server-session-xyz');
+            await flushPromises();
+        });
+
+        // Verify writeAgentChatSession was called with the NEW session_id
+        expect(writeSessionSpy).toHaveBeenCalledWith('ch-123', 'server-session-xyz');
+        
+        // Verify state was updated to the NEW session_id
+        expect(instance.state.sessionId).toBe('server-session-xyz');
+        
+        // Verify assistant message was added
+        const lastMessage = instance.state.messages[instance.state.messages.length - 1];
+        expect(lastMessage.role).toBe('assistant');
+        expect(lastMessage.content).toBe('Server response');
+    });
+
+    it('does not persist when backend returns same session_id', async () => {
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal ref={ref} channel={{channelID: 'ch-123', channelType: 2}} visible={true} onClose={vi.fn()} onSubmit={vi.fn()} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+        
+        // Set initial state with session
+        await act(async () => {
+            instance.setState({ sessionId: 'same-session-id', mode: 'agent' });
+        });
+
+        writeSessionSpy.mockClear();
+
+        // Simulate SSE onDone calling handleAgentAssistantMessage with SAME session_id
+        await act(async () => {
+            instance.handleAgentAssistantMessage('Server response', 'same-session-id');
+            await flushPromises();
+        });
+
+        // Verify writeAgentChatSession was NOT called (no need to persist same value)
+        expect(writeSessionSpy).not.toHaveBeenCalled();
+        
+        // Verify state sessionId remained unchanged
+        expect(instance.state.sessionId).toBe('same-session-id');
+        
+        // Verify assistant message was still added
+        const lastMessage = instance.state.messages[instance.state.messages.length - 1];
+        expect(lastMessage.role).toBe('assistant');
+        expect(lastMessage.content).toBe('Server response');
+    });
+
+    it('does not persist when backend returns undefined session_id', async () => {
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal ref={ref} channel={{channelID: 'ch-123', channelType: 2}} visible={true} onClose={vi.fn()} onSubmit={vi.fn()} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+        
+        // Set initial state with session
+        await act(async () => {
+            instance.setState({ sessionId: 'current-session-id', mode: 'agent' });
+        });
+
+        writeSessionSpy.mockClear();
+
+        // Simulate SSE onDone calling handleAgentAssistantMessage without session_id
+        await act(async () => {
+            instance.handleAgentAssistantMessage('Server response', undefined);
+            await flushPromises();
+        });
+
+        // Verify writeAgentChatSession was NOT called
+        expect(writeSessionSpy).not.toHaveBeenCalled();
+        
+        // Verify state sessionId remained unchanged
+        expect(instance.state.sessionId).toBe('current-session-id');
+        
+        // Verify assistant message was still added
+        const lastMessage = instance.state.messages[instance.state.messages.length - 1];
+        expect(lastMessage.role).toBe('assistant');
+        expect(lastMessage.content).toBe('Server response');
     });
 });

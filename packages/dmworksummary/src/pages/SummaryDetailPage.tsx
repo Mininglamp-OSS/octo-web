@@ -18,6 +18,8 @@ import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/Voic
 import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
+// RefineSection 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
+// (见 CHAT-REFERENCE-BASED-DESIGN-v1)
 import OverflowTooltip from "../components/OverflowTooltip";
 import type {
     SummaryDetail,
@@ -29,7 +31,7 @@ import type {
     SummaryVersionDetail,
     SummaryVersionItem,
 } from "../types/summary";
-import { TaskStatus, SummaryMode, ParticipantStatus } from "../types/summary";
+import { TaskStatus, SummaryMode, ParticipantStatus, TriggerType } from "../types/summary";
 import {
     formatDate,
     canCancel,
@@ -1850,6 +1852,40 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
+    /**
+     * 「继续优化」按钮 — 打开一个新的智能总结 chat session,预置引用当前总结。
+     * 见 CHAT-REFERENCE-BASED-DESIGN-v1: 详情页入口和顶栏「新总结」入口的语义
+     * 完全等价 — 都是新起一次 chat 生产工作台,唯一差别是这里预填了引用。
+     *
+     * 实现:通过 window 事件解耦(避免 SummaryCreatePage↔SummaryDetailPage 循环导入)。
+     * module.tsx 里注册顶栏「新总结」入口的 handler 监听此事件,收到后打开
+     * 一个新的 SummaryCreatePage 实例,并把 derivedFromTask 作为 prop 塞入。
+     *
+     * 用户在新 chat 里聊完保存后:①出现的是全新总结(和当前总结平级) ②当前
+     * 总结不变 ③新总结的 SummaryTask.referenced_task_ids 记录来源。
+     */
+    handleContinueRefine = () => {
+        const { detail } = this.state;
+        if (!detail || detail.trigger_type !== TriggerType.AGENT) return;
+        const event = new CustomEvent('summary-open-chat-with-reference', {
+            detail: {
+                task_id: detail.task_id,
+                title: detail.title,
+                trigger_type: detail.trigger_type,
+                status: detail.status,
+                creator_id: detail.creator_id,
+                summary_mode: detail.summary_mode,
+                time_range_start: detail.time_range_start,
+                time_range_end: detail.time_range_end,
+                sources: detail.sources || [],
+                total_msg_count: 0,
+                created_at: '',
+                updated_at: '',
+            },
+        });
+        window.dispatchEvent(event);
+    };
+
     handleForwardToChat = () => {
         const { detail } = this.state;
         if (!detail?.result?.content?.trim()) return;
@@ -3245,6 +3281,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {detail?.title || t("summary.detail.defaultTitle")}
                     </OverflowTooltip>
                     <div className="summary-detail-header-actions">
+                        {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
+                            <Button
+                                theme="solid"
+                                type="primary"
+                                onClick={this.handleContinueRefine}
+                            >
+                                {t("summary.detail.continueRefine")}
+                            </Button>
+                        )}
                         {detail && detail.status === TaskStatus.COMPLETED && (
                             <Button
                                 theme="borderless"
@@ -3463,6 +3508,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {detail.status === TaskStatus.COMPLETED && detail.summary_mode !== SummaryMode.BY_PERSON && (
                                     this.renderCompleted()
                                 )}
+
+                                {/* RefineSection removed — 反馈修改改为在智能总结 chat 里引用总结迭代
+                                    (见 CHAT-REFERENCE-BASED-DESIGN-v1) */}
 
                                 <SelectedSourcesPanel sources={detail.sources} />
                             </>

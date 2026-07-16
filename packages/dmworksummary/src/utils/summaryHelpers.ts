@@ -11,6 +11,55 @@ import {
 } from "../types/summary";
 import { t } from "@octo/base";
 
+// crypto.randomUUID 在非安全上下文/旧环境可能不存在，降级生成一个唯一 id。
+export function genSessionId(): string {
+    return crypto?.randomUUID
+        ? crypto.randomUUID()
+        : 'sid-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+}
+
+// ─── Agent 对话 session_id 持久化（「退出不丢」） ──────────────
+// session_id 写入 localStorage，按 channel/入口隔离，避免不同群会话串号。
+// 无 channelId 的入口（完整创建页无频道上下文）落到统一兜底 key。
+const AGENT_CHAT_SESSION_KEY_PREFIX = 'agent-chat-session:';
+const AGENT_CHAT_SESSION_FALLBACK = '__workbench__';
+
+/** 构造某入口的 localStorage key。channelId 缺省时用统一兜底段。 */
+export function agentChatSessionKey(channelId?: string | null): string {
+    return AGENT_CHAT_SESSION_KEY_PREFIX + (channelId || AGENT_CHAT_SESSION_FALLBACK);
+}
+
+/**
+ * 读取该入口已持久化的 session_id；无则返回空串。
+ * localStorage 在隐私模式/禁用时可能抛错，一律吞掉降级为「无会话」。
+ */
+export function readAgentChatSession(channelId?: string | null): string {
+    try {
+        return localStorage.getItem(agentChatSessionKey(channelId)) || '';
+    } catch {
+        return '';
+    }
+}
+
+/** 写入 session_id（空串跳过，避免把「无会话」持久化）。异常静默降级。 */
+export function writeAgentChatSession(channelId: string | null | undefined, sessionId: string): void {
+    if (!sessionId) return;
+    try {
+        localStorage.setItem(agentChatSessionKey(channelId), sessionId);
+    } catch {
+        // localStorage 不可用（隐私模式/配额）：不持久化，不影响当前会话。
+    }
+}
+
+/** 清除该入口的 session_id（「新会话」用）。异常静默降级。 */
+export function clearAgentChatSession(channelId?: string | null): void {
+    try {
+        localStorage.removeItem(agentChatSessionKey(channelId));
+    } catch {
+        // 同上，忽略。
+    }
+}
+
 /** 周对应天数 */
 export const DAYS_PER_WEEK = 7;
 /** interval_days 上界（与后端 MaxIntervalDays 对齐） */

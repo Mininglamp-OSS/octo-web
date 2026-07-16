@@ -1,0 +1,25 @@
+.summary-preview-modal .semi-modal-body {
+    padding: 12px 24px 24px;
+}
+
+.summary-preview-modal-hint {
+    color: var(--semi-color-text-2);
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 0 0 12px;
+    border-bottom: 1px solid var(--semi-color-border);
+    margin-bottom: 16px;
+}
+
+.summary-preview-modal-body {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.summary-preview-modal-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 0;
+}

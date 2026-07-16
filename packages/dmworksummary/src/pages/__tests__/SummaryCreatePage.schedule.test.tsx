@@ -13,17 +13,24 @@ vi.mock('@douyinfe/semi-ui', () => {
     const Passthrough = ({ children }: any) => children ?? null;
     const Typography: any = Passthrough;
     Typography.Text = Passthrough;
+    const Dropdown: any = Passthrough;
+    Dropdown.Menu = Passthrough;
+    Dropdown.Item = Passthrough;
     return {
         Button: Passthrough,
         Typography,
         Tag: Passthrough,
         Avatar: Passthrough,
         Toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+        SplitButtonGroup: Passthrough,
+        Dropdown,
     };
 });
 vi.mock('@douyinfe/semi-icons', () => ({
     IconPlus: () => null,
     IconClock: () => null,
+    IconUserGroup: () => null,
+    IconChevronDown: () => null,
 }));
 
 import WKApp from '@octo/base/src/App';

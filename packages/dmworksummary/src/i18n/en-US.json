@@ -23,7 +23,15 @@
     "messagesCount": "{{count}} messages",
     "version": "Version {{version}}",
     "current": "Current",
-    "userFallback": "User {{id}}"
+    "userFallback": "User {{id}}",
+    "agentChat": {
+      "viewGenerationProcess": "View generation process",
+      "stepsCount": "steps",
+      "generationTime": "Generation time",
+      "generating": "Generating...",
+      "error": "Error",
+      "streamInterrupted": "Stream interrupted, fell back to normal mode"
+    }
   },
   "action": {
     "accept": "Accept",
@@ -149,12 +157,27 @@
     "selectMembers": "Select participants",
     "selectedMembers": "{{count}} participants selected",
     "start": "Start summary",
+    "agentStart": "Agent Summary",
+    "agentSubmitting": "Agent summarizing...",
+    "agentTopicPlaceholder": "Describe what you need summarized",
+    "agentChatPlaceholder": "Type your question, press Enter to send (Shift+Enter for a new line)",
+    "agentChatWelcome": "Hi, I'm your summary assistant. Tell me what you'd like to summarize.",
+    "newSession": "New chat",
+    "send": "Send",
+    "switchMode": "Switch summary mode",
     "scheduleDaily": "Daily {{time}}",
     "scheduleWeekly": "Every {{day}} {{time}}",
     "scheduleMonthly": "Monthly on day {{day}} {{time}}",
     "scheduleBindFailed": "Summary was created, but binding the schedule failed; the schedule was rolled back. Please retry on the detail page.",
     "scheduleBindFailedOrphan": "Summary was created, but binding the schedule failed and rollback did not succeed; an unbound schedule may remain. Please check and clean it up in the schedule list.",
-    "archivedNotice": "Active threads are summarized by default; archived threads are excluded"
+    "archivedNotice": "Active threads are summarized by default; archived threads are excluded",
+    "saveAsSummary": "Save as Summary",
+    "saveDialogTitle": "Save as Summary",
+    "titlePlaceholder": "Give this summary a title",
+    "titleRequired": "Title is required",
+    "saving": "Saving...",
+    "noOutputToSave": "No summary content to save yet. Please chat with AI first to generate content.",
+    "agentSummaryCreated": "AI summary saved"
   },
   "chatSummary": {
     "panelTitle": "Summaries in this chat",
@@ -464,7 +487,17 @@
     "teamRegeneratingWaitingDesc": "Your personal summary is ready. The team summary will be generated after other members finish.",
     "refiningPersonal": "Adjusting your current summary based on feedback...",
     "refiningTeam": "Adjusting the team summary based on feedback...",
-    "refiningSummary": "Adjusting the summary based on feedback..."
+    "refiningSummary": "Adjusting the summary based on feedback...",
+    "refineTitle": "Refine Summary",
+    "refineEmptyInput": "Please enter refinement instructions",
+    "refinePlaceholder": "Enter refinement instructions, e.g. \"Expand the risk section into a full paragraph\"",
+    "refineSubmit": "Submit Refinement",
+    "refineSuccess": "Refinement successful, updated to version {{version}}",
+    "refineNotSupported": "This summary does not support refinement",
+    "refineNotCreator": "You are not the creator of this summary and cannot modify it",
+    "refineNoSnapshot": "This summary data version is too old and cannot be refined",
+    "refineFailed": "Refinement failed, please try again later",
+    "continueRefine": "Continue refining"
   },
   "summaryCard": {
     "createdBy": "Created by {{name}}",
@@ -472,7 +505,8 @@
     "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed.",
     "deleteScheduledContent": "\"{{title}}\" is a scheduled summary. Deleting it will stop the scheduled updates and remove all of its history. Delete it?",
     "leaveTitle": "Leave collaboration",
-    "leaveContent": "You will no longer take part in this collaboration. Leave \"{{title}}\"?"
+    "leaveContent": "You will no longer take part in this collaboration. Leave \"{{title}}\"?",
+    "aiGenerated": "Chat generated"
   },
   "editor": {
     "saveSuccess": "Saved",
@@ -503,5 +537,18 @@
   },
   "splitMessage": {
     "signature": "---\n_by Octo AI Summary_"
+  },
+  "chatReference": {
+    "pickerTitle": "Reference a summary",
+    "searchPlaceholder": "Search summary titles",
+    "empty": "No summaries available to reference",
+    "button": "Reference summary",
+    "buttonTip": "Click to reference an existing summary",
+    "badge": "Referenced",
+    "remove": "Remove reference",
+    "previewTitle": "Summary preview",
+    "previewLatestHint": "Showing the latest version of this summary (may have been updated since you referenced it)",
+    "previewNotFound": "This summary was deleted or you don't have access",
+    "previewLoadFailed": "Failed to load, please retry later"
   }
 }

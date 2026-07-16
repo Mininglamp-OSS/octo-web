@@ -1,0 +1,182 @@
+/* Agent 交互式问答面板。样式全部走 var(--wk-*)/var(--semi-*) token，不硬编码颜色。 */
+.agent-chat-panel {
+    display: flex;
+    flex-direction: column;
+    /* 弹窗内高度受限：面板占满父容器并让消息列表内部滚动 */
+    height: 100%;
+    min-height: 0;
+    border: 1px solid var(--semi-color-border);
+    border-radius: var(--wk-r-sm, 8px);
+    overflow: hidden;
+}
+
+/* 顶部操作条：承载「新会话」按钮，仅在提供 onNewSession 时渲染。 */
+.agent-chat-panel-header {
+    display: flex;
+    justify-content: flex-end;
+    padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
+    border-bottom: 1px solid var(--semi-color-border);
+}
+
+.agent-chat-panel-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--wk-sp-3, 12px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--wk-sp-2, 8px);
+}
+
+.agent-chat-msg {
+    display: flex;
+}
+
+.agent-chat-msg--user {
+    justify-content: flex-end;
+}
+
+.agent-chat-msg--assistant {
+    justify-content: flex-start;
+}
+
+.agent-chat-bubble {
+    max-width: 80%;
+    padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+    border-radius: var(--wk-r-sm, 8px);
+    font-size: 14px;
+    line-height: 20px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* user 右气泡：主色底 + 反白文字 */
+.agent-chat-msg--user .agent-chat-bubble {
+    background-color: var(--semi-color-primary);
+    color: var(--semi-color-white);
+}
+
+/* assistant 左气泡：填充底 + 主文字色 */
+.agent-chat-msg--assistant .agent-chat-bubble {
+    background-color: var(--semi-color-fill-0);
+    color: var(--semi-color-text-0);
+}
+
+.agent-chat-panel-input {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--wk-sp-2, 8px);
+    padding: var(--wk-sp-2, 8px);
+    border-top: 1px solid var(--semi-color-border);
+}
+
+.agent-chat-textarea {
+    flex: 1;
+    resize: none;
+    max-height: 120px;
+    padding: var(--wk-sp-2, 8px);
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 20px;
+    border: 1px solid var(--semi-color-border);
+    border-radius: var(--wk-r-sm, 8px);
+    outline: none;
+    background-color: transparent;
+    color: var(--semi-color-text-0);
+    box-sizing: border-box;
+}
+
+.agent-chat-textarea:focus {
+    border-color: var(--semi-color-primary);
+}
+
+.agent-chat-textarea:disabled {
+    background-color: var(--semi-color-disabled-fill);
+    color: var(--semi-color-disabled-text);
+}
+
+/* ─── 过程面板样式 ────────────────────────────────────── */
+
+/* 过程面板容器 */
+.agent-chat-process-panel {
+    margin-top: var(--wk-sp-2, 8px);
+    padding: var(--wk-sp-2, 8px);
+    border-radius: var(--wk-r-sm, 8px);
+    background-color: var(--semi-color-fill-1);
+    border: 1px solid var(--semi-color-border);
+}
+
+/* 折叠状态 */
+.agent-chat-process-panel--collapsed {
+    padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
+}
+
+/* 折叠/展开切换按钮 */
+.agent-chat-process-toggle {
+    background: none;
+    border: none;
+    color: var(--semi-color-primary);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: var(--wk-sp-1, 4px);
+    text-align: left;
+}
+
+.agent-chat-process-toggle:hover {
+    text-decoration: underline;
+}
+
+/* 时间线容器 */
+.agent-chat-process-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--wk-sp-1, 4px);
+    font-size: 13px;
+}
+
+/* 单条进度项 */
+.agent-chat-process-item {
+    color: var(--semi-color-text-1);
+    line-height: 18px;
+}
+
+/* 进度标签（加粗） */
+.agent-chat-process-label {
+    font-weight: 600;
+    color: var(--semi-color-text-0);
+}
+
+/* 进度详情 */
+.agent-chat-process-detail {
+    margin-left: var(--wk-sp-1, 4px);
+}
+
+/* 加载中项 */
+.agent-chat-process-item--loading {
+    display: flex;
+    align-items: center;
+    gap: var(--wk-sp-1, 4px);
+    color: var(--semi-color-text-2);
+    font-style: italic;
+}
+
+/* 转圈 spinner */
+.agent-chat-process-spinner {
+    display: inline-block;
+    animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 元信息（底部灰色小字） */
+.agent-chat-process-meta {
+    margin-top: var(--wk-sp-2, 8px);
+    padding-top: var(--wk-sp-1, 4px);
+    border-top: 1px solid var(--semi-color-border);
+    font-size: 12px;
+    color: var(--semi-color-text-2);
+}

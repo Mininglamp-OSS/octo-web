@@ -113,6 +113,16 @@ export class SummaryModule implements IModule {
             return <SummaryCreatePage />;
         });
 
+        // 详情页「继续优化」按钮 → 打开新的 chat + 预填引用。
+        // 通过 window 事件与详情页解耦(避免循环导入),这里 addEventListener
+        // 后统一走 WKApp.routeRight.push 弹出新的 SummaryCreatePage 实例。
+        // 见 CHAT-REFERENCE-BASED-DESIGN-v1。
+        window.addEventListener('summary-open-chat-with-reference', ((e: CustomEvent) => {
+            const task = e.detail;
+            if (!task || !task.task_id) return;
+            WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} />);
+        }) as EventListener);
+
         WKApp.route.register("/summary/detail", (param: any) => {
             return <SummaryDetailPage taskId={param?.taskId} />;
         });

@@ -23,7 +23,15 @@
     "messagesCount": "{{count}} 条消息",
     "version": "版本 {{version}}",
     "current": "当前",
-    "userFallback": "用户 {{id}}"
+    "userFallback": "用户 {{id}}",
+    "agentChat": {
+      "viewGenerationProcess": "查看生成过程",
+      "stepsCount": "步",
+      "generationTime": "生成用时",
+      "generating": "生成中…",
+      "error": "出错",
+      "streamInterrupted": "流式连接已断,已切换到普通模式"
+    }
   },
   "action": {
     "accept": "同意",
@@ -149,12 +157,27 @@
     "selectMembers": "选择参与者",
     "selectedMembers": "已选 {{count}} 位参与者",
     "start": "开始总结",
+    "agentStart": "Agent 总结",
+    "agentSubmitting": "Agent 总结中...",
+    "agentTopicPlaceholder": "输入需要总结的需求",
+    "agentChatPlaceholder": "输入你的问题，回车发送（Shift+Enter 换行）",
+    "agentChatWelcome": "你好，我是总结助手，想总结什么尽管告诉我。",
+    "newSession": "新会话",
+    "send": "发送",
+    "switchMode": "切换总结方式",
     "scheduleDaily": "按天 {{time}}",
     "scheduleWeekly": "每{{day}} {{time}}",
     "scheduleMonthly": "每月{{day}}日 {{time}}",
     "scheduleBindFailed": "总结已创建，但定时绑定失败，已撤销该定时，请到详情页重试",
     "scheduleBindFailedOrphan": "总结已创建，但定时绑定失败且撤销未成功，可能残留未绑定定时，请到定时列表检查清理",
-    "archivedNotice": "默认总结活跃子区，不含已归档子区"
+    "archivedNotice": "默认总结活跃子区，不含已归档子区",
+    "saveAsSummary": "保存为总结",
+    "saveDialogTitle": "保存为总结",
+    "titlePlaceholder": "为这份总结起个标题",
+    "titleRequired": "标题不能为空",
+    "saving": "保存中...",
+    "noOutputToSave": "当前对话还没有可保存的总结，请先与 AI 对话产出内容",
+    "agentSummaryCreated": "AI 总结已保存"
   },
   "chatSummary": {
     "panelTitle": "聊天内的智能总结",
@@ -464,7 +487,17 @@
     "teamRegeneratingWaitingDesc": "你的个人总结已完成，正在等待其他成员完成后生成团队汇总。",
     "refiningPersonal": "正在按意见调整当前总结...",
     "refiningTeam": "正在按意见调整团队汇总...",
-    "refiningSummary": "正在按意见调整总结内容..."
+    "refiningSummary": "正在按意见调整总结内容...",
+    "refineTitle": "反馈修改",
+    "refineEmptyInput": "请输入修改需求",
+    "refinePlaceholder": "输入修改需求，如「把风险章节扩充成一整段」",
+    "refineSubmit": "提交修改",
+    "refineSuccess": "修改成功，已更新到版本 {{version}}",
+    "refineNotSupported": "本总结不支持增量修改",
+    "refineNotCreator": "你不是本总结的创建者，无法修改",
+    "refineNoSnapshot": "本总结数据版本较老，无法增量修改",
+    "refineFailed": "修改失败，请稍后重试",
+    "continueRefine": "继续优化"
   },
   "summaryCard": {
     "createdBy": "{{name}} 发起",
@@ -472,7 +505,8 @@
     "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。",
     "deleteScheduledContent": "「{{title}}」是定时更新的总结。删除后将停止定时更新，并移除该总结的全部历史记录，确定删除吗？",
     "leaveTitle": "退出多人协作",
-    "leaveContent": "退出后将不再参与该多人协作，确定退出「{{title}}」吗？"
+    "leaveContent": "退出后将不再参与该多人协作，确定退出「{{title}}」吗？",
+    "aiGenerated": "对话生成"
   },
   "editor": {
     "saveSuccess": "保存成功",
@@ -503,5 +537,18 @@
   },
   "splitMessage": {
     "signature": "---\n_by Octo 智能总结_"
+  },
+  "chatReference": {
+    "pickerTitle": "选择要引用的总结",
+    "searchPlaceholder": "搜索总结标题",
+    "empty": "还没有可引用的总结",
+    "button": "引用总结",
+    "buttonTip": "点击选择一份已有总结作为参考",
+    "badge": "已引用",
+    "remove": "移除引用",
+    "previewTitle": "总结预览",
+    "previewLatestHint": "以下内容为该总结的最新版本(可能已经被更新过,与您引用时的快照不完全一致)",
+    "previewNotFound": "该总结已删除或您无权访问",
+    "previewLoadFailed": "加载失败,请稍后重试"
   }
 }

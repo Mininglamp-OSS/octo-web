@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Popconfirm } from "@douyinfe/semi-ui";
+import { Button, Popconfirm, Tag } from "@douyinfe/semi-ui";
 import { IconDelete, IconExit } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -34,6 +34,9 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
     // 是否定时任务：以 schedule_id 为准，trigger_type===SCHEDULED 作兜底，
     // 以覆盖「绑定了定时但尚未执行过」的任务。
     const isScheduledTask = (task.schedule_id != null && task.schedule_id > 0) || task.trigger_type === TriggerType.SCHEDULED;
+    
+    // 是否 AI 生成：trigger_type === AGENT
+    const isAgentGenerated = task.trigger_type === TriggerType.AGENT;
 
     return (
         <div className="summary-card" onClick={() => onClick(task.task_id)}>
@@ -42,7 +45,14 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
                 <OverflowTooltip className="summary-card-title" title={task.title || task.task_no}>
                     {task.title || task.task_no}
                 </OverflowTooltip>
-                <TaskStatusBadge status={task.status} />
+                <div className="summary-card-header-badges">
+                    {isAgentGenerated && (
+                        <Tag size="small" color="violet">
+                            🤖 {t("summary.summaryCard.aiGenerated")}
+                        </Tag>
+                    )}
+                    <TaskStatusBadge status={task.status} />
+                </div>
             </div>
 
             {isPendingInvite && onRespond && (

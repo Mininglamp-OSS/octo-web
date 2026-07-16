@@ -20,6 +20,7 @@ export type TaskStatusType = typeof TaskStatus[keyof typeof TaskStatus];
 export const TriggerType = {
     MANUAL: 1,
     SCHEDULED: 2,
+    AGENT: 3,
 } as const;
 export type TriggerTypeType = typeof TriggerType[keyof typeof TriggerType];
 
@@ -246,6 +247,124 @@ export interface CreateSummaryParams {
     confirm_timeout_hours?: number;
     origin_channel_id?: string;
     origin_channel_type?: number;
+}
+
+/**
+ * Agent 总结创建请求（契约 v1.0）。
+ *
+ * 让后端 agent 自主总结当前对话的产出内容，落库为可检索的交付物。
+ * POST /summary/api/v1/summaries/agent
+ */
+export interface CreateAgentSummaryParams {
+    /** 当前 agent 对话的 session_id */
+    session_id: string;
+    /**
+     * 触发对话的频道 id。可选:agent 对话入口没有"选来源"控件,
+     * 前端一般不传;后端会从 session 的 tool_calls 记录反查 agent
+     * 实际读过的第一个 channel_id 作为 origin。
+     */
+    origin_channel_id?: string;
+    /** 频道类型:1=群聊 / 2=子区 / 3=私聊。仅当 origin_channel_id 有值时必填。 */
+    origin_channel_type?: number;
+    /** 用户填写的总结标题(必填,前端弹窗输入) */
+    title?: string;
+    /** 可选来源(沿用传统结构) */
+    sources?: SourceItem[];
+    /** 可选参与者(沿用传统结构) */
+    participants?: { user_id: string; user_name?: string }[];
+    /**
+     * 可选:本次 agent chat 首轮引用的已有总结 task_id 数组。
+     * 后端记录到 SummaryTask.referenced_task_ids 供衍生关系追溯。
+     * 见 CHAT-REFERENCE-BASED-DESIGN-v1。
+     */
+    referenced_task_ids?: number[];
+}
+
+/** Agent 对话单条消息（user 右气泡 / assistant 左气泡） */
+export interface ChatMessage {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
+/** Agent 对话请求：单条消息 + session_id。后端按 session_id 持久化多轮记忆，
+ *  同一会话复用同一 session_id 即可续上下文（无需前端本地拼历史）。 */
+export interface AgentChatParams {
+    message: string;
+    session_id: string;
+    /** 指定后端 agent profile；总结场景传 'summary' 以挂载频道/消息等真实工具。 */
+    profile?: string;
+    /**
+     * 引用的已有总结 task_id 列表。仅在**首轮**(该 session 的 history 为空时)生效:
+     * 后端会 fetch 每个 task 的最新产物 + 快照,作为 system message 的附录喂给 agent。
+     * 后续轮次此字段被忽略(引用一次锁定)。见 CHAT-REFERENCE-BASED-DESIGN-v1。
+     */
+    referenced_task_ids?: number[];
+}
+
+/** Agent 对话响应（post() 已解包 data） */
+export interface AgentChatResult {
+    reply: string;
+    session_id: string;
+}
+
+/**
+ * Agent 对话历史响应（get() 已解包 data）。
+ * 对应只读接口 GET /agent/chat/history?session_id=xxx，
+ * 后端按 session_id 返回该会话已持久化的全部消息，用于「退出不丢」回显。
+ */
+
+/** Agent 总结增量修改结果（需求2 P2） */
+export interface RefineSummaryResult {
+    task_id: number;
+    new_version: number;
+    content: string;
+    citations?: CitationItem[];
+}
+
+export interface AgentChatHistory {
+    session_id: string;
+    messages: ChatMessage[];
+}
+
+/**
+ * Agent SSE 流式事件类型 — progress 事件（每步/每工具）
+ */
+export interface AgentProgressEvent {
+    /**
+     * 抽象阶段枚举（后端脱敏，不再暴露原始工具名）：
+     * understand 理解需求 | retrieve 检索 | filter 筛选 | distill 提炼 | compose 汇总 | reply 生成回复
+     */
+    phase: 'understand' | 'retrieve' | 'filter' | 'distill' | 'compose' | 'reply';
+    step: number;
+    ofSteps: number;
+    elapsed_ms: number;
+    /** 安全整型计数（如已处理消息条数）；后端在无意义时省略该字段 */
+    count?: number;
+}
+
+/**
+ * Agent SSE 流式事件类型 — done 事件（最后 1 条,收到就停）
+ */
+export interface AgentDoneEvent {
+    reply: string;
+    session_id: string;
+}
+
+/**
+ * Agent SSE 流式事件类型 — error 事件（任何环节都可能来）
+ */
+export interface AgentErrorEvent {
+    code: number;
+    message: string;
+}
+
+/**
+ * Agent SSE 流式消费 handlers
+ */
+export interface AgentStreamHandlers {
+    onProgress?: (event: AgentProgressEvent) => void;
+    onDone?: (event: AgentDoneEvent) => void;
+    onError?: (event: AgentErrorEvent) => void;
 }
 
 /** 列表查询参数 */

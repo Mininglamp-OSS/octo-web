@@ -342,4 +342,32 @@ describe('summaryApi', () => {
             );
         });
     });
+
+    // Agent 交互式问答：POST /agent/chat。agentChat 自行校验 envelope code。
+    describe('agentChat (interactive Q&A)', () => {
+        it('POSTs {message, session_id} to /agent/chat and unwraps {reply, session_id}', async () => {
+            const { agentChat } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                data: { code: 0, data: { reply: '总结如下…', session_id: 's-1' } },
+            });
+            const res = await agentChat({ message: '总结今天', session_id: 's-1' });
+            expect(mockPost).toHaveBeenCalledWith(
+                '/summary/api/v1/agent/chat',
+                { message: '总结今天', session_id: 's-1' },
+                // agent 单次问答放宽到 120s（见 summaryApi.agentChat）。
+                { timeout: 120000 },
+            );
+            expect(res).toEqual({ reply: '总结如下…', session_id: 's-1' });
+        });
+
+        it('throws on non-zero envelope code (no silent success)', async () => {
+            const { agentChat } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                data: { code: 1, message: 'x', data: null },
+            });
+            await expect(
+                agentChat({ message: '总结今天', session_id: 's-1' }),
+            ).rejects.toThrow('x');
+        });
+    });
 });

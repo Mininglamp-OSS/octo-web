@@ -1,0 +1,43 @@
+.summary-reference-picker-modal .semi-modal-body {
+    padding-top: 8px;
+}
+
+.summary-reference-picker-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.summary-reference-picker-error {
+    color: var(--semi-color-danger);
+    padding: 12px;
+    text-align: center;
+}
+
+.summary-reference-picker-item {
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 4px;
+    transition: background 0.15s;
+}
+
+.summary-reference-picker-item:hover {
+    background: var(--semi-color-fill-0);
+}
+
+.summary-reference-picker-item--selected {
+    background: var(--semi-color-primary-light-default);
+}
+
+.summary-reference-picker-item-title {
+    font-weight: 500;
+    color: var(--semi-color-text-0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.summary-reference-picker-item-meta {
+    font-size: 12px;
+    color: var(--semi-color-text-2);
+    margin-top: 4px;
+}
