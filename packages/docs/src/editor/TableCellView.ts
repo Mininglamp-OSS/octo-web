@@ -12,6 +12,19 @@
 //
 // It renders a plain <td>/<th> with a content hole, mirroring the schema's
 // toDOM, so it stays byte-compatible with the backend stub.
+//
+// ROW-HEIGHT CLIP (SCHEMA_VERSION 19, XIN-1250): the content hole is an inner
+// `.octo-cell-clip` wrapper rather than the <td> itself. A `height` on a <tr> is
+// only a MINIMUM in CSS table layout, so a row could grow but never shrink below
+// its content ("只能拖高不能拖矮"). The wrapper is what makes a dragged row height
+// AUTHORITATIVE: when its row is height-constrained the TableRowResize plugin marks
+// the <tr> `octo-row-fixed` + sets `--octo-row-h`, and styles.css caps this wrapper's
+// max-height with overflow:hidden so tall content is clipped and the row can shrink to
+// MIN_ROW_HEIGHT. The wrapper is UNPOSITIONED and the <td> stays position:relative, so
+// the absolutely-positioned column-resize handle (a PM widget PM places in the content
+// hole) has the <td> as its containing block and ESCAPES the clip — column resize keeps
+// working on a shrunk row. The wrapper is a NodeView detail only: toDOM/getHTML still
+// serialise a bare <td><p>…</p>, so the wire stays byte-aligned with the backend.
 
 import type { Node as PMNode } from '@tiptap/pm/model'
 
@@ -21,9 +34,12 @@ export class TableCellView {
 
   constructor(node: PMNode, tag: 'td' | 'th') {
     const cell = document.createElement(tag)
+    const clip = document.createElement('div')
+    clip.className = 'octo-cell-clip'
+    cell.appendChild(clip)
     this.applyAttrs(cell, node)
     this.dom = cell
-    this.contentDOM = cell
+    this.contentDOM = clip
   }
 
   private applyAttrs(cell: HTMLTableCellElement, node: PMNode) {

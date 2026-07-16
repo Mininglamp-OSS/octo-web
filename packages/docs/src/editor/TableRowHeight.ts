@@ -52,6 +52,7 @@
 import { Extension } from '@tiptap/core'
 import TableRow from '@tiptap/extension-table-row'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { draggedTableConflict, tableSignatures } from './TableReorderHandle.ts'
@@ -139,6 +140,44 @@ export const TableRowHeight = TableRow.extend({
 })
 
 export const tableRowResizePluginKey = new PluginKey('octoTableRowResize')
+export const tableRowClipPluginKey = new PluginKey('octoTableRowClip')
+
+/** Build the node decorations that make a set row height AUTHORITATIVE (so a row can shrink below
+ * its content, not just grow). For every tableRow carrying an explicit height we tag its `<tr>` with
+ * `octo-row-fixed` + a `--octo-row-h` custom property; styles.css uses those to cap the cell content
+ * wrapper's height with overflow:hidden. Pure view decoration — it changes the editable DOM only, so
+ * toDOM/getHTML and the Y.Doc stay byte-identical (the height remains a plain tableRow attr). */
+function rowHeightDecorations(doc: PMNode): DecorationSet {
+  const decos: Decoration[] = []
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'tableRow') {
+      const h = normalizeRowHeight(node.attrs.height)
+      if (h != null) {
+        decos.push(
+          Decoration.node(pos, pos + node.nodeSize, { class: 'octo-row-fixed', style: `--octo-row-h:${h}px` }),
+        )
+      }
+      return false // rows do not nest; no need to descend into cells
+    }
+    return true
+  })
+  return DecorationSet.create(doc, decos)
+}
+
+/** Plugin that keeps the row-height clip decorations in sync with the document. Registered by
+ * TableRowResize (live editor only) alongside the drag handle. */
+const rowHeightClipPlugin = new Plugin({
+  key: tableRowClipPluginKey,
+  state: {
+    init: (_config, state) => rowHeightDecorations(state.doc),
+    apply: (tr, old) => (tr.docChanged ? rowHeightDecorations(tr.doc) : old),
+  },
+  props: {
+    decorations(state) {
+      return this.getState(state)
+    },
+  },
+})
 
 /** The tableRow (with its document position) whose bottom edge is currently armed for resize. */
 interface RowTarget {
@@ -505,6 +544,7 @@ export const TableRowResize = Extension.create({
     }
 
     return [
+      rowHeightClipPlugin,
       new Plugin({
         key: tableRowResizePluginKey,
         // Detect a concurrent edit to the DRAGGED table on every transaction that lands during the drag

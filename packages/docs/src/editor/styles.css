@@ -2037,6 +2037,25 @@ body.octo-row-resizing {
   font-weight: 600;
   text-align: left;
 }
+/* Row-height clip (SCHEMA_VERSION 19, XIN-1250). A `height` on a <tr> is only a MINIMUM in CSS
+   table layout, so without this a row could grow but never shrink below its content. The
+   TableRowResize clip plugin tags a height-constrained row's <tr> with `octo-row-fixed` + a
+   `--octo-row-h` custom property; here we cap the cell content wrapper (`.octo-cell-clip`, the
+   NodeView content hole from TableCellView) to that height and clip the overflow, so a dragged row
+   becomes authoritative and can shrink down to MIN_ROW_HEIGHT. The 12px is the <td> vertical padding
+   (6px top + 6px bottom below) — the wrapper lives inside that padding, so subtract it to land the
+   <tr> exactly on the dragged height. The wrapper is unpositioned while the <td> is position:relative,
+   so the absolutely-positioned column-resize handle escapes this clip and column resize keeps working
+   on a shrunk row. Rows with no explicit height carry no class, so the wrapper is inert (v18 behaviour,
+   content-driven height). */
+.octo-cell-clip {
+  /* Inert by default: a plain block wrapper around the cell's content (matches the pre-v19 flow). */
+  display: block;
+}
+.octo-prose table tr.octo-row-fixed .octo-cell-clip {
+  max-height: calc(var(--octo-row-h) - 12px);
+  overflow: hidden;
+}
 .octo-prose table .selectedCell::after {
   content: '';
   position: absolute;
