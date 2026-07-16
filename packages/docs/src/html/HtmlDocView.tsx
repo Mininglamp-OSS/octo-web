@@ -21,14 +21,11 @@ import { canForwardToChat, openDocForward, t, getWKApp } from '../octoweb/index.
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
 import { HtmlPresenceBar } from './HtmlPresenceBar.tsx'
-import { HtmlVersionPanel } from './HtmlVersionPanel.tsx'
-import { listVersions, type HtmlDocVersion } from './htmlDocVersions.ts'
 import { deleteDoc } from './htmlDocAdmin.ts'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import {
   DocMoreMenu,
   OpenNewPageIcon,
-  HistoryIcon,
   LinkIcon,
   DeleteIcon,
   type DocMoreMenuItem,
@@ -271,11 +268,6 @@ export function HtmlDocView({ docId, space, slug, version = 'latest' }: HtmlDocV
   const [membersOpen, setMembersOpen] = useState(false)
   // Comments default open (preserves prior behaviour); the 💬 button toggles the rail.
   const [commentsOpen, setCommentsOpen] = useState(true)
-  // Version panel (≡ → 历史版本): lazy-loaded on first open.
-  const [versionsOpen, setVersionsOpen] = useState(false)
-  const [versions, setVersions] = useState<HtmlDocVersion[]>([])
-  const [versionsLoading, setVersionsLoading] = useState(false)
-  const [versionsError, setVersionsError] = useState<string | null>(null)
   // Delete flow (≡ → 删除此文档, author-only): confirm modal + in-flight/error state.
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -306,16 +298,6 @@ export function HtmlDocView({ docId, space, slug, version = 'latest' }: HtmlDocV
     // shares a read link, not an access grant.
     openDocForward({ docId, title: headerTitle, link: docUrl, canGrant: false })
   }, [canForward, docId, headerTitle, docUrl])
-
-  const openVersions = useCallback(() => {
-    setVersionsOpen(true)
-    setVersionsLoading(true)
-    setVersionsError(null)
-    listVersions(effectiveSlug)
-      .then((v) => setVersions(v))
-      .catch(() => setVersionsError(t('docs.state.error')))
-      .finally(() => setVersionsLoading(false))
-  }, [effectiveSlug])
 
   const confirmDeleteDoc = useCallback(() => {
     setDeleting(true)
@@ -496,12 +478,6 @@ export function HtmlDocView({ docId, space, slug, version = 'latest' }: HtmlDocV
                 icon: OpenNewPageIcon,
                 onClick: () => window.open(docUrl, '_blank'),
               },
-              {
-                key: 'history',
-                label: t('docs.toolbar.history'),
-                icon: HistoryIcon,
-                onClick: openVersions,
-              },
               ...(canForward
                 ? [
                     {
@@ -542,15 +518,6 @@ export function HtmlDocView({ docId, space, slug, version = 'latest' }: HtmlDocV
         onConfirm={confirmDeleteDoc}
         onCancel={() => setConfirmDelete(false)}
       />
-      {versionsOpen && (
-        <HtmlVersionPanel
-          slug={effectiveSlug}
-          versions={versions}
-          loading={versionsLoading}
-          error={versionsError}
-          onClose={() => setVersionsOpen(false)}
-        />
-      )}
       {/* Members open in a centered modal dialog (overlay + click-outside to close), matching the
           rich-doc member modal (EditorShell #A4) so HTML docs share the same floating-panel shape.
           Only the panel CONTENT differs (HtmlMemberPanel → octo-doc grants), never the shell. */}

@@ -64,10 +64,10 @@ describe('listVersions (octo-doc backend)', () => {
 })
 
 describe('deleteDoc (octo-doc backend)', () => {
-  it('DELETEs <base>/docs/{slug} with credentials', async () => {
+  it('DELETEs <base>/v1/docs/{slug} with credentials', async () => {
     const spy = stubFetch(() => jsonResponse({}, true, 204))
     await deleteDoc('my-slug')
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/docs/my-slug')
+    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/my-slug')
     const init = spy.mock.calls[0][1] as RequestInit
     expect(init.method).toBe('DELETE')
     expect(init.credentials).toBe('include')

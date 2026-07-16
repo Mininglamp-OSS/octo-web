@@ -12,9 +12,9 @@ function octoDocHeaders(base: Record<string, string>): Record<string, string> {
   return tok ? { ...base, token: tok } : base
 }
 
-/** DELETE <base>/docs/{slug} — remove the published doc. Throws on a non-ok response. */
+/** DELETE <base>/v1/docs/{slug} — remove the published doc. Throws on a non-ok response. */
 export async function deleteDoc(slug: string): Promise<void> {
-  const url = `${resolveOctoDocBase()}/docs/${encodeURIComponent(slug)}`
+  const url = `${resolveOctoDocBase()}/v1/docs/${encodeURIComponent(slug)}`
   const res = await fetch(url, {
     method: 'DELETE',
     credentials: 'include',

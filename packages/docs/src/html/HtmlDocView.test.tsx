@@ -644,7 +644,6 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
     expect(screen.queryByText('docs.doc.deleteEntry')).toBeNull()
     // The neutral rows are present.
-    expect(screen.getByText('docs.toolbar.history')).toBeTruthy()
     expect(screen.getByText('docs.standalone.openInNewPage')).toBeTruthy()
   })
 
@@ -654,22 +653,6 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     await waitForFrame(container)
     fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
     expect(screen.getByText('docs.doc.deleteEntry')).toBeTruthy()
-  })
-
-  it('loads the version list when 历史版本 is chosen from the ≡ menu', async () => {
-    const spy = stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ data: [] })
-      if (url.includes('/versions'))
-        return jsonResponse({ data: { versions: [{ n: 2, created_at: '2026-07-15T04:00:00Z' }] } })
-      return htmlResponse('<p>body</p>')
-    })
-    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" />)
-    await waitForFrame(container)
-    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
-    fireEvent.click(screen.getByText('docs.toolbar.history'))
-    await waitFor(() => expect(screen.getByTestId('html-doc-version-panel')).toBeTruthy())
-    await waitFor(() => expect(screen.getByText(/^v2/)).toBeTruthy())
-    expect(spy.mock.calls.some((c) => String(c[0]) === 'https://od.test/docs/the-slug/versions')).toBe(true)
   })
 
   it('injects a <base> into the iframe srcdoc so CSS/relative assets resolve to the doc origin', async () => {
