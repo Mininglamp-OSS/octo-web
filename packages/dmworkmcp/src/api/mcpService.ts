@@ -64,6 +64,25 @@ function delay<T>(value: T, ms = MOCK_DELAY_MS): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms));
 }
 
+/**
+ * Reject presigned upload / download URLs whose scheme is not http(s), or
+ * whose http-scheme host is not a loopback (dev proxy). Backend-supplied
+ * URLs are still trusted for the exact host they name, but we refuse to
+ * PUT / GET against `javascript:`, `data:`, `file:` etc. — defense in
+ * depth against a misconfigured or compromised marketplace.
+ */
+function assertSafeUploadURL(raw: string): void {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error(t("mcp.create.iconUploadFailed"));
+  }
+  if (u.protocol === "https:") return;
+  if (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) return;
+  throw new Error(t("mcp.create.iconUploadFailed"));
+}
+
 // ─── Mock implementations ──────────────────────────────────────────────────
 
 function buildCategories(): McpCategory[] {
@@ -553,6 +572,12 @@ async function uploadMcpIconReal(_id: string, file: File): Promise<string> {
     throw new Error(t("mcp.create.iconUploadFailed"));
   }
   const { presigned_url, download_url, headers } = init.data;
+  // Defense-in-depth: the presigned URLs come back from our own marketplace
+  // backend, but any downstream misconfiguration/compromise could point them
+  // at an internal address or a non-HTTPS host. Only allow https:// (or
+  // http:// on localhost for dev proxies).
+  assertSafeUploadURL(presigned_url);
+  assertSafeUploadURL(download_url);
 
   // PUT via raw axios (no interceptors) — the presigned URL points at
   // storage / local proxy, not marketplace, and any Accept-Language /

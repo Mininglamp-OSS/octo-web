@@ -126,6 +126,25 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
 
+/**
+ * Reject presigned upload / download URLs whose scheme is not http(s), or
+ * whose http-scheme host is not loopback. Guards against a compromised or
+ * misconfigured marketplace returning `javascript:` / `data:` / `file:` /
+ * arbitrary internal targets that a browser would otherwise honor
+ * (anchor.href / xhr.open both accept unusual schemes).
+ */
+function assertSafeExternalURL(raw: string): void {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw normalizeError({ code: "invalid_response", message: "URL 无效" });
+  }
+  if (u.protocol === "https:") return;
+  if (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) return;
+  throw normalizeError({ code: "invalid_response", message: "URL scheme 不允许" });
+}
+
 // ─── Mappers ───────────────────────────────────────────────────────────────
 
 function mapCategory(raw: RawCategory, index: number): Category {
@@ -273,6 +292,7 @@ export async function downloadSkill(id: string): Promise<void> {
   if (!result.url) {
     throw normalizeError({ code: "invalid_response", message: "下载地址无效" });
   }
+  assertSafeExternalURL(result.url);
   const anchor = document.createElement("a");
   anchor.href = result.url;
   anchor.target = "_blank";
@@ -298,6 +318,7 @@ export function initUpload(fileName: string, fileSize: number): Promise<UploadIn
 
 /** Step 2: Upload the file to the pre-signed URL (PUT). */
 export async function uploadFile(presignedUrl: string, file: File, headers?: Record<string, string>, onProgress?: (percent: number) => void): Promise<void> {
+  assertSafeExternalURL(presignedUrl);
   // Use XMLHttpRequest for progress support
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
