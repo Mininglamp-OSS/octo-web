@@ -661,23 +661,32 @@ function DocsList({
             >
               {label}
             </span>
-            {(creator || stampIso) && (
-              <span
-                className="octo-docs-list-row-sub"
-                title={stampIso ? formatAbsolute(stampIso) : undefined}
-              >
-                {activeView === 'recent' ? (
-                  <>
-                    {creator}
-                    {creator && stampIso ? ' · ' : ''}
-                    {stampIso ? `${t('docs.list.viewedAt')} ${formatRelative(stampIso)}` : ''}
-                  </>
-                ) : stampIso ? (
-                  <>
-                    {t('docs.list.updatedAt')} {formatRelative(stampIso)}
-                  </>
-                ) : null}
-              </span>
+            {activeView === 'recent' ? (
+              // Recent rows split the creator and the viewer onto SEPARATE lines so the creator's
+              // name never sits next to "viewed at X" (which misread as "the creator viewed it").
+              // Line 1 states who created the doc; line 2 states when the current user viewed it
+              // (XIN-1236).
+              <>
+                {creator && (
+                  <span className="octo-docs-list-row-sub octo-docs-list-row-creator">
+                    {t('docs.list.createdBy')} {creator}
+                  </span>
+                )}
+                {stampIso && (
+                  <span
+                    className="octo-docs-list-row-sub octo-docs-list-row-viewed"
+                    title={formatAbsolute(stampIso)}
+                  >
+                    {t('docs.list.viewedBySelf')} {formatRelative(stampIso)}
+                  </span>
+                )}
+              </>
+            ) : (
+              stampIso && (
+                <span className="octo-docs-list-row-sub" title={formatAbsolute(stampIso)}>
+                  {t('docs.list.updatedAt')} {formatRelative(stampIso)}
+                </span>
+              )
             )}
           </span>
         </button>

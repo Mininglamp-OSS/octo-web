@@ -15,6 +15,8 @@
     "back": "All documents",
     "updatedAt": "Updated",
     "viewedAt": "Viewed",
+    "createdBy": "Created by",
+    "viewedBySelf": "You viewed",
     "loadingMore": "Loading more…",
     "end": "No more documents",
     "loadMoreFailed": "Couldn't load more",
