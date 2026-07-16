@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Dropdown } from "@douyinfe/semi-ui";
+import { Dropdown, Toast } from "@douyinfe/semi-ui";
 import { Cloud, Monitor, Lock, Check } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { RuntimeDevice } from "../api/types";
@@ -79,7 +79,13 @@ export default function RuntimePicker({
 
   const select = async (id: string) => {
     setOpen(false);
-    if (id !== value) await onChange(id);
+    if (id !== value) {
+      try {
+        await onChange(id);
+      } catch {
+        Toast.error(t("loop.toast.saveFailed"));
+      }
+    }
   };
 
   const dot = (online: boolean) => (

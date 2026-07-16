@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Input, InputNumber } from "@douyinfe/semi-ui";
+import { Input, InputNumber, Toast } from "@douyinfe/semi-ui";
 import { Pencil } from "lucide-react";
+import { useI18n } from "@octo/base";
 import AutoGrowTextarea from "./AutoGrowTextarea";
 
 type Kind = "text" | "textarea" | "number";
@@ -30,6 +31,7 @@ export default function InlineEdit({
   ariaLabel?: string;
   canEdit?: boolean;
 }) {
+  const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [busy, setBusy] = useState(false);
@@ -60,6 +62,9 @@ export default function InlineEdit({
       setBusy(true);
       await onSave(next);
       setEditing(false);
+    } catch {
+      // 保存失败：提示用户并保留编辑态与草稿，便于重试（对齐同面板其它保存的错误反馈）。
+      Toast.error(t("loop.toast.saveFailed"));
     } finally {
       setBusy(false);
     }

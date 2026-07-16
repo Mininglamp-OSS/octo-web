@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Dropdown, Input } from "@douyinfe/semi-ui";
+import { Dropdown, Input, Toast } from "@douyinfe/semi-ui";
 import { Plus } from "lucide-react";
 import { useI18n } from "@octo/base";
 
@@ -32,7 +32,13 @@ export default function ModelPicker({
   const commit = async (next: string) => {
     setOpen(false);
     setSearch("");
-    if (next !== value) await onChange(next);
+    if (next !== value) {
+      try {
+        await onChange(next);
+      } catch {
+        Toast.error(t("loop.toast.saveFailed"));
+      }
+    }
   };
 
   const menu = (
