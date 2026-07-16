@@ -1,4 +1,38 @@
+import { ChannelTypePerson } from "wukongimjssdk";
 import WKApp from "../../App";
+
+/**
+ * 解析卡片动作上行请求的 `channel_id`（person DM 对端塌缩兜底）。
+ *
+ * 服务端把 person 频道的 `channel_id` 当作**对端 uid**，按 `fakeChannel(loginUID,
+ * channel_id)` 定位存储行。正常 1v1 里 `message.channel.channelID` 已是对端；但与
+ * 系统 bot（如 `notification`，docs / smart-summary 审批卡都经它下发）的 DM，其 recv
+ * 包 channelID 会塌缩为**接收人自身 uid**（WuKongIM「receiver as container」路径，未做
+ * 常规 personal 对端翻转），此时若直接回传 channelID=self，服务端算出 `fakeChannel(self,
+ * self)` 必然 miss → 400 `card_action_invalid`。
+ *
+ * received 消息的权威对端是 `message.fromUID`（与 WKSDK `message.send` getter 同源），
+ * 故当 person 频道 channelID 塌缩为 self 时回退到 fromUID。group/topic（channelID=群号）
+ * 与 channelID 已是对端的普通 DM 条件均不成立 → 原样返回（fallback 为 no-op，无需 per-bot
+ * 白名单）。selfUID / fromUID 缺失时同样保守保留 channelID，不崩。
+ */
+export function resolveCardActionChannelId(params: {
+  channelType: number;
+  channelID: string;
+  fromUID?: string;
+  selfUID?: string;
+}): string {
+  const { channelType, channelID, fromUID, selfUID } = params;
+  if (
+    channelType === ChannelTypePerson &&
+    !!selfUID &&
+    channelID === selfUID &&
+    !!fromUID
+  ) {
+    return fromUID;
+  }
+  return channelID;
+}
 
 /**
  * 卡片动作提交（octo/v2 交互闭环，契约 §7.1）。

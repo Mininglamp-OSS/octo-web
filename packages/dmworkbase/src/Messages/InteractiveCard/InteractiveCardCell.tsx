@@ -9,7 +9,11 @@ import MessageRow from "../../ui/message/MessageRow";
 import ReplyBlock from "../../ui/message/ReplyBlock";
 import { MessageCell } from "../MessageCell";
 import { t } from "../../i18n";
-import { isRetryableCardActionError, submitCardAction } from "./cardAction";
+import {
+  isRetryableCardActionError,
+  resolveCardActionChannelId,
+  submitCardAction,
+} from "./cardAction";
 import { isAgentProgressCard } from "./cardLayout";
 import { InteractiveCardContent } from "./InteractiveCardContent";
 import { decideCardBody, type CardDecision } from "./renderDecision";
@@ -289,6 +293,16 @@ export class InteractiveCardCell extends MessageCell {
     const channel = message.channel;
     if (!channel) return;
 
+    // person DM 与系统 bot（notification 等）的 recv 包 channelID 可能塌缩为接收人
+    // 自身 uid，直接回传会让服务端 fakeChannel(self,self) miss → 400。回退到权威对端
+    // message.fromUID，确保 channel_id 与服务端存储键一致（群/普通 DM 为 no-op）。
+    const channelId = resolveCardActionChannelId({
+      channelType: channel.channelType,
+      channelID: channel.channelID,
+      fromUID: message.fromUID,
+      selfUID: WKApp.loginInfo.uid,
+    });
+
     // 本次提交代次：使此前提交/超时/新帧作废，且异步回调据此判活。
     const gen = ++this.submitGen;
     this.submitError = null;
@@ -298,7 +312,7 @@ export class InteractiveCardCell extends MessageCell {
 
     submitCardAction({
       messageId: message.messageID,
-      channelId: channel.channelID,
+      channelId,
       channelType: channel.channelType,
       actionId,
       inputs,
