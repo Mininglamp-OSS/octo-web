@@ -974,3 +974,53 @@ describe('StandaloneDocPage — records a view so share-link opens surface in �
     expect(wk.apiClient.calls.some((c) => c.url === '/docs/d_forbidden/view')).toBe(false)
   })
 })
+
+describe('StandaloneDocPage — restores the viewer current space on teardown so 最近查看 is not left scoped to the doc space (XIN-1254)', () => {
+  it('reverts the doc-link space it seeded back to the viewer current space when the page unmounts', async () => {
+    // Cross-space share (老板 real-device repro): the viewer (大棍子) is in space-viewer; the link
+    // carries the DOC owner's (大背头) space `?sp=space-doc`. On this cold deep link
+    // wk.shared.currentSpaceId is empty, so the seed effect overwrites it with space-doc for the
+    // interceptor to address the editor's cross-space collab requests. Left in place, returning to
+    // the docs list scopes 最近查看's read (derived from the live currentSpaceId via the interceptor)
+    // to space-doc — but the view was recorded under space-viewer (viewerSpaceRef), so it stays
+    // invisible: the XIN-1234 write/read space split reintroduced by the seed.
+    window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
+    window.localStorage.setItem('currentSpaceId', 'space-viewer')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { unmount } = render(<StandaloneDocPage docId="d_ok" />)
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    // Seed applied while the standalone editor is mounted (cross-space collab addressing).
+    expect(wk.shared.currentSpaceId).toBe('space-doc')
+
+    // On teardown the viewer's real space is restored, so the shell's recent-view read matches the
+    // space the view was written to (space-viewer) and the doc surfaces in 最近查看.
+    unmount()
+    expect(wk.shared.currentSpaceId).toBe('space-viewer')
+  })
+
+  it('only reverts the value it seeded — never clobbers a space the shell switched to meanwhile', async () => {
+    window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
+    window.localStorage.setItem('currentSpaceId', 'space-viewer')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { unmount } = render(<StandaloneDocPage docId="d_ok" />)
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(wk.shared.currentSpaceId).toBe('space-doc')
+
+    // A genuine space switch happened while the page was open; the teardown restore must be a no-op.
+    wk.shared.currentSpaceId = 'space-switched'
+    unmount()
+    expect(wk.shared.currentSpaceId).toBe('space-switched')
+  })
+})

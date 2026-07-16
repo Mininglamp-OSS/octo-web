@@ -345,16 +345,36 @@ export function StandaloneDocPage({
     // header used (XIN-501); fall back to the cached last space when the link carries no `?sp`.
     // Never overwrite a real live space, so in-shell mounts (where it is already set) are unaffected.
     const linkSpace = standaloneLinkSpace()
+    let seeded: string | undefined
     if (linkSpace) {
-      shared.currentSpaceId = linkSpace
-      return
+      seeded = linkSpace
+    } else if (typeof window !== 'undefined') {
+      try {
+        const cached = window.localStorage.getItem('currentSpaceId')
+        if (cached) seeded = cached
+      } catch {
+        // localStorage unavailable: the explicit preflight header (primary fix) still carries the space.
+      }
     }
-    if (typeof window === 'undefined') return
-    try {
-      const cached = window.localStorage.getItem('currentSpaceId')
-      if (cached) shared.currentSpaceId = cached
-    } catch {
-      // localStorage unavailable: the explicit preflight header (primary fix) still carries the space.
+    if (!seeded) return
+    shared.currentSpaceId = seeded
+
+    // XIN-1254 (XIN-1234 variant): the seed above overwrites the shared `currentSpaceId` — which the
+    // app shell reads as "the VIEWER's current space" — with the DOC's link space so the global
+    // interceptor addresses the standalone editor's cross-space collab requests. Left in place after
+    // the page tears down, returning to the docs list scopes "最近查看"'s read to the DOC space (the
+    // recent feed derives its space from the live currentSpaceId via the interceptor). A view we
+    // recorded under the VIEWER's real space (viewerSpaceRef) is then invisible in that read — the
+    // exact write/read space split of XIN-1234, reintroduced by this seed for a CROSS-space share
+    // (opening someone else's doc, `?sp=` ≠ the viewer's space). Restore the viewer's real space on
+    // teardown so the shell's recent-view read matches the space the view was written to. React runs
+    // an unmounted tree's effect cleanups before the newly-mounted tree's effects within the same
+    // commit, so this restore lands before DocsHome's recent-view request fires. Only revert the
+    // value WE seeded — never clobber a space the shell legitimately switched to meanwhile.
+    return () => {
+      if (shared.currentSpaceId === seeded) {
+        shared.currentSpaceId = viewerSpaceRef.current ?? ''
+      }
     }
   }, [wk.shared])
 
