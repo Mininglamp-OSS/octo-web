@@ -46,6 +46,7 @@ export interface GlobalSearchQuery {
   filters: GlobalSearchFilters;
   cursor?: string;
   limit: number;
+  signal?: AbortSignal;
 }
 
 export type GlobalSearchResponse = ChannelSearchResponse;
@@ -77,12 +78,6 @@ export interface GlobalSearchChannelOption {
   channelType: number;
   name: string;
   avatarUrl?: string;
-}
-
-export interface GlobalSearchPanelState {
-  filterOpen?: boolean;
-  filters?: GlobalSearchFilters;
-  keyword?: string;
 }
 
 export const defaultGlobalSearchFilters = (): GlobalSearchFilters => ({

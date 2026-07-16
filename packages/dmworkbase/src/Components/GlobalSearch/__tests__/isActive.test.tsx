@@ -24,11 +24,7 @@ import path from "node:path";
 //       "near bottom" false positive.
 //   §E `index.tsx` threads `isActive` from the tab-selection state.
 
-const panelPath = path.join(
-  __dirname,
-  "..",
-  "GlobalContentSearchPanel.tsx"
-);
+const panelPath = path.join(__dirname, "..", "GlobalContentSearchPanel.tsx");
 const indexPath = path.join(__dirname, "..", "index.tsx");
 const panelSrc = fs.readFileSync(panelPath, "utf8");
 const indexSrc = fs.readFileSync(indexPath, "utf8");
@@ -55,7 +51,10 @@ describe("GlobalContentSearchPanel — isActive gate (source guard)", () => {
     const runSearchBlock = panelSrc.match(
       /const\s+runSearch\s*=\s*useCallback\(\s*async[^{]*\{[\s\S]*?\n\s{4}\}/
     );
-    expect(runSearchBlock, "runSearch useCallback body must exist").toBeTruthy();
+    expect(
+      runSearchBlock,
+      "runSearch useCallback body must exist"
+    ).toBeTruthy();
     expect(runSearchBlock![0]).toMatch(/if\s*\(\s*!isActive\s*\)\s*return/);
   });
 
@@ -76,7 +75,24 @@ describe("GlobalContentSearchPanel — isActive gate (source guard)", () => {
 describe("GlobalSearch index — threads isActive from tab state (§E)", () => {
   it("passes isActive={currentKey === 'messages'} to the messages panel", () => {
     expect(indexSrc).toMatch(
-      /tab="messages"[\s\S]{0,300}isActive=\{\s*currentKey\s*===\s*"messages"\s*\}/
+      /<GlobalChatSearchPanel[\s\S]{0,300}isActive=\{\s*currentKey\s*===\s*"messages"\s*\}/
+    );
+  });
+
+  it("shares one filter state and trigger across messages and files", () => {
+    expect(indexSrc).toMatch(
+      /vm\.selectedTabKey\s*===\s*"messages"\s*\|\|\s*vm\.selectedTabKey\s*===\s*"files"/
+    );
+    expect(indexSrc).toContain("wk-search-tabs__filter-trigger");
+    expect(indexSrc).toMatch(
+      /<GlobalChatSearchPanel[\s\S]{0,500}filters=\{this\.state\.filters\}/
+    );
+    expect(indexSrc).toMatch(
+      /<GlobalContentSearchPanel[\s\S]{0,500}filters=\{this\.state\.filters\}/
+    );
+    expect(indexSrc.match(/<GlobalSearchFilterPanel\b/g)).toHaveLength(1);
+    expect(indexSrc).toMatch(
+      /tab=\{currentKey\s*===\s*"files"\s*\?\s*"files"\s*:\s*"messages"\}/
     );
   });
 

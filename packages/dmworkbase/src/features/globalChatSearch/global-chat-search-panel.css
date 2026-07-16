@@ -1,0 +1,33 @@
+.wk-global-chat-search-panel__results {
+  padding: 0 var(--wk-sp-2) var(--wk-sp-4);
+}
+
+.wk-global-chat-search-layout .wk-channel-search-empty,
+.wk-global-chat-search-layout .wk-channel-search-loading,
+.wk-global-chat-search-layout .wk-channel-search-error {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding-top: 0;
+  justify-content: center;
+}
+
+.wk-global-chat-search-panel__state {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: var(--wk-sp-6);
+  color: var(--wk-text-tertiary);
+  font: var(--wk-text-body);
+}
+
+.wk-global-chat-search-panel__state.is-error {
+  color: var(--wk-color-error);
+}
+
+.wk-global-chat-search-panel__load-more {
+  padding: var(--wk-sp-3);
+  color: var(--wk-text-tertiary);
+  font: var(--wk-text-caption);
+  text-align: center;
+}

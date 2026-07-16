@@ -179,7 +179,7 @@ describe("handleLocate — source-level regression guard (§B)", () => {
   );
 
   it("does not forward camelCase item to props.onClick inside handleLocate", () => {
-    const match = src.match(/handleLocate\s*=\s*\(item[\s\S]*?\n\s{4}\}/);
+    const match = src.match(/handleLocate\s*=\s*\(item[\s\S]*?\n\s{2}\};/);
     expect(match, "handleLocate block should exist in GlobalSearch/index.tsx").toBeTruthy();
     const body = match![0];
     expect(
@@ -189,7 +189,7 @@ describe("handleLocate — source-level regression guard (§B)", () => {
   });
 
   it("invokes props.hideModal so the enclosing modal can dismiss", () => {
-    const match = src.match(/handleLocate\s*=\s*\(item[\s\S]*?\n\s{4}\}/);
+    const match = src.match(/handleLocate\s*=\s*\(item[\s\S]*?\n\s{2}\};/);
     expect(match).toBeTruthy();
     const body = match![0];
     expect(

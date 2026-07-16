@@ -4,3 +4,143 @@
   color: var(--wk-text-tertiary);
   font-size: 13px;
 }
+
+.wk-search-tabs {
+  --wk-global-search-content-height: min(58vh, 640px);
+
+  position: relative;
+}
+
+.wk-search-tabs > .semi-tabs > .semi-tabs-bar {
+  padding-right: calc(var(--wk-sp-12) * 3);
+}
+
+/* Semi adds 5px vertical padding around every tab pane. For chat search that
+   produces a visible blank strip between the tab divider and the three-column
+   workspace. The workspace is the pane surface itself, so it should attach
+   directly to the divider. */
+.wk-search-tabs > .semi-tabs > .semi-tabs-content {
+  padding-block: 0;
+}
+
+.wk-search-tabs__content-shell {
+  --channel-search-surface: var(--wk-bg-surface);
+  --channel-search-elevated: var(--wk-bg-elevated);
+  --channel-search-text-primary: var(--wk-text-primary);
+  --channel-search-text-secondary: var(--wk-text-secondary);
+  --channel-search-text-tertiary: var(--wk-text-tertiary);
+  --channel-search-text-placeholder: color-mix(
+    in srgb,
+    var(--wk-text-primary) 40%,
+    transparent
+  );
+  --channel-search-border: var(--wk-border-default);
+  --channel-search-border-strong: var(--wk-border-strong);
+  --channel-search-hover: var(--wk-bg-item-hover);
+  --channel-search-field-bg: var(--wk-bg-elevated);
+  --channel-search-accent: var(--wk-text-accent);
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--wk-bg-surface);
+}
+
+.wk-search-tabs__content-shell.has-filter {
+  grid-template-columns: minmax(0, 1fr) 284px;
+  height: var(--wk-global-search-content-height);
+}
+
+.wk-search-tabs__panel {
+  min-width: 0;
+  min-height: 0;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.wk-search-tabs__shared-filter {
+  min-width: 0;
+  min-height: 0;
+  grid-column: 2;
+  grid-row: 1;
+  overflow: hidden;
+  border-left: 1px solid var(--wk-border-default);
+  background: var(--wk-bg-surface);
+}
+
+.wk-search-tabs__content-shell.has-filter .wk-search-tabs__panel,
+.wk-search-tabs__content-shell.has-filter .wk-search-tabs__shared-filter {
+  height: 100%;
+  overflow: hidden;
+}
+
+.wk-search-tabs__content-shell.has-filter .wk-global-chat-search-layout,
+.wk-search-tabs__content-shell.has-filter .wk-global-content-search {
+  height: 100%;
+  min-height: 0;
+}
+
+.wk-search-tabs__filter-actions {
+  position: absolute;
+  z-index: 1;
+  top: var(--wk-sp-2);
+  right: var(--wk-sp-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
+
+.wk-search-tabs__filter-trigger,
+.wk-search-tabs__filter-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  min-height: var(--wk-sp-8);
+  padding: 0 var(--wk-sp-2);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-body);
+  cursor: pointer;
+}
+
+.wk-search-tabs__filter-reset {
+  color: var(--wk-text-secondary);
+}
+
+.wk-search-tabs__filter-reset:hover {
+  color: var(--wk-text-accent);
+}
+
+.wk-search-tabs__filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+  padding: 0 var(--wk-sp-1);
+  border-radius: var(--wk-r-circle);
+  background: var(--wk-text-accent);
+  color: var(--wk-neutral-0);
+  font: var(--wk-text-caption);
+}
+
+.wk-search-tabs__filter-trigger:hover,
+.wk-search-tabs__filter-trigger.is-open {
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-accent);
+}
+
+.wk-search-tabs__filter-trigger.has-filters {
+  color: var(--wk-text-accent);
+}
+
+.wk-search-tabs__filter-trigger.is-open {
+  background: var(--wk-bg-item-hover);
+}
+
+.wk-search-tabs__filter-trigger:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--wk-text-accent);
+}

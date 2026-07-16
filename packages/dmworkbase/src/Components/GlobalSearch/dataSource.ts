@@ -282,7 +282,8 @@ export function createGlobalSearchApiDataSource(
       const body = toGlobalRequestBody(query, WKApp.loginInfo.uid || "");
       const resp = await WKApp.apiClient.post(
         globalSearchEndpoint(query.tab),
-        body
+        body,
+        { signal: query.signal }
       );
 
       const { items, pagination } =

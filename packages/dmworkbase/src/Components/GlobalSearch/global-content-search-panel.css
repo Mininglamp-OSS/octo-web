@@ -35,18 +35,9 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* Fixed 50vh so the modal window matches the contacts / group / file
-     sub-tabs (all 50vh) and doesn't jump when switching tabs. The toolbar +
-     scrollable content share this height via the flex column below. */
-  height: 50vh;
-}
-
-.wk-global-content-search-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 8px 8px 4px 8px;
-  gap: 8px;
+  height: var(--wk-global-search-content-height, min(58vh, 640px));
+  overflow: hidden;
+  background: var(--wk-bg-surface);
 }
 
 .wk-global-content-search .wk-channel-search-content {
@@ -104,13 +95,36 @@
   max-height: min(70vh, calc(100vh - 200px));
 }
 
+.wk-global-search-filter-panel--sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: var(--wk-sp-4);
+  background: transparent;
+}
+
+.wk-global-search-filter-panel--sidebar .wk-global-search-filter-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--wk-sp-1);
+}
+
+.wk-global-search-filter-panel--sidebar .wk-channel-search-filter-actions {
+  flex: 0 0 auto;
+  padding-top: var(--wk-sp-3);
+  border-top: 1px solid var(--wk-border-default);
+}
+
 .wk-global-content-search .wk-global-search-filter-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
 }
 
-.wk-global-content-search .wk-global-search-filter-panel
+.wk-global-content-search
+  .wk-global-search-filter-panel
   .wk-channel-search-filter-actions {
   flex: 0 0 auto;
   /* Reuse the reset shared with ChannelSearch (`margin-top: 16px`) but keep
@@ -120,10 +134,56 @@
   margin-top: 12px;
 }
 
-.wk-global-content-search .wk-global-search-filter-chip-row {
+.wk-global-search-filter-panel .wk-global-search-filter-chip-row {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.wk-global-search-filter-panel .wk-global-search-filter-check-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--wk-sp-2);
+}
+
+.wk-global-search-filter-panel .wk-global-search-filter-check-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  min-height: var(--wk-sp-6);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--wk-text-primary);
+  font: var(--wk-text-body);
+  cursor: pointer;
+}
+
+.wk-global-search-filter-panel .wk-global-search-filter-check-box {
+  display: inline-flex;
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--wk-border-strong);
+  border-radius: var(--wk-r-xs);
+  background: var(--wk-bg-surface);
+  color: var(--wk-neutral-0);
+}
+
+.wk-global-search-filter-panel
+  .wk-global-search-filter-check-option.is-active
+  .wk-global-search-filter-check-box {
+  border-color: var(--wk-text-accent);
+  background: var(--wk-text-accent);
+}
+
+.wk-global-search-filter-panel
+  .wk-global-search-filter-check-option.is-disabled {
+  color: var(--wk-text-tertiary);
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /*
@@ -134,28 +194,28 @@
   bottom margin — leaving every title glued to its control. Restore the same
   8px gap here so the two filter surfaces share one vertical rhythm.
 */
-.wk-global-content-search .wk-channel-search-filter-title {
+.wk-global-search-filter-panel .wk-channel-search-filter-title {
   margin-bottom: 8px;
 }
 
 /* Toggle-chip active / disabled states. ChannelSearch's chip is a removable
    tag with no selected state, so these modifiers live here (global-only). */
-.wk-global-content-search .wk-channel-search-filter-chip.is-active {
+.wk-global-search-filter-panel .wk-channel-search-filter-chip.is-active {
   border-color: var(--channel-search-accent);
   color: var(--channel-search-accent);
   background: color-mix(in srgb, var(--wk-text-accent) 8%, transparent);
 }
 
-.wk-global-content-search .wk-channel-search-filter-chip.is-active svg {
+.wk-global-search-filter-panel .wk-channel-search-filter-chip.is-active svg {
   color: var(--channel-search-accent);
 }
 
-.wk-global-content-search .wk-channel-search-filter-chip.is-disabled {
+.wk-global-search-filter-panel .wk-channel-search-filter-chip.is-disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.wk-global-content-search .wk-global-search-filter-search {
+.wk-global-search-filter-panel .wk-global-search-filter-search {
   width: 100%;
   height: 32px;
   padding: 0 8px;
@@ -167,22 +227,22 @@
   outline: none;
 }
 
-.wk-global-content-search .wk-global-search-filter-search::placeholder {
+.wk-global-search-filter-panel .wk-global-search-filter-search::placeholder {
   color: var(--channel-search-text-placeholder);
 }
 
-.wk-global-content-search .wk-global-search-filter-help {
+.wk-global-search-filter-panel .wk-global-search-filter-help {
   font: 400 12px/20px var(--wk-font-sans);
   color: var(--channel-search-text-placeholder);
 }
 
-.wk-global-content-search .wk-global-search-filter-size-row {
+.wk-global-search-filter-panel .wk-global-search-filter-size-row {
   display: flex;
   gap: 6px;
   align-items: center;
 }
 
-.wk-global-content-search .wk-global-search-filter-size-row input {
+.wk-global-search-filter-panel .wk-global-search-filter-size-row input {
   flex: 1 1 auto;
   min-width: 0;
   height: 32px;
@@ -195,6 +255,6 @@
   outline: none;
 }
 
-.wk-global-content-search .wk-global-search-filter-size-row span {
+.wk-global-search-filter-panel .wk-global-search-filter-size-row span {
   color: var(--channel-search-text-tertiary);
 }

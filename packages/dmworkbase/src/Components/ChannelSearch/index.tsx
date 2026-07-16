@@ -1300,7 +1300,11 @@ const FileResultItem = React.memo(function FileResultItem({
   );
 });
 
-const SearchEmpty: React.FC<{ queryStarted: boolean }> = ({ queryStarted }) => {
+const SearchEmpty: React.FC<{
+  queryStarted: boolean;
+  emptyHint?: string;
+  noResultsHint?: string;
+}> = ({ queryStarted, emptyHint, noResultsHint }) => {
   const { t } = useI18n();
   return (
     <div className="wk-channel-search-empty">
@@ -1309,8 +1313,8 @@ const SearchEmpty: React.FC<{ queryStarted: boolean }> = ({ queryStarted }) => {
       </div>
       <div>
         {queryStarted
-          ? t("base.channelSearch.noResults")
-          : t("base.channelSearch.emptyHint")}
+          ? noResultsHint || t("base.channelSearch.noResults")
+          : emptyHint || t("base.channelSearch.emptyHint")}
       </div>
     </div>
   );

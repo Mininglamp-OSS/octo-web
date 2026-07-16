@@ -1,9 +1,7 @@
-
-
 .wk-tab-all {
-    width: 100%;
-    height: 50vh;
-    display: flex;
-    overflow: auto;
-    flex-direction: column;
+  width: 100%;
+  height: var(--wk-global-search-content-height, min(58vh, 640px));
+  display: flex;
+  overflow: auto;
+  flex-direction: column;
 }

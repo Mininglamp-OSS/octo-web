@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { activeGlobalSearchFilterCount } from "../filterState";
+import {
+  activeGlobalSearchFilterCount,
+  hasGlobalSearchCriteria,
+  selectedGlobalSearchFilterValueCount,
+} from "../filterState";
 import { activeChannelSearchFilterCount } from "../../ChannelSearch/filterState";
 import { defaultGlobalSearchFilters } from "../types";
 import type { GlobalSearchFilters } from "../types";
@@ -10,6 +14,31 @@ function withOverrides(
   return { ...defaultGlobalSearchFilters(), ...overrides };
 }
 
+describe("hasGlobalSearchCriteria", () => {
+  it("distinguishes the initial empty state from a real filtered search", () => {
+    const defaults = defaultGlobalSearchFilters();
+    expect(hasGlobalSearchCriteria("messages", "", defaults)).toBe(false);
+    expect(hasGlobalSearchCriteria("files", "", defaults)).toBe(false);
+    expect(hasGlobalSearchCriteria("messages", "octo", defaults)).toBe(true);
+  });
+
+  it("counts common filters on both tabs", () => {
+    const filters = withOverrides({ datePreset: "today" });
+    expect(hasGlobalSearchCriteria("messages", "", filters)).toBe(true);
+    expect(hasGlobalSearchCriteria("files", "", filters)).toBe(true);
+  });
+
+  it("only counts tab-specific filters on their applicable tab", () => {
+    const messageFilters = withOverrides({ contentTypes: [1] });
+    expect(hasGlobalSearchCriteria("messages", "", messageFilters)).toBe(true);
+    expect(hasGlobalSearchCriteria("files", "", messageFilters)).toBe(false);
+
+    const fileFilters = withOverrides({ fileExts: ["pdf"] });
+    expect(hasGlobalSearchCriteria("files", "", fileFilters)).toBe(true);
+    expect(hasGlobalSearchCriteria("messages", "", fileFilters)).toBe(false);
+  });
+});
+
 describe("activeGlobalSearchFilterCount", () => {
   it("returns 0 for the default filters", () => {
     expect(activeGlobalSearchFilterCount(defaultGlobalSearchFilters())).toBe(0);
@@ -17,9 +46,7 @@ describe("activeGlobalSearchFilterCount", () => {
 
   it("counts sender uids as one active filter", () => {
     expect(
-      activeGlobalSearchFilterCount(
-        withOverrides({ senderUids: ["u1", "u2"] })
-      )
+      activeGlobalSearchFilterCount(withOverrides({ senderUids: ["u1", "u2"] }))
     ).toBe(1);
   });
 
@@ -100,5 +127,41 @@ describe("activeGlobalSearchFilterCount", () => {
     expect(
       activeChannelSearchFilterCount({ senderUids: [], sort: "time_desc" })
     ).toBe(0);
+  });
+});
+
+describe("selectedGlobalSearchFilterValueCount", () => {
+  it("counts every selected value for the WeCom-style badge", () => {
+    expect(
+      selectedGlobalSearchFilterValueCount(
+        withOverrides({
+          senderUids: ["sender"],
+          memberUids: ["member"],
+          channelTypes: [1, 2],
+          contentTypes: [1, 14],
+        })
+      )
+    ).toBe(6);
+  });
+
+  it("counts date and file ranges as one value each", () => {
+    expect(
+      selectedGlobalSearchFilterValueCount(
+        withOverrides({
+          startAt: 1,
+          endAt: 2,
+          fileSizeMin: 1024,
+          fileSizeMax: 2048,
+        })
+      )
+    ).toBe(2);
+  });
+
+  it("counts group + thread backend values as one visible group option", () => {
+    expect(
+      selectedGlobalSearchFilterValueCount(
+        withOverrides({ channelTypes: [2, 5] })
+      )
+    ).toBe(1);
   });
 });

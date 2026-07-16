@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 import { DatePicker } from "@douyinfe/semi-ui";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Check } from "lucide-react";
 import { useI18n } from "../../i18n";
 import WKButton from "../WKButton";
 import FilterSearchSelect from "./FilterSearchSelect";
@@ -28,7 +28,8 @@ interface Props {
   filters: GlobalSearchFilters;
   dataSource: GlobalSearchDataSource;
   onApply: (filters: GlobalSearchFilters) => void;
-  onClose: () => void;
+  onClose?: () => void;
+  mode?: "popover" | "sidebar";
 }
 
 // Day-boundary helpers for the DatePicker widget (custom range only). They
@@ -106,6 +107,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   dataSource,
   onApply,
   onClose,
+  mode = "popover",
 }) => {
   const { t, locale } = useI18n();
   const [draft, setDraft] = useState<GlobalSearchFilters>(filters);
@@ -135,6 +137,27 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   const [fileSizeMaxInput, setFileSizeMaxInput] = useState(
     filters.fileSizeMax ? String(Math.round(filters.fileSizeMax / 1024)) : ""
   );
+  const draftRef = useRef(filters);
+
+  useEffect(() => {
+    draftRef.current = filters;
+    setDraft(filters);
+    setFileSizeMinInput(
+      filters.fileSizeMin ? String(Math.round(filters.fileSizeMin / 1024)) : ""
+    );
+    setFileSizeMaxInput(
+      filters.fileSizeMax ? String(Math.round(filters.fileSizeMax / 1024)) : ""
+    );
+  }, [filters]);
+
+  const updateDraft = (
+    updater: (current: GlobalSearchFilters) => GlobalSearchFilters
+  ) => {
+    const next = updater(draftRef.current);
+    draftRef.current = next;
+    setDraft(next);
+    if (mode === "sidebar") onApply(next);
+  };
 
   const keywordActive = keyword.trim().length > 0;
   const selfUid = dataSource.getSelfUid();
@@ -157,6 +180,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     undefined
   );
   useLayoutEffect(() => {
+    if (mode === "sidebar") return;
     const measure = () => {
       const el = panelRef.current;
       if (!el) return;
@@ -170,7 +194,10 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       while (anc) {
         const cs = window.getComputedStyle(anc);
         if (cs.overflowY !== "visible" || cs.overflowX !== "visible") {
-          boundBottom = Math.min(boundBottom, anc.getBoundingClientRect().bottom);
+          boundBottom = Math.min(
+            boundBottom,
+            anc.getBoundingClientRect().bottom
+          );
         }
         anc = anc.parentElement;
       }
@@ -182,7 +209,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, []);
+  }, [mode]);
 
   // Load sender candidates on open + when query changes (debounced light).
   useEffect(() => {
@@ -254,7 +281,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   }, [dataSource, tab]);
 
   const toggleSender = (uid: string) => {
-    setDraft((cur) => {
+    updateDraft((cur) => {
       const has = cur.senderUids.includes(uid);
       return {
         ...cur,
@@ -266,7 +293,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   };
 
   const toggleChannel = (opt: GlobalSearchChannelOption) => {
-    setDraft((cur) => {
+    updateDraft((cur) => {
       const has = cur.channels.some(
         (c) =>
           c.channelId === opt.channelId && c.channelType === opt.channelType
@@ -320,7 +347,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   };
 
   const toggleChannelTypeGroup = (values: number[]) => {
-    setDraft((cur) => {
+    updateDraft((cur) => {
       const activeSet = new Set(cur.channelTypes);
       const allActive = values.every((v) => activeSet.has(v));
       const next = allActive
@@ -331,7 +358,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   };
 
   const toggleContentType = (value: number) => {
-    setDraft((cur) => {
+    updateDraft((cur) => {
       const has = cur.contentTypes.includes(value);
       return {
         ...cur,
@@ -343,7 +370,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   };
 
   const toggleFileExts = (category: GlobalSearchFileTypeCategory) => {
-    setDraft((cur) => {
+    updateDraft((cur) => {
       const set = new Set(cur.fileExts);
       const allActive = category.exts.every((e) => set.has(e.toLowerCase()));
       if (allActive) {
@@ -359,7 +386,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     preset: GlobalSearchFilters["datePreset"] | undefined
   ) => {
     if (!preset) {
-      setDraft((cur) => ({
+      updateDraft((cur) => ({
         ...cur,
         datePreset: undefined,
         startAt: undefined,
@@ -373,7 +400,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     const nDays =
       preset === "last_7_days" ? 7 : preset === "last_30_days" ? 30 : 1;
     const { startAt, endAt } = cnDatePresetRange(nDays, new Date());
-    setDraft((cur) => ({
+    updateDraft((cur) => ({
       ...cur,
       datePreset: preset,
       startAt,
@@ -389,7 +416,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     const nextSeconds = date
       ? toSeconds(field === "startAt" ? startOfDay(date) : endOfDay(date))
       : undefined;
-    setDraft((cur) => ({
+    updateDraft((cur) => ({
       ...cur,
       datePreset: undefined,
       [field]: nextSeconds,
@@ -398,7 +425,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
 
   const toggleMember = (uid: string) => {
     if (uid === selfUid) return;
-    setDraft((cur) => {
+    updateDraft((cur) => {
       const has = cur.memberUids.includes(uid);
       return {
         ...cur,
@@ -410,15 +437,17 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   };
 
   const clearAll = () => {
-    setDraft({
+    const next = {
       senderUids: [],
       memberUids: [],
       channels: [],
       channelTypes: [],
       contentTypes: [],
       fileExts: [],
-      sort: "time_desc",
-    });
+      sort: "time_desc" as const,
+    };
+    draftRef.current = next;
+    setDraft(next);
     setFileSizeMinInput("");
     setFileSizeMaxInput("");
   };
@@ -435,7 +464,21 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
         Number.isFinite(maxKb) && maxKb > 0 ? maxKb * 1024 : undefined,
     };
     onApply(next);
-    onClose();
+    onClose?.();
+  };
+
+  const updateFileSize = (
+    field: "fileSizeMin" | "fileSizeMax",
+    value: string
+  ) => {
+    if (field === "fileSizeMin") setFileSizeMinInput(value);
+    else setFileSizeMaxInput(value);
+    if (mode !== "sidebar") return;
+    const kb = parseInt(value, 10);
+    updateDraft((cur) => ({
+      ...cur,
+      [field]: Number.isFinite(kb) && kb > 0 ? kb * 1024 : undefined,
+    }));
   };
 
   const channelTypesDMActive = useMemo(
@@ -534,25 +577,31 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   return (
     <div
       ref={panelRef}
-      className="wk-channel-search-filter-popover wk-global-search-filter-panel"
-      style={panelMaxHeight ? { maxHeight: `${panelMaxHeight}px` } : undefined}
+      className={`wk-global-search-filter-panel wk-global-search-filter-panel--${mode}${
+        mode === "popover" ? " wk-channel-search-filter-popover" : ""
+      }`}
+      style={
+        mode === "popover" && panelMaxHeight
+          ? { maxHeight: `${panelMaxHeight}px` }
+          : undefined
+      }
       onClick={(e) => e.stopPropagation()}
     >
       <div className="wk-global-search-filter-body">
-      <FilterSearchSelect
-        title={t("base.channelSearch.filter.sender")}
-        placeholder={t("base.channelSearch.filter.senderPlaceholder")}
-        query={senderQuery}
-        onQueryChange={setSenderQuery}
-        options={senderSelectOptions}
-        selected={senderSelected}
-        isSelected={senderIsSelected}
-        onToggle={toggleSender}
-        emptyHint={t("base.channelSearch.filter.senderPlaceholder")}
-        listboxId="wk-global-search-sender-list"
-      />
+        <FilterSearchSelect
+          title={t("base.channelSearch.filter.sender")}
+          placeholder={t("base.channelSearch.filter.senderPlaceholder")}
+          query={senderQuery}
+          onQueryChange={setSenderQuery}
+          options={senderSelectOptions}
+          selected={senderSelected}
+          isSelected={senderIsSelected}
+          onToggle={toggleSender}
+          emptyHint={t("base.channelSearch.filter.senderPlaceholder")}
+          listboxId="wk-global-search-sender-list"
+        />
 
-      {/*
+        {/*
         「所在群聊或子区」narrowing (channel_ids). YUJ-30 bug 2 + YUJ-15:
 
         The candidate pool exposed here is populated by
@@ -572,228 +621,296 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
         See packages/dmworkbase/src/Components/GlobalSearch/dataSource.ts
         (loadReadableChannelOptions) for the pool source.
       */}
-      <FilterSearchSelect
-        title={t("base.globalSearch.filter.channels")}
-        query={channelQuery}
-        onQueryChange={setChannelQuery}
-        options={channelSelectOptions}
-        selected={channelSelected}
-        isSelected={channelIsSelectedById}
-        onToggle={toggleChannelById}
-        listboxId="wk-global-search-channel-list"
-      />
+        <FilterSearchSelect
+          title={t("base.globalSearch.filter.channels")}
+          query={channelQuery}
+          onQueryChange={setChannelQuery}
+          options={channelSelectOptions}
+          selected={channelSelected}
+          isSelected={channelIsSelectedById}
+          onToggle={toggleChannelById}
+          listboxId="wk-global-search-channel-list"
+        />
 
-      <FilterSearchSelect
-        title={t("base.globalSearch.filter.memberUid")}
-        query={memberQuery}
-        onQueryChange={setMemberQuery}
-        options={memberSelectOptions}
-        selected={memberSelected}
-        isSelected={memberIsSelected}
-        onToggle={toggleMemberById}
-        listboxId="wk-global-search-member-list"
-      />
+        <FilterSearchSelect
+          title={t("base.globalSearch.filter.memberUid")}
+          query={memberQuery}
+          onQueryChange={setMemberQuery}
+          options={memberSelectOptions}
+          selected={memberSelected}
+          isSelected={memberIsSelected}
+          onToggle={toggleMemberById}
+          listboxId="wk-global-search-member-list"
+        />
 
-      <div className="wk-channel-search-filter-section">
-        <div className="wk-channel-search-filter-title">
-          {t("base.globalSearch.filter.channelTypes")}
-        </div>
-        <div className="wk-global-search-filter-chip-row">
-          <button
-            type="button"
-            className={`wk-channel-search-filter-chip${
-              channelTypesDMActive ? " is-active" : ""
-            }`}
-            onClick={() => toggleChannelTypeGroup([1])}
-          >
-            {t("base.globalSearch.filter.channelTypeDm")}
-          </button>
-          <button
-            type="button"
-            className={`wk-channel-search-filter-chip${
-              channelTypesGroupActive ? " is-active" : ""
-            }`}
-            onClick={() => toggleChannelTypeGroup([2, 5])}
-          >
-            {t("base.globalSearch.filter.channelTypeGroup")}
-          </button>
-        </div>
-      </div>
-
-      {tab === "messages" && (
         <div className="wk-channel-search-filter-section">
           <div className="wk-channel-search-filter-title">
-            {t("base.globalSearch.filter.contentTypes")}
+            {t("base.globalSearch.filter.channelTypes")}
+          </div>
+          {mode === "sidebar" ? (
+            <div className="wk-global-search-filter-check-list">
+              <button
+                type="button"
+                aria-pressed={channelTypesDMActive}
+                className={`wk-global-search-filter-check-option${
+                  channelTypesDMActive ? " is-active" : ""
+                }`}
+                onClick={() => toggleChannelTypeGroup([1])}
+              >
+                <span className="wk-global-search-filter-check-box">
+                  {channelTypesDMActive && <Check size={12} />}
+                </span>
+                {t("base.globalSearch.filter.channelTypeDm")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={channelTypesGroupActive}
+                className={`wk-global-search-filter-check-option${
+                  channelTypesGroupActive ? " is-active" : ""
+                }`}
+                onClick={() => toggleChannelTypeGroup([2, 5])}
+              >
+                <span className="wk-global-search-filter-check-box">
+                  {channelTypesGroupActive && <Check size={12} />}
+                </span>
+                {t("base.globalSearch.filter.channelTypeGroup")}
+              </button>
+            </div>
+          ) : (
+            <div className="wk-global-search-filter-chip-row">
+              <button
+                type="button"
+                className={`wk-channel-search-filter-chip${
+                  channelTypesDMActive ? " is-active" : ""
+                }`}
+                onClick={() => toggleChannelTypeGroup([1])}
+              >
+                {t("base.globalSearch.filter.channelTypeDm")}
+              </button>
+              <button
+                type="button"
+                className={`wk-channel-search-filter-chip${
+                  channelTypesGroupActive ? " is-active" : ""
+                }`}
+                onClick={() => toggleChannelTypeGroup([2, 5])}
+              >
+                {t("base.globalSearch.filter.channelTypeGroup")}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {tab === "messages" && (
+          <div className="wk-channel-search-filter-section">
+            <div className="wk-channel-search-filter-title">
+              {t("base.globalSearch.filter.contentTypes")}
+            </div>
+            <div
+              className={
+                mode === "sidebar"
+                  ? "wk-global-search-filter-check-list"
+                  : "wk-global-search-filter-chip-row"
+              }
+            >
+              {MESSAGE_TYPE_OPTIONS.map((opt) => {
+                const active = draft.contentTypes.includes(opt.value);
+                // Image (2) / video (5) can only match in browse mode. When a
+                // keyword is present, gray them out so users don't build a
+                // filter that returns nothing (§6).
+                const disabled = keywordActive && opt.browseOnly;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={active}
+                    disabled={disabled}
+                    className={
+                      mode === "sidebar"
+                        ? `wk-global-search-filter-check-option${
+                            active ? " is-active" : ""
+                          }${disabled ? " is-disabled" : ""}`
+                        : `wk-channel-search-filter-chip${
+                            active ? " is-active" : ""
+                          }${disabled ? " is-disabled" : ""}`
+                    }
+                    onClick={() => !disabled && toggleContentType(opt.value)}
+                  >
+                    {mode === "sidebar" && (
+                      <span className="wk-global-search-filter-check-box">
+                        {active && <Check size={12} />}
+                      </span>
+                    )}
+                    {t(opt.labelKey)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {tab === "files" && (
+          <>
+            <div className="wk-channel-search-filter-section">
+              <div className="wk-channel-search-filter-title">
+                {t("base.globalSearch.filter.fileTypes")}
+              </div>
+              <div
+                className={
+                  mode === "sidebar"
+                    ? "wk-global-search-filter-check-list"
+                    : "wk-global-search-filter-chip-row"
+                }
+              >
+                {fileCategories.map((cat) => {
+                  const active = fileCategoryIsActive(cat);
+                  return (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      aria-pressed={active}
+                      className={
+                        mode === "sidebar"
+                          ? `wk-global-search-filter-check-option${
+                              active ? " is-active" : ""
+                            }`
+                          : `wk-channel-search-filter-chip${
+                              active ? " is-active" : ""
+                            }`
+                      }
+                      onClick={() => toggleFileExts(cat)}
+                    >
+                      {mode === "sidebar" && (
+                        <span className="wk-global-search-filter-check-box">
+                          {active && <Check size={12} />}
+                        </span>
+                      )}
+                      {cat.label}
+                    </button>
+                  );
+                })}
+                {fileCategories.length === 0 && (
+                  <span className="wk-global-search-filter-help">
+                    {t("base.channelSearch.loading")}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="wk-channel-search-filter-section">
+              <div className="wk-channel-search-filter-title">
+                {t("base.globalSearch.filter.fileSize")}
+              </div>
+              <div className="wk-global-search-filter-size-row">
+                <input
+                  type="number"
+                  min={0}
+                  value={fileSizeMinInput}
+                  onChange={(e) =>
+                    updateFileSize("fileSizeMin", e.target.value)
+                  }
+                  placeholder={t("base.globalSearch.filter.fileSizeMin")}
+                />
+                <span>-</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={fileSizeMaxInput}
+                  onChange={(e) =>
+                    updateFileSize("fileSizeMax", e.target.value)
+                  }
+                  placeholder={t("base.globalSearch.filter.fileSizeMax")}
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="wk-channel-search-filter-section">
+          <div className="wk-channel-search-filter-title">
+            {t("base.channelSearch.filter.sendTime")}
           </div>
           <div className="wk-global-search-filter-chip-row">
-            {MESSAGE_TYPE_OPTIONS.map((opt) => {
-              const active = draft.contentTypes.includes(opt.value);
-              // Image (2) / video (5) can only match in browse mode. When a
-              // keyword is present, gray them out so users don't build a
-              // filter that returns nothing (§6).
-              const disabled = keywordActive && opt.browseOnly;
+            {(
+              [
+                ["today", "base.channelSearch.filter.today"],
+                ["last_7_days", "base.channelSearch.filter.last7Days"],
+                ["last_30_days", "base.channelSearch.filter.last30Days"],
+              ] as const
+            ).map(([preset, labelKey]) => {
+              const active = draft.datePreset === preset;
               return (
                 <button
-                  key={opt.value}
+                  key={preset}
                   type="button"
-                  disabled={disabled}
                   className={`wk-channel-search-filter-chip${
                     active ? " is-active" : ""
-                  }${disabled ? " is-disabled" : ""}`}
-                  onClick={() => !disabled && toggleContentType(opt.value)}
+                  }`}
+                  onClick={() =>
+                    active ? setDatePreset(undefined) : setDatePreset(preset)
+                  }
                 >
-                  {t(opt.labelKey)}
+                  {t(labelKey)}
                 </button>
               );
             })}
           </div>
-        </div>
-      )}
-
-      {tab === "files" && (
-        <>
-          <div className="wk-channel-search-filter-section">
-            <div className="wk-channel-search-filter-title">
-              {t("base.globalSearch.filter.fileTypes")}
-            </div>
-            <div className="wk-global-search-filter-chip-row">
-              {fileCategories.map((cat) => {
-                const active = fileCategoryIsActive(cat);
-                return (
-                  <button
-                    key={cat.key}
-                    type="button"
-                    className={`wk-channel-search-filter-chip${
-                      active ? " is-active" : ""
-                    }`}
-                    onClick={() => toggleFileExts(cat)}
-                  >
-                    {cat.label}
-                  </button>
-                );
-              })}
-              {fileCategories.length === 0 && (
-                <span className="wk-global-search-filter-help">
-                  {t("base.channelSearch.loading")}
+          <DatePicker
+            className="wk-channel-search-date-picker"
+            value={dateFromSeconds(draft.startAt)}
+            onChange={(v) => setCustomDate("startAt", v)}
+            density="compact"
+            position="bottomLeft"
+            autoSwitchDate={false}
+            disabledDate={(date) => {
+              if (!date || !draft.endAt) return false;
+              return toSeconds(startOfDay(date)) > draft.endAt;
+            }}
+            triggerRender={() => (
+              <button className="wk-channel-search-date-input" type="button">
+                <span className={draft.startAt ? undefined : "is-placeholder"}>
+                  {draft.startAt
+                    ? dateDisplayValue(draft.startAt, locale)
+                    : t("base.channelSearch.filter.startDate")}
                 </span>
-              )}
-            </div>
-          </div>
-
-          <div className="wk-channel-search-filter-section">
-            <div className="wk-channel-search-filter-title">
-              {t("base.globalSearch.filter.fileSize")}
-            </div>
-            <div className="wk-global-search-filter-size-row">
-              <input
-                type="number"
-                min={0}
-                value={fileSizeMinInput}
-                onChange={(e) => setFileSizeMinInput(e.target.value)}
-                placeholder={t("base.globalSearch.filter.fileSizeMin")}
-              />
-              <span>-</span>
-              <input
-                type="number"
-                min={0}
-                value={fileSizeMaxInput}
-                onChange={(e) => setFileSizeMaxInput(e.target.value)}
-                placeholder={t("base.globalSearch.filter.fileSizeMax")}
-              />
-            </div>
-          </div>
-        </>
-      )}
-
-      <div className="wk-channel-search-filter-section">
-        <div className="wk-channel-search-filter-title">
-          <CalendarDays
-            size={14}
-            style={{ verticalAlign: "middle", marginRight: 4 }}
-          />
-          {t("base.channelSearch.filter.sendTime")}
-        </div>
-        <div className="wk-global-search-filter-chip-row">
-          {(
-            [
-              ["today", "base.channelSearch.filter.today"],
-              ["last_7_days", "base.channelSearch.filter.last7Days"],
-              ["last_30_days", "base.channelSearch.filter.last30Days"],
-            ] as const
-          ).map(([preset, labelKey]) => {
-            const active = draft.datePreset === preset;
-            return (
-              <button
-                key={preset}
-                type="button"
-                className={`wk-channel-search-filter-chip${
-                  active ? " is-active" : ""
-                }`}
-                onClick={() =>
-                  active ? setDatePreset(undefined) : setDatePreset(preset)
-                }
-              >
-                {t(labelKey)}
+                <CalendarDays size={16} />
               </button>
-            );
-          })}
+            )}
+          />
+          <DatePicker
+            className="wk-channel-search-date-picker"
+            value={dateFromSeconds(draft.endAt)}
+            onChange={(v) => setCustomDate("endAt", v)}
+            density="compact"
+            position="bottomLeft"
+            autoSwitchDate={false}
+            disabledDate={(date) => {
+              if (!date || !draft.startAt) return false;
+              return toSeconds(endOfDay(date)) < draft.startAt;
+            }}
+            triggerRender={() => (
+              <button className="wk-channel-search-date-input" type="button">
+                <span className={draft.endAt ? undefined : "is-placeholder"}>
+                  {draft.endAt
+                    ? dateDisplayValue(draft.endAt, locale)
+                    : t("base.channelSearch.filter.endDate")}
+                </span>
+                <CalendarDays size={16} />
+              </button>
+            )}
+          />
         </div>
-        <DatePicker
-          className="wk-channel-search-date-picker"
-          value={dateFromSeconds(draft.startAt)}
-          onChange={(v) => setCustomDate("startAt", v)}
-          density="compact"
-          position="bottomLeft"
-          autoSwitchDate={false}
-          disabledDate={(date) => {
-            if (!date || !draft.endAt) return false;
-            return toSeconds(startOfDay(date)) > draft.endAt;
-          }}
-          triggerRender={() => (
-            <button className="wk-channel-search-date-input" type="button">
-              <span className={draft.startAt ? undefined : "is-placeholder"}>
-                {draft.startAt
-                  ? dateDisplayValue(draft.startAt, locale)
-                  : t("base.channelSearch.filter.startDate")}
-              </span>
-              <CalendarDays size={16} />
-            </button>
-          )}
-        />
-        <DatePicker
-          className="wk-channel-search-date-picker"
-          value={dateFromSeconds(draft.endAt)}
-          onChange={(v) => setCustomDate("endAt", v)}
-          density="compact"
-          position="bottomLeft"
-          autoSwitchDate={false}
-          disabledDate={(date) => {
-            if (!date || !draft.startAt) return false;
-            return toSeconds(endOfDay(date)) < draft.startAt;
-          }}
-          triggerRender={() => (
-            <button className="wk-channel-search-date-input" type="button">
-              <span className={draft.endAt ? undefined : "is-placeholder"}>
-                {draft.endAt
-                  ? dateDisplayValue(draft.endAt, locale)
-                  : t("base.channelSearch.filter.endDate")}
-              </span>
-              <CalendarDays size={16} />
-            </button>
-          )}
-        />
       </div>
 
-      </div>
-
-      <div className="wk-channel-search-filter-actions">
-        <WKButton size="sm" variant="secondary" onClick={clearAll}>
-          {t("base.channelSearch.filter.clear")}
-        </WKButton>
-        <WKButton size="sm" variant="primary" onClick={apply}>
-          {t("base.globalSearch.filter.apply")}
-        </WKButton>
-      </div>
+      {mode === "popover" && (
+        <div className="wk-channel-search-filter-actions">
+          <WKButton size="sm" variant="secondary" onClick={clearAll}>
+            {t("base.channelSearch.filter.clear")}
+          </WKButton>
+          <WKButton size="sm" variant="primary" onClick={apply}>
+            {t("base.globalSearch.filter.apply")}
+          </WKButton>
+        </div>
+      )}
     </div>
   );
 };
