@@ -209,6 +209,35 @@ export function standaloneFallbackSpace(currentSpaceId: string | undefined): str
 }
 
 /**
+ * The VIEWER's real current space, resolved from a genuine viewer signal ONLY: the live
+ * `currentSpaceId`, else the cached `currentSpaceId` localStorage key the shell persists. Returns
+ * '' when neither exists — deliberately WITHOUT standaloneFallbackSpace's DEFAULT_DOC_SPACE tail.
+ *
+ * This is the space recordDocView writes the "最近查看" ingest into (XIN-1237 write/read contract):
+ * the backend writes and reads the recent list by X-Space-Id = the viewer's current space, so the
+ * view MUST be recorded under the viewer's space, NOT the doc's link space (`?sp=`). Where the doc
+ * space is used (preflight/room addressing) the deploy default is a safe last resort, but for the
+ * view record it is NOT: recording into DEFAULT_DOC_SPACE when we cannot confirm the viewer is
+ * actually there would (a) write the view into a space the viewer isn't in — breaking the
+ * per-space isolation the recent list relies on — and (b) still never surface in the viewer's own
+ * recent list. So when there is no real viewer signal we return '' and the caller omits the
+ * explicit header, letting the global interceptor decide (exactly as the in-shell entry does),
+ * rather than forcing a wrong space.
+ */
+export function viewerCurrentSpace(currentSpaceId: string | undefined): string {
+  if (currentSpaceId) return currentSpaceId
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = window.localStorage.getItem('currentSpaceId')
+      if (cached) return cached
+    } catch {
+      // localStorage unavailable (private mode / disabled): no viewer signal → '' (omit the header).
+    }
+  }
+  return ''
+}
+
+/**
  * The doc's OWN space, as carried by the standalone share link's dedicated `?sp=` query param.
  *
  * buildDocLink (forward/link.ts) embeds the shared document's REAL space id as `?sp=` — the space
@@ -316,12 +345,13 @@ export function StandaloneDocPage({
   // overwrites wk.shared.currentSpaceId to the doc's link space (`?sp=`) for preflight/room
   // addressing, so by the time the doc is ready that value no longer reflects the viewer. Capture
   // the viewer's real current space ONCE on first render — before the seed effect runs — resolving
-  // live currentSpaceId → cached localStorage → deploy default (the viewer resolution of
-  // standaloneFallbackSpace, WITHOUT the link-space override that preflightSpace applies). Lazy
-  // null-init so the resolution runs exactly once and is immune to the later seed mutation.
+  // live currentSpaceId → cached localStorage (viewerCurrentSpace). Do NOT source it from the link
+  // `?sp=` and do NOT fall through to the deploy default: an empty result means "no viewer signal",
+  // which the record path treats as "omit the explicit header", never as "write to DEFAULT space".
+  // Lazy null-init so the resolution runs exactly once and is immune to the later seed mutation.
   const viewerSpaceRef = useRef<string | null>(null)
   if (viewerSpaceRef.current === null) {
-    viewerSpaceRef.current = standaloneFallbackSpace(wk.shared?.currentSpaceId)
+    viewerSpaceRef.current = viewerCurrentSpace(wk.shared?.currentSpaceId)
   }
 
   // Genuine defense in depth (second, independent path — NOT the only working one): the standalone
@@ -423,16 +453,20 @@ export function StandaloneDocPage({
   // a chat share link never surfaced in the opener's "最近查看". Mirror the in-shell entry
   // (DocsHome.commitOpen): once the doc is READY, fire a single view ingest. It is written to the
   // VIEWER's real current space (viewerSpaceRef), per the XIN-1237 write/read space contract — NOT
-  // the doc space the page seeds for addressing. Guarded by docId so React re-renders and
-  // strict-mode double-invocation record at most once per opened doc, matching the timing of the
-  // normal entry (on open success, not in a render loop). Fire-and-forget: recordDocView swallows
-  // every failure, so a failed / not-yet-deployed ingest never affects the open path.
+  // the doc space (`?sp=`) the page seeds for addressing. When no viewer signal was resolvable
+  // (viewerSpaceRef === ''), omit the explicit X-Space-Id and let the global interceptor decide,
+  // exactly as the in-shell entry does — never force the deploy-default space, which would record
+  // the view under a space the viewer isn't in and break per-space isolation. Guarded by docId so
+  // React re-renders and strict-mode double-invocation record at most once per opened doc, matching
+  // the timing of the normal entry (on open success, not in a render loop). Fire-and-forget:
+  // recordDocView swallows every failure, so a failed / not-yet-deployed ingest never affects open.
   const recordedDocRef = useRef<string | null>(null)
   useEffect(() => {
     if (phase.status !== 'ready' || !docId) return
     if (recordedDocRef.current === docId) return
     recordedDocRef.current = docId
-    void recordDocView(docId, { spaceId: viewerSpaceRef.current ?? undefined })
+    const viewerSpace = viewerSpaceRef.current
+    void recordDocView(docId, viewerSpace ? { spaceId: viewerSpace } : undefined)
   }, [phase.status, docId])
 
   useEffect(
