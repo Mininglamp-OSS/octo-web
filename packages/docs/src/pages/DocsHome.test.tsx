@@ -1451,3 +1451,156 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     await waitFor(() => expect(screen.getByText('docs.filter.type')).toBeTruthy())
   })
 })
+
+// XIN-1236 (merged design): recent rows keep the creator on its own line, then show ONE merged
+// time line reporting only the LATEST event — "<updater> updated X" when the doc was updated after
+// the user last viewed it, otherwise "you viewed X". The two timestamps are never stacked, so the
+// creator's name can never be misread as the viewer/updater.
+describe('DocsHome — recent row merges viewed/updated into the latest event (XIN-1236)', () => {
+  function mountList(rows: Array<Record<string, unknown>>) {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [{ uid: 'u_owner', name: 'Owner Name' }] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        return { data: { total: rows.length, items: rows, nextCursor: null }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    return wk
+  }
+
+  async function rowFor(title: string): Promise<HTMLElement> {
+    return waitFor(() => {
+      const el = screen.getByText(title).closest('.octo-docs-list-item')
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+  }
+
+  it('shows the creator line plus a single "you viewed" line when the view is the latest event', async () => {
+    // viewedAt (07-15) is newer than updatedAt (07-14): the merged line is the VIEW.
+    mountList([
+      {
+        docId: 'd_view',
+        title: 'Viewed Latest',
+        ownerId: 'u_owner',
+        role: 'admin',
+        docType: 'doc',
+        viewedAt: '2026-07-15T06:00:00.000Z',
+        updatedAt: '2026-07-14T06:00:00.000Z',
+        updatedBy: { uid: 'u_editor', name: 'Editor Name' },
+      },
+    ])
+    const row = await rowFor('Viewed Latest')
+
+    const creator = row.querySelector('.octo-docs-list-row-creator')
+    expect(creator).toBeTruthy()
+    expect(creator!.textContent).toContain('docs.list.createdBy')
+    expect(creator!.textContent).toContain('Owner Name')
+
+    // The view wins → a single "you viewed" line, and NO updated line stacked beneath it.
+    const viewed = row.querySelector('.octo-docs-list-row-viewed')
+    expect(viewed).toBeTruthy()
+    expect(viewed!.textContent).toContain('docs.list.viewedBySelf')
+    expect(row.querySelector('.octo-docs-list-row-updated')).toBeNull()
+  })
+
+  it('shows "<updater> updated X" (with the updater name) when the update is the latest event', async () => {
+    // updatedAt (07-16) is newer than viewedAt (07-15): the merged line is the UPDATE, labelled
+    // with the last-updater's name (XIN-1240 updatedBy), never the creator's.
+    mountList([
+      {
+        docId: 'd_upd',
+        title: 'Updated Latest',
+        ownerId: 'u_owner',
+        role: 'admin',
+        docType: 'doc',
+        viewedAt: '2026-07-15T06:00:00.000Z',
+        updatedAt: '2026-07-16T06:00:00.000Z',
+        updatedBy: { uid: 'u_editor', name: 'Editor Name' },
+      },
+    ])
+    const row = await rowFor('Updated Latest')
+
+    // The update wins → the updated line uses the named "updatedBy" label; no viewed line remains.
+    const updated = row.querySelector('.octo-docs-list-row-updated')
+    expect(updated).toBeTruthy()
+    expect(updated!.textContent).toContain('docs.list.updatedBy')
+    expect(updated!.getAttribute('title')).toBeTruthy()
+    expect(row.querySelector('.octo-docs-list-row-viewed')).toBeNull()
+    // Creator line still present and independent.
+    expect(row.querySelector('.octo-docs-list-row-creator')).toBeTruthy()
+  })
+
+  it('falls back to an unnamed "updated X" line when the update wins but updatedBy is null', async () => {
+    mountList([
+      {
+        docId: 'd_upd_anon',
+        title: 'Updated No Author',
+        ownerId: 'u_owner',
+        role: 'admin',
+        docType: 'doc',
+        viewedAt: '2026-07-15T06:00:00.000Z',
+        updatedAt: '2026-07-16T06:00:00.000Z',
+        updatedBy: null,
+      },
+    ])
+    const row = await rowFor('Updated No Author')
+
+    const updated = row.querySelector('.octo-docs-list-row-updated')
+    expect(updated).toBeTruthy()
+    // No updater name to show → the plain "updated" label, NOT the named "updatedBy" one.
+    expect(updated!.textContent).toContain('docs.list.updatedAt')
+    expect(updated!.textContent).not.toContain('docs.list.updatedBy')
+    expect(row.querySelector('.octo-docs-list-row-viewed')).toBeNull()
+  })
+
+  it('prefers the view when the two timestamps are equal (equal/very-close → viewed)', async () => {
+    mountList([
+      {
+        docId: 'd_eq',
+        title: 'Equal Times',
+        ownerId: 'u_owner',
+        role: 'admin',
+        docType: 'doc',
+        viewedAt: '2026-07-15T06:00:00.000Z',
+        updatedAt: '2026-07-15T06:00:00.000Z',
+        updatedBy: { uid: 'u_editor', name: 'Editor Name' },
+      },
+    ])
+    const row = await rowFor('Equal Times')
+
+    expect(row.querySelector('.octo-docs-list-row-viewed')).toBeTruthy()
+    expect(row.querySelector('.octo-docs-list-row-updated')).toBeNull()
+  })
+
+  it('omits recent-only markers on the "mine" tab (updated is shown inline there instead)', async () => {
+    mountList([
+      {
+        docId: 'd_view',
+        title: 'Viewed Latest',
+        ownerId: 'u_owner',
+        role: 'admin',
+        docType: 'doc',
+        viewedAt: '2026-07-15T06:00:00.000Z',
+        updatedAt: '2026-07-14T06:00:00.000Z',
+      },
+    ])
+    await waitFor(() => expect(screen.getByText('Viewed Latest')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('docs.tab.mine'))
+    // The mine tab lists nothing here, so no recent-only markers should linger on screen.
+    await waitFor(() => {
+      expect(document.querySelector('.octo-docs-list-row-creator')).toBeNull()
+      expect(document.querySelector('.octo-docs-list-row-viewed')).toBeNull()
+      expect(document.querySelector('.octo-docs-list-row-updated')).toBeNull()
+    })
+  })
+})

@@ -614,13 +614,31 @@ function DocsList({
         : iconKind === 'sheet'
           ? t('docs.list.kindSheet')
           : t('docs.list.kindDoc')
-    // Recent rows show the creator inline + when the doc was VIEWED; mine rows keep the "updated"
-    // sub-line (frontend-design §2.1 / §5.1).
+    // Recent rows put the creator on its OWN line, then a SINGLE merged time line reporting only
+    // the LATEST event (XIN-1236 merged design). Mine rows keep the plain "updated" sub-line
+    // (frontend-design §2.1 / §5.1).
     const creator =
       activeView === 'recent'
         ? creatorName(d.ownerId, recentView.creatorOptions, nameFallback)
         : ''
-    const stampIso = activeView === 'recent' ? d.viewedAt || d.updatedAt : d.updatedAt
+    // Compare the current user's view time against the document's own update time; the later of
+    // the two is the event we surface. Equal / very-close / missing-update all prefer the VIEW
+    // (boss decision), so the update only "wins" when it is strictly newer than the view.
+    const viewedTime = d.viewedAt ? Date.parse(d.viewedAt) : NaN
+    const updatedTime = d.updatedAt ? Date.parse(d.updatedAt) : NaN
+    const updateIsLatest =
+      activeView === 'recent' &&
+      Number.isFinite(updatedTime) &&
+      (!Number.isFinite(viewedTime) || updatedTime > viewedTime)
+    // When the update wins, label it with WHO last updated the doc (XIN-1240 `updatedBy`={uid,name}).
+    // Prefer the backend-resolved name, fall back to the space member-name map by uid, and when no
+    // updater is known drop to an unnamed "更新于 X" line rather than guessing (never borrow the
+    // creator's name for the updater).
+    const updaterName =
+      (d.updatedBy?.name || '').trim() ||
+      (d.updatedBy?.uid ? nameFallback(d.updatedBy.uid) || '' : '')
+    // "mine" rows keep their existing single "updated" sub-line, unchanged.
+    const mineStampIso = activeView === 'mine' ? d.updatedAt : undefined
     return (
       <li
         key={d.docId}
@@ -661,23 +679,42 @@ function DocsList({
             >
               {label}
             </span>
-            {(creator || stampIso) && (
-              <span
-                className="octo-docs-list-row-sub"
-                title={stampIso ? formatAbsolute(stampIso) : undefined}
-              >
-                {activeView === 'recent' ? (
-                  <>
-                    {creator}
-                    {creator && stampIso ? ' · ' : ''}
-                    {stampIso ? `${t('docs.list.viewedAt')} ${formatRelative(stampIso)}` : ''}
-                  </>
-                ) : stampIso ? (
-                  <>
-                    {t('docs.list.updatedAt')} {formatRelative(stampIso)}
-                  </>
+            {activeView === 'recent' ? (
+              // Recent rows: creator on its own line, then ONE merged time line showing only the
+              // latest event — "<updater> 更新于 X" when the doc was updated AFTER the user last
+              // viewed it, otherwise "你查看于 X". Collapsing the two timestamps into a single
+              // most-recent line keeps the creator's name away from any "…于 X" time so the row can
+              // never be misread as "the creator viewed it" (XIN-1236 merged design).
+              <>
+                {creator && (
+                  <span className="octo-docs-list-row-sub octo-docs-list-row-creator">
+                    {t('docs.list.createdBy')} {creator}
+                  </span>
+                )}
+                {updateIsLatest && d.updatedAt ? (
+                  <span
+                    className="octo-docs-list-row-sub octo-docs-list-row-updated"
+                    title={formatAbsolute(d.updatedAt)}
+                  >
+                    {updaterName
+                      ? `${t('docs.list.updatedBy', { values: { name: updaterName } })} ${formatRelative(d.updatedAt)}`
+                      : `${t('docs.list.updatedAt')} ${formatRelative(d.updatedAt)}`}
+                  </span>
+                ) : d.viewedAt ? (
+                  <span
+                    className="octo-docs-list-row-sub octo-docs-list-row-viewed"
+                    title={formatAbsolute(d.viewedAt)}
+                  >
+                    {t('docs.list.viewedBySelf')} {formatRelative(d.viewedAt)}
+                  </span>
                 ) : null}
-              </span>
+              </>
+            ) : (
+              mineStampIso && (
+                <span className="octo-docs-list-row-sub" title={formatAbsolute(mineStampIso)}>
+                  {t('docs.list.updatedAt')} {formatRelative(mineStampIso)}
+                </span>
+              )
             )}
           </span>
         </button>
