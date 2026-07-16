@@ -177,15 +177,30 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     expect(body.search(/routeRight\.replaceToRoot/)).toBeLessThan(body.search(/listWorkspaces\(/));
   });
 
-  it('guards doCreateWs against a space switch mid-create', () => {
-    // Creating a workspace writes workspace context after awaits; a space switch
-    // during creation must drop that stale write (same generation guard).
+  it('guards doCreateWs against a space switch mid-create without wedging loaded', () => {
+    // doCreateWs writes workspace context after awaits, so it must drop that
+    // write when a space switch happened during creation. It CAPTURES the
+    // generation (does not bump it): bumping would invalidate onSpaceChanged's
+    // own resolve, whose .then/.catch are the only paths that restore loaded —
+    // leaving the page stuck !loaded. So: a stale-seq guard must exist, but no
+    // ++ bump inside doCreateWs.
     const start = loopPage.search(/const\s+doCreateWs\s*=/);
     expect(start).toBeGreaterThanOrEqual(0);
     const end = loopPage.slice(start).search(/\n  const\s+\w+\s*=/);
     const body = end < 0 ? loopPage.slice(start) : loopPage.slice(start, start + end);
-    expect(body).toMatch(/\+\+\s*spaceResolveSeqRef\.current/);
-    expect(body).toMatch(/!==\s*spaceResolveSeqRef\.current/);
+    expect(body).toMatch(/const\s+seq\s*=\s*spaceResolveSeqRef\.current/); // capture
+    expect(body).not.toMatch(/\+\+\s*spaceResolveSeqRef\.current/);        // never bump
+    expect(body).toMatch(/!==\s*spaceResolveSeqRef\.current/);             // still guarded
+  });
+
+  it('gates workspace-create entry on !loaded and closes modals on space switch', () => {
+    // Create entry must be blocked during the re-resolve window, and any open
+    // create modal must close on space-changed, so no create can land while the
+    // page is re-resolving a new space.
+    const openBody = loopPage.slice(loopPage.search(/const\s+openCreateWs\s*=/), loopPage.search(/const\s+openCreateWs\s*=/) + 160);
+    expect(openBody).toMatch(/if\s*\(\s*!loaded\s*\)\s*return/);
+    const onSpaceBody = onSpaceChangedBody(loopPage);
+    expect(onSpaceBody).toMatch(/setWsModalOpen\(\s*false\s*\)/);
   });
 
   it('clears the workspace list on a failed re-resolve (no stale clickable dropdown)', () => {

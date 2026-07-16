@@ -185,6 +185,10 @@ export default function LoopPage() {
       const seq = ++spaceResolveSeqRef.current;
       setWorkspaceContext("", "");
       setWsId("");
+      // Close any open create modals so a submit cannot land during the
+      // re-resolve window and write a workspace under the wrong space.
+      setWsModalOpen(false);
+      setCreateOpen(false);
       // setLoaded(false):重解析窗口期把页面标回"未加载",wk:nav-menu-activated 的
       // `if (!loaded) return` 守卫随之生效,避免窗口期用旧 workspaces 闭包渲染 workspace 级页面。
       setLoaded(false);
@@ -228,6 +232,7 @@ export default function LoopPage() {
   };
 
   const openCreateWs = () => {
+    if (!loaded) return;
     setWsName(""); setWsSlug(""); setWsSlugTouched(false); setWsSlugSuffix(slugSuffix()); setWsModalOpen(true);
   };
   const doCreateWs = async () => {
@@ -236,12 +241,15 @@ export default function LoopPage() {
     const autoSlug = !wsSlugTouched;
     let slug = wsSlug.trim() || withRandomSuffix(getPinyin(name), wsSlugSuffix);
     if (!slug) { Toast.warning(t("loop.workspace.slugRequired")); return; }
-    // Join the resolve generation: creating a workspace writes workspace context
-    // after awaits, so if the user switches octo space mid-create, the space-changed
-    // handler bumps the seq and the post-await applyWorkspace below is dropped —
-    // otherwise it would write this space's workspace slug under the new space's
-    // X-Space-Id and re-trigger the isolation 403.
-    const seq = ++spaceResolveSeqRef.current;
+    // Capture (do NOT bump) the resolve generation: creating a workspace writes
+    // workspace context after awaits, so if the user switches octo space
+    // mid-create, space-changed bumps the seq and the post-await applyWorkspace
+    // below is dropped (would otherwise bind this space's slug under the new
+    // space's X-Space-Id → isolation 403). Capturing rather than bumping is
+    // deliberate: onSpaceChanged owns `loaded` restoration through its own
+    // generation, and a create must not invalidate that resolve (else `loaded`
+    // could stay false forever, wedging the page).
+    const seq = spaceResolveSeqRef.current;
     setWsBusy(true);
     try {
       // auto slug re-rolls its random suffix on the backend's 409 (slug is
