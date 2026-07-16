@@ -164,7 +164,7 @@ function wait(ms: number): Promise<void> {
 
 function mapCategory(raw: RawCategory, index: number): Category {
   return {
-    id: raw.skill_category_id,
+    id: raw.skill_category_id ?? raw.id ?? "",
     name: raw.name,
     iconKey: raw.icon_key,
     sortOrder: index + 1,
@@ -191,7 +191,7 @@ function normalizeTags(tags: unknown): string[] {
 
 function mapSkill(raw: RawSkill): Skill {
   return {
-    id: raw.skill_id,
+    id: raw.skill_id ?? raw.id ?? "",
     name: raw.name,
     displayName: raw.display_name ?? "",
     description: raw.description ?? "",
@@ -527,7 +527,7 @@ export function initReupload(
 
 function mapVersion(raw: RawSkillVersion): SkillVersion {
   return {
-    id: raw.skill_version_id,
+    id: raw.skill_version_id ?? raw.id ?? "",
     skillId: raw.skill_id,
     version: raw.version,
     changelog: raw.changelog ?? "",

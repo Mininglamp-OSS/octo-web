@@ -191,6 +191,25 @@ describe("skillApiReal", () => {
     expect(skill.fileSha256).toBe("def456");
   });
 
+  it("keeps detail navigation working during an id field rolling upgrade", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({
+        id: "legacy-skill",
+        name: "Legacy",
+        category_id: "other",
+        tags: [],
+        owner_id: "u1",
+        space_id: "s1",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-02T00:00:00Z",
+      })
+    );
+
+    await expect(getSkill("legacy-skill")).resolves.toMatchObject({
+      id: "legacy-skill",
+    });
+  });
+
   it("deleteSkill handles empty success envelope", async () => {
     mockFetch.mockReturnValueOnce(jsonResponse({}));
 

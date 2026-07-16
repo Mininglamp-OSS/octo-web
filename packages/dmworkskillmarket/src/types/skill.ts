@@ -123,7 +123,8 @@ export interface ParseStatusResult {
 
 /** Raw category as returned by GET /api/v1/skill/categories */
 export interface RawCategory {
-  skill_category_id: string;
+  skill_category_id?: string;
+  id?: string;
   name: string;
   icon_key: string;
   skill_count: number;
@@ -131,7 +132,8 @@ export interface RawCategory {
 
 /** Raw skill as returned by GET /api/v1/skill and GET /api/v1/skill/:id */
 export interface RawSkill {
-  skill_id: string;
+  skill_id?: string;
+  id?: string;
   name: string;
   display_name: string;
   description: string;
@@ -177,7 +179,8 @@ export interface SkillVersion {
 }
 
 export interface RawSkillVersion {
-  skill_version_id: string;
+  skill_version_id?: string;
+  id?: string;
   skill_id: string;
   version: string;
   changelog: string;
