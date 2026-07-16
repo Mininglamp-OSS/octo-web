@@ -164,18 +164,35 @@ function rowHeightDecorations(doc: PMNode): DecorationSet {
   return DecorationSet.create(doc, decos)
 }
 
-/** Plugin that keeps the row-height clip decorations in sync with the document. Registered by
- * TableRowResize (live editor only) alongside the drag handle. */
-const rowHeightClipPlugin = new Plugin({
-  key: tableRowClipPluginKey,
-  state: {
-    init: (_config, state) => rowHeightDecorations(state.doc),
-    apply: (tr, old) => (tr.docChanged ? rowHeightDecorations(tr.doc) : old),
-  },
-  props: {
-    decorations(state) {
-      return this.getState(state)
+/** Build the plugin that keeps the row-height clip decorations in sync with the document. A FRESH
+ * instance per editor: the live editor gets one via TableRowResize (alongside the drag handle), the
+ * read-only preview / version diff gets one via TableRowClip (no drag handle). Both call this same
+ * factory over the same `rowHeightDecorations`, so the clip can never drift between edit and preview —
+ * a set row height is authoritative in all three states (SCHEMA_VERSION 19, XIN-1250 / XIN-1261). */
+function createRowHeightClipPlugin(): Plugin {
+  return new Plugin({
+    key: tableRowClipPluginKey,
+    state: {
+      init: (_config, state) => rowHeightDecorations(state.doc),
+      apply: (tr, old) => (tr.docChanged ? rowHeightDecorations(tr.doc) : old),
     },
+    props: {
+      decorations(state) {
+        return this.getState(state)
+      },
+    },
+  })
+}
+
+/** Read-only row-height clip extension: registers ONLY the clip decorations (no drag handle, no
+ * concurrency machinery), so a stored row height is authoritative in the read-only preview / version
+ * diff exactly as it is in the live editor. Reuses the SAME createRowHeightClipPlugin / rowHeightDecorations
+ * as TableRowResize so the two paths can never drift (XIN-1261). Pair it with the TableCellView NodeView
+ * so the `.octo-cell-clip` content wrapper the clip CSS caps actually exists in the preview DOM. */
+export const TableRowClip = Extension.create({
+  name: 'tableRowClip',
+  addProseMirrorPlugins() {
+    return [createRowHeightClipPlugin()]
   },
 })
 
@@ -608,7 +625,7 @@ export const TableRowResize = Extension.create({
     }
 
     return [
-      rowHeightClipPlugin,
+      createRowHeightClipPlugin(),
       new Plugin({
         key: tableRowResizePluginKey,
         // Detect a concurrent edit to the DRAGGED table on every transaction that lands during the drag

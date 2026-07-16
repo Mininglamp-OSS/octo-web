@@ -36,7 +36,7 @@ import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { TableCellView } from './TableCellView.ts'
 import { TableReorderHandle } from './TableReorderHandle.ts'
-import { TableRowHeight, TableRowResize } from './TableRowHeight.ts'
+import { TableRowHeight, TableRowResize, TableRowClip } from './TableRowHeight.ts'
 import { OctoImage } from './ImageNode.ts'
 import { CommentHighlight } from '../comments/CommentDecorations.ts'
 import { buildEmoji } from './emoji.ts'
@@ -267,7 +267,8 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // its own (the attr lives on TableRowHeight above); registered AFTER the Table series so its
     // plugin sits above the column-resize / tableEditing / reorder plugins, and it defers to the
     // column-resize handle on a shared cell corner (see TableRowResize). Live editor only — the
-    // read-only preview below carries the height ATTR (so stored heights render) but no drag plugin.
+    // read-only preview below carries the height ATTR + the SAME clip decorations (TableRowClip, so a
+    // shrunk row stays shrunk there too) but no drag plugin.
     TableRowResize,
     // SCHEMA-SPEC §2 (SCHEMA_VERSION 2): image node. Extends @tiptap/extension-image
     // (pinned 2.27.2, single core) with the backend-aligned attr set + parse/render
@@ -363,8 +364,27 @@ export function buildPreviewExtensions(docId: string): Extensions {
     // Mirror the v19 tableRow `height` attr so a stored row height renders in the read-only preview /
     // version diff. No resize plugin here — the preview is not editable.
     TableRowHeight,
-    TableHeader,
-    TableCell,
+    // SCHEMA-SPEC §4 (SCHEMA_VERSION 19, XIN-1261): make a set row height AUTHORITATIVE in the read-only
+    // preview / version diff too, not just the live editor. The `height` attr alone is only a CSS MINIMUM,
+    // so a SHRUNK row would bounce back to content height here (WYSIWYG break vs the editor). TableRowClip
+    // registers the SAME clip decorations the live editor uses (octo-row-fixed + --octo-row-h) — no drag
+    // handle, the preview is read-only — and the TableCellView NodeView below provides the `.octo-cell-clip`
+    // content wrapper those decorations + styles.css cap with overflow:hidden. Both paths share one
+    // factory/decoration source, so edit and preview can never drift.
+    TableRowClip,
+    // Use the same cell NodeView as the live editor so each preview cell has the inner `.octo-cell-clip`
+    // wrapper the row-height clip caps. Read-only, so its ignoreMutation/stopEvent rules are inert; it adds
+    // no editing affordance — it only makes the shrink clip render identically to the editor.
+    TableHeader.extend({
+      addNodeView() {
+        return ({ node }) => new TableCellView(node, 'th')
+      },
+    }),
+    TableCell.extend({
+      addNodeView() {
+        return ({ node }) => new TableCellView(node, 'td')
+      },
+    }),
     OctoImage.configure({ docId, uploads: false }),
     // Mirror the schema-touching nodes (SCHEMA_VERSION 9–13). The suggestion machinery never
     // fires in a read-only preview; buildMention's source lists load lazily, so no network call
