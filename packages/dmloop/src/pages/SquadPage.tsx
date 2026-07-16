@@ -11,7 +11,7 @@ import { confirmDelete } from "../ui/confirmDelete";
 import { avatarColor } from "../ui/meta";
 import { formatRelativeTime } from "../ui/time";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type Scope = "mine" | "all";
 type SortField = "name" | "members" | "created";
@@ -206,7 +206,7 @@ export default function SquadPage() {
   return (
     <div className="loop-page">
       <div className="loop-page__head">
-        <Title heading={4}>{t("loop.nav.squad")}</Title>
+        <h2 className="loop-page__title">{t("loop.nav.squad")}</h2>
         {rows.length > 0 && <Text type="tertiary" style={{ fontSize: 13 }}>{rows.length}</Text>}
         <div className="loop-page__spacer" />
         <LoopButton icon={<Plus size={14} />} onClick={openCreate}>{t("loop.action.newSquad")}</LoopButton>

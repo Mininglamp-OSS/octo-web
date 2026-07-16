@@ -14,7 +14,7 @@ import { invalidateDirectory } from "../api/directory";
 import LoopTag from "../ui/LoopTag";
 import LoopButton from "../ui/LoopButton";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const ROLES = ["admin", "member"];
 
 /**
@@ -32,7 +32,7 @@ export default function SettingsPage({
   if (!workspace) {
     return (
       <div className="loop-page">
-        <div className="loop-page__head"><Title heading={4}>{t("loop.nav.settings")}</Title></div>
+        <div className="loop-page__head"><h2 className="loop-page__title">{t("loop.nav.settings")}</h2></div>
         <div className="loop-page__center"><Text type="tertiary">{t("loop.settings.noWorkspace")}</Text></div>
       </div>
     );
@@ -40,7 +40,7 @@ export default function SettingsPage({
 
   return (
     <div className="loop-page">
-      <div className="loop-page__head"><Title heading={4}>{t("loop.nav.settings")}</Title></div>
+      <div className="loop-page__head"><h2 className="loop-page__title">{t("loop.nav.settings")}</h2></div>
       <div className="loop-page__body">
         <Tabs type="line">
           <TabPane tab={t("loop.settings.general")} itemKey="general">

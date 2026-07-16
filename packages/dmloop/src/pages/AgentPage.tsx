@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Typography, Input, Button, Select, Avatar, Spin, Modal, Toast, Banner } from "@douyinfe/semi-ui";
+import { Input, Button, Select, Avatar, Spin, Modal, Toast, Banner } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
 import { Search, Plus, Trash2, Bot, RotateCcw } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
@@ -10,8 +10,6 @@ import AgentDetailPage from "../panel/AgentDetailPage";
 import { confirmDelete } from "../ui/confirmDelete";
 import { avatarColor } from "../ui/meta";
 import { formatRelativeTime } from "../ui/time";
-
-const { Title } = Typography;
 
 type Scope = "mine" | "all" | "archived";
 const SCOPES: Scope[] = ["mine", "all", "archived"];
@@ -101,7 +99,7 @@ export default function AgentPage() {
   return (
     <div className="loop-page">
       <div className="loop-page__head">
-        <Title heading={4}>{t("loop.nav.agent")}</Title>
+        <h2 className="loop-page__title">{t("loop.nav.agent")}</h2>
         <div className="loop-page__spacer" />
         <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.agent")} value={keyword} onChange={setKeyword} showClear style={{ width: 220 }} />
         <LoopButton icon={<Plus size={14} />} onClick={openCreate}>{t("loop.action.newAgent")}</LoopButton>

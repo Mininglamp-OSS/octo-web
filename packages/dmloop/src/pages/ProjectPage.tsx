@@ -14,7 +14,7 @@ import { formatRelativeTime } from "../ui/time";
 import { readView, writeView } from "../ui/viewMode";
 import { useIsWorkspaceAdmin } from "../ui/useWorkspaceAdmin";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type ViewMode = "list" | "card";
 const VIEW_KEY = "loop.project.viewMode";
@@ -196,7 +196,7 @@ export default function ProjectPage() {
   return (
     <div className="loop-page">
       <div className="loop-page__head">
-        <Title heading={4}>{t("loop.nav.project")}</Title>
+        <h2 className="loop-page__title">{t("loop.nav.project")}</h2>
         <Text type="tertiary" style={{ fontSize: 13 }}>{rows.length}</Text>
         <div className="loop-page__spacer" />
         <LoopButton icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.action.newProject")}</LoopButton>

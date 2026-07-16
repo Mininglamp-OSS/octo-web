@@ -16,7 +16,7 @@ import { formatNextRunAt } from "../ui/autopilotSchedule";
 import CreateAutomationModal from "../ui/CreateAutomationModal";
 import AutopilotDetailPage from "../panel/AutopilotDetailPage";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export default function AutomationPage() {
   const { t } = useI18n();
@@ -117,7 +117,7 @@ export default function AutomationPage() {
   return (
     <div className="loop-page">
       <div className="loop-page__head">
-        <Title heading={4}>{t("loop.nav.automation")}</Title>
+        <h2 className="loop-page__title">{t("loop.nav.automation")}</h2>
         <Text type="tertiary" style={{ fontSize: 13 }}>{rows.length}</Text>
         <div className="loop-page__spacer" />
         <LoopButton icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.automation.create")}</LoopButton>
