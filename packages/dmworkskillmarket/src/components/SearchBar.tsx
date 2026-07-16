@@ -1,6 +1,6 @@
 import React, { forwardRef, useEffect, useRef } from "react";
 import { Search } from "lucide-react";
-import { WKInput } from "@octo/base";
+import { t, useI18n, WKInput } from "@octo/base";
 
 interface SearchBarProps {
   value: string;
@@ -10,9 +10,10 @@ interface SearchBarProps {
 }
 
 const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(function SearchBar(
-  { value, onChange, placeholder = "搜索", autoFocus = false },
+  { value, onChange, placeholder = t("skillMarket.common.search"), autoFocus = false },
   ref,
 ) {
+  useI18n();
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

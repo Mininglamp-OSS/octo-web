@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { getCategories, getMySkills, getSkills } from "../api/skillApi";
 
@@ -62,7 +63,7 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
       } catch (err) {
         if (controller.signal.aborted) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "加载失败");
+        setError(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);

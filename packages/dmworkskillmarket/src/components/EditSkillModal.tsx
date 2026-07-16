@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Box, CheckCircle2, FileArchive, ImagePlus, Loader2, XCircle } from "lucide-react";
-import { WKButton, WKInput, WKModal } from "@octo/base";
+import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill, Visibility } from "../types/skill";
 import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse } from "../api/skillApi";
 import { formatFileSize } from "../utils/format";
@@ -17,13 +17,22 @@ type UploadStage = "idle" | "uploading" | "parsing" | "error";
 
 const MAX_ZIP_SIZE = 20 * 1024 * 1024;
 
+function bumpPatch(ver: string): string {
+  const parts = ver.split(".");
+  if (parts.length < 3) return ver;
+  const patch = parseInt(parts[2], 10);
+  parts[2] = String(isNaN(patch) ? 1 : patch + 1);
+  return parts.join(".");
+}
+
 function validateZipFile(file: File): string | null {
-  if (!file.name.toLowerCase().endsWith(".zip")) return "文件格式不正确";
-  if (file.size > MAX_ZIP_SIZE) return "文件超过 20MB";
+  if (!file.name.toLowerCase().endsWith(".zip")) return t("skillMarket.upload.invalidFormat");
+  if (file.size > MAX_ZIP_SIZE) return t("skillMarket.upload.fileTooLarge");
   return null;
 }
 
 export default function EditSkillModal({ skill, categories, onClose, onUpdated }: EditSkillModalProps) {
+  useI18n();
   const selectableCategories = useMemo<Category[]>(
     () => categories.filter((category: Category) => category.id !== "all"),
     [categories],
@@ -45,6 +54,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [iconBlob, setIconBlob] = useState<Blob | null>(null);
   const [iconCropFile, setIconCropFile] = useState<File | null>(null);
+  const [changelog, setChangelog] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -158,7 +168,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
           setName(status.result.name);
           setDescription(status.result.description);
           setTags(status.result.tags);
-          setVersion(status.result.version);
+          setVersion(bumpPatch(skill.version));
+          setChangelog("");
           setUploadStage("idle");
           setError(null);
           return;
@@ -166,19 +177,19 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         if (status.status === "failed") {
           setUploadStage("error");
           setUploadedFile(null);
-          setError(status.error?.message ?? "解析失败");
+          setError(status.error?.message ?? t("skillMarket.upload.parseFailed"));
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
         attempts++;
       }
       setUploadStage("error");
-      setError("解析超时，请重试");
+      setError(t("skillMarket.upload.parseTimeout"));
     } catch (err) {
       if (!abortRef.current) {
         setUploadStage("error");
         setUploadedFile(null);
-        setError(err instanceof Error ? err.message : "上传失败");
+        setError(err instanceof Error ? err.message : t("skillMarket.upload.uploadFailed"));
       }
     }
   }
@@ -192,7 +203,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   async function submit() {
     if (!skill) return;
     if (!name.trim() || !displayName.trim() || !categoryId) {
-      setError("请填写展示名称和分类");
+      setError(t("skillMarket.form.validationRequired"));
       return;
     }
     setSaving(true);
@@ -203,20 +214,19 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         iconUrl = await uploadIcon(iconBlob);
       }
       const updated = await updateSkill(skill.id, {
-        ...(parseTaskId ? { parseTaskId } : {}),
+        ...(parseTaskId ? { parseTaskId, version, changelog } : {}),
         name,
         displayName,
         description,
         categoryId,
         tags,
         visibility,
-        version,
         ...(iconUrl !== undefined ? { iconUrl } : {}),
       });
       onUpdated(updated);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "保存失败");
+      setError(err instanceof Error ? err.message : t("skillMarket.form.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -227,19 +237,19 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
       <WKModal
         visible={Boolean(skill)}
         onCancel={requestClose}
-        title={skill ? `编辑 ${skill.name}` : "编辑 Skill"}
+        title={skill ? t("skillMarket.form.editTitle", { values: { name: skill.name } }) : t("skillMarket.form.editTitleFallback")}
         size="lg"
         className="skill-market-workflow-modal"
         footer={
           <>
-            <WKButton variant="secondary" onClick={requestClose} disabled={saving}>取消</WKButton>
+            <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
             <WKButton
               variant="primary"
               onClick={() => void submit()}
               loading={saving}
-              disabled={busy || uploadStage === "error" || !name.trim() || !displayName.trim()}
+              disabled={busy || uploadStage === "error" || !name.trim() || !displayName.trim() || (!!parseTaskId && !changelog.trim())}
             >
-              保存
+              {t("skillMarket.common.save")}
             </WKButton>
           </>
         }
@@ -257,13 +267,13 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
               <strong>{uploadedFile?.name ?? skill?.fileName}</strong>
               <span>
                 {uploadedFile ? formatFileSize(uploadedFile.size) : skill ? formatFileSize(skill.fileSize) : "-"}
-                {uploadedFile ? " · 已解析 SKILL.md" : " · 当前 Skill 包"}
+                {uploadedFile ? " · " + t("skillMarket.upload.parsed") : " · " + t("skillMarket.upload.currentPackage")}
               </span>
             </div>
-            <button type="button" onClick={() => fileInputRef.current?.click()}>重新上传 zip 包</button>
+            <button type="button" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reupload")}</button>
             <input
               ref={fileInputRef}
-              aria-label="选择新的 Skill zip 文件"
+              aria-label={t("skillMarket.upload.selectNewFileAriaLabel")}
               className="skill-market-upload-file__input"
               type="file"
               accept=".zip"
@@ -273,10 +283,10 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
           {uploadStage === "uploading" && (
             <div className="skill-market-upload-status">
               <div className="skill-market-upload-status__line">
-                <span>上传进度</span>
+                <span>{t("skillMarket.upload.uploadProgress")}</span>
                 <strong>{progress}%</strong>
               </div>
-              <div className="skill-market-progress" aria-label="上传进度条">
+              <div className="skill-market-progress" aria-label={t("skillMarket.upload.progressBarAriaLabel")}>
                 <span style={{ width: `${progress}%` }} />
               </div>
             </div>
@@ -284,17 +294,39 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
           {uploadStage === "parsing" && (
             <div className="skill-market-upload-status is-parsing">
               <Loader2 size={16} />
-              <span>解析中...</span>
+              <span>{t("skillMarket.upload.parsing")}</span>
             </div>
           )}
           {uploadStage === "error" && (
-            <WKButton variant="secondary" onClick={() => fileInputRef.current?.click()}>重新选择文件</WKButton>
+            <WKButton variant="secondary" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reselect")}</WKButton>
           )}
 
-          <h3 className="skill-market-form__section-title">基本信息</h3>
+          {parseTaskId && (
+            <div className="skill-market-form__version-section">
+              <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
+              <div className="skill-market-form__row">
+                <label>
+                  <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
+                  <WKInput value={version} onChange={setVersion} placeholder={t("skillMarket.form.versionPlaceholder")} />
+                </label>
+                <label>
+                  <span>{t("skillMarket.form.changelogLabel")}<i className="skill-market-required">*</i></span>
+                  <textarea
+                    value={changelog}
+                    onChange={(e) => setChangelog(e.target.value)}
+                    placeholder={t("skillMarket.form.changelogPlaceholder")}
+                    rows={3}
+                    className="skill-market-form__textarea"
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+
+          <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>
 
           <div className="skill-market-form__icon-row">
-            <label className="skill-market-icon-upload" title="上传图标">
+            <label className="skill-market-icon-upload" title={t("skillMarket.form.uploadIcon")}>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/svg+xml"
@@ -311,25 +343,25 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
               )}
             </label>
             <label className="skill-market-field-readonly">
-              <span>英文名</span>
+              <span>{t("skillMarket.form.englishName")}</span>
               <span className="skill-market-field-readonly__value">{name}</span>
             </label>
             <label>
-              <span>展示名称<i className="skill-market-required">*</i></span>
-              <WKInput value={displayName} onChange={(v) => setDisplayName(v.slice(0, 20))} placeholder="请输入展示名称，最多20个字符" maxLength={20} />
+              <span>{t("skillMarket.form.displayName")}<i className="skill-market-required">*</i></span>
+              <WKInput value={displayName} onChange={(v) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />
             </label>
           </div>
           <div className="skill-market-form__row">
             <label>
-              <span>分类<i className="skill-market-required">*</i></span>
-              <select aria-label="分类" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+              <span>{t("skillMarket.form.category")}<i className="skill-market-required">*</i></span>
+              <select aria-label={t("skillMarket.form.category")} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
                 {selectableCategories.map((category) => (
                   <option key={category.id} value={category.id}>{category.name}</option>
                 ))}
               </select>
             </label>
             <label>
-              <span>标签</span>
+              <span>{t("skillMarket.form.tags")}</span>
               <div className="skill-market-tag-input">
                 {tags.map((tag) => (
                   <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
@@ -347,16 +379,16 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
                     }
                   }}
                   onBlur={addTag}
-                  placeholder="输入标签后回车"
+                  placeholder={t("skillMarket.form.tagPlaceholder")}
                 />
               </div>
             </label>
           </div>
           <fieldset className="skill-market-radio-group">
-            <legend>可见性<i className="skill-market-required">*</i></legend>
+            <legend>{t("skillMarket.form.visibility")}<i className="skill-market-required">*</i></legend>
             {[
-              ["space", "公开", "Space 内所有成员可见"],
-              ["private", "非公开", "仅自己可见"],
+              ["space", t("skillMarket.form.visibilityPublic"), t("skillMarket.form.visibilityPublicHint")],
+              ["private", t("skillMarket.form.visibilityPrivate"), t("skillMarket.form.visibilityPrivateHint")],
             ].map(([value, label, hint]) => (
               <label key={value}>
                 <input
@@ -371,7 +403,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
           </fieldset>
           <div className="skill-market-doc-note">
             <CheckCircle2 size={15} />
-            <span>由 SKILL.md 自动解析，如需修改请重新上传 zip 包</span>
+            <span>{t("skillMarket.form.docNote")}</span>
           </div>
         </div>
       </WKModal>
@@ -388,19 +420,19 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
       <WKModal
         visible={confirmClose}
         onCancel={() => setConfirmClose(false)}
-        title="确定离开？"
+        title={t("skillMarket.confirm.title")}
         size="md"
         footer={
           <>
-            <WKButton variant="secondary" onClick={() => setConfirmClose(false)}>继续编辑</WKButton>
-            <WKButton variant="danger" onClick={confirmLeave}>确认离开</WKButton>
+            <WKButton variant="secondary" onClick={() => setConfirmClose(false)}>{t("skillMarket.confirm.keepEditing")}</WKButton>
+            <WKButton variant="danger" onClick={confirmLeave}>{t("skillMarket.confirm.leave")}</WKButton>
           </>
         }
       >
         <p className="skill-market-confirm-text">
           {busy
-            ? "确定离开？Skill 包正在上传/解析中，离开后当前进度将丢失，需要重新上传。"
-            : "确定离开？尚未完成编辑，已上传的文件和填写的信息将丢失。"}
+            ? t("skillMarket.confirm.busyMessage")
+            : t("skillMarket.confirm.dirtyEditMessage")}
         </p>
       </WKModal>
     </>

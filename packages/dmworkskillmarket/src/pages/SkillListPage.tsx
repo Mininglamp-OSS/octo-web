@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, PackageOpen, Plus, RefreshCw } from "lucide-react";
-import { WKButton } from "@octo/base";
+import { t, useI18n, WKButton } from "@octo/base";
 import type { Skill } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import CategoryChips from "../components/CategoryChips";
@@ -19,6 +19,7 @@ type TabId = "skills" | "mine";
 const TOAST_DURATION = 3000;
 
 export default function SkillListPage() {
+  useI18n();
   const [tab, setTab] = useState<TabId>("skills");
   const mine = tab === "mine";
   const list = useSkills({ mine });
@@ -68,22 +69,17 @@ export default function SkillListPage() {
     setDetailId(null);
     setEditing(null);
     setDeleting(null);
-    showToast("已删除");
+    showToast(t("skillMarket.list.deleted"));
     list.refresh();
   }
 
   function handleCreated() {
-    showToast("创建成功");
+    showToast(t("skillMarket.list.created"));
     list.refresh();
   }
 
   function handleUpdated() {
-    showToast("已保存");
-    list.refresh();
-    setDetailRefreshKey((current) => current + 1);
-  }
-
-  function handleVersionPublished() {
+    showToast(t("skillMarket.list.saved"));
     list.refresh();
     setDetailRefreshKey((current) => current + 1);
   }
@@ -91,7 +87,7 @@ export default function SkillListPage() {
   return (
     <div className="skill-market-page">
       <header className="skill-market-topbar">
-        <nav className="skill-market-tabs" aria-label="Skill 市场导航">
+        <nav className="skill-market-tabs" aria-label={t("skillMarket.list.navAriaLabel")}>
           <button
             type="button"
             className={tab === "skills" ? "is-active" : ""}
@@ -104,18 +100,18 @@ export default function SkillListPage() {
             className={tab === "mine" ? "is-active" : ""}
             onClick={() => switchTab("mine")}
           >
-            我的
+            {t("skillMarket.list.mine")}
           </button>
         </nav>
         <div className="skill-market-topbar__actions">
           <WKButton variant="primary" icon={<Plus size={15} />} onClick={() => setCreateVisible(true)}>
-            上架
+            {t("skillMarket.list.publish")}
           </WKButton>
           <SearchBar
             ref={searchInputRef}
             value={list.query}
             onChange={list.setQuery}
-            placeholder="搜索"
+            placeholder={t("skillMarket.common.search")}
             autoFocus
           />
         </div>
@@ -133,7 +129,7 @@ export default function SkillListPage() {
 
       <main className="skill-market-content">
         {list.loading && (
-          <div className="skill-market-grid" aria-label="Skill 加载中">
+          <div className="skill-market-grid" aria-label={t("skillMarket.list.loadingAriaLabel")}>
             {Array.from({ length: 6 }).map((_, index) => (
               <SkillCardSkeleton key={index} />
             ))}
@@ -142,17 +138,17 @@ export default function SkillListPage() {
         {list.error && (
           <div className="skill-market-state is-error">
             <AlertCircle size={28} />
-            <strong>加载失败</strong>
+            <strong>{t("skillMarket.common.loadFailed")}</strong>
             <span>{list.error}</span>
             <WKButton variant="secondary" icon={<RefreshCw size={15} />} onClick={list.refresh}>
-              重试
+              {t("skillMarket.list.retry")}
             </WKButton>
           </div>
         )}
         {!list.loading && !list.error && list.skills.length === 0 && (
           <div className="skill-market-state">
             <PackageOpen size={56} />
-            <strong>暂无数据</strong>
+            <strong>{t("skillMarket.list.empty")}</strong>
           </div>
         )}
         {!list.loading && !list.error && list.skills.length > 0 && (
@@ -174,7 +170,7 @@ export default function SkillListPage() {
           {list.loadingMore ? (
             <span className="skill-market-sentinel__loading">
               <RefreshCw size={13} />
-              继续加载...
+              {t("skillMarket.list.loadMore")}
             </span>
           ) : null}
         </div>
@@ -187,7 +183,6 @@ export default function SkillListPage() {
         onClose={() => setDetailId(null)}
         onEdit={mine ? setEditing : undefined}
         onDelete={mine ? setDeleting : undefined}
-        onPublishVersion={handleVersionPublished}
         onFeedback={showToast}
       />
       <NewSkillModal
@@ -214,7 +209,7 @@ export default function SkillListPage() {
       {toast && createPortal(
         <div className="skill-market-toast" role="status">
           {toast}
-          <button type="button" onClick={() => setToast(null)} aria-label="关闭提示">×</button>
+          <button type="button" onClick={() => setToast(null)} aria-label={t("skillMarket.list.closeToast")}>×</button>
         </div>,
         document.body,
       )}

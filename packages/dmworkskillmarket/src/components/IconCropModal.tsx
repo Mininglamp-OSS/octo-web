@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import AvatarEditor from "react-avatar-editor";
-import { WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKButton, WKModal } from "@octo/base";
 
 interface IconCropModalProps {
   visible: boolean;
@@ -10,6 +10,7 @@ interface IconCropModalProps {
 }
 
 export default function IconCropModal({ visible, file, onCancel, onConfirm }: IconCropModalProps) {
+  useI18n();
   const editorRef = useRef<AvatarEditor | null>(null);
   const [scale, setScale] = useState(1.2);
 
@@ -25,14 +26,14 @@ export default function IconCropModal({ visible, file, onCancel, onConfirm }: Ic
 
   return (
     <WKModal
-      title="裁剪图标"
+      title={t("skillMarket.crop.title")}
       visible={visible}
       onCancel={onCancel}
       className="skill-market-crop-modal"
       footer={
         <div className="skill-market-crop-modal__footer">
-          <WKButton variant="secondary" onClick={onCancel}>取消</WKButton>
-          <WKButton variant="primary" onClick={handleSave}>确定</WKButton>
+          <WKButton variant="secondary" onClick={onCancel}>{t("skillMarket.common.cancel")}</WKButton>
+          <WKButton variant="primary" onClick={handleSave}>{t("skillMarket.common.confirm")}</WKButton>
         </div>
       }
     >
@@ -49,7 +50,7 @@ export default function IconCropModal({ visible, file, onCancel, onConfirm }: Ic
           rotate={0}
         />
         <label className="skill-market-crop-scale">
-          <span>缩放</span>
+          <span>{t("skillMarket.crop.scale")}</span>
           <input
             type="range"
             min="1"

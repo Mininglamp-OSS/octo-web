@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { t, useI18n } from "@octo/base";
 import type { Category } from "../types/skill";
 
 interface CategoryChipsProps {
@@ -11,6 +12,7 @@ interface CategoryChipsProps {
 const MEDIUM_VISIBLE_LIMIT = 4;
 
 export default function CategoryChips({ categories, activeId, onChange }: CategoryChipsProps) {
+  useI18n();
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement | null>(null);
 
@@ -76,7 +78,7 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
   }
 
   return (
-    <div className="skill-market-category-strip" aria-label="Skill 分类">
+    <div className="skill-market-category-strip" aria-label={t("skillMarket.category.ariaLabel")}>
       {ordered.map((category) => renderChip(
         category,
         mediumVisibleIds.has(category.id) || category.id === activeId
@@ -93,7 +95,7 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
             aria-haspopup="menu"
             onClick={() => setMoreOpen((open) => !open)}
           >
-            <span className="skill-market-category-label">更多</span>
+            <span className="skill-market-category-label">{t("skillMarket.common.more")}</span>
             <ChevronDown size={13} aria-hidden="true" />
           </button>
           {moreOpen && (

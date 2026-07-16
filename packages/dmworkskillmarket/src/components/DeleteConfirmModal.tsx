@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKButton, WKModal } from "@octo/base";
 import type { Skill } from "../types/skill";
 import { deleteSkill } from "../api/skillApi";
 
@@ -11,6 +11,7 @@ interface DeleteConfirmModalProps {
 }
 
 export default function DeleteConfirmModal({ skill, onClose, onDeleted }: DeleteConfirmModalProps) {
+  useI18n();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,7 +24,7 @@ export default function DeleteConfirmModal({ skill, onClose, onDeleted }: Delete
       onDeleted();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败");
+      setError(err instanceof Error ? err.message : t("skillMarket.delete.failed"));
     } finally {
       setDeleting(false);
     }
@@ -33,19 +34,19 @@ export default function DeleteConfirmModal({ skill, onClose, onDeleted }: Delete
     <WKModal
       visible={Boolean(skill)}
       onCancel={onClose}
-      title="删除 Skill"
+      title={t("skillMarket.delete.title")}
       footer={
         <>
-          <WKButton variant="secondary" onClick={onClose} disabled={deleting}>取消</WKButton>
-          <WKButton variant="danger" onClick={() => void submit()} loading={deleting}>删除</WKButton>
+          <WKButton variant="secondary" onClick={onClose} disabled={deleting}>{t("skillMarket.common.cancel")}</WKButton>
+          <WKButton variant="danger" onClick={() => void submit()} loading={deleting}>{t("skillMarket.common.delete")}</WKButton>
         </>
       }
     >
       <div className="skill-market-delete">
         <AlertTriangle size={22} />
         <div>
-          <strong>确定删除「{skill?.name}」？</strong>
-          <p>删除后无法恢复</p>
+          <strong>{t("skillMarket.delete.confirmMessage", { values: { name: skill?.name ?? "" } })}</strong>
+          <p>{t("skillMarket.delete.warning")}</p>
           {error && <p className="skill-market-delete__error">{error}</p>}
         </div>
       </div>

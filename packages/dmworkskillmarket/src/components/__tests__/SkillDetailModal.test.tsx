@@ -77,7 +77,7 @@ describe("SkillDetailModal", () => {
   });
 
   it("shows upload button for owner", async () => {
-    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} onPublishVersion={vi.fn()} />);
+    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
 
     await screen.findByText("meeting-note-cleaner.zip");
     fireEvent.click(screen.getByRole("button", { name: "版本历史" }));

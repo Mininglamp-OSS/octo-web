@@ -1,5 +1,145 @@
 {
   "menu": {
     "title": "技能"
+  },
+  "sidebar": {
+    "header": "Skill 市场",
+    "nav": "Skill 市场导航"
+  },
+  "common": {
+    "cancel": "取消",
+    "save": "保存",
+    "create": "创建",
+    "delete": "删除",
+    "edit": "编辑",
+    "loading": "加载中...",
+    "loadFailed": "加载失败",
+    "search": "搜索",
+    "more": "更多",
+    "confirm": "确定"
+  },
+  "list": {
+    "mine": "我的",
+    "publish": "上架",
+    "search": "搜索",
+    "errorTitle": "加载失败",
+    "retry": "重试",
+    "empty": "暂无数据",
+    "loadMore": "继续加载...",
+    "deleted": "已删除",
+    "created": "创建成功",
+    "saved": "已保存",
+    "navAriaLabel": "Skill 市场导航",
+    "loadingAriaLabel": "Skill 加载中",
+    "closeToast": "关闭提示"
+  },
+  "card": {
+    "editAriaLabel": "编辑 {{name}}",
+    "deleteAriaLabel": "删除 {{name}}",
+    "install": "Agent 安装"
+  },
+  "category": {
+    "ariaLabel": "Skill 分类",
+    "more": "更多"
+  },
+  "detail": {
+    "title": "Skill 详情",
+    "notFound": "Skill 不存在或已被删除",
+    "promptCopied": "安装 Prompt 已复制",
+    "downloadStarted": "下载已打开",
+    "downloadFailed": "下载失败",
+    "visibilityPrivate": "私有",
+    "visibilitySpace": "空间可见",
+    "visibilityPublic": "公开",
+    "updatedAt": "{{time}}更新",
+    "tabIntro": "Skill 介绍",
+    "tabVersions": "版本历史",
+    "installTitle": "Agent 安装",
+    "installHint": "复制安装 Prompt 粘贴到 Agent 对话中，自动完成安装。",
+    "copyPrompt": "复制安装 Prompt",
+    "downloadTitle": "下载",
+    "downloadBtn": "下载 Skill 包",
+    "latest": "最新",
+    "noVersions": "暂无历史版本"
+  },
+  "form": {
+    "editTitle": "编辑 {{name}}",
+    "editTitleFallback": "编辑 Skill",
+    "createTitle": "上架 Skill",
+    "versionSection": "版本信息",
+    "versionLabel": "版本号",
+    "versionPlaceholder": "例如 1.2.0",
+    "changelogLabel": "更新说明",
+    "changelogPlaceholder": "简述此版本变更内容",
+    "basicInfoSection": "基本信息",
+    "uploadIcon": "上传图标",
+    "englishName": "英文名",
+    "displayName": "展示名称",
+    "displayNamePlaceholder": "请输入展示名称，最多20个字符",
+    "category": "分类",
+    "categoryPlaceholder": "请选择分类",
+    "tags": "标签",
+    "tagPlaceholder": "输入标签后回车",
+    "visibility": "可见性",
+    "visibilityPublic": "公开",
+    "visibilityPublicHint": "Space 内所有成员可见",
+    "visibilityPrivate": "非公开",
+    "visibilityPrivateHint": "仅自己可见",
+    "docNote": "由 SKILL.md 自动解析，如需修改请重新上传 zip 包",
+    "validationRequired": "请填写展示名称和分类",
+    "validationNoUpload": "请先上传并解析 Skill 压缩包",
+    "saveFailed": "保存失败",
+    "createFailed": "创建失败"
+  },
+  "upload": {
+    "invalidFormat": "文件格式不正确",
+    "fileTooLarge": "文件超过 20MB",
+    "dropzoneTitle": "上传 Skill 压缩包（.zip，≤20MB）",
+    "dropzoneHint": "zip 内需包含 SKILL.md 文件",
+    "selectFileAriaLabel": "选择 Skill zip 文件",
+    "selectNewFileAriaLabel": "选择新的 Skill zip 文件",
+    "uploading": "上传中",
+    "uploadProgress": "上传进度",
+    "progressBarAriaLabel": "上传进度条",
+    "parsing": "解析中...",
+    "parseFailed": "解析失败",
+    "parseTimeout": "解析超时，请重试",
+    "uploadFailed": "上传失败",
+    "reselect": "重新选择文件",
+    "reupload": "重新上传 zip 包",
+    "reuploadShort": "重新上传",
+    "parsed": "已解析 SKILL.md",
+    "currentPackage": "当前 Skill 包"
+  },
+  "confirm": {
+    "title": "确定离开？",
+    "keepEditing": "继续编辑",
+    "keepUploading": "继续上传",
+    "leave": "确认离开",
+    "busyMessage": "确定离开？Skill 包正在上传/解析中，离开后当前进度将丢失，需要重新上传。",
+    "dirtyEditMessage": "确定离开？尚未完成编辑，已上传的文件和填写的信息将丢失。",
+    "dirtyCreateMessage": "确定离开？尚未完成创建，已上传的文件和填写的信息将丢失。"
+  },
+  "delete": {
+    "title": "删除 Skill",
+    "confirmMessage": "确定删除「{{name}}」？",
+    "warning": "删除后无法恢复",
+    "failed": "删除失败"
+  },
+  "install": {
+    "title": "安装 Prompt",
+    "hint": "复制后粘贴到 Agent 对话中，将自动完成安装",
+    "copied": "已复制",
+    "copyBtn": "复制安装 Prompt"
+  },
+  "crop": {
+    "title": "裁剪图标",
+    "scale": "缩放"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "daysAgo": "{{count}} 天前"
   }
 }

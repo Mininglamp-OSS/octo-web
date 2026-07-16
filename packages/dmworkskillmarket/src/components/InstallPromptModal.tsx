@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Check, Copy, Terminal } from "lucide-react";
-import { WKApp, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import { buildInstallPrompt, resolveAPIBaseURL } from "../utils/installPrompt";
 
 interface InstallPromptModalProps {
@@ -12,6 +12,7 @@ interface InstallPromptModalProps {
 }
 
 export default function InstallPromptModal({ skillId, onClose }: InstallPromptModalProps) {
+  useI18n();
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -42,8 +43,8 @@ export default function InstallPromptModal({ skillId, onClose }: InstallPromptMo
             <Terminal size={18} />
           </div>
           <div>
-            <h3>安装 Prompt</h3>
-            <p>复制后粘贴到 Agent 对话中，将自动完成安装</p>
+            <h3>{t("skillMarket.install.title")}</h3>
+            <p>{t("skillMarket.install.hint")}</p>
           </div>
         </div>
       }
@@ -53,7 +54,7 @@ export default function InstallPromptModal({ skillId, onClose }: InstallPromptMo
           icon={copied ? <Check size={15} /> : <Copy size={15} />}
           onClick={handleCopy}
         >
-          {copied ? "已复制" : "复制安装 Prompt"}
+          {copied ? t("skillMarket.install.copied") : t("skillMarket.install.copyBtn")}
         </WKButton>
       }
     >

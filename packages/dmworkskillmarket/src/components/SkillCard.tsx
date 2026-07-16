@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Pencil, Terminal, Trash2 } from "lucide-react";
+import { t, useI18n } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 
@@ -13,6 +14,7 @@ interface SkillCardProps {
 }
 
 export default function SkillCard({ skill, categories: _categories, onOpen, onEdit, onDelete, onInstall }: SkillCardProps) {
+  useI18n();
   void _categories;
   const [imgError, setImgError] = useState(false);
   const visibleTags = skill.tags.slice(0, 3);
@@ -65,12 +67,12 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
         {(onEdit || onDelete) && (
           <div className="skill-market-card__actions" onClick={(event) => event.stopPropagation()}>
             {onEdit && (
-              <button type="button" aria-label={`编辑 ${skill.name}`} title="编辑" onClick={() => onEdit(skill)}>
+              <button type="button" aria-label={t("skillMarket.card.editAriaLabel", { values: { name: skill.name } })} title={t("skillMarket.common.edit")} onClick={() => onEdit(skill)}>
                 <Pencil size={15} />
               </button>
             )}
             {onDelete && (
-              <button type="button" className="is-danger" aria-label={`删除 ${skill.name}`} title="删除" onClick={() => onDelete(skill)}>
+              <button type="button" className="is-danger" aria-label={t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } })} title={t("skillMarket.common.delete")} onClick={() => onDelete(skill)}>
                 <Trash2 size={15} />
               </button>
             )}
@@ -85,7 +87,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
           onClick={() => onInstall?.(skill)}
         >
           <Terminal size={13} />
-          Agent 安装
+          {t("skillMarket.card.install")}
         </button>
       </div>
     </article>

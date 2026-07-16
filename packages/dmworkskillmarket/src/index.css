@@ -1271,6 +1271,16 @@
   gap: var(--wk-sp-3);
 }
 
+.skill-market-form__textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px 10px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: 6px;
+  font-size: 13px;
+  resize: vertical;
+}
+
 .skill-market-form__error {
   display: flex;
   align-items: center;

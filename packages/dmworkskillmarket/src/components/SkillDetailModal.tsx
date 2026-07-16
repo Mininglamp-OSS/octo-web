@@ -2,14 +2,13 @@ import React, { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { ArrowUpFromLine, Copy, Download, FileArchive, Lock, Pencil, Terminal, Trash2, Users } from "lucide-react";
-import { WKApp, WKButton, WKModal } from "@octo/base";
+import { Copy, Download, FileArchive, Lock, Pencil, Terminal, Trash2, Users } from "lucide-react";
+import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import type { Category, Skill, SkillVersion } from "../types/skill";
 import { downloadSkill, getSkill, listVersions } from "../api/skillApi";
 import { formatFileSize, formatRelativeTime } from "../utils/format";
 import { buildInstallPrompt, resolveAPIBaseURL } from "../utils/installPrompt";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
-import PublishVersionModal from "./PublishVersionModal";
 
 interface SkillDetailModalProps {
   skillId: string | null;
@@ -18,16 +17,15 @@ interface SkillDetailModalProps {
   onClose: () => void;
   onEdit?: (skill: Skill) => void;
   onDelete?: (skill: Skill) => void;
-  onPublishVersion?: () => void;
   onFeedback?: (message: string) => void;
 }
 
 type DetailTab = "intro" | "versions";
 
 function visibilityText(value: Skill["visibility"]): string {
-  if (value === "private") return "私有";
-  if (value === "space") return "空间可见";
-  return "公开";
+  if (value === "private") return t("skillMarket.detail.visibilityPrivate");
+  if (value === "space") return t("skillMarket.detail.visibilitySpace");
+  return t("skillMarket.detail.visibilityPublic");
 }
 
 function formatDate(iso: string): string {
@@ -42,9 +40,9 @@ export default function SkillDetailModal({
   onClose,
   onEdit,
   onDelete,
-  onPublishVersion,
   onFeedback,
 }: SkillDetailModalProps) {
+  useI18n();
   const [skill, setSkill] = useState<Skill | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +50,6 @@ export default function SkillDetailModal({
   const [activeTab, setActiveTab] = useState<DetailTab>("intro");
   const [versions, setVersions] = useState<SkillVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
-  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     if (!skillId) {
@@ -60,7 +57,6 @@ export default function SkillDetailModal({
       setActiveTab("intro");
       setVersions([]);
       setIconError(false);
-      setPublishing(false);
       return;
     }
     let alive = true;
@@ -74,9 +70,9 @@ export default function SkillDetailModal({
         if (!alive) return;
         const status = (err as { status?: number }).status;
         if (status === 404) {
-          setError("Skill 不存在或已被删除");
+          setError(t("skillMarket.detail.notFound"));
         } else {
-          setError(err instanceof Error ? err.message : "加载失败");
+          setError(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
         }
       })
       .finally(() => {
@@ -120,7 +116,7 @@ export default function SkillDetailModal({
     const prompt = buildInstallPrompt(skill.id, spaceId, apiBaseURL);
     if (navigator.clipboard?.writeText) {
       void navigator.clipboard.writeText(prompt).then(() => {
-        onFeedback?.("安装 Prompt 已复制");
+        onFeedback?.(t("skillMarket.detail.promptCopied"));
       });
     }
   }
@@ -129,22 +125,10 @@ export default function SkillDetailModal({
     if (!skill) return;
     try {
       await downloadSkill(skill.id);
-      onFeedback?.("下载已打开");
+      onFeedback?.(t("skillMarket.detail.downloadStarted"));
     } catch (err) {
-      onFeedback?.(err instanceof Error ? err.message : "下载失败");
+      onFeedback?.(err instanceof Error ? err.message : t("skillMarket.detail.downloadFailed"));
     }
-  }
-
-  function handlePublishVersion() {
-    if (!skill) return;
-    setPublishing(true);
-  }
-
-  function handlePublished(updated: Skill) {
-    setPublishing(false);
-    setSkill(updated);
-    onPublishVersion?.();
-    onFeedback?.("新版本已发布");
   }
 
   return (
@@ -166,7 +150,7 @@ export default function SkillDetailModal({
           </span>
           <div className="skill-market-detail-header__center">
             <div className="skill-market-detail-header__title-row">
-              <h2>{skill?.name ?? "Skill 详情"}</h2>
+              <h2>{skill?.name ?? t("skillMarket.detail.title")}</h2>
               {categoryName && <span className="skill-market-detail-header__badge">{categoryName}</span>}
             </div>
             {skill && (
@@ -179,7 +163,7 @@ export default function SkillDetailModal({
             {skill && (
               <div className="skill-market-detail-header__meta">
                 <span>@{skill.ownerName}</span>
-                <span>{formatRelativeTime(skill.updatedAt)}更新</span>
+                <span>{t("skillMarket.detail.updatedAt", { values: { time: formatRelativeTime(skill.updatedAt) } })}</span>
                 <span>
                   {skill.visibility === "private" ? <Lock size={12} /> : <Users size={12} />}
                   {visibilityText(skill.visibility)}
@@ -189,12 +173,12 @@ export default function SkillDetailModal({
             {hasOwnerActions && skill && (
               <div className="skill-market-detail-header__actions">
                 {onEdit && (
-                  <button type="button" aria-label={`编辑 ${skill.name}`} title="编辑" onClick={() => onEdit(skill)}>
+                  <button type="button" aria-label={t("skillMarket.card.editAriaLabel", { values: { name: skill.name } })} title={t("skillMarket.common.edit")} onClick={() => onEdit(skill)}>
                     <Pencil size={16} />
                   </button>
                 )}
                 {onDelete && (
-                  <button type="button" aria-label={`删除 ${skill.name}`} title="删除" onClick={() => onDelete(skill)}>
+                  <button type="button" aria-label={t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } })} title={t("skillMarket.common.delete")} onClick={() => onDelete(skill)}>
                     <Trash2 size={16} />
                   </button>
                 )}
@@ -205,17 +189,9 @@ export default function SkillDetailModal({
       }
       bodyStyle={{ maxHeight: "68vh", overflow: "auto" }}
     >
-      {publishing && skill && (
-        <PublishVersionModal
-          skill={skill}
-          embedded
-          onClose={() => setPublishing(false)}
-          onPublished={handlePublished}
-        />
-      )}
-      {!publishing && loading && <div className="skill-market-modal-state">加载中...</div>}
-      {!publishing && error && <div className="skill-market-modal-state is-error">{error}</div>}
-      {!publishing && skill && !loading && (
+      {loading && <div className="skill-market-modal-state">{t("skillMarket.common.loading")}</div>}
+      {error && <div className="skill-market-modal-state is-error">{error}</div>}
+      {skill && !loading && (
         <div className="skill-market-detail">
           <p className="skill-market-detail__desc">{skill.description}</p>
 
@@ -226,14 +202,14 @@ export default function SkillDetailModal({
               className={activeTab === "intro" ? "is-active" : ""}
               onClick={() => setActiveTab("intro")}
             >
-              Skill 介绍
+              {t("skillMarket.detail.tabIntro")}
             </button>
             <button
               type="button"
               className={activeTab === "versions" ? "is-active" : ""}
               onClick={() => setActiveTab("versions")}
             >
-              版本历史
+              {t("skillMarket.detail.tabVersions")}
             </button>
           </div>
 
@@ -249,19 +225,19 @@ export default function SkillDetailModal({
                 <section className="skill-market-install__section">
                   <div className="skill-market-install__title">
                     <Terminal size={17} />
-                    <strong>Agent 安装</strong>
+                    <strong>{t("skillMarket.detail.installTitle")}</strong>
                   </div>
-                  <p className="skill-market-install__hint">复制安装 Prompt 粘贴到 Agent 对话中，自动完成安装。</p>
+                  <p className="skill-market-install__hint">{t("skillMarket.detail.installHint")}</p>
                   <div className="skill-market-install__actions">
                     <WKButton variant="primary" icon={<Copy size={15} />} onClick={copyInstallPrompt}>
-                      复制安装 Prompt
+                      {t("skillMarket.detail.copyPrompt")}
                     </WKButton>
                   </div>
                 </section>
                 <section className="skill-market-install__section">
                   <div className="skill-market-install__title">
                     <FileArchive size={17} />
-                    <strong>下载</strong>
+                    <strong>{t("skillMarket.detail.downloadTitle")}</strong>
                   </div>
                   <div className="skill-market-install__file">
                     <span>{skill.fileName}</span>
@@ -269,7 +245,7 @@ export default function SkillDetailModal({
                   </div>
                   <div className="skill-market-install__actions">
                     <WKButton variant="secondary" icon={<Download size={15} />} onClick={downloadSkillPackage}>
-                      下载 Skill 包
+                      {t("skillMarket.detail.downloadBtn")}
                     </WKButton>
                   </div>
                 </section>
@@ -281,19 +257,9 @@ export default function SkillDetailModal({
           {activeTab === "versions" && (
             <div className="skill-market-versions">
               <div className="skill-market-versions__header">
-                <strong>版本历史</strong>
-                {isOwner && (
-                  <button
-                    type="button"
-                    className="skill-market-versions__upload"
-                    title="上传新版本"
-                    onClick={handlePublishVersion}
-                  >
-                    <ArrowUpFromLine size={16} />
-                  </button>
-                )}
+                <strong>{t("skillMarket.detail.tabVersions")}</strong>
               </div>
-              {versionsLoading && <div className="skill-market-versions__loading">加载中...</div>}
+              {versionsLoading && <div className="skill-market-versions__loading">{t("skillMarket.common.loading")}</div>}
               {!versionsLoading && (
                 <div className="skill-market-versions__timeline">
                   {versions.map((v, idx) => (
@@ -302,7 +268,7 @@ export default function SkillDetailModal({
                       <div className="skill-market-versions__content">
                         <div className="skill-market-versions__row">
                           <span className="skill-market-versions__ver">v{v.version}</span>
-                          {idx === 0 && <span className="skill-market-versions__badge">最新</span>}
+                          {idx === 0 && <span className="skill-market-versions__badge">{t("skillMarket.detail.latest")}</span>}
                           <span className="skill-market-versions__date">{formatDate(v.createdAt)}</span>
                         </div>
                         {v.changelog && <p className="skill-market-versions__desc">{v.changelog}</p>}
@@ -310,7 +276,7 @@ export default function SkillDetailModal({
                     </div>
                   ))}
                   {versions.length === 0 && !versionsLoading && (
-                    <p className="skill-market-versions__empty">暂无历史版本</p>
+                    <p className="skill-market-versions__empty">{t("skillMarket.detail.noVersions")}</p>
                   )}
                 </div>
               )}

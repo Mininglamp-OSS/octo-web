@@ -1,5 +1,145 @@
 {
   "menu": {
     "title": "Skills"
+  },
+  "sidebar": {
+    "header": "Skill Market",
+    "nav": "Skill Market Navigation"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "create": "Create",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "loadFailed": "Failed to load",
+    "search": "Search",
+    "more": "More",
+    "confirm": "OK"
+  },
+  "list": {
+    "mine": "Mine",
+    "publish": "Publish",
+    "search": "Search",
+    "errorTitle": "Failed to load",
+    "retry": "Retry",
+    "empty": "No data",
+    "loadMore": "Load more...",
+    "deleted": "Deleted",
+    "created": "Created successfully",
+    "saved": "Saved",
+    "navAriaLabel": "Skill Market Navigation",
+    "loadingAriaLabel": "Loading skills",
+    "closeToast": "Close notification"
+  },
+  "card": {
+    "editAriaLabel": "Edit {{name}}",
+    "deleteAriaLabel": "Delete {{name}}",
+    "install": "Install to Agent"
+  },
+  "category": {
+    "ariaLabel": "Skill categories",
+    "more": "More"
+  },
+  "detail": {
+    "title": "Skill Details",
+    "notFound": "Skill does not exist or has been deleted",
+    "promptCopied": "Install prompt copied",
+    "downloadStarted": "Download started",
+    "downloadFailed": "Download failed",
+    "visibilityPrivate": "Private",
+    "visibilitySpace": "Space visible",
+    "visibilityPublic": "Public",
+    "updatedAt": "Updated {{time}}",
+    "tabIntro": "Introduction",
+    "tabVersions": "Version History",
+    "installTitle": "Install to Agent",
+    "installHint": "Copy the install prompt and paste it into an Agent conversation to complete installation automatically.",
+    "copyPrompt": "Copy Install Prompt",
+    "downloadTitle": "Download",
+    "downloadBtn": "Download Skill Package",
+    "latest": "Latest",
+    "noVersions": "No version history"
+  },
+  "form": {
+    "editTitle": "Edit {{name}}",
+    "editTitleFallback": "Edit Skill",
+    "createTitle": "Publish Skill",
+    "versionSection": "Version Info",
+    "versionLabel": "Version",
+    "versionPlaceholder": "e.g. 1.2.0",
+    "changelogLabel": "Changelog",
+    "changelogPlaceholder": "Briefly describe changes in this version",
+    "basicInfoSection": "Basic Info",
+    "uploadIcon": "Upload Icon",
+    "englishName": "English Name",
+    "displayName": "Display Name",
+    "displayNamePlaceholder": "Enter display name, max 20 characters",
+    "category": "Category",
+    "categoryPlaceholder": "Select a category",
+    "tags": "Tags",
+    "tagPlaceholder": "Type a tag and press Enter",
+    "visibility": "Visibility",
+    "visibilityPublic": "Public",
+    "visibilityPublicHint": "Visible to all Space members",
+    "visibilityPrivate": "Private",
+    "visibilityPrivateHint": "Only visible to yourself",
+    "docNote": "Auto-parsed from SKILL.md. Re-upload the zip to modify.",
+    "validationRequired": "Please fill in the display name and category",
+    "validationNoUpload": "Please upload and parse a Skill package first",
+    "saveFailed": "Failed to save",
+    "createFailed": "Failed to create"
+  },
+  "upload": {
+    "invalidFormat": "Invalid file format",
+    "fileTooLarge": "File exceeds 20MB",
+    "dropzoneTitle": "Upload Skill package (.zip, ≤20MB)",
+    "dropzoneHint": "The zip must contain a SKILL.md file",
+    "selectFileAriaLabel": "Select Skill zip file",
+    "selectNewFileAriaLabel": "Select a new Skill zip file",
+    "uploading": "Uploading",
+    "uploadProgress": "Upload progress",
+    "progressBarAriaLabel": "Upload progress bar",
+    "parsing": "Parsing...",
+    "parseFailed": "Parse failed",
+    "parseTimeout": "Parse timed out, please retry",
+    "uploadFailed": "Upload failed",
+    "reselect": "Reselect file",
+    "reupload": "Re-upload zip package",
+    "reuploadShort": "Re-upload",
+    "parsed": "SKILL.md parsed",
+    "currentPackage": "Current Skill package"
+  },
+  "confirm": {
+    "title": "Leave this page?",
+    "keepEditing": "Continue Editing",
+    "keepUploading": "Continue Uploading",
+    "leave": "Leave",
+    "busyMessage": "Are you sure you want to leave? The Skill package is being uploaded/parsed. Progress will be lost and you will need to re-upload.",
+    "dirtyEditMessage": "Are you sure you want to leave? Editing is not complete. Uploaded files and entered information will be lost.",
+    "dirtyCreateMessage": "Are you sure you want to leave? Creation is not complete. Uploaded files and entered information will be lost."
+  },
+  "delete": {
+    "title": "Delete Skill",
+    "confirmMessage": "Are you sure you want to delete \"{{name}}\"?",
+    "warning": "This action cannot be undone",
+    "failed": "Failed to delete"
+  },
+  "install": {
+    "title": "Install Prompt",
+    "hint": "Copy and paste into an Agent conversation to complete installation automatically",
+    "copied": "Copied",
+    "copyBtn": "Copy Install Prompt"
+  },
+  "crop": {
+    "title": "Crop Icon",
+    "scale": "Scale"
+  },
+  "time": {
+    "justNow": "Just now",
+    "minutesAgo": "{{count}} minutes ago",
+    "hoursAgo": "{{count}} hours ago",
+    "daysAgo": "{{count}} days ago"
   }
 }

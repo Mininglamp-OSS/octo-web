@@ -1,3 +1,5 @@
+import { t } from "@octo/base";
+
 export function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
@@ -15,10 +17,10 @@ export function formatRelativeTime(iso: string, baseDate = new Date()): string {
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
-  if (diffMs < minute) return "刚刚";
-  if (diffMs < hour) return `${Math.max(1, Math.floor(diffMs / minute))} 分钟前`;
-  if (diffMs < day) return `${Math.max(1, Math.floor(diffMs / hour))} 小时前`;
-  if (diffMs < 30 * day) return `${Math.max(1, Math.floor(diffMs / day))} 天前`;
+  if (diffMs < minute) return t("skillMarket.time.justNow");
+  if (diffMs < hour) return t("skillMarket.time.minutesAgo", { values: { count: Math.max(1, Math.floor(diffMs / minute)) } });
+  if (diffMs < day) return t("skillMarket.time.hoursAgo", { values: { count: Math.max(1, Math.floor(diffMs / hour)) } });
+  if (diffMs < 30 * day) return t("skillMarket.time.daysAgo", { values: { count: Math.max(1, Math.floor(diffMs / day)) } });
   return formatDate(iso);
 }
 

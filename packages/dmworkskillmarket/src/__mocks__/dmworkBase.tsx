@@ -107,6 +107,10 @@ export function t(value: string) {
   return value;
 }
 
+export function useI18n() {
+  return { t };
+}
+
 export class Menus {
   id: string;
   route: string;
