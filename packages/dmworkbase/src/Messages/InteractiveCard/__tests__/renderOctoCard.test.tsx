@@ -159,11 +159,18 @@ describe("renderOctoCard", () => {
     // index.css 的 .ac-pushButton[role="link"] 超链样式依赖 SDK 给 Action.OpenUrl 打
     // role="link"、给 Submit/Toggle/Copy 打 role="button"；SDK 升级若改了 role，超链会
     // 失效或误伤决策按钮——此测试兜底锁死该契约。
-    const roles = Array.from(
-      target.querySelectorAll<HTMLButtonElement>(".ac-pushButton")
-    ).map((b) => b.getAttribute("role"));
-    expect(roles).toContain("link"); // Action.OpenUrl → 超链
-    expect(roles).toContain("button"); // Action.Submit → 按钮
+    // 按 title 绑定 role↔action：只断言「有一个 link + 一个 button」不够——SDK 若把两者
+    // role 对调（OpenUrl→button、Submit→link）仍会误过；这里钉死到具体按钮。
+    const roleByTitle = new Map(
+      Array.from(
+        target.querySelectorAll<HTMLButtonElement>(".ac-pushButton")
+      ).map((b) => [
+        b.getAttribute("title") ?? b.textContent?.trim() ?? "",
+        b.getAttribute("role"),
+      ])
+    );
+    expect(roleByTitle.get("查看详情")).toBe("link"); // Action.OpenUrl → 超链
+    expect(roleByTitle.get("允许")).toBe("button"); // Action.Submit → 按钮
     target.remove();
   });
 

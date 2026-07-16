@@ -636,7 +636,7 @@
 }
 
 .wk-interactive-card-sdk .ac-pushButton[role="link"]:hover {
-  color: var(--wk-color-accent-hover, var(--wk-text-accent));
+  color: var(--wk-color-accent-hover, var(--wk-text-accent, var(--wk-brand-primary)));
   background: transparent;
   border: 0;
   box-shadow: none;
