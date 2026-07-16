@@ -126,17 +126,16 @@
   min-width: max-content;
 }
 
-/* 展开/收起按钮：紫色 tinted 胶囊，对齐全站 AI 强调语言（原中性描边过于像普通表单按钮）。 */
 .wk-interactive-card-sdk--agent-progress
   > .ac-adaptiveCard
   > .ac-columnSet:first-child
   .ac-pushButton {
-  min-height: 28px;
+  min-height: 30px;
   padding: 0 var(--wk-sp-3, 12px);
-  color: var(--wk-text-accent, var(--wk-brand-primary));
-  background: var(--wk-bg-selected);
-  border-color: transparent;
-  border-radius: var(--wk-r-full);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border-color: var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
 }
 
 .wk-interactive-card-sdk--agent-progress
@@ -144,7 +143,7 @@
   > .ac-columnSet:first-child
   .ac-pushButton:hover {
   color: var(--wk-text-accent, var(--wk-brand-primary));
-  background: var(--wk-accent-tint-12);
+  background: var(--wk-bg-elevated);
   border-color: var(--wk-border-glow);
 }
 
