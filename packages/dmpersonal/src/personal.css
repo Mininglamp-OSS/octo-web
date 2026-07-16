@@ -8,10 +8,29 @@
 }
 
 .dmpersonal-sidebar__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wk-sp-2);
   padding: var(--wk-sp-5) var(--wk-sp-5) var(--wk-sp-3);
   font-size: var(--wk-text-size-xl);
   font-weight: 600;
   color: var(--semi-color-text-0);
+}
+
+/* Beta 标识：静音灰色小标签，坐落在标题右下（baseline 对齐 → 视觉贴底） */
+.dmpersonal-sidebar__beta {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--loop-tag-grey-fg, #5d626f);
+  background: var(--loop-tag-grey-bg, #f1f2f4);
+  border: 1px solid var(--loop-tag-grey-bd, #dddfe3);
 }
 
 .dmpersonal-sidebar__menu {

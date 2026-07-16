@@ -1,16 +1,17 @@
 {
+  "beta": "Beta",
   "menu": {
     "title": "Loop",
     "changeStatus": "Change status",
     "changePriority": "Change priority",
     "changeAssignee": "Change assignee",
-    "deleteIssue": "Delete Loop",
+    "deleteIssue": "Delete Task",
     "editProps": "Edit properties"
   },
   "nav": {
-    "myloop": "My loops",
+    "myloop": "My tasks",
     "workspaceGroup": "Workspace",
-    "issue": "Loop",
+    "issue": "Task",
     "skill": "Skill",
     "project": "Project",
     "automation": "Automation",
@@ -38,7 +39,7 @@
     "runNow": "Run now",
     "runNowConfirm": "Run this automation now?",
     "runNowConfirmDesc": "This triggers a run immediately and hands the task to the executor.",
-    "viewIssue": "View loop",
+    "viewIssue": "View task",
     "runStarted": "Run triggered",
     "runFailed": "Failed to trigger",
     "triggerFailed": "Automation created, but scheduling failed — retry from Edit",
@@ -59,7 +60,7 @@
     "retry": "Retry",
     "noTaskDesc": "No task instructions",
     "runStatus": {
-      "issue_created": "Loop created",
+      "issue_created": "Task created",
       "running": "Running",
       "completed": "Succeeded",
       "failed": "Failed",
@@ -130,10 +131,10 @@
   "batch": {
     "selected": "{{count}} selected",
     "done": "Updated",
-    "deleteConfirm": "Delete {{count}} selected issue(s)? This cannot be undone."
+    "deleteConfirm": "Delete {{count}} selected task(s)? This cannot be undone."
   },
   "search": {
-    "issue": "Search Loop / id",
+    "issue": "Search Task / id",
     "skill": "Search skill",
     "project": "Search project",
     "agent": "Search AI teammate",
@@ -155,7 +156,7 @@
     "updated_at": "Updated"
   },
   "action": {
-    "newIssue": "New Loop",
+    "newIssue": "New Task",
     "newSkill": "New Skill",
     "newProject": "New Project",
     "newAgent": "New AI teammate",
@@ -207,17 +208,17 @@
     "cancelled": "Cancelled"
   },
   "empty": {
-    "issue": "No Loops",
+    "issue": "No Tasks",
     "skill": "No skills",
     "project": "No projects",
     "agent": "No AI teammates",
     "squad": "No AI squads",
-    "issueTitle": "No Loops yet",
-    "issueDesc": "Create your first Loop to start tracking work.",
+    "issueTitle": "No Tasks yet",
+    "issueDesc": "Create your first Task to start tracking work.",
     "skillTitle": "No skills yet",
     "skillDesc": "Create or import a skill for your AI teammates to reuse.",
     "projectTitle": "No projects yet",
-    "projectDesc": "Create a project to organize related Loops.",
+    "projectDesc": "Create a project to organize related Tasks.",
     "agentTitle": "No AI teammates yet",
     "agentDesc": "Create an AI teammate to automate your tasks.",
     "squadTitle": "No AI squads yet",
@@ -238,7 +239,7 @@
     "labels": "Labels",
     "startDate": "Start date",
     "dueDate": "Due date",
-    "parent": "Parent issue",
+    "parent": "Parent task",
     "noParent": "No parent",
     "stage": "Stage",
     "progress": "Progress",
@@ -280,7 +281,7 @@
     "unassigned": "Unassigned"
   },
   "detail": {
-    "issueTitle": "Loop detail",
+    "issueTitle": "Task detail",
     "skillTitle": "Skill detail",
     "projectTitle": "Project detail",
     "agentTitle": "AI teammate detail",
@@ -347,7 +348,7 @@
   },
   "confirm": {
     "delete": "Delete?",
-    "deleteIssue": "Delete this Loop? This cannot be undone."
+    "deleteIssue": "Delete this Task? This cannot be undone."
   },
   "skill": {
     "source": "Source",
@@ -416,7 +417,7 @@
   },
   "webhook": {
     "title": "Webhooks",
-    "hint": "Fires on issue status changes. Each request is signed with HMAC-SHA256 in the X-Octo-Signature-256 header.",
+    "hint": "Fires on task status changes. Each request is signed with HMAC-SHA256 in the X-Octo-Signature-256 header.",
     "urlPlaceholder": "https://example.com/webhooks/octo",
     "add": "Add",
     "empty": "No webhooks yet.",
@@ -446,21 +447,21 @@
   },
   "subscribe": {
     "label": "Subscribers",
-    "subscribe": "Subscribe to issue",
+    "subscribe": "Subscribe to task",
     "unsubscribe": "Unsubscribe",
     "subscribed": "Subscribed",
     "unsubscribed": "Unsubscribed"
   },
   "subIssue": {
-    "title": "Sub-issues",
-    "create": "New sub-issue"
+    "title": "Sub-tasks",
+    "create": "New sub-task"
   },
   "reaction": {
     "add": "Add reaction"
   },
   "mention": {
     "groupUsers": "Users",
-    "groupIssues": "Loops",
+    "groupIssues": "Tasks",
     "allMembers": "All members"
   },
   "agent": {
@@ -581,7 +582,7 @@
     "filterCreator": "Creator",
     "clearFilters": "Clear",
     "noMatches": "No matching squads",
-    "createDesc": "Group agents and members to collaborate on issues.",
+    "createDesc": "Group agents and members to collaborate on tasks.",
     "membersLabel": "Members",
     "membersOptional": "optional",
     "membersHint": "Add more agents or members to the squad.",
@@ -642,7 +643,7 @@
     "wsName": "Workspace name",
     "wsSlug": "Workspace slug",
     "slugHint": "Slug cannot be changed after creation",
-    "issuePrefix": "Loop prefix",
+    "issuePrefix": "Task prefix",
     "role": "Role",
     "removeMember": "Remove member",
     "revokeInvite": "Revoke invitation",
@@ -684,7 +685,7 @@
     "ex3Prompt": "Fix the slow inbox loading in the Web project"
   },
   "activityAction": {
-    "created": "created this loop",
+    "created": "created this task",
     "statusChanged": "updated the status",
     "priorityChanged": "updated the priority",
     "assigneeChanged": "changed the assignee",
@@ -695,6 +696,6 @@
     "dateChanged": "updated dates",
     "reopened": "reopened",
     "completed": "marked complete",
-    "generic": "updated this loop"
+    "generic": "updated this task"
   }
 }

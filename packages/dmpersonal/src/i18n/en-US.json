@@ -2,6 +2,7 @@
   "menu": {
     "title": "Personal"
   },
+  "beta": "Beta",
   "nav": {
     "runtime": "Runtimes",
     "skill": "Skills"

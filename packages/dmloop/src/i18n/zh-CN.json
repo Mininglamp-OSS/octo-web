@@ -1,16 +1,17 @@
 {
+  "beta": "Beta",
   "menu": {
     "title": "回路",
     "changeStatus": "修改状态",
     "changePriority": "修改优先级",
     "changeAssignee": "修改负责人",
-    "deleteIssue": "删除回路",
+    "deleteIssue": "删除任务",
     "editProps": "编辑属性"
   },
   "nav": {
-    "myloop": "我的回路",
+    "myloop": "我的任务",
     "workspaceGroup": "工作区",
-    "issue": "回路",
+    "issue": "任务",
     "skill": "技能",
     "project": "项目",
     "automation": "自动化",
@@ -38,7 +39,7 @@
     "runNow": "手动运行",
     "runNowConfirm": "立即执行这个自动化？",
     "runNowConfirmDesc": "将立即触发一次运行，把任务交给执行方。",
-    "viewIssue": "查看回路",
+    "viewIssue": "查看任务",
     "runStarted": "已触发运行",
     "runFailed": "触发失败",
     "triggerFailed": "自动化已创建，但排程设置失败，请在编辑里重试",
@@ -59,7 +60,7 @@
     "retry": "重试",
     "noTaskDesc": "暂无任务说明",
     "runStatus": {
-      "issue_created": "已建回路",
+      "issue_created": "已建任务",
       "running": "运行中",
       "completed": "成功",
       "failed": "失败",
@@ -133,7 +134,7 @@
     "deleteConfirm": "确定删除选中的 {{count}} 项？此操作不可撤销。"
   },
   "search": {
-    "issue": "搜索回路/ 编号",
+    "issue": "搜索任务/ 编号",
     "skill": "搜索技能",
     "project": "搜索项目",
     "agent": "搜索 AI队友",
@@ -155,7 +156,7 @@
     "updated_at": "更新时间"
   },
   "action": {
-    "newIssue": "新建回路",
+    "newIssue": "新建任务",
     "newSkill": "新建技能",
     "newProject": "新建项目",
     "newAgent": "新建 AI队友",
@@ -207,17 +208,17 @@
     "cancelled": "已取消"
   },
   "empty": {
-    "issue": "暂无回路",
+    "issue": "暂无任务",
     "skill": "暂无技能",
     "project": "暂无项目",
     "agent": "暂无 AI队友",
     "squad": "暂无 AI小队",
-    "issueTitle": "还没有回路",
-    "issueDesc": "创建第一个回路，开始跟踪你的工作。",
+    "issueTitle": "还没有任务",
+    "issueDesc": "创建第一个任务，开始跟踪你的工作。",
     "skillTitle": "还没有技能",
     "skillDesc": "创建或导入技能，供 AI队友复用。",
     "projectTitle": "还没有项目",
-    "projectDesc": "创建项目来组织相关的回路。",
+    "projectDesc": "创建项目来组织相关的任务。",
     "agentTitle": "还没有 AI队友",
     "agentDesc": "创建 AI队友来自动处理你的任务。",
     "squadTitle": "还没有 AI小队",
@@ -238,8 +239,8 @@
     "labels": "标签",
     "startDate": "开始日期",
     "dueDate": "截止日期",
-    "parent": "父 Issue",
-    "noParent": "无父 Issue",
+    "parent": "父任务",
+    "noParent": "无父任务",
     "stage": "阶段",
     "progress": "进度",
     "createdAt": "创建时间"
@@ -280,7 +281,7 @@
     "unassigned": "未指派"
   },
   "detail": {
-    "issueTitle": "回路详情",
+    "issueTitle": "任务详情",
     "skillTitle": "技能详情",
     "projectTitle": "项目详情",
     "agentTitle": "AI队友详情",
@@ -347,7 +348,7 @@
   },
   "confirm": {
     "delete": "确定删除？",
-    "deleteIssue": "确定删除该回路？此操作不可撤销。"
+    "deleteIssue": "确定删除该任务？此操作不可撤销。"
   },
   "skill": {
     "source": "来源",
@@ -416,7 +417,7 @@
   },
   "webhook": {
     "title": "Webhook",
-    "hint": "在 issue 状态变化时触发。每个请求都用 HMAC-SHA256 签名，放在 X-Octo-Signature-256 请求头里。",
+    "hint": "在任务状态变化时触发。每个请求都用 HMAC-SHA256 签名，放在 X-Octo-Signature-256 请求头里。",
     "urlPlaceholder": "https://example.com/webhooks/octo",
     "add": "添加",
     "empty": "还没有 webhook。",
@@ -446,21 +447,21 @@
   },
   "subscribe": {
     "label": "订阅者",
-    "subscribe": "订阅此 Issue",
+    "subscribe": "订阅此任务",
     "unsubscribe": "取消订阅",
     "subscribed": "已订阅",
     "unsubscribed": "已取消订阅"
   },
   "subIssue": {
-    "title": "子 Issue",
-    "create": "新建子 Issue"
+    "title": "子任务",
+    "create": "新建子任务"
   },
   "reaction": {
     "add": "添加反应"
   },
   "mention": {
     "groupUsers": "用户",
-    "groupIssues": "回路",
+    "groupIssues": "任务",
     "allMembers": "所有成员"
   },
   "agent": {
@@ -642,7 +643,7 @@
     "wsName": "工作区名称",
     "wsSlug": "工作区 slug",
     "slugHint": "slug 创建后不可修改",
-    "issuePrefix": "回路前缀",
+    "issuePrefix": "任务前缀",
     "role": "角色",
     "removeMember": "移除成员",
     "revokeInvite": "撤销邀请",
@@ -684,7 +685,7 @@
     "ex3Prompt": "修一下 Web 项目里收件箱加载慢的问题"
   },
   "activityAction": {
-    "created": "创建了这个回路",
+    "created": "创建了这个任务",
     "statusChanged": "更新了状态",
     "priorityChanged": "更新了优先级",
     "assigneeChanged": "变更了负责人",
@@ -695,6 +696,6 @@
     "dateChanged": "更新了时间",
     "reopened": "重新打开",
     "completed": "标记完成",
-    "generic": "更新了这个回路"
+    "generic": "更新了这个任务"
   }
 }

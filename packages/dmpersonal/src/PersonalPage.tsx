@@ -139,7 +139,10 @@ export default function PersonalPage() {
 
   return (
     <div className="dmpersonal-sidebar">
-      <div className="dmpersonal-sidebar__title">{t("personal.menu.title")}</div>
+      <div className="dmpersonal-sidebar__title">
+        <span>{t("personal.menu.title")}</span>
+        <span className="dmpersonal-sidebar__beta">{t("personal.beta")}</span>
+      </div>
       <nav className="dmpersonal-sidebar__menu">
         {PERSONAL_TABS.map((item) => (
           <button

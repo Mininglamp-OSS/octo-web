@@ -377,6 +377,7 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       <div className="loop-page__head loop-page__head--stack">
         <div className="loop-page__title-row">
           <h2 className="loop-page__title">{title}</h2>
+          <span className="loop-page__title-beta">{t("loop.beta")}</span>
         </div>
         <div className="loop-page__toolbar">
           {/* 作用域 tab:全部/成员/AI,贯三视图,走后端 assignee_types。

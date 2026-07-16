@@ -2,6 +2,7 @@
   "menu": {
     "title": "我的"
   },
+  "beta": "Beta",
   "nav": {
     "runtime": "运行时",
     "skill": "Skills"
