@@ -720,7 +720,7 @@
   "threadCreate.namePlaceholder": "Enter thread name",
   "threadCreate.nameRequired": "Please enter a thread name",
   "threadCreate.success": "Created",
-  "threadCreateModal.topicMaxLength": "Topic name cannot exceed 50 characters",
+  "threadCreateModal.topicMaxLength": "Topic name cannot exceed 100 characters",
   "threadCreateModal.topicPlaceholder": "Enter topic name",
   "threadCreateModal.topicRequired": "Please enter a topic name",
   "threadList.createdAt": "Created {{time}}",
