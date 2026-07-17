@@ -11,7 +11,7 @@ import { MemberPanel } from '../members/MemberPanel.tsx'
 import { VersionPanel } from '../versions/VersionPanel.tsx'
 import { CommentPanel } from '../comments/CommentPanel.tsx'
 import { CommentBubble } from '../comments/CommentBubble.tsx'
-import { useDocComments } from '../comments/useDocComments.ts'
+import { useDocComments, useRefreshCommentsOnOpen } from '../comments/useDocComments.ts'
 import { useCommentHighlights } from '../comments/useCommentHighlights.ts'
 import { useDocDelete } from './useDocDelete.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
@@ -432,6 +432,8 @@ export function EditorShell(props: EditorShellProps) {
   // share it; highlights paint regardless of whether the panel is open.
   const comments = useDocComments(docId)
   useCommentHighlights(instance?.editor ?? null, comments.threads)
+  // Pull the latest threads each time the comments drawer opens (XIN-1323).
+  useRefreshCommentsOnOpen(comments, activePanel === 'comments')
 
   // A click on a comment highlight (decoration layer) opens the comments drawer on that thread.
   useEffect(() => {

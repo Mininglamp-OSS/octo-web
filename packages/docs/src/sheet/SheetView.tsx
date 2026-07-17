@@ -16,7 +16,7 @@ import { type Role, canManage } from '../auth/roles.ts'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { SheetVersionPanel } from './SheetVersionPanel.tsx'
 import { SheetCommentPanel, parseCell as parseCommentAnchor } from './SheetCommentPanel.tsx'
-import { useDocComments } from '../comments/useDocComments.ts'
+import { useDocComments, useRefreshCommentsOnOpen } from '../comments/useDocComments.ts'
 import { pendingSheetImports } from './xlsxImport.ts'
 import { buildSheetDims, buildSheetMerges, excelSheetName } from './sheetExport.ts'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
@@ -205,6 +205,9 @@ export function SheetView(props: SheetViewProps) {
   // Comments are owned here (not inside the panel) so the cell markers stay visible
   // even when the panel is closed, and refresh as comments are added/removed.
   const comments = useDocComments(docId)
+  // Pull the latest threads each time the comments drawer opens (XIN-1323); shares the same
+  // useRefreshCommentsOnOpen hook as the docs editor since both drive one useDocComments instance.
+  useRefreshCommentsOnOpen(comments, panel === 'comments')
   const [commentFocus, setCommentFocus] = useState<{ row: number; col: number; sheetId: string } | null>(null)
   const [composer, setComposer] = useState<CellAnchor | null>(null)
 

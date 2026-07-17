@@ -150,3 +150,25 @@ export function useDocComments(docId: string): UseDocComments {
     remove,
   }
 }
+
+// Re-read comments the moment the panel goes from closed → open (XIN-1323). Comments live in a
+// mount-only REST hook with no realtime push, so a session-long open panel — or one reopened after
+// someone else added a comment — would otherwise keep showing stale threads. Both the docs
+// CommentPanel and the sheet SheetCommentPanel are driven off their shell's drawer state and share a
+// single useDocComments instance, so wiring this one hook into each shell covers both from one place.
+//
+// We refresh only on the false → true edge (not on every render, not when the panel is already open),
+// so opening once triggers exactly one fetch and no duplicate concurrent loads. `refresh` is read
+// through a ref so its identity changing (docId / includeResolved) never re-fires this effect —
+// those already have their own refresh in useDocComments — and we avoid a stale-closure over it.
+export function useRefreshCommentsOnOpen(comments: UseDocComments, open: boolean): void {
+  const refreshRef = useRef(comments.refresh)
+  refreshRef.current = comments.refresh
+  // Seed with the initial `open` so a panel that starts open doesn't double-fetch on top of the
+  // hook's own mount-time load; only a genuine closed → open transition triggers a refresh.
+  const prevOpen = useRef(open)
+  useEffect(() => {
+    if (open && !prevOpen.current) void refreshRef.current()
+    prevOpen.current = open
+  }, [open])
+}
