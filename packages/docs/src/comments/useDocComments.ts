@@ -45,7 +45,18 @@ export function useDocComments(docId: string): UseDocComments {
   // Stale-guard: a slow earlier refresh must not overwrite a newer one's result
   // (e.g. toggling includeResolved or a mutation-triggered refresh racing a manual
   // one). Each refresh/loadMore takes a monotonic token; only the latest applies.
+  // This token is also loading-bearing: refresh/loadMore reset the spinner in
+  // `finally` only when it still holds their token.
   const reqRef = useRef(0)
+
+  // Independent stale-guard for reconcile(), deliberately separate from reqRef.
+  // reconcile() must NOT claim a reqRef token: bumping it here would make an
+  // in-flight refresh/loadMore see a superseded token and skip its own
+  // `finally { setLoading(false) }`, while reconcile never touches loading —
+  // stranding the spinner true forever and deadlocking pagination. reconcile is
+  // a best-effort fallback re-read, not a loading-bearing load, so it guards
+  // only against a newer reconcile overwriting it.
+  const reconcileRef = useRef(0)
 
   const refresh = useCallback(async () => {
     const token = ++reqRef.current
@@ -90,12 +101,14 @@ export function useDocComments(docId: string): UseDocComments {
   // mutation is *rejected*: some rejections mean the server state already moved
   // (e.g. deleting a comment the backend had already soft-deleted returns 404),
   // so without re-reading the stale row lingers on screen — the "deleted but
-  // still visible" bug. Shares the latest-wins stale guard with refresh().
+  // still visible" bug. Uses its OWN token (reconcileRef), never reqRef, so it
+  // cannot preempt an in-flight refresh/loadMore's loading-bearing token; and it
+  // never touches `loading`, since it did not set it.
   const reconcile = useCallback(async () => {
-    const token = ++reqRef.current
+    const token = ++reconcileRef.current
     try {
       const res = await listComments(docId, { includeResolved, limit: PAGE_SIZE })
-      if (reqRef.current !== token) return // superseded by a newer load
+      if (reconcileRef.current !== token) return // superseded by a newer reconcile
       setThreads(res.items)
       setNextCursor(res.nextCursor)
     } catch {

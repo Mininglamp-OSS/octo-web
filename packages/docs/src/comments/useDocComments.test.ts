@@ -94,6 +94,78 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
     expect(result.current.error).toBe('Failed to delete comment.')
   })
 
+  it('does not strand loading=true (deadlocking pagination) when a mutation is rejected mid-loadMore', async () => {
+    // Race: a mutation is rejected exactly while a loadMore page fetch is in
+    // flight. reconcile() (the failure fallback re-read) must NOT preempt the
+    // loading-bearing token that loadMore owns — otherwise loadMore's
+    // `finally { if (reqRef===token) setLoading(false) }` is skipped, reconcile
+    // never resets loading, and the spinner stays true forever. With loading
+    // stuck true, loadMore early-returns (`if (nextCursor==null || loading)`),
+    // so pagination is dead for the rest of the session.
+    let rows = [thread(1, 'a'), thread(2, 'b')]
+    let getCount = 0
+    let releaseLoadMore: (() => void) | null = null
+
+    api.responder = (method: string) => {
+      if (method === 'get') {
+        getCount += 1
+        // 1st GET = initial refresh; hand back a non-null cursor so loadMore is enabled.
+        if (getCount === 1) return { data: { items: rows, nextCursor: 25 }, status: 200 }
+        // 2nd GET = loadMore's page fetch — hold it pending until we release it,
+        // AFTER the rejected delete has run reconcile().
+        if (getCount === 2) {
+          return new Promise((resolve) => {
+            releaseLoadMore = () =>
+              resolve({ data: { items: [thread(3, 'c')], nextCursor: 50 }, status: 200 })
+          })
+        }
+        // Later GETs (reconcile, subsequent loadMore) resolve immediately.
+        return { data: { items: rows, nextCursor: 50 }, status: 200 }
+      }
+      if (method === 'delete') {
+        throw { response: { status: 403 } } // rejected; comment still exists
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(2))
+    expect(result.current.nextCursor).toBe(25)
+
+    // Kick off loadMore; its page GET is now pending (getCount === 2).
+    let loadMorePromise: Promise<void>
+    await act(async () => {
+      loadMorePromise = result.current.loadMore()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.loading).toBe(true))
+
+    // While that page fetch is in flight, a delete is rejected → runMutation
+    // catch → reconcile() runs.
+    await act(async () => {
+      await result.current.remove(1, false)
+    })
+
+    // Now let the in-flight loadMore GET resolve — its finally runs here.
+    await act(async () => {
+      releaseLoadMore!()
+      await loadMorePromise
+    })
+
+    // Regression assertions: loading must settle back to false...
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.nextCursor).not.toBeNull()
+
+    // ...and pagination must remain usable — a fresh loadMore must actually fire
+    // a new GET rather than being swallowed by a stuck loading flag.
+    const getsBefore = api.calls.filter((c) => c.method === 'get').length
+    await act(async () => {
+      await result.current.loadMore()
+    })
+    const getsAfter = api.calls.filter((c) => c.method === 'get').length
+    expect(getsAfter).toBeGreaterThan(getsBefore)
+  })
+
   it('does not regress create/reply/resolve refresh on success', async () => {
     let rows = [thread(1, 'a')]
     api.responder = (method: string, url: string) => {
