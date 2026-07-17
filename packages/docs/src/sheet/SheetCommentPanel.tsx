@@ -324,6 +324,7 @@ export function SheetCommentPanel({
   const { threads, loading, error, nextCursor, includeResolved, setIncludeResolved, loadMore, createRoot } = comments
 
   const [body, setBody] = useState('')
+  const [composing, setComposing] = useState(false)
   const [activeId, setActiveId] = useState<number | null>(null)
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null)
   const [composeError, setComposeError] = useState<string | null>(null)
@@ -343,6 +344,11 @@ export function SheetCommentPanel({
   // When the user selects a cell, highlight the thread anchored to it (if any).
   useEffect(() => {
     if (!sheet) return
+    // Seed from the CURRENT selection so the compose label reads "评论 A1" the moment the
+    // panel mounts (or the sheet changes), instead of falling back to "评论当前单元格" until
+    // the next selection change fires. Without this, opening the panel with a cell already
+    // selected shows the generic label even though a concrete cell is targeted.
+    setActiveCellKey(sheet.getActiveCellRef()?.a1 ?? null)
     return sheet.onActiveCell((r) => {
       setActiveCellKey(r?.a1 ?? null)
       if (!r) return
@@ -388,6 +394,10 @@ export function SheetCommentPanel({
       await createRoot({ body: body.trim(), anchorStart: encoded, anchorEnd: encoded, anchorText: ref.a1 })
       setBody('')
       setComposeError(null)
+      // Collapse back to the always-visible entry button (two-step interaction, mirrors the
+      // doc CommentBubble). Keeping the composer open would re-disable the submit button on the
+      // now-empty body — exactly the "looks permanently disabled" confusion we're fixing.
+      setComposing(false)
     } catch {
       setComposeError(t('docs.sheet.comment.failed'))
     } finally {
@@ -412,35 +422,69 @@ export function SheetCommentPanel({
 
       {canComment(role) && (
         <div className="octo-comment-compose">
-          <div style={{ position: 'relative' }}>
-            <textarea
-              ref={bodyRef}
-              className="octo-comment-input"
-              placeholder={t('docs.sheet.comment.placeholder')}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={2}
-            />
-            <VoiceInputButton
-              inputRef={bodyRef}
-              onTranscribed={(text, mode, savedRange) =>
-                setBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
-              }
-              getCurrentText={() => body}
-              showModeMenu
-              size="sm"
-              className="wk-vib--textarea-corner"
-            />
-          </div>
-          <div className="octo-comment-compose-actions">
-            <button type="button" className="octo-tb-btn" disabled={busy || !body.trim()} onClick={() => void submit()}>
-              {activeCellKey ? `${t('docs.sheet.comment.menu')} ${activeCellKey}` : t('docs.sheet.comment.current')}
+          {composing ? (
+            <>
+              <div style={{ position: 'relative' }}>
+                <textarea
+                  ref={bodyRef}
+                  className="octo-comment-input"
+                  placeholder={t('docs.sheet.comment.placeholder')}
+                  value={body}
+                  autoFocus
+                  onChange={(e) => setBody(e.target.value)}
+                  rows={2}
+                />
+                <VoiceInputButton
+                  inputRef={bodyRef}
+                  onTranscribed={(text, mode, savedRange) =>
+                    setBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
+                  }
+                  getCurrentText={() => body}
+                  showModeMenu
+                  size="sm"
+                  className="wk-vib--textarea-corner"
+                />
+              </div>
+              <div className="octo-comment-compose-actions">
+                <button type="button" className="octo-tb-btn" disabled={busy || !body.trim()} onClick={() => void submit()}>
+                  {activeCellKey ? `${t('docs.sheet.comment.menu')} ${activeCellKey}` : t('docs.sheet.comment.current')}
+                </button>
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={busy}
+                  onClick={() => {
+                    setComposing(false)
+                    setBody('')
+                    setComposeError(null)
+                  }}
+                >
+                  {t('docs.comment.cancel')}
+                </button>
+              </div>
+              {composeError && (
+                <p className="octo-member-error" role="alert">
+                  {composeError}
+                </p>
+              )}
+            </>
+          ) : (
+            // Always-visible, always-clickable entry affordance (disabled only while the sheet
+            // is not yet connected). Clicking it reveals the composer and focuses the input —
+            // the two-step interaction the doc CommentBubble already uses. This replaces the
+            // old layout where the compose box + a `!body.trim()`-locked submit button showed
+            // up-front, which read as a permanently-disabled control (XIN-1337).
+            <button
+              type="button"
+              className="octo-tb-btn"
+              disabled={!sheet}
+              onClick={() => {
+                setComposeError(null)
+                setComposing(true)
+              }}
+            >
+              💬 {t('docs.comment.commentButton')}
             </button>
-          </div>
-          {composeError && (
-            <p className="octo-member-error" role="alert">
-              {composeError}
-            </p>
           )}
         </div>
       )}
