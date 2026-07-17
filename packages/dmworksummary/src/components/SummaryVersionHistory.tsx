@@ -48,10 +48,24 @@ const SummaryVersionHistory: React.FC<SummaryVersionHistoryProps> = ({
         return label === key ? t("summary.detail.versionOperation.generate") : label;
     };
 
+    const formatVersionOperationNote = (version: SummaryVersionItem): string => {
+        const note = (version.operation_note || "").trim();
+        if (note) return note;
+        if ((version.operation_type || "generate") === "generate") {
+            return t("summary.detail.versionInitialGenerateDesc");
+        }
+        if (version.operation_type === "restore" && version.parent_result_id) {
+            return t("summary.detail.versionRestoreFromResult", {
+                values: { id: version.parent_result_id },
+            });
+        }
+        return formatVersionOperation(version);
+    };
+
     return (
         <div className="summary-version-strip">
             <div className="summary-version-strip-title">
-                <IconHistory />
+                <IconHistory size="small" />
                 <span>{t("summary.detail.recentVersions")}</span>
                 <span className="summary-version-strip-hint">
                     {t("summary.detail.recentVersionsLimitHint")}
@@ -86,11 +100,9 @@ const SummaryVersionHistory: React.FC<SummaryVersionHistoryProps> = ({
                                         </span>
                                     )}
                                 </div>
-                                {version.operation_note && (
-                                    <div className="summary-version-note">
-                                        {version.operation_note}
-                                    </div>
-                                )}
+                                <div className="summary-version-note">
+                                    {formatVersionOperationNote(version)}
+                                </div>
                             </div>
                             <div className="summary-version-actions">
                                 <Button
