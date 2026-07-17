@@ -30,6 +30,8 @@ import {
     scheduleItemToConfig,
 } from "../utils/summaryHelpers";
 import ScheduleForm from "../components/ScheduleForm";
+import SourceSelector from "../components/SourceSelector";
+import type { SourceItem } from "../types/summary";
 
 interface ScheduleListPageState {
     schedules: ScheduleItem[];
@@ -39,6 +41,11 @@ interface ScheduleListPageState {
     showEditModal: boolean;
     editingSchedule: ScheduleItem | null;
     formLoading: boolean;
+    // 来源就地编辑：卡片上「编辑来源」入口打开的轻量弹窗只改 sources，
+    // 不复用 editModal（避免把整套 ScheduleForm 拉起来，用户困惑「怎么又能改频率了」）。
+    editingSourcesId: number | null;
+    editingSourcesDraft: SourceItem[];
+    sourcesSaving: boolean;
 }
 
 export default class ScheduleListPage extends Component<{}, ScheduleListPageState> {
@@ -53,6 +60,9 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
         showEditModal: false,
         editingSchedule: null,
         formLoading: false,
+        editingSourcesId: null,
+        editingSourcesDraft: [],
+        sourcesSaving: false,
     };
 
     componentDidMount() {
@@ -142,8 +152,48 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
         }
     };
 
+    openSourcesEditor = (item: ScheduleItem) => {
+        // 拷贝 sources 数组，避免 SourceSelector 内部 onChange 直接改到卡片展示。
+        this.setState({
+            editingSourcesId: item.schedule_id,
+            editingSourcesDraft: [...(item.sources ?? [])],
+        });
+    };
+
+    closeSourcesEditor = () => {
+        this.setState({ editingSourcesId: null, editingSourcesDraft: [], sourcesSaving: false });
+    };
+
+    handleSaveSources = async () => {
+        const { editingSourcesId, editingSourcesDraft } = this.state;
+        if (editingSourcesId == null) return;
+        // 空来源阻断在前端，避免 PUT 后 worker 拿不到任何 chat 触发失败。
+        if (editingSourcesDraft.length === 0) {
+            Toast.error(t("summary.confirmPage.sourceRequired"));
+            return;
+        }
+        this.setState({ sourcesSaving: true });
+        try {
+            // 只带 sources：后端 PUT /summary-schedules/:id 允许部分字段（UpdateScheduleParams 全 optional）。
+            const updated = await api.updateSchedule(editingSourcesId, { sources: editingSourcesDraft });
+            Toast.success(t("summary.schedule.updateSuccess"));
+            // 本地即时刷新，避免整表重拉的闪烁；后端返回的 schedule 覆盖到列表里对应项。
+            this.setState((prev) => ({
+                schedules: prev.schedules.map((s) =>
+                    s.schedule_id === editingSourcesId ? { ...s, ...updated, sources: updated?.sources ?? editingSourcesDraft } : s,
+                ),
+                editingSourcesId: null,
+                editingSourcesDraft: [],
+                sourcesSaving: false,
+            }));
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.common.updateFailed"));
+            this.setState({ sourcesSaving: false });
+        }
+    };
+
     render() {
-        const { schedules, loading, error, showCreateModal, showEditModal, editingSchedule, formLoading } = this.state;
+        const { schedules, loading, error, showCreateModal, showEditModal, editingSchedule, formLoading, editingSourcesId, editingSourcesDraft, sourcesSaving } = this.state;
         const { t: translate } = this.context;
 
         return (
@@ -192,7 +242,12 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
 
                 {!loading && schedules.length > 0 && (
                     <div className="summary-schedule-list">
-                        {schedules.map((item) => (
+                        {schedules.map((item) => {
+                            // fail-closed：creator_id 缺失（旧后端）一律按非 creator，安全侧默认。
+                            // 不做 participants 兜底 —— 后端才是真授权，前端只做入口隐藏。
+                            const currentUid = WKApp.loginInfo.uid;
+                            const isCreator = item.creator_id != null && item.creator_id === currentUid;
+                            return (
                             <div key={item.schedule_id} className="summary-schedule-card">
                                 <div className="summary-schedule-card-header">
                                     <span className="summary-schedule-card-title">
@@ -212,7 +267,21 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                     </span>
                                 </div>
                                 <div className="summary-schedule-card-sources">
-                                    {translate("summary.source.label")}{(item.sources ?? []).map((s) => s.source_name || s.source_id).join("、") || "-"}
+                                    <span>
+                                        {translate("summary.source.label")}{(item.sources ?? []).map((s) => s.source_name || s.source_id).join("、") || "-"}
+                                    </span>
+                                    {isCreator && (
+                                        <Button
+                                            icon={<IconEdit />}
+                                            size="small"
+                                            theme="borderless"
+                                            aria-label={translate("summary.schedule.editSourcesTitle")}
+                                            style={{ marginLeft: 4 }}
+                                            onClick={() => this.openSourcesEditor(item)}
+                                        >
+                                            {translate("summary.schedule.editSourcesButton")}
+                                        </Button>
+                                    )}
                                 </div>
                                 <div className="summary-schedule-card-actions">
                                     <Button
@@ -238,7 +307,8 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                     </Popconfirm>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
 
@@ -301,6 +371,22 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                             />
                         </>
                     )}
+                </Modal>
+
+                <Modal
+                    title={translate("summary.schedule.editSourcesTitle")}
+                    visible={editingSourcesId != null}
+                    onCancel={this.closeSourcesEditor}
+                    onOk={this.handleSaveSources}
+                    okText={translate("summary.common.save")}
+                    cancelText={translate("summary.common.cancel")}
+                    confirmLoading={sourcesSaving}
+                    width={520}
+                >
+                    <SourceSelector
+                        value={editingSourcesDraft}
+                        onChange={(next) => this.setState({ editingSourcesDraft: next })}
+                    />
                 </Modal>
             </div>
         );

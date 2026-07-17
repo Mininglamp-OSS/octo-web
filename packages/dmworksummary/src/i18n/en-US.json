@@ -268,6 +268,8 @@
     "deleteContent": "Delete this scheduled summary?",
     "createModalTitle": "New scheduled summary",
     "editModalTitle": "Edit scheduled summary",
+    "editSourcesTitle": "Edit sources",
+    "editSourcesButton": "Edit",
     "createSuccess": "Scheduled summary created",
     "updateSuccess": "Scheduled summary updated",
     "deleted": "Deleted",
