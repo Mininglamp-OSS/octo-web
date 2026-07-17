@@ -1,99 +1,167 @@
 import React from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Filter } from "lucide-react";
-import SearchWorkspace from "../../ui/SearchWorkspace";
-import "../../features/globalSearch/global-search-panel.css";
+import GlobalSearch from "../../features/globalSearch/GlobalSearchPanel";
+import GlobalSearchVM from "../../bridge/globalSearch/GlobalSearchVM";
+import {
+  defaultGlobalSearchFilters,
+  type ChannelSearchItem,
+  type GlobalSearchDataSource,
+} from "../../Service/SearchTypes";
 
-interface GlobalSearchPreviewProps {
-  keyword?: string;
-  state?: "ready" | "loading" | "empty" | "error";
-  filters?: number;
-  longText?: boolean;
+type ResultState = "ready" | "loading" | "empty" | "error";
+
+const senders = [
+  { uid: "alex", name: "Alex Chen" },
+  { uid: "river", name: "River Zhang" },
+];
+
+function createFileItem(isLongText = false): ChannelSearchItem {
+  const fileName = isLongText
+    ? "octo-web-global-search-migration-verification-with-a-very-long-file-name.md"
+    : "octo-web-search-migration.md";
+  return {
+    id: isLongText ? "file-long" : "file-default",
+    messageId: isLongText ? "message-long" : "message-default",
+    messageSeq: 128,
+    channelId: "octo-web",
+    channelType: 2,
+    senderUid: "alex",
+    timestamp: 1_787_155_200,
+    kind: "file",
+    text: fileName,
+    file: {
+      name: fileName,
+      size: 2_457_600,
+      extension: "md",
+    },
+  };
 }
 
-function GlobalSearchPreview({
-  keyword = "octo",
-  state = "ready",
-  filters = 0,
-  longText = false,
-}: GlobalSearchPreviewProps) {
-  const tabs = [
-    {
-      key: "contacts",
-      label: longText ? "Contacts and external members" : "联系人",
+function createDataSource(
+  state: ResultState,
+  isLongText = false
+): GlobalSearchDataSource {
+  return {
+    getSenders: () => senders,
+    getSender: (uid) =>
+      senders.find((sender) => sender.uid === uid) ?? { uid, name: uid },
+    searchSenders: async () => senders,
+    searchChannels: async () => [
+      {
+        channelId: "octo-web",
+        channelType: 2,
+        name: "OCTO Web 研发内部群",
+      },
+    ],
+    getSelfUid: () => "story-user",
+    searchMessages: async () => {
+      if (state === "loading") {
+        return new Promise(() => undefined);
+      }
+      if (state === "error") {
+        throw new Error("story search failure");
+      }
+      return {
+        items: state === "empty" ? [] : [createFileItem(isLongText)],
+        hasMore: false,
+      };
     },
-    {
-      key: "groups",
-      label: longText ? "Groups and discussion spaces" : "群组",
-    },
-    {
-      key: "messages",
-      label: longText ? "Messages in all conversations" : "聊天",
-    },
-    { key: "files", label: longText ? "Files and attachments" : "文件" },
-  ];
-  return (
-    <div style={{ height: "640px" }}>
-      <SearchWorkspace
-        search={{
-          value: keyword,
-          placeholder: longText
-            ? "Search contacts, groups, messages, or files"
-            : "搜索联系人、群组、聊天或文件",
-          onChange: () => undefined,
-        }}
-        tabs={tabs}
-        activeTab="messages"
-        onTabChange={() => undefined}
-        error={state === "error" ? "搜索失败，请稍后重试" : undefined}
-        actions={
-          <button type="button" className="wk-search-tabs__filter-trigger">
-            <Filter size={16} />
-            {filters > 0 && (
-              <span className="wk-search-tabs__filter-count">{filters}</span>
-            )}
-            筛选
-          </button>
-        }
-      >
-        <div
-          style={{
-            margin: state === "ready" ? undefined : "auto",
-            padding: "var(--wk-sp-5)",
-            color: "var(--wk-text-secondary)",
-          }}
-        >
-          {state === "loading" && "搜索中..."}
-          {state === "empty" && "没有找到相关结果"}
-          {state === "error" && "可修改关键字后重试"}
-          {state === "ready" && (
-            <>
-              <p>OCTO 研发内部群 · 39 条相关聊天记录</p>
-              <p>
-                {longText
-                  ? "A very long matching result used to verify layout behavior"
-                  : "搜索结果内容"}
-              </p>
-            </>
-          )}
-        </div>
-      </SearchWorkspace>
-    </div>
-  );
+    getFileTypeCategories: async () => [
+      { key: "document", label: "Document", exts: ["md", "pdf", "docx"] },
+    ],
+  };
 }
+
+function createViewModel(keyword: string) {
+  return () => {
+    const vm = new GlobalSearchVM();
+    vm.keyword = keyword;
+    vm.selectedTabKey = "files";
+    vm.didMount = () => undefined;
+    vm.didUnMount = () => undefined;
+    vm.requestSearch = () => undefined;
+    return vm;
+  };
+}
+
+const defaultKeyword = "octo";
+const defaultArgs = {
+  contentSearchEnabled: true,
+  createViewModel: createViewModel(defaultKeyword),
+  dataSource: createDataSource("ready"),
+  initialState: {
+    searchValue: defaultKeyword,
+  },
+  onLocateContentItem: () => undefined,
+};
 
 const meta = {
   title: "Chat/GlobalSearch",
-  component: GlobalSearchPreview,
+  component: GlobalSearch,
   parameters: { layout: "fullscreen" },
-} satisfies Meta<typeof GlobalSearchPreview>;
+  decorators: [
+    (Story) => (
+      <div
+        style={{
+          width: "min(100%, 1040px)",
+          height: "720px",
+          margin: "0 auto",
+          background: "var(--wk-bg-surface)",
+        }}
+      >
+        <Story />
+      </div>
+    ),
+  ],
+  args: defaultArgs,
+} satisfies Meta<typeof GlobalSearch>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
-export const FiltersOpen: Story = { args: { filters: 3 } };
-export const Loading: Story = { args: { state: "loading" } };
-export const Empty: Story = { args: { state: "empty", keyword: "not-found" } };
-export const Error: Story = { args: { state: "error" } };
-export const LongText: Story = { args: { longText: true } };
+
+export const FiltersOpen: Story = {
+  args: {
+    initialState: {
+      filterOpen: true,
+      filters: {
+        ...defaultGlobalSearchFilters(),
+        senderUids: ["alex"],
+        fileExts: ["md"],
+      },
+      searchValue: defaultKeyword,
+    },
+  },
+};
+
+export const Loading: Story = {
+  args: {
+    dataSource: createDataSource("loading"),
+  },
+};
+
+export const Empty: Story = {
+  args: {
+    dataSource: createDataSource("empty"),
+  },
+};
+
+export const Error: Story = {
+  args: {
+    dataSource: createDataSource("error"),
+  },
+};
+
+export const LongText: Story = {
+  args: {
+    dataSource: createDataSource("ready", true),
+    createViewModel: createViewModel(
+      "migration verification with a deliberately long search keyword"
+    ),
+    initialState: {
+      searchValue:
+        "migration verification with a deliberately long search keyword",
+    },
+  },
+};

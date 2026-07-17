@@ -1,36 +1,4 @@
 .wk-global-chat-search-layout {
-  --channel-search-surface: var(--wk-bg-surface);
-  --channel-search-elevated: var(--wk-bg-elevated);
-  --channel-search-text-primary: var(--wk-text-primary);
-  --channel-search-text-secondary: var(--wk-text-secondary);
-  --channel-search-text-tertiary: var(--wk-text-tertiary);
-  --channel-search-text-placeholder: color-mix(
-    in srgb,
-    var(--wk-text-primary) 40%,
-    transparent
-  );
-  --channel-search-border: var(--wk-border-default);
-  --channel-search-border-strong: var(--wk-border-strong);
-  --channel-search-hover: var(--wk-bg-item-hover);
-  --channel-search-field-bg: var(--wk-bg-elevated);
-  --channel-search-accent: var(--wk-text-accent);
-  --channel-search-warning: var(--wk-color-warning);
-  --channel-search-highlight: var(--wk-color-search-highlight);
-  --channel-search-shadow: var(--wk-shadow-lg),
-    0 0 0 1px var(--wk-border-subtle);
-  --channel-search-overlay: color-mix(
-    in srgb,
-    var(--wk-text-primary) 35%,
-    transparent
-  );
-  --channel-search-locate-bg: var(--wk-black-alpha-40);
-  --channel-search-locate-bg-hover: color-mix(
-    in srgb,
-    var(--wk-black-alpha-40) 75%,
-    var(--wk-text-primary)
-  );
-  --channel-search-inverse: var(--wk-neutral-0);
-
   display: grid;
   grid-template-columns: minmax(220px, 0.72fr) minmax(0, 2fr);
   height: var(--wk-global-search-content-height, min(58vh, 640px));
@@ -69,11 +37,11 @@
 .wk-global-chat-search-layout__conversation {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(var(--wk-sp-2) + var(--wk-sp-0-5));
   width: 100%;
   min-height: 44px;
   margin-bottom: 1px;
-  padding: 7px var(--wk-sp-2);
+  padding: var(--wk-sp-1-5) var(--wk-sp-2);
   border: none;
   border-radius: var(--wk-r-sm);
   background: transparent;
@@ -129,7 +97,7 @@
 }
 
 .wk-global-chat-search-layout__conversation-breadcrumb {
-  margin-bottom: 3px;
+  margin-bottom: var(--wk-sp-0-5);
   overflow: hidden;
   color: var(--wk-icon-default);
   font: 400 var(--wk-text-size-xs) / 1 var(--wk-font-sans);

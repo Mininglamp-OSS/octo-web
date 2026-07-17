@@ -98,14 +98,8 @@
 .wk-search-workspace__tabs button.is-active,
 .wk-search-workspace__tabs button.is-active:hover {
   background: var(--wk-brand-primary);
-  color: var(--wk-text-inverse);
+  color: var(--wk-text-on-brand);
   font: var(--wk-text-body-medium);
-}
-
-body[theme-mode="dark"] .wk-search-workspace__tabs button.is-active,
-body[theme-mode="dark"] .wk-search-workspace__tabs button.is-active:hover {
-  background: var(--wk-text-primary);
-  color: var(--wk-bg-surface);
 }
 
 .wk-search-workspace__error {

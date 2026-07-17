@@ -7,9 +7,7 @@ import { ChevronDown, X } from "lucide-react";
 // surfaces read the same. It intentionally reuses ChannelSearch's existing CSS
 // (`wk-channel-search-sender-*` field/dropdown + `wk-channel-search-filter-*`
 // chip/check) rather than introducing new classes or colors; those class
-// definitions ship in ChannelSearch/index.css and resolve against the
-// `--channel-search-*` -> `--wk-*` token map declared on `.wk-global-content-
-// search` (see global-content-search-panel.css).
+// definitions use the shared semantic `--wk-*` token layer.
 //
 // It is a controlled/presentational component: the panel owns the query state,
 // candidate loading (debounced dataSource.searchSenders / searchChannels), and

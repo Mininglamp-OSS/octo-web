@@ -26,7 +26,7 @@ import { t as translate } from "../../i18n";
 import SearchWorkspace from "../../ui/SearchWorkspace";
 import "./global-search-panel.css";
 
-interface GlobalSearchProps {
+export interface GlobalSearchProps {
   channel?: Channel; // 查询指定频道的聊天记录
   // item点击事件，传递item和type，type为contacts、group、message,file
   // NOTE: content-tab hits (messages / files via GlobalContentSearchPanel)
@@ -42,9 +42,14 @@ interface GlobalSearchProps {
   // modal can dismiss. Kept separate from onClick to avoid pushing a
   // camelCase item into the snake-case consumer.
   hideModal?: () => void;
+  createViewModel?: () => GlobalSearchVM;
+  dataSource?: GlobalSearchDataSource;
+  contentSearchEnabled?: boolean;
+  onLocateContentItem?: (item: ChannelSearchItem) => void;
+  initialState?: Partial<GlobalSearchState>;
 }
 
-interface GlobalSearchState {
+export interface GlobalSearchState {
   filterOpen: boolean;
   filters: GlobalSearchFilters;
   searchValue: string;
@@ -56,16 +61,24 @@ export default class GlobalSearch extends Component<
 > {
   vm!: GlobalSearchVM;
 
-  state: GlobalSearchState = {
-    filterOpen: false,
-    filters: defaultGlobalSearchFilters(),
-    searchValue: "",
-  };
+  state: GlobalSearchState;
 
   // Shared factory across both content-tab panels so sender/channel caches
   // stay warm across tab switches and the `_search_file_types` fetch is
   // performed at most once per open.
-  globalDataSource: GlobalSearchDataSource = createGlobalSearchApiDataSource();
+  globalDataSource: GlobalSearchDataSource;
+
+  constructor(props: GlobalSearchProps) {
+    super(props);
+    this.state = {
+      filterOpen: false,
+      filters: defaultGlobalSearchFilters(),
+      searchValue: "",
+      ...props.initialState,
+    };
+    this.globalDataSource =
+      props.dataSource ?? createGlobalSearchApiDataSource();
+  }
 
   // RC #554 minor (Jerry-Xin @ 2026-07-09): read the feature flag on every
   // render instead of capturing it once as a class field — remote-config
@@ -76,12 +89,16 @@ export default class GlobalSearch extends Component<
   // triggers an immediate re-render (the parent MobX vm may not re-render
   // on remote-config alone).
   get contentSearchEnabled(): boolean {
+    if (this.props.contentSearchEnabled !== undefined) {
+      return this.props.contentSearchEnabled;
+    }
     return isGlobalContentSearchEnabled();
   }
 
   private _removeConfigListener?: () => void;
 
   componentDidMount() {
+    if (this.props.contentSearchEnabled !== undefined) return;
     this._removeConfigListener = WKApp.remoteConfig.addConfigChangeListener(
       () => {
         this.forceUpdate();
@@ -100,6 +117,11 @@ export default class GlobalSearch extends Component<
     // than sending the user to a bogus conversation.
     if (!canLocateChannelSearchItem(item)) return;
     if (!item.channelId || typeof item.channelType !== "number") return;
+    if (this.props.onLocateContentItem) {
+      this.props.onLocateContentItem(item);
+      this.props.hideModal?.();
+      return;
+    }
     // Do NOT forward `item` to `props.onClick` — content-tab items are
     // camelCase ChannelSearchItems and the legacy consumer expects
     // snake-case shapes (`item.channel.channel_id`, `item.payload.url`).
@@ -241,8 +263,11 @@ export default class GlobalSearch extends Component<
     return (
       <Provider
         create={() => {
-          this.vm = new GlobalSearchVM();
+          this.vm = this.props.createViewModel?.() ?? new GlobalSearchVM();
           this.vm.channel = channel;
+          if (this.props.initialState?.searchValue !== undefined) {
+            this.vm.keyword = this.props.initialState.searchValue;
+          }
           return this.vm;
         }}
         render={(vm: GlobalSearchVM) => {

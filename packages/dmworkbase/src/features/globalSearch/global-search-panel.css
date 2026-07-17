@@ -1,6 +1,6 @@
 /* GlobalSearch feature surface; shared search chrome lives under ui/. */
 .wk-global-search-disabled-copy {
-  padding: 24px 16px;
+  padding: var(--wk-sp-6) var(--wk-sp-4);
   text-align: center;
   color: var(--wk-text-tertiary);
   font-size: 13px;
@@ -43,35 +43,7 @@
   position: relative;
 }
 
-.wk-search-tabs > .semi-tabs > .semi-tabs-bar {
-  padding-right: calc(var(--wk-sp-12) * 3);
-}
-
-/* Semi adds 5px vertical padding around every tab pane. For chat search that
-   produces a visible blank strip between the tab divider and the three-column
-   workspace. The workspace is the pane surface itself, so it should attach
-   directly to the divider. */
-.wk-search-tabs > .semi-tabs > .semi-tabs-content {
-  padding-block: 0;
-}
-
 .wk-search-tabs__content-shell {
-  --channel-search-surface: var(--wk-bg-surface);
-  --channel-search-elevated: var(--wk-bg-elevated);
-  --channel-search-text-primary: var(--wk-text-primary);
-  --channel-search-text-secondary: var(--wk-text-secondary);
-  --channel-search-text-tertiary: var(--wk-text-tertiary);
-  --channel-search-text-placeholder: color-mix(
-    in srgb,
-    var(--wk-text-primary) 40%,
-    transparent
-  );
-  --channel-search-border: var(--wk-border-default);
-  --channel-search-border-strong: var(--wk-border-strong);
-  --channel-search-hover: var(--wk-bg-item-hover);
-  --channel-search-field-bg: var(--wk-bg-elevated);
-  --channel-search-accent: var(--wk-text-accent);
-
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
@@ -154,7 +126,7 @@
   padding: 0 var(--wk-sp-1);
   border-radius: var(--wk-r-circle);
   background: var(--wk-text-accent);
-  color: var(--wk-neutral-0);
+  color: var(--wk-text-on-brand);
   font: var(--wk-text-caption);
 }
 

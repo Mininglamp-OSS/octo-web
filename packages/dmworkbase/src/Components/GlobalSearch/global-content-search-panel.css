@@ -1,37 +1,4 @@
-/*
-  The content-tab panel reuses ChannelSearch markup (`wk-channel-search-*`)
-  but renders under its own `.wk-global-content-search` root, outside
-  `.wk-channel-search-panel`. Mirror the same `--channel-search-*` -> `--wk-*`
-  token mapping here so every reused ChannelSearch class (content list, filter
-  trigger, and the filter popover below) resolves to the shared design tokens
-  instead of falling back to `inherit`/undefined. No hard-coded colors — all
-  values come from the `--wk-*` semantic layer (DEVELOPMENT.md §2/§13).
-*/
 .wk-global-content-search {
-  --channel-search-surface: var(--wk-bg-surface);
-  --channel-search-text-primary: var(--wk-text-primary);
-  --channel-search-text-secondary: var(--wk-text-secondary);
-  --channel-search-text-tertiary: var(--wk-text-tertiary);
-  --channel-search-text-placeholder: color-mix(
-    in srgb,
-    var(--wk-text-primary) 40%,
-    transparent
-  );
-  --channel-search-border: var(--wk-border-default);
-  --channel-search-hover: color-mix(
-    in srgb,
-    var(--wk-text-primary) 4%,
-    transparent
-  );
-  --channel-search-field-bg: color-mix(
-    in srgb,
-    var(--wk-text-primary) 4%,
-    transparent
-  );
-  --channel-search-accent: var(--wk-text-accent);
-  --channel-search-shadow: var(--wk-shadow-lg),
-    0 0 0 1px var(--wk-border-subtle);
-
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -131,13 +98,13 @@
      the actions row visually attached to the popover edge instead of
      inheriting the section-list padding rhythm now that it lives outside
      the scrollable body. */
-  margin-top: 12px;
+  margin-top: var(--wk-sp-3);
 }
 
 .wk-global-search-filter-panel .wk-global-search-filter-chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--wk-sp-1-5);
 }
 
 .wk-global-search-filter-panel .wk-global-search-filter-check-list {
@@ -169,7 +136,7 @@
   border: 1px solid var(--wk-border-strong);
   border-radius: var(--wk-r-xs);
   background: var(--wk-bg-surface);
-  color: var(--wk-neutral-0);
+  color: var(--wk-text-on-brand);
 }
 
 .wk-global-search-filter-panel
@@ -195,19 +162,19 @@
   8px gap here so the two filter surfaces share one vertical rhythm.
 */
 .wk-global-search-filter-panel .wk-channel-search-filter-title {
-  margin-bottom: 8px;
+  margin-bottom: var(--wk-sp-2);
 }
 
 /* Toggle-chip active / disabled states. ChannelSearch's chip is a removable
    tag with no selected state, so these modifiers live here (global-only). */
 .wk-global-search-filter-panel .wk-channel-search-filter-chip.is-active {
-  border-color: var(--channel-search-accent);
-  color: var(--channel-search-accent);
+  border-color: var(--wk-text-accent);
+  color: var(--wk-text-accent);
   background: color-mix(in srgb, var(--wk-text-accent) 8%, transparent);
 }
 
 .wk-global-search-filter-panel .wk-channel-search-filter-chip.is-active svg {
-  color: var(--channel-search-accent);
+  color: var(--wk-text-accent);
 }
 
 .wk-global-search-filter-panel .wk-channel-search-filter-chip.is-disabled {
@@ -218,27 +185,27 @@
 .wk-global-search-filter-panel .wk-global-search-filter-search {
   width: 100%;
   height: 32px;
-  padding: 0 8px;
+  padding: 0 var(--wk-sp-2);
   border: none;
-  border-radius: 6px;
-  background: var(--channel-search-field-bg);
-  color: var(--channel-search-text-primary);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
   font: 400 14px/20px var(--wk-font-sans);
   outline: none;
 }
 
 .wk-global-search-filter-panel .wk-global-search-filter-search::placeholder {
-  color: var(--channel-search-text-placeholder);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-global-search-filter-panel .wk-global-search-filter-help {
   font: 400 12px/20px var(--wk-font-sans);
-  color: var(--channel-search-text-placeholder);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-global-search-filter-panel .wk-global-search-filter-size-row {
   display: flex;
-  gap: 6px;
+  gap: var(--wk-sp-1-5);
   align-items: center;
 }
 
@@ -246,15 +213,15 @@
   flex: 1 1 auto;
   min-width: 0;
   height: 32px;
-  padding: 0 8px;
+  padding: 0 var(--wk-sp-2);
   border: none;
-  border-radius: 6px;
-  background: var(--channel-search-field-bg);
-  color: var(--channel-search-text-primary);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
   font: 400 14px/20px var(--wk-font-sans);
   outline: none;
 }
 
 .wk-global-search-filter-panel .wk-global-search-filter-size-row span {
-  color: var(--channel-search-text-tertiary);
+  color: var(--wk-text-tertiary);
 }
