@@ -19,10 +19,11 @@ export const DOCS_DENY_REASON_INPUT_ID = "deny_reason";
 
 const MAX_REASON = 200;
 
-/** 判断一个 Action.Submit 的 data 是否为文档访问申请的「拒绝」动作。 */
+/** 判断一个 Action.Submit 的 data 是否为文档访问申请的「拒绝」动作（类型守卫：命中后
+ * data 收窄为非空，调用方无需再 `?.`）。 */
 export function isDocsDenyAction(
   data: Record<string, unknown> | undefined
-): boolean {
+): data is Record<string, unknown> {
   return (
     !!data &&
     data.owner === DOCS_APPROVAL_OWNER &&
@@ -45,8 +46,7 @@ function DenyReasonBody(props: {
   const desc =
     props.ctx.actorName && props.ctx.docTitle
       ? t("base.message.interactiveCard.denyDialog.descWithContext", {
-          actor: props.ctx.actorName,
-          title: props.ctx.docTitle,
+          values: { actor: props.ctx.actorName, title: props.ctx.docTitle },
         })
       : t("base.message.interactiveCard.denyDialog.desc");
   return (
@@ -54,7 +54,7 @@ function DenyReasonBody(props: {
       {props.ctx.requestNo ? (
         <div className="wk-docs-deny-dialog-no">
           {t("base.message.interactiveCard.denyDialog.requestNo", {
-            no: props.ctx.requestNo,
+            values: { no: props.ctx.requestNo },
           })}
         </div>
       ) : null}
@@ -76,7 +76,9 @@ function DenyReasonBody(props: {
         }}
       />
       <div className="wk-docs-deny-dialog-counter">
-        {t("base.message.interactiveCard.denyDialog.counter", { max: MAX_REASON })}
+        {t("base.message.interactiveCard.denyDialog.counter", {
+          values: { max: MAX_REASON },
+        })}
       </div>
     </div>
   );
@@ -103,7 +105,6 @@ export function openDocsDenyReasonDialog(
       cancelText: t("base.message.interactiveCard.denyDialog.cancel"),
       okType: "danger",
       maskClosable: false,
-      className: "wk-docs-deny-modal",
       content: <DenyReasonBody ctx={ctx} onChange={(value) => (box.reason = value)} />,
       onOk: () => {
         const reason = box.reason.trim();

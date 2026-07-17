@@ -292,11 +292,12 @@ export class InteractiveCardCell extends MessageCell {
       isDocsDenyAction(data) &&
       card.getAllInputs().some((input) => input.id === DOCS_DENY_REASON_INPUT_ID)
     ) {
+      // isDocsDenyAction is a type guard → data is narrowed to non-null here.
       const asString = (v: unknown) => (typeof v === "string" ? v : undefined);
       void openDocsDenyReasonDialog({
-        docTitle: asString(data?.doc_title),
-        actorName: asString(data?.actor),
-        requestNo: asString(data?.request_id),
+        docTitle: asString(data.doc_title),
+        actorName: asString(data.actor),
+        requestNo: asString(data.request_id),
       }).then((reason) => {
         if (reason == null) return; // 取消 → 不提交。
         // 弹窗期间可能已卸载 / 被新帧取代 / 已在提交——重新确认可提交再走。
