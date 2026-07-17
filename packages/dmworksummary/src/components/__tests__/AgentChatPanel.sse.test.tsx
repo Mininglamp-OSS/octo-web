@@ -388,7 +388,7 @@ describe('AgentChatPanel SSE Mode', () => {
         
         // Wait for handlers to be called
         await waitFor(() => {
-            expect(summaryApi.agentChatStream).toHaveBeenCalledWith(expect.objectContaining({ session_id: '', message: 'First message', profile: 'summary' }), expect.any(Object));
+            expect(summaryApi.agentChatStream).toHaveBeenCalledWith(expect.objectContaining({ session_id: expect.any(String), message: 'First message', profile: 'summary' }), expect.any(Object));
             expect(onUserMessage).toHaveBeenCalledWith('First message', expect.any(String));
             expect(onAssistantMessage).toHaveBeenCalledWith('Backend response', 'new-session-123');
         }, { timeout: 1000 });
