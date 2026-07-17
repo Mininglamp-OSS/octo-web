@@ -37,6 +37,12 @@ vi.mock('@douyinfe/semi-ui', () => ({
             ),
         },
     ),
+    Empty: ({ description }: any) => <div data-testid="empty">{description}</div>,
+    List: Object.assign(
+        ({ children, dataSource, renderItem }: any) => <div data-testid="list">{dataSource?.map(renderItem)}</div>,
+        { Item: ({ children, onClick }: any) => <div data-testid="list-item" onClick={onClick}>{children}</div> }
+    ),
+    Spin: ({ children, spinning }: any) => spinning ? <div data-testid="spin">Loading...</div> : children,
 }));
 
 vi.mock('@douyinfe/semi-icons', () => ({
