@@ -2060,11 +2060,22 @@ body.octo-row-resizing {
    that top margin becomes real space and the first line ends up sliced mid-glyph ("露半截") instead of
    starting at the top. Zeroing the leading/trailing margins (not the inter-block gaps) lands the first
    line on the cell top in all three states (editor, read-only preview, version diff — all share this
-   NodeView wrapper) while preserving spacing between stacked paragraphs. */
-.octo-cell-clip > :first-child {
+   NodeView wrapper) while preserving spacing between stacked paragraphs.
+
+   XIN-1322: match the first/last real CONTENT block, not the first/last DOM child. Hovering a column's
+   right border arms prosemirror-tables' columnResizing, which appends a `.column-resize-handle` widget
+   (a DIV, also classed `.ProseMirror-widget` by prosemirror-view) at the end of the cell's content hole
+   — i.e. as the last child of this wrapper. With a bare `:last-child` that widget STEALS the margin-zero
+   identity from the trailing <p>, which then springs its `margin-bottom` (1em ≈ 15px) back and pushes the
+   row ~15px taller for as long as the pointer hovers the border (pure render transient; the model height
+   never changes). Selecting `1 of :not(.ProseMirror-widget)` skips the widget so the real trailing/leading
+   block keeps its zeroed margin whether or not a widget is mounted. `:nth-child(of S)` is Baseline-supported
+   in the Chromium/evergreen targets and, unlike `:last-of-type`, never over-matches a mixed-type cell
+   (e.g. a trailing <p> before a <ul> would each be a last-of-type and both get zeroed). */
+.octo-cell-clip > :nth-child(1 of :not(.ProseMirror-widget)) {
   margin-top: 0;
 }
-.octo-cell-clip > :last-child {
+.octo-cell-clip > :nth-last-child(1 of :not(.ProseMirror-widget)) {
   margin-bottom: 0;
 }
 .octo-prose table tr.octo-row-fixed .octo-cell-clip {

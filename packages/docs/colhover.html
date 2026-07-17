@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Column-hover row-jump repro (XIN-1322)</title>
+    <style>
+      html, body, #root { height: 100%; margin: 0; }
+      /* Make the column-resize handle visible (production accent is a faint hover gradient). */
+      .column-resize-handle { background: rgba(66, 99, 235, 0.6) !important; z-index: 20; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/dev/colhover.harness.tsx"></script>
+  </body>
+</html>
