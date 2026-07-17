@@ -87,6 +87,7 @@ describe('AgentChatPanel SSE Mode', () => {
         expect(onAssistantMessage).not.toHaveBeenCalled();
     });
 
+    it('should handle successful SSE stream completion', async () => {
         let savedHandlers: any = null;
         const onUserMessage = vi.fn();
         const onAssistantMessage = vi.fn();

@@ -117,7 +117,7 @@ describe('summaryApi integration (MSW)', () => {
 
     it('should handle agent summary creation', async () => {
         const result = await summaryApi.createAgentSummary({
-            requirement: '帮我总结一下昨天的技术讨论',
+            session_id: 'test-session-123',
             origin_channel_id: 'group-123',
             origin_channel_type: 1,
             sources: [],

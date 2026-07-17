@@ -202,9 +202,12 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 onError: (evt: AgentErrorEvent) => {
                     const { t } = this.context;
                     Toast.error(`${t('summary.common.agentChat.error')}: ${evt.message}`);
-                    // 后端 error 事件说明 agent turn 已执行,不应重试(否则双写历史)
                     this.setState({ isStreaming: false });
                     this.streamCloseHandle = null;
+                    // 仅传输层失败(transient: true)才重试,后端真实 error 不重试
+                    if (evt.transient) {
+                        this.fallbackToNormalChat(text, sessionId, profile);
+                    }
                 },
             });
 

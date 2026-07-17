@@ -356,6 +356,7 @@ export interface AgentDoneEvent {
 export interface AgentErrorEvent {
     code: number;
     message: string;
+    transient?: boolean;  // true = 传输层失败可重试, false/undefined = 后端 error 不重试
 }
 
 /**

@@ -399,6 +399,7 @@ export function agentChatStream(
 
             if (resp.status === 401) {
                 WKApp.shared.logout();
+                handlers.onError?.({ code: 401, message: 'Unauthorized', transient: true });
                 return;
             }
             if (!resp.ok) {
@@ -453,12 +454,12 @@ export function agentChatStream(
             }
             // 流已关闭,但如果没收到 done 事件,触发错误让 UI 解锁
             if (!aborted && !receivedDone) {
-                handlers.onError?.({ code: 50000, message: 'stream closed without done' });
+                handlers.onError?.({ code: 50000, message: 'stream closed without done', transient: true });
             }
         } catch (err: unknown) {
             if (aborted) return; // 用户手动关闭,不回调 error
             const msg = err instanceof Error ? err.message : String(err);
-            handlers.onError?.({ code: 50000, message: msg });
+            handlers.onError?.({ code: 50000, message: msg, transient: true });
         } finally {
             reader?.releaseLock();
         }
