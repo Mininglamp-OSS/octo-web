@@ -7,6 +7,7 @@ import {
     IncomingWebhookCreateResp,
 } from "../../Service/IncomingWebhook";
 import ChannelWebhookPanel from "./index";
+import ChannelWebhookCard from "./ChannelWebhookCard";
 import WebhookEditModal from "./WebhookEditModal";
 import WebhookUrlModal from "./WebhookUrlModal";
 import MessageRow from "../../ui/message/MessageRow";
@@ -151,6 +152,39 @@ export const EmptyState: Story = {
             </div>
         );
     },
+};
+
+/** 纯 UI 卡片：不依赖 WKApp、SDK 或接口，可独立检查截图中的列表状态。 */
+export const CardUi: Story = {
+    name: "Webhook 卡片（纯 UI）",
+    render: () => (
+        <div style={{ width: 360, padding: 16 }}>
+            <ul className="wk-webhook__list">
+                <ChannelWebhookCard
+                    item={mockList[0]}
+                    manageable
+                    meta={<div className="wk-webhook-card__meta">魏娇莹 创建于 2026/7/17 16:13:53</div>}
+                    toggling={false}
+                    testingBlocked={false}
+                    cooling={false}
+                    labels={{
+                        disabled: "已禁用",
+                        toggle: "启用 / 禁用",
+                        edit: "编辑",
+                        regenerate: "重置推送地址",
+                        test: "发送测试消息",
+                        testDisabledHint: "启用后可测试",
+                        delete: "删除",
+                    }}
+                    onToggle={() => undefined}
+                    onEdit={() => undefined}
+                    onRegenerate={() => undefined}
+                    onTest={() => undefined}
+                    onDelete={() => undefined}
+                />
+            </ul>
+        </div>
+    ),
 };
 
 export const CreateModalAdmin: Story = {

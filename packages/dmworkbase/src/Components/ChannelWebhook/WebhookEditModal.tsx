@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
-import { Select, Switch, Toast } from "@douyinfe/semi-ui";
+import { Switch, Toast } from "@douyinfe/semi-ui";
 import { IconAlertTriangle } from "@douyinfe/semi-icons";
 import WKModal from "../WKModal";
 import WKButton from "../WKButton";
@@ -13,6 +13,7 @@ import {
     buildWebhookUpsertReq,
     IncomingWebhook,
     IncomingWebhookCreateResp,
+    IncomingWebhookService,
     isFlagOn,
     MENTION_UID_MAX_LENGTH,
     MENTION_UIDS_MAX,
@@ -145,6 +146,7 @@ export default function WebhookEditModal({
         () => readGroupMemberOptions(channel)
     );
     const [saving, setSaving] = useState(false);
+    const [memberSearch, setMemberSearch] = useState("");
     // 本组件由父级条件挂载（{editTarget && <WebhookEditModal/>}），且处于
     // WKViewQueue 路由栈的滑入动画里。若一挂载就 visible=true，Semi Modal 的
     // 首次显示会与路由动画/portal 时序竞争，表现为「要点两次才弹出」。
@@ -208,6 +210,21 @@ export default function WebhookEditModal({
         () => new Map(memberOptionsForSelect.map((m) => [m.uid, m])),
         [memberOptionsForSelect]
     );
+    const visibleMemberOptions = useMemo(() => {
+        const keyword = memberSearch.trim().toLocaleLowerCase();
+        if (!keyword) return memberOptionsForSelect;
+        return memberOptionsForSelect.filter((member) =>
+            member.name.toLocaleLowerCase().includes(keyword)
+        );
+    }, [memberOptionsForSelect, memberSearch]);
+
+    const toggleMentionUid = (uid: string) => {
+        setMentionUids((current) =>
+            current.includes(uid)
+                ? current.filter((item) => item !== uid)
+                : [...current, uid]
+        );
+    };
 
     const handleSubmit = useCallback(async () => {
         if (saving) return;
@@ -252,8 +269,8 @@ export default function WebhookEditModal({
         setSaving(true);
         try {
             if (isEdit && webhook) {
-                await WKApp.dataSource.channelDataSource.updateIncomingWebhook(
-                    channel,
+                await IncomingWebhookService.update(
+                    channel.channelID,
                     webhook.webhook_id,
                     req,
                     threadShortId
@@ -261,8 +278,8 @@ export default function WebhookEditModal({
                 Toast.success(t("base.channelWebhook.toast.updated"));
                 onSaved();
             } else {
-                const resp = await WKApp.dataSource.channelDataSource.createIncomingWebhook(
-                    channel,
+                const resp = await IncomingWebhookService.create(
+                    channel.channelID,
                     req,
                     threadShortId
                 );
@@ -288,7 +305,7 @@ export default function WebhookEditModal({
     return (
         <WKModal
             visible={visible}
-            width={480}
+            width={448}
             title={
                 isEdit
                     ? t("base.channelWebhook.form.editTitle")
@@ -354,93 +371,52 @@ export default function WebhookEditModal({
                 {/* 1️⃣ 自动 @ 成员（定向、噪声小）：#465 每次推送自动 @ 的成员/bot。
                     候选限本群当前成员；回显 mention_uids，提交前做数量上限校验，服务端 400 兜底。 */}
                 <div className="wk-webhook-form__field">
-                    <label className="wk-webhook-form__label">
-                        {t("base.channelWebhook.form.mentionUids")}
-                        <span className="wk-webhook-form__optional">
-                            {t("base.channelWebhook.form.optional")}
+                    <div className="wk-webhook-form__label-row">
+                        <label className="wk-webhook-form__label">
+                            {t("base.channelWebhook.form.mentionUids")}
+                            <span className="wk-webhook-form__optional">
+                                {t("base.channelWebhook.form.optional")}
+                            </span>
+                        </label>
+                        <span className="wk-webhook-form__member-count">
+                            {t("base.channelWebhook.form.mentionUidsCount", {
+                                values: { total: memberOptionsForSelect.length, ai: aiOptionCount },
+                            })}
                         </span>
-                    </label>
-                    <Select
-                        multiple
-                        filter
-                        showClear
-                        className="wk-webhook-form__select"
-                        value={mentionUids}
-                        onChange={(v) =>
-                            setMentionUids(Array.isArray(v) ? (v as string[]) : [])
-                        }
-                        placeholder={t("base.channelWebhook.form.mentionUidsPlaceholder")}
-                        aria-label={t("base.channelWebhook.form.mentionUids")}
-                        outerTopSlot={
-                            <div className="wk-webhook-form__select-head">
-                                {t("base.channelWebhook.form.mentionUidsCount", {
-                                    values: {
-                                        total: memberOptionsForSelect.length,
-                                        ai: aiOptionCount,
-                                    },
+                    </div>
+                    <div className="wk-webhook-form__member-picker" data-testid="select">
+                        <input
+                            className="wk-webhook-form__member-search"
+                            value={memberSearch}
+                            onChange={(event) => setMemberSearch(event.target.value)}
+                            placeholder={t("base.channelWebhook.form.mentionUidsPlaceholder")}
+                            aria-label={t("base.channelWebhook.form.mentionUidsPlaceholder")}
+                        />
+                        {mentionUids.length > 0 && (
+                            <div className="wk-webhook-form__selected-members">
+                                {mentionUids.map((uid) => {
+                                    const member = optionByUid.get(uid);
+                                    return (
+                                        <button key={uid} type="button" className="wk-webhook-form__selected-member" onClick={() => toggleMentionUid(uid)}>
+                                            {member?.name || uid}{member?.isBot && <AiBadge size="small" />}<span aria-hidden="true">×</span>
+                                        </button>
+                                    );
                                 })}
                             </div>
-                        }
-                        renderSelectedItem={(optionNode: {
-                            value?: string;
-                            label?: React.ReactNode;
-                        }) => ({
-                            isRenderInTag: true,
-                            content: (
-                                <span className="wk-webhook-form__member-tag">
-                                    <span className="wk-webhook-form__member-name">
-                                        {optionNode.label}
-                                    </span>
-                                    {optionByUid.get(optionNode.value ?? "")?.isBot && (
-                                        <AiBadge size="small" />
-                                    )}
-                                </span>
-                            ),
-                        })}
-                        renderOptionItem={(rp: {
-                            value?: string;
-                            label?: React.ReactNode;
-                            selected?: boolean;
-                            focused?: boolean;
-                            style?: React.CSSProperties;
-                            onClick?: (e: React.MouseEvent) => void;
-                            onMouseEnter?: (e: React.MouseEvent) => void;
-                        }) => {
-                            // Semi 下拉项渲染：Option 同时传 label(字符串) 时下拉默认只渲染
-                            // label、吞掉 children 里的徽章，故改用 renderOptionItem 完全
-                            // 接管（名字 + AI 徽章 + 选中态），自行接回点击/悬停/选中样式。
-                            const isBot = optionByUid.get(String(rp.value ?? ""))?.isBot;
-                            const cls = [
-                                "wk-webhook-form__option",
-                                rp.selected ? "wk-webhook-form__option--selected" : "",
-                                rp.focused ? "wk-webhook-form__option--focused" : "",
-                            ]
-                                .filter(Boolean)
-                                .join(" ");
-                            return (
-                                <div
-                                    className={cls}
-                                    style={rp.style}
-                                    onClick={rp.onClick}
-                                    onMouseEnter={rp.onMouseEnter}
-                                >
-                                    <span className="wk-webhook-form__member-name">
-                                        {rp.label}
-                                    </span>
-                                    {isBot && <AiBadge size="small" />}
-                                    {rp.selected && (
-                                        <span className="wk-webhook-form__option-tick">✓</span>
-                                    )}
-                                </div>
-                            );
-                        }}
-                    >
-                        {memberOptionsForSelect.map((m) => (
-                            <Select.Option key={m.uid} value={m.uid} label={m.name}>
-                                {m.name}
-                            </Select.Option>
-                        ))}
-                    </Select>
+                        )}
+                        <div className="wk-webhook-form__member-list">
+                            {visibleMemberOptions.map((member) => {
+                                const selected = mentionUids.includes(member.uid);
+                                return (
+                                    <button key={member.uid} type="button" data-testid={`opt-${member.uid}`} className="wk-webhook-form__member-option" onClick={() => toggleMentionUid(member.uid)}>
+                                        <span className={`wk-webhook-form__member-check${selected ? " wk-webhook-form__member-check--selected" : ""}`}>{selected ? "✓" : ""}</span>
+                                        <span className="wk-webhook-form__member-name">{member.name}</span>
+                                        {member.isBot && <AiBadge size="small" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
                     <div className="wk-webhook-form__hint">
                         {t("base.channelWebhook.form.mentionUidsHint", {
                             values: { max: MENTION_UIDS_MAX },

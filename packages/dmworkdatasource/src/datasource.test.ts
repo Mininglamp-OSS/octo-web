@@ -60,6 +60,32 @@ vi.mock("@octo/base", () => ({
     GroupRole: {},
     RequestConfig: class {},
     WKApp: hoisted.mockWKApp,
+    IncomingWebhookService: {
+        list: (groupNo: string, threadShortId?: string) =>
+            hoisted.apiGet(threadShortId
+                ? `groups/${groupNo}/threads/${threadShortId}/incoming-webhooks`
+                : `groups/${groupNo}/incoming-webhooks`).then((resp: { list?: unknown[] }) => resp?.list || []),
+        create: (groupNo: string, req: unknown, threadShortId?: string) =>
+            hoisted.apiPost(threadShortId
+                ? `groups/${groupNo}/threads/${threadShortId}/incoming-webhooks`
+                : `groups/${groupNo}/incoming-webhooks`, req),
+        update: (groupNo: string, webhookId: string, req: unknown, threadShortId?: string) =>
+            hoisted.apiPut(`${threadShortId
+                ? `groups/${groupNo}/threads/${threadShortId}/incoming-webhooks`
+                : `groups/${groupNo}/incoming-webhooks`}/${webhookId}`, req),
+        delete: (groupNo: string, webhookId: string, threadShortId?: string) =>
+            hoisted.apiDelete(`${threadShortId
+                ? `groups/${groupNo}/threads/${threadShortId}/incoming-webhooks`
+                : `groups/${groupNo}/incoming-webhooks`}/${webhookId}`),
+        regenerate: (groupNo: string, webhookId: string, threadShortId?: string) =>
+            hoisted.apiPost(`${threadShortId
+                ? `groups/${groupNo}/threads/${threadShortId}/incoming-webhooks`
+                : `groups/${groupNo}/incoming-webhooks`}/${webhookId}/regenerate`),
+        test: (groupNo: string, webhookId: string, threadShortId?: string) =>
+            hoisted.apiPost(`${threadShortId
+                ? `groups/${groupNo}/threads/${threadShortId}/incoming-webhooks`
+                : `groups/${groupNo}/incoming-webhooks`}/${webhookId}/test`),
+    },
     buildThreadChannelId: (groupNo: string, shortId: string) => `${groupNo}____${shortId}`,
     hasSpacePrefix: vi.fn(() => false),
     parseThreadChannelId: vi.fn(() => null),

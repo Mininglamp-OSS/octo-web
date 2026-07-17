@@ -1,31 +1,23 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Channel, WKSDK } from "wukongimjssdk";
-import { Spin, Switch, Toast } from "@douyinfe/semi-ui";
-import {
-    IconPlus,
-    IconLink,
-    IconEdit,
-    IconRefresh,
-    IconDelete,
-    IconSend,
-} from "@douyinfe/semi-icons";
-import WKApp from "../../App";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Channel } from "wukongimjssdk";
+import { Spin, Toast } from "@douyinfe/semi-ui";
+import { IconPlus, IconLink } from "@douyinfe/semi-icons";
 import WKButton from "../WKButton";
-import WKAvatar from "../WKAvatar";
 import { wkConfirm } from "../WKModal";
 import { useI18n } from "../../i18n";
 import { extractErrorMsg } from "../../Service/APIClient";
-import { subscriberDisplayName, SubscriberLike } from "../../Utils/displayName";
 import {
     IncomingWebhook,
     IncomingWebhookCreateResp,
     IncomingWebhookStatus,
-    INCOMING_WEBHOOK_DEFAULT_AVATAR,
+    IncomingWebhookService,
     canManageIncomingWebhook,
     canTestWebhook,
 } from "../../Service/IncomingWebhook";
 import WebhookEditModal from "./WebhookEditModal";
 import WebhookUrlModal from "./WebhookUrlModal";
+import ChannelWebhookCard from "./ChannelWebhookCard";
+import { useChannelWebhookList } from "../../bridge/channelWebhook/useChannelWebhookList";
 import "./index.css";
 
 export interface ChannelWebhookPanelProps {
@@ -61,9 +53,16 @@ export default function ChannelWebhookPanel({
     threadShortId,
 }: ChannelWebhookPanelProps) {
     const { t, format } = useI18n();
-    const [items, setItems] = useState<IncomingWebhook[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(false);
+    const handleLoadError = useCallback((loadError: unknown) => {
+        Toast.error(extractErrorMsg(loadError) || t("base.channelWebhook.error.loadFailed"));
+    }, [t]);
+    const { items, loading, error, myUid, creatorNames, reload: load } =
+        useChannelWebhookList({
+            channel,
+            threadShortId,
+            selfFallback: t("base.channelWebhook.meta.me"),
+            onLoadError: handleLoadError,
+        });
     const [editTarget, setEditTarget] = useState<EditTarget>(null);
     // 创建 / 重置 token 后的一次性 URL 展示（token 仅此一次返回）
     const [urlResult, setUrlResult] = useState<IncomingWebhookCreateResp | null>(null);
@@ -73,59 +72,21 @@ export default function ChannelWebhookPanel({
     // 冷却期间按钮置灰、忽略再次点击。
     const [coolingTestId, setCoolingTestId] = useState<string | null>(null);
     const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const scopeKey = `${channel.channelID}:${threadShortId || "group"}`;
 
     useEffect(() => () => {
         if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
     }, []);
 
-    const myUid = WKApp.loginInfo.uid || "";
-
-    const load = useCallback(async () => {
-        setError(false);
-        try {
-            const list = await WKApp.dataSource.channelDataSource.incomingWebhooks(channel, threadShortId);
-            setItems(list);
-        } catch (e) {
-            setError(true);
-            Toast.error(extractErrorMsg(e) || t("base.channelWebhook.error.loadFailed"));
-        } finally {
-            setLoading(false);
-        }
-    }, [channel, threadShortId, t]);
-
+    // 群/子区切换时立即清掉旧对象的 UI 状态，避免旧列表、弹窗或 pending 状态串台。
     useEffect(() => {
-        void load();
-    }, [load]);
-
-    // 创建者展示名映射：单次遍历群成员列表（O(成员数+条目数)），避免每个
-    // 卡片每次渲染都对大群成员做全量 .find() 扫描。群成员命中用群内展示名；
-    // 自己兜底 loginInfo（订阅列表通常不含 self）；都拿不到（创建者已退群 /
-    // 成员列表未同步）则缺省为空串，渲染时降级为只显示创建时间。
-    const creatorNames = useMemo(() => {
-        const wanted = new Set(items.map((item) => item.creator_uid));
-        const map = new Map<string, string>();
-        try {
-            const subs = WKSDK.shared().channelManager.getSubscribes(channel) as
-                | Array<({ uid?: string } & SubscriberLike)>
-                | null
-                | undefined;
-            for (const sub of subs || []) {
-                if (sub?.uid && wanted.has(sub.uid) && !map.has(sub.uid)) {
-                    const name = subscriberDisplayName(sub);
-                    if (name) map.set(sub.uid, name);
-                }
-            }
-        } catch {
-            // channelManager 缓存未加载：静默降级
-        }
-        if (wanted.has(myUid) && !map.has(myUid)) {
-            map.set(
-                myUid,
-                WKApp.loginInfo.selfDisplayName?.() || t("base.channelWebhook.meta.me")
-            );
-        }
-        return map;
-    }, [items, channel, myUid, t]);
+        setEditTarget(null);
+        setUrlResult(null);
+        setTestingId(null);
+        setTogglingId(null);
+        setCoolingTestId(null);
+        if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+    }, [scopeKey]);
 
     const handleToggle = async (item: IncomingWebhook, next: boolean) => {
         // in-flight 守卫：Semi 的 Switch loading 不保证拦截 onChange，
@@ -133,8 +94,8 @@ export default function ChannelWebhookPanel({
         if (togglingId) return;
         setTogglingId(item.webhook_id);
         try {
-            await WKApp.dataSource.channelDataSource.updateIncomingWebhook(
-                channel,
+            await IncomingWebhookService.update(
+                channel.channelID,
                 item.webhook_id,
                 { status: next ? IncomingWebhookStatus.enabled : IncomingWebhookStatus.disabled },
                 threadShortId
@@ -160,7 +121,7 @@ export default function ChannelWebhookPanel({
         if (testingId || coolingTestId === item.webhook_id) return;
         setTestingId(item.webhook_id);
         try {
-            await WKApp.dataSource.channelDataSource.testIncomingWebhook(channel, item.webhook_id, threadShortId);
+            await IncomingWebhookService.test(channel.channelID, item.webhook_id, threadShortId);
             Toast.success(t("base.channelWebhook.toast.testSent"));
         } catch (e) {
             Toast.error(extractErrorMsg(e) || t("base.channelWebhook.error.testFailed"));
@@ -186,8 +147,8 @@ export default function ChannelWebhookPanel({
             okType: "danger",
             onOk: async () => {
                 try {
-                    const resp = await WKApp.dataSource.channelDataSource.regenerateIncomingWebhook(
-                        channel,
+                    const resp = await IncomingWebhookService.regenerate(
+                        channel.channelID,
                         item.webhook_id,
                         threadShortId
                     );
@@ -213,8 +174,8 @@ export default function ChannelWebhookPanel({
             okType: "danger",
             onOk: async () => {
                 try {
-                    await WKApp.dataSource.channelDataSource.deleteIncomingWebhook(
-                        channel,
+                    await IncomingWebhookService.delete(
+                        channel.channelID,
                         item.webhook_id,
                         threadShortId
                     );
@@ -285,7 +246,7 @@ export default function ChannelWebhookPanel({
                     <p className="wk-webhook__state-text">
                         {t("base.channelWebhook.error.loadFailed")}
                     </p>
-                    <WKButton variant="secondary" onClick={() => { setLoading(true); void load(); }}>
+                    <WKButton variant="secondary" onClick={() => { void load(true); }}>
                         {t("base.channelWebhook.retry")}
                     </WKButton>
                 </div>
@@ -305,102 +266,31 @@ export default function ChannelWebhookPanel({
                 </div>
             ) : (
                 <ul className="wk-webhook__list">
-                    {items.map((item) => {
-                        const manageable = canManageIncomingWebhook(item, { isManager, myUid });
-                        const enabled = item.status === IncomingWebhookStatus.enabled;
-                        // 测试按钮的可用性单独走 canTestWebhook（与 handleTest 守卫同源）。
-                        const canTest = canTestWebhook(item);
-                        return (
-                            <li key={item.webhook_id} className="wk-webhook-card">
-                                <div className="wk-webhook-card__head">
-                                    <WKAvatar
-                                        src={item.avatar || INCOMING_WEBHOOK_DEFAULT_AVATAR}
-                                        style={{
-                                            width: "32px",
-                                            height: "32px",
-                                            borderRadius: "var(--wk-r-sm)",
-                                            flexShrink: 0,
-                                        }}
-                                    />
-                                    <div className="wk-webhook-card__titlebox">
-                                        <span className="wk-webhook-card__name" title={item.name}>
-                                            {item.name}
-                                        </span>
-                                        {!enabled && (
-                                            <span className="wk-webhook-card__chip wk-webhook-card__chip--off">
-                                                {t("base.channelWebhook.status.disabled")}
-                                            </span>
-                                        )}
-                                    </div>
-                                    {manageable && (
-                                        <Switch
-                                            size="small"
-                                            checked={enabled}
-                                            loading={togglingId === item.webhook_id}
-                                            onChange={(v: boolean) => void handleToggle(item, v)}
-                                            aria-label={t("base.channelWebhook.action.toggle")}
-                                        />
-                                    )}
-                                </div>
-                                {renderMeta(item)}
-                                {manageable && (
-                                    <div className="wk-webhook-card__actions">
-                                        <button
-                                            type="button"
-                                            className="wk-webhook-card__icon-btn"
-                                            onClick={() => setEditTarget({ mode: "edit", webhook: item })}
-                                            title={t("base.channelWebhook.action.edit")}
-                                            aria-label={t("base.channelWebhook.action.edit")}
-                                        >
-                                            <IconEdit />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="wk-webhook-card__icon-btn"
-                                            onClick={() => handleRegenerate(item)}
-                                            title={t("base.channelWebhook.action.regenerate")}
-                                            aria-label={t("base.channelWebhook.action.regenerate")}
-                                        >
-                                            <IconRefresh />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="wk-webhook-card__icon-btn"
-                                            disabled={
-                                                // 已禁用的 webhook 不可测试（语义一致 + 避免假信心）；
-                                                // 切换启停在飞期间 status 尚未刷新，一并置灰避免用旧状态测试；
-                                                // handleTest 全局串行化（任一测试在飞即忽略），
-                                                // 故任一在飞时所有测试按钮都置灰，避免点了没反应；
-                                                // 叠加本 webhook 的冷却态。
-                                                !canTest ||
-                                                togglingId === item.webhook_id ||
-                                                !!testingId ||
-                                                coolingTestId === item.webhook_id
-                                            }
-                                            onClick={() => void handleTest(item)}
-                                            title={
-                                                canTest
-                                                    ? t("base.channelWebhook.action.test")
-                                                    : t("base.channelWebhook.action.testDisabledHint")
-                                            }
-                                            aria-label={t("base.channelWebhook.action.test")}
-                                        >
-                                            <IconSend />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="wk-webhook-card__icon-btn wk-webhook-card__icon-btn--danger"
-                                            onClick={() => handleDelete(item)}
-                                            title={t("base.channelWebhook.action.delete")}
-                                            aria-label={t("base.channelWebhook.action.delete")}
-                                        >
-                                            <IconDelete />
-                                        </button>
-                                    </div>
-                                )}
-                            </li>
-                        );
-                    })}
+                    {items.map((item) => (
+                        <ChannelWebhookCard
+                            key={item.webhook_id}
+                            item={item}
+                            manageable={canManageIncomingWebhook(item, { isManager, myUid })}
+                            meta={renderMeta(item)}
+                            toggling={togglingId === item.webhook_id}
+                            testingBlocked={!!testingId}
+                            cooling={coolingTestId === item.webhook_id}
+                            labels={{
+                                disabled: t("base.channelWebhook.status.disabled"),
+                                toggle: t("base.channelWebhook.action.toggle"),
+                                edit: t("base.channelWebhook.action.edit"),
+                                regenerate: t("base.channelWebhook.action.regenerate"),
+                                test: t("base.channelWebhook.action.test"),
+                                testDisabledHint: t("base.channelWebhook.action.testDisabledHint"),
+                                delete: t("base.channelWebhook.action.delete"),
+                            }}
+                            onToggle={(enabled) => void handleToggle(item, enabled)}
+                            onEdit={() => setEditTarget({ mode: "edit", webhook: item })}
+                            onRegenerate={() => handleRegenerate(item)}
+                            onTest={() => void handleTest(item)}
+                            onDelete={() => handleDelete(item)}
+                        />
+                    ))}
                 </ul>
             )}
 

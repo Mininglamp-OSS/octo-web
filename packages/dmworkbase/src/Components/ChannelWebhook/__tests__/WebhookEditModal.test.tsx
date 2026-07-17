@@ -93,6 +93,12 @@ vi.mock('../../../App', () => ({
 
 vi.mock('../../../Service/APIClient', () => ({
   extractErrorMsg: (e: unknown) => String(e),
+  default: {
+    shared: {
+      post: (...a: any[]) => hoisted.create(...a),
+      put: (...a: any[]) => hoisted.update(...a),
+    },
+  },
 }));
 
 vi.mock('wukongimjssdk', async (importOriginal) => {
@@ -225,7 +231,7 @@ describe('WebhookEditModal mention_uids picker', () => {
     await flush();
 
     expect(hoisted.update).toHaveBeenCalledTimes(1);
-    const req = hoisted.update.mock.calls[0][2];
+    const req = hoisted.update.mock.calls[0][1];
     expect(req.mention_uids).toEqual([]);
   });
 

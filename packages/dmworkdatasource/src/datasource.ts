@@ -1,4 +1,4 @@
-import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId, IncomingWebhook, IncomingWebhookCreateResp, IncomingWebhookUpsertReq, StickerItem } from "@octo/base";
+import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId, IncomingWebhook, IncomingWebhookCreateResp, IncomingWebhookUpsertReq, IncomingWebhookService, StickerItem } from "@octo/base";
 import axios from "axios";
 import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContentType,ConversationExtra,Subscriber } from "wukongimjssdk";
 
@@ -245,36 +245,28 @@ export class ChannelDataSource implements IChannelDataSource {
     // threadShortId 留空即群面（与历史一致）；传入即切到子区作用域 —— 后端据此隔离 list/管理，
     // 并把 webhook 投递目标绑定到子区（#451 / octo-server #454）。channelID 必须是【父群 group_no】
     // （子区面板传父群 channel），推送 URL 不变，仍按 webhook_id/token。
-    private incomingWebhookBase(channelID: string, threadShortId?: string): string {
-        return threadShortId
-            ? `groups/${channelID}/threads/${threadShortId}/incoming-webhooks`
-            : `groups/${channelID}/incoming-webhooks`
-    }
-
     incomingWebhooks(channel: Channel, threadShortId?: string): Promise<IncomingWebhook[]> {
-        return WKApp.apiClient
-            .get(this.incomingWebhookBase(channel.channelID, threadShortId))
-            .then((resp?: { list?: IncomingWebhook[] }) => resp?.list || [])
+        return IncomingWebhookService.list(channel.channelID, threadShortId)
     }
 
     createIncomingWebhook(channel: Channel, req: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhookCreateResp> {
-        return WKApp.apiClient.post(this.incomingWebhookBase(channel.channelID, threadShortId), req)
+        return IncomingWebhookService.create(channel.channelID, req, threadShortId)
     }
 
     updateIncomingWebhook(channel: Channel, webhookId: string, req: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhook> {
-        return WKApp.apiClient.put(`${this.incomingWebhookBase(channel.channelID, threadShortId)}/${webhookId}`, req)
+        return IncomingWebhookService.update(channel.channelID, webhookId, req, threadShortId)
     }
 
     deleteIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<void> {
-        return WKApp.apiClient.delete(`${this.incomingWebhookBase(channel.channelID, threadShortId)}/${webhookId}`)
+        return IncomingWebhookService.delete(channel.channelID, webhookId, threadShortId)
     }
 
     regenerateIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<IncomingWebhookCreateResp> {
-        return WKApp.apiClient.post(`${this.incomingWebhookBase(channel.channelID, threadShortId)}/${webhookId}/regenerate`)
+        return IncomingWebhookService.regenerate(channel.channelID, webhookId, threadShortId)
     }
 
     testIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<void> {
-        return WKApp.apiClient.post(`${this.incomingWebhookBase(channel.channelID, threadShortId)}/${webhookId}/test`)
+        return IncomingWebhookService.test(channel.channelID, webhookId, threadShortId)
     }
 
     getThreadMd(groupNo: string, shortId: string): Promise<{ content: string; version: number }> {

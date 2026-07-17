@@ -1,11 +1,12 @@
+import APIClient from "./APIClient";
+
 /**
  * 群入站 Webhook（Incoming Webhook）类型与纯工具函数。
  *
  * 对应 octo-server 用户管理面 `/v1/groups/{group_no}/incoming-webhooks*`
  * （#250 iwh 身份 / #254 软删除 / #297 平台适配器 / #340 开放给成员与 bot）。
  *
- * 注意：本文件刻意不依赖 WKApp / WKSDK，保持纯函数可单测；
- * 需要运行时配置（apiURL / origin）的调用方自行传入。
+ * 本文件不依赖 WKApp / WKSDK；HTTP 边界统一使用 APIClient，交互状态留给调用方。
  */
 
 /** webhook 发送者 UID 前缀。`FromUID = iwh_*` 的消息发送者永远不是群成员。 */
@@ -125,6 +126,51 @@ export interface IncomingWebhookUpsertReq {
      */
     mention_uids?: string[];
 }
+
+type IncomingWebhookListResponse =
+    | IncomingWebhook[]
+    | { list?: IncomingWebhook[]; items?: IncomingWebhook[]; webhooks?: IncomingWebhook[] }
+    | null
+    | undefined;
+
+/** 群/子区入站 Webhook 的 HTTP 边界。 */
+export const IncomingWebhookService = {
+    basePath(groupNo: string, threadShortId?: string): string {
+        const groupPath = `groups/${encodeURIComponent(groupNo)}`;
+        return threadShortId
+            ? `${groupPath}/threads/${encodeURIComponent(threadShortId)}/incoming-webhooks`
+            : `${groupPath}/incoming-webhooks`;
+    },
+
+    async list(groupNo: string, threadShortId?: string): Promise<IncomingWebhook[]> {
+        const response = await APIClient.shared.get<IncomingWebhookListResponse>(
+            this.basePath(groupNo, threadShortId)
+        );
+        if (Array.isArray(response)) return response;
+        if (!response) return [];
+        return response.list || response.items || response.webhooks || [];
+    },
+
+    create(groupNo: string, request: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhookCreateResp> {
+        return APIClient.shared.post(this.basePath(groupNo, threadShortId), request);
+    },
+
+    update(groupNo: string, webhookId: string, request: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhook> {
+        return APIClient.shared.put(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}`, request);
+    },
+
+    delete(groupNo: string, webhookId: string, threadShortId?: string): Promise<void> {
+        return APIClient.shared.delete(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}`);
+    },
+
+    regenerate(groupNo: string, webhookId: string, threadShortId?: string): Promise<IncomingWebhookCreateResp> {
+        return APIClient.shared.post(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}/regenerate`);
+    },
+
+    test(groupNo: string, webhookId: string, threadShortId?: string): Promise<void> {
+        return APIClient.shared.post(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}/test`);
+    },
+};
 
 /**
  * 权限判断（与服务端权限矩阵 #340 对齐，仅做 UI 门控，服务端兜底）：
@@ -482,17 +528,18 @@ export function webhookFromOfMessage(message: {
     return { kind: "webhook" };
 }
 
-/**
- * webhook 消息 / 列表项的占位头像（内联 SVG，灰底链接节点图形）。
- * 服务端不给 iwh_* 提供头像接口，空 avatar 时用它避免 broken-image。
- */
+/** V2 同款 Webhook 默认头像；服务端 avatar 为空时使用，避免走用户头像链路。 */
 export const INCOMING_WEBHOOK_DEFAULT_AVATAR =
     "data:image/svg+xml;charset=UTF-8," +
     encodeURIComponent(
-        `<svg width="50" height="50" xmlns="http://www.w3.org/2000/svg">` +
-            `<rect width="50" height="50" rx="12" fill="#E8EAF0"/>` +
-            `<path d="M20 30 L30 20 M27 17 a5 5 0 0 1 7 7 l-2.5 2.5 M23 33 a5 5 0 0 1 -7 -7 l2.5 -2.5" ` +
-            `stroke="#7A8299" stroke-width="2.6" stroke-linecap="round" fill="none"/>` +
+        `<svg width="50" height="50" viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">` +
+            `<rect width="50" height="50" rx="12" fill="#6B3DD8"/>` +
+            `<path d="M25 11v5" stroke="white" stroke-width="2.5" stroke-linecap="round"/>` +
+            `<circle cx="25" cy="10" r="2" fill="white"/>` +
+            `<rect x="14" y="17" width="22" height="20" rx="6" fill="none" stroke="white" stroke-width="2.8"/>` +
+            `<circle cx="21" cy="27" r="2.2" fill="white"/>` +
+            `<circle cx="29" cy="27" r="2.2" fill="white"/>` +
+            `<path d="M20 33h10" stroke="white" stroke-width="2.5" stroke-linecap="round"/>` +
             `</svg>`
     );
 
