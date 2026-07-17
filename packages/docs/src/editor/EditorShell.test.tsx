@@ -45,6 +45,7 @@ vi.mock('../versions/VersionPanel.tsx', () => ({ VersionPanel: () => null }))
 vi.mock('../members/MemberPanel.tsx', () => ({ MemberPanel: () => null }))
 vi.mock('../comments/useDocComments.ts', () => ({
   useDocComments: () => ({ threads: [], createRoot: vi.fn() }),
+  useRefreshCommentsOnOpen: () => undefined,
 }))
 vi.mock('../comments/useCommentHighlights.ts', () => ({ useCommentHighlights: () => undefined }))
 // useMemberNames drives the creator-name resolution's PRIMARY source (the space-member map). Kept

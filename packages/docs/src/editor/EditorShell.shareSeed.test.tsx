@@ -42,6 +42,7 @@ vi.mock('../comments/CommentPanel.tsx', () => ({ CommentPanel: () => null }))
 vi.mock('../versions/VersionPanel.tsx', () => ({ VersionPanel: () => null }))
 vi.mock('../comments/useDocComments.ts', () => ({
   useDocComments: () => ({ threads: [], createRoot: vi.fn() }),
+  useRefreshCommentsOnOpen: () => undefined,
 }))
 vi.mock('../comments/useCommentHighlights.ts', () => ({ useCommentHighlights: () => undefined }))
 vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: () => new Map<string, string>() }))
