@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t } from '../octoweb/index.ts'
+import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t, fetchSpaceBotNames } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
@@ -457,6 +457,7 @@ function DocsList({
   selectedDocId,
   onSelect,
   reloadToken,
+  botUids,
 }: {
   space: string
   folder: string
@@ -465,6 +466,8 @@ function DocsList({
   selectedDocId: string | null
   onSelect: (docId: string, docType?: string, octoDocSlug?: string) => void
   reloadToken?: number
+  /** uids of every bot in the space; a row whose ownerId is here shows a bot badge. */
+  botUids: Set<string>
 }): React.ReactElement {
   const [creating, setCreating] = useState(false)
   const [newMenuAt, setNewMenuAt] = useState<{ left: number; top: number } | null>(null)
@@ -725,14 +728,25 @@ function DocsList({
             )}
           </span>
           <span className="octo-docs-list-row-text">
-            <span
-              className={
-                hasTitle
-                  ? 'octo-docs-list-row-title'
-                  : 'octo-docs-list-row-title octo-docs-list-row-title-untitled'
-              }
-            >
-              {label}
+            <span className="octo-docs-list-row-title-line">
+              <span
+                className={
+                  hasTitle
+                    ? 'octo-docs-list-row-title'
+                    : 'octo-docs-list-row-title octo-docs-list-row-title-untitled'
+                }
+              >
+                {label}
+              </span>
+              {botUids.has(d.ownerId) && (
+                <span
+                  className="octo-docs-list-row-bot-badge"
+                  title={t('docs.list.botBadge')}
+                  aria-label={t('docs.list.botBadge')}
+                >
+                  {t('docs.list.botBadge')}
+                </span>
+              )}
             </span>
             {activeView === 'recent' ? (
               // Recent rows: creator on its own line, then ONE merged time line showing only the
@@ -1230,6 +1244,13 @@ export function DocsHome() {
   useEffect(() => {
     selectedDocTypeRef.current = selectedDocType
   }, [selectedDocType])
+  // Companion live mirror of the open doc's octo-doc slug — the nav-reactivation re-push below
+  // needs it, else an html doc re-opens with slug=undefined and HtmlDocView falls back to docId,
+  // 404ing against the slug-addressed octo-doc render endpoint.
+  const selectedOctoDocSlugRef = useRef<string | undefined>(selectedOctoDocSlug)
+  useEffect(() => {
+    selectedOctoDocSlugRef.current = selectedOctoDocSlug
+  }, [selectedOctoDocSlug])
 
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
@@ -1247,6 +1268,25 @@ export function DocsHome() {
   // presence avatar initial and the collaboration caret show a real name, not the raw uid.
   // Resilient: empty until resolved (or on fetch failure) → falls back to uid.
   const names = useMemberNames(space)
+
+  // Bot uids in the space, used to badge docs created by a bot in the list. Reuses the single
+  // non-viewer-scoped `GET /robot/space_bots` request (same seam memberNames backfill uses) so
+  // there is no per-uid fanout / extra permission. Best-effort: an empty set on failure just
+  // means no badge is shown. Refetched on Space switch.
+  const [botUids, setBotUids] = useState<Set<string>>(() => new Set())
+  useEffect(() => {
+    let active = true
+    void fetchSpaceBotNames(space)
+      .then((bots) => {
+        if (active) setBotUids(new Set(bots.map((b) => b.uid)))
+      })
+      .catch(() => {
+        if (active) setBotUids(new Set())
+      })
+    return () => {
+      active = false
+    }
+  }, [space])
 
   // Docs-owned empty state for the right pane. CRITICAL: the host renders its default
   // contentRight (<EmptyStateIllustration/> = the chat "select a conversation" placeholder)
@@ -1602,7 +1642,14 @@ export function DocsHome() {
       try {
         const id = selectedDocIdRef.current
         if (id) {
-          routeRight.replaceToRoot(buildRightPaneRef.current(id, selectedDocTypeRef.current) as unknown)
+          routeRight.replaceToRoot(
+            buildRightPaneRef.current(
+              id,
+              selectedDocTypeRef.current,
+              undefined,
+              selectedOctoDocSlugRef.current,
+            ) as unknown,
+          )
         } else {
           routeRight.replaceToRoot(buildEmptyState() as unknown)
         }
@@ -1651,6 +1698,7 @@ export function DocsHome() {
           selectedDocId={selectedDocId}
           onSelect={openDoc}
           reloadToken={listReloadToken}
+          botUids={botUids}
         />
       </div>
     )
@@ -1666,6 +1714,7 @@ export function DocsHome() {
           selectedDocId={selectedDocId}
           onSelect={openDoc}
           reloadToken={listReloadToken}
+          botUids={botUids}
         />
       </aside>
       <section className="octo-docs-split-right">

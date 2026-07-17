@@ -2580,6 +2580,28 @@ body.octo-table-reordering {
 .octo-docs-list-row-title-untitled {
   color: var(--octo-fg-3, #86909c);
 }
+/* Bot badge: a small capsule after a bot-created doc's title so it's easy to tell apart. */
+.octo-docs-list-row-title-line {
+  display: flex;
+  align-items: center;
+  min-width: 0; /* let the title ellipsis, keep the badge fully visible */
+}
+.octo-docs-list-row-title-line .octo-docs-list-row-title {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.octo-docs-list-row-bot-badge {
+  flex: none;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--octo-active-fg, #1664ff);
+  background: var(--octo-active-bg, rgba(22, 100, 255, 0.1));
+  border-radius: 8px;
+  white-space: nowrap;
+}
 .octo-docs-list-row-sub {
   font-size: 12px;
   line-height: 1.3;

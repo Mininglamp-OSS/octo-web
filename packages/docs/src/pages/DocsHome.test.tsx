@@ -1100,6 +1100,57 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     })
   })
 
+  it('re-pushes an open html doc WITH its slug when the docs nav menu is re-activated', async () => {
+    // Repro of the "open html → click the 文档 nav button → 出错了" bug: the nav-reactivation
+    // re-push must carry octoDocSlug, else HtmlDocView falls back to docId and 404s against octo-doc.
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              {
+                docId: 'h_row',
+                title: 'Agent Report',
+                ownerId: 'u_owner',
+                role: 'admin',
+                docType: 'html',
+                octoDocSlug: 'octo-html-report',
+              },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Agent Report')).toBeTruthy())
+    fireEvent.click(screen.getByText('Agent Report'))
+    await waitFor(() =>
+      expect(
+        replaceToRoot.mock.calls.some(
+          (c) => (c[0] as { props?: { docId?: string } })?.props?.docId === 'h_row',
+        ),
+      ).toBe(true),
+    )
+
+    // Simulate the user clicking the docs NavRail button while the html doc is open.
+    wk.mockMittBus.emitNavMenuActivated('docs')
+
+    const lastPush = replaceToRoot.mock.calls.at(-1)![0] as {
+      props: { docId: string; slug?: string }
+    }
+    expect(lastPush.props.docId).toBe('h_row')
+    // The re-push must preserve the slug (bug: it was dropped → HtmlDocView used docId → 404).
+    expect(lastPush.props.slug).toBe('octo-html-report')
+  })
+
   it('opens an existing html row without octoDocSlug using HtmlDocView fallback', async () => {
     const wk = createMockWKApp()
     setWKApp(wk)
