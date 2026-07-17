@@ -284,7 +284,13 @@ export class InteractiveCardCell extends MessageCell {
     // 文档访问申请「拒绝」需先弹窗采集必填原因，原因随 inputs[deny_reason] 提交
     // （服务端在卡片里声明了该隐藏输入 id）。其余动作直接提交。
     const data = (action as unknown as { data?: Record<string, unknown> }).data;
-    if (isDocsDenyAction(data)) {
+    // 前后兼容：仅当当前帧确实声明了 deny_reason 输入时才走弹窗。改动前投递的老审批卡
+    // 没有该隐藏输入，若仍提交 inputs[deny_reason] 会被服务端「未声明的 input」拒（400），
+    // 故老卡点拒绝回退到原逻辑（直接提交、无原因）。
+    const declaresReasonInput = card
+      .getAllInputs()
+      .some((input) => input.id === DOCS_DENY_REASON_INPUT_ID);
+    if (isDocsDenyAction(data) && declaresReasonInput) {
       const asString = (v: unknown) => (typeof v === "string" ? v : undefined);
       void openDocsDenyReasonDialog({
         docTitle: asString(data?.doc_title),
