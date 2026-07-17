@@ -165,8 +165,16 @@ export function resolveDocTarget(search: string, uid?: string): DocTarget | null
   //    single `?doc=` param (three-party-fixed), so the kind is resolved from the local board
   //    registry rather than a separate query param.
   if (queryDoc) {
-    const docType = isBoardIdLocally(queryDoc, uid) ? 'board' : undefined
-    const target: DocTarget = { space, folder, doc: queryDoc, docId: queryDoc, docType }
+    // The mirrored `?doc=` re-render (docUrl only carries the docId) would otherwise clobber the
+    // persisted target with a docId-only value, dropping an html doc's kind/slug so HtmlDocView
+    // falls back to docId and 404s against octo-doc. Inherit docType/octoDocSlug from the already
+    // persisted target when it addresses the same doc; keep the board-registry fallback otherwise.
+    const prev = readDocTarget(uid)
+    const sameDoc = prev !== null && prev.doc === queryDoc
+    const docType =
+      sameDoc && prev.docType ? prev.docType : isBoardIdLocally(queryDoc, uid) ? 'board' : undefined
+    const octoDocSlug = sameDoc ? prev.octoDocSlug : undefined
+    const target: DocTarget = { space, folder, doc: queryDoc, docId: queryDoc, docType, octoDocSlug }
     persistDocTarget(target)
     return target
   }

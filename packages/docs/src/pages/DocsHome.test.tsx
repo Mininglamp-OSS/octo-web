@@ -221,6 +221,50 @@ describe('resolveDocTarget', () => {
     window.sessionStorage.setItem(TARGET_KEY, JSON.stringify({ space: 'x' })) // no doc
     expect(resolveDocTarget('?sid=abc')).toBeNull()
   })
+
+  it('keeps an html doc reachable after the mirrored `?doc=` re-render (kind/slug not lost)', () => {
+    // Opening an html doc persists its kind + octo-doc slug, then docUrl mirrors ONLY the docId to
+    // `?doc=`; the host's re-render feeds that back through resolveDocTarget. Regression: the query
+    // branch used to rebuild a docId-only target and clobber the slug, so HtmlDocView fell back to
+    // docId and 404'd against octo-doc (/d/<slug>/v/latest). The same-doc backfill must preserve
+    // both fields.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({
+        space: 'sp1',
+        folder: 'fd1',
+        doc: 'd_html',
+        docType: 'html',
+        octoDocSlug: 'badminton',
+      }),
+    )
+    const backfilled = resolveDocTarget('?space=sp1&folder=fd1&doc=d_html')
+    expect(backfilled).toMatchObject({ doc: 'd_html', docType: 'html', octoDocSlug: 'badminton' })
+    // The persisted mirror must stay intact too, not be overwritten with a docId-only value.
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      docType: 'html',
+      octoDocSlug: 'badminton',
+    })
+  })
+
+  it('does not leak one html doc’s slug onto a different doc', () => {
+    // Backfill only inherits when the docId matches, so switching to another doc never carries the
+    // previous doc's slug/kind (which would mis-address octo-doc).
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({
+        space: 'sp1',
+        folder: 'fd1',
+        doc: 'd_html',
+        docType: 'html',
+        octoDocSlug: 'badminton',
+      }),
+    )
+    const other = resolveDocTarget('?doc=d_other')
+    expect(other!.doc).toBe('d_other')
+    expect(other!.octoDocSlug).toBeUndefined()
+    expect(other!.docType).toBeUndefined()
+  })
 })
 
 describe('clearDocTarget', () => {
