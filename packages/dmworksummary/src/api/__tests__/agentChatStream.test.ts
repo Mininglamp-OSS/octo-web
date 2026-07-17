@@ -190,6 +190,7 @@ data: {"reply":"test result"}
         expect(onError).toHaveBeenCalledWith({
             code: 50000,
             message: 'Network error',
+            transient: true,
         });
 
         expect(onProgress).not.toHaveBeenCalled();

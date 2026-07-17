@@ -334,8 +334,8 @@ describe('AgentChatPanel SSE Mode', () => {
         
         // Mock agentChatStream to capture params and simulate successful response
         (summaryApi.agentChatStream as any).mockImplementation((params: any, handlers: any) => {
-            // Verify empty sessionId is passed through
-            expect(params.session_id).toBe('');
+            // P2.1: AgentChatPanel generates UUID when sessionId is empty
+            expect(params.session_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
             expect(params.message).toBe('First message');
             expect(params.profile).toBe('summary');
             
