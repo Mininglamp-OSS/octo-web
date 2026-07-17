@@ -166,6 +166,72 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
     expect(getsAfter).toBeGreaterThan(getsBefore)
   })
 
+  it('does not overwrite a newer refresh result with reconcile’s stale snapshot when a mutation is rejected mid-reconcile', async () => {
+    // S1/S2 stale-overwrite race (lml2468 byte-proven repro):
+    //   S1=[1,2] visible → a rejected delete kicks off reconcile() whose GET
+    //   hangs → meanwhile a newer refresh lands S2=[1,2,3] → the hung reconcile
+    //   resolves with its stale S1 snapshot. reconcile MUST bail (a newer
+    //   refresh preempted it, tracked via the shared reqRef) rather than
+    //   setThreads([1,2]) over [1,2,3]; otherwise comment #3 vanishes from the
+    //   UI until the next load. reconcile still must NOT touch loading here (that
+    //   would re-introduce the loading-strand regression covered above).
+    const S1 = [thread(1, 'a'), thread(2, 'b')]
+    const S2 = [thread(1, 'a'), thread(2, 'b'), thread(3, 'c')]
+    let getCount = 0
+    let releaseReconcile: (() => void) | null = null
+
+    api.responder = (method: string) => {
+      if (method === 'get') {
+        getCount += 1
+        // 1st GET = initial refresh → S1.
+        if (getCount === 1) return { data: { items: S1, nextCursor: null }, status: 200 }
+        // 2nd GET = reconcile()'s re-read — hold it pending until AFTER the newer
+        // refresh has landed S2, then resolve it with the now-stale S1 snapshot.
+        if (getCount === 2) {
+          return new Promise((resolve) => {
+            releaseReconcile = () =>
+              resolve({ data: { items: S1, nextCursor: null }, status: 200 })
+          })
+        }
+        // 3rd GET = the newer refresh → resolves immediately with the fresher S2.
+        return { data: { items: S2, nextCursor: null }, status: 200 }
+      }
+      if (method === 'delete') {
+        throw { response: { status: 403 } } // rejected → runMutation catch → reconcile()
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(2))
+
+    // Kick off the rejected delete; its reconcile() GET (getCount 2) is now
+    // pending, so remove()'s promise stays unresolved.
+    let removePromise: Promise<void>
+    await act(async () => {
+      removePromise = result.current.remove(1, false)
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(releaseReconcile).not.toBeNull())
+
+    // A newer refresh lands the fresher S2=[1,2,3] while reconcile is still pending.
+    await act(async () => {
+      await result.current.refresh()
+    })
+    expect(result.current.threads.map((t) => t.id)).toEqual([1, 2, 3])
+
+    // Release reconcile's hung GET — it resolves with the stale S1 snapshot.
+    await act(async () => {
+      releaseReconcile!()
+      await removePromise
+    })
+
+    // reconcile must have bailed (preempted by the newer refresh) — S2 stays
+    // intact and the delete failure is still surfaced.
+    expect(result.current.threads.map((t) => t.id)).toEqual([1, 2, 3])
+    expect(result.current.error).toBe('Failed to delete comment.')
+  })
+
   it('does not regress create/reply/resolve refresh on success', async () => {
     let rows = [thread(1, 'a')]
     api.responder = (method: string, url: string) => {

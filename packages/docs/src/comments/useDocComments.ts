@@ -54,8 +54,8 @@ export function useDocComments(docId: string): UseDocComments {
   // in-flight refresh/loadMore see a superseded token and skip its own
   // `finally { setLoading(false) }`, while reconcile never touches loading —
   // stranding the spinner true forever and deadlocking pagination. reconcile is
-  // a best-effort fallback re-read, not a loading-bearing load, so it guards
-  // only against a newer reconcile overwriting it.
+  // a best-effort fallback re-read, not a loading-bearing load, so it owns this
+  // token only to guard against a newer reconcile overwriting it.
   const reconcileRef = useRef(0)
 
   const refresh = useCallback(async () => {
@@ -101,14 +101,26 @@ export function useDocComments(docId: string): UseDocComments {
   // mutation is *rejected*: some rejections mean the server state already moved
   // (e.g. deleting a comment the backend had already soft-deleted returns 404),
   // so without re-reading the stale row lingers on screen — the "deleted but
-  // still visible" bug. Uses its OWN token (reconcileRef), never reqRef, so it
-  // cannot preempt an in-flight refresh/loadMore's loading-bearing token; and it
-  // never touches `loading`, since it did not set it.
+  // still visible" bug.
+  //
+  // reconcile carries TWO guards, and NEITHER touches `loading`:
+  //   1. reconcileRef (its own token, bumped) — so a newer reconcile wins over
+  //      an older one.
+  //   2. reqRef (the shared load token, read-only *snapshot*, never bumped) — so
+  //      a refresh/loadMore that started or completed while this GET was in
+  //      flight wins. reconcile bails before setThreads instead of clobbering
+  //      that fresher result with its own stale snapshot.
+  // Reading reqRef without bumping it is what lets reconcile guard against a
+  // newer load (guard #2) while still leaving that load's loading-bearing token
+  // intact, so its `finally { setLoading(false) }` still fires (no strand).
   const reconcile = useCallback(async () => {
     const token = ++reconcileRef.current
+    const reqToken = reqRef.current
     try {
       const res = await listComments(docId, { includeResolved, limit: PAGE_SIZE })
-      if (reconcileRef.current !== token) return // superseded by a newer reconcile
+      // Superseded by a newer reconcile, or preempted by a newer refresh/loadMore
+      // (which already holds fresher data) — either way, don't overwrite.
+      if (reconcileRef.current !== token || reqRef.current !== reqToken) return
       setThreads(res.items)
       setNextCursor(res.nextCursor)
     } catch {
