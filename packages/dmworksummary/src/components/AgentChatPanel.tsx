@@ -189,7 +189,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 },
                 onDone: (evt: AgentDoneEvent) => {
                     const { t } = this.context;
-                    const reply = evt.reply || t('summary.agent.noReply');
+                    const reply = evt.reply || t('summary.common.agentPanel.noReply');
                     // 优先用后端回传的 session_id(它可能对老 session 做过 canonicalize);
                     // 兜底用我们本地生成的 sessionId(和请求时发出去的一致,父组件据此持久化)。
                     onAssistantMessage?.(reply, evt.session_id || sessionId);
@@ -236,7 +236,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 profile,
                 referenced_task_ids: refIds,
             });
-            const reply = result.reply || t('summary.agent.noReply');
+            const reply = result.reply || t('summary.common.agentPanel.noReply');
             // 上抛 sessionId 让父组件持久化(和 SSE onDone 一致)
             onAssistantMessage?.(reply, result.session_id || sessionId);
         } catch (err: any) {
@@ -310,7 +310,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                                     </span>
                                     {step.count ? (
                                         <span className="agent-chat-process-detail">
-                                            {t('summary.agent.processedCount', { count: step.count })}
+                                            {t('summary.common.agentPanel.processedCount', { values: { count: step.count } })}
                                         </span>
                                     ) : null}
                                 </div>

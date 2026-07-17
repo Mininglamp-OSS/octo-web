@@ -430,7 +430,11 @@ export function agentChatStream(
                 if (done) break;
 
                 buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
+                // SSE 标准帧分隔是 \r\n\r\n 或 \n\n;规范化 CRLF/CR → LF,再按 \n 拆
+                // (SUM-850 blocker A / #850 Jerry-Xin: 若只按 \n 拆 CRLF 流,空行会是 '\r'
+                // 而非 ''，边界永远不触发 → progress/done 事件不 dispatch → UI 判 stream
+                // 结束时未收 done、错误回退甚至消息双发。同文件另一处 parser 也是这么处理的)。
+                const lines = buffer.replace(/\r\n?/g, '\n').split('\n');
                 buffer = lines.pop() || ''; // 最后一行可能不完整,留在 buffer
 
 
@@ -450,6 +454,26 @@ export function agentChatStream(
                         pendingEvent = '';
                         pendingData = '';
                     }
+                }
+            }
+            // Tail flush: 流关闭后如果 buffer / pending 里还有未 dispatch 的 frame
+            // (最后一个 event 没跟空行边界),补一次 dispatch。以及 buffer 里可能还有
+            // 一行未按 \n 结束的尾巴 —— 也当一行处理。(SUM-850 blocker A / Jerry-Xin)
+            if (!aborted) {
+                if (buffer) {
+                    const trailingLine = buffer.replace(/\r\n?/g, '\n');
+                    if (trailingLine.startsWith('event:')) {
+                        pendingEvent = trailingLine.slice(6).trim();
+                    } else if (trailingLine.startsWith('data:')) {
+                        pendingData += (pendingData ? '\n' : '') + trailingLine.slice(5).trim();
+                    }
+                    buffer = '';
+                }
+                if (pendingEvent && pendingData) {
+                    if (pendingEvent === 'done') {
+                        receivedDone = true;
+                    }
+                    parseAndDispatch(pendingEvent, pendingData, handlers);
                 }
             }
             // 流已关闭,但如果没收到 done 事件,触发错误让 UI 解锁

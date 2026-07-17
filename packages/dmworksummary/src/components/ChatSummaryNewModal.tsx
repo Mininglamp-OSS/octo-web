@@ -815,7 +815,7 @@ export default class ChatSummaryNewModal extends Component<
                                 )}
                             </>
                         )}
-                        {!topic.trim() && (
+                        {!isAgent && !topic.trim() && (
                             <>
                                 <div className="summary-template-section-header chat-summary-modal-templates-heading">
                                     <div className="chat-summary-modal-templates-label">{t('summary.create.templatesTitle')}</div>
