@@ -17,7 +17,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--wk-brand-tint-35);
 }
 
 .wk-thread-modal-content {
@@ -25,7 +25,7 @@
   width: 360px;
   background: var(--wk-bg-surface);
   border-radius: var(--wk-r-lg);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--wk-shadow-lg);
   animation: wkModalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -38,10 +38,6 @@
     opacity: 1;
     transform: scale(1);
   }
-}
-
-body[theme-mode="dark"] .wk-thread-modal-content {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .wk-thread-modal-header {
