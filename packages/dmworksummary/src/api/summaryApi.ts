@@ -384,6 +384,7 @@ export function agentChatStream(
         try {
             const headers: Record<string, string> = {
                 'Content-Type': 'application/json',
+                'Accept': 'text/event-stream',
                 'Accept-Language': buildAcceptLanguage(),
             };
             if (token) headers['token'] = token;
@@ -395,6 +396,11 @@ export function agentChatStream(
                 body: JSON.stringify(params),
             });
 
+
+            if (resp.status === 401) {
+                WKApp.shared.logout();
+                return;
+            }
             if (!resp.ok) {
                 const text = await resp.text();
                 let errMsg = `HTTP ${resp.status}`;

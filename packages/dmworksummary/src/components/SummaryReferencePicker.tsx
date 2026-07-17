@@ -149,7 +149,7 @@ export default class SummaryReferencePicker extends Component<
                                         {item.title || t('summary.common.untitled')}
                                     </div>
                                     <div className="summary-reference-picker-item-meta">
-                                        task_id={item.task_id}
+                                        {item.task_no} · {item.completed_at ? new Date(item.completed_at).toLocaleDateString() : t('summary.common.inProgress')}
                                     </div>
                                 </List.Item>
                             )}
