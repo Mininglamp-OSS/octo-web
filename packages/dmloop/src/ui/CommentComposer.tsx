@@ -55,6 +55,8 @@ const CommentComposer = forwardRef<CommentComposerHandle, CommentComposerProps>(
       users: t("loop.mention.groupUsers"),
       issues: t("loop.mention.groupIssues"),
       allMembers: t("loop.mention.allMembers"),
+      agent: t("loop.assignee.agent"),
+      squad: t("loop.assignee.squad"),
     }),
     [t],
   );

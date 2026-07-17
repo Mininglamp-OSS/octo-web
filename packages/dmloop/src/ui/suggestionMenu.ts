@@ -20,6 +20,8 @@ export interface LoopMentionItem {
 export interface MentionMenuLabels {
   users: string;
   issues: string;
+  agent: string;
+  squad: string;
 }
 
 export interface MentionMenuProps {
@@ -94,7 +96,7 @@ export function createMentionMenu(labels: MentionMenuLabels): MentionMenuRendere
     if (item.type === "agent" || item.type === "squad") {
       const badge = document.createElement("span");
       badge.className = "loop-suggest-badge";
-      badge.textContent = item.type === "agent" ? "Agent" : "Squad";
+      badge.textContent = item.type === "agent" ? labels.agent : labels.squad;
       btn.appendChild(badge);
     }
 
