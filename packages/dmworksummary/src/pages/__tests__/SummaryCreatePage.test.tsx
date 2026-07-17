@@ -44,6 +44,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
     IconClock: () => <span data-testid="icon-clock" />,
     IconUserGroup: () => <span data-testid="icon-user-group" />,
     IconChevronDown: () => <span data-testid="icon-chevron-down" />,
+    IconLink: () => <span data-testid="icon-link" />,
 }));
 
 vi.mock('../../api/summaryApi', () => ({

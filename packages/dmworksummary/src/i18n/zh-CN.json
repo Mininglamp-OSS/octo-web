@@ -567,6 +567,9 @@
     "agent": {
       "noReply": "（无回复）",
       "processedCount": "· 已处理 {{count}} 条"
+    },
+    "common": {
+      "inProgress": "进行中"
     }
   }
 }

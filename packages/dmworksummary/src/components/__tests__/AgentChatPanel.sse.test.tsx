@@ -79,7 +79,7 @@ describe('AgentChatPanel SSE Mode', () => {
         fireEvent.click(sendButton);
 
         // Wait for user message callback
-        await waitFor(() => expect(onUserMessage).toHaveBeenCalledWith('test message'), { timeout: 2000 });
+        await waitFor(() => expect(onUserMessage).toHaveBeenCalledWith('test message', 'test-session'), { timeout: 2000 });
 
         // Wait for error handling and fallback
         await waitFor(() => expect(summaryApi.agentChat).toHaveBeenCalled(), { timeout: 2000 });
@@ -389,7 +389,7 @@ describe('AgentChatPanel SSE Mode', () => {
         // Wait for handlers to be called
         await waitFor(() => {
             expect(summaryApi.agentChatStream).toHaveBeenCalledWith(expect.objectContaining({ session_id: '', message: 'First message', profile: 'summary' }), expect.any(Object));
-            expect(onUserMessage).toHaveBeenCalledWith('First message');
+            expect(onUserMessage).toHaveBeenCalledWith('First message', expect.any(String));
             expect(onAssistantMessage).toHaveBeenCalledWith('Backend response', 'new-session-123');
         }, { timeout: 1000 });
     });

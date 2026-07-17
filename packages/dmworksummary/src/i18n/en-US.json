@@ -567,6 +567,9 @@
     "agent": {
       "noReply": "(no reply)",
       "processedCount": "· processed {{count}} items"
+    },
+    "common": {
+      "inProgress": "In Progress"
     }
   }
 }

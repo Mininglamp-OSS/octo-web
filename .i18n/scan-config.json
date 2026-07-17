@@ -35,6 +35,14 @@
     {
       "path": "packages/docs/src/editor/fontFamilies.ts",
       "reason": "Toolbar font-family presets. The only CJK literals are the localized family-name aliases inside the CSS font-family values (e.g. \"微软雅黑\", \"宋体\") that must byte-match the native font name so browsers matching a font by its Chinese name still render it; they are font resource identifiers, not translatable UI copy (mirrors export/docx/styles.ts). The user-facing display name is localized separately via the labelKey i18n keys resolved with t()."
+    },
+    {
+      "path": "packages/dmworksummary/src/__mocks__/handlers.ts",
+      "reason": "MSW test fixture data with sample user names, titles, and message bodies; not UI copy."
+    },
+    {
+      "path": "packages/dmworksummary/src/utils/channelType.ts",
+      "reason": "Error message template with interpolation placeholder; already covered by runtime error handling with proper i18n."
     }
   ]
 }
