@@ -305,7 +305,7 @@ export default function WebhookEditModal({
     return (
         <WKModal
             visible={visible}
-            width={448}
+            size="lg"
             title={
                 isEdit
                     ? t("base.channelWebhook.form.editTitle")
