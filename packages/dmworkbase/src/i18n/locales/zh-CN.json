@@ -720,7 +720,7 @@
   "threadCreate.namePlaceholder": "输入子区名称",
   "threadCreate.nameRequired": "请输入子区名称",
   "threadCreate.success": "创建成功",
-  "threadCreateModal.topicMaxLength": "话题名称不能超过50个字符",
+  "threadCreateModal.topicMaxLength": "话题名称不能超过100个字符",
   "threadCreateModal.topicPlaceholder": "输入话题名称",
   "threadCreateModal.topicRequired": "请输入话题名称",
   "threadList.createdAt": "创建于 {{time}}",

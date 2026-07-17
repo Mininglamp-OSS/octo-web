@@ -119,6 +119,7 @@ import {
 import { shouldSkipMessageForSpace } from "./Service/SpaceService";
 import { t, I18nText } from "./i18n";
 import { GROUP_NAME_MAX_LENGTH, THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
+import ThreadService from "./Service/ThreadService";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
@@ -1095,14 +1096,12 @@ export default class BaseModule implements IModule {
                     ...message.content.encodeJSON(),
                     type: message.content.contentType,
                   };
-                  const resp = await WKApp.apiClient.post(
-                    `groups/${message.channel.channelID}/threads`,
-                    {
-                      name: threadName.trim(),
-                      source_message_id: parseInt(message.messageID),
-                      source_message_payload: sourcePayload,
-                    }
-                  );
+                  const resp = await ThreadService.createThreadFromMessage({
+                    groupNo: message.channel.channelID,
+                    name: threadName.trim(),
+                    sourceMessageId: parseInt(message.messageID),
+                    sourceMessagePayload: sourcePayload,
+                  });
                   Toast.success(t("base.module.createThread.success"));
                   if (resp && resp.channel_id) {
                     WKApp.mittBus.emit("wk:thread-created", {

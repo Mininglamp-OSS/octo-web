@@ -1,4 +1,4 @@
-/* Thread 创建弹窗 */
+/* Keep the create-thread presentation aligned with the legacy ThreadCreate/ThreadCreateModal UI. */
 .wk-thread-modal {
   position: fixed;
   top: 0;
@@ -85,15 +85,12 @@ body[theme-mode="dark"] .wk-thread-modal-content {
   padding: var(--wk-sp-4);
 }
 
-.wk-thread-modal-field {
-  margin-bottom: var(--wk-sp-4);
+.wk-thread-create-form {
+  display: flex;
+  flex-direction: column;
 }
 
-.wk-thread-modal-field:last-child {
-  margin-bottom: 0;
-}
-
-.wk-thread-modal-label {
+.wk-thread-create-form__label {
   display: block;
   font-size: 13px;
   font-weight: 500;
@@ -101,103 +98,114 @@ body[theme-mode="dark"] .wk-thread-modal-content {
   margin-bottom: var(--wk-sp-2);
 }
 
-.wk-thread-modal-input {
+.wk-thread-create-form__input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wk-thread-create-form__input {
   width: 100%;
-  padding: var(--wk-sp-2-5) var(--wk-sp-3);
-  background: var(--wk-bg-base);
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 10px 12px;
   border: 1px solid var(--wk-border-default);
   border-radius: var(--wk-r-md);
-  font-size: 14px;
-  color: var(--wk-text-primary);
   outline: none;
+  background: var(--wk-bg-base);
+  color: var(--wk-text-primary);
+  font-size: 14px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.wk-thread-modal-input:focus {
-  border-color: var(--wk-brand-primary);
-  box-shadow: 0 0 0 2px var(--wk-brand-tint-10);
+.wk-thread-create-form--confirm .wk-thread-create-form__input {
+  border-radius: 6px;
 }
 
-.wk-thread-modal-input::placeholder {
+.wk-thread-create-form__input:focus {
+  border-color: var(--wk-brand-primary);
+  box-shadow: none;
+}
+
+.wk-thread-create-form__input::placeholder {
   color: var(--wk-text-tertiary);
 }
 
-.wk-thread-modal-input-error {
+.wk-thread-create-form__input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wk-thread-create-form__input--error {
   border-color: var(--wk-color-error);
 }
 
-.wk-thread-modal-error {
-  font-size: 12px;
-  color: var(--wk-color-error);
+.wk-thread-create-form__meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
   margin-top: var(--wk-sp-1);
 }
 
-/* 归档时间选择 */
-.wk-thread-modal-archive-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--wk-sp-2);
+.wk-thread-create-form__error {
+  color: var(--wk-color-error);
+  font-size: 12px;
 }
 
-.wk-thread-modal-archive-option {
-  padding: var(--wk-sp-1-5) var(--wk-sp-3);
-  background: var(--wk-bg-base);
-  border: 1px solid var(--wk-border-default);
-  border-radius: var(--wk-r-full);
-  font-size: 13px;
-  color: var(--wk-text-secondary);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+.wk-thread-create-form__counter {
+  flex-shrink: 0;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
 }
 
-.wk-thread-modal-archive-option:hover {
-  background: var(--wk-bg-hover);
+.wk-thread-create-form__counter--error {
+  color: var(--wk-color-error);
 }
 
-.wk-thread-modal-archive-option-active {
-  background: var(--wk-brand-tint-06);
-  border-color: var(--wk-brand-primary);
-  color: var(--wk-text-accent);
-}
-
-.wk-thread-modal-footer {
+.wk-thread-create-form__footer {
   display: flex;
   justify-content: flex-end;
   gap: var(--wk-sp-2);
+}
+
+.wk-thread-modal .wk-thread-create-form__footer,
+.wk-thread-create .wk-thread-create-form__footer {
+  margin: var(--wk-sp-4) calc(var(--wk-sp-4) * -1) calc(var(--wk-sp-4) * -1);
   padding: var(--wk-sp-4);
   border-top: 1px solid var(--wk-border-default);
 }
 
-.wk-thread-modal-btn {
+.wk-thread-create-form__button {
   padding: var(--wk-sp-2) var(--wk-sp-4);
   border-radius: var(--wk-r-md);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
-}
-
-.wk-thread-modal-btn-cancel {
-  background: var(--wk-bg-hover);
-  color: var(--wk-text-secondary);
   border: none;
 }
 
-.wk-thread-modal-btn-cancel:hover {
+.wk-thread-create-form__button--cancel {
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-secondary);
+}
+
+.wk-thread-create-form__button--cancel:hover {
   background: var(--wk-bg-active);
 }
 
-.wk-thread-modal-btn-submit {
+.wk-thread-create-form__button--submit {
   background: var(--wk-brand-primary);
   color: white;
-  border: none;
 }
 
-.wk-thread-modal-btn-submit:hover {
+.wk-thread-create-form__button--submit:hover {
   opacity: 0.9;
 }
 
-.wk-thread-modal-btn-submit:disabled {
+.wk-thread-create-form__button--submit:disabled,
+.wk-thread-create-form__button--cancel:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
