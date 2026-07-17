@@ -17,3 +17,8 @@
 .wk-channelavatar-upload {
     margin-top: 20px;
 }
+
+.wk-channelavatar-crop-editor {
+    display: flex;
+    justify-content: center;
+}

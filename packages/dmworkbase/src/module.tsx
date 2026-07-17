@@ -1706,7 +1706,6 @@ export default class BaseModule implements IModule {
                   <ChannelAvatar
                     showUpload={data.isManagerOrCreatorOfMe}
                     channel={channel}
-                    context={context}
                   ></ChannelAvatar>,
                   { title: t("base.module.channelSettings.groupAvatar") }
                 );
