@@ -19,6 +19,11 @@ import { InteractiveCardContent } from "./InteractiveCardContent";
 import { decideCardBody, type CardDecision } from "./renderDecision";
 import { resolveEffectiveCardContent } from "./resolveContent";
 import { copyText, openUrl } from "./renderer/actions";
+import {
+  DOCS_DENY_REASON_INPUT_ID,
+  isDocsDenyAction,
+  openDocsDenyReasonDialog,
+} from "./denyReasonDialog";
 import { collectCardInputs, validateCardInputs } from "./sdk/cardInputs";
 import {
   enhanceRenderedOctoCard,
@@ -276,7 +281,40 @@ export class InteractiveCardCell extends MessageCell {
     const actionId = (action as unknown as { id?: unknown }).id;
     if (typeof actionId !== "string" || actionId.trim() === "") return;
 
+    // 文档访问申请「拒绝」需先弹窗采集必填原因，原因随 inputs[deny_reason] 提交
+    // （服务端在卡片里声明了该隐藏输入 id）。其余动作直接提交。
+    const data = (action as unknown as { data?: Record<string, unknown> }).data;
+    if (isDocsDenyAction(data)) {
+      const asString = (v: unknown) => (typeof v === "string" ? v : undefined);
+      void openDocsDenyReasonDialog({
+        docTitle: asString(data?.doc_title),
+        actorName: asString(data?.actor),
+        requestNo: asString(data?.request_id),
+      }).then((reason) => {
+        if (reason == null) return; // 取消 → 不提交。
+        // 弹窗期间可能已卸载 / 被新帧取代 / 已在提交——重新确认可提交再走。
+        if (!this.mounted || this.submitting) return;
+        const current = this.computeState().decision;
+        if (current.kind !== "card" || !current.interactive) return;
+        this.performSubmit(card, actionId, { [DOCS_DENY_REASON_INPUT_ID]: reason });
+      });
+      return;
+    }
+
+    this.performSubmit(card, actionId, null);
+  }
+
+  /**
+   * 实际提交一次卡片动作。extraInputs（如拒绝原因）合并进声明输入后一并上行；
+   * 提交态/超时/代次判活与原逻辑一致。
+   */
+  private performSubmit(
+    card: AdaptiveCard,
+    actionId: string,
+    extraInputs: Record<string, string> | null
+  ) {
     const inputs = collectCardInputs(card);
+    if (extraInputs) Object.assign(inputs, extraInputs);
     const invalid = validateCardInputs(inputs);
     if (invalid) {
       this.submitError = t(

@@ -673,3 +673,38 @@
   border-color: var(--wk-brand-primary);
   box-shadow: 0 0 0 var(--wk-sp-0-5, 2px) var(--wk-border-glow);
 }
+
+/* ── 文档访问申请「拒绝」弹窗 ──
+ * 弹窗本体由 wkConfirm(Semi Modal) 渲染并 portal 到 body，故这些类是全局面；
+ * 只补内容排版，按钮/壳沿用 wk-modal 既有样式。 */
+.wk-docs-deny-dialog-no {
+  margin-bottom: var(--wk-sp-1, 4px);
+  font-size: var(--wk-text-size-sm, 12px);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-docs-deny-dialog-desc {
+  margin: 0 0 var(--wk-sp-4, 16px);
+  font-size: var(--wk-text-size-md, 14px);
+  line-height: var(--wk-leading-normal, 1.6);
+  color: var(--wk-text-secondary);
+}
+
+.wk-docs-deny-dialog-label {
+  margin-bottom: var(--wk-sp-2, 8px);
+  font-size: var(--wk-text-size-base, 13px);
+  font-weight: var(--wk-font-medium, 500);
+  color: var(--wk-text-primary);
+}
+
+.wk-docs-deny-dialog-required {
+  margin-left: var(--wk-sp-1, 4px);
+  font-weight: var(--wk-font-regular, 400);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-docs-deny-dialog-counter {
+  margin-top: var(--wk-sp-2, 8px);
+  font-size: var(--wk-text-size-sm, 12px);
+  color: var(--wk-text-tertiary);
+}
