@@ -232,6 +232,78 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
     expect(result.current.error).toBe('Failed to delete comment.')
   })
 
+  it('does not re-introduce a since-deleted row when an in-flight loadMore page completes after reconcile dropped it', async () => {
+    // Phantom-row race (Jerry-Xin @98dd6762): the third, distinct race.
+    //   1. loadMore() starts and captures a page that still contains comment #30.
+    //   2. Deleting #30 returns 404 (the server had already soft-deleted it), so
+    //      runMutation's catch runs reconcile(), which re-reads the authoritative
+    //      list — now WITHOUT #30 — and installs it.
+    //   3. The older loadMore()'s GET finally resolves and appends its captured
+    //      page → #30 reappears as a phantom row.
+    // reconcile deliberately does not bump reqRef (that would strand the loader's
+    // spinner), so loadMore's reqRef guard still passes on completion. The fix is
+    // an independent dataEpoch that reconcile bumps after installing authoritative
+    // truth; the in-flight loadMore must see it changed and DROP its stale page
+    // (while still clearing its own loading in finally).
+    const page1 = [thread(1, 'a'), thread(2, 'b')]
+    let getCount = 0
+    let releaseLoadMore: (() => void) | null = null
+
+    api.responder = (method: string) => {
+      if (method === 'get') {
+        getCount += 1
+        // 1st GET = initial refresh: page 1 with a cursor so loadMore is enabled.
+        if (getCount === 1) return { data: { items: page1, nextCursor: 25 }, status: 200 }
+        // 2nd GET = loadMore's page fetch — held pending. Its page still contains
+        // the about-to-be-deleted comment #30; released only AFTER reconcile runs.
+        if (getCount === 2) {
+          return new Promise((resolve) => {
+            releaseLoadMore = () =>
+              resolve({ data: { items: [thread(3, 'c'), thread(30, 'phantom')], nextCursor: 50 }, status: 200 })
+          })
+        }
+        // 3rd GET = reconcile's re-read: authoritative page 1, #30 already gone.
+        return { data: { items: page1, nextCursor: 25 }, status: 200 }
+      }
+      if (method === 'delete') {
+        throw { response: { status: 404 } } // #30 already soft-deleted server-side
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(2))
+    expect(result.current.nextCursor).toBe(25)
+
+    // Kick off loadMore; its page GET (getCount 2) is now pending.
+    let loadMorePromise: Promise<void>
+    await act(async () => {
+      loadMorePromise = result.current.loadMore()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.loading).toBe(true))
+
+    // While that page is in flight, deleting #30 is rejected 404 → reconcile()
+    // runs to completion (getCount 3), installing the authoritative list w/o #30.
+    await act(async () => {
+      await result.current.remove(30, false)
+    })
+    expect(result.current.threads.map((t) => t.id)).toEqual([1, 2])
+
+    // Now let the older loadMore GET resolve and append its stale page.
+    await act(async () => {
+      releaseLoadMore!()
+      await loadMorePromise
+    })
+
+    // The phantom row must NOT reappear: the stale page is dropped on the epoch
+    // check. loading settles back to false (loadMore still owns its finally).
+    expect(result.current.threads.map((t) => t.id)).toEqual([1, 2])
+    expect(result.current.threads.some((t) => t.id === 30)).toBe(false)
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.error).toBe('Failed to delete comment.')
+  })
+
   it('does not regress create/reply/resolve refresh on success', async () => {
     let rows = [thread(1, 'a')]
     api.responder = (method: string, url: string) => {

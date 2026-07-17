@@ -58,13 +58,29 @@ export function useDocComments(docId: string): UseDocComments {
   // token only to guard against a newer reconcile overwriting it.
   const reconcileRef = useRef(0)
 
+  // Data-freshness epoch, deliberately independent of both tokens above and of the
+  // loading lifecycle. reconcile() bumps it after it installs the server's
+  // authoritative list; refresh/loadMore snapshot it at start and drop their result
+  // (without touching their own loading reset) if a reconcile bumped it while their
+  // GET was in flight. This is what invalidates a load that was ALREADY in flight when
+  // the reconcile ran: reconcile can't use reqRef for that (it must not bump reqRef, or
+  // it would strand an in-flight loader's spinner — see reconcileRef above), so an
+  // in-flight loadMore capturing a page that still contained a since-deleted row would
+  // otherwise append it back after reconcile dropped it (the "phantom row" race).
+  // dataEpoch closes exactly that gap while keeping loading lifecycle and data freshness
+  // fully decoupled.
+  const dataEpoch = useRef(0)
+
   const refresh = useCallback(async () => {
     const token = ++reqRef.current
+    const startEpoch = dataEpoch.current
     setLoading(true)
     setError(null)
     try {
       const res = await listComments(docId, { includeResolved, limit: PAGE_SIZE })
-      if (reqRef.current !== token) return // superseded by a newer load
+      // Superseded by a newer load, or invalidated by an authoritative reconcile that
+      // landed while this GET was in flight — either way don't apply this (stale) page.
+      if (reqRef.current !== token || dataEpoch.current !== startEpoch) return
       setThreads(res.items)
       setNextCursor(res.nextCursor)
     } catch {
@@ -82,10 +98,14 @@ export function useDocComments(docId: string): UseDocComments {
   const loadMore = useCallback(async () => {
     if (nextCursor == null || loading) return
     const token = ++reqRef.current
+    const startEpoch = dataEpoch.current
     setLoading(true)
     try {
       const res = await listComments(docId, { includeResolved, cursor: nextCursor, limit: PAGE_SIZE })
-      if (reqRef.current !== token) return // superseded
+      // Superseded by a newer load, or invalidated by an authoritative reconcile that
+      // landed while this page was in flight — appending it now would re-introduce a
+      // row reconcile just dropped (the phantom-row race), so discard it.
+      if (reqRef.current !== token || dataEpoch.current !== startEpoch) return
       setThreads((prev) => [...prev, ...res.items])
       setNextCursor(res.nextCursor)
     } catch {
@@ -113,6 +133,14 @@ export function useDocComments(docId: string): UseDocComments {
   // Reading reqRef without bumping it is what lets reconcile guard against a
   // newer load (guard #2) while still leaving that load's loading-bearing token
   // intact, so its `finally { setLoading(false) }` still fires (no strand).
+  //
+  // On the apply path reconcile ALSO bumps dataEpoch: guard #2 only catches loads
+  // that outlived the reconcile's own token snapshot, but a loadMore already
+  // in flight when reconcile started shares that snapshot and would still pass
+  // guard #2 on completion — appending its now-stale page (which may still carry a
+  // row reconcile just removed). Bumping dataEpoch after setThreads makes such an
+  // in-flight load drop its result on the freshness check. The bump is AFTER
+  // setThreads so reconcile does not self-invalidate.
   const reconcile = useCallback(async () => {
     const token = ++reconcileRef.current
     const reqToken = reqRef.current
@@ -123,6 +151,7 @@ export function useDocComments(docId: string): UseDocComments {
       if (reconcileRef.current !== token || reqRef.current !== reqToken) return
       setThreads(res.items)
       setNextCursor(res.nextCursor)
+      dataEpoch.current++ // authoritative truth installed: invalidate in-flight loads
     } catch {
       // Swallow: keep whatever failure message the caller is about to set.
     }
