@@ -5,7 +5,7 @@ import { ChatContentPage } from "./Pages/Chat";
 import { EndpointCategory, EndpointID } from "./Service/Const";
 import { EndpointManager } from "./Service/Module";
 import ConversationContext from "./Components/Conversation/context";
-import { isChannelSearchEnabled } from "./Components/ChannelSearch/feature";
+import { isChannelSearchEnabled } from "./features/channelSearch/feature";
 
 export class MessageContextMenus {
   title!: string;

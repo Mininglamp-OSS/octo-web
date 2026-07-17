@@ -25,14 +25,14 @@ import "./index.css";
 import { ConversationWrap } from "../../Service/Model";
 import WKApp, { ThemeMode } from "../../App";
 import ChannelSetting from "../../Components/ChannelSetting";
-import ChannelSearchPanel from "../../Components/ChannelSearch";
-import { createChannelSearchApiDataSource } from "../../Components/ChannelSearch/apiAdapter";
-import { isChannelSearchEnabled } from "../../Components/ChannelSearch/feature";
+import ChannelSearchPanel from "../../features/channelSearch/ChannelSearchPanel";
+import { createChannelSearchApiDataSource } from "../../bridge/channelSearch/createChannelSearchDataSource";
+import { isChannelSearchEnabled } from "../../features/channelSearch/feature";
 import type {
   ChannelSearchDataSource,
   ChannelSearchItem,
   ChannelSearchPanelState,
-} from "../../Components/ChannelSearch/types";
+} from "../../Service/SearchTypes";
 import classNames from "classnames";
 import {
   Channel,
@@ -46,7 +46,7 @@ import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { ChannelInfoListener } from "wukongimjssdk";
 import { ChatMenus } from "../../App";
 import ConversationContext from "../../Components/Conversation/context";
-import GlobalSearch from "../../Components/GlobalSearch";
+import GlobalSearch from "../../features/globalSearch/GlobalSearchPanel";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import SpaceList from "../../Components/SpaceList";
 import SpaceCreate from "../../Components/SpaceCreate";
@@ -1308,11 +1308,6 @@ export class ChatContentPage extends Component<
               conversationContext={this.conversationContext}
               key={channel.getChannelKey()}
               channel={channel}
-              onOpenChannelSearch={
-                isChannelSearchEnabled(channel)
-                  ? this._openChannelSearchPanel
-                  : undefined
-              }
               onClose={() => {
                 this.setState({
                   showChannelSetting: false,
@@ -1894,27 +1889,26 @@ export default class ChatPage extends Component<any, ChatPageState> {
               )}
               <WKModal
                 size="full"
+                className="wk-global-search-modal"
                 visible={vm.showGlobalSearch}
                 onCancel={() => {
                   vm.showGlobalSearch = false;
                 }}
               >
-                <div style={{ marginTop: "30px" }}>
-                  <ErrorBoundary
-                    moduleName={t("base.chatPage.searchModuleName")}
-                  >
-                    <GlobalSearch
-                      onClick={(item, type: string) => {
-                        void handleGlobalSearchClick(item, type, () => {
-                          vm.showGlobalSearch = false;
-                        });
-                      }}
-                      hideModal={() => {
+                <ErrorBoundary
+                  moduleName={t("base.chatPage.searchModuleName")}
+                >
+                  <GlobalSearch
+                    onClick={(item, type: string) => {
+                      void handleGlobalSearchClick(item, type, () => {
                         vm.showGlobalSearch = false;
-                      }}
-                    />
-                  </ErrorBoundary>
-                </div>
+                      });
+                    }}
+                    hideModal={() => {
+                      vm.showGlobalSearch = false;
+                    }}
+                  />
+                </ErrorBoundary>
               </WKModal>
 
               {/* 附件未发送切换会话确认弹窗 */}

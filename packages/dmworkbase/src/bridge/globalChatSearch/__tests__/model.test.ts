@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultGlobalSearchFilters } from "../../../Components/GlobalSearch/types";
+import { defaultGlobalSearchFilters } from "../../../Service/SearchTypes";
 import { canRunGlobalGroupSearch, drillDownFilters } from "../model";
 
 describe("global chat search model", () => {

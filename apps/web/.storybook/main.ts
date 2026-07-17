@@ -22,7 +22,16 @@ const config: StorybookConfig = {
     '@storybook/addon-vitest',
     '@storybook/addon-mcp',
   ],
-  framework: '@storybook/react-vite',
+  framework: {
+    name: '@storybook/react-vite',
+    options: {
+      // The application Vite config intentionally stubs @storybook/* for
+      // production bundles. Storybook must not inherit that exclusion plugin.
+      builder: {
+        viteConfigPath: path.resolve(__dirname, 'vite.config.ts'),
+      },
+    },
+  },
   viteFinal: (config) =>
     mergeConfig(config, {
       optimizeDeps: {
@@ -35,9 +44,12 @@ const config: StorybookConfig = {
           `!${path.resolve(__dirname, '../src/__tests__/**')}`,
           `!${path.resolve(__dirname, '../../../packages/*/src/**/*.{test,spec}.{ts,tsx}')}`,
         ],
+        include: ['expect-type'],
+        // Vitest owns its runtime initialization, so keep it out of Vite's
+        // dependency optimizer. expect-type is intentionally not excluded:
+        // it is CommonJS and must be pre-bundled for interactive Stories.
         exclude: [
           'vitest',
-          'expect-type',
           '@vitest/runner',
           '@vitest/expect',
           '@vitest/spy',
@@ -53,6 +65,19 @@ const config: StorybookConfig = {
         },
       },
       plugins: [
+        {
+          name: 'storybook-exclude-test-files',
+          enforce: 'pre',
+          resolveId(id) {
+            const isTestFile =
+              /[/\\]__tests__[/\\]/.test(id) ||
+              /\.(?:test|spec)\.[jt]sx?$/.test(id)
+            return isTestFile ? '\0storybook-test-stub' : undefined
+          },
+          load(id) {
+            return id === '\0storybook-test-stub' ? 'export default {}' : undefined
+          },
+        },
         commonjs(),
         tsconfigPaths({ root: path.resolve(__dirname, '../../../') }),
       ],

@@ -413,7 +413,8 @@ const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
   const [open, setOpen] = useState(false);
   if (!src) return null;
   // 经 datasource 解析（补全 base URL / 相对路径改写），与 ImageCell 一致。
-  const resolved = WKApp.dataSource.commonDataSource.getImageURL(src);
+  const resolved =
+    WKApp.dataSource?.commonDataSource?.getImageURL?.(src) || src;
   // 安全校验：解析后必须是 http/https 绝对地址，否则降级为纯文本占位，绝不渲染。
   if (!isSafeUrl(resolved)) {
     return (

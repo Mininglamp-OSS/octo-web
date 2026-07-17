@@ -17,17 +17,32 @@ import path from "node:path";
 //   §B `canSearch` — the flag that gates the initial debounced fetch — is
 //       ANDed with `isActive` so a hidden panel won't call
 //       `dataSource.searchMessages` on mount / keyword change.
-//   §C `runSearch` short-circuits when `!isActive`, guarding the case where
-//       it's called through a stale closure.
-//   §D `loadNextPage` short-circuits when `!isActive`, preventing hidden
-//       panels from paginating themselves via the scrollHeight/scrollTop=0
-//       "near bottom" false positive.
+//   §C the panel passes that gate into the shared pagination bridge.
+//   §D the bridge short-circuits stale search callbacks when disabled.
 //   §E `index.tsx` threads `isActive` from the tab-selection state.
 
 const panelPath = path.join(__dirname, "..", "GlobalContentSearchPanel.tsx");
-const indexPath = path.join(__dirname, "..", "index.tsx");
+const indexPath = path.join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "features",
+  "globalSearch",
+  "GlobalSearchPanel.tsx"
+);
+const paginationHookPath = path.join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "bridge",
+  "search",
+  "useSearchPagination.ts"
+);
 const panelSrc = fs.readFileSync(panelPath, "utf8");
 const indexSrc = fs.readFileSync(indexPath, "utf8");
+const paginationHookSrc = fs.readFileSync(paginationHookPath, "utf8");
 
 describe("GlobalContentSearchPanel — isActive gate (source guard)", () => {
   it("§A declares an isActive prop on GlobalContentSearchPanelProps", () => {
@@ -45,30 +60,15 @@ describe("GlobalContentSearchPanel — isActive gate (source guard)", () => {
     );
   });
 
-  it("§C runSearch bails out early when !isActive", () => {
-    // Belt-and-suspenders: even if a stale closure invokes runSearch after
-    // isActive flips false, no request is issued.
-    const runSearchBlock = panelSrc.match(
-      /const\s+runSearch\s*=\s*useCallback\(\s*async[^{]*\{[\s\S]*?\n\s{4}\}/
+  it("§C passes the active search gate to the pagination bridge", () => {
+    expect(panelSrc).toMatch(
+      /useSearchPagination\(\{[\s\S]{0,160}enabled:\s*canSearch/
     );
-    expect(
-      runSearchBlock,
-      "runSearch useCallback body must exist"
-    ).toBeTruthy();
-    expect(runSearchBlock![0]).toMatch(/if\s*\(\s*!isActive\s*\)\s*return/);
   });
 
-  it("§D loadNextPage bails out early when !isActive", () => {
-    // The scrollHeight=0 false positive on a display:none container flows
-    // through loadNextPage; blocking here stops files-tab background paging.
-    const loadNextBlock = panelSrc.match(
-      /const\s+loadNextPage\s*=\s*useCallback\([\s\S]*?\n\s{4}\)/
-    );
-    expect(loadNextBlock, "loadNextPage useCallback must exist").toBeTruthy();
-    expect(loadNextBlock![0]).toMatch(/if\s*\(\s*!isActive\s*\)\s*return/);
-    // isActive must also appear in the dependency array so React re-derives
-    // the callback when visibility changes.
-    expect(loadNextBlock![0]).toMatch(/isActive[,)\s]/);
+  it("§D shared pagination rejects stale work while disabled", () => {
+    expect(paginationHookSrc).toMatch(/if\s*\(\s*!enabled\s*\|\|\s*\(cursor/);
+    expect(paginationHookSrc).toMatch(/\[enabled,\s*errorMessage,\s*search\]/);
   });
 });
 

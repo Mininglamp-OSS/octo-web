@@ -6,22 +6,25 @@ import GlobalMessageSearchService, {
   type GlobalMessageGroupsResponseWire,
 } from "../../Service/GlobalMessageSearchService";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
-import { truncateChannelSearchKeyword } from "../../Components/ChannelSearch/apiAdapter";
+import { createSearchAssetResolver } from "../search/createSearchAssetResolver";
+import {
+  cleanGlobalFilters,
+  truncateChannelSearchKeyword,
+} from "../../Service/SearchService";
 import {
   mapCombinedHit,
   mapMessageHit,
   type CombinedSearchHit,
   type MessageSearchHit,
-} from "../../Components/ChannelSearch/internal";
+} from "../../Service/SearchResultMapper";
 import type {
   ChannelSearchItem,
   ChannelSearchQuery,
-} from "../../Components/ChannelSearch/types";
-import { cleanGlobalFilters } from "../../Components/GlobalSearch/apiAdapter";
+} from "../../Service/SearchTypes";
 import type {
   GlobalSearchDataSource,
   GlobalSearchFilters,
-} from "../../Components/GlobalSearch/types";
+} from "../../Service/SearchTypes";
 import {
   canRunGlobalGroupSearch,
   drillDownFilters,
@@ -124,6 +127,7 @@ function mapPreview(
   filters: GlobalSearchFilters
 ) {
   const query = previewQuery(keyword, filters);
+  const assets = createSearchAssetResolver();
   return (preview ?? [])
     .map((hit) => {
       if (isCombinedSearchHit(hit)) {
@@ -152,7 +156,8 @@ function mapPreview(
                 }
               : undefined,
           },
-          query
+          query,
+          assets
         );
       }
       if (isMessageSearchHit(hit)) {
@@ -162,7 +167,8 @@ function mapPreview(
             channel_id: hit.channel_id || group.channel_id,
             channel_type: hit.channel_type ?? group.channel_type,
           },
-          query
+          query,
+          assets
         );
       }
       return undefined;

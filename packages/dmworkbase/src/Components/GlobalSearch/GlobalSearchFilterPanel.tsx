@@ -19,8 +19,8 @@ import type {
   GlobalSearchDataSource,
   GlobalSearchFileTypeCategory,
   GlobalSearchFilters,
-} from "./types";
-import { cnDatePresetRange } from "./apiAdapter";
+} from "../../Service/SearchTypes";
+import { cnDatePresetRange } from "../../Service/SearchService";
 
 interface Props {
   tab: GlobalContentTab;
@@ -618,7 +618,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
         resolveGlobalScope + expandGroupWithThreads), so thread hits are no
         longer contingent on the fail-open [2,5] channel_types path.
 
-        See packages/dmworkbase/src/Components/GlobalSearch/dataSource.ts
+        See packages/dmworkbase/src/bridge/globalSearch/createGlobalSearchDataSource.ts
         (loadReadableChannelOptions) for the pool source.
       */}
         <FilterSearchSelect

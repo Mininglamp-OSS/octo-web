@@ -1,6 +1,8 @@
-import type { ChannelSearchItem } from "../../Components/ChannelSearch/types";
-import type { GlobalSearchFilters } from "../../Components/GlobalSearch/types";
-import { hasGlobalSearchCriteria } from "../../Components/GlobalSearch/filterState";
+import type {
+  ChannelSearchItem,
+  GlobalSearchFilters,
+} from "../../Service/SearchTypes";
+import { hasGlobalSearchCriteria } from "../globalSearch/filterState";
 
 export interface GlobalChatSearchConversation {
   key: string;

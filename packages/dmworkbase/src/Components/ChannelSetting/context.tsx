@@ -12,7 +12,6 @@ export class ChannelSettingRouteData {
      subscriberAll!:Subscriber[] //成员列表，所有状态的成员，比如：黑名单内的成员
      refresh!:()=>void // 刷新
      conversationContext?:ConversationContext
-     onOpenChannelSearch?:()=>void
 
      // 我是否是管理者或创建者
      get isManagerOrCreatorOfMe() {

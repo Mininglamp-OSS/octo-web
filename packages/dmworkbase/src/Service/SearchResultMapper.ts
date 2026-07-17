@@ -1,10 +1,6 @@
-import {
-  Channel,
-  ChannelTypeGroup,
-} from "wukongimjssdk";
-import WKApp from "../../App";
-import { ChannelTypeCommunityTopic } from "../../Service/Const";
-import { parseThreadChannelId } from "../../Service/Thread";
+import { Channel, ChannelTypeGroup } from "wukongimjssdk";
+import { ChannelTypeCommunityTopic } from "./Const";
+import { parseThreadChannelId } from "./Thread";
 import type {
   ChannelSearchFileInfo,
   ChannelSearchFilters,
@@ -15,7 +11,17 @@ import type {
   ChannelSearchRichTextInfo,
   ChannelSearchRichTextMention,
   ChannelSearchSender,
-} from "./types";
+} from "./SearchTypes";
+
+export interface SearchAssetResolver {
+  image(path: string): string;
+  file(path: string): string;
+}
+
+const passthroughAssetResolver: SearchAssetResolver = {
+  image: (path) => path,
+  file: (path) => path,
+};
 
 export type SearchPagination = {
   has_more?: boolean;
@@ -160,37 +166,34 @@ export function optionalSentAtToSeconds(value?: string) {
   return Math.floor(time / 1000);
 }
 
-export function normalizeImageUrl(path?: string) {
+export function normalizeImageUrl(
+  path?: string,
+  assets: SearchAssetResolver = passthroughAssetResolver
+) {
   if (!path) return undefined;
   if (/^(https?:|data:|blob:)/i.test(path)) return path;
   const normalizedPath = path.replace(/^\/+/, "");
-  const commonDataSource = WKApp.dataSource?.commonDataSource;
-  if (commonDataSource?.getImageURL) {
-    return commonDataSource.getImageURL(normalizedPath);
-  }
-  const baseURL = WKApp.apiClient.config.apiURL || "";
-  return `${baseURL}${normalizedPath}`;
+  return assets.image(normalizedPath);
 }
 
-export function normalizeFileUrl(path?: string | null) {
+export function normalizeFileUrl(
+  path?: string | null,
+  assets: SearchAssetResolver = passthroughAssetResolver
+) {
   if (!path) return undefined;
   if (/^(https?:|data:|blob:)/i.test(path)) return path;
   const normalizedPath = path.replace(/^\/+/, "");
-  const commonDataSource = WKApp.dataSource?.commonDataSource;
-  if (commonDataSource?.getFileURL) {
-    return commonDataSource.getFileURL(normalizedPath);
-  }
-  const baseURL = WKApp.apiClient.config.apiURL || "";
-  return `${baseURL}${normalizedPath}`;
+  return assets.file(normalizedPath);
 }
 
 export function normalizeMediaUrl(
   path: string | null | undefined,
-  mediaKind?: "image" | "video"
+  mediaKind?: "image" | "video",
+  assets: SearchAssetResolver = passthroughAssetResolver
 ) {
   return mediaKind === "image"
-    ? normalizeImageUrl(path || undefined)
-    : normalizeFileUrl(path);
+    ? normalizeImageUrl(path || undefined, assets)
+    : normalizeFileUrl(path, assets);
 }
 
 export function secondsToDateOnly(seconds?: number) {
@@ -239,16 +242,19 @@ export function hasEffectiveFilters(filters: ChannelSearchFilters) {
   return Object.keys(cleanFilters(filters)).length > 0;
 }
 
-export function senderFromHit(hit: {
-  sender_id?: string;
-  sender_name?: string;
-  sender_avatar_url?: string;
-}): ChannelSearchSender {
+export function senderFromHit(
+  hit: {
+    sender_id?: string;
+    sender_name?: string;
+    sender_avatar_url?: string;
+  },
+  assets: SearchAssetResolver = passthroughAssetResolver
+): ChannelSearchSender {
   const uid = hit.sender_id || "";
   return {
     uid,
     name: hit.sender_name || uid,
-    avatarUrl: normalizeImageUrl(hit.sender_avatar_url),
+    avatarUrl: normalizeImageUrl(hit.sender_avatar_url, assets),
   };
 }
 
@@ -345,15 +351,16 @@ export function normalizeRichText(
 export function mapMessageMediaHit(
   hit: MessageSearchHit,
   query: ChannelSearchQuery,
-  mediaKind: "image" | "video"
+  mediaKind: "image" | "video",
+  assets: SearchAssetResolver = passthroughAssetResolver
 ): ChannelSearchItem {
-  const sender = senderFromHit(hit);
+  const sender = senderFromHit(hit, assets);
   const hitChannel = channelFromHit(hit, {
     channelId: query.channelId,
     channelType: query.channelType,
   });
   const sentAt = hit.sent_at || "";
-  const thumbUrl = normalizeImageUrl(hit.thumb_url);
+  const thumbUrl = normalizeImageUrl(hit.thumb_url, assets);
   const media: ChannelSearchMediaInfo = {
     url: mediaKind === "image" ? thumbUrl : undefined,
     previewUrl: mediaKind === "image" ? thumbUrl : undefined,
@@ -386,9 +393,10 @@ export function mapMessageMediaHit(
 
 export function mapMessageHit(
   hit: MessageSearchHit,
-  query: ChannelSearchQuery
+  query: ChannelSearchQuery,
+  assets: SearchAssetResolver = passthroughAssetResolver
 ): ChannelSearchItem {
-  const sender = senderFromHit(hit);
+  const sender = senderFromHit(hit, assets);
   const hitChannel = channelFromHit(hit, {
     channelId: query.channelId,
     channelType: query.channelType,
@@ -396,7 +404,7 @@ export function mapMessageHit(
   const sentAt = hit.sent_at || "";
   const messageKind = hit.message_kind || "text";
   if (messageKind === "image" || messageKind === "video") {
-    return mapMessageMediaHit(hit, query, messageKind);
+    return mapMessageMediaHit(hit, query, messageKind, assets);
   }
 
   const richText = normalizeRichText(hit.rich_text);
@@ -437,9 +445,10 @@ export function mapMessageHit(
 
 export function mapFileHit(
   hit: FileSearchHit,
-  query: ChannelSearchQuery
+  query: ChannelSearchQuery,
+  assets: SearchAssetResolver = passthroughAssetResolver
 ): ChannelSearchItem {
-  const sender = senderFromHit(hit);
+  const sender = senderFromHit(hit, assets);
   const hitChannel = channelFromHit(hit, {
     channelId: query.channelId,
     channelType: query.channelType,
@@ -468,16 +477,17 @@ export function mapFileHit(
 
 export function mapMediaHit(
   hit: MediaSearchHit,
-  query: ChannelSearchQuery
+  query: ChannelSearchQuery,
+  assets: SearchAssetResolver = passthroughAssetResolver
 ): ChannelSearchItem {
-  const sender = senderFromHit(hit);
+  const sender = senderFromHit(hit, assets);
   const hitChannel = channelFromHit(hit, {
     channelId: query.channelId,
     channelType: query.channelType,
   });
   const mediaKind = hit.media_kind || "image";
-  const previewUrl = normalizeMediaUrl(hit.preview_url, mediaKind);
-  const downloadUrl = normalizeFileUrl(hit.download_url);
+  const previewUrl = normalizeMediaUrl(hit.preview_url, mediaKind, assets);
+  const downloadUrl = normalizeFileUrl(hit.download_url, assets);
   const mediaUrl =
     previewUrl ||
     normalizeMediaUrl(
@@ -486,14 +496,15 @@ export function mapMediaHit(
         hit.file_url ||
         hit.image_url ||
         hit.video_url,
-      mediaKind
+      mediaKind,
+      assets
     ) ||
     downloadUrl;
   const media: ChannelSearchMediaInfo = {
     url: mediaUrl,
     previewUrl,
     downloadUrl,
-    thumbUrl: normalizeImageUrl(hit.thumb_url),
+    thumbUrl: normalizeImageUrl(hit.thumb_url, assets),
     duration:
       typeof hit.duration_ms === "number"
         ? Math.round(hit.duration_ms / 1000)
@@ -519,25 +530,23 @@ export function mapMediaHit(
 
 export function mapCombinedHit(
   hit: CombinedSearchHit,
-  query: ChannelSearchQuery
+  query: ChannelSearchQuery,
+  assets: SearchAssetResolver = passthroughAssetResolver
 ): ChannelSearchItem | undefined {
   if (hit.result_type === "file" && hit.file) {
-    const item = mapFileHit(hit.file, query);
+    const item = mapFileHit(hit.file, query, assets);
     if (hit.sorted_at) item.timestamp = sentAtToSeconds(hit.sorted_at);
     return item;
   }
   if (hit.result_type === "message" && hit.message) {
-    const item = mapMessageHit(hit.message, query);
+    const item = mapMessageHit(hit.message, query, assets);
     if (hit.sorted_at) item.timestamp = sentAtToSeconds(hit.sorted_at);
     return item;
   }
   if (hit.result_type === "media" && hit.media) {
-    const item = mapMediaHit(hit.media, query);
+    const item = mapMediaHit(hit.media, query, assets);
     if (hit.sorted_at) item.timestamp = sentAtToSeconds(hit.sorted_at);
     return item;
-  }
-  if (import.meta.env.DEV) {
-    console.warn("[ChannelSearch] unknown combined search hit", hit);
   }
   return undefined;
 }

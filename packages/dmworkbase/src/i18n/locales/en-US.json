@@ -861,6 +861,8 @@
   "createCategory.placeholder": "Enter a category name",
   "createCategory.title": "New category",
   "globalSearch.chatHistoryWith": "Chat history with \"{{name}}\"",
+  "globalSearch.clear": "Clear search",
+  "globalSearch.placeholder": "Search contacts, groups, messages, or files",
   "globalSearch.searchFailedRetry": "Search failed. Please try again later.",
   "globalSearch.searchDisabled": "Search is currently unavailable.",
   "globalSearch.aggregated.approxConversations": "About {{count}} related chats",

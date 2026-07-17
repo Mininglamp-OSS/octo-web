@@ -30,21 +30,12 @@ vi.mock("../../../Service/GlobalMessageSearchService", () => ({
   default: { searchGroups: hoisted.searchGroups },
 }));
 
-vi.mock("../../../Components/ChannelSearch/apiAdapter", () => ({
-  truncateChannelSearchKeyword: (keyword: string) => keyword,
-}));
-
-vi.mock("../../../Components/ChannelSearch/internal", () => ({
-  mapCombinedHit: vi.fn(),
-  mapMessageHit: vi.fn(),
-}));
-
-import type { ChannelSearchItem } from "../../../Components/ChannelSearch/types";
 import {
+  type ChannelSearchItem,
   defaultGlobalSearchFilters,
   type GlobalSearchDataSource,
   type GlobalSearchQuery,
-} from "../../../Components/GlobalSearch/types";
+} from "../../../Service/SearchTypes";
 import useGlobalChatSearch from "../useGlobalChatSearch";
 
 function deferred<T>() {

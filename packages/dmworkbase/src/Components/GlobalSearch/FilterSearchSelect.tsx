@@ -151,7 +151,7 @@ const FilterSearchSelect: React.FC<FilterSearchSelectProps> = ({
                   className={active ? "is-selected" : undefined}
                   onClick={() => {
                     // Mirror ChannelSearch's chooseSender pattern (packages/
-                    // dmworkbase/src/Components/ChannelSearch/index.tsx —
+                    // dmworkbase/src/features/channelSearch/ChannelSearchPanel.tsx —
                     // toggle + clear the typed query + keep the dropdown
                     // open so the user can immediately pick another
                     // candidate). Without the reset the input keeps the

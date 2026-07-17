@@ -37,7 +37,8 @@ import type { MessageRowSelectionState } from "./useMessageRow";
 
 function resolveFileUrl(rawUrl?: string): string {
   if (!rawUrl) return "";
-  let fileUrl = WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
+  let fileUrl =
+    WKApp.dataSource?.commonDataSource?.getFileURL?.(rawUrl) || rawUrl;
   if (!fileUrl) return "";
   if (!fileUrl.startsWith("http")) {
     if (typeof window === "undefined") return "";

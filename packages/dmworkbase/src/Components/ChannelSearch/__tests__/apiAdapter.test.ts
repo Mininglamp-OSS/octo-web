@@ -7,7 +7,21 @@ const mockState = vi.hoisted(() => ({
   getImageURL: vi.fn((path: string) => `/api/v1/${path}`),
   getFileURL: vi.fn((path: string) => `/files/${path}`),
   parseThreadChannelId: vi.fn(),
+  searchChannelMessages: vi.fn(),
 }));
+
+vi.mock("../../../Service/SearchService", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("../../../Service/SearchService")
+  >();
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      searchChannelMessages: mockState.searchChannelMessages,
+    },
+  };
+});
 
 vi.mock("wukongimjssdk", () => ({
   Channel: class {
@@ -116,6 +130,7 @@ beforeEach(() => {
   mockState.getChannelInfo.mockReturnValue({ title: "Peer Name" });
   mockState.parseThreadChannelId.mockReturnValue(null);
   mockState.subscribers.mockResolvedValue([]);
+  mockState.searchChannelMessages.mockReset();
 });
 
 afterEach(() => {
@@ -595,22 +610,21 @@ describe("channel search API adapter response mapping", () => {
   });
 
   it("derives searchMessages pagination and request body from the envelope", async () => {
-    mockState.post.mockResolvedValue({
-      data: [
+    mockState.searchChannelMessages.mockResolvedValue({
+      items: [
         {
-          result_type: "message",
-          sorted_at: "2026-01-03T00:00:00Z",
-          message: {
-            message_id: "m1",
-            message_seq: 22,
-            sender_id: "u1",
-            channel_id: "thread-a",
-            channel_type: 5,
-            sent_at: "2026-01-02T00:00:00Z",
-          },
+          id: "m1",
+          messageId: "m1",
+          messageSeq: 22,
+          channelId: "thread-a",
+          channelType: 5,
+          senderUid: "u1",
+          timestamp: 1,
+          kind: "text",
         },
       ],
-      pagination: { has_more: true, next_cursor: "cursor-2" },
+      hasMore: true,
+      nextCursor: "cursor-2",
     });
 
     const dataSource = createChannelSearchApiDataSource(
@@ -618,12 +632,11 @@ describe("channel search API adapter response mapping", () => {
     );
     const response = await dataSource.searchMessages(baseQuery("all"));
 
-    expect(mockState.post).toHaveBeenCalledWith(
-      "messages/_search_all",
+    expect(mockState.searchChannelMessages).toHaveBeenCalledWith(
+      baseQuery("all"),
       expect.objectContaining({
-        channel_id: "group-a",
-        channel_type: ChannelTypeGroup,
-        keyword: "project",
+        image: expect.any(Function),
+        file: expect.any(Function),
       })
     );
     expect(response).toMatchObject({

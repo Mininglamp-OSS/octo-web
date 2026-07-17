@@ -4,12 +4,12 @@ import {
   ChannelSearchEmpty,
   MixedResultItem,
 } from "../../Components/ChannelSearch";
-import { canLocateChannelSearchItem } from "../../Components/ChannelSearch/locate";
-import type { ChannelSearchItem } from "../../Components/ChannelSearch/types";
+import { canLocateChannelSearchItem } from "../../bridge/channelSearch/locate";
 import type {
+  ChannelSearchItem,
   GlobalSearchDataSource,
   GlobalSearchFilters,
-} from "../../Components/GlobalSearch/types";
+} from "../../Service/SearchTypes";
 import useGlobalChatSearch from "../../bridge/globalChatSearch/useGlobalChatSearch";
 import GlobalChatSearchLayout from "../../ui/GlobalChatSearchLayout";
 import { useI18n } from "../../i18n";
