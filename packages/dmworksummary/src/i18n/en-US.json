@@ -562,5 +562,11 @@
     "previewLatestHint": "Showing the latest version of this summary (may have been updated since you referenced it)",
     "previewNotFound": "This summary was deleted or you don't have access",
     "previewLoadFailed": "Failed to load, please retry later"
+  },
+  "summary": {
+    "agent": {
+      "noReply": "(no reply)",
+      "processedCount": "· processed {{count}} items"
+    }
   }
 }

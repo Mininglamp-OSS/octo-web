@@ -562,5 +562,11 @@
     "previewLatestHint": "以下内容为该总结的最新版本(可能已经被更新过,与您引用时的快照不完全一致)",
     "previewNotFound": "该总结已删除或您无权访问",
     "previewLoadFailed": "加载失败,请稍后重试"
+  },
+  "summary": {
+    "agent": {
+      "noReply": "（无回复）",
+      "processedCount": "· 已处理 {{count}} 条"
+    }
   }
 }

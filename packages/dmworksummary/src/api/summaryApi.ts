@@ -417,6 +417,7 @@ export function agentChatStream(
 
             let pendingEvent = '';
             let pendingData = '';
+            let receivedDone = false;
             while (!aborted) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -434,12 +435,19 @@ export function agentChatStream(
                     } else if (line === '') {
                         // 空行是帧边界,解析并分发
                         if (pendingEvent && pendingData) {
+                            if (pendingEvent === 'done') {
+                                receivedDone = true;
+                            }
                             parseAndDispatch(pendingEvent, pendingData, handlers);
                         }
                         pendingEvent = '';
                         pendingData = '';
                     }
                 }
+            }
+            // 流已关闭,但如果没收到 done 事件,触发错误让 UI 解锁
+            if (!aborted && !receivedDone) {
+                handlers.onError?.({ code: 50000, message: 'stream closed without done' });
             }
         } catch (err: unknown) {
             if (aborted) return; // 用户手动关闭,不回调 error
