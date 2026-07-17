@@ -431,7 +431,7 @@ export function agentChatStream(
                     if (line.startsWith('event:')) {
                         pendingEvent = line.slice(6).trim();
                     } else if (line.startsWith('data:')) {
-                        pendingData = line.slice(5).trim();
+                        pendingData += (pendingData ? "\n" : "") + line.slice(5).trim();
                     } else if (line === '') {
                         // 空行是帧边界,解析并分发
                         if (pendingEvent && pendingData) {

@@ -492,12 +492,12 @@ export default class ChatSummaryNewModal extends Component<
 
 
     /** SSE 模式：追加 user 消息(仅 UI,不发请求)。 */
-    private handleAgentUserMessage = (text: string) => {
+    private handleAgentUserMessage = (text: string, incomingSessionId?: string) => {
         const trimmed = text.trim();
         if (!trimmed) return;
         
         // 惰性生成 session_id，整会话复用
-        const sessionId = this.state.sessionId || genSessionId();
+        const sessionId = incomingSessionId || this.state.sessionId || genSessionId();
         writeAgentChatSession(this.agentChannelId(), sessionId);
 
         this.setState((prev) => ({

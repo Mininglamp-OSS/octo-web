@@ -18,7 +18,7 @@ interface AgentChatPanelProps {
     sessionId?: string;
     profile?: string;
     onAssistantMessage?: (text: string, sessionId?: string) => void;
-    onUserMessage?: (text: string) => void;
+    onUserMessage?: (text: string, sessionId?: string) => void;
     /**
      * 引用的已有总结 task_id 列表。仅在**首轮**(messages.length===0)时随
      * 第一个 chat 请求发给后端;后续轮次此字段被忽略(引用一次锁定)。
@@ -144,7 +144,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         });
 
         // 先本地追加 user 消息(纯 UI,不发请求)
-        onUserMessage?.(text);
+        onUserMessage?.(text, sessionId);
 
         try {
             // 每轮都把引用传给后端(和 CHAT-REFERENCE-BASED-DESIGN-v1 多轮上下文修复对齐)。
