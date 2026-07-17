@@ -85,9 +85,29 @@ export function useDocComments(docId: string): UseDocComments {
     }
   }, [docId, includeResolved, nextCursor, loading])
 
+  // Best-effort re-read of the authoritative list that leaves the error banner
+  // untouched (the caller owns the message). Used to reconcile the UI after a
+  // mutation is *rejected*: some rejections mean the server state already moved
+  // (e.g. deleting a comment the backend had already soft-deleted returns 404),
+  // so without re-reading the stale row lingers on screen — the "deleted but
+  // still visible" bug. Shares the latest-wins stale guard with refresh().
+  const reconcile = useCallback(async () => {
+    const token = ++reqRef.current
+    try {
+      const res = await listComments(docId, { includeResolved, limit: PAGE_SIZE })
+      if (reqRef.current !== token) return // superseded by a newer load
+      setThreads(res.items)
+      setNextCursor(res.nextCursor)
+    } catch {
+      // Swallow: keep whatever failure message the caller is about to set.
+    }
+  }, [docId, includeResolved])
+
   // Wrap a mutating action so a failed API call surfaces as a panel error instead of
   // an unhandled rejection (the handlers only had `finally`, not `catch`). On success
-  // we re-read from the authoritative backend.
+  // we re-read from the authoritative backend. On failure we ALSO re-read: the backend
+  // is authoritative, so reconcile the list to server truth before showing the error
+  // (otherwise a delete the server already applied leaves the row on screen).
   const runMutation = useCallback(
     async (fn: () => Promise<unknown>, failMsg: string): Promise<void> => {
       setError(null)
@@ -95,10 +115,11 @@ export function useDocComments(docId: string): UseDocComments {
         await fn()
         await refresh()
       } catch {
+        await reconcile()
         setError(failMsg)
       }
     },
-    [refresh],
+    [refresh, reconcile],
   )
 
   const createRoot = useCallback(
