@@ -1603,3 +1603,55 @@ describe('DocsHome — recent row merges viewed/updated into the latest event (X
     })
   })
 })
+
+// XIN-1307: the resident list only fetches on mount + on space/folder/reloadToken change, but the
+// host keeps DocsHome mounted and only toggles `display` on a NavRail return. So a "查看" recorded
+// while another tab was active never appeared on return to docs. The nav-reactivation handler now
+// bumps the reload token, which re-runs useDocsView's fetch effect (re-sending each tab's remembered
+// q/creators/types, so search/filter survives). These guard that refetch — and that it does NOT fire
+// for an unrelated menu (no over-refetch).
+describe('DocsHome — re-activating the docs nav entry refetches the recent list (XIN-1307)', () => {
+  // Count only the paged recent-list GETs, not the sibling /docs/recent/creators lookups.
+  const recentListGets = (wk: ReturnType<typeof createMockWKApp>) =>
+    wk.apiClient.calls.filter(
+      (c) => c.method === 'get' && c.url.startsWith('/docs/recent') && !c.url.startsWith('/docs/recent/creators'),
+    ).length
+
+  it('refetches the recent list when wk:nav-menu-activated(docs) fires, but not for another menu', async () => {
+    const wk = createMockWKApp()
+    // A right-pane manager puts DocsHome on the production resident-list path, where it subscribes
+    // to nav re-activation (the effect early-returns without a routeRight).
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot: vi.fn(), popToRoot: vi.fn() }
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        return {
+          data: {
+            total: 1,
+            items: [{ docId: 'd_recent', title: 'Recent Doc', ownerId: 'u_self', role: 'admin' }],
+            nextCursor: null,
+          },
+          status: 200,
+        }
+      }
+      return { data: { total: 0, items: [], nextCursor: null }, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Recent Doc')).toBeTruthy())
+    const afterMount = recentListGets(wk)
+    expect(afterMount).toBeGreaterThanOrEqual(1)
+
+    // A NavRail click on a NON-docs menu must not touch the docs list.
+    act(() => wk.mockMittBus.emitNavMenuActivated('chat'))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(recentListGets(wk)).toBe(afterMount)
+
+    // Returning to the docs entry refetches so a newly-recorded view shows up.
+    act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
+    await waitFor(() => expect(recentListGets(wk)).toBeGreaterThan(afterMount))
+  })
+})

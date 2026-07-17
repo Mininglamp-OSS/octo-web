@@ -1529,6 +1529,14 @@ export function DocsHome() {
       } catch {
         // ignore — right pane unavailable
       }
+      // The resident list only fetches on mount + on space/folder/reloadToken change (useDocsView),
+      // so a view recorded while another tab was active never showed up on a NavRail return to docs
+      // (XIN-1307 — host keeps DocsHome mounted, only toggles display). Bump the reload token here
+      // so both tabs refetch. The token feeds useDocsView's existing refetch effect, which re-sends
+      // each tab's remembered q/creators/types — so the current search/filter is preserved and no
+      // fetch dependency array or cache layer changes. setListReloadToken is a stable setter and the
+      // functional update reads the latest value, so no ref/stale-closure handling is needed.
+      setListReloadToken((n) => n + 1)
     })
     // routeRight + buildEmptyState are stable (singleton + []-dep useCallback); buildRightPane is
     // read through a ref so the subscription stays mounted for the component's life.
