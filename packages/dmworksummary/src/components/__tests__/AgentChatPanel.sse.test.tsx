@@ -36,21 +36,21 @@ describe('AgentChatPanel SSE Mode', () => {
         vi.clearAllMocks();
     });
 
-    it('should handle disconnect and fallback to agentChat', async () => {
+    it('should handle backend error without fallback (P2.4)', async () => {
         const onUserMessage = vi.fn();
         const onAssistantMessage = vi.fn();
         const onSend = vi.fn();
 
         // Mock agentChatStream to return immediately and call onError
         (summaryApi.agentChatStream as any).mockImplementation((params: any, handlers: any) => {
-            // Call onError immediately (simulating immediate failure)
+            // Call onError immediately (simulating backend error)
             setImmediate(() => {
-                handlers.onError({ code: 500, message: 'Connection lost' });
+                handlers.onError({ code: 500, message: 'Backend error' });
             });
             return { close: vi.fn() };
         });
 
-        // Mock agentChat fallback
+        // Mock agentChat (should NOT be called after P2.4)
         (summaryApi.agentChat as any).mockResolvedValue({
             reply: 'Fallback reply',
             session_id: 'test-session',
@@ -81,24 +81,12 @@ describe('AgentChatPanel SSE Mode', () => {
         // Wait for user message callback
         await waitFor(() => expect(onUserMessage).toHaveBeenCalledWith('test message', 'test-session'), { timeout: 2000 });
 
-        // Wait for error handling and fallback
-        await waitFor(() => expect(summaryApi.agentChat).toHaveBeenCalled(), { timeout: 2000 });
-
-        // Verify agentChat was called with correct params
-        expect(summaryApi.agentChat).toHaveBeenCalledWith({
-            session_id: 'test-session',
-            message: 'test message',
-            profile: 'summary',
-        });
-
-        // Wait for assistant message callback
-        await waitFor(() => expect(onAssistantMessage).toHaveBeenCalledWith('Fallback reply'), { timeout: 2000 });
-
-        // Verify onSend was NOT called (SSE branch should not use onSend)
-        expect(onSend).not.toHaveBeenCalled();
+        // P2.4: Backend error should NOT trigger fallback (prevents duplicate agent turn)
+        await new Promise(resolve => setTimeout(resolve, 500));
+        expect(summaryApi.agentChat).not.toHaveBeenCalled();
+        expect(onAssistantMessage).not.toHaveBeenCalled();
     });
 
-    it('should handle successful SSE stream completion', async () => {
         let savedHandlers: any = null;
         const onUserMessage = vi.fn();
         const onAssistantMessage = vi.fn();
