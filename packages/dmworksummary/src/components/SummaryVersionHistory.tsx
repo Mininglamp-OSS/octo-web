@@ -1,68 +1,109 @@
 import React from "react";
-import { Timeline, Button, Tag } from "@douyinfe/semi-ui";
+import { Button, Tag } from "@douyinfe/semi-ui";
+import { IconHistory } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
-import type { SummaryResult } from "../types/summary";
-import { formatDate } from "../utils/summaryHelpers";
+import type { SummaryVersionItem } from "../types/summary";
 
 interface SummaryVersionHistoryProps {
-    versions: SummaryResult[];
+    versions: SummaryVersionItem[];
+    versionsLoading: boolean;
     currentVersion: number;
-    onSelectVersion: (version: number) => void;
+    restoringVersionId: number | null;
+    canRestore: boolean;
+    onViewVersion: (version: SummaryVersionItem) => void;
+    onRestoreVersion: (version: SummaryVersionItem) => void;
+}
+
+function formatVersionOperation(
+    version: SummaryVersionItem,
+    t: (key: string, opts?: { values?: Record<string, string | number> }) => string,
+): string {
+    if ((version.operation_type || "generate") === "generate") {
+        return t("summary.detail.versionInitialGenerate");
+    }
+    const key = `summary.detail.versionOperation.${version.operation_type || "generate"}`;
+    const label = t(key);
+    return label === key ? t("summary.detail.versionOperation.generate") : label;
+}
+
+function formatVersionOperationNote(
+    version: SummaryVersionItem,
+    t: (key: string, opts?: { values?: Record<string, string | number> }) => string,
+): string {
+    const note = (version.operation_note || "").trim();
+    if (note) return note;
+    if ((version.operation_type || "generate") === "generate") {
+        return t("summary.detail.versionInitialGenerateDesc");
+    }
+    if (version.operation_type === "restore" && version.parent_result_id) {
+        return t("summary.detail.versionRestoreFromResult", { values: { id: version.parent_result_id } });
+    }
+    return formatVersionOperation(version, t);
 }
 
 const SummaryVersionHistory: React.FC<SummaryVersionHistoryProps> = ({
     versions,
+    versionsLoading,
     currentVersion,
-    onSelectVersion,
+    restoringVersionId,
+    canRestore,
+    onViewVersion,
+    onRestoreVersion,
 }) => {
     const { t } = useI18n();
 
-    if (!versions || versions.length === 0) {
-        return <div className="summary-version-empty">{t("summary.versionHistory.empty")}</div>;
-    }
-
-    const sorted = [...versions].sort((a, b) => b.version - a.version);
+    if (versionsLoading || !versions || versions.length <= 1) return null;
 
     return (
-        <div className="summary-version-history">
-            <Timeline>
-                {sorted.map((v) => {
-                    const isCurrent = v.version === currentVersion;
+        <div className="summary-version-strip">
+            <div className="summary-version-strip-title">
+                <IconHistory size="small" />
+                <span>{t("summary.detail.recentVersions")}</span>
+                <span className="summary-version-strip-hint">{t("summary.detail.recentVersionsLimitHint")}</span>
+            </div>
+            <div className="summary-version-list">
+                {versions.slice(0, 3).map((version) => {
+                    const isCurrent = version.version === currentVersion;
                     return (
-                        <Timeline.Item key={v.version} color={isCurrent ? "blue" : "grey"}>
-                            <div className="summary-version-item">
-                                <div className="summary-version-header">
-                                    <span>{t("summary.common.version", { values: { version: v.version } })}</span>
-                                    {isCurrent && (
-                                        <Tag color="blue" size="small" style={{ marginLeft: 8 }}>
-                                            {t("summary.common.current")}
-                                        </Tag>
+                        <div key={version.result_id} className="summary-version-item">
+                            <div className="summary-version-body">
+                                <div className="summary-version-main">
+                                    <span className="summary-version-number">
+                                        {t("summary.common.version", { values: { version: version.version } })}
+                                    </span>
+                                    {isCurrent && <Tag size="small" color="blue">{t("summary.detail.currentVersion")}</Tag>}
+                                    {version.operation_type === "scheduled_generate" && (
+                                        <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
+                                    )}
+                                    {version.operation_type !== "scheduled_generate" && (
+                                        <span className="summary-version-operation">{formatVersionOperation(version, t)}</span>
                                     )}
                                 </div>
-                                <div className="summary-version-meta">
-                                    {t("summary.versionHistory.meta", {
-                                        values: {
-                                            time: formatDate(v.generated_at),
-                                            count: v.total_msg_count,
-                                            model: v.model_version,
-                                        },
-                                    })}
-                                </div>
-                                {!isCurrent && (
+                                <div className="summary-version-note">{formatVersionOperationNote(version, t)}</div>
+                            </div>
+                            <div className="summary-version-actions">
+                                <Button
+                                    size="small"
+                                    theme="borderless"
+                                    onClick={() => onViewVersion(version)}
+                                >
+                                    {t("summary.detail.viewVersion")}
+                                </Button>
+                                {!isCurrent && canRestore && (
                                     <Button
                                         size="small"
                                         theme="borderless"
-                                        onClick={() => onSelectVersion(v.version)}
-                                        style={{ marginTop: 4 }}
+                                        loading={restoringVersionId === version.result_id}
+                                        onClick={() => onRestoreVersion(version)}
                                     >
-                                        {t("summary.versionHistory.viewVersion")}
+                                        {t("summary.detail.restoreVersion")}
                                     </Button>
                                 )}
                             </div>
-                        </Timeline.Item>
+                        </div>
                     );
                 })}
-            </Timeline>
+            </div>
         </div>
     );
 };

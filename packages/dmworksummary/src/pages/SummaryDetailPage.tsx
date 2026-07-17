@@ -45,6 +45,7 @@ import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import MatterPickerModal from "../components/MatterPickerModal";
 import * as matterBridge from "../api/matterBridge";
 import SummaryEditor from "../components/SummaryEditor";
+import SummaryVersionHistory from "../components/SummaryVersionHistory";
 import MemberSelectorModal from "../components/MemberSelectorModal";
 import type { MemberCandidate } from "../types/summary";
 
@@ -2129,138 +2130,43 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return label === key ? t("summary.detail.versionOperation.generate") : label;
     }
 
-    private formatVersionOperationNote(version: SummaryVersionItem): string {
-        const { t } = this.context;
-        const note = (version.operation_note || "").trim();
-        if (note) return note;
-        if ((version.operation_type || "generate") === "generate") {
-            return t("summary.detail.versionInitialGenerateDesc");
-        }
-        if (version.operation_type === "restore" && version.parent_result_id) {
-            return t("summary.detail.versionRestoreFromResult", { values: { id: version.parent_result_id } });
-        }
-        return this.formatVersionOperation(version);
-    }
-
     renderVersionHistory() {
         const { versions, versionsLoading, detail, restoringVersionId } = this.state;
-        const { t } = this.context;
         if (!detail?.result || versionsLoading || versions.length <= 1) return null;
         const currentVersion = detail.result.version;
+        const canRestore = !!(detail.permissions?.can_edit_team || detail.permissions?.can_edit);
         return (
-            <div className="summary-version-strip">
-                <div className="summary-version-strip-title">
-                    <IconHistory size="small" />
-                    <span>{t("summary.detail.recentVersions")}</span>
-                    <span className="summary-version-strip-hint">{t("summary.detail.recentVersionsLimitHint")}</span>
-                </div>
-                <div className="summary-version-list">
-                    {versions.slice(0, 3).map((version) => {
-                        const isCurrent = version.version === currentVersion;
-                        return (
-                            <div key={version.result_id} className="summary-version-item">
-                                <div className="summary-version-body">
-                                    <div className="summary-version-main">
-                                        <span className="summary-version-number">
-                                            {t("summary.common.version", { values: { version: version.version } })}
-                                        </span>
-                                        {isCurrent && <Tag size="small" color="blue">{t("summary.detail.currentVersion")}</Tag>}
-                                        {version.operation_type === "scheduled_generate" && (
-                                            <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
-                                        )}
-                                        {version.operation_type !== "scheduled_generate" && (
-                                            <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
-                                        )}
-                                    </div>
-                                    <div className="summary-version-note">{this.formatVersionOperationNote(version)}</div>
-                                </div>
-                                <div className="summary-version-actions">
-                                    <Button
-                                        size="small"
-                                        theme="borderless"
-                                        onClick={() => this.handleViewVersion(version, false)}
-                                    >
-                                        {t("summary.detail.viewVersion")}
-                                    </Button>
-                                    {!isCurrent && (detail.permissions?.can_edit_team || detail.permissions?.can_edit) && (
-                                        <Button
-                                            size="small"
-                                            theme="borderless"
-                                            loading={restoringVersionId === version.result_id}
-                                            onClick={() => this.handleRestoreVersion(version)}
-                                        >
-                                            {t("summary.detail.restoreVersion")}
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
+            <SummaryVersionHistory
+                versions={versions}
+                versionsLoading={versionsLoading}
+                currentVersion={currentVersion}
+                restoringVersionId={restoringVersionId}
+                canRestore={canRestore}
+                onViewVersion={(version: SummaryVersionItem) => this.handleViewVersion(version, false)}
+                onRestoreVersion={(version: SummaryVersionItem) => this.handleRestoreVersion(version)}
+            />
         );
     }
 
 
     renderPersonalVersionHistory() {
         const { personalVersions, personalVersionsLoading, personalResult, restoringPersonalVersionId, detail } = this.state;
-        const { t } = this.context;
         // 多人协作最终页只保留团队汇总版本控制；个人报告里的版本历史会让用户误以为
         // 恢复个人版本会直接影响最终团队结果，因此在多人协作场景统一隐藏。
         if (this.isMultiCollab()) return null;
         if (!personalResult?.content || personalVersionsLoading || personalVersions.length <= 1) return null;
-        const currentVersion = personalResult.version || personalVersions[0]?.version;
+        const currentVersion = personalResult.version || personalVersions[0]?.version || 0;
+        const canRestore = !!detail?.permissions?.can_edit_personal;
         return (
-            <div className="summary-version-strip">
-                <div className="summary-version-strip-title">
-                    <IconHistory size="small" />
-                    <span>{t("summary.detail.recentVersions")}</span>
-                    <span className="summary-version-strip-hint">{t("summary.detail.recentVersionsLimitHint")}</span>
-                </div>
-                <div className="summary-version-list">
-                    {personalVersions.slice(0, 3).map((version) => {
-                        const isCurrent = version.version === currentVersion;
-                        return (
-                            <div key={version.result_id} className="summary-version-item">
-                                <div className="summary-version-body">
-                                    <div className="summary-version-main">
-                                        <span className="summary-version-number">
-                                            {t("summary.common.version", { values: { version: version.version } })}
-                                        </span>
-                                        {isCurrent && <Tag size="small" color="blue">{t("summary.detail.currentVersion")}</Tag>}
-                                        {version.operation_type === "scheduled_generate" && (
-                                            <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
-                                        )}
-                                        {version.operation_type !== "scheduled_generate" && (
-                                            <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
-                                        )}
-                                    </div>
-                                    <div className="summary-version-note">{this.formatVersionOperationNote(version)}</div>
-                                </div>
-                                <div className="summary-version-actions">
-                                    <Button
-                                        size="small"
-                                        theme="borderless"
-                                        onClick={() => this.handleViewVersion(version, true)}
-                                    >
-                                        {t("summary.detail.viewVersion")}
-                                    </Button>
-                                    {!isCurrent && detail?.permissions?.can_edit_personal && (
-                                        <Button
-                                            size="small"
-                                            theme="borderless"
-                                            loading={restoringPersonalVersionId === version.result_id}
-                                            onClick={() => this.handleRestorePersonalVersion(version)}
-                                        >
-                                            {t("summary.detail.restoreVersion")}
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
+            <SummaryVersionHistory
+                versions={personalVersions}
+                versionsLoading={personalVersionsLoading}
+                currentVersion={currentVersion}
+                restoringVersionId={restoringPersonalVersionId}
+                canRestore={canRestore}
+                onViewVersion={(version: SummaryVersionItem) => this.handleViewVersion(version, true)}
+                onRestoreVersion={(version: SummaryVersionItem) => this.handleRestorePersonalVersion(version)}
+            />
         );
     }
 
