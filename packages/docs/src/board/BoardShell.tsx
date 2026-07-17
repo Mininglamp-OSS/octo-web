@@ -266,6 +266,12 @@ function boardTerminalForAccessLoss(err: unknown): BoardTerminal | null {
 export function BoardShell(props: BoardShellProps): ReactElement {
   const { docId, title, space, folder, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user, creatorNicknameOnly, onOpenInNewPage } = props
 
+  // The live board title, lifted out of DocTitle so "forward to chat" sends the REAL name rather
+  // than the static `title` prop (XIN-1306). Seeded from the fallback prop, then updated when
+  // DocTitle fetches the real title on mount (onTitleLoaded) and when the user renames the board
+  // (onSaved). Mirrors EditorShell's currentTitle lift.
+  const [currentTitle, setCurrentTitle] = useState(title)
+
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   // Excalidraw's `MainMenu` compound component, captured off the same dynamic import. Rendered as a
   // child of the canvas so our de-branded menu (no "Excalidraw links" group) replaces the built-in
@@ -633,14 +639,17 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     if (!role) return
     startDocForward({
       docId,
-      title,
+      // Forward the LIVE title (XIN-1306) — the static `title` prop is only the pre-fetch fallback,
+      // so sending it made the chat card read "无标题文档". An empty live title falls back to the
+      // board-specific "未命名画板" rather than the generic doc key.
+      title: currentTitle?.trim() || t('docs.board.untitled'),
       role,
       currentUid: getCurrentUid(),
       ownerId,
       space,
       folder,
     })
-  }, [docId, title, role, ownerId, space, folder])
+  }, [docId, currentTitle, role, ownerId, space, folder])
 
   // Resolve the caller's role for THIS board so a reader gets a read-only canvas.
   //
@@ -1094,7 +1103,16 @@ export function BoardShell(props: BoardShellProps): ReactElement {
             ← {t('docs.list.back')}
           </button>
         )}
-        <DocTitle docId={docId} initialTitle={title} canEdit={manage} onSaved={onTitleSaved} />
+        <DocTitle
+          docId={docId}
+          initialTitle={title}
+          canEdit={manage}
+          onSaved={(id, newTitle) => {
+            setCurrentTitle(newTitle)
+            onTitleSaved?.(id, newTitle)
+          }}
+          onTitleLoaded={setCurrentTitle}
+        />
         <div className="octo-doc-header-right">
           {/* Board-specific status badges (no doc counterpart) lead the cluster. */}
           {readOnly && <span className="octo-board-readonly">{t('docs.board.readOnly')}</span>}
