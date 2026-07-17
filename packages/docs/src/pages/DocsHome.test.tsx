@@ -375,6 +375,33 @@ describe('DocsHome navigation (split-pane)', () => {
     })
   })
 
+  it('exposes the three import entries inside the "New" dropdown and drops the standalone import button', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+
+    // The standalone "Import" button (its label was docs.sheet.import) no longer exists in the header.
+    expect(screen.queryByText('docs.sheet.import')).toBeNull()
+    // Import entries are not rendered until the "New" dropdown is opened.
+    expect(screen.queryByText('docs.sheet.importExcel', { exact: false })).toBeNull()
+
+    // Opening the single "New" dropdown surfaces both the create entries and the three import entries.
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    expect(screen.getByText('docs.list.newBoard')).toBeTruthy()
+    expect(screen.getByText('docs.sheet.new', { exact: false })).toBeTruthy()
+    expect(screen.getByText('docs.sheet.importExcel', { exact: false })).toBeTruthy()
+    expect(screen.getByText('docs.import.word', { exact: false })).toBeTruthy()
+    expect(screen.getByText('docs.import.markdown', { exact: false })).toBeTruthy()
+  })
+
   it('opens an existing document inline in the right pane and marks it active', async () => {
     const wk = createMockWKApp()
     setWKApp(wk)

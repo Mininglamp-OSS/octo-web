@@ -471,7 +471,6 @@ function DocsList({
 }): React.ReactElement {
   const [creating, setCreating] = useState(false)
   const [newMenuAt, setNewMenuAt] = useState<{ left: number; top: number } | null>(null)
-  const [importMenuAt, setImportMenuAt] = useState<{ left: number; top: number } | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   // Client-side pin (置顶) — persisted in localStorage; pinned docs sort to the top. Pin is a
   // "我的文档" affordance ONLY: the recent tab renders the server's `viewed_at DESC` order verbatim
@@ -937,64 +936,54 @@ function DocsList({
             >
               ▦ {t('docs.sheet.new')}
             </button>
-          </PortalMenu>
-        )}
-        {/* Import entry — flag ON; formal owner sign-off on this PR still PENDING, gated by needs-human-review (was hidden in #583). Toggle via IMPORT_ENABLED. */}
-        {IMPORT_ENABLED && (
-          <>
-        <button
-          type="button"
-          className="octo-docs-list-new"
-          disabled={creating}
-          title={t('docs.sheet.import')}
-          aria-haspopup="menu"
-          aria-expanded={importMenuAt != null}
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect()
-            setImportMenuAt(importMenuAt ? null : { left: r.left, top: r.bottom + 6 })
-          }}
-        >
-          {t('docs.sheet.import')}
-          <span style={{ marginLeft: 6, fontSize: 9, opacity: 0.9 }}>▾</span>
-        </button>
-        {importMenuAt && (
-          <PortalMenu at={importMenuAt} onClose={() => setImportMenuAt(null)}>
-            <button
-              type="button"
-              className="octo-tb-btn"
-              disabled={creating}
-              style={{ display: 'block', width: '100%', textAlign: 'left' }}
-              onClick={() => {
-                setImportMenuAt(null)
-                importInputRef.current?.click()
-              }}
-            >
-              📄 {t('docs.sheet.importExcel')}
-            </button>
-            <button
-              type="button"
-              className="octo-tb-btn"
-              disabled={creating}
-              style={{ display: 'block', width: '100%', textAlign: 'left' }}
-              onClick={() => {
-                setImportMenuAt(null)
-                void onImportWord()
-              }}
-            >
-              📃 {t('docs.import.word')}
-            </button>
-            <button
-              type="button"
-              className="octo-tb-btn"
-              disabled={creating}
-              style={{ display: 'block', width: '100%', textAlign: 'left' }}
-              onClick={() => {
-                setImportMenuAt(null)
-                void onImportMarkdown()
-              }}
-            >
-              📝 {t('docs.import.markdown')}
-            </button>
+            {/* Import entries merged into the "New" dropdown (was a standalone "Import" button).
+                Flag ON; formal owner sign-off still PENDING, gated by needs-human-review (was hidden
+                in #583). Toggle via IMPORT_ENABLED. Handlers unchanged — this only moves the entry. */}
+            {IMPORT_ENABLED && (
+              <>
+                <div
+                  role="separator"
+                  aria-hidden="true"
+                  style={{ borderTop: '1px solid #ebebeb', margin: '6px 0' }}
+                />
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={creating}
+                  style={{ display: 'block', width: '100%', textAlign: 'left' }}
+                  onClick={() => {
+                    setNewMenuAt(null)
+                    importInputRef.current?.click()
+                  }}
+                >
+                  📄 {t('docs.sheet.importExcel')}
+                </button>
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={creating}
+                  style={{ display: 'block', width: '100%', textAlign: 'left' }}
+                  onClick={() => {
+                    setNewMenuAt(null)
+                    void onImportWord()
+                  }}
+                >
+                  📃 {t('docs.import.word')}
+                </button>
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={creating}
+                  style={{ display: 'block', width: '100%', textAlign: 'left' }}
+                  onClick={() => {
+                    setNewMenuAt(null)
+                    void onImportMarkdown()
+                  }}
+                >
+                  📝 {t('docs.import.markdown')}
+                </button>
+              </>
+            )}
           </PortalMenu>
         )}
         <input
@@ -1008,8 +997,6 @@ function DocsList({
             e.currentTarget.value = ''
           }}
         />
-          </>
-        )}
       </div>
       <DocsTabs active={activeView} onChange={onTab} />
       <div className="octo-docs-toolbar">
