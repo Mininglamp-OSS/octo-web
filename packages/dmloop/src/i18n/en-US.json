@@ -114,7 +114,14 @@
     "installTokenPlaceholder": "<generated when you click Copy>",
     "installPrompt": "Please install and configure the octo-daemon runtime on this machine. Run these steps in order:\n\n1. Install:\n{{install}}\n\n2. Configure permissions (login):\n{{auth}}\n\n3. Start / restart to apply:\n{{start}}\n\n4. Refer to octo-daemon --help to install the built-in skills.\n\nWhen done, confirm the daemon shows as online in the runtime list.",
     "headlessNoBackend": "The administrator has not configured a public backend URL; install instructions unavailable",
-    "headlessFailed": "Failed to generate install instructions, please retry"
+    "headlessFailed": "Failed to generate install instructions, please retry",
+    "rename": {
+      "title": "Rename machine",
+      "description": "Give this machine a name you'll recognize. It applies to every runtime on the machine and shows when picking a runtime for an expert.",
+      "hint": "Leave empty to use the device's default name.",
+      "saved": "Machine renamed",
+      "failed": "Failed to rename the machine"
+    }
   },
   "view": {
     "board": "Board",

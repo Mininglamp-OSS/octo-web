@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Typography, Spin, Banner, Toast } from "@douyinfe/semi-ui";
-import { Check, Circle, Copy, Cpu, Monitor, Plus } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Typography, Spin, Banner, Toast, Input, Button } from "@douyinfe/semi-ui";
+import { Check, Circle, Copy, Cpu, Monitor, Pencil, Plus } from "lucide-react";
 import { copyToClipboard, useI18n, WKModal } from "@octo/base";
-import type { RuntimeDevice, RuntimeMode } from "../api/types";
-import { listRuntimes } from "../api/runtimeApi";
+import type { RuntimeDevice } from "../api/types";
+import { listRuntimes, renameMachine } from "../api/runtimeApi";
+import type { LoopApiError } from "../api/http";
+import { type Device, groupRuntimesIntoDevices } from "./runtimeDevices";
 import LoopTag from "../ui/LoopTag";
 import LoopButton from "../ui/LoopButton";
 import { ProviderLogo, providerName } from "../ui/providerLogo";
@@ -13,19 +15,6 @@ import { deviceVersion, runtimeVersion } from "./runtimeVersion";
 import "./runtime.css";
 
 const { Title } = Typography;
-
-interface Device {
-  key: string;
-  name: string;
-  mode: RuntimeMode;
-  runtimes: RuntimeDevice[];
-}
-
-function deviceName(r: RuntimeDevice): string {
-  const info = r.device_info || "";
-  const head = info.split("·")[0]?.trim();
-  return head || r.name;
-}
 
 function deviceStatus(runtimes: RuntimeDevice[]): RuntimeDevice["status"] {
   return runtimes.some((runtime) => runtime.status === "online") ? "online" : "offline";
@@ -57,6 +46,7 @@ export default function RuntimePage() {
   const [promptText, setPromptText] = useState("");
   const [copyLoading, setCopyLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<Device | null>(null);
   // 同步重入守卫：React state 是异步提交的，挡不住同一 tick 内的连点；
   // 用 ref 在签发前就拦住并发点击，保证一次会话只签发一个 PAT。
   const mintingRef = useRef(false);
@@ -67,30 +57,19 @@ export default function RuntimePage() {
     return () => window.clearTimeout(timer);
   }, [copied]);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     setLoading(true);
     setError(null);
     listRuntimes()
-      .then((rs) => {
-        setRuntimes(rs);
-      })
+      .then(setRuntimes)
       .catch((e) => setError(e?.message ?? "load failed"))
       .finally(() => setLoading(false));
   }, []);
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
-  const devices = useMemo<Device[]>(() => {
-    const map = new Map<string, Device>();
-    for (const r of runtimes) {
-      const key = r.daemon_id || deviceName(r);
-      let d = map.get(key);
-      if (!d) {
-        d = { key, name: deviceName(r), mode: r.runtime_mode, runtimes: [] };
-        map.set(key, d);
-      }
-      d.runtimes.push(r);
-    }
-    return Array.from(map.values());
-  }, [runtimes]);
+  const devices = useMemo<Device[]>(() => groupRuntimesIntoDevices(runtimes), [runtimes]);
 
   // 统一安装指令(给 AI 队友的提示词):安装 → 配置权限(登录认证) → 启动/重启。
   // --server-url 用当前访问的 host(浏览器地址),让 daemon 直连用户正在访问的站点。
@@ -164,15 +143,25 @@ export default function RuntimePage() {
               const status = deviceStatus(device.runtimes);
               const version = deviceVersion(device.runtimes);
               return (
-              <section className="loop-runtime-machine" key={device.key} aria-label={device.name}>
+              <section className="loop-runtime-machine" key={device.key} aria-label={device.customName || device.name}>
                 <div className="loop-runtime-machine__head">
                   <div className="loop-runtime-machine__identity">
                     <span className="loop-runtime-machine__icon"><Monitor size={14} /></span>
-                    <strong>{device.name}</strong>
+                    <strong>{device.customName || device.name}</strong>
                     <span className={`loop-runtime-status is-${status}`}>
                       <Circle size={6} fill="currentColor" />
                       {t(`loop.runtime.${status}`)}
                     </span>
+                    {device.ownedByMe && (
+                      <Button
+                        theme="borderless"
+                        type="tertiary"
+                        size="small"
+                        icon={<Pencil size={13} />}
+                        aria-label={t("loop.runtime.rename.title")}
+                        onClick={() => setRenameTarget(device)}
+                      />
+                    )}
                   </div>
                   <div className="loop-runtime-machine__meta">
                     {version !== "-" && <LoopTag tone="grey">{version}</LoopTag>}
@@ -181,7 +170,7 @@ export default function RuntimePage() {
                     <strong>{t("loop.runtime.runtimeCount", { values: { count: device.runtimes.length } })}</strong>
                   </div>
                 </div>
-                <div className="loop-runtime-rows" role="table" aria-label={`${device.name} ${t("loop.nav.runtime")}`}>
+                <div className="loop-runtime-rows" role="table" aria-label={`${device.customName || device.name} ${t("loop.nav.runtime")}`}>
                   {device.runtimes.map((runtime) => (
                     <div key={runtime.id} className="loop-runtime-row" role="row">
                       <div className="loop-runtime-row__name" role="cell">
@@ -236,6 +225,106 @@ export default function RuntimePage() {
           </div>
         </div>
       </WKModal>
+      <RenameMachineDialog
+        visible={!!renameTarget}
+        device={renameTarget}
+        onClose={() => setRenameTarget(null)}
+        onDone={() => {
+          setRenameTarget(null);
+          reload();
+        }}
+      />
     </div>
+  );
+}
+
+/** Rename the machine hosting a group of runtimes; empty clears the override.
+ *  Kept mounted with a `visible` toggle (not conditionally mounted) so Semi's
+ *  Modal plays its open transition on false→true. */
+function RenameMachineDialog({
+  visible,
+  device,
+  onClose,
+  onDone,
+}: {
+  visible: boolean;
+  device: Device | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useI18n();
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  // Ref guard closes the same-tick double-submit window (Enter + click) that a
+  // React state flag can't — mirrors the PAT-minting guard on this page.
+  const savingRef = useRef(false);
+  // The runtime the caller owns on this machine (can_bind) is both the PATCH
+  // target and the seed source, so the pre-filled value matches what the save
+  // will change — a mixed-owner group (shared hostname, no daemon_id) must not
+  // seed the caller with another member's name.
+  const owned = device?.runtimes.find((r) => r.can_bind === true);
+  const runtimeId = owned?.id;
+
+  // Seed the field from the caller's current name each time the dialog opens.
+  useEffect(() => {
+    if (visible) setValue(owned?.custom_name ?? "");
+  }, [visible, owned]);
+
+  const save = async () => {
+    if (savingRef.current || !runtimeId) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await renameMachine(runtimeId, value.trim());
+      Toast.success(t("loop.runtime.rename.saved"));
+      onDone();
+    } catch (e) {
+      // Surface backend detail only for client errors (4xx — actionable
+      // validation like "name too long"); for 5xx show just the localized
+      // message so internal server error text isn't exposed to the user.
+      const err = e as LoopApiError;
+      const detail = err?.status && err.status < 500 ? err.message : "";
+      Toast.error(detail ? `${t("loop.runtime.rename.failed")}: ${detail}` : t("loop.runtime.rename.failed"));
+    } finally {
+      setSaving(false);
+      savingRef.current = false;
+    }
+  };
+
+  // Block dismissal mid-save so a slow rename can't resolve and close a dialog
+  // the user has since reopened for a different machine.
+  const cancel = () => {
+    if (!saving) onClose();
+  };
+
+  return (
+    <WKModal
+      visible={visible}
+      onCancel={cancel}
+      title={t("loop.runtime.rename.title")}
+      footer={(
+        <>
+          <Button theme="borderless" type="tertiary" disabled={saving} onClick={cancel}>
+            {t("loop.action.cancel")}
+          </Button>
+          <LoopButton loading={saving} onClick={save}>
+            {t("loop.action.save")}
+          </LoopButton>
+        </>
+      )}
+    >
+      <div className="loop-runtime-rename">
+        <p className="loop-runtime-rename__desc">{t("loop.runtime.rename.description")}</p>
+        <Input
+          value={value}
+          onChange={setValue}
+          maxLength={100}
+          placeholder={device?.name}
+          aria-label={t("loop.runtime.rename.title")}
+          onEnterPress={save}
+        />
+        <p className="loop-runtime-rename__hint">{t("loop.runtime.rename.hint")}</p>
+      </div>
+    </WKModal>
   );
 }

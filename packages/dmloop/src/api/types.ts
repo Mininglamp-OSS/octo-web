@@ -624,6 +624,9 @@ export interface RuntimeDevice {
   workspace_id: string;
   daemon_id?: string | null;
   name: string;
+  // custom_name: user-set machine display override. Shown as custom_name ?? name.
+  // Optional for forward-compat: absent from backends without the column.
+  custom_name?: string | null;
   runtime_mode: RuntimeMode;
   provider: string;
   launch_header?: string;

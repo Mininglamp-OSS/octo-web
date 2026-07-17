@@ -114,7 +114,14 @@
     "installTokenPlaceholder": "<点击「复制安装指令」时生成>",
     "installPrompt": "请在这台电脑上安装并配置 octo-daemon 运行时，依次执行：\n\n1. 安装：\n{{install}}\n\n2. 配置权限（登录认证）：\n{{auth}}\n\n3. 启动 / 重启使其生效：\n{{start}}\n\n4. 参考 octo-daemon --help 安装内置的 skills。\n\n完成后请确认该 daemon 在运行时列表中显示为在线。",
     "headlessNoBackend": "管理员未配置后端公开地址，无法生成安装指令",
-    "headlessFailed": "生成安装指令失败，请重试"
+    "headlessFailed": "生成安装指令失败，请重试",
+    "rename": {
+      "title": "重命名机器",
+      "description": "给这台机器起一个你能认出来的名字。会应用到这台机器上的所有运行时，并在给专家选择运行时时显示。",
+      "hint": "留空则使用设备的默认名称。",
+      "saved": "已重命名机器",
+      "failed": "重命名机器失败"
+    }
   },
   "view": {
     "board": "看板",
