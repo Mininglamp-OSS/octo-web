@@ -824,22 +824,25 @@ export class UniverYjsBinding {
   /** Persist Univer's auto-recomputed row heights into the SAME dim map + key shape as a manual
    * row-height resize, so reload restores them via applyRemoteDims. Params differ from the manual
    * set-worksheet-row-height: heights arrive per-row in `rowsAutoHeightInfo` ({ row, autoHeight })
-   * rather than one `rowHeight` spanning `ranges`. Keyed by the ACTIVE sheet's logical id, matching
-   * syncDimFromCommand (an interactive wrap toggle acts on the active sheet). */
+   * rather than one `rowHeight` spanning `ranges`. Keyed off the mutation's OWN `subUnitId` (the
+   * worksheet the recompute actually targeted) — NOT the active sheet, since an auto-height pass can
+   * fire against a non-focused sheet and must not write its heights under the active sheet's keys.
+   * Bounds mirror the restore path (applyRemoteDims): row within grid, height finite/positive/≤cap. */
   private syncAutoRowHeightFromCommand(command: { id: string; params?: unknown }): void {
-    const p = command.params as { rowsAutoHeightInfo?: Array<{ row?: number; autoHeight?: number }> } | undefined
+    const p = command.params as
+      | { subUnitId?: string; rowsAutoHeightInfo?: Array<{ row?: number; autoHeight?: number }> }
+      | undefined
     const infos = p?.rowsAutoHeightInfo
     if (!infos || infos.length === 0) return
-    const wb = this.workbook()
-    const sheet = wb?.getActiveSheet()
-    if (!wb || !sheet) return
-    const logical = this.localToLogical.get(sheet.getSheetId())
+    if (typeof p?.subUnitId !== 'string') return
+    const logical = this.localToLogical.get(p.subUnitId)
     if (!logical) return
     const entries: Array<[string, number]> = []
     for (const info of infos) {
       const row = info?.row
       const h = info?.autoHeight
-      if (!Number.isInteger(row) || typeof h !== 'number' || !Number.isFinite(h) || h <= 0) continue
+      if (!Number.isInteger(row) || (row as number) < 0 || (row as number) >= SHEET_MAX_ROWS) continue
+      if (typeof h !== 'number' || !Number.isFinite(h) || h <= 0 || h > SHEET_MAX_DIM_PX) continue
       entries.push([`${logical}:r${row}`, h])
     }
     if (entries.length === 0) return
