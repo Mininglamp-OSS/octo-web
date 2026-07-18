@@ -498,6 +498,7 @@
     "envEmptyTitle": "No environment variables yet",
     "envEmptyHint": "Configure the secrets and parameters this expert needs at runtime (e.g. an image-generation API key). They apply across devices and runtimes.",
     "envMaskedCount": "{{count}} variable(s) configured",
+    "envMaskedUnknown": "Environment variables configured",
     "envMaskedHint": "Values stay masked by default. Revealing and saving are both recorded in the audit log.",
     "envRedacted": "Environment variables are configured, but only the owner can view and edit them.",
     "envRevealing": "Revealing…",

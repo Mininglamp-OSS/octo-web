@@ -498,6 +498,7 @@
     "envEmptyTitle": "还没有环境变量",
     "envEmptyHint": "为这个专家配置运行所需的密钥与参数（如 AI 生图 API Key），跨设备、跨运行环境都生效。",
     "envMaskedCount": "{{count}} 个变量已配置",
+    "envMaskedUnknown": "已配置环境变量",
     "envMaskedHint": "值默认脱敏。「显示并编辑」和保存都会记入审计日志。",
     "envRedacted": "已配置环境变量，只有所有者可以查看和编辑。",
     "envRevealing": "读取中…",

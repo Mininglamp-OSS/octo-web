@@ -120,6 +120,9 @@ export default function AgentDetailPage({
   // 若真返回 403，降级为只读脱敏、不弹错误 toast。
   const [envForbidden, setEnvForbidden] = useState(false);
   const envIdRef = useRef(0);
+  // 请求代际：每次切专家 / 离开 env 面板都自增；异步 reveal/save 回来时若代际已变则丢弃结果，
+  // 防止「离开后迟到的响应把明文写回内存」以及「切专家后把上一个专家的密钥显示/存到当前专家」。
+  const envReqGenRef = useRef(0);
 
   const syncDrafts = (a: Agent) => {
     setInstr(a.instructions);
@@ -131,6 +134,7 @@ export default function AgentDetailPage({
 
   useEffect(() => {
     setLoading(true);
+    envReqGenRef.current++;
     setEnvRevealed(null);
     setEnvOriginal({});
     setEnvForbidden(false);
@@ -152,13 +156,15 @@ export default function AgentDetailPage({
   }, [agentId]);
 
   // 离开环境变量面板即清空内存中的明文（安全：明文不驻留、不随手切标签留存）。
+  // 依赖 tab + section：从「配置」切到「档案」、或在配置内切走 env，都要清并让在途请求作废。
   useEffect(() => {
-    if (section !== "env") {
+    if (!(tab === "config" && section === "env")) {
+      envReqGenRef.current++;
       setEnvRevealed(null);
       setEnvOriginal({});
       setEnvForbidden(false);
     }
-  }, [section]);
+  }, [tab, section]);
 
   // updateAgent 返回的 agent 不带回填字段（runtime_name/owner_*）；合并旧值并按 runtime_id 从
   // 已加载的 runtimes 重算 runtime_name，避免就地编辑后属性栏丢失运行环境名字与在线点。
@@ -252,17 +258,20 @@ export default function AgentDetailPage({
 
   const handleRevealEnv = async () => {
     if (!agent) return;
+    const gen = envReqGenRef.current;
     setEnvRevealing(true);
     try {
       const env = await getAgentEnv(agent.id);
+      if (envReqGenRef.current !== gen) return; // 已切专家/离开面板：丢弃迟到明文
       setEnvOriginal(env);
       setEnvRevealed(envMapToEntries(env));
     } catch (e) {
+      if (envReqGenRef.current !== gen) return;
       // 403：降级为只读脱敏，不打扰用户；其余错误照常提示。
       if (e instanceof LoopApiError && e.status === 403) setEnvForbidden(true);
       else Toast.error((e as Error)?.message || t("loop.agent.envRevealFailed"));
     } finally {
-      setEnvRevealing(false);
+      setEnvRevealing(false); // 布尔置位安全，无论代际，避免离开后卡在「读取中」
     }
   };
 
@@ -279,19 +288,22 @@ export default function AgentDetailPage({
     if (!agent || envRevealed === null) return;
     const keys = envRevealed.map((e) => e.key.trim()).filter(Boolean);
     if (new Set(keys).size < keys.length) { Toast.error(t("loop.agent.envDuplicateKey")); return; }
+    const gen = envReqGenRef.current;
     setEnvSaving(true);
     try {
       const env = await updateAgentEnv(agent.id, entriesToEnvMap(envRevealed));
+      if (envReqGenRef.current !== gen) return; // 已切专家/离开面板：不把结果写回 UI
       setEnvOriginal(env);
       setEnvRevealed(envMapToEntries(env));
       await refreshAgent();
       Toast.success(t("loop.toast.saved"));
     } catch (e) {
+      if (envReqGenRef.current !== gen) return;
       // 403：降级为只读脱敏（收起编辑态），不弹错误 toast；其余错误照常提示。
       if (e instanceof LoopApiError && e.status === 403) { setEnvForbidden(true); setEnvRevealed(null); }
       else Toast.error((e as Error)?.message || t("loop.toast.saveFailed"));
     } finally {
-      setEnvSaving(false);
+      setEnvSaving(false); // 同上：布尔置位无关代际
     }
   };
 
@@ -380,6 +392,9 @@ export default function AgentDetailPage({
   const canEdit = !!agent.owner_id && agent.owner_id === myMemberId;
   // 环境变量数量后端只回数量不回值；旧缓存对象可能 undefined，按 0 兜底。
   const envKeyCount = agent.custom_env_key_count ?? 0;
+  // 是否「已配置变量」：只要 has_custom_env 为真就算（即使 count 缺省）。用来决定必须 reveal 后再编辑，
+  // 绝不能因 count 未知就走空态直编——那样保存会整体覆盖、静默删除已有密钥。
+  const envHasVars = agent.has_custom_env === true || envKeyCount > 0;
   const envDirty = envRevealed !== null && stableEnvJson(entriesToEnvMap(envRevealed)) !== stableEnvJson(envOriginal);
 
   return (
@@ -570,7 +585,7 @@ export default function AgentDetailPage({
                       <span className="loop-adp__panel-title">{t("loop.agent.env")}</span>
                       {canEdit && !envForbidden && envRevealed !== null && (
                         <div className="loop-adp__panel-actions">
-                          <LoopButton size="sm" icon={<Plus size={14} />} onClick={addEnvEntry}>{t("loop.agent.addEnv")}</LoopButton>
+                          <LoopButton size="sm" icon={<Plus size={14} />} disabled={envSaving} onClick={addEnvEntry}>{t("loop.agent.addEnv")}</LoopButton>
                           <LoopButton size="sm" icon={<Save size={14} />} disabled={!envDirty || envSaving} onClick={saveEnv}>{t("loop.action.save")}</LoopButton>
                         </div>
                       )}
@@ -586,18 +601,21 @@ export default function AgentDetailPage({
                           {envKeyCount > 0 && <div className="loop-adp__env-masked-hint">{t("loop.agent.envRedacted")}</div>}
                         </div>
                       ) : envRevealed === null ? (
-                        envKeyCount > 0 ? (
-                          // owner 未展开：显示数量 + 审计提示 + 「显示并编辑」（点击才 GET 明文）。
+                        envHasVars ? (
+                          // owner 未展开（含 has_custom_env 为真但数量未知）：必须先「显示并编辑」拉明文，
+                          // 绝不走空态直编，否则保存会整体覆盖删掉已有密钥。
                           <div className="loop-adp__env-masked">
                             <Lock size={28} className="loop-adp__env-masked-ico" />
-                            <div className="loop-adp__env-masked-title">{t("loop.agent.envMaskedCount", { values: { count: envKeyCount } })}</div>
+                            <div className="loop-adp__env-masked-title">
+                              {envKeyCount > 0 ? t("loop.agent.envMaskedCount", { values: { count: envKeyCount } }) : t("loop.agent.envMaskedUnknown")}
+                            </div>
                             <div className="loop-adp__env-masked-hint">{t("loop.agent.envMaskedHint")}</div>
                             <LoopButton size="sm" icon={<Eye size={14} />} disabled={envRevealing} onClick={handleRevealEnv} style={{ marginTop: 12 }}>
                               {envRevealing ? t("loop.agent.envRevealing") : t("loop.agent.revealEnv")}
                             </LoopButton>
                           </div>
                         ) : (
-                          // owner 且无变量：无密钥可保护，允许直接进入编辑（保存仍会被后端审计）。
+                          // owner 且确无变量（has_custom_env 假）：无密钥可保护，允许直接进入编辑（保存仍被后端审计）。
                           <div className="loop-adp__env-masked">
                             <KeyRound size={28} className="loop-adp__env-masked-ico" />
                             <div className="loop-adp__env-masked-title">{t("loop.agent.envEmptyTitle")}</div>
@@ -619,6 +637,7 @@ export default function AgentDetailPage({
                                     value={entry.key}
                                     onChange={(v) => updateEnvEntry(index, "key", v)}
                                     placeholder={t("loop.agent.envKeyPlaceholder")}
+                                    disabled={envSaving}
                                   />
                                   <Input
                                     mode="password"
@@ -626,8 +645,9 @@ export default function AgentDetailPage({
                                     value={entry.value}
                                     onChange={(v) => updateEnvEntry(index, "value", v)}
                                     placeholder={t("loop.agent.envValuePlaceholder")}
+                                    disabled={envSaving}
                                   />
-                                  <Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} onClick={() => removeEnvEntry(index)} aria-label={t("loop.action.delete")} />
+                                  <Button theme="borderless" type="danger" size="small" disabled={envSaving} icon={<Trash2 size={14} />} onClick={() => removeEnvEntry(index)} aria-label={t("loop.action.delete")} />
                                 </div>
                               ))}
                             </div>
