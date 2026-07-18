@@ -67,21 +67,58 @@ export function isParentGroupManager(groupNo: string | undefined): boolean {
 }
 
 /**
+ * 群名 / 子区名改名的「明显不该改」粗过滤：登录用户在该群的成员记录若是龙虾（robot），
+ * 前端直接拒绝；其余活跃成员一律放行，最终由服务端裁决。
+ *
+ * 与服务端放开口径对齐（octo-server #542：仅改 name 的活跃人类成员放行，龙虾 / 外部
+ * 成员仍拒）。前端不重复实现完整权限矩阵——外部 / 黑名单成员放行到弹窗后由服务端返回
+ * 错误、经调用点的 Toast.error(err.msg) 呈现；这里只挡住明显非人类的龙虾。
+ *
+ * member 为空（非成员 / 订阅缓存未热）时返回 false，降级为不可改（fail-closed，安全）。
+ */
+function isRenamableMember(
+  member: { orgData?: { robot?: number } } | null | undefined
+): boolean {
+  if (!member) {
+    return false;
+  }
+  return member.orgData?.robot !== 1;
+}
+
+/**
+ * 群聊「改名」入口（module.tsx 的 groupName row）的权限判定。
+ *
+ * 服务端放开后（octo-server #542），任何活跃人类成员都可改群名，前端不再用
+ * data.isManagerOrCreatorOfMe（群主 / 管理员）前置拦截普通成员。这里只做龙虾粗过滤，
+ * 其余交给服务端兜底。抽成纯函数以便单测锁定，避免回退到 manager-only 口径。
+ *
+ * @param subscriberOfMe 当前登录用户在本群的成员记录（ChannelSetting 的 data.subscriberOfMe）。
+ */
+export function canRenameGroup(
+  subscriberOfMe: { orgData?: { robot?: number } } | null | undefined
+): boolean {
+  return isRenamableMember(subscriberOfMe);
+}
+
+/**
  * 子区设置页「改名」入口（module.tsx 的 thread.base.info）的权限判定。
  *
- * 与归档入口（{@link shouldShowThreadArchiveAction}）共享同一份父群口径
- * {@link canManageThread}：创建者 / 父群群主 / 父群管理员可改名。改名不像归档那样
- * 有状态门槛（Active/Archived），所以这里不做 status 过滤。
+ * 服务端放开后（octo-server #542），任何父群活跃人类成员都可改子区名，前端 gate 与之
+ * 对齐——不再走 {@link canManageThread}（创建者 / 群主 / 管理员）的收紧口径，而是判断
+ * 登录用户是否为父群活跃成员（含创建者，创建者必然在父群成员列表内）。
  *
- * 之所以抽成独立纯函数（而非在 module.tsx 内联判断），是为了让改名 gate 可被单测
- * 直接锁定，避免再次回退到 data.isManagerOrCreatorOfMe —— 它读子区频道成员缓存，
- * 从未同步、对非创建者的群主/管理员恒为 false，会在前端误拦他们（见 issue #394）。
+ * 角色 / 成员必须从【父群】订阅解析：子区频道成员从未被同步，读子区缓存会让普通成员
+ * 恒为 false。父群订阅未热时 getSubscribes 返回空 → false（降级，安全）。改名不像归档
+ * 那样有状态门槛（Active/Archived），所以这里不做 status 过滤。
  */
-export function canRenameThread(
-  thread: { creator_uid?: string } | null | undefined,
-  groupNo: string | undefined
-): boolean {
-  return canManageThread(thread, groupNo ?? "");
+export function canRenameThread(groupNo: string | undefined): boolean {
+  if (!groupNo) {
+    return false;
+  }
+  const groupChannel = new Channel(groupNo, ChannelTypeGroup);
+  const subscribers = WKSDK.shared().channelManager.getSubscribes(groupChannel);
+  const me = subscribers?.find((s) => s.uid === WKApp.loginInfo.uid);
+  return isRenamableMember(me);
 }
 
 /**

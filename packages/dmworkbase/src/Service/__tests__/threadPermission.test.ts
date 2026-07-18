@@ -32,13 +32,15 @@ vi.mock("../../App", () => ({
   },
 }));
 
-import { canManageThread, canRenameThread } from "../threadPermission";
+import { canManageThread, canRenameGroup, canRenameThread } from "../threadPermission";
 import { GroupRole } from "../Const";
 
 const GROUP_NO = "g1";
 const GROUP_KEY = `${GROUP_NO}-2`;
 
-function setGroupMembers(members: Array<{ uid: string; role: number }>) {
+function setGroupMembers(
+  members: Array<{ uid: string; role?: number; orgData?: { robot?: number } }>
+) {
   subscribesByKey.set(GROUP_KEY, members);
 }
 
@@ -95,47 +97,70 @@ describe("canManageThread", () => {
   });
 });
 
-// issue #394：子区设置页「改名」入口此前用 data.isManagerOrCreatorOfMe（读子区频道
-// 成员缓存，从未同步、恒 false），把非创建者的父群群主/管理员误拦在前端、不发请求。
-// 修复后改名入口（module.tsx）改调 canRenameThread —— 与归档入口同口径。
-// 这里覆盖 canRenameThread 自身的契约（创建者 / 父群群主 / 管理员 / 普通成员 /
-// undefined groupNo）。注意：本组用例并不证明 module.tsx 仍在调用 canRenameThread；
-// 那部分由 module.tsx:2222 的静态 import 与类型检查保障，不在测试范围内。
-describe("canRenameThread (thread rename gate, issue #394)", () => {
+// WS-23：群/子区改名放开给普通成员（服务端 octo-server #542）。前端 gate 从
+// manager-only / 创建者口径改为「活跃人类成员即可」，只挡龙虾（orgData.robot === 1）。
+describe("canRenameGroup (group rename gate, WS-23)", () => {
+  it("allows an ordinary active member to rename the group", () => {
+    expect(
+      canRenameGroup({ uid: "me", role: GroupRole.normal } as any)
+    ).toBe(true);
+  });
+
+  it("allows an owner/manager to rename the group", () => {
+    expect(canRenameGroup({ uid: "me", role: GroupRole.owner } as any)).toBe(
+      true
+    );
+    expect(
+      canRenameGroup({ uid: "me", role: GroupRole.manager } as any)
+    ).toBe(true);
+  });
+
+  it("blocks a robot (lobster) member", () => {
+    expect(
+      canRenameGroup({ uid: "bot", orgData: { robot: 1 } } as any)
+    ).toBe(false);
+  });
+
+  it("fails closed when the member record is missing (not a member / cache cold)", () => {
+    expect(canRenameGroup(undefined)).toBe(false);
+    expect(canRenameGroup(null)).toBe(false);
+  });
+});
+
+// WS-23：子区改名 gate 也放开——任何父群活跃人类成员即可，创建者天然在父群成员列表内。
+// 从父群订阅解析成员；父群缓存未热 → false（降级，安全）。
+describe("canRenameThread (thread rename gate, WS-23)", () => {
   beforeEach(() => {
     subscribesByKey.clear();
   });
 
-  it("allows the thread creator to rename", () => {
-    expect(canRenameThread({ creator_uid: "me" }, GROUP_NO)).toBe(true);
-  });
-
-  it("allows a non-creator parent-group owner to rename", () => {
-    setGroupMembers([{ uid: "me", role: GroupRole.owner }]);
-    expect(canRenameThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
-      true
-    );
-  });
-
-  it("allows a non-creator parent-group manager to rename", () => {
-    setGroupMembers([{ uid: "me", role: GroupRole.manager }]);
-    expect(canRenameThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
-      true
-    );
-  });
-
-  it("blocks an ordinary parent-group member from renaming", () => {
+  it("allows an ordinary active parent-group member to rename", () => {
     setGroupMembers([{ uid: "me", role: GroupRole.normal }]);
-    expect(canRenameThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
-      false
-    );
+    expect(canRenameThread(GROUP_NO)).toBe(true);
   });
 
-  it("fails closed when groupNo is undefined for a non-creator", () => {
-    // module.tsx 传入的是 threadInfo?.groupNo，可能为 undefined
+  it("allows a parent-group owner/manager to rename", () => {
     setGroupMembers([{ uid: "me", role: GroupRole.owner }]);
-    expect(canRenameThread({ creator_uid: "someone-else" }, undefined)).toBe(
-      false
-    );
+    expect(canRenameThread(GROUP_NO)).toBe(true);
+  });
+
+  it("blocks a robot (lobster) parent-group member", () => {
+    setGroupMembers([{ uid: "me", orgData: { robot: 1 } }]);
+    expect(canRenameThread(GROUP_NO)).toBe(false);
+  });
+
+  it("blocks a user who is not a parent-group member", () => {
+    setGroupMembers([{ uid: "someone-else", role: GroupRole.owner }]);
+    expect(canRenameThread(GROUP_NO)).toBe(false);
+  });
+
+  it("fails closed when the parent-group member cache is empty", () => {
+    expect(() => canRenameThread(GROUP_NO)).not.toThrow();
+    expect(canRenameThread(GROUP_NO)).toBe(false);
+  });
+
+  it("fails closed when groupNo is undefined", () => {
+    setGroupMembers([{ uid: "me", role: GroupRole.owner }]);
+    expect(canRenameThread(undefined)).toBe(false);
   });
 });

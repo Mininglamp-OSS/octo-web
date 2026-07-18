@@ -124,6 +124,7 @@ import { SummaryCardCell } from "./Messages/SummaryCard";
 import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
 import {
   shouldShowThreadArchiveAction,
+  canRenameGroup,
   canRenameThread,
   isParentGroupManager,
 } from "./Service/threadPermission";
@@ -1664,10 +1665,10 @@ export default class BaseModule implements IModule {
                 title: t("base.module.channelSettings.groupName"),
                 subTitle: groupNameSubTitle,
                 onClick: () => {
-                  if (!data.isManagerOrCreatorOfMe) {
-                    Toast.warning(
-                      t("base.module.channelSettings.groupNameOnlyManager")
-                    );
+                  // 服务端放开后（octo-server #542）任何活跃人类成员都可改群名，
+                  // 前端只挡龙虾（canRenameGroup 粗过滤），外部/黑名单成员放到弹窗
+                  // 后由服务端裁决、经下方 Toast.error(err.msg) 呈现。
+                  if (!canRenameGroup(data.subscriberOfMe)) {
                     return;
                   }
                   this.inputEditPush(
@@ -2300,12 +2301,12 @@ export default class BaseModule implements IModule {
         const channelInfo = data.channelInfo;
         const threadName = channelInfo?.title;
 
-        // 权限：创建者 / 父群群主 / 父群管理员可改名。必须走 canRenameThread
-        // （父群成员口径），与归档入口保持一致；data.isManagerOrCreatorOfMe 读的是
-        // 子区频道成员缓存，从未同步，对非创建者的群主/管理员恒为 false，会误拦他们
-        // （见 issue #394：#283 统一归档可见性时遗漏了此改名入口）。
+        // 权限：服务端放开后（octo-server #542）任何父群活跃人类成员都可改子区名。
+        // canRenameThread 只判「登录用户是否父群活跃成员（非龙虾）」——与服务端口径对齐，
+        // 不再收紧到创建者/群主/管理员。data.isManagerOrCreatorOfMe 读的是子区频道成员
+        // 缓存，从未同步、对普通成员恒 false，会误拦他们（见 issue #394）。
         const thread = channelInfo?.orgData?.thread as any;
-        const canEdit = canRenameThread(thread, threadInfo?.groupNo);
+        const canEdit = canRenameThread(threadInfo?.groupNo);
         const statusTitle =
           thread?.status === ThreadStatus.Archived
             ? t("base.module.thread.status.archived")
@@ -2328,10 +2329,9 @@ export default class BaseModule implements IModule {
               subTitle: threadName,
               onClick: () => {
                 if (!threadInfo) return;
+                // 服务端放开后（octo-server #542）任何父群活跃人类成员都可改子区名，
+                // 前端只挡龙虾/非成员；失败提示以服务端返回错误为准（下方 Toast.error）。
                 if (!canEdit) {
-                  Toast.warning(
-                    t("base.module.thread.nameOnlyCreatorOrManager")
-                  );
                   return;
                 }
                 this.inputEditPush(
