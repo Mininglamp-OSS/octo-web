@@ -26,7 +26,11 @@ import ThreadIcon from "../Icons/ThreadIcon";
 import classNames from "classnames";
 import { Conversation } from "../Conversation";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
-import { canManageThread, isParentGroupManager } from "../../Service/threadPermission";
+import {
+  canManageThread,
+  canRenameThread,
+  isParentGroupManager,
+} from "../../Service/threadPermission";
 import ChannelWebhookPanel from "../ChannelWebhook";
 import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
@@ -727,17 +731,32 @@ export default class ThreadPanel extends Component<
     this.setState({ showWebhookPanel: false });
   };
 
-  private canEditThread(thread: Thread): boolean {
+  // 父群解散后「更多菜单」写入口（改名 / 归档 / 取消归档）一律只读隐藏，与创建
+  // 子区按钮的 isChannelDisbanded guard 对齐。改名与归档两个 gate 共用这道
+  // ThreadPanel 本地前置。注：改名能力本身在后端解散后仍解禁、右侧面板「子区名称」
+  // 行仍可改（企业微信式低风险写）；这里只是收敛 ThreadPanel 菜单入口。
+  private isThreadMenuWritable(): boolean {
     if (!this.props.groupNo) return false;
-    // 父群解散后只读：更多菜单里的编辑名称 / 归档 / 取消归档全部隐藏（与创建子区
-    // 按钮的 isChannelDisbanded guard 对齐）。这三项都经 canEditThread 门控
-    // （渲染处 index.tsx ~1238、归档按钮 shouldShowArchiveButton ~1623），故在此
-    // 单点拦截即可覆盖全部写入口。注：改名能力本身在后端解散后仍解禁、右侧面板
-    // 「子区名称」行仍可改（企业微信式低风险写）；这里只是收敛 ThreadPanel 菜单入口。
-    if (isChannelDisbanded(new Channel(this.props.groupNo, ChannelTypeGroup))) {
-      return false;
-    }
-    return canManageThread(thread, this.props.groupNo);
+    return !isChannelDisbanded(
+      new Channel(this.props.groupNo, ChannelTypeGroup)
+    );
+  }
+
+  // 归档 / 取消归档 gate：创建者 / 父群群主 / 父群管理员（canManageThread），
+  // 与右侧设置页归档入口（module.tsx canArchiveThread）同口径。渲染处：更多菜单
+  // 的归档项（index.tsx ~1329）与行内归档按钮 shouldShowArchiveButton（~1740）。
+  private canEditThread(thread: Thread): boolean {
+    if (!this.isThreadMenuWritable()) return false;
+    return canManageThread(thread, this.props.groupNo!);
+  }
+
+  // 改名 gate：WS-23 放开后与右侧设置页「子区名称」行同口径（canRenameThread）——
+  // 任何父群活跃人类成员即可改名，不再收紧到 creator/owner/manager。归档 gate 仍走
+  // canManageThread；两者在此拆开，避免出现「设置页能改、ThreadPanel 更多菜单不能改」
+  // 的 split-brain（threadPermission.ts 文档强调要避免的一处可见、一处不可见）。
+  private canRenameThreadInPanel(): boolean {
+    if (!this.isThreadMenuWritable()) return false;
+    return canRenameThread(this.props.groupNo);
   }
 
   private handleEditThread = () => {
@@ -1326,14 +1345,16 @@ export default class ThreadPanel extends Component<
                       {t("base.threadPanel.openFullView")}
                     </div>
                   )}
+                  {vmState.thread && this.canRenameThreadInPanel() && (
+                    <div
+                      className="wk-thread-more-menu-item"
+                      onClick={this.handleEditThread}
+                    >
+                      {t("base.threadPanel.editNameTitle")}
+                    </div>
+                  )}
                   {vmState.thread && this.canEditThread(vmState.thread) && (
                     <>
-                      <div
-                        className="wk-thread-more-menu-item"
-                        onClick={this.handleEditThread}
-                      >
-                        {t("base.threadPanel.editNameTitle")}
-                      </div>
                       {vmState.thread.status === ThreadStatus.Active && (
                         <div
                           className="wk-thread-more-menu-item"
