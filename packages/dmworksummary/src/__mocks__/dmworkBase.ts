@@ -70,3 +70,16 @@ export default WKApp;
 export const buildAcceptLanguage = () => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7';
 
 export const isSafeUrl = (url: string) => /^https?:\/\//.test(url);
+
+// 群内总结 tip 的消息内容体，测试里只需要能 new + set 字段 + encodeJSON。
+export class SummaryNotifyContent {
+  fromUID = '';
+  fromName = '';
+  contentObj: Record<string, unknown> = {};
+  encodeJSON() {
+    return { from_uid: this.fromUID || '', from_name: this.fromName || '' };
+  }
+}
+
+// 群解散判定：测试默认返回 false（未解散）。需要覆盖解散分支的用例可 vi.mocked 覆盖。
+export const isConversationDisbanded = (_channel?: unknown) => false;
