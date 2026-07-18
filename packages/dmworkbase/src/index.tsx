@@ -51,6 +51,8 @@ export { default as MessageBase } from "./Messages/Base"
 export  * from "./Messages/Image"
 export * from "./Messages/File"
 export * from "./Messages/Base"
+export * from "./Messages/SummaryNotify"
+export { isConversationDisbanded } from "./Utils/groupDisband"
 
 export * from "./Messages/MessageCell"
 

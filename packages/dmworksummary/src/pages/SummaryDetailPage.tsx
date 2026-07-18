@@ -10,8 +10,8 @@ import {
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete } from "@douyinfe/semi-icons";
 import { ChevronDown } from "lucide-react";
-import { Channel, MessageText } from "wukongimjssdk";
-import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base";
+import { Channel, ChannelTypeGroup, MessageText, WKSDK } from "wukongimjssdk";
+import { I18nContext, t, ForwardService, interpretForwardResult, SummaryNotifyContent, isConversationDisbanded } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
@@ -32,7 +32,7 @@ import type {
     SummaryVersionDetail,
     SummaryVersionItem,
 } from "../types/summary";
-import { TaskStatus, SummaryMode, ParticipantStatus, TriggerType } from "../types/summary";
+import { TaskStatus, SummaryMode, ParticipantStatus, SourceType, TriggerType } from "../types/summary";
 import {
     formatDate,
     canCancel,
@@ -41,6 +41,8 @@ import {
     scheduleToParams,
     formatScheduleSummary,
     shouldReactivateOnSave,
+    readSummaryNotifySentSources,
+    markSummaryNotifySent,
 } from "../utils/summaryHelpers";
 import CitationText from "../components/CitationText";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
@@ -233,6 +235,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private teamStreamClosedTaskId: number | null = null;
     private refineStreamAbortController: AbortController | null = null;
     private unmounted = false;
+    // 群内总结 tip：同一实例内正在发送中的 (task_id:source_id)，防止本组件三个触发点
+    // （状态事件 / 兜底轮询 / loadDetail 首次见 COMPLETED）并发重复发。跨 tab / reload
+    // 的去重由持久标记（summary-notify-sent:*，见 summaryHelpers）负责。
+    private summaryNotifyInFlight = new Set<string>();
     private workflowTargetIndex = -1;
     private listPageActive = false;
     private lastEventTime = 0;
@@ -848,6 +854,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         this.loadPersonalResult(seq);
                         this.loadMembers(seq);
                     }
+                    if (newStatus === TaskStatus.COMPLETED) {
+                        void this.sendGroupSummaryNotify(detail);
+                    }
                 }
             }
         } catch {
@@ -922,6 +931,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         }
                         if (detail.schedule_id && detail.schedule_id > 0) {
                             this.loadSchedule(detail.schedule_id, seq);
+                        }
+                        if (newStatus === TaskStatus.COMPLETED) {
+                            void this.sendGroupSummaryNotify(detail);
                         }
                     }
                 } catch {
@@ -1893,6 +1905,56 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             Toast.error(err.message || t("summary.common.operationFailed"));
         }
     };
+
+    /**
+     * 群内总结 tip：总结变 COMPLETED 时，向每个「群聊」源发一条系统 tip
+     *「{发起人}总结了群聊内容」（照抄截屏 tip，不可回复）。
+     * - 仅发起人（creator）发送，避免每个查看者都发一遍；
+     * - 去重按 (task_id, source_id) 粒度，持久化到 localStorage（summary-notify-sent:*）：
+     *   跨 tab / reload / 多实例共享，且**仅在发送成功后**落标记——某源群瞬时失败不落标记,
+     *   下次（再次转 COMPLETED）还能重试，不会永久静默漏发；
+     * - 同一实例内用 summaryNotifyInFlight 防止两条触发点并发重复发同一 source；
+     * - 已解散的群跳过（沿用 isConversationDisbanded 这条既有发送不变量）；
+     * - 发送走 chatManager.send，与 handleForwardToChat 一致；群频道无需注入 space_id。
+     *
+     * 只由状态事件 / 兜底轮询检测到的 PROCESSING→COMPLETED 迁移触发（真正「刚完成」）。
+     * 刻意不在 loadDetail「首次载入即 COMPLETED」补发：那条无迁移语义，会把「打开历史 /
+     * 跨端已完成总结」误当成刚完成而误发过时 tip（localStorage 去重挡不住无标记的那两类）。
+     */
+    private async sendGroupSummaryNotify(detail: SummaryDetail) {
+        if (detail.status !== TaskStatus.COMPLETED) return;
+        const myUid = WKApp.loginInfo.uid;
+        // 只有发起人发；非 creator 视角不触发（文案主语是发起人）。
+        if (!myUid || detail.creator_id !== myUid) return;
+        const groupSources = (detail.sources || []).filter(
+            (src) => src.source_type === SourceType.GROUP_CHAT && !!src.source_id
+        );
+        if (groupSources.length === 0) return;
+
+        const sentSources = readSummaryNotifySentSources(detail.task_id);
+        for (const src of groupSources) {
+            const inFlightKey = `${detail.task_id}:${src.source_id}`;
+            if (sentSources.has(src.source_id)) continue; // 已成功发过（跨 tab / reload）
+            if (this.summaryNotifyInFlight.has(inFlightKey)) continue; // 本实例正在发
+            const ch = new Channel(src.source_id, ChannelTypeGroup);
+            // 已解散群不发（保持与既有发送路径一致的只读不变量）。
+            if (isConversationDisbanded(ch)) continue;
+
+            this.summaryNotifyInFlight.add(inFlightKey);
+            try {
+                const msg = new SummaryNotifyContent();
+                msg.fromUID = myUid;
+                msg.fromName = WKApp.loginInfo.name || "";
+                await WKSDK.shared().chatManager.send(msg, ch);
+                // 仅成功后落持久标记；失败则不落，下次可重试。
+                markSummaryNotifySent(detail.task_id, src.source_id);
+            } catch {
+                // 单个群失败不影响其余群，也不落标记（可重试）。
+            } finally {
+                this.summaryNotifyInFlight.delete(inFlightKey);
+            }
+        }
+    }
 
     /**
      * 「继续优化」按钮 — 打开一个新的智能总结 chat session,预置引用当前总结。
