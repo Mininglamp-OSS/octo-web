@@ -506,6 +506,7 @@
     "envKeyPlaceholder": "变量名",
     "envValuePlaceholder": "值",
     "envDuplicateKey": "变量名重复",
+    "envEmptyKey": "变量名不能为空",
     "envRevealFailed": "读取环境变量失败",
     "noSkills": "暂无技能",
     "skills": "技能",

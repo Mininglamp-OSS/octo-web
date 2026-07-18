@@ -288,6 +288,8 @@ export default function AgentDetailPage({
     if (!agent || envRevealed === null) return;
     const keys = envRevealed.map((e) => e.key.trim()).filter(Boolean);
     if (new Set(keys).size < keys.length) { Toast.error(t("loop.agent.envDuplicateKey")); return; }
+    // 有值但没填变量名的行：保存会丢弃它 = 静默删除，先拦下让用户显式处理。
+    if (envRevealed.some((e) => !e.key.trim() && e.value !== "")) { Toast.error(t("loop.agent.envEmptyKey")); return; }
     const gen = envReqGenRef.current;
     setEnvSaving(true);
     try {
@@ -295,12 +297,13 @@ export default function AgentDetailPage({
       if (envReqGenRef.current !== gen) return; // 已切专家/离开面板：不把结果写回 UI
       setEnvOriginal(env);
       setEnvRevealed(envMapToEntries(env));
-      await refreshAgent();
       Toast.success(t("loop.toast.saved"));
+      // 刷新 has_custom_env/count 属最佳努力：写入已成功，刷新失败不应报「保存失败」。
+      refreshAgent().catch(() => { /* count 回填失败不影响本次保存结果 */ });
     } catch (e) {
       if (envReqGenRef.current !== gen) return;
       // 403：降级为只读脱敏（收起编辑态），不弹错误 toast；其余错误照常提示。
-      if (e instanceof LoopApiError && e.status === 403) { setEnvForbidden(true); setEnvRevealed(null); }
+      if (e instanceof LoopApiError && e.status === 403) { setEnvForbidden(true); setEnvRevealed(null); setEnvOriginal({}); }
       else Toast.error((e as Error)?.message || t("loop.toast.saveFailed"));
     } finally {
       setEnvSaving(false); // 同上：布尔置位无关代际

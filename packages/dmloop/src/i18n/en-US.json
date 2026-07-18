@@ -506,6 +506,7 @@
     "envKeyPlaceholder": "KEY",
     "envValuePlaceholder": "value",
     "envDuplicateKey": "Duplicate variable name",
+    "envEmptyKey": "Variable name cannot be empty",
     "envRevealFailed": "Failed to load environment variables",
     "noSkills": "No skills",
     "skills": "Skills",
