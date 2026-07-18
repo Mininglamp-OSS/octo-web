@@ -464,6 +464,24 @@ describe('UniverYjsBinding — column/row dimensions', () => {
     expect(dimMap.get('default:r5')).toBe(30)
   })
 
+  it('persists an auto-recomputed row height (e.g. from toggling text-wrap) — WS-28', () => {
+    // Toggling 自动换行 grows the row to fit; Univer emits set-worksheet-row-auto-height (NOT the
+    // manual set-worksheet-row-height), carrying per-row heights in rowsAutoHeightInfo. Without
+    // syncing it the grown height never reaches the Y.Doc and the row snaps back on reload.
+    const { univer, dimMap } = setup()
+    univer.fire({
+      id: 'sheet.mutation.set-worksheet-row-auto-height',
+      params: {
+        rowsAutoHeightInfo: [
+          { row: 0, autoHeight: 48 },
+          { row: 2, autoHeight: 66 },
+        ],
+      },
+    })
+    expect(dimMap.get('default:r0')).toBe(48)
+    expect(dimMap.get('default:r2')).toBe(66)
+  })
+
   it('applies a remote column width into the sheet', () => {
     const { univer, doc } = setup()
     applyRemote(doc, (peer) => peer.getMap(SHEET_DIMS_FIELD).set('default:c1', 88))

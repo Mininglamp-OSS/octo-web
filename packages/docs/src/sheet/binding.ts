@@ -46,10 +46,20 @@ const TRIGGER_IDS = new Set<string>([
   'sheet.command.set-border-style',
 ])
 
-/** Column-width / row-height mutations. */
+/** Column-width / row-height mutations (a manual resize drag). */
 const DIM_TRIGGER_IDS = new Set<string>([
   'sheet.mutation.set-worksheet-col-width',
   'sheet.mutation.set-worksheet-row-height',
+])
+
+/** Row auto-height recompute. Univer fires THIS mutation (not set-worksheet-row-height) when a
+ * layout-affecting cell style — text-wrap (`tb`), font family/size (`ff`/`fs`), rotation (`tr`) —
+ * grows a row to fit its content. Heights arrive per-row in `rowsAutoHeightInfo`, a different param
+ * shape than the manual resize above. Without syncing it, toggling 自动换行 updates the local model
+ * (row grows, UI looks right) but the new height never lands in the Y.Doc, so on reload the row
+ * snaps back to the default height and clips the wrapped text (WS-28). */
+const AUTO_ROW_HEIGHT_TRIGGER_IDS = new Set<string>([
+  'sheet.mutation.set-worksheet-row-auto-height',
 ])
 
 /** Add/remove merge mutations. */
@@ -314,6 +324,7 @@ export class UniverYjsBinding {
         if (!this.canWrite()) return
         if (TRIGGER_IDS.has(command.id)) this.syncLocalToYmap()
         else if (DIM_TRIGGER_IDS.has(command.id)) this.syncDimFromCommand(command)
+        else if (AUTO_ROW_HEIGHT_TRIGGER_IDS.has(command.id)) this.syncAutoRowHeightFromCommand(command)
         else if (MERGE_TRIGGER_IDS.has(command.id)) this.syncMergesToYmap()
         else if (DRAWING_TRIGGER_IDS.has(command.id)) this.syncDrawingsToYmap()
         else if (SHEET_LIFECYCLE_IDS.has(command.id)) {
@@ -800,6 +811,36 @@ export class UniverYjsBinding {
     for (const rg of p.ranges) {
       if (isCol) for (let c = rg.startColumn; c <= rg.endColumn; c++) entries.push([`${logical}:c${c}`, size])
       else for (let r = rg.startRow; r <= rg.endRow; r++) entries.push([`${logical}:r${r}`, size])
+    }
+    if (entries.length === 0) return
+    this.dimMap.doc?.transact(() => {
+      for (const [k, v] of entries) {
+        this.lastSeenDims.set(k, v)
+        this.dimMap.set(k, v)
+      }
+    })
+  }
+
+  /** Persist Univer's auto-recomputed row heights into the SAME dim map + key shape as a manual
+   * row-height resize, so reload restores them via applyRemoteDims. Params differ from the manual
+   * set-worksheet-row-height: heights arrive per-row in `rowsAutoHeightInfo` ({ row, autoHeight })
+   * rather than one `rowHeight` spanning `ranges`. Keyed by the ACTIVE sheet's logical id, matching
+   * syncDimFromCommand (an interactive wrap toggle acts on the active sheet). */
+  private syncAutoRowHeightFromCommand(command: { id: string; params?: unknown }): void {
+    const p = command.params as { rowsAutoHeightInfo?: Array<{ row?: number; autoHeight?: number }> } | undefined
+    const infos = p?.rowsAutoHeightInfo
+    if (!infos || infos.length === 0) return
+    const wb = this.workbook()
+    const sheet = wb?.getActiveSheet()
+    if (!wb || !sheet) return
+    const logical = this.localToLogical.get(sheet.getSheetId())
+    if (!logical) return
+    const entries: Array<[string, number]> = []
+    for (const info of infos) {
+      const row = info?.row
+      const h = info?.autoHeight
+      if (!Number.isInteger(row) || typeof h !== 'number' || !Number.isFinite(h) || h <= 0) continue
+      entries.push([`${logical}:r${row}`, h])
     }
     if (entries.length === 0) return
     this.dimMap.doc?.transact(() => {
