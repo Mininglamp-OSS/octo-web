@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Typography, Button, Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Typography, Button, Spin, Toast, Tooltip, Input } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
-import { ChevronRight, Archive, Save, Eraser, Plus, Trash2, FileText, Pencil, Eye } from "lucide-react";
+import { ChevronRight, Archive, Save, Eraser, Plus, Trash2, FileText, Pencil, Eye, KeyRound, Lock } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Agent, AgentTask, AgentContribution, Issue, RuntimeDevice } from "../api/types";
-import { getAgent, updateAgent, listAgentTasks, getAgentContributions, archiveAgent, setAgentSkills, listRuntimesForAgent } from "../api/agentApi";
+import { getAgent, updateAgent, listAgentTasks, getAgentContributions, archiveAgent, setAgentSkills, listRuntimesForAgent, getAgentEnv, updateAgentEnv } from "../api/agentApi";
+import { LoopApiError } from "../api/http";
 import { listAssigneeCandidates } from "../api/directory";
 import { getIssue } from "../api/issueApi";
 import { listSkills } from "../api/skillApi";
@@ -26,7 +27,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_DAYS = 30;
 
 type TopTab = "profile" | "config";
-type ConfigSection = "instructions" | "connectors" | "skills";
+type ConfigSection = "instructions" | "connectors" | "skills" | "env";
+
+// 环境变量编辑行：仅在 owner 点「显示并编辑」拉到明文后才存在于内存。
+interface EnvEntry { id: number; key: string; value: string; }
 
 function triggerKey(task: AgentTask): "triggerComment" | "triggerAutopilot" | "triggerChat" | "triggerManual" {
   if (task.kind === "comment") return "triggerComment";
@@ -46,6 +50,21 @@ function contribLevel(count: number): 0 | 1 | 2 | 3 | 4 {
   if (count < 10) return 2;
   if (count < 20) return 3;
   return 4;
+}
+
+// 编辑行 → 提交给后端的 map：key 去空白、丢弃空 key 行。
+function entriesToEnvMap(entries: EnvEntry[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const e of entries) {
+    const k = e.key.trim();
+    if (k) map[k] = e.value;
+  }
+  return map;
+}
+
+// 按 key 排序的稳定序列化，供 dirty 判定：仅内容变化算脏，行顺序变化不算。
+function stableEnvJson(obj: Record<string, string>): string {
+  return JSON.stringify(Object.keys(obj).sort().map((k) => [k, obj[k]]));
 }
 
 /**
@@ -91,6 +110,17 @@ export default function AgentDetailPage({
   const [skillDlgOpen, setSkillDlgOpen] = useState(false);
   const [skillBusy, setSkillBusy] = useState(false);
 
+  // 环境变量：revealed===null 表示还没展开（进入面板不自动拉明文，避免误产生审计）。
+  // 只有 owner 点「显示并编辑」才 GET 明文进入编辑态；离开 env 面板或切换专家即清空内存明文。
+  const [envRevealed, setEnvRevealed] = useState<EnvEntry[] | null>(null);
+  const [envOriginal, setEnvOriginal] = useState<Record<string, string>>({});
+  const [envRevealing, setEnvRevealing] = useState(false);
+  const [envSaving, setEnvSaving] = useState(false);
+  // 后端 owner-only 门比前端 canEdit 更宽（workspace owner/admin）也更窄（非本专家 owner 的 agent-owner 可能不是 workspace 角色）：
+  // 若真返回 403，降级为只读脱敏、不弹错误 toast。
+  const [envForbidden, setEnvForbidden] = useState(false);
+  const envIdRef = useRef(0);
+
   const syncDrafts = (a: Agent) => {
     setInstr(a.instructions);
     setInstrDirty(false);
@@ -101,6 +131,9 @@ export default function AgentDetailPage({
 
   useEffect(() => {
     setLoading(true);
+    setEnvRevealed(null);
+    setEnvOriginal({});
+    setEnvForbidden(false);
     getAgent(agentId)
       .then((a) => { setAgent(a); syncDrafts(a); })
       .catch(() => Toast.error(t("loop.detail.notFound")))
@@ -117,6 +150,15 @@ export default function AgentDetailPage({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
+
+  // 离开环境变量面板即清空内存中的明文（安全：明文不驻留、不随手切标签留存）。
+  useEffect(() => {
+    if (section !== "env") {
+      setEnvRevealed(null);
+      setEnvOriginal({});
+      setEnvForbidden(false);
+    }
+  }, [section]);
 
   // updateAgent 返回的 agent 不带回填字段（runtime_name/owner_*）；合并旧值并按 runtime_id 从
   // 已加载的 runtimes 重算 runtime_name，避免就地编辑后属性栏丢失运行环境名字与在线点。
@@ -204,6 +246,55 @@ export default function AgentDetailPage({
     Toast.success(t("loop.toast.saved"));
   };
 
+  // ---- 环境变量：仅 reveal-then-edit 单路径 ----
+  const envMapToEntries = (env: Record<string, string>): EnvEntry[] =>
+    Object.entries(env).map(([key, value]) => ({ id: envIdRef.current++, key, value }));
+
+  const handleRevealEnv = async () => {
+    if (!agent) return;
+    setEnvRevealing(true);
+    try {
+      const env = await getAgentEnv(agent.id);
+      setEnvOriginal(env);
+      setEnvRevealed(envMapToEntries(env));
+    } catch (e) {
+      // 403：降级为只读脱敏，不打扰用户；其余错误照常提示。
+      if (e instanceof LoopApiError && e.status === 403) setEnvForbidden(true);
+      else Toast.error((e as Error)?.message || t("loop.agent.envRevealFailed"));
+    } finally {
+      setEnvRevealing(false);
+    }
+  };
+
+  const addEnvEntry = () =>
+    setEnvRevealed((prev) => [...(prev ?? []), { id: envIdRef.current++, key: "", value: "" }]);
+
+  const removeEnvEntry = (index: number) =>
+    setEnvRevealed((prev) => (prev ?? []).filter((_, i) => i !== index));
+
+  const updateEnvEntry = (index: number, field: "key" | "value", val: string) =>
+    setEnvRevealed((prev) => (prev ?? []).map((e, i) => (i === index ? { ...e, [field]: val } : e)));
+
+  const saveEnv = async () => {
+    if (!agent || envRevealed === null) return;
+    const keys = envRevealed.map((e) => e.key.trim()).filter(Boolean);
+    if (new Set(keys).size < keys.length) { Toast.error(t("loop.agent.envDuplicateKey")); return; }
+    setEnvSaving(true);
+    try {
+      const env = await updateAgentEnv(agent.id, entriesToEnvMap(envRevealed));
+      setEnvOriginal(env);
+      setEnvRevealed(envMapToEntries(env));
+      await refreshAgent();
+      Toast.success(t("loop.toast.saved"));
+    } catch (e) {
+      // 403：降级为只读脱敏（收起编辑态），不弹错误 toast；其余错误照常提示。
+      if (e instanceof LoopApiError && e.status === 403) { setEnvForbidden(true); setEnvRevealed(null); }
+      else Toast.error((e as Error)?.message || t("loop.toast.saveFailed"));
+    } finally {
+      setEnvSaving(false);
+    }
+  };
+
   // ---- 档案统计（近 30 天，复用 /tasks） ----
   const stats = useMemo(() => {
     const now = Date.now();
@@ -287,6 +378,9 @@ export default function AgentDetailPage({
   const activeCount = tasks.filter((x) => isActiveRun(x.status)).length;
   // 属性仅归属人可改（agent 对工作区其他人可见但只读）。
   const canEdit = !!agent.owner_id && agent.owner_id === myMemberId;
+  // 环境变量数量后端只回数量不回值；旧缓存对象可能 undefined，按 0 兜底。
+  const envKeyCount = agent.custom_env_key_count ?? 0;
+  const envDirty = envRevealed !== null && stableEnvJson(entriesToEnvMap(envRevealed)) !== stableEnvJson(envOriginal);
 
   return (
     <div className="loop-adp">
@@ -372,6 +466,7 @@ export default function AgentDetailPage({
                 <button className={`loop-adp__subnav-item ${section === "instructions" ? "is-active" : ""}`} onClick={() => setSection("instructions")}>{t("loop.agent.instructionsTitle")}</button>
                 <button className={`loop-adp__subnav-item ${section === "connectors" ? "is-active" : ""}`} onClick={() => setSection("connectors")}>{t("loop.agent.connectors")}</button>
                 <button className={`loop-adp__subnav-item ${section === "skills" ? "is-active" : ""}`} onClick={() => setSection("skills")}>{t("loop.agent.skills")}</button>
+                <button className={`loop-adp__subnav-item ${section === "env" ? "is-active" : ""}`} onClick={() => setSection("env")}>{t("loop.agent.env")}</button>
               </nav>
 
               <div className="loop-adp__panel">
@@ -463,6 +558,83 @@ export default function AgentDetailPage({
                               <Button theme="borderless" type="danger" size="small" disabled={skillBusy} icon={<Trash2 size={14} />} onClick={() => removeSkill(s.id)} />
                             </div>
                           ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {section === "env" && (
+                  <>
+                    <div className="loop-adp__panel-head">
+                      <span className="loop-adp__panel-title">{t("loop.agent.env")}</span>
+                      {canEdit && !envForbidden && envRevealed !== null && (
+                        <div className="loop-adp__panel-actions">
+                          <LoopButton size="sm" icon={<Plus size={14} />} onClick={addEnvEntry}>{t("loop.agent.addEnv")}</LoopButton>
+                          <LoopButton size="sm" icon={<Save size={14} />} disabled={!envDirty || envSaving} onClick={saveEnv}>{t("loop.action.save")}</LoopButton>
+                        </div>
+                      )}
+                    </div>
+                    <div className="loop-adp__panel-scroll">
+                      {(!canEdit || envForbidden) ? (
+                        // 非 owner 或后端 403：只读脱敏，仅显示数量（后端另有 owner-only 强制拦截）。
+                        <div className="loop-adp__env-masked">
+                          <Lock size={28} className="loop-adp__env-masked-ico" />
+                          <div className="loop-adp__env-masked-title">
+                            {envKeyCount > 0 ? t("loop.agent.envMaskedCount", { values: { count: envKeyCount } }) : t("loop.agent.envEmptyTitle")}
+                          </div>
+                          {envKeyCount > 0 && <div className="loop-adp__env-masked-hint">{t("loop.agent.envRedacted")}</div>}
+                        </div>
+                      ) : envRevealed === null ? (
+                        envKeyCount > 0 ? (
+                          // owner 未展开：显示数量 + 审计提示 + 「显示并编辑」（点击才 GET 明文）。
+                          <div className="loop-adp__env-masked">
+                            <Lock size={28} className="loop-adp__env-masked-ico" />
+                            <div className="loop-adp__env-masked-title">{t("loop.agent.envMaskedCount", { values: { count: envKeyCount } })}</div>
+                            <div className="loop-adp__env-masked-hint">{t("loop.agent.envMaskedHint")}</div>
+                            <LoopButton size="sm" icon={<Eye size={14} />} disabled={envRevealing} onClick={handleRevealEnv} style={{ marginTop: 12 }}>
+                              {envRevealing ? t("loop.agent.envRevealing") : t("loop.agent.revealEnv")}
+                            </LoopButton>
+                          </div>
+                        ) : (
+                          // owner 且无变量：无密钥可保护，允许直接进入编辑（保存仍会被后端审计）。
+                          <div className="loop-adp__env-masked">
+                            <KeyRound size={28} className="loop-adp__env-masked-ico" />
+                            <div className="loop-adp__env-masked-title">{t("loop.agent.envEmptyTitle")}</div>
+                            <div className="loop-adp__env-masked-hint">{t("loop.agent.envEmptyHint")}</div>
+                            <LoopButton size="sm" icon={<Plus size={14} />} onClick={() => { setEnvOriginal({}); setEnvRevealed([{ id: envIdRef.current++, key: "", value: "" }]); }} style={{ marginTop: 12 }}>
+                              {t("loop.agent.addEnv")}
+                            </LoopButton>
+                          </div>
+                        )
+                      ) : (
+                        <div className="loop-adp__env">
+                          <p className="loop-adp__env-intro">{t("loop.agent.envIntro")}</p>
+                          {envRevealed.length > 0 ? (
+                            <div className="loop-adp__env-list">
+                              {envRevealed.map((entry, index) => (
+                                <div key={entry.id} className="loop-adp__env-row">
+                                  <Input
+                                    className="loop-adp__edit-input loop-adp__env-key"
+                                    value={entry.key}
+                                    onChange={(v) => updateEnvEntry(index, "key", v)}
+                                    placeholder={t("loop.agent.envKeyPlaceholder")}
+                                  />
+                                  <Input
+                                    mode="password"
+                                    className="loop-adp__edit-input loop-adp__env-val"
+                                    value={entry.value}
+                                    onChange={(v) => updateEnvEntry(index, "value", v)}
+                                    placeholder={t("loop.agent.envValuePlaceholder")}
+                                  />
+                                  <Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} onClick={() => removeEnvEntry(index)} aria-label={t("loop.action.delete")} />
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="loop-adp__env-empty-inline">{t("loop.agent.envEmptyTitle")}</p>
+                          )}
+                          {envDirty && <div className="loop-adp__env-unsaved">{t("loop.agent.unsaved")}</div>}
                         </div>
                       )}
                     </div>

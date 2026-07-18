@@ -366,6 +366,35 @@
   min-width: 0;
 }
 
+/* 环境变量：脱敏/未展开态 + 键值编辑（复用 .loop-adp__edit-input 紫色描边 + loop 等宽字体） */
+.loop-adp__env-masked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 0;
+  gap: 6px;
+  color: var(--semi-color-text-2, #6b7075);
+}
+.loop-adp__env-masked-ico { opacity: 0.4; margin-bottom: 4px; color: var(--semi-color-text-2, #8a8f99); }
+.loop-adp__env-masked-title { font-size: 14px; font-weight: 600; color: var(--semi-color-text-0, #1f2329); }
+.loop-adp__env-masked-hint { font-size: 12.5px; max-width: 380px; line-height: 1.6; }
+
+.loop-adp__env { display: flex; flex-direction: column; gap: 12px; }
+.loop-adp__env-intro { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--semi-color-text-2, #6b7075); }
+.loop-adp__env-list { display: flex; flex-direction: column; gap: 8px; }
+.loop-adp__env-row { display: flex; align-items: center; gap: 8px; }
+.loop-adp__env-key { flex: 0 0 38%; }
+.loop-adp__env-val { flex: 1; min-width: 0; }
+.loop-adp__env-key .semi-input,
+.loop-adp__env-val .semi-input {
+  font-family: var(--loop-mono-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+}
+.loop-adp__env-empty-inline { margin: 0; font-size: 12.5px; font-style: italic; color: var(--semi-color-text-2, #8a8f99); }
+.loop-adp__env-unsaved { font-size: 12px; color: var(--semi-color-text-2, #6b7075); text-align: right; }
+
 /* 追加技能弹窗 */
 .loop-adp__skilldlg { display: flex; flex-direction: column; gap: 10px; }
 .loop-adp__skilldlg-list {

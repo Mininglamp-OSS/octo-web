@@ -490,6 +490,8 @@ export interface Agent {
   max_concurrent_tasks: number;
   custom_args?: string[];
   has_custom_env?: boolean;
+  // 已配置的环境变量数量（后端只回数量不回值），供未展开时显示「N 个变量已配置」。
+  custom_env_key_count?: number;
   // 连接器（MCP）配置：原始 JSON，交由运行时解析。三态：字段缺省=不变、null=清空、对象=覆盖。
   mcp_config?: unknown | null;
   // 调用方无权查看时后端会抹掉 mcp_config 并置此位。
