@@ -61,4 +61,18 @@ describe("isMessageContinuation", () => {
             msg("u1", 1_030, { contentType: MessageContentTypeConst.screenshot }),
         )).toBe(false)
     })
+
+    it("breaks on summaryNotify system tip (same fromUID should not hide avatar)", () => {
+        // 群内总结 tip 与截屏 tip 同类：居中 system tip，fromUID 是发起人，
+        // 不能和发起人相邻的正常消息合并连续性（#289）。
+        expect(isMessageContinuation(
+            msg("u1", 1_000, { contentType: MessageContentTypeConst.summaryNotify }),
+            msg("u1", 1_030),
+        )).toBe(false)
+
+        expect(isMessageContinuation(
+            msg("u1", 1_000),
+            msg("u1", 1_030, { contentType: MessageContentTypeConst.summaryNotify }),
+        )).toBe(false)
+    })
 })
