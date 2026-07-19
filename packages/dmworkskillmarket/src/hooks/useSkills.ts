@@ -12,6 +12,7 @@ interface UseSkillsOptions {
 export interface UseSkillsResult {
   categories: Category[];
   skills: Skill[];
+  total: number;
   loading: boolean;
   loadingMore: boolean;
   error: string | null;
@@ -31,6 +32,7 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
   const tagKey = selectedTags.join("\u0001");
   const [categories, setCategories] = useState<Category[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [total, setTotal] = useState(0);
   const [query, setQueryState] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [categoryId, setCategoryIdState] = useState("all");
@@ -83,10 +85,35 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
               ),
         ]);
         if (controller.signal.aborted) return;
-        setCategories(categoryItems);
+        const normalizedCategories = [
+          {
+            id: "all",
+            name: "全部",
+            iconKey: "LayoutGrid",
+            sortOrder: 0,
+            skillCount: categoryItems.reduce(
+              (total, category) =>
+                category.id === "all" || category.name === "全部"
+                  ? total
+                  : total + (category.skillCount ?? 0),
+              0
+            ),
+          },
+          ...categoryItems.filter(
+            (category) => category.id !== "all" && category.name !== "全部"
+          ),
+        ];
+        if (
+          categoryId !== "all" &&
+          !normalizedCategories.some((category) => category.id === categoryId)
+        ) {
+          setCategoryIdState("all");
+        }
+        setCategories(normalizedCategories);
         setSkills((current: Skill[]) =>
           isMore ? [...current, ...page.items] : page.items
         );
+        setTotal(page.total);
         setCursor(page.nextCursor);
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -147,6 +174,7 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
   return {
     categories,
     skills,
+    total,
     loading,
     loadingMore,
     error,

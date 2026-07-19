@@ -57,6 +57,7 @@ export interface SkillTag {
 export interface PagedResult<T> {
   items: T[];
   nextCursor: string | null;
+  total: number;
 }
 
 export interface ApiResponse<T> {
@@ -184,6 +185,7 @@ export interface RawSkillTag {
 export interface RawPagedResult<T> {
   items: T[];
   next_cursor: string | null;
+  total?: number;
 }
 
 // ─── Version history types ──────────────────────────────────────────────────

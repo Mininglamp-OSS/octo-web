@@ -82,11 +82,7 @@ describe("skillApiReal", () => {
     expect(mockFetch).toHaveBeenCalledWith(
       "/market/api/v1/skill_categories",
       expect.objectContaining({
-        headers: expect.objectContaining({
-          "Content-Type": "application/json",
-          token: "test-token",
-          "X-Space-Id": "space-123",
-        }),
+        headers: { "Content-Type": "application/json" },
       })
     );
   });
@@ -131,7 +127,7 @@ describe("skillApiReal", () => {
           },
         ],
         200,
-        { has_more: true, next_cursor: "abc" }
+        { has_more: true, next_cursor: "abc", total: 42 }
       )
     );
 
@@ -150,6 +146,7 @@ describe("skillApiReal", () => {
     expect(result.items[0].viewCount).toBe(7);
     expect(result.items[0].downloadCount).toBe(3);
     expect(result.nextCursor).toBe("abc");
+    expect(result.total).toBe(42);
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining("/market/api/v1/skills?"),
       expect.anything()
@@ -189,10 +186,7 @@ describe("skillApiReal", () => {
     expect(mockFetch).toHaveBeenCalledWith(
       "/market/api/v1/skills/tags?q=ui&page_size=20",
       expect.objectContaining({
-        headers: expect.objectContaining({
-          token: "test-token",
-          "X-Space-Id": "space-123",
-        }),
+        headers: { "Content-Type": "application/json" },
       })
     );
   });
@@ -891,7 +885,7 @@ describe("skillApiReal", () => {
       expect(mockFetch).toHaveBeenCalledWith(
         "/market/api/v1/skills/skill-123/skill-md",
         expect.objectContaining({
-          headers: expect.objectContaining({ token: "test-token" }),
+          headers: { "Content-Type": "application/json" },
         })
       );
     });

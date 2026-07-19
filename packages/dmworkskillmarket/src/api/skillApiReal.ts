@@ -27,7 +27,7 @@ import type {
 
 interface SuccessEnvelope<T> {
   data: T;
-  pagination?: { has_more: boolean; next_cursor?: string };
+  pagination?: { has_more: boolean; next_cursor?: string; total?: number };
 }
 
 interface ErrorEnvelope {
@@ -83,15 +83,20 @@ function normalizeError(input: {
 
 async function requestEnvelope<T>(
   path: string,
-  init?: RequestInit
+  init?: RequestInit,
+  options?: { auth?: boolean }
 ): Promise<SuccessEnvelope<T>> {
   const url = `${API_BASE_URL}${path}`;
+  const defaultHeaders =
+    options?.auth === false
+      ? { "Content-Type": "application/json" }
+      : getAuthHeaders();
   let res: Response;
   try {
     res = await fetch(url, {
       ...init,
       headers: {
-        ...getAuthHeaders(),
+        ...defaultHeaders,
         ...(init?.headers as Record<string, string> | undefined),
       },
     });
@@ -154,8 +159,12 @@ async function requestEnvelope<T>(
   return body as SuccessEnvelope<T>;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  return (await requestEnvelope<T>(path, init)).data;
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  options?: { auth?: boolean }
+): Promise<T> {
+  return (await requestEnvelope<T>(path, init, options)).data;
 }
 
 function wait(ms: number): Promise<void> {
@@ -232,6 +241,7 @@ function mapPagedResult(raw: RawPagedResult<RawSkill>): PagedResult<Skill> {
   return {
     items: (raw.items ?? []).map(mapSkill),
     nextCursor: raw.next_cursor,
+    total: raw.total ?? raw.items?.length ?? 0,
   };
 }
 
@@ -244,7 +254,8 @@ export interface RequestOptions {
 export function getCategories(opts?: RequestOptions): Promise<Category[]> {
   return request<RawCategory[]>(
     "/skill_categories",
-    opts?.signal ? { signal: opts.signal } : undefined
+    opts?.signal ? { signal: opts.signal } : undefined,
+    { auth: false }
   ).then((items) => items.map(mapCategory));
 }
 
@@ -263,11 +274,13 @@ export function getSkills(
   const qs = params.toString();
   return requestEnvelope<RawSkill[]>(
     `/skills${qs ? `?${qs}` : ""}`,
-    opts?.signal ? { signal: opts.signal } : undefined
+    opts?.signal ? { signal: opts.signal } : undefined,
+    { auth: false }
   ).then(({ data, pagination }) =>
     mapPagedResult({
       items: data,
       next_cursor: pagination?.next_cursor ?? null,
+      total: pagination?.total,
     })
   );
 }
@@ -290,6 +303,7 @@ export function getMySkills(
     mapPagedResult({
       items: data,
       next_cursor: pagination?.next_cursor ?? null,
+      total: pagination?.total,
     })
   );
 }
@@ -305,12 +319,17 @@ export function getSkillTags(
   const qs = params.toString();
   return request<{ items: RawSkillTag[] }>(
     `/skills/tags${qs ? `?${qs}` : ""}`,
-    opts?.signal ? { signal: opts.signal } : undefined
+    opts?.signal ? { signal: opts.signal } : undefined,
+    { auth: false }
   ).then((data) => (data.items ?? []).map(mapSkillTag));
 }
 
 export function getSkill(id: string): Promise<Skill> {
-  return request<RawSkill>(`/skills/${encodeURIComponent(id)}`).then(mapSkill);
+  return request<RawSkill>(
+    `/skills/${encodeURIComponent(id)}`,
+    undefined,
+    { auth: false }
+  ).then(mapSkill);
 }
 
 export async function trackSkillView(id: string): Promise<void> {
@@ -358,7 +377,7 @@ export async function getSkillMd(
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: getAuthHeaders(),
+      headers: { "Content-Type": "application/json" },
       signal: opts?.signal,
     });
   } catch (err) {

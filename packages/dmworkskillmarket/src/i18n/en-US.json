@@ -26,6 +26,8 @@
     "errorTitle": "Failed to load",
     "retry": "Retry",
     "empty": "No data",
+    "totalCount": "Total {{count}} Skills",
+    "shownCount": "Showing {{count}}",
     "loadMore": "Load more...",
     "deleted": "Deleted",
     "created": "Created successfully",
@@ -138,7 +140,8 @@
     "parsedWithName": "SKILL.md parsed · English name {{name}}",
     "currentPackage": "Current Skill package",
     "currentPackageWithName": "Current Skill package · English name {{name}}",
-    "newVersionParsedWithName": "New version parsed · English name {{name}}"
+    "newVersionParsedWithName": "New version parsed · English name {{name}}",
+    "nameMismatch": "The name in SKILL.md must remain {{expected}}. Current value: {{actual}}"
   },
   "confirm": {
     "title": "Leave this page?",

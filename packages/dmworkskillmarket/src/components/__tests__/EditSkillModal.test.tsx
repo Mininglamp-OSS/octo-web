@@ -59,12 +59,12 @@ describe("EditSkillModal", () => {
     vi.mocked(api.pollParse).mockResolvedValue({
       status: "success",
       result: {
-        name: "updated-skill",
-        description: "updated-skill 提供可复用的自动化工作流。",
+        name: "meeting-note-cleaner",
+        description: "meeting-note-cleaner 提供可复用的自动化工作流。",
         tags: ["自动化", "Skill", "协作"],
         version: "1.2.0",
-        readmeContent: "# updated-skill",
-        fileName: "updated-skill.zip",
+        readmeContent: "# meeting-note-cleaner",
+        fileName: "meeting-note-cleaner.zip",
         fileSize: 3,
         fileSha256: "def456",
       },
@@ -154,7 +154,7 @@ describe("EditSkillModal", () => {
     await waitFor(() => {
       expect(api.updateSkill).toHaveBeenCalledWith("meeting-note-cleaner", expect.objectContaining({
         parseTaskId: "task-456",
-        name: "updated-skill",
+        name: "meeting-note-cleaner",
         version: "1.1.4",
         changelog: "修复环境检测逻辑",
       }));
@@ -165,12 +165,12 @@ describe("EditSkillModal", () => {
     vi.mocked(api.pollParse).mockResolvedValue({
       status: "success",
       result: {
-        name: "updated-skill",
-        description: "updated-skill 提供可复用的自动化工作流。",
+        name: "meeting-note-cleaner",
+        description: "meeting-note-cleaner 提供可复用的自动化工作流。",
         tags: [],
         version: "1.2.0",
-        readmeContent: "# updated-skill",
-        fileName: "updated-skill.zip",
+        readmeContent: "# meeting-note-cleaner",
+        fileName: "meeting-note-cleaner.zip",
         fileSize: 3,
         fileSha256: "def456",
       },
@@ -198,6 +198,40 @@ describe("EditSkillModal", () => {
         tags: ["纪要", "协作"],
       }));
     });
+  });
+
+  it("rejects re-uploaded packages whose SKILL.md name differs from the current skill", async () => {
+    vi.mocked(api.pollParse).mockResolvedValue({
+      status: "success",
+      result: {
+        name: "renamed-skill",
+        description: "renamed-skill 提供可复用的自动化工作流。",
+        tags: ["自动化"],
+        version: "1.2.0",
+        readmeContent: "# renamed-skill",
+        fileName: "renamed-skill.zip",
+        fileSize: 3,
+        fileSha256: "def456",
+      },
+    });
+
+    render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+
+    fireEvent.click(screen.getByText(reuploadButton));
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+        target: { files: [new File(["zip"], "renamed-skill.zip", { type: "application/zip" })] },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/SKILL\.md 中的 name 必须保持为 meeting-note-cleaner，当前为 renamed-skill|skillMarket\.upload\.nameMismatch/)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("meeting-note-cleaner.zip")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
+    expect(api.updateSkill).not.toHaveBeenCalled();
   });
 
   it("does not save file metadata when re-upload parsing fails", async () => {

@@ -26,6 +26,8 @@
     "errorTitle": "加载失败",
     "retry": "重试",
     "empty": "暂无数据",
+    "totalCount": "共 {{count}} 个 Skill",
+    "shownCount": "已展示 {{count}} 个",
     "loadMore": "继续加载...",
     "deleted": "已删除",
     "created": "创建成功",
@@ -138,7 +140,8 @@
     "parsedWithName": "已解析 SKILL.md · 英文名 {{name}}",
     "currentPackage": "当前 Skill 包",
     "currentPackageWithName": "当前 Skill 包 · 英文名 {{name}}",
-    "newVersionParsedWithName": "已解析新版本 · 英文名 {{name}}"
+    "newVersionParsedWithName": "已解析新版本 · 英文名 {{name}}",
+    "nameMismatch": "SKILL.md 中的 name 必须保持为 {{expected}}，当前为 {{actual}}"
   },
   "confirm": {
     "title": "确定离开？",

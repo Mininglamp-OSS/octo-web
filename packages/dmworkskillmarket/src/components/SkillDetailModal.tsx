@@ -222,6 +222,7 @@ export default function SkillDetailModal({
   const readmeBody = skill ? (parsedMarkdown.body || t("skillMarket.detail.noDetail")) : "";
   const creatorName = skill ? (skill.creatorName || skill.ownerName) : "";
   const ownerLabel = skill ? `@${creatorName}` : "";
+  const showOwner = Boolean(skill && skill.visibility !== "public");
   const displayName = skill ? (skill.displayName || skill.name) : t("skillMarket.detail.title");
   const versionLabel = skill?.version ? `v${skill.version}` : "";
   const viewCountLabel = formatCount(skill?.viewCount ?? 0);
@@ -291,8 +292,12 @@ export default function SkillDetailModal({
             {skill && (
               <div className="skill-market-detail-header__meta">
                 <span className="skill-market-detail-header__name" title={skill.name}>{skill.name}</span>
-                <span className="skill-market-detail-header__separator">·</span>
-                <span className="skill-market-detail-header__owner" title={ownerLabel}>{ownerLabel}</span>
+                {showOwner && (
+                  <>
+                    <span className="skill-market-detail-header__separator">·</span>
+                    <span className="skill-market-detail-header__owner" title={ownerLabel}>{ownerLabel}</span>
+                  </>
+                )}
                 <span className="skill-market-detail-header__separator">·</span>
                 <span className="skill-market-detail-header__updated" title={updatedTimeTitle}>
                   {t("skillMarket.detail.updatedAt", { values: { time: updatedTimeLabel } })}

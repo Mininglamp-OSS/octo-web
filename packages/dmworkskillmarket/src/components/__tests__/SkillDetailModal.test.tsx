@@ -84,6 +84,16 @@ describe("SkillDetailModal", () => {
     expect(screen.queryByText("4 KB")).not.toBeInTheDocument();
   });
 
+  it("hides owner metadata for public skills", async () => {
+    vi.mocked(api.getSkill).mockResolvedValue({ ...skill, visibility: "public" });
+
+    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
+
+    expect(await screen.findByText("test")).toBeInTheDocument();
+    expect(screen.getByTitle("meeting-note-cleaner")).toBeInTheDocument();
+    expect(screen.queryByTitle("@我")).not.toBeInTheDocument();
+  });
+
   it("tracks a view when the detail modal opens", async () => {
     render(<SkillDetailModal skillId={skill.id} categories={categories} refreshKey={1} onClose={vi.fn()} />);
 

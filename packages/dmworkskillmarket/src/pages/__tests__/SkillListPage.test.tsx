@@ -53,10 +53,25 @@ const skill: Skill = {
 
 vi.mock("../../api/skillApi");
 
+const mineTabName = /我的|skillMarket\.list\.mine/;
+const categoryAriaLabel = /Skill 分类|skillMarket\.category\.ariaLabel/;
+const searchPlaceholder = /搜索名称、描述\.\.\.|skillMarket\.filter\.searchNameDescription/;
+const tagFilterName = /标签|skillMarket\.filter\.tags/;
+const tagSearchPlaceholder = /搜索标签|skillMarket\.filter\.searchTags/;
+const selectedTagsText = /已选择标签|skillMarket\.filter\.tagsSelected/;
+const noSelectedTagsText = /未选择标签|skillMarket\.filter\.noTagsSelected/;
+const clearFilterName = /清空|skillMarket\.filter\.clear/;
+const editSkillName = /编辑 meeting-note-cleaner|skillMarket\.card\.editAriaLabel/;
+const deleteSkillName = /删除 meeting-note-cleaner|skillMarket\.card\.deleteAriaLabel/;
+const deleteConfirmText = /确定删除「meeting-note-cleaner」？|skillMarket\.delete\.confirmMessage/;
+const deleteButtonName = /^删除$|^skillMarket\.common\.delete$/;
+const saveButtonName = /保存|skillMarket\.common\.save/;
+const displayNamePlaceholder = /请输入展示名称，最多20个字符|skillMarket\.form\.displayNamePlaceholder/;
+const emptyText = /暂无数据|skillMarket\.list\.empty/;
+const totalCountText = /共 1 个 Skill|skillMarket\.list\.totalCount/;
+
 async function switchToMineTab() {
-  fireEvent.click(
-    screen.getByRole("button", { name: "skillMarket.list.mine" })
-  );
+  fireEvent.click(screen.getByRole("button", { name: mineTabName }));
 }
 
 describe("SkillListPage", () => {
@@ -66,10 +81,12 @@ describe("SkillListPage", () => {
     vi.mocked(api.getSkills).mockResolvedValue({
       items: [skill],
       nextCursor: null,
+      total: 1,
     });
     vi.mocked(api.getMySkills).mockResolvedValue({
       items: [skill],
       nextCursor: null,
+      total: 1,
     });
     vi.mocked(api.getSkillTags).mockResolvedValue([
       { name: "纪要" },
@@ -92,16 +109,16 @@ describe("SkillListPage", () => {
     await switchToMineTab();
 
     expect(
-      screen.queryByLabelText("skillMarket.category.ariaLabel")
+      screen.queryByLabelText(categoryAriaLabel)
     ).not.toBeInTheDocument();
     expect(
       await screen.findByRole("button", { name: "meeting-note-cleaner @我" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "skillMarket.card.editAriaLabel" })
+      screen.getByRole("button", { name: editSkillName })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "skillMarket.card.deleteAriaLabel" })
+      screen.getByRole("button", { name: deleteSkillName })
     ).toBeInTheDocument();
   });
 
@@ -115,7 +132,7 @@ describe("SkillListPage", () => {
 
     vi.mocked(api.getSkills).mockClear();
     fireEvent.change(
-      screen.getByPlaceholderText("skillMarket.filter.searchNameDescription"),
+      screen.getByPlaceholderText(searchPlaceholder),
       {
         target: { value: "ci" },
       }
@@ -144,24 +161,24 @@ describe("SkillListPage", () => {
     render(<SkillListPage />);
 
     fireEvent.click(
-      screen.getByRole("button", { name: "skillMarket.filter.tags" })
+      screen.getByRole("button", { name: tagFilterName })
     );
     const tagOption = await screen.findByRole("option", { name: "纪要" });
     fireEvent.click(tagOption);
 
     expect(
-      screen.getByPlaceholderText("skillMarket.filter.searchTags")
+      screen.getByPlaceholderText(tagSearchPlaceholder)
     ).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "纪要" })).toHaveAttribute(
       "aria-selected",
       "true"
     );
     expect(
-      screen.getByText("skillMarket.filter.tagsSelected")
+      screen.getByText(selectedTagsText)
     ).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "skillMarket.filter.clear" })
+      screen.getByRole("button", { name: clearFilterName })
     );
 
     await waitFor(() => {
@@ -171,7 +188,7 @@ describe("SkillListPage", () => {
       );
     });
     expect(
-      screen.getByText("skillMarket.filter.noTagsSelected")
+      screen.getByText(noSelectedTagsText)
     ).toBeInTheDocument();
   });
 
@@ -198,12 +215,13 @@ describe("SkillListPage", () => {
     const card = await screen.findByRole("button", {
       name: "meeting-note-cleaner @我",
     });
+    expect(screen.getByText(totalCountText)).toBeInTheDocument();
     expect(screen.getByLabelText(/浏览次数：2|Views: 2/)).toHaveTextContent("2");
     expect(screen.getByLabelText(/下载次数：0|Downloads: 0/)).toHaveTextContent("0");
 
     fireEvent.click(card);
 
-    await screen.findByText(skill.fileName);
+    await screen.findByText(skill.description);
     expect(screen.getByLabelText(/浏览次数：3|Views: 3/)).toHaveTextContent("3");
   });
 
@@ -213,15 +231,13 @@ describe("SkillListPage", () => {
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "skillMarket.card.deleteAriaLabel",
+        name: deleteSkillName,
       })
     );
     expect(
-      screen.getByText("skillMarket.delete.confirmMessage")
+      screen.getByText(deleteConfirmText)
     ).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "skillMarket.common.delete" })
-    );
+    fireEvent.click(screen.getAllByRole("button", { name: deleteButtonName }).at(-1)!);
 
     await waitFor(() =>
       expect(api.deleteSkill).toHaveBeenCalledWith("meeting-note-cleaner")
@@ -236,35 +252,36 @@ describe("SkillListPage", () => {
       await screen.findByRole("button", { name: "meeting-note-cleaner @我" })
     );
     expect(await screen.findByText(skill.description)).toBeInTheDocument();
-    expect(await screen.findByText(skill.fileName)).toBeInTheDocument();
 
     fireEvent.click(
       screen.getAllByRole("button", {
-        name: "skillMarket.card.deleteAriaLabel",
+        name: deleteSkillName,
       })[1]
     );
     expect(
-      screen.getByText("skillMarket.delete.confirmMessage")
+      screen.getByText(deleteConfirmText)
     ).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "skillMarket.common.delete" })
-    );
+    fireEvent.click(screen.getAllByRole("button", { name: deleteButtonName }).at(-1)!);
     await waitFor(() =>
       expect(api.deleteSkill).toHaveBeenCalledWith("meeting-note-cleaner")
     );
 
     await waitFor(() =>
-      expect(screen.queryByText(skill.fileName)).not.toBeInTheDocument()
+      expect(screen.queryByText(deleteConfirmText)).not.toBeInTheDocument()
     );
   });
 
   it("offers a clear-filter action when search returns no results", async () => {
-    vi.mocked(api.getSkills).mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(api.getSkills).mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      total: 0,
+    });
     render(<SkillListPage />);
 
     await waitFor(() =>
-      expect(screen.getByText("skillMarket.list.empty")).toBeInTheDocument()
+      expect(screen.getByText(emptyText)).toBeInTheDocument()
     );
   });
 
@@ -290,15 +307,15 @@ describe("SkillListPage", () => {
 
     fireEvent.click(
       screen.getAllByRole("button", {
-        name: "skillMarket.card.editAriaLabel",
+        name: editSkillName,
       })[1]
     );
     fireEvent.change(
-      screen.getByPlaceholderText("skillMarket.form.displayNamePlaceholder"),
+      screen.getByPlaceholderText(displayNamePlaceholder),
       { target: { value: updatedSkill.displayName } }
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "skillMarket.common.save" })
+      screen.getByRole("button", { name: saveButtonName })
     );
 
     await waitFor(() =>
@@ -310,37 +327,45 @@ describe("SkillListPage", () => {
       )
     );
     expect(
-      await screen.findByText(updatedSkill.description)
-    ).toBeInTheDocument();
+      (await screen.findAllByText(updatedSkill.description)).length
+    ).toBeGreaterThan(0);
     expect(api.getSkill).toHaveBeenCalledTimes(2);
   });
 
   it("shows a search-specific empty state with a clear-search action", async () => {
-    vi.mocked(api.getSkills).mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(api.getSkills).mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      total: 0,
+    });
 
     render(<SkillListPage />);
 
     fireEvent.change(
-      screen.getByPlaceholderText("skillMarket.filter.searchNameDescription"),
+      screen.getByPlaceholderText(searchPlaceholder),
       {
         target: { value: "missing" },
       }
     );
 
     expect(
-      await screen.findByText("skillMarket.list.empty")
+      await screen.findByText(emptyText)
     ).toBeInTheDocument();
   });
 
   it("shows a category-specific empty state when the selected category has no skills", async () => {
-    vi.mocked(api.getSkills).mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(api.getSkills).mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      total: 0,
+    });
 
     render(<SkillListPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: /办公协作/ }));
 
     expect(
-      await screen.findByText("skillMarket.list.empty")
+      await screen.findByText(emptyText)
     ).toBeInTheDocument();
   });
 

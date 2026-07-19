@@ -200,6 +200,15 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         if (abortRef.current) return;
 
         if (status.status === "success" && status.result) {
+          if (status.result.name !== skill.name) {
+            setUploadStage("error");
+            setUploadedFile(null);
+            setParseTaskId(null);
+            setError(t("skillMarket.upload.nameMismatch", {
+              values: { expected: skill.name, actual: status.result.name },
+            }));
+            return;
+          }
           setParseTaskId(taskId);
           setName(status.result.name);
           setDescription(status.result.description);

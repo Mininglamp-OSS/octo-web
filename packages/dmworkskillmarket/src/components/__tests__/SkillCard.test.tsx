@@ -49,6 +49,19 @@ describe("SkillCard", () => {
     expect(screen.getByLabelText("下载次数：0")).toHaveTextContent("0");
   });
 
+  it("hides owner metadata for public skills", () => {
+    render(
+      <SkillCard
+        skill={{ ...skill, visibility: "public" }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "ci-helper" })).toBeInTheDocument();
+    expect(screen.queryByText("@我")).not.toBeInTheDocument();
+  });
+
   it("supports keyboard open and icon actions without opening the card", () => {
     const onOpen = vi.fn();
     const onEdit = vi.fn();

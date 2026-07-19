@@ -86,6 +86,7 @@ function pageSkills(items: Skill[], query: SkillListQuery): PagedResult<Skill> {
   return {
     items: page,
     nextCursor: nextOffset < items.length ? String(nextOffset) : null,
+    total: items.length,
   };
 }
 

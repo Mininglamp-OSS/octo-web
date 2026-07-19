@@ -187,6 +187,22 @@ export default function SkillListPage() {
       </section>
 
       <main className="skill-market-content">
+        {!list.loading && !list.error && (
+          <div className="skill-market-result-summary" aria-live="polite">
+            <span className="skill-market-result-summary__total">
+              {t("skillMarket.list.totalCount", {
+                values: { count: list.total },
+              })}
+            </span>
+            {list.total > list.skills.length && (
+              <span className="skill-market-result-summary__shown">
+                {t("skillMarket.list.shownCount", {
+                  values: { count: list.skills.length },
+                })}
+              </span>
+            )}
+          </div>
+        )}
         {list.loading && (
           <div
             className="skill-market-grid"

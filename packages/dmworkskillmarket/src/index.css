@@ -487,6 +487,26 @@
   padding: var(--wk-sp-4) var(--wk-sp-5);
 }
 
+.skill-market-result-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  min-height: 24px;
+  margin-bottom: var(--wk-sp-3);
+  color: var(--wk-text-tertiary);
+  font: 500 13px/1.4 var(--wk-font-sans);
+}
+
+.skill-market-result-summary__total {
+  color: var(--wk-text-secondary);
+}
+
+.skill-market-result-summary__shown::before {
+  content: "·";
+  margin-right: var(--wk-sp-2);
+  color: var(--wk-text-disabled);
+}
+
 .skill-market-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));

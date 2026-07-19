@@ -89,6 +89,8 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
   const displayName = skill.displayName || skill.name;
   const creatorName = skill.creatorName || skill.ownerName;
   const ownerLabel = `@${creatorName}`;
+  const showOwner = skill.visibility !== "public";
+  const ariaLabel = showOwner ? `${skill.name} ${ownerLabel}` : skill.name;
   const rawViewCount = skill.viewCount ?? 0;
   const rawDownloadCount = skill.downloadCount ?? 0;
   const viewCount = formatCount(rawViewCount);
@@ -149,7 +151,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
       className={isOwnerCard ? "skill-market-card skill-market-card--owner" : "skill-market-card"}
       role="button"
       tabIndex={0}
-      aria-label={`${skill.name} ${ownerLabel}`}
+      aria-label={ariaLabel}
       onClick={() => onOpen(skill)}
       onKeyDown={handleKeyDown}
     >
@@ -177,8 +179,12 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
           </div>
           <div className="skill-market-card__meta-row">
             <span className="skill-market-card__name" title={skill.name}>{skill.name}</span>
-            <span className="skill-market-card__meta-separator">·</span>
-            <span className="skill-market-card__owner" title={ownerLabel}>{ownerLabel}</span>
+            {showOwner && (
+              <>
+                <span className="skill-market-card__meta-separator">·</span>
+                <span className="skill-market-card__owner" title={ownerLabel}>{ownerLabel}</span>
+              </>
+            )}
           </div>
         </div>
       </div>
