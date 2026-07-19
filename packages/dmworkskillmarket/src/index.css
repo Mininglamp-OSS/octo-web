@@ -749,17 +749,22 @@
   height: 26px;
   min-width: 76px;
   padding: 0 var(--wk-sp-3);
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--wk-r-full);
-  background: var(--wk-accent-tint-06, rgba(127, 59, 245, 0.06));
-  color: var(--wk-color-accent);
+  background: var(--wk-text-strong);
+  color: var(--wk-bg-base);
   font: 500 12px/1 var(--wk-font-sans);
   cursor: pointer;
-  transition: background var(--wk-dur-fast) var(--wk-ease);
+  transition: background var(--wk-dur-fast) var(--wk-ease), border-color var(--wk-dur-fast) var(--wk-ease), color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .skill-market-card__install:hover {
-  background: var(--wk-accent-tint-12, rgba(127, 59, 245, 0.12));
+  background: var(--wk-text-primary);
+}
+
+.skill-market-card__install:focus-visible {
+  outline: none;
+  border-color: var(--wk-border-strong);
 }
 
 .skill-market-card__actions {
@@ -1270,7 +1275,7 @@
 
 .skill-market-detail__layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 248px;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--wk-sp-3);
   align-items: start;
 }
@@ -1345,62 +1350,6 @@
 .skill-market-detail__readme code {
   font-family: var(--wk-font-mono);
   font-size: 13px;
-}
-
-.skill-market-install {
-  position: sticky;
-  top: 0;
-  display: grid;
-  gap: var(--wk-sp-3);
-}
-
-.skill-market-install__section {
-  display: grid;
-  gap: var(--wk-sp-3);
-  padding: var(--wk-sp-3);
-  border: 1px solid var(--wk-border-subtle);
-  border-radius: var(--wk-r-md);
-  background: var(--wk-bg-base);
-}
-
-.skill-market-install__title {
-  display: flex;
-  align-items: center;
-  gap: var(--wk-sp-2);
-  color: var(--wk-text-strong);
-}
-
-.skill-market-install__hint {
-  margin: 0;
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.skill-market-install__file {
-  display: grid;
-  gap: 2px;
-  padding: var(--wk-sp-2);
-  border-radius: var(--wk-r-sm);
-  background: var(--wk-bg-surface);
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-}
-
-.skill-market-install__file span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-market-install__file strong {
-  color: var(--wk-text-secondary);
-  font-weight: 600;
-}
-
-.skill-market-install__actions {
-  display: grid;
-  gap: var(--wk-sp-2);
 }
 
 /* ─── Detail Tabs ──────────────────────────────────────────────────── */
@@ -2234,10 +2183,6 @@
   .skill-market-category-menu {
     right: auto;
     left: 0;
-  }
-
-  .skill-market-install {
-    position: static;
   }
 
   .skill-market-workflow-modal .wk-modal,

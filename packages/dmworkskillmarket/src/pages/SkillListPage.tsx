@@ -249,8 +249,6 @@ export default function SkillListPage() {
         onClose={() => setDetailId(null)}
         onEdit={mine ? setEditing : undefined}
         onDelete={mine ? setDeleting : undefined}
-        onDownloaded={list.refresh}
-        onFeedback={showToast}
       />
       <NewSkillModal
         visible={createVisible}

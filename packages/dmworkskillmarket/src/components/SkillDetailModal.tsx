@@ -3,12 +3,11 @@ import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { Copy, Download, Eye, FileArchive, Pencil, RefreshCw, Terminal, Trash2 } from "lucide-react";
+import { Download, Eye, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import type { Category, Skill, SkillVersion } from "../types/skill";
-import { downloadSkill, getSkill, getSkillMd, listVersions, trackSkillView } from "../api/skillApi";
+import { getSkill, getSkillMd, listVersions, trackSkillView } from "../api/skillApi";
 import { formatCount, formatFullDateTime, formatRecentOrDate } from "../utils/format";
-import { buildInstallPrompt, resolveAPIBaseURL } from "../utils/installPrompt";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 
 interface SkillDetailModalProps {
@@ -18,8 +17,6 @@ interface SkillDetailModalProps {
   onClose: () => void;
   onEdit?: (skill: Skill) => void;
   onDelete?: (skill: Skill) => void;
-  onDownloaded?: () => void;
-  onFeedback?: (message: string) => void;
 }
 
 type DetailTab = "intro" | "versions";
@@ -107,8 +104,6 @@ export default function SkillDetailModal({
   onClose,
   onEdit,
   onDelete,
-  onDownloaded,
-  onFeedback,
 }: SkillDetailModalProps) {
   useI18n();
   const [skill, setSkill] = useState<Skill | null>(null);
@@ -233,29 +228,6 @@ export default function SkillDetailModal({
   const downloadCountLabel = formatCount(skill?.downloadCount ?? 0);
   const updatedTimeLabel = skill ? formatRecentOrDate(skill.updatedAt) : "";
   const updatedTimeTitle = skill ? formatFullDateTime(skill.updatedAt) : "";
-
-  function copyInstallPrompt() {
-    if (!skill) return;
-    const spaceId = WKApp.shared.currentSpaceId;
-    if (!spaceId) return;
-    const apiBaseURL = resolveAPIBaseURL(WKApp.apiClient.config.apiURL, window.location.origin);
-    const prompt = buildInstallPrompt(skill.id, spaceId, apiBaseURL);
-    if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(prompt).then(() => {
-        onFeedback?.(t("skillMarket.detail.promptCopied"));
-      });
-    }
-  }
-
-  async function downloadSkillPackage() {
-    if (!skill) return;
-    try {
-      await downloadSkill(skill.id);
-      onDownloaded?.();
-    } catch (err) {
-      onFeedback?.(err instanceof Error ? err.message : t("skillMarket.detail.downloadFailed"));
-    }
-  }
 
   function showTagTooltip(event: React.MouseEvent<HTMLSpanElement> | React.FocusEvent<HTMLSpanElement>, tag: string) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -422,34 +394,6 @@ export default function SkillDetailModal({
                   </>
                 )}
               </div>
-              <aside className="skill-market-install">
-                <section className="skill-market-install__section">
-                  <div className="skill-market-install__title">
-                    <Terminal size={17} />
-                    <strong>{t("skillMarket.detail.installTitle")}</strong>
-                  </div>
-                  <p className="skill-market-install__hint">{t("skillMarket.detail.installHint")}</p>
-                  <div className="skill-market-install__actions">
-                    <WKButton variant="primary" icon={<Copy size={15} />} onClick={copyInstallPrompt}>
-                      {t("skillMarket.detail.copyPrompt")}
-                    </WKButton>
-                  </div>
-                </section>
-                <section className="skill-market-install__section">
-                  <div className="skill-market-install__title">
-                    <FileArchive size={17} />
-                    <strong>{t("skillMarket.detail.downloadTitle")}</strong>
-                  </div>
-                  <div className="skill-market-install__file">
-                    <span title={skill.fileName}>{skill.fileName}</span>
-                  </div>
-                  <div className="skill-market-install__actions">
-                    <WKButton variant="secondary" icon={<Download size={15} />} onClick={downloadSkillPackage}>
-                      {t("skillMarket.detail.downloadBtn")}
-                    </WKButton>
-                  </div>
-                </section>
-              </aside>
             </div>
           )}
 

@@ -344,19 +344,4 @@ describe("SkillListPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows detail download action", async () => {
-    vi.mocked(api.downloadSkill).mockResolvedValue(undefined);
-
-    render(<SkillListPage />);
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: "meeting-note-cleaner @我" })
-    );
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /下载 Skill 包|skillMarket\.detail\.downloadBtn|Download Skill Package/,
-      })
-    );
-    await waitFor(() => expect(api.downloadSkill).toHaveBeenCalledWith(skill.id));
-  });
 });
