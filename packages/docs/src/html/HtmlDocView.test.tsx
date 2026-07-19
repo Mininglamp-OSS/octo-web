@@ -109,6 +109,29 @@ describe('absolutizeDocAssetUrls', () => {
     expect(out).toContain('src="https://od.test/d/slug/assets/b.png?exp=9"')
   })
 
+  it('re-roots root-relative /d/ octo-doc assets under the same-origin /docs-html prefix (DEFAULT deploy)', () => {
+    // DEFAULT deploy: no override, resolveOctoDocBase() === '/docs-html'. The doc backend emits
+    // root-relative refs like /d/{slug}/assets/{sha}; without re-rooting they resolve against the
+    // page origin, DROP the /docs-html prefix, and 404 (the nginx only proxies /docs-html/*).
+    expect(resolveOctoDocBase()).toBe('/docs-html')
+    const out = absolutizeDocAssetUrls(
+      '<!doctype html><html><body><img src="/d/slug/assets/a.png?sig=s1&exp=9"></body></html>',
+      // same-origin default docUrl form: {origin}/docs-html/d/{slug}/v/{ver}
+      'http://localhost/docs-html/d/slug/v/latest'
+    )
+    expect(out).toContain('src="http://localhost/docs-html/d/slug/assets/a.png?sig=s1&amp;exp=9"')
+    expect(out).not.toContain('src="http://localhost/d/slug/assets/a.png')
+  })
+
+  it('does not double-prefix an asset already under /docs-html/d/', () => {
+    const out = absolutizeDocAssetUrls(
+      '<!doctype html><html><body><img src="/docs-html/d/slug/assets/a.png"></body></html>',
+      'http://localhost/docs-html/d/slug/v/latest'
+    )
+    expect(out).toContain('src="http://localhost/docs-html/d/slug/assets/a.png"')
+    expect(out).not.toContain('/docs-html/docs-html/')
+  })
+
   it('leaves already absolute asset URLs and ordinary relative links untouched', () => {
     const out = absolutizeDocAssetUrls(
       '<html><head><link href="https://cdn.test/d/slug/assets/doc.css"></head><body><img src="/other/image.png"><a href="chapter.html">next</a></body></html>',

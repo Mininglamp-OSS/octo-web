@@ -78,21 +78,32 @@ function isAbsoluteOrSpecialUrl(value: string): boolean {
   return /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) || value.startsWith('//') || value.startsWith('#')
 }
 
-function resolveDocAssetUrl(value: string, docUrl: string): string | null {
+// basePrefix is the octo-doc same-origin path prefix (resolveOctoDocBase, e.g. '/docs-html'),
+// empty for cross-origin/override deployments. A root-relative octo-doc asset ref like
+// `/d/{slug}/assets/{sha}` (the form the doc backend emits, see signAssetURLs) resolves
+// against the PAGE ORIGIN and would DROP the prefix, hitting a path the nginx no longer
+// proxies — re-root it under basePrefix first so it stays inside /docs-html/*. Only re-root
+// when docUrl itself sits under basePrefix (i.e. the same-origin prefixed deploy); an
+// absolute/override docUrl already carries the doc origin and must be left alone.
+function resolveDocAssetUrl(value: string, docUrl: string, basePrefix = ''): string | null {
   if (!value || isAbsoluteOrSpecialUrl(value)) return null
   try {
-    const url = new URL(value, docUrl)
+    const docPath = new URL(docUrl).pathname
+    const underPrefix = !!basePrefix && (docPath === basePrefix || docPath.startsWith(basePrefix + '/'))
+    const rebased =
+      underPrefix && value.startsWith('/d/') && !value.startsWith(basePrefix + '/') ? basePrefix + value : value
+    const url = new URL(rebased, docUrl)
     return /\/assets\//.test(url.pathname) ? url.href : null
   } catch {
     return null
   }
 }
 
-function absolutizeAssetAttr(el: Element, attr: 'src' | 'href', docUrl: string) {
+function absolutizeAssetAttr(el: Element, attr: 'src' | 'href', docUrl: string, basePrefix = '') {
   const raw = el.getAttribute(attr)
   if (!raw) return
   const value = raw.trim()
-  const resolved = resolveDocAssetUrl(value, docUrl)
+  const resolved = resolveDocAssetUrl(value, docUrl, basePrefix)
   if (resolved) el.setAttribute(attr, resolved)
 }
 
@@ -132,9 +143,13 @@ export function resolveHtmlDocAnchorText(
 export function absolutizeDocAssetUrls(html: string, docUrl = resolveAbsoluteOctoDocBase()): string {
   if (typeof DOMParser === 'undefined') return html
   const absoluteDocUrl = resolveAbsoluteUrl(docUrl)
+  // Same-origin path prefix (e.g. '/docs-html'); '' for absolute/cross-origin bases. Used to
+  // re-root the backend's root-relative `/d/...` asset refs so they keep the prefix.
+  const base = resolveOctoDocBase()
+  const basePrefix = base.startsWith('/') ? base.replace(/\/+$/, '') : ''
   const doc = new DOMParser().parseFromString(html, 'text/html')
-  doc.querySelectorAll('img[src]').forEach((el) => absolutizeAssetAttr(el, 'src', absoluteDocUrl))
-  doc.querySelectorAll('link[href]').forEach((el) => absolutizeAssetAttr(el, 'href', absoluteDocUrl))
+  doc.querySelectorAll('img[src]').forEach((el) => absolutizeAssetAttr(el, 'src', absoluteDocUrl, basePrefix))
+  doc.querySelectorAll('link[href]').forEach((el) => absolutizeAssetAttr(el, 'href', absoluteDocUrl, basePrefix))
   neutralizeEditableControls(doc)
   const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>` : ''
   return `${doctype}${doc.documentElement.outerHTML}`
