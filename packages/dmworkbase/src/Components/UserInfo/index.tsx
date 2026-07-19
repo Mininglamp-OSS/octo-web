@@ -1,6 +1,6 @@
 import { Input, Spin, Toast } from "@douyinfe/semi-ui";
 import { IconEdit } from "@douyinfe/semi-icons";
-import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
+import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import React, { Component, HTMLProps } from "react";
 import { UserRelation } from "../../Service/Const";
 import WKApp from "../../App";
@@ -9,8 +9,7 @@ import { Section } from "../../Service/Section";
 import RoutePage from "../RoutePage";
 import Sections from "../Sections";
 import "./index.css"
-import { UserInfoRouteData, UserInfoVM } from "./vm";
-import UserService from "../../Service/UserService";
+import { UserInfoRouteData, UserInfoVM } from "../../bridge/profileDetail/UserInfoVM";
 import FriendApplyUI from "../FriendApply";
 import RouteContext, { FinishButtonContext } from "../../Service/Context";
 import { I18nContext } from "../../i18n";
@@ -29,97 +28,29 @@ export interface UserInfoProps extends HTMLProps<any> {
     onClose?: () => void
 }
 
-interface UserInfoState {
-    editingRemark: boolean;
-    remarkDraft: string;
-    savingRemark: boolean;
-}
-
-export default class UserInfo extends Component<UserInfoProps, UserInfoState> {
+export default class UserInfo extends Component<UserInfoProps> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
-    private mounted = false;
-
-    state: UserInfoState = {
-        editingRemark: false,
-        remarkDraft: "",
-        savingRemark: false,
-    };
-
-    componentDidMount() {
-        this.mounted = true;
-    }
-
-    componentDidUpdate(prevProps: UserInfoProps) {
-        if (prevProps.uid !== this.props.uid) {
-            this.setState({
-                editingRemark: false,
-                remarkDraft: "",
-                savingRemark: false,
-            });
-        }
-    }
-
-    componentWillUnmount() {
-        this.mounted = false;
-    }
 
     getRemark(vm: UserInfoVM) {
-        return vm.channelInfo?.orgData?.remark || "";
+        return vm.getRemark();
     }
 
     startEditRemark = (vm: UserInfoVM) => {
-        this.setState({
-            editingRemark: true,
-            remarkDraft: this.getRemark(vm),
-        });
+        vm.startEditRemark();
     };
 
-    cancelEditRemark = () => {
-        this.setState({
-            editingRemark: false,
-            remarkDraft: "",
-        });
+    cancelEditRemark = (vm: UserInfoVM) => {
+        vm.cancelEditRemark();
     };
 
     saveRemark = async (vm: UserInfoVM) => {
         const { t } = this.context;
-        const requestedUid = vm.uid;
-        const isCurrent = () => this.mounted && this.props.uid === requestedUid;
-        const remark = this.state.remarkDraft.trim();
-        this.setState({ savingRemark: true });
-        try {
-            await UserService.updateRemark(requestedUid, remark);
-            if (!isCurrent()) return;
-            if (vm.channelInfo) {
-                vm.channelInfo.orgData = {
-                    ...vm.channelInfo.orgData,
-                    remark,
-                    displayName: remark || vm.channelInfo.title,
-                };
-            }
-            vm.notifyListener();
+        const result = await vm.saveRemark();
+        if (result === "ok") {
             Toast.success(t("base.userInfo.remarkUpdated"));
-            this.setState({
-                editingRemark: false,
-                remarkDraft: "",
-            });
-            Promise.resolve(
-                WKSDK.shared().channelManager.fetchChannelInfo(new Channel(requestedUid, ChannelTypePerson))
-            ).catch((error: unknown) => {
-                console.warn("[UserInfo] refresh channel after remark failed:", error);
-            });
-            Promise.resolve(vm.reloadChannelInfo()).catch((error: unknown) => {
-                console.warn("[UserInfo] reload profile after remark failed:", error);
-            });
-        } catch (err: any) {
-            if (isCurrent()) {
-                Toast.error(err?.msg || t("base.userInfo.remarkUpdateFailed"));
-            }
-        } finally {
-            if (isCurrent()) {
-                this.setState({ savingRemark: false });
-            }
+        } else if (result === "failed") {
+            Toast.error(t("base.userInfo.remarkUpdateFailed"));
         }
     };
 
@@ -147,7 +78,7 @@ export default class UserInfo extends Component<UserInfoProps, UserInfoState> {
             return null;
         }
 
-        const { editingRemark, remarkDraft, savingRemark } = this.state;
+        const { editingRemark, remarkDraft, savingRemark } = vm;
         const remark = this.getRemark(vm);
         return <div className="wk-userinfo-remark-section">
             <div className="wk-userinfo-remark-row">
@@ -157,7 +88,7 @@ export default class UserInfo extends Component<UserInfoProps, UserInfoState> {
                         editingRemark ? <div className="wk-userinfo-remark-editor">
                             <Input
                                 value={remarkDraft}
-                                onChange={(value) => this.setState({ remarkDraft: value })}
+                                onChange={(value) => vm.setRemarkDraft(value)}
                                 placeholder={t("base.userInfo.remarkPlaceholder")}
                                 maxLength={30}
                             />
@@ -167,7 +98,7 @@ export default class UserInfo extends Component<UserInfoProps, UserInfoState> {
                                     variant="secondary"
                                     size="sm"
                                     disabled={savingRemark}
-                                    onClick={this.cancelEditRemark}
+                                    onClick={() => this.cancelEditRemark(vm)}
                                 >
                                     {t("base.common.cancel")}
                                 </WKButton>
@@ -260,12 +191,7 @@ export default class UserInfo extends Component<UserInfoProps, UserInfoState> {
                     onFinish: async () => {
                         if (!finishButtonContext) return
                         finishButtonContext.loading(true)
-                        await UserService.applyFriend({
-                            uid: vm.uid,
-                            remark: msg,
-                            vercode: vm.vercode || "",
-                            spaceId: WKApp.shared.currentSpaceId,
-                        }).then(() => {
+                        await vm.applyFriend(msg, WKApp.shared.currentSpaceId).then(() => {
                             Toast.success(t("base.userInfo.friendApplySent"))
                             WKApp.shared.baseContext.hideUserInfo()
                         }).catch((err: any) => {
@@ -312,12 +238,7 @@ export default class UserInfo extends Component<UserInfoProps, UserInfoState> {
                     onFinish: async () => {
                         if (!finishButtonContext) return
                         finishButtonContext.loading(true)
-                        await UserService.applyFriend({
-                            uid: vm.uid,
-                            remark: msg,
-                            vercode: vm.vercode || "",
-                            spaceId: WKApp.shared.currentSpaceId,
-                        }).then(() => {
+                        await vm.applyFriend(msg, WKApp.shared.currentSpaceId).then(() => {
                             WKApp.shared.baseContext.hideUserInfo()
                         }).catch((err) => {
                             Toast.error(err.msg)

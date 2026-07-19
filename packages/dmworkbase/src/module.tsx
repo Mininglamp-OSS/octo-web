@@ -89,7 +89,7 @@ import IconClick from "./Components/IconClick";
 import EmojiToolbar from "./Components/EmojiToolbar";
 import MergeforwardContent, { MergeforwardCell } from "./Messages/Mergeforward";
 import { wkConfirm } from "./Components/WKModal";
-import { UserInfoRouteData } from "./Components/UserInfo/vm";
+import { UserInfoRouteData } from "./bridge/profileDetail/UserInfoVM";
 import { IconAlertCircle } from "@douyinfe/semi-icons";
 import { TypingManager } from "./Service/TypingManager";
 import APIClient from "./Service/APIClient";
