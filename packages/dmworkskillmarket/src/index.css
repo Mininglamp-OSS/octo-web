@@ -709,6 +709,15 @@
   border-top: 1px solid var(--wk-border-subtle);
 }
 
+.skill-market-card__footer-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
 .skill-market-card__stats {
   display: inline-flex;
   align-items: center;
@@ -754,7 +763,8 @@
 }
 
 .skill-market-card__actions {
-  display: flex;
+  display: inline-flex;
+  align-items: center;
   flex: 0 0 auto;
   gap: var(--wk-sp-1);
 }
