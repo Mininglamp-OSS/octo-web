@@ -73,8 +73,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
     }
 
     componentDidUpdate(prevProps: BotDetailModalProps) {
-        if (prevProps.uid !== this.props.uid && this.props.uid) {
-            this.vm.setUid(this.props.uid);
+        if (prevProps.uid !== this.props.uid) {
+            this.vm.setUid(this.props.uid || "");
         }
         if (prevProps.visible && !this.props.visible) {
             this.vm.resetTransientState();

@@ -37,6 +37,7 @@ export class UserInfoVM extends ProviderListener {
   editingRemark = false;
   remarkDraft = "";
   savingRemark = false;
+  remarkSaveError = "";
   private mounted = false;
 
   constructor(uid: string, fromChannel?: Channel, vercode?: string) {
@@ -107,6 +108,7 @@ export class UserInfoVM extends ProviderListener {
     const requestedUid = this.uid;
     const remark = this.remarkDraft.trim();
     this.savingRemark = true;
+    this.remarkSaveError = "";
     this.notifyListener();
     try {
       await UserService.updateRemark(requestedUid, remark);
@@ -130,8 +132,10 @@ export class UserInfoVM extends ProviderListener {
         console.warn("[UserInfo] reload profile after remark failed:", error);
       });
       return "ok";
-    } catch {
-      return this.isCurrentUid(requestedUid) ? "failed" : "stale";
+    } catch (error: any) {
+      if (!this.isCurrentUid(requestedUid)) return "stale";
+      this.remarkSaveError = error?.msg || "";
+      return "failed";
     } finally {
       if (this.isCurrentUid(requestedUid)) {
         this.savingRemark = false;

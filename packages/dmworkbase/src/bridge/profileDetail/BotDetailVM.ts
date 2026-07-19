@@ -124,7 +124,8 @@ export default class BotDetailVM extends ProviderListener {
     this.uid = uid;
     this.clearRefreshTimer();
     this.patchState({ showBotManage: false });
-    void this.loadBotInfo();
+    if (!uid) return;
+    return this.loadBotInfo();
   }
 
   currentUid() {

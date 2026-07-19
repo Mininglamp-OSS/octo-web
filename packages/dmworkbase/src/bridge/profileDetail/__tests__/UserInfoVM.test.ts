@@ -81,6 +81,19 @@ describe("UserInfoVM profile actions", () => {
     expect(vm.savingRemark).toBe(false);
   });
 
+  it("keeps backend remark error message on save failure", async () => {
+    mocks.updateRemark.mockRejectedValueOnce({ msg: "remark is too long" });
+    const vm = new UserInfoVM("u1");
+    (vm as any).mounted = true;
+    vm.startEditRemark();
+    vm.setRemarkDraft("invalid");
+
+    await expect(vm.saveRemark()).resolves.toBe("failed");
+
+    expect(vm.remarkSaveError).toBe("remark is too long");
+    expect(vm.savingRemark).toBe(false);
+  });
+
   it("applies friend with vercode and space", async () => {
     mocks.applyFriend.mockResolvedValueOnce(undefined);
     const vm = new UserInfoVM("u1", undefined, "vc-1");

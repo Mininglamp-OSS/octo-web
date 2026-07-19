@@ -136,6 +136,36 @@ describe("BotDetailVM", () => {
     expect(vm.state.username).toBe("bot_two");
   });
 
+  it("reloads the same bot after uid is cleared on close", async () => {
+    mocks.getBotProfile
+      .mockResolvedValueOnce({
+        name: "Bot One",
+        username: "bot_one",
+        bot_creator_uid: "owner-1",
+        follow: 1,
+      })
+      .mockResolvedValueOnce({
+        name: "Bot One Reloaded",
+        username: "bot_one",
+        bot_creator_uid: "owner-1",
+        follow: 0,
+      });
+    mocks.getReportStatus.mockResolvedValue(false);
+    const vm = new BotDetailVM("bot1", createRuntime());
+    vm.mount();
+
+    await vm.loadBotInfo();
+    vm.setUid("");
+    await vm.setUid("bot1");
+    await Promise.resolve();
+
+    expect(mocks.getBotProfile).toHaveBeenCalledTimes(2);
+    expect(mocks.getBotProfile).toHaveBeenNthCalledWith(1, "bot1");
+    expect(mocks.getBotProfile).toHaveBeenNthCalledWith(2, "bot1");
+    expect(vm.state.name).toBe("Bot One Reloaded");
+    expect(vm.state.isFriend).toBe(false);
+  });
+
   it("saves remark and refreshes channel info", async () => {
     mocks.updateRemark.mockResolvedValueOnce(undefined);
     const runtime = createRuntime();

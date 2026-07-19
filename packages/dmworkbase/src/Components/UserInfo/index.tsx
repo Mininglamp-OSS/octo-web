@@ -47,7 +47,7 @@ export default class UserInfo extends Component<UserInfoProps> {
         if (result === "ok") {
             Toast.success(t("base.userInfo.remarkUpdated"));
         } else if (result === "failed") {
-            Toast.error(t("base.userInfo.remarkUpdateFailed"));
+            Toast.error(vm.remarkSaveError || t("base.userInfo.remarkUpdateFailed"));
         }
     };
 
