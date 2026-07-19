@@ -26,18 +26,12 @@ const hoisted = vi.hoisted(() => {
     return { get, post, del, put, toastError }
 })
 
-vi.mock("../../../App", () => ({
+vi.mock("../../../Service/BotManageService", () => ({
     default: {
-        apiClient: {
-            get: hoisted.get,
-            post: hoisted.post,
-            delete: hoisted.del,
-            put: hoisted.put,
-        },
-        shared: { currentSpaceId: "" },
-        loginInfo: { uid: "" },
+        listGroups: hoisted.get,
+        enableMentionFree: hoisted.put,
+        disableMentionFree: hoisted.del,
     },
-    __esModule: true,
 }))
 
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -78,8 +72,9 @@ describe("MentionFreeVM.loadGroups", () => {
         expect(vm.nextCursor).toBe("CURSOR2")
         expect(vm.hasMore).toBe(true)
         expect(vm.loading).toBe(false)
-        expect(hoisted.get).toHaveBeenCalledWith("robot/bot1/groups", {
-            param: { limit: 30 },
+        expect(hoisted.get).toHaveBeenCalledWith({
+            robotId: "bot1",
+            limit: 30,
         })
     })
 
@@ -141,8 +136,10 @@ describe("MentionFreeVM.loadMore (cursor pagination)", () => {
         await vm.loadMore()
         expect(vm.groups.map((g) => g.group_no)).toEqual(["g1", "g2"])
         expect(vm.hasMore).toBe(false)
-        expect(hoisted.get).toHaveBeenLastCalledWith("robot/bot1/groups", {
-            param: { limit: 30, cursor: "C2" },
+        expect(hoisted.get).toHaveBeenLastCalledWith({
+            robotId: "bot1",
+            limit: 30,
+            cursor: "C2",
         })
     })
 
@@ -185,9 +182,7 @@ describe("MentionFreeVM.toggleMentionFree", () => {
         hoisted.put.mockResolvedValueOnce({})
         const ok = await vm.toggleMentionFree("g1", true)
         expect(ok).toBe(true)
-        expect(hoisted.put).toHaveBeenCalledWith("robot/bot1/groups/g1/mention_pref", {
-            no_mention: 1,
-        })
+        expect(hoisted.put).toHaveBeenCalledWith("bot1", "g1")
         expect(vm.groups.find((g) => g.group_no === "g1")?.no_mention).toBe(true)
     })
 
@@ -202,7 +197,7 @@ describe("MentionFreeVM.toggleMentionFree", () => {
         hoisted.del.mockResolvedValueOnce({})
         const ok = await vm.toggleMentionFree("g1", false)
         expect(ok).toBe(true)
-        expect(hoisted.del).toHaveBeenCalledWith("robot/bot1/groups/g1/mention_pref")
+        expect(hoisted.del).toHaveBeenCalledWith("bot1", "g1")
         expect(vm.groups.find((g) => g.group_no === "g1")?.no_mention).toBe(false)
     })
 

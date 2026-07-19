@@ -7,7 +7,6 @@ import {
     IconEdit,
     IconTickCircle,
 } from "@douyinfe/semi-icons";
-import axios from "axios";
 import WKModal from "../WKModal";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import WKApp from "../../App";
@@ -19,6 +18,7 @@ import AiBadge from "../AiBadge";
 import ClawInfoModal from "../ClawInfoModal/ClawInfoModal";
 import BotManageModal from "../BotManage";
 import AgentCardService from "../../Service/AgentCardService";
+import BotProfileService from "../../Service/BotProfileService";
 import { I18nContext, t } from "../../i18n";
 import { canvasToPngFile, isAvatarFileTooLarge, isGifImageFile } from "../avatarUpload";
 import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton";
@@ -224,7 +224,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
 
         try {
             // 用 user detail API 获取完整信息（包含 follow）
-            const data = await WKApp.apiClient.get(`users/${requestedUid}`);
+            const data = await BotProfileService.getBotProfile(requestedUid);
             if (isStale()) return;
             const creatorUid = data.bot_creator_uid || "";
             this.setState({
@@ -344,16 +344,9 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
 
     uploadBotAvatar = async (file: File): Promise<boolean> => {
         const { uid } = this.props;
-        const param = new FormData();
-        param.append("file", file);
         this.setState({ uploadingAvatar: true });
         try {
-            await axios.post(`users/${uid}/avatar`, param, {
-                headers: {
-                    "Content-Type": "multipart/form-data",
-                    "token": WKApp.loginInfo.token || "",
-                },
-            });
+            await BotProfileService.uploadAvatar(uid, file, WKApp.loginInfo.token || "");
             if (!this.isCurrentUid(uid)) return false;
             WKApp.shared.changeChannelAvatarTag(new Channel(uid, ChannelTypePerson));
             // 触发 channelInfoListener，通知其他组件刷新头像
@@ -441,9 +434,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         const isCurrent = () => this.isCurrentUid(requestedUid);
         this.setState({ savingDescription: true });
         try {
-            await WKApp.apiClient.put(`robot/${requestedUid}/description`, {
-                description: descriptionDraft,
-            });
+            await BotProfileService.updateDescription(requestedUid, descriptionDraft);
             if (!isCurrent()) return;
             Toast.success(t("base.botDetail.descriptionUpdated"));
             this.setState({
@@ -481,7 +472,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         const isCurrent = () => this.mounted && this.props.uid === requestedUid;
         this.setState({ savingRemark: true });
         try {
-            await WKApp.apiClient.put("friend/remark", { uid: requestedUid, remark });
+            await BotProfileService.updateRemark(requestedUid, remark);
             if (!isCurrent()) return;
             Toast.success(t("base.botDetail.remarkUpdated"));
             this.setState({
@@ -527,12 +518,11 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         const isCurrent = () => this.isCurrentUid(requestedUid);
         this.setState({ applying: true });
         try {
-            const body: any = { to_uid: requestedUid, remark: applyRemark };
-            const spaceId = WKApp.shared.currentSpaceId;
-            if (spaceId) {
-                body.space_id = spaceId;
-            }
-            await WKApp.apiClient.post("friend/apply", body);
+            await BotProfileService.applyFriend({
+                uid: requestedUid,
+                remark: applyRemark,
+                spaceId: WKApp.shared.currentSpaceId,
+            });
             if (!isCurrent()) return;
             Toast.success(t("base.botDetail.apply.sent"));
             this.setState({ showApplyInput: false });

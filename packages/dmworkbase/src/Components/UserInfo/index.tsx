@@ -3,13 +3,14 @@ import { IconEdit } from "@douyinfe/semi-icons";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import React, { Component, HTMLProps } from "react";
 import { UserRelation } from "../../Service/Const";
-import WKApp, { FriendApply } from "../../App";
+import WKApp from "../../App";
 import Provider, { IProviderListener } from "../../Service/Provider";
 import { Section } from "../../Service/Section";
 import RoutePage from "../RoutePage";
 import Sections from "../Sections";
 import "./index.css"
 import { UserInfoRouteData, UserInfoVM } from "./vm";
+import UserService from "../../Service/UserService";
 import FriendApplyUI from "../FriendApply";
 import RouteContext, { FinishButtonContext } from "../../Service/Context";
 import { I18nContext } from "../../i18n";
@@ -88,7 +89,7 @@ export default class UserInfo extends Component<UserInfoProps, UserInfoState> {
         const remark = this.state.remarkDraft.trim();
         this.setState({ savingRemark: true });
         try {
-            await WKApp.dataSource.commonDataSource.userRemark(requestedUid, remark);
+            await UserService.updateRemark(requestedUid, remark);
             if (!isCurrent()) return;
             if (vm.channelInfo) {
                 vm.channelInfo.orgData = {
@@ -259,10 +260,11 @@ export default class UserInfo extends Component<UserInfoProps, UserInfoState> {
                     onFinish: async () => {
                         if (!finishButtonContext) return
                         finishButtonContext.loading(true)
-                        await WKApp.dataSource.commonDataSource.friendApply({
+                        await UserService.applyFriend({
                             uid: vm.uid,
                             remark: msg,
-                            vercode: vm.vercode || ""
+                            vercode: vm.vercode || "",
+                            spaceId: WKApp.shared.currentSpaceId,
                         }).then(() => {
                             Toast.success(t("base.userInfo.friendApplySent"))
                             WKApp.shared.baseContext.hideUserInfo()
@@ -310,10 +312,11 @@ export default class UserInfo extends Component<UserInfoProps, UserInfoState> {
                     onFinish: async () => {
                         if (!finishButtonContext) return
                         finishButtonContext.loading(true)
-                        await WKApp.dataSource.commonDataSource.friendApply({
+                        await UserService.applyFriend({
                             uid: vm.uid,
                             remark: msg,
-                            vercode: vm.vercode || ""
+                            vercode: vm.vercode || "",
+                            spaceId: WKApp.shared.currentSpaceId,
                         }).then(() => {
                             WKApp.shared.baseContext.hideUserInfo()
                         }).catch((err) => {
