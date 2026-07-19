@@ -11,6 +11,15 @@ const categories: Category[] = [
   { id: "dev-tools", name: "开发工具", iconKey: "Code", sortOrder: 2, skillCount: 1 },
 ];
 
+const displayNamePlaceholder = /请输入展示名称，最多20个字符|skillMarket\.form\.displayNamePlaceholder/;
+const changelogPlaceholder = /简述此版本变更内容|skillMarket\.form\.changelogPlaceholder/;
+const saveButton = /保存|skillMarket\.common\.save/;
+const reuploadButton = /重新上传 zip 包|skillMarket\.upload\.reupload/;
+const selectNewZipLabel = /选择新的 Skill zip 文件|skillMarket\.upload\.selectNewFileAriaLabel/;
+const dirtyEditMessage = /确定离开？尚未完成编辑，已上传的文件和填写的信息将丢失。|skillMarket\.confirm\.dirtyEditMessage/;
+const keepEditing = /继续编辑|skillMarket\.confirm\.keepEditing/;
+const leaveButton = /确认离开|skillMarket\.confirm\.leave/;
+
 const skill: Skill = {
   id: "meeting-note-cleaner",
   name: "meeting-note-cleaner",
@@ -71,14 +80,14 @@ describe("EditSkillModal", () => {
     const onClose = vi.fn();
     render(<EditSkillModal skill={skill} categories={categories} onClose={onClose} onUpdated={onUpdated} />);
 
-    expect(screen.getByDisplayValue("meeting-note-cleaner")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("1.1.3")).toBeInTheDocument();
     expect(screen.getByDisplayValue("会议纪要整理")).toBeInTheDocument();
     expect(screen.getByText("meeting-note-cleaner.zip")).toBeInTheDocument();
-    expect(screen.getByText("重新上传 zip 包")).toBeInTheDocument();
+    expect(screen.getByText(reuploadButton)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("请输入展示名称，最多20个字符"), { target: { value: "更新展示名" } });
-    fireEvent.change(screen.getByLabelText("分类"), { target: { value: "dev-tools" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "更新展示名" } });
+    fireEvent.change(screen.getByLabelText(/分类|skillMarket\.form\.category/), { target: { value: "dev-tools" } });
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
 
     await waitFor(() => expect(api.updateSkill).toHaveBeenCalledWith("meeting-note-cleaner", expect.objectContaining({
       displayName: "更新展示名",
@@ -105,32 +114,32 @@ describe("EditSkillModal", () => {
     const onClose = vi.fn();
     render(<EditSkillModal skill={skill} categories={categories} onClose={onClose} onUpdated={vi.fn()} />);
 
-    fireEvent.change(screen.getByPlaceholderText("请输入展示名称，最多20个字符"), { target: { value: "新名称" } });
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "新名称" } });
+    fireEvent.click(screen.getByRole("button", { name: /取消|skillMarket\.common\.cancel/ }));
 
-    expect(screen.getByText("确定离开？尚未完成编辑，已上传的文件和填写的信息将丢失。")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "继续编辑" }));
+    expect(screen.getByText(dirtyEditMessage)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: keepEditing }));
     expect(onClose).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
-    fireEvent.click(screen.getByRole("button", { name: "确认离开" }));
+    fireEvent.click(screen.getByRole("button", { name: /取消|skillMarket\.common\.cancel/ }));
+    fireEvent.click(screen.getByRole("button", { name: leaveButton }));
     expect(onClose).toHaveBeenCalled();
   });
 
   it("can re-upload a zip package and save the new file metadata", async () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 
-    fireEvent.click(screen.getByText("重新上传 zip 包"));
+    fireEvent.click(screen.getByText(reuploadButton));
 
     await act(async () => {
-      fireEvent.change(screen.getByLabelText("选择新的 Skill zip 文件"), {
+      fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
         target: { files: [new File(["zip"], "updated-skill.zip", { type: "application/zip" })] },
       });
     });
 
     // Wait for the upload/parse flow to complete
     await waitFor(() => {
-      expect(screen.getByDisplayValue("updated-skill")).toBeInTheDocument();
+      expect(screen.getByText("updated-skill.zip")).toBeInTheDocument();
     });
 
     expect(api.initReupload).toHaveBeenCalledWith("meeting-note-cleaner", "updated-skill.zip", 3);
@@ -138,13 +147,16 @@ describe("EditSkillModal", () => {
     expect(api.triggerParse).toHaveBeenCalledWith("reupload-456");
     expect(api.pollParse).toHaveBeenCalledWith("task-456");
 
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(screen.getByDisplayValue("1.1.4")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), { target: { value: "修复环境检测逻辑" } });
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
 
     await waitFor(() => {
       expect(api.updateSkill).toHaveBeenCalledWith("meeting-note-cleaner", expect.objectContaining({
         parseTaskId: "task-456",
         name: "updated-skill",
-        version: "1.2.0",
+        version: "1.1.4",
+        changelog: "修复环境检测逻辑",
       }));
     });
   });
@@ -157,10 +169,10 @@ describe("EditSkillModal", () => {
 
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 
-    fireEvent.click(screen.getByText("重新上传 zip 包"));
+    fireEvent.click(screen.getByText(reuploadButton));
 
     await act(async () => {
-      fireEvent.change(screen.getByLabelText("选择新的 Skill zip 文件"), {
+      fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
         target: { files: [new File(["bad"], "broken-skill.zip", { type: "application/zip" })] },
       });
     });
@@ -170,7 +182,7 @@ describe("EditSkillModal", () => {
     });
 
     expect(screen.getByText("meeting-note-cleaner.zip")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
     expect(api.updateSkill).not.toHaveBeenCalled();
   });
 });

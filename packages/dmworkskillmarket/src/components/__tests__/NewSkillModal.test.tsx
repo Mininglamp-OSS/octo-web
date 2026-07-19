@@ -88,7 +88,7 @@ describe("NewSkillModal", () => {
 
     // Wait for the async upload/parse flow to complete
     await waitFor(() => {
-      expect(screen.getByText("skill-pack")).toBeInTheDocument();
+      expect(screen.getByText("skill-pack.zip")).toBeInTheDocument();
     });
 
     expect(screen.getByText("skill-pack.zip")).toBeInTheDocument();
@@ -123,7 +123,7 @@ describe("NewSkillModal", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("skill-pack")).toBeInTheDocument();
+      expect(screen.getByText("skill-pack.zip")).toBeInTheDocument();
     });
 
     expect(screen.getByRole("button", { name: createButton })).toBeDisabled();
@@ -144,7 +144,7 @@ describe("NewSkillModal", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("skill-pack")).toBeInTheDocument();
+      expect(screen.getByText("skill-pack.zip")).toBeInTheDocument();
     });
 
     const tagInput = screen.getByPlaceholderText(tagPlaceholder);
@@ -199,7 +199,7 @@ describe("NewSkillModal", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("skill-pack")).toBeInTheDocument();
+      expect(screen.getByText("skill-pack.zip")).toBeInTheDocument();
     });
 
     const tagInput = screen.getByPlaceholderText(tagPlaceholder);
@@ -220,7 +220,7 @@ describe("NewSkillModal", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("skill-pack")).toBeInTheDocument();
+      expect(screen.getByText("skill-pack.zip")).toBeInTheDocument();
     });
 
     fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "快速Todo" } });

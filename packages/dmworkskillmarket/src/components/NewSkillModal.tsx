@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
+import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, NewSkillForm } from "../types/skill";
 import { createSkill, getSkillTags, initUpload, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
-import { formatFileSize, MAX_SKILL_TAGS, validateSkillTag } from "../utils/format";
+import { MAX_SKILL_TAGS, validateSkillTag } from "../utils/format";
 import IconCropModal from "./IconCropModal";
 
 interface NewSkillModalProps {
@@ -15,14 +15,8 @@ interface NewSkillModalProps {
 
 type UploadStage = "idle" | "uploading" | "parsing" | "form" | "error";
 
-interface ParsedSkill {
-  name: string;
-  description: string;
-  tags: string[];
-  version: string;
-}
-
 const MAX_ZIP_SIZE = 20 * 1024 * 1024;
+const DEFAULT_CREATE_VERSION = "0.1.0";
 
 function createReadme(name: string, description: string, version: string): string {
   return `# ${name}\n\n${description}\n\n## Version\n\n${version}\n`;
@@ -40,6 +34,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     () => categories.filter((category: Category) => category.id !== "all"),
     [categories],
   );
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef(false);
   const [stage, setStage] = useState<UploadStage>("idle");
   const [progress, setProgress] = useState(0);
@@ -55,7 +50,8 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   const [tagSuggestOpen, setTagSuggestOpen] = useState(false);
   const [activeTagSuggestion, setActiveTagSuggestion] = useState(0);
   const [tagError, setTagError] = useState<string | null>(null);
-  const [version, setVersion] = useState("1.0.0");
+  const [version, setVersion] = useState(DEFAULT_CREATE_VERSION);
+  const [changelog, setChangelog] = useState("");
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [iconBlob, setIconBlob] = useState<Blob | null>(null);
   const [iconCropFile, setIconCropFile] = useState<File | null>(null);
@@ -64,7 +60,17 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   const [confirmClose, setConfirmClose] = useState<"busy" | "dirty" | null>(null);
 
   const busy = stage === "uploading" || stage === "parsing";
-  const dirty = Boolean(file || name.trim() || displayName.trim() || tags.length || tagDraft.trim() || categoryId);
+  const dirty = Boolean(
+    file ||
+    name.trim() ||
+    displayName.trim() ||
+    tags.length ||
+    tagDraft.trim() ||
+    categoryId ||
+    version !== DEFAULT_CREATE_VERSION ||
+    changelog.trim() ||
+    iconBlob,
+  );
 
   function getTagDraftError() {
     const next = tagDraft.trim();
@@ -76,7 +82,17 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   }
 
   const tagSubmitError = tagError ?? getTagDraftError();
-  const canCreate = Boolean(parseTaskId && name.trim() && displayName.trim() && categoryId && !saving && !tagSubmitError);
+  const canCreate = Boolean(
+    parseTaskId &&
+    name.trim() &&
+    displayName.trim() &&
+    categoryId &&
+    version.trim() &&
+    changelog.trim() &&
+    !busy &&
+    !saving &&
+    !tagSubmitError,
+  );
 
   useEffect(() => () => { abortRef.current = true; }, []);
 
@@ -100,7 +116,8 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     setTagSuggestOpen(false);
     setActiveTagSuggestion(0);
     setTagError(null);
-    setVersion("1.0.0");
+    setVersion(DEFAULT_CREATE_VERSION);
+    setChangelog("");
     setIconPreview(null);
     setIconBlob(null);
     setSaving(false);
@@ -172,7 +189,8 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
           setName(status.result.name);
           setDescription(status.result.description);
           setTags(status.result.tags);
-          setVersion(status.result.version);
+          setVersion(status.result.version || DEFAULT_CREATE_VERSION);
+          setChangelog(t("skillMarket.form.initialChangelog"));
           setCategoryId("");
           setStage("form");
           setError(null);
@@ -239,7 +257,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   }
 
   useEffect(() => {
-    if (!visible || stage !== "form") return;
+    if (!visible) return;
     const query = tagDraft.trim();
     if (!query || tags.length >= MAX_SKILL_TAGS || validateSkillTag(query)) {
       setTagSuggestions([]);
@@ -271,14 +289,18 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [tagDraft, tags, visible, stage]);
+  }, [tagDraft, tags, visible]);
 
   async function submit() {
-    if (!name.trim() || !displayName.trim() || !categoryId) {
+    if (!displayName.trim() || !categoryId || !version.trim() || !changelog.trim()) {
       setError(t("skillMarket.form.validationRequired"));
       return;
     }
     if (!parseTaskId) {
+      setError(t("skillMarket.form.validationNoUpload"));
+      return;
+    }
+    if (!name.trim()) {
       setError(t("skillMarket.form.validationNoUpload"));
       return;
     }
@@ -307,6 +329,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
         tags: submittedTags,
         visibility: "space",
         version,
+        changelog,
         readmeContent: createReadme(name, description, version),
         iconUrl,
         fileName: file?.name ?? "",
@@ -331,218 +354,202 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
         title={t("skillMarket.form.createTitle")}
         size="lg"
         className="skill-market-workflow-modal"
-        footer={stage === "form" ? (
+        footer={
           <>
             <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
             <WKButton variant="primary" onClick={() => void submit()} loading={saving} disabled={!canCreate}>{t("skillMarket.common.create")}</WKButton>
           </>
-        ) : (
-          <WKButton variant="secondary" onClick={requestClose}>{t("skillMarket.common.cancel")}</WKButton>
-        )}
+        }
       >
-        <div className="skill-market-workflow">
+        <section className="skill-market-form skill-market-form--workflow">
           {error && (
             <div className="skill-market-form__error">
               <AlertCircle size={15} />
               <span>{error}</span>
             </div>
           )}
-          {stage !== "form" ? (
-            <section className="skill-market-upload-panel">
-              {(stage === "idle" || stage === "error") && (
-                <label
-                  className="skill-market-upload-dropzone"
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    const dropped = event.dataTransfer.files?.[0];
-                    if (dropped) startUpload(dropped);
-                  }}
-                >
-                  <input
-                    aria-label={t("skillMarket.upload.selectFileAriaLabel")}
-                    type="file"
-                    accept=".zip"
-                    onChange={handleFileChange}
-                  />
-                  <UploadCloud size={48} />
-                  <strong>{t("skillMarket.upload.dropzoneTitle")}</strong>
-                  <span>{t("skillMarket.upload.dropzoneHint")}</span>
-                </label>
-              )}
-              {stage === "uploading" && (
-                <div className="skill-market-upload-progress">
-                  <FileArchive size={18} />
-                  <div className="skill-market-upload-progress__info">
-                    <strong>{file?.name}</strong>
-                    <span>{file ? formatFileSize(file.size) : ""}</span>
-                  </div>
-                  <div className="skill-market-upload-status">
-                    <div className="skill-market-upload-status__line">
-                      <span>{t("skillMarket.upload.uploading")}</span>
-                      <strong>{progress}%</strong>
-                    </div>
-                    <div className="skill-market-progress" aria-label={t("skillMarket.upload.progressBarAriaLabel")}>
-                      <span style={{ width: `${progress}%` }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-              {stage === "parsing" && (
-                <>
-                  <div className="skill-market-upload-progress">
-                    <FileArchive size={18} />
-                    <div className="skill-market-upload-progress__info">
-                      <strong>{file?.name}</strong>
-                      <span>{file ? formatFileSize(file.size) : ""}</span>
-                    </div>
-                  </div>
-                  <div className="skill-market-parsing-center">
-                    <Loader2 size={32} className="skill-market-spin" />
-                    <span>{t("skillMarket.upload.parsing")}</span>
-                  </div>
-                </>
-              )}
-              {stage === "error" && (
-                <WKButton variant="secondary" onClick={() => setStage("idle")}>{t("skillMarket.upload.reselect")}</WKButton>
-              )}
-            </section>
-          ) : (
-            <section className="skill-market-form skill-market-form--workflow">
-              <div className="skill-market-upload-file">
-                <FileArchive size={18} />
-                <div>
-                  <strong>{file?.name}</strong>
-                  <span>{file ? formatFileSize(file.size) : "-"} · {t("skillMarket.upload.parsed")}</span>
-                </div>
-                <button type="button" onClick={() => setStage("idle")}>{t("skillMarket.upload.reuploadShort")}</button>
+          <div
+            className={file ? "skill-market-upload-file" : "skill-market-upload-file skill-market-upload-file--empty"}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (busy) return;
+              const dropped = event.dataTransfer.files?.[0];
+              if (dropped) startUpload(dropped);
+            }}
+          >
+            {file ? <FileArchive size={18} /> : <UploadCloud size={18} />}
+            <div>
+              <strong>{file?.name ?? t("skillMarket.upload.dropzoneTitle")}</strong>
+              <span>
+                {file
+                  ? (parseTaskId
+                    ? t("skillMarket.upload.parsedWithName", { values: { name } })
+                    : stage === "parsing"
+                      ? t("skillMarket.upload.parsing")
+                      : t("skillMarket.upload.uploading"))
+                  : t("skillMarket.upload.parseAutofillHint")}
+              </span>
+            </div>
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+              {file ? t("skillMarket.upload.reuploadShort") : t("skillMarket.upload.selectFileAction")}
+            </button>
+            <input
+              ref={fileInputRef}
+              aria-label={t("skillMarket.upload.selectFileAriaLabel")}
+              className="skill-market-upload-file__input"
+              type="file"
+              accept=".zip"
+              onChange={handleFileChange}
+            />
+          </div>
+          {stage === "uploading" && (
+            <div className="skill-market-upload-status">
+              <div className="skill-market-upload-status__line">
+                <span>{t("skillMarket.upload.uploadProgress")}</span>
+                <strong>{progress}%</strong>
               </div>
-
-              <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>
-
-              <div className="skill-market-form__icon-row">
-                <label className="skill-market-icon-upload" title={t("skillMarket.form.uploadIcon")}>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/svg+xml"
-                    onChange={(event) => {
-                      const f = event.target.files?.[0];
-                      if (f) setIconCropFile(f);
-                      event.target.value = "";
-                    }}
-                  />
-                  {iconPreview ? (
-                    <img src={iconPreview} alt="icon" />
-                  ) : (
-                    <ImagePlus size={24} />
-                  )}
-                </label>
-                <label className="skill-market-field-readonly">
-                  <span>{t("skillMarket.form.englishName")}</span>
-                  <span className="skill-market-field-readonly__value">{name}</span>
-                </label>
-                <label>
-                  <span>{t("skillMarket.form.displayName")}<i className="skill-market-required">*</i></span>
-                  <WKInput value={displayName} onChange={(v: string) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />
-                </label>
+              <div className="skill-market-progress" aria-label={t("skillMarket.upload.progressBarAriaLabel")}>
+                <span style={{ width: `${progress}%` }} />
               </div>
-              <div className="skill-market-form__row">
-                <label>
-                  <span>{t("skillMarket.form.category")}<i className="skill-market-required">*</i></span>
-                  <select aria-label={t("skillMarket.form.category")} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-                    <option value="">{t("skillMarket.form.categoryPlaceholder")}</option>
-                    {selectableCategories.map((category) => (
-                      <option key={category.id} value={category.id}>{category.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>{t("skillMarket.form.tags")}</span>
-                  <div className="skill-market-tag-field">
-                    <div className="skill-market-tag-input">
-                      {tags.map((tag) => (
-                        <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
-                          {tag}
-                          <XCircle size={12} />
-                        </button>
-                      ))}
-                      <input
-                        value={tagDraft}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setTagDraft(next);
-                          setTagError(validateSkillTag(next));
-                        }}
-                        onFocus={() => setTagSuggestOpen(tagSuggestions.length > 0)}
-                        onKeyDown={(event) => {
-                          if (event.key === "ArrowDown" && tagSuggestions.length) {
-                            event.preventDefault();
-                            setTagSuggestOpen(true);
-                            setActiveTagSuggestion((current) => (current + 1) % tagSuggestions.length);
-                            return;
-                          }
-                          if (event.key === "ArrowUp" && tagSuggestions.length) {
-                            event.preventDefault();
-                            setTagSuggestOpen(true);
-                            setActiveTagSuggestion((current) => (current - 1 + tagSuggestions.length) % tagSuggestions.length);
-                            return;
-                          }
-                          if (event.key === "Escape") {
-                            setTagSuggestOpen(false);
-                            return;
-                          }
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            if (tagSuggestOpen && tagSuggestions[activeTagSuggestion]) {
-                              addTagValue(tagSuggestions[activeTagSuggestion]);
-                            } else {
-                              addTag();
-                            }
-                          }
-                        }}
-                        onBlur={addTag}
-                        placeholder={t("skillMarket.form.tagPlaceholder")}
-                        aria-label={t("skillMarket.form.tags")}
-                        aria-autocomplete="list"
-                        aria-expanded={tagSuggestOpen}
-                        aria-describedby={(tagError || tags.length >= MAX_SKILL_TAGS) ? "skill-market-tag-hint" : undefined}
-                      />
-                    </div>
-                    {(tagError || tags.length >= MAX_SKILL_TAGS) && (
-                      <small id="skill-market-tag-hint" className={tagError ? "skill-market-tag-hint is-error" : "skill-market-tag-hint"}>
-                        {tagError ?? t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } })}
-                      </small>
-                    )}
-                    {tagSuggestOpen && tagSuggestions.length > 0 && (
-                      <div className="skill-market-tag-suggestions" role="listbox" aria-label={t("skillMarket.form.tagSuggestions")}>
-                        {tagSuggestions.map((tag, index) => (
-                          <button
-                            key={tag}
-                            type="button"
-                            role="option"
-                            aria-selected={index === activeTagSuggestion}
-                            className={index === activeTagSuggestion ? "is-active" : ""}
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              addTagValue(tag);
-                            }}
-                            onMouseEnter={() => setActiveTagSuggestion(index)}
-                          >
-                            {tag}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </label>
-              </div>
-              <div className="skill-market-doc-note">
-                <CheckCircle2 size={15} />
-                <span>{t("skillMarket.form.docNote")}</span>
-              </div>
-            </section>
+            </div>
           )}
-        </div>
+          {stage === "parsing" && (
+            <div className="skill-market-upload-status is-parsing">
+              <Loader2 size={16} />
+              <span>{t("skillMarket.upload.parsing")}</span>
+            </div>
+          )}
+
+          <div className="skill-market-form__version-section">
+            <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
+            <div className="skill-market-form__row">
+              <label>
+                <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
+                <WKInput value={version} onChange={setVersion} placeholder={t("skillMarket.form.versionPlaceholder")} />
+              </label>
+              <label>
+                <span>{t("skillMarket.form.changelogLabel")}<i className="skill-market-required">*</i></span>
+                <WKInput value={changelog} onChange={setChangelog} placeholder={t("skillMarket.form.changelogPlaceholder")} />
+              </label>
+            </div>
+          </div>
+
+          <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>
+
+          <div className="skill-market-form__icon-row">
+            <label className="skill-market-icon-upload" title={t("skillMarket.form.uploadIcon")}>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml"
+                onChange={(event) => {
+                  const f = event.target.files?.[0];
+                  if (f) setIconCropFile(f);
+                  event.target.value = "";
+                }}
+              />
+              {iconPreview ? (
+                <img src={iconPreview} alt="icon" />
+              ) : (
+                <ImagePlus size={24} />
+              )}
+            </label>
+            <label>
+              <span>{t("skillMarket.form.displayName")}<i className="skill-market-required">*</i></span>
+              <WKInput value={displayName} onChange={(v: string) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />
+            </label>
+          </div>
+          <div className="skill-market-form__row">
+            <label>
+              <span>{t("skillMarket.form.category")}<i className="skill-market-required">*</i></span>
+              <select aria-label={t("skillMarket.form.category")} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+                <option value="">{t("skillMarket.form.categoryPlaceholder")}</option>
+                {selectableCategories.map((category) => (
+                  <option key={category.id} value={category.id}>{category.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>{t("skillMarket.form.tags")}</span>
+              <div className="skill-market-tag-field">
+                <div className="skill-market-tag-input">
+                  {tags.map((tag) => (
+                    <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
+                      {tag}
+                      <XCircle size={12} />
+                    </button>
+                  ))}
+                  <input
+                    value={tagDraft}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setTagDraft(next);
+                      setTagError(validateSkillTag(next));
+                    }}
+                    onFocus={() => setTagSuggestOpen(tagSuggestions.length > 0)}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowDown" && tagSuggestions.length) {
+                        event.preventDefault();
+                        setTagSuggestOpen(true);
+                        setActiveTagSuggestion((current) => (current + 1) % tagSuggestions.length);
+                        return;
+                      }
+                      if (event.key === "ArrowUp" && tagSuggestions.length) {
+                        event.preventDefault();
+                        setTagSuggestOpen(true);
+                        setActiveTagSuggestion((current) => (current - 1 + tagSuggestions.length) % tagSuggestions.length);
+                        return;
+                      }
+                      if (event.key === "Escape") {
+                        setTagSuggestOpen(false);
+                        return;
+                      }
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        if (tagSuggestOpen && tagSuggestions[activeTagSuggestion]) {
+                          addTagValue(tagSuggestions[activeTagSuggestion]);
+                        } else {
+                          addTag();
+                        }
+                      }
+                    }}
+                    onBlur={addTag}
+                    placeholder={t("skillMarket.form.tagPlaceholder")}
+                    aria-label={t("skillMarket.form.tags")}
+                    aria-autocomplete="list"
+                    aria-expanded={tagSuggestOpen}
+                    aria-describedby={(tagError || tags.length >= MAX_SKILL_TAGS) ? "skill-market-tag-hint" : undefined}
+                  />
+                </div>
+                {(tagError || tags.length >= MAX_SKILL_TAGS) && (
+                  <small id="skill-market-tag-hint" className={tagError ? "skill-market-tag-hint is-error" : "skill-market-tag-hint"}>
+                    {tagError ?? t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } })}
+                  </small>
+                )}
+                {tagSuggestOpen && tagSuggestions.length > 0 && (
+                  <div className="skill-market-tag-suggestions" role="listbox" aria-label={t("skillMarket.form.tagSuggestions")}>
+                    {tagSuggestions.map((tag, index) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        role="option"
+                        aria-selected={index === activeTagSuggestion}
+                        className={index === activeTagSuggestion ? "is-active" : ""}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          addTagValue(tag);
+                        }}
+                        onMouseEnter={() => setActiveTagSuggestion(index)}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </label>
+          </div>
+        </section>
       </WKModal>
       <IconCropModal
         visible={!!iconCropFile}

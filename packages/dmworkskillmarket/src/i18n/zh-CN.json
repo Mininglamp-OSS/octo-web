@@ -99,8 +99,10 @@
     "tagLengthLimit": "单个标签最多 {{count}} 个字符",
     "tagInvalidChars": "标签仅支持文字、数字、空格和 - _ . / # +",
     "tagDuplicate": "标签已存在",
+    "initialChangelog": "首次上架 Skill。",
+    "currentVersionChangelog": "当前线上版本。",
     "docNote": "由 SKILL.md 自动解析，如需修改请重新上传 zip 包",
-    "validationRequired": "请填写展示名称和分类",
+    "validationRequired": "请填写版本号、更新说明、展示名称和分类",
     "validationNoUpload": "请先上传并解析 Skill 压缩包",
     "saveFailed": "保存失败",
     "createFailed": "创建失败"
@@ -108,8 +110,10 @@
   "upload": {
     "invalidFormat": "文件格式不正确",
     "fileTooLarge": "文件超过 20MB",
-    "dropzoneTitle": "上传 Skill 压缩包（.zip，≤20MB）",
+    "dropzoneTitle": "上传 Skill 压缩包（.zip）",
     "dropzoneHint": "zip 内需包含 SKILL.md 文件",
+    "parseAutofillHint": "zip 内需包含 SKILL.md，解析后自动填充下方信息",
+    "selectFileAction": "选择文件",
     "selectFileAriaLabel": "选择 Skill zip 文件",
     "selectNewFileAriaLabel": "选择新的 Skill zip 文件",
     "uploading": "上传中",
@@ -123,7 +127,10 @@
     "reupload": "重新上传 zip 包",
     "reuploadShort": "重新上传",
     "parsed": "已解析 SKILL.md",
-    "currentPackage": "当前 Skill 包"
+    "parsedWithName": "已解析 SKILL.md · 英文名 {{name}}",
+    "currentPackage": "当前 Skill 包",
+    "currentPackageWithName": "当前 Skill 包 · 英文名 {{name}}",
+    "newVersionParsedWithName": "已解析新版本 · 英文名 {{name}}"
   },
   "confirm": {
     "title": "确定离开？",

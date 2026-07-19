@@ -1743,6 +1743,10 @@
   color: var(--wk-text-secondary);
 }
 
+.skill-market-upload-file--empty {
+  border-style: dashed;
+}
+
 .skill-market-upload-file strong,
 .skill-market-upload-file span {
   display: block;
@@ -1776,6 +1780,11 @@
 .skill-market-upload-file button:focus-visible {
   outline: none;
   background: var(--wk-accent-tint-08);
+}
+
+.skill-market-upload-file button:disabled {
+  color: var(--wk-text-disabled);
+  cursor: not-allowed;
 }
 
 .skill-market-upload-file__input {
@@ -2036,9 +2045,16 @@
 
 .skill-market-form__icon-row {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 72px minmax(0, 1fr);
   gap: var(--wk-sp-3);
   align-items: start;
+}
+
+.skill-market-input-readonly .wk-input__inner {
+  background: var(--wk-bg-base);
+  color: var(--wk-text-secondary);
+  font-weight: 600;
+  cursor: default;
 }
 
 /* --- Icon upload button --- */

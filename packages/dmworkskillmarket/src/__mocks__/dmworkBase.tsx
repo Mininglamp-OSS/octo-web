@@ -16,14 +16,11 @@ export function WKButton({ children, icon, iconOnly, loading, disabled, ...props
   );
 }
 
-interface WKInputMockProps {
+interface WKInputMockProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "size" | "prefix"> {
   prefix?: React.ReactNode;
   size?: string;
   value?: string;
   onChange?: (value: string) => void;
-  placeholder?: string;
-  autoFocus?: boolean;
-  "aria-label"?: string;
 }
 
 export function WKInput({ value, onChange, prefix, placeholder, size: _size, ...props }: WKInputMockProps) {
@@ -34,8 +31,7 @@ export function WKInput({ value, onChange, prefix, placeholder, size: _size, ...
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange?.(event.target.value)}
-        aria-label={props["aria-label"]}
-        autoFocus={props.autoFocus}
+        {...props}
       />
     </label>
   );

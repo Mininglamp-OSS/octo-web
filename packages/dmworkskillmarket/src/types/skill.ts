@@ -70,6 +70,7 @@ export interface NewSkillForm {
   tags: string[];
   visibility: Visibility;
   version?: string;
+  changelog?: string;
   readmeContent: string;
   iconUrl?: string;
   fileName: string;

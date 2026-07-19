@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Box, CheckCircle2, FileArchive, ImagePlus, Loader2, XCircle } from "lucide-react";
+import { AlertCircle, Box, FileArchive, Loader2, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse } from "../api/skillApi";
-import { formatFileSize, MAX_SKILL_TAGS, validateSkillTag } from "../utils/format";
+import { MAX_SKILL_TAGS, validateSkillTag } from "../utils/format";
 import IconCropModal from "./IconCropModal";
 
 interface EditSkillModalProps {
@@ -82,6 +82,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     setIconPreview(skill.iconUrl || null);
     setIconBlob(null);
     setIconCropFile(null);
+    setChangelog(t("skillMarket.form.currentVersionChangelog"));
     setError(null);
     setConfirmClose(false);
     setTimeout(() => { abortRef.current = false; }, 0);
@@ -113,7 +114,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     uploadStage !== "error" &&
     name.trim() &&
     displayName.trim() &&
-    (!parseTaskId || changelog.trim()) &&
+    (!parseTaskId || (version.trim() && changelog.trim())) &&
     !tagSubmitError,
   );
 
@@ -235,7 +236,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
 
   async function submit() {
     if (!skill) return;
-    if (!name.trim() || !displayName.trim() || !categoryId) {
+    if (!name.trim() || !displayName.trim() || !categoryId || (parseTaskId && (!version.trim() || !changelog.trim()))) {
       setError(t("skillMarket.form.validationRequired"));
       return;
     }
@@ -305,10 +306,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             <FileArchive size={18} />
             <div>
               <strong>{uploadedFile?.name ?? skill?.fileName}</strong>
-              <span>
-                {uploadedFile ? formatFileSize(uploadedFile.size) : skill ? formatFileSize(skill.fileSize) : "-"}
-                {uploadedFile ? " · " + t("skillMarket.upload.parsed") : " · " + t("skillMarket.upload.currentPackage")}
-              </span>
+              <span>{uploadedFile ? t("skillMarket.upload.newVersionParsedWithName", { values: { name } }) : t("skillMarket.upload.currentPackageWithName", { values: { name } })}</span>
             </div>
             <button type="button" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reupload")}</button>
             <input
@@ -341,27 +339,31 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             <WKButton variant="secondary" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reselect")}</WKButton>
           )}
 
-          {parseTaskId && (
-            <div className="skill-market-form__version-section">
-              <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
-              <div className="skill-market-form__row">
-                <label>
-                  <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
-                  <WKInput value={version} onChange={setVersion} placeholder={t("skillMarket.form.versionPlaceholder")} />
-                </label>
-                <label>
-                  <span>{t("skillMarket.form.changelogLabel")}<i className="skill-market-required">*</i></span>
-                  <textarea
-                    value={changelog}
-                    onChange={(e) => setChangelog(e.target.value)}
-                    placeholder={t("skillMarket.form.changelogPlaceholder")}
-                    rows={3}
-                    className="skill-market-form__textarea"
-                  />
-                </label>
-              </div>
+          <div className="skill-market-form__version-section">
+            <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
+            <div className="skill-market-form__row">
+              <label>
+                <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
+                <WKInput
+                  value={version}
+                  onChange={setVersion}
+                  placeholder={t("skillMarket.form.versionPlaceholder")}
+                  readOnly={!parseTaskId}
+                  className={!parseTaskId ? "skill-market-input-readonly" : undefined}
+                />
+              </label>
+              <label>
+                <span>{t("skillMarket.form.changelogLabel")}<i className="skill-market-required">*</i></span>
+                <WKInput
+                  value={changelog}
+                  onChange={setChangelog}
+                  placeholder={t("skillMarket.form.changelogPlaceholder")}
+                  readOnly={!parseTaskId}
+                  className={!parseTaskId ? "skill-market-input-readonly" : undefined}
+                />
+              </label>
             </div>
-          )}
+          </div>
 
           <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>
 
@@ -381,10 +383,6 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
               ) : (
                 <Box size={24} />
               )}
-            </label>
-            <label className="skill-market-field-readonly">
-              <span>{t("skillMarket.form.englishName")}</span>
-              <span className="skill-market-field-readonly__value">{name}</span>
             </label>
             <label>
               <span>{t("skillMarket.form.displayName")}<i className="skill-market-required">*</i></span>
@@ -433,10 +431,6 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
                 </small>
               )}
             </label>
-          </div>
-          <div className="skill-market-doc-note">
-            <CheckCircle2 size={15} />
-            <span>{t("skillMarket.form.docNote")}</span>
           </div>
         </div>
       </WKModal>

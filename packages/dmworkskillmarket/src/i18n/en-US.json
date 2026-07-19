@@ -99,8 +99,10 @@
     "tagLengthLimit": "Each tag can be up to {{count}} characters",
     "tagInvalidChars": "Tags support letters, numbers, spaces, and - _ . / # +",
     "tagDuplicate": "Tag already exists",
+    "initialChangelog": "Initial Skill publish.",
+    "currentVersionChangelog": "Current published version.",
     "docNote": "Auto-parsed from SKILL.md. Re-upload the zip to modify.",
-    "validationRequired": "Please fill in the display name and category",
+    "validationRequired": "Please fill in the version, changelog, display name, and category",
     "validationNoUpload": "Please upload and parse a Skill package first",
     "saveFailed": "Failed to save",
     "createFailed": "Failed to create"
@@ -108,8 +110,10 @@
   "upload": {
     "invalidFormat": "Invalid file format",
     "fileTooLarge": "File exceeds 20MB",
-    "dropzoneTitle": "Upload Skill package (.zip, ≤20MB)",
+    "dropzoneTitle": "Upload Skill package (.zip)",
     "dropzoneHint": "The zip must contain a SKILL.md file",
+    "parseAutofillHint": "The zip must contain SKILL.md. Parsed fields will be filled automatically.",
+    "selectFileAction": "Select file",
     "selectFileAriaLabel": "Select Skill zip file",
     "selectNewFileAriaLabel": "Select a new Skill zip file",
     "uploading": "Uploading",
@@ -123,7 +127,10 @@
     "reupload": "Re-upload zip package",
     "reuploadShort": "Re-upload",
     "parsed": "SKILL.md parsed",
-    "currentPackage": "Current Skill package"
+    "parsedWithName": "SKILL.md parsed · English name {{name}}",
+    "currentPackage": "Current Skill package",
+    "currentPackageWithName": "Current Skill package · English name {{name}}",
+    "newVersionParsedWithName": "New version parsed · English name {{name}}"
   },
   "confirm": {
     "title": "Leave this page?",

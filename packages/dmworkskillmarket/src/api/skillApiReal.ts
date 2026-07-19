@@ -321,6 +321,7 @@ export function createSkill(form: NewSkillForm): Promise<Skill> {
       tags: form.tags,
       visibility: form.visibility,
       version: form.version,
+      changelog: form.changelog,
       icon_url: form.iconUrl ?? "",
     }),
   }).then(mapSkill);
