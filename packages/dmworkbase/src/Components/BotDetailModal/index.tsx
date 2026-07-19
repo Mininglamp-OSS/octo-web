@@ -1,12 +1,5 @@
 import React, { Component } from "react";
-import { Button, Spin, Toast, Input } from "@douyinfe/semi-ui";
-import {
-    IconAlertCircle,
-    IconCamera,
-    IconChevronRight,
-    IconEdit,
-    IconTickCircle,
-} from "@douyinfe/semi-icons";
+import { Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import WKApp from "../../App";
@@ -14,16 +7,16 @@ import WKAvatar from "../WKAvatar";
 import { WKAvatarEditor } from "../WKAvatarEditor";
 import { WKAvatarUploadPreview } from "../WKAvatarUploadPreview";
 import WKAvatarPreviewImage from "../WKAvatarPreviewImage";
-import AiBadge from "../AiBadge";
 import ClawInfoModal from "../ClawInfoModal/ClawInfoModal";
 import BotManageModal from "../BotManage";
 import { I18nContext, t } from "../../i18n";
 import { canvasToPngFile, isAvatarFileTooLarge, isGifImageFile } from "../avatarUpload";
-import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton";
+import type { ReplaceMode, SelectionRange } from "../VoiceInputButton";
 import BotDetailVM, {
     parseBotCommands,
     stripBotDetailDisplayName,
 } from "../../bridge/profileDetail/BotDetailVM";
+import BotDetailView from "../../ui/profileDetail/BotDetailView";
 import "./index.css";
 
 interface BotDetailModalProps {
@@ -316,325 +309,85 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
                 className="wk-bot-detail-modal"
                 options={{ closable: false }}
             >
-                <div className="wk-bot-detail-content">
-                    <div className="wk-bot-detail-route-header">
-                        <button
-                            type="button"
-                            className="wk-bot-detail-route-close"
-                            onClick={this.handleClose}
-                            aria-label={t("base.common.close")}
-                        >
-                            <span className="wk-bot-detail-route-close-icon" aria-hidden="true" />
-                        </button>
-                    </div>
-                    {loading ? (
-                        <div className="wk-bot-detail-loading">
-                            <Spin size="large" />
-                        </div>
-                    ) : (
-                        <>
-                        <div className="wk-bot-detail-scroll">
-                            <div className="wk-bot-detail-header">
-                                {isOwner ? (
-                                    <div
-                                        className="wk-bot-detail-avatar wk-bot-detail-avatar--owner"
-                                        onClick={this.handleAvatarClick}
-                                        onKeyDown={this.handleAvatarKeyDown}
-                                        role="button"
-                                        tabIndex={0}
-                                        aria-label={t("base.botDetail.changeAvatar")}
-                                    >
-                                        <WKAvatar channel={new Channel(uid, ChannelTypePerson)} />
-                                        <div className="wk-bot-detail-avatar-overlay" aria-hidden="true">
-                                            <IconCamera />
-                                        </div>
-                                        {uploadingAvatar && (
-                                            <div className="wk-bot-detail-avatar-loading">
-                                                <Spin />
-                                            </div>
-                                        )}
-                                        <input
-                                            ref={(ref) => { this.$fileInput = ref; }}
-                                            type="file"
-                                            accept="image/*"
-                                            multiple={false}
-                                            className="wk-bot-detail-file-input"
-                                            onClick={this.handleAvatarInputClick}
-                                            onChange={this.handleAvatarFileChange}
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="wk-bot-detail-avatar wk-bot-detail-avatar--preview">
-                                        <WKAvatarPreviewImage channel={new Channel(uid, ChannelTypePerson)} />
-                                    </div>
-                                )}
-                                <div className="wk-bot-detail-heading">
-                                    <div className="wk-bot-detail-name">
-                                        <span className="wk-bot-detail-name-text">{displayName}</span>
-                                        <AiBadge />
-                                    </div>
-                                    <div className="wk-bot-detail-id">@{username}</div>
-                                    {isOwner && reported !== null && (
-                                        <div
-                                            className={`wk-bot-detail-octopush-chip ${
-                                                reported
-                                                    ? "wk-bot-detail-octopush-chip--reported"
-                                                    : "wk-bot-detail-octopush-chip--unmanaged"
-                                            }`}
-                                        >
-                                            <span className="wk-bot-detail-octopush-status">
-                                                <span className="wk-bot-detail-octopush-chip-icon">
-                                                    {reported ? <IconTickCircle /> : <IconAlertCircle />}
-                                                </span>
-                                                <span className="wk-bot-detail-octopush-chip-text">
-                                                    {reported
-                                                        ? t("base.botDetail.reported")
-                                                        : t("base.botDetail.notReported")}
-                                                </span>
-                                                {!reported && (
-                                                    <button
-                                                        type="button"
-                                                        className="wk-bot-detail-help-btn"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                        }}
-                                                        title={t("base.botDetail.reportHelp")}
-                                                        aria-label={t("base.botDetail.help")}
-                                                    >
-                                                        ?
-                                                    </button>
-                                                )}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="wk-bot-detail-section">
-                                <div className="wk-bot-detail-row wk-bot-detail-row--editable">
-                                    <div className="wk-bot-detail-row-main">
-                                        <div className="wk-bot-detail-label">{t("base.botDetail.remark")}</div>
-                                        {editingRemark ? (
-                                            <div className="wk-bot-detail-editor">
-                                                <Input
-                                                    value={remarkDraft}
-                                                    onChange={(v) => this.vm.setRemarkDraft(v)}
-                                                    placeholder={t("base.botDetail.remarkPlaceholder")}
-                                                    maxLength={30}
-                                                />
-                                                <div className="wk-bot-detail-editor-actions">
-                                                    <Button
-                                                        size="small"
-                                                        onClick={this.handleCancelEditRemark}
-                                                        disabled={savingRemark}
-                                                    >
-                                                        {t("base.common.cancel")}
-                                                    </Button>
-                                                    <Button
-                                                        size="small"
-                                                        theme="solid"
-                                                        type="primary"
-                                                        loading={savingRemark}
-                                                        onClick={this.handleSaveRemark}
-                                                    >
-                                                        {t("base.botDetail.save")}
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="wk-bot-detail-value">
-                                                {remark ? this.stripDisplayName(remark) : <span className="wk-bot-detail-empty">{t("base.botDetail.noRemark")}</span>}
-                                            </div>
-                                        )}
-                                    </div>
-                                    {!editingRemark && (
-                                        <Button
-                                            className="wk-bot-detail-value-edit"
-                                            theme="borderless"
-                                            type="tertiary"
-                                            size="small"
-                                            icon={<IconEdit />}
-                                            onClick={this.handleStartEditRemark}
-                                            onKeyDown={this.handleEditRemarkKeyDown}
-                                            aria-label={t("base.botDetail.editRemark")}
-                                            title={t("base.botDetail.editRemark")}
-                                        />
-                                    )}
-                                </div>
-                                {remark && (
-                                    <div className="wk-bot-detail-row">
-                                        <div className="wk-bot-detail-label">{t("base.botDetail.nickname")}</div>
-                                        <div className="wk-bot-detail-value wk-bot-detail-value--right">{botName}</div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="wk-bot-detail-section">
-                                <div className="wk-bot-detail-description">
-                                    <div className="wk-bot-detail-field-header">
-                                        <div className="wk-bot-detail-label">{t("base.botDetail.description")}</div>
-                                        {isOwner && !editingDescription && (
-                                            <Button
-                                                className="wk-bot-detail-edit-action"
-                                                theme="borderless"
-                                                type="tertiary"
-                                                size="small"
-                                                icon={<IconEdit />}
-                                                onClick={this.handleStartEditDescription}
-                                                onKeyDown={this.handleEditDescriptionKeyDown}
-                                                aria-label={t("base.botDetail.editDescription")}
-                                            >
-                                                {t("base.botDetail.edit")}
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {isOwner && editingDescription ? (
-                                        <div>
-                                            <div className="wk-bot-detail-textarea-wrap">
-                                                <textarea
-                                                    ref={this.descriptionRef}
-                                                    className="wk-bot-detail-textarea"
-                                                    value={descriptionDraft}
-                                                    onChange={(e) => this.vm.setDescriptionDraft(e.target.value)}
-                                                    placeholder={t("base.botDetail.descriptionPlaceholder")}
-                                                    maxLength={200}
-                                                    rows={3}
-                                                />
-                                                <VoiceInputButton
-                                                    inputRef={this.descriptionRef}
-                                                    onTranscribed={this.handleDescriptionVoiceTranscribed}
-                                                    getCurrentText={() => this.vm.state.descriptionDraft}
-                                                    showModeMenu
-                                                    size="sm"
-                                                    className="wk-vib--textarea-corner"
-                                                />
-                                            </div>
-                                            <div className="wk-bot-detail-editor-actions">
-                                                <Button
-                                                    size="small"
-                                                    onClick={this.handleCancelEditDescription}
-                                                    disabled={savingDescription}
-                                                >
-                                                    {t("base.common.cancel")}
-                                                </Button>
-                                                <Button
-                                                    size="small"
-                                                    theme="solid"
-                                                    type="primary"
-                                                    loading={savingDescription}
-                                                    onClick={this.handleSaveDescription}
-                                                >
-                                                    {t("base.botDetail.save")}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="wk-bot-detail-description-text">{displayDescription}</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {(creatorName || commands.length > 0) && (
-                                <div className="wk-bot-detail-section">
-                                    {creatorName && (
-                                        <div className="wk-bot-detail-row">
-                                            <div className="wk-bot-detail-label">{t("base.botDetail.creator")}</div>
-                                            <div className="wk-bot-detail-value wk-bot-detail-value--right">{creatorName}</div>
-                                        </div>
-                                    )}
-                                    {commands.length > 0 && (
-                                        <div className="wk-bot-detail-command-block">
-                                            <div className="wk-bot-detail-label">{t("base.botDetail.commands")}</div>
-                                            <div className="wk-bot-detail-command-list">
-                                                {commands.map((cmd, i) => (
-                                                    <div key={i} className="wk-bot-detail-cmd">
-                                                        <span className="wk-bot-detail-cmd-name">{cmd.cmd}</span>
-                                                        <span className="wk-bot-detail-cmd-desc">{cmd.remark}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {isOwner && (
-                                <div className="wk-bot-detail-section">
-                                    <button
-                                        type="button"
-                                        onClick={this.handleOpenBotManage}
-                                        className="wk-bot-detail-nav-row"
-                                        aria-label={t("base.botManage.title")}
-                                    >
-                                        <span>{t("base.botManage.title")}</span>
-                                        <IconChevronRight className="wk-bot-detail-nav-chevron" />
-                                    </button>
-                                    {reported !== null && (
-                                        <button
-                                            type="button"
-                                            onClick={this.handleViewClawInfo}
-                                            className={`wk-bot-detail-nav-row${!reported ? " wk-bot-detail-nav-row--disabled" : ""}`}
-                                            disabled={!reported}
-                                            aria-label={t("base.botDetail.viewClawInfo")}
-                                            title={!reported ? t("base.botDetail.reportHelp") : undefined}
-                                        >
-                                            <span className="wk-bot-detail-nav-main">
-                                                <span className="wk-bot-detail-claw-action-icon" aria-hidden="true">🦞</span>
-                                                <span>{t("base.botDetail.viewClawInfo")}</span>
-                                            </span>
-                                            {reported && <IconChevronRight className="wk-bot-detail-nav-chevron" />}
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="wk-bot-detail-actions">
-                            {isFriend ? (
-                                <Button
-                                    className="wk-bot-detail-primary-action"
-                                    theme="solid"
-                                    type="primary"
-                                    block
-                                    onClick={this.handleChat}
-                                >
-                                    {t("base.botDetail.sendMessage")}
-                                </Button>
-                            ) : showApplyInput ? (
-                                <div className="wk-bot-detail-apply">
-                                    <div className="wk-bot-detail-apply-label">{t("base.botDetail.apply.messageLabel")}</div>
-                                    <Input
-                                        value={applyRemark}
-                                        onChange={(v) => this.vm.setApplyRemark(v)}
-                                        placeholder={t("base.botDetail.apply.messagePlaceholder")}
-                                    />
-                                    <Button
-                                        className="wk-bot-detail-primary-action"
-                                        theme="solid"
-                                        type="primary"
-                                        block
-                                        loading={applying}
-                                        disabled={!applyRemark}
-                                        onClick={this.handleSubmitApply}
-                                    >
-                                        {t("base.botDetail.apply.send")}
-                                    </Button>
-                                </div>
-                            ) : (
-                                <Button
-                                    className="wk-bot-detail-primary-action"
-                                    theme="solid"
-                                    type="primary"
-                                    block
-                                    onClick={this.handleShowApply}
-                                >
-                                    {t("base.botDetail.addFriend")}
-                                </Button>
-                            )}
-                        </div>
-                        </>
-                    )}
-                </div>
+                <BotDetailView
+                    loading={loading}
+                    displayName={displayName}
+                    botName={botName}
+                    username={username}
+                    remark={remark ? this.stripDisplayName(remark) : ""}
+                    displayDescription={displayDescription}
+                    creatorName={creatorName}
+                    commands={commands}
+                    isOwner={isOwner}
+                    isFriend={isFriend}
+                    reported={reported}
+                    uploadingAvatar={uploadingAvatar}
+                    editingRemark={editingRemark}
+                    remarkDraft={remarkDraft}
+                    savingRemark={savingRemark}
+                    editingDescription={editingDescription}
+                    descriptionDraft={descriptionDraft}
+                    savingDescription={savingDescription}
+                    showApplyInput={showApplyInput}
+                    applyRemark={applyRemark}
+                    applying={applying}
+                    ownerAvatar={<WKAvatar channel={new Channel(uid, ChannelTypePerson)} />}
+                    previewAvatar={<WKAvatarPreviewImage channel={new Channel(uid, ChannelTypePerson)} />}
+                    fileInputRef={(ref) => { this.$fileInput = ref; }}
+                    descriptionRef={this.descriptionRef}
+                    labels={{
+                        close: t("base.common.close"),
+                        changeAvatar: t("base.botDetail.changeAvatar"),
+                        reported: t("base.botDetail.reported"),
+                        notReported: t("base.botDetail.notReported"),
+                        reportHelp: t("base.botDetail.reportHelp"),
+                        help: t("base.botDetail.help"),
+                        remark: t("base.botDetail.remark"),
+                        noRemark: t("base.botDetail.noRemark"),
+                        remarkPlaceholder: t("base.botDetail.remarkPlaceholder"),
+                        editRemark: t("base.botDetail.editRemark"),
+                        nickname: t("base.botDetail.nickname"),
+                        description: t("base.botDetail.description"),
+                        editDescription: t("base.botDetail.editDescription"),
+                        edit: t("base.botDetail.edit"),
+                        descriptionPlaceholder: t("base.botDetail.descriptionPlaceholder"),
+                        noDescription: t("base.botDetail.noDescription"),
+                        creator: t("base.botDetail.creator"),
+                        commands: t("base.botDetail.commands"),
+                        botManageTitle: t("base.botManage.title"),
+                        viewClawInfo: t("base.botDetail.viewClawInfo"),
+                        sendMessage: t("base.botDetail.sendMessage"),
+                        addFriend: t("base.botDetail.addFriend"),
+                        applyMessageLabel: t("base.botDetail.apply.messageLabel"),
+                        applyMessagePlaceholder: t("base.botDetail.apply.messagePlaceholder"),
+                        applySend: t("base.botDetail.apply.send"),
+                        save: t("base.botDetail.save"),
+                        cancel: t("base.common.cancel"),
+                    }}
+                    onClose={this.handleClose}
+                    onAvatarClick={this.handleAvatarClick}
+                    onAvatarKeyDown={this.handleAvatarKeyDown}
+                    onAvatarInputClick={this.handleAvatarInputClick}
+                    onAvatarFileChange={this.handleAvatarFileChange}
+                    onRemarkDraftChange={(value) => this.vm.setRemarkDraft(value)}
+                    onStartEditRemark={this.handleStartEditRemark}
+                    onEditRemarkKeyDown={this.handleEditRemarkKeyDown}
+                    onCancelEditRemark={this.handleCancelEditRemark}
+                    onSaveRemark={this.handleSaveRemark}
+                    onStartEditDescription={this.handleStartEditDescription}
+                    onEditDescriptionKeyDown={this.handleEditDescriptionKeyDown}
+                    onDescriptionDraftChange={(value) => this.vm.setDescriptionDraft(value)}
+                    onDescriptionTranscribed={this.handleDescriptionVoiceTranscribed}
+                    getCurrentDescriptionText={() => this.vm.state.descriptionDraft}
+                    onCancelEditDescription={this.handleCancelEditDescription}
+                    onSaveDescription={this.handleSaveDescription}
+                    onOpenBotManage={this.handleOpenBotManage}
+                    onViewClawInfo={this.handleViewClawInfo}
+                    onChat={this.handleChat}
+                    onShowApply={this.handleShowApply}
+                    onApplyRemarkChange={(value) => this.vm.setApplyRemark(value)}
+                    onSubmitApply={this.handleSubmitApply}
+                />
             </WKModal>
             <ClawInfoModal
                 botId={uid}
