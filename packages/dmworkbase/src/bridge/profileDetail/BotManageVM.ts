@@ -1,7 +1,5 @@
 import { ProviderListener } from "../../Service/Provider"
-import { Toast } from "@douyinfe/semi-ui"
 import { extractErrorMsg } from "../../Service/APIClient"
-import { t } from "../../i18n"
 import BotManageService, {
     type BotGroupsListResponse,
     type BotGroupItem,
@@ -53,6 +51,8 @@ export class MentionFreeVM extends ProviderListener {
     loadingMore: boolean = false
     loadError: boolean = false
     isBackendMissing: boolean = false
+    toggleFailed: boolean = false
+    toggleErrorMessage: string = ""
 
     /** 下一页游标（不透明 base64）。null/空 表示没有下一页。 */
     nextCursor: string | null = null
@@ -101,6 +101,8 @@ export class MentionFreeVM extends ProviderListener {
         this.loadingMore = false
         this.loadError = false
         this.isBackendMissing = false
+        this.toggleFailed = false
+        this.toggleErrorMessage = ""
         void this.loadGroups()
     }
 
@@ -143,6 +145,8 @@ export class MentionFreeVM extends ProviderListener {
         this.loadingMore = false
         this.loadError = false
         this.isBackendMissing = false
+        this.toggleFailed = false
+        this.toggleErrorMessage = ""
         this.notifyListener()
         try {
             const res = await BotManageService.listGroups({
@@ -226,7 +230,7 @@ export class MentionFreeVM extends ProviderListener {
      *   关（next=false）→ DELETE robot/uid/groups/g/mention_pref（删记录回退默认）
      *
      * 成功后局部更新 no_mention 并触发重排（visibleGroups 重新分区）；
-     * 失败时 Toast + 不改本地状态（开关回弹由 ListItemSwitch 的 checked 复位驱动）。
+     * 失败时记录错误信息 + 不改本地状态（开关回弹由 ListItemSwitch 的 checked 复位驱动）。
      *
      * 返回是否成功，供视图层复位 ctx.loading。
      *
@@ -238,6 +242,8 @@ export class MentionFreeVM extends ProviderListener {
         if (!requestedUid) return false
         const gen = this.generation
         const isStale = () => this.generation !== gen
+        this.toggleFailed = false
+        this.toggleErrorMessage = ""
         try {
             if (next) {
                 await BotManageService.enableMentionFree(requestedUid, groupNo)
@@ -253,7 +259,8 @@ export class MentionFreeVM extends ProviderListener {
             return true
         } catch (e) {
             if (isStale()) return false
-            Toast.error(extractErrorMsg(e) || t("base.botManage.mentionFree.toggleFailed"))
+            this.toggleFailed = true
+            this.toggleErrorMessage = extractErrorMsg(e) || ""
             return false
         }
     }

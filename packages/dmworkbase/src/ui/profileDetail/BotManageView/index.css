@@ -1,0 +1,108 @@
+.wk-bot-manage-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--wk-bg-base);
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+.wk-bot-manage-menu {
+    display: flex;
+    flex-direction: column;
+}
+
+.wk-list-chevron {
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-lg);
+    line-height: 1;
+}
+
+.wk-bot-manage-menu-item-disabled {
+    opacity: 0.45;
+}
+
+.wk-bot-manage-mention {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+    background: var(--wk-bg-base);
+    overflow: hidden;
+}
+
+.wk-bot-manage-search {
+    padding: var(--wk-sp-3);
+    flex-shrink: 0;
+}
+
+.wk-bot-manage-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border-radius: var(--wk-r-md);
+    border: 1px solid var(--wk-border-default);
+    background: var(--wk-bg-surface);
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-base);
+    font-family: inherit;
+}
+
+.wk-bot-manage-search-input:focus {
+    outline: none;
+    border-color: var(--wk-brand-primary);
+}
+
+.wk-bot-manage-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.wk-bot-manage-section-title {
+    padding: var(--wk-sp-3) var(--wk-sp-4) var(--wk-sp-1);
+    font-size: var(--wk-text-size-sm);
+    color: var(--wk-text-tertiary);
+    font-weight: var(--wk-font-medium);
+}
+
+.wk-bot-manage-group-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-bot-manage-empty {
+    padding: var(--wk-sp-8) 0;
+    text-align: center;
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-base);
+    line-height: 1.6;
+}
+
+.wk-bot-manage-loading {
+    padding: var(--wk-sp-6);
+    text-align: center;
+    color: var(--wk-text-tertiary);
+}
+
+.wk-bot-manage-loadmore {
+    padding: var(--wk-sp-3);
+    text-align: center;
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-sm);
+}
+
+.wk-bot-manage-error {
+    padding: var(--wk-sp-6) 0;
+    text-align: center;
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-base);
+}
+
+.wk-bot-manage-error-retry {
+    margin-top: var(--wk-sp-2);
+    color: var(--wk-color-accent);
+    cursor: pointer;
+    text-decoration: underline;
+}

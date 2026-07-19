@@ -8,11 +8,11 @@
  *   4. loadMore cursor 分页 → append + 去重，更新 cursor/hasMore
  *   5. loadMore 无 cursor / hasMore=false → 不发请求
  *   6. toggleMentionFree 开 → PUT mention_pref{no_mention:1}；关 → DELETE
- *   7. toggle 成功 → 局部更新 no_mention；失败 → Toast + 本地不变（开关回弹）
+ *   7. toggle 成功 → 局部更新 no_mention；失败 → 记录错误 + 本地不变（开关回弹）
  *   8. visibleGroups → 客户端按群名过滤 + 已开启置顶分区
  *   9. 防串台：setRobotId 后旧请求 isStale 丢弃，不污染新 bot 列表
  *
- * 与 PersonaSettings/vm.test.ts 同款 mock 策略（vi.hoisted apiClient + semi Toast）。
+ * 与 PersonaSettings/vm.test.ts 同款 mock 策略（vi.hoisted Service）。
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
@@ -22,8 +22,7 @@ const hoisted = vi.hoisted(() => {
     const post = vi.fn()
     const del = vi.fn()
     const put = vi.fn()
-    const toastError = vi.fn()
-    return { get, post, del, put, toastError }
+    return { get, post, del, put }
 })
 
 vi.mock("../../../Service/BotManageService", () => ({
@@ -34,18 +33,13 @@ vi.mock("../../../Service/BotManageService", () => ({
     },
 }))
 
-vi.mock("@douyinfe/semi-ui", () => ({
-    Toast: { error: hoisted.toastError },
-}))
-
-import { MentionFreeVM, BotGroupItem } from "../vm"
+import { MentionFreeVM, BotGroupItem } from "../BotManageVM"
 
 beforeEach(() => {
     hoisted.get.mockReset()
     hoisted.post.mockReset()
     hoisted.del.mockReset()
     hoisted.put.mockReset()
-    hoisted.toastError.mockReset()
 })
 
 afterEach(() => {
@@ -85,7 +79,7 @@ describe("MentionFreeVM.loadGroups", () => {
         expect(vm.isBackendMissing).toBe(true)
         expect(vm.loadError).toBe(false)
         expect(vm.groups).toEqual([])
-        expect(hoisted.toastError).not.toHaveBeenCalled()
+        expect(vm.toggleErrorMessage).toBe("")
     })
 
     it("marks loadError on non-404 without toasting", async () => {
@@ -94,7 +88,7 @@ describe("MentionFreeVM.loadGroups", () => {
         await vm.loadGroups()
         expect(vm.loadError).toBe(true)
         expect(vm.isBackendMissing).toBe(false)
-        expect(hoisted.toastError).not.toHaveBeenCalled()
+        expect(vm.toggleErrorMessage).toBe("")
     })
 
     it("treats has_more=true but null cursor as no more (defensive)", async () => {
@@ -201,7 +195,7 @@ describe("MentionFreeVM.toggleMentionFree", () => {
         expect(vm.groups.find((g) => g.group_no === "g1")?.no_mention).toBe(false)
     })
 
-    it("failure → Toast + local state unchanged (switch bounces back)", async () => {
+    it("failure → captures error message + local state unchanged (switch bounces back)", async () => {
         hoisted.get.mockResolvedValueOnce({
             list: [grp({ group_no: "g1", no_mention: false })],
             next_cursor: null,
@@ -212,7 +206,8 @@ describe("MentionFreeVM.toggleMentionFree", () => {
         hoisted.put.mockRejectedValueOnce({ status: 500, msg: "save boom" })
         const ok = await vm.toggleMentionFree("g1", true)
         expect(ok).toBe(false)
-        expect(hoisted.toastError).toHaveBeenCalledWith("save boom")
+        expect(vm.toggleFailed).toBe(true)
+        expect(vm.toggleErrorMessage).toBe("save boom")
         // 本地 no_mention 未变 → 视图层 checked 回弹到 false
         expect(vm.groups.find((g) => g.group_no === "g1")?.no_mention).toBe(false)
     })
@@ -302,6 +297,8 @@ describe("MentionFreeVM 防串台 (requestedUid / isStale)", () => {
         const ok = await togglePromise
         // 过期 → 返回 false 且不把旧 bot 的群写进新 bot 列表
         expect(ok).toBe(false)
+        expect(vm.toggleFailed).toBe(false)
+        expect(vm.toggleErrorMessage).toBe("")
         expect(vm.groups).toEqual([])
     })
 
