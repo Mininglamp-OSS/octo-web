@@ -1,23 +1,20 @@
-import { Input, Spin, Toast } from "@douyinfe/semi-ui";
-import { IconEdit } from "@douyinfe/semi-icons";
+import { Toast } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
-import React, { Component, HTMLProps } from "react";
+import React, { Component, type HTMLProps } from "react";
 import { UserRelation } from "../../Service/Const";
 import WKApp from "../../App";
-import Provider, { IProviderListener } from "../../Service/Provider";
+import Provider from "../../Service/Provider";
 import { Section } from "../../Service/Section";
 import RoutePage from "../RoutePage";
-import Sections from "../Sections";
 import "./index.css"
 import { UserInfoRouteData, UserInfoVM } from "../../bridge/profileDetail/UserInfoVM";
 import FriendApplyUI from "../FriendApply";
-import RouteContext, { FinishButtonContext } from "../../Service/Context";
+import RouteContext, { type FinishButtonContext } from "../../Service/Context";
 import { I18nContext } from "../../i18n";
 import WKAvatarPreviewImage from "../WKAvatarPreviewImage";
 import WKButton from "../WKButton";
-import UserInfoHeader from "./UserInfoHeader";
-import UserInfoFooter from "./UserInfoFooter";
-import { UserInfoMetaItem } from "./UserInfoMetaList";
+import type { UserInfoMetaItem } from "./UserInfoMetaList";
+import UserInfoView, { type UserInfoViewFooter } from "../../ui/profileDetail/UserInfoView";
 
 
 export interface UserInfoProps extends HTMLProps<any> {
@@ -72,67 +69,7 @@ export default class UserInfo extends Component<UserInfoProps> {
             });
     }
 
-    renderRemarkEditor(vm: UserInfoVM) {
-        const { t } = this.context;
-        if (vm.isSelf()) {
-            return null;
-        }
-
-        const { editingRemark, remarkDraft, savingRemark } = vm;
-        const remark = this.getRemark(vm);
-        return <div className="wk-userinfo-remark-section">
-            <div className="wk-userinfo-remark-row">
-                <div className="wk-userinfo-remark-main">
-                    <div className="wk-userinfo-remark-label">{t("base.userInfo.remark")}</div>
-                    {
-                        editingRemark ? <div className="wk-userinfo-remark-editor">
-                            <Input
-                                value={remarkDraft}
-                                onChange={(value) => vm.setRemarkDraft(value)}
-                                placeholder={t("base.userInfo.remarkPlaceholder")}
-                                maxLength={30}
-                            />
-                            <div className="wk-userinfo-remark-actions">
-                                <WKButton
-                                    type="button"
-                                    variant="secondary"
-                                    size="sm"
-                                    disabled={savingRemark}
-                                    onClick={() => this.cancelEditRemark(vm)}
-                                >
-                                    {t("base.common.cancel")}
-                                </WKButton>
-                                <WKButton
-                                    type="button"
-                                    variant="primary"
-                                    size="sm"
-                                    loading={savingRemark}
-                                    onClick={() => this.saveRemark(vm)}
-                                >
-                                    {t("base.common.save")}
-                                </WKButton>
-                            </div>
-                        </div> : <div className="wk-userinfo-remark-value">
-                            {remark || <span className="wk-userinfo-remark-empty">{t("base.common.notSet")}</span>}
-                        </div>
-                    }
-                </div>
-                {!editingRemark && (
-                    <button
-                        type="button"
-                        className="wk-userinfo-remark-edit"
-                        onClick={() => this.startEditRemark(vm)}
-                        aria-label={t("base.userInfo.editRemark")}
-                        title={t("base.userInfo.editRemark")}
-                    >
-                        <IconEdit />
-                    </button>
-                )}
-            </div>
-        </div>
-    }
-
-    getBottomPanel(vm: UserInfoVM, context: RouteContext<any>) {
+    getFooter(vm: UserInfoVM, context: RouteContext<any>): UserInfoViewFooter | undefined {
         if (vm.isSelf()) {
             return undefined
         }
@@ -147,7 +84,7 @@ export default class UserInfo extends Component<UserInfoProps> {
         const isExternalToViewer = vm.isExternalToViewer()
         const { t } = this.context
         if (isExternalToViewer) {
-            return <UserInfoFooter hint={t("base.userInfo.externalOnlyGroup")} />
+            return { hint: t("base.userInfo.externalOnlyGroup") }
         }
 
         let content = <></>
@@ -249,7 +186,7 @@ export default class UserInfo extends Component<UserInfoProps> {
             }} >{t("base.userInfo.addFriend")}</WKButton>
         }
 
-        return <UserInfoFooter action={content} />
+        return { action: content }
     }
 
     render() {
@@ -264,7 +201,7 @@ export default class UserInfo extends Component<UserInfoProps> {
                     onClose()
                 }
             }} render={(context) => {
-                const bottomPanel = this.getBottomPanel(vm, context)
+                const footer = this.getFooter(vm, context)
                 const sections = vm.channelInfo ? this.getVisibleSections(vm, context) : []
                 const metaItems: UserInfoMetaItem[] = []
                 if (vm.showNickname()) {
@@ -288,31 +225,36 @@ export default class UserInfo extends Component<UserInfoProps> {
                     })
                 }
 
-                return <div className={`wk-userinfo ${bottomPanel ? "wk-userinfo--with-footer" : ""}`}>
-                    <div className="wk-userinfo-content">
-                        {
-                            !vm.channelInfo ? <div className="wk-userinfo-loading">
-                                <Spin></Spin>
-                            </div> : (<>
-                                <UserInfoHeader
-                                    avatar={<WKAvatarPreviewImage channel={new Channel(uid, ChannelTypePerson)} />}
-                                    displayName={vm.displayName()}
-                                    isBot={vm.channelInfo?.orgData?.robot === 1}
-                                    isRealnameVerified={vm.isRealnameVerified()}
-                                    metaItems={metaItems}
-                                />
-                                {this.renderRemarkEditor(vm)}
-                                <div className="wk-userinfo-sections">
-                                    <Sections sections={sections}></Sections>
-                                </div>
-                            </>)
-                        }
-                    </div>
-                    {
-                        bottomPanel
-                    }
-
-                </div>
+                return <UserInfoView
+                    loading={!vm.channelInfo}
+                    avatar={<WKAvatarPreviewImage channel={new Channel(uid, ChannelTypePerson)} />}
+                    displayName={vm.displayName()}
+                    isBot={vm.channelInfo?.orgData?.robot === 1}
+                    isRealnameVerified={vm.isRealnameVerified()}
+                    metaItems={metaItems}
+                    showRemarkEditor={!vm.isSelf()}
+                    editingRemark={vm.editingRemark}
+                    remark={this.getRemark(vm)}
+                    remarkDraft={vm.remarkDraft}
+                    savingRemark={vm.savingRemark}
+                    sections={sections}
+                    footerAction={footer?.action}
+                    footerHint={footer?.hint}
+                    labels={{
+                        remark: t("base.userInfo.remark"),
+                        remarkPlaceholder: t("base.userInfo.remarkPlaceholder"),
+                        editRemark: t("base.userInfo.editRemark"),
+                        cancel: t("base.common.cancel"),
+                        save: t("base.common.save"),
+                        notSet: t("base.common.notSet"),
+                    }}
+                    onRemarkDraftChange={(value) => vm.setRemarkDraft(value)}
+                    onStartEditRemark={() => this.startEditRemark(vm)}
+                    onCancelEditRemark={() => this.cancelEditRemark(vm)}
+                    onSaveRemark={() => {
+                        void this.saveRemark(vm)
+                    }}
+                />
             }}></RoutePage>
         }}></Provider>
 
