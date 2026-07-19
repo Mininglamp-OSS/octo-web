@@ -1142,7 +1142,10 @@ export class Conversation
   showUser(uid: string) {
     let fromChannel: Channel | undefined;
     let vercode: string | undefined;
-    if (this.vm.channel.channelType === ChannelTypeGroup) {
+    if (
+      this.vm.channel.channelType === ChannelTypeGroup ||
+      this.vm.channel.channelType === ChannelTypeCommunityTopic
+    ) {
       fromChannel = this.vm.channel;
       const subscriber = this.vm.subscriberWithUID(uid);
       if (subscriber?.orgData?.vercode) {
@@ -3458,7 +3461,10 @@ export class Conversation
                       }
                       let fromChannel: Channel | undefined;
                       let vercode: string | undefined;
-                      if (this.vm.channel.channelType === ChannelTypeGroup) {
+                      if (
+                        this.vm.channel.channelType === ChannelTypeGroup ||
+                        this.vm.channel.channelType === ChannelTypeCommunityTopic
+                      ) {
                         fromChannel = this.vm.channel;
                         const subscriber = this.vm.subscriberWithUID(
                           this.vm.selectUID

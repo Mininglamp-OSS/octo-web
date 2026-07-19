@@ -8,11 +8,15 @@ import {
   IconTickCircle,
 } from "@douyinfe/semi-icons";
 import AiBadge from "../../../Components/AiBadge";
+import WKButton from "../../../Components/WKButton";
 import VoiceInputButton, {
   type ReplaceMode,
   type SelectionRange,
 } from "../../../Components/VoiceInputButton";
-import ProfileDetailShell, { ProfileDetailHeader } from "../ProfileDetailShell";
+import ProfileDetailShell, {
+  ProfileDetailFooter,
+  ProfileDetailHeader,
+} from "../ProfileDetailShell";
 import "./index.css";
 
 export interface BotDetailViewCommand {
@@ -169,48 +173,52 @@ export function BotDetailView({
       closeLabel={labels.close}
       onClose={onClose}
       footer={
-        <div className="wk-bot-detail-actions">
-          {isFriend ? (
-            <Button
-              className="wk-bot-detail-primary-action"
-              theme="solid"
-              type="primary"
-              onClick={onChat}
-            >
-              {labels.sendMessage}
-            </Button>
-          ) : showApplyInput ? (
-            <div className="wk-bot-detail-apply">
-              <div className="wk-bot-detail-apply-label">
-                {labels.applyMessageLabel}
-              </div>
-              <Input
-                value={applyRemark}
-                onChange={onApplyRemarkChange}
-                placeholder={labels.applyMessagePlaceholder}
-              />
-              <Button
+        <ProfileDetailFooter
+          className="wk-bot-detail-footer"
+          actionClassName="wk-bot-detail-actions"
+          action={
+            isFriend ? (
+              <WKButton
                 className="wk-bot-detail-primary-action"
-                theme="solid"
-                type="primary"
-                loading={applying}
-                disabled={!applyRemark}
-                onClick={onSubmitApply}
+                type="button"
+                variant="primary"
+                onClick={onChat}
               >
-                {labels.applySend}
-              </Button>
-            </div>
-          ) : (
-            <Button
-              className="wk-bot-detail-primary-action"
-              theme="solid"
-              type="primary"
-              onClick={onShowApply}
-            >
-              {labels.addFriend}
-            </Button>
-          )}
-        </div>
+                {labels.sendMessage}
+              </WKButton>
+            ) : showApplyInput ? (
+              <div className="wk-bot-detail-apply">
+                <div className="wk-bot-detail-apply-label">
+                  {labels.applyMessageLabel}
+                </div>
+                <Input
+                  value={applyRemark}
+                  onChange={onApplyRemarkChange}
+                  placeholder={labels.applyMessagePlaceholder}
+                />
+                <WKButton
+                  className="wk-bot-detail-primary-action"
+                  type="button"
+                  variant="primary"
+                  loading={applying}
+                  disabled={!applyRemark}
+                  onClick={onSubmitApply}
+                >
+                  {labels.applySend}
+                </WKButton>
+              </div>
+            ) : (
+              <WKButton
+                className="wk-bot-detail-primary-action"
+                type="button"
+                variant="primary"
+                onClick={onShowApply}
+              >
+                {labels.addFriend}
+              </WKButton>
+            )
+          }
+        />
       }
     >
       <ProfileDetailHeader

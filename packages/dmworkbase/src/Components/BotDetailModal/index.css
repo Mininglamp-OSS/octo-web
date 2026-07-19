@@ -373,25 +373,20 @@
 }
 
 .wk-bot-detail-actions {
-    flex: 0 0 auto;
-    padding: var(--wk-sp-3) var(--wk-sp-5);
-    border-top: 1px solid var(--wk-border-subtle);
-    background: var(--wk-bg-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .wk-bot-detail-actions .wk-bot-detail-primary-action,
 .wk-bot-detail-actions .wk-btn {
-    min-width: calc(var(--wk-sp-12) * 3);
-    min-height: var(--wk-sp-10);
-}
-
-.wk-bot-detail-actions > .wk-bot-detail-primary-action {
-    display: flex;
-    margin: 0 auto;
+    width: 100%;
+    height: var(--wk-profile-detail-action-height, var(--wk-sp-10));
 }
 
 .wk-bot-detail-apply {
     display: flex;
+    width: 100%;
     flex-direction: column;
     gap: var(--wk-sp-3);
 }

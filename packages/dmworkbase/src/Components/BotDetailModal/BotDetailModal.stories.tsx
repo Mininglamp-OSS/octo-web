@@ -3,6 +3,7 @@ import { IconAlertCircle, IconChevronRight, IconTickCircle } from "@douyinfe/sem
 import React from "react";
 import AiBadge from "../AiBadge";
 import WKButton from "../WKButton";
+import { ProfileDetailFooter } from "../../ui/profileDetail/ProfileDetailShell";
 import "./index.css";
 
 interface BotDetailPreviewProps {
@@ -129,11 +130,15 @@ function BotDetailPreview({
                 </div>}
             </div>
 
-            <div className="wk-bot-detail-actions">
-                <WKButton type="button" variant="primary">
-                    {isFriend ? "发送消息" : "添加好友"}
-                </WKButton>
-            </div>
+            <ProfileDetailFooter
+                className="wk-bot-detail-footer"
+                actionClassName="wk-bot-detail-actions"
+                action={
+                    <WKButton type="button" variant="primary">
+                        {isFriend ? "发送消息" : "添加好友"}
+                    </WKButton>
+                }
+            />
         </div>
     </div>
 }

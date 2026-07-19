@@ -160,20 +160,48 @@ export class UserInfoVM extends ProviderListener {
   }
 
   reloadSubscribers() {
+    const sourceChannel =
+      this.fromChannel && this.fromChannel.channelType !== ChannelTypePerson
+        ? this.fromChannel
+        : undefined;
     const memberChannel = this.memberContextChannel();
-    if (memberChannel) {
-      const subscribers = WKSDK.shared().channelManager.getSubscribes(
-        memberChannel
-      );
-      if (subscribers && subscribers.length > 0) {
-        for (const subscriber of subscribers) {
-          if (subscriber.uid === this.uid) {
-            this.fromSubscriberOfUser = subscriber;
-          } else if (subscriber.uid === WKApp.loginInfo.uid) {
-            this.subscriberOfMy = subscriber;
-          }
+    const applySubscribers = (
+      subscribers: Subscriber[] | undefined,
+      options: { replaceUser?: boolean; replaceMe?: boolean } = {}
+    ) => {
+      if (!subscribers || subscribers.length === 0) return;
+      for (const subscriber of subscribers) {
+        if (
+          subscriber.uid === this.uid &&
+          (options.replaceUser || !this.fromSubscriberOfUser)
+        ) {
+          this.fromSubscriberOfUser = subscriber;
+        } else if (
+          subscriber.uid === WKApp.loginInfo.uid &&
+          (options.replaceMe || !this.subscriberOfMy)
+        ) {
+          this.subscriberOfMy = subscriber;
         }
       }
+    };
+
+    if (sourceChannel) {
+      applySubscribers(WKSDK.shared().channelManager.getSubscribes(sourceChannel), {
+        replaceUser: true,
+        replaceMe: true,
+      });
+    }
+    if (
+      memberChannel &&
+      (!sourceChannel ||
+        memberChannel.channelID !== sourceChannel.channelID ||
+        memberChannel.channelType !== sourceChannel.channelType)
+    ) {
+      applySubscribers(WKSDK.shared().channelManager.getSubscribes(memberChannel), {
+        replaceMe: true,
+      });
+    }
+    if (sourceChannel || memberChannel) {
       this.notifyListener();
     }
   }

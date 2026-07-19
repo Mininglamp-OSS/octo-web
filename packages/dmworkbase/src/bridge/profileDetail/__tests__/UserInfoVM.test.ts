@@ -118,7 +118,10 @@ describe("UserInfoVM profile actions", () => {
   });
 
   it("uses parent group_no when loading profile from a thread", async () => {
-    const vm = new UserInfoVM("u1", { channelID: "group-a____thread-1", channelType: 5 } as any);
+    const vm = new UserInfoVM("u1", {
+      channelID: "group-a____thread-1",
+      channelType: 5,
+    } as any);
 
     await vm.reloadChannelInfo();
 
@@ -126,7 +129,10 @@ describe("UserInfoVM profile actions", () => {
   });
 
   it("uses parent group subscribers when opened from a thread", () => {
-    const vm = new UserInfoVM("u1", { channelID: "group-a____thread-1", channelType: 5 } as any);
+    const vm = new UserInfoVM("u1", {
+      channelID: "group-a____thread-1",
+      channelType: 5,
+    } as any);
 
     vm.reloadSubscribers();
 
@@ -135,6 +141,72 @@ describe("UserInfoVM profile actions", () => {
         channelID: "group-a",
         channelType: 2,
       })
+    );
+  });
+
+  it("prefers the source thread subscriber for displayed member info", () => {
+    const vm = new UserInfoVM("u1", {
+      channelID: "group-a____thread-1",
+      channelType: 5,
+    } as any);
+    mocks.getSubscribes.mockImplementation((channel: any) => {
+      if (channel.channelID === "group-a____thread-1") {
+        return [
+          {
+            uid: "u1",
+            remark: "Thread Name",
+            orgData: { created_at: "2026-07-18T10:00:00Z" },
+          },
+        ];
+      }
+      if (channel.channelID === "group-a") {
+        return [
+          {
+            uid: "u1",
+            remark: "Group Name",
+            orgData: { created_at: "2026-07-19T10:00:00Z" },
+          },
+          { uid: "me", role: 1 },
+        ];
+      }
+      return [];
+    });
+
+    vm.reloadSubscribers();
+
+    expect(vm.fromSubscriberOfUser?.remark).toBe("Thread Name");
+    expect(vm.fromSubscriberOfUser?.orgData?.created_at).toBe(
+      "2026-07-18T10:00:00Z"
+    );
+    expect(vm.subscriberOfMy?.role).toBe(1);
+  });
+
+  it("falls back to the parent group subscriber when thread subscriber is missing", () => {
+    const vm = new UserInfoVM("u1", {
+      channelID: "group-a____thread-1",
+      channelType: 5,
+    } as any);
+    mocks.getSubscribes.mockImplementation((channel: any) => {
+      if (channel.channelID === "group-a____thread-1") {
+        return [];
+      }
+      if (channel.channelID === "group-a") {
+        return [
+          {
+            uid: "u1",
+            remark: "Group Name",
+            orgData: { created_at: "2026-07-19T10:00:00Z" },
+          },
+        ];
+      }
+      return [];
+    });
+
+    vm.reloadSubscribers();
+
+    expect(vm.fromSubscriberOfUser?.remark).toBe("Group Name");
+    expect(vm.fromSubscriberOfUser?.orgData?.created_at).toBe(
+      "2026-07-19T10:00:00Z"
     );
   });
 });

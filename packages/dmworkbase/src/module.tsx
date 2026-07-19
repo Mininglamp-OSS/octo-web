@@ -90,6 +90,10 @@ import EmojiToolbar from "./Components/EmojiToolbar";
 import MergeforwardContent, { MergeforwardCell } from "./Messages/Mergeforward";
 import { wkConfirm } from "./Components/WKModal";
 import { UserInfoRouteData } from "./bridge/profileDetail/UserInfoVM";
+import {
+  userInfoMembershipCreatedAt,
+  userInfoMembershipOrgData,
+} from "./bridge/profileDetail/userInfoMembership";
 import { IconAlertCircle } from "@douyinfe/semi-icons";
 import { TypingManager } from "./Service/TypingManager";
 import APIClient from "./Service/APIClient";
@@ -1163,17 +1167,20 @@ export default class BaseModule implements IModule {
             },
           })
         );
-        if (fromSubscriberOfUser) {
-          let joinDesc = `${fromSubscriberOfUser.orgData.created_at.substr(
-            0,
-            10
-          )}`;
+        const membershipOrgData = userInfoMembershipOrgData({
+          fromChannel: data.fromChannel,
+          channelInfo,
+          fromSubscriberOfUser,
+        });
+        const membershipCreatedAt = userInfoMembershipCreatedAt(membershipOrgData);
+        if (membershipCreatedAt) {
+          let joinDesc = `${membershipCreatedAt.substr(0, 10)}`;
           if (
-            fromSubscriberOfUser.orgData?.invite_uid &&
-            fromSubscriberOfUser.orgData?.invite_uid !== ""
+            membershipOrgData?.invite_uid &&
+            membershipOrgData?.invite_uid !== ""
           ) {
             const inviterChannel = new Channel(
-              fromSubscriberOfUser.orgData?.invite_uid,
+              membershipOrgData?.invite_uid,
               ChannelTypePerson
             );
             const inviteChannelInfo =
