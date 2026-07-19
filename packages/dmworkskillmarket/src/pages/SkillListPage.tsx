@@ -20,6 +20,7 @@ const TOAST_DURATION = 3000;
 const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string }> = [
   { value: "comprehensive", labelKey: "skillMarket.sort.comprehensive" },
   { value: "latest", labelKey: "skillMarket.sort.latest" },
+  { value: "views", labelKey: "skillMarket.sort.views" },
   { value: "downloads", labelKey: "skillMarket.sort.downloads" },
 ];
 
@@ -92,6 +93,11 @@ export default function SkillListPage() {
     showToast(t("skillMarket.list.saved"));
     list.refresh();
     setDetailRefreshKey((current) => current + 1);
+  }
+
+  function openDetail(item: Skill) {
+    list.markSkillViewed(item.id);
+    setDetailId(item.id);
   }
 
   return (
@@ -218,7 +224,7 @@ export default function SkillListPage() {
                 key={skill.id}
                 skill={skill}
                 categories={list.categories}
-                onOpen={(item) => setDetailId(item.id)}
+                onOpen={openDetail}
                 onEdit={mine ? setEditing : undefined}
                 onDelete={mine ? setDeleting : undefined}
                 onInstall={(item) => setInstallSkillId(item.id)}
@@ -243,6 +249,7 @@ export default function SkillListPage() {
         onClose={() => setDetailId(null)}
         onEdit={mine ? setEditing : undefined}
         onDelete={mine ? setDeleting : undefined}
+        onDownloaded={list.refresh}
         onFeedback={showToast}
       />
       <NewSkillModal

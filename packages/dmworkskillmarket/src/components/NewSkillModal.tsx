@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, NewSkillForm } from "../types/skill";
@@ -35,6 +35,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     [categories],
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const tagFieldRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef(false);
   const [stage, setStage] = useState<UploadStage>("idle");
   const [progress, setProgress] = useState(0);
@@ -48,6 +49,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   const [tagDraft, setTagDraft] = useState("");
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
   const [tagSuggestOpen, setTagSuggestOpen] = useState(false);
+  const [tagSuggestionStyle, setTagSuggestionStyle] = useState<React.CSSProperties>({});
   const [activeTagSuggestion, setActiveTagSuggestion] = useState(0);
   const [tagError, setTagError] = useState<string | null>(null);
   const [version, setVersion] = useState(DEFAULT_CREATE_VERSION);
@@ -94,6 +96,30 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     !tagSubmitError,
   );
 
+  function updateTagSuggestionStyle() {
+    const field = tagFieldRef.current;
+    if (!field) return;
+
+    const rect = field.getBoundingClientRect();
+    const gap = 6;
+    const viewportPadding = 12;
+    const maxPanelHeight = 180;
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding - gap;
+    const availableAbove = rect.top - viewportPadding - gap;
+    const placeAbove = availableBelow < 120 && availableAbove > availableBelow;
+    const maxHeight = Math.max(
+      96,
+      Math.min(maxPanelHeight, placeAbove ? availableAbove : availableBelow)
+    );
+
+    setTagSuggestionStyle({
+      left: rect.left,
+      top: placeAbove ? rect.top - gap - maxHeight : rect.bottom + gap,
+      width: rect.width,
+      maxHeight,
+    });
+  }
+
   useEffect(() => () => { abortRef.current = true; }, []);
 
   useEffect(() => {
@@ -114,6 +140,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     setTagDraft("");
     setTagSuggestions([]);
     setTagSuggestOpen(false);
+    setTagSuggestionStyle({});
     setActiveTagSuggestion(0);
     setTagError(null);
     setVersion(DEFAULT_CREATE_VERSION);
@@ -290,6 +317,18 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
       controller.abort();
     };
   }, [tagDraft, tags, visible]);
+
+  useLayoutEffect(() => {
+    if (!tagSuggestOpen || tagSuggestions.length === 0) return;
+    updateTagSuggestionStyle();
+
+    window.addEventListener("resize", updateTagSuggestionStyle);
+    window.addEventListener("scroll", updateTagSuggestionStyle, true);
+    return () => {
+      window.removeEventListener("resize", updateTagSuggestionStyle);
+      window.removeEventListener("scroll", updateTagSuggestionStyle, true);
+    };
+  }, [tagSuggestOpen, tagSuggestions.length]);
 
   async function submit() {
     if (!displayName.trim() || !categoryId || !version.trim() || !changelog.trim()) {
@@ -471,7 +510,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
             </label>
             <label>
               <span>{t("skillMarket.form.tags")}</span>
-              <div className="skill-market-tag-field">
+              <div className="skill-market-tag-field" ref={tagFieldRef}>
                 <div className="skill-market-tag-input">
                   {tags.map((tag) => (
                     <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
@@ -527,7 +566,12 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
                   </small>
                 )}
                 {tagSuggestOpen && tagSuggestions.length > 0 && (
-                  <div className="skill-market-tag-suggestions" role="listbox" aria-label={t("skillMarket.form.tagSuggestions")}>
+                  <div
+                    className="skill-market-tag-suggestions"
+                    role="listbox"
+                    aria-label={t("skillMarket.form.tagSuggestions")}
+                    style={tagSuggestionStyle}
+                  >
                     {tagSuggestions.map((tag, index) => (
                       <button
                         key={tag}

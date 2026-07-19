@@ -6,6 +6,7 @@ import {
   getMySkills,
   getSkillTags,
   getSkill,
+  trackSkillView,
   getSkillMd,
   createSkill,
   updateSkill,
@@ -121,6 +122,8 @@ describe("skillApiReal", () => {
             file_url: "http://localhost/files/ci.zip",
             file_size: 1024,
             file_sha256: "abc123",
+            view_count: 7,
+            download_count: 3,
             created_at: "2026-06-01T00:00:00Z",
             updated_at: "2026-07-10T00:00:00Z",
           },
@@ -141,6 +144,8 @@ describe("skillApiReal", () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0].categoryId).toBe("dev-tools");
     expect(result.items[0].fileSha256).toBe("abc123");
+    expect(result.items[0].viewCount).toBe(7);
+    expect(result.items[0].downloadCount).toBe(3);
     expect(result.nextCursor).toBe("abc");
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining("/market/api/v1/skills?"),
@@ -255,6 +260,35 @@ describe("skillApiReal", () => {
     await expect(getSkill("legacy-skill")).resolves.toMatchObject({
       id: "legacy-skill",
     });
+  });
+
+  it("trackSkillView sends a best-effort view metric", async () => {
+    mockFetch.mockReturnValueOnce(
+      Promise.resolve({
+        ok: true,
+        status: 204,
+        json: () => Promise.resolve(null),
+      })
+    );
+
+    await expect(trackSkillView("skill/with space")).resolves.toBeUndefined();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/market/api/v1/metrics/track",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          token: "test-token",
+          "X-Space-Id": "space-123",
+        }),
+        body: JSON.stringify({
+          resource_type: "skill",
+          resource_id: "skill/with space",
+          event_type: "view",
+        }),
+      })
+    );
   });
 
   it("deleteSkill handles empty success envelope", async () => {

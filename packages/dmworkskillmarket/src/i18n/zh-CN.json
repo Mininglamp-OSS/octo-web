@@ -48,12 +48,18 @@
     "label": "排序：",
     "comprehensive": "综合",
     "latest": "最新发布",
+    "views": "浏览最多",
     "downloads": "下载最多"
   },
   "card": {
     "editAriaLabel": "编辑 {{name}}",
     "deleteAriaLabel": "删除 {{name}}",
-    "install": "Agent 安装"
+    "statsAriaLabel": "Skill 统计",
+    "viewsLabel": "浏览",
+    "viewsTitle": "浏览次数：{{count}}",
+    "downloadsLabel": "下载",
+    "downloadsTitle": "下载次数：{{count}}",
+    "install": "安装"
   },
   "category": {
     "ariaLabel": "Skill 分类",

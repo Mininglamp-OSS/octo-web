@@ -1,7 +1,8 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
-import { Pencil, Terminal, Trash2 } from "lucide-react";
+import { Download, Eye, Pencil, Trash2 } from "lucide-react";
 import { t, useI18n } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
+import { formatCount } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 
 interface SkillCardProps {
@@ -12,6 +13,8 @@ interface SkillCardProps {
   onDelete?: (skill: Skill) => void;
   onInstall?: (skill: Skill) => void;
 }
+
+const CARD_VISIBLE_TAG_LIMIT = 3;
 
 type DescriptionTooltipState = {
   visible: boolean;
@@ -78,12 +81,17 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
   });
   const descriptionRef = useRef<HTMLParagraphElement>(null);
   const descriptionTooltipRef = useRef<HTMLDivElement>(null);
-  const visibleTags = skill.tags.slice(0, 3);
+  const visibleTags = skill.tags.slice(0, CARD_VISIBLE_TAG_LIMIT);
   const hiddenTagCount = Math.max(0, skill.tags.length - visibleTags.length);
+  const hiddenTags = skill.tags.slice(visibleTags.length);
   const isOwnerCard = Boolean(onEdit || onDelete);
   const descriptionTooltipId = `skill-card-desc-${skill.id}`;
   const displayName = skill.displayName || skill.name;
   const ownerLabel = `@${skill.ownerName}`;
+  const rawViewCount = skill.viewCount ?? 0;
+  const rawDownloadCount = skill.downloadCount ?? 0;
+  const viewCount = formatCount(rawViewCount);
+  const downloadCount = formatCount(rawDownloadCount);
 
   useLayoutEffect(() => {
     const description = descriptionRef.current;
@@ -157,16 +165,21 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
             </span>
           )}
         </span>
-        <div className="skill-market-card__info">
-          <h3 title={displayName}>{displayName}</h3>
-          <div className="skill-market-card__tags">
-            {visibleTags.map((tag) => (
-              <span key={tag} title={tag}>{tag}</span>
-            ))}
-            {hiddenTagCount > 0 && <span>+{hiddenTagCount}</span>}
+        <div className="skill-market-card__header">
+          <div className="skill-market-card__title-row">
+            <h3 title={displayName}>{displayName}</h3>
+            {skill.version && (
+              <span className="skill-market-card__version" title={`v${skill.version}`}>
+                v{skill.version}
+              </span>
+            )}
+          </div>
+          <div className="skill-market-card__meta-row">
+            <span className="skill-market-card__name" title={skill.name}>{skill.name}</span>
+            <span className="skill-market-card__meta-separator">·</span>
+            <span className="skill-market-card__owner" title={ownerLabel}>{ownerLabel}</span>
           </div>
         </div>
-        <span className="skill-market-card__owner" title={ownerLabel}>{ownerLabel}</span>
         {(onEdit || onDelete) && (
           <div className="skill-market-card__actions" onClick={(event) => event.stopPropagation()}>
             {onEdit && (
@@ -204,13 +217,40 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
           </div>
         )}
       </div>
+      <div className="skill-market-card__tags">
+        {visibleTags.map((tag) => (
+          <span key={tag} title={tag}>{tag}</span>
+        ))}
+        {hiddenTagCount > 0 && (
+          <span className="skill-market-card__tag-overflow" title={hiddenTags.join("、")}>
+            +{hiddenTagCount}
+          </span>
+        )}
+      </div>
       <div className="skill-market-card__footer" onClick={(event) => event.stopPropagation()}>
+        <div className="skill-market-card__stats" aria-label={t("skillMarket.card.statsAriaLabel")}>
+          <span
+            className="skill-market-card__stat"
+            title={t("skillMarket.card.viewsTitle", { values: { count: rawViewCount } })}
+            aria-label={t("skillMarket.card.viewsTitle", { values: { count: rawViewCount } })}
+          >
+            <Eye size={13} />
+            {viewCount}
+          </span>
+          <span
+            className="skill-market-card__stat"
+            title={t("skillMarket.card.downloadsTitle", { values: { count: rawDownloadCount } })}
+            aria-label={t("skillMarket.card.downloadsTitle", { values: { count: rawDownloadCount } })}
+          >
+            <Download size={13} />
+            {downloadCount}
+          </span>
+        </div>
         <button
           type="button"
           className="skill-market-card__install"
           onClick={() => onInstall?.(skill)}
         >
-          <Terminal size={13} />
           {t("skillMarket.card.install")}
         </button>
       </div>

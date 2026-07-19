@@ -33,6 +33,8 @@ const skill: Skill = {
   fileName: "meeting-note-cleaner.zip",
   fileUrl: "mock://skills/meeting-note-cleaner.zip",
   fileSize: 4096,
+  viewCount: 12,
+  downloadCount: 3,
   createdAt: "2026-06-01T08:00:00.000Z",
   updatedAt: "2026-07-10T08:00:00.000Z",
 };
@@ -43,6 +45,7 @@ describe("SkillDetailModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getSkill).mockResolvedValue(skill);
+    vi.mocked(api.trackSkillView).mockResolvedValue(undefined);
     vi.mocked(api.getSkillMd).mockResolvedValue("# meeting-note-cleaner\n\n- 输出待办");
     vi.mocked(api.listVersions).mockResolvedValue([]);
     Object.assign(navigator, {
@@ -55,17 +58,19 @@ describe("SkillDetailModal", () => {
   it("copies install prompt and opens download", async () => {
     vi.mocked(api.downloadSkill).mockResolvedValue(undefined);
     const onFeedback = vi.fn();
-    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} onFeedback={onFeedback} />);
+    const onDownloaded = vi.fn();
+    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} onDownloaded={onDownloaded} onFeedback={onFeedback} />);
 
     expect(await screen.findByText("meeting-note-cleaner.zip")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: copyPromptButton }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled());
-    expect(onFeedback).toHaveBeenCalledWith("skillMarket.detail.promptCopied");
+    expect(onFeedback).toHaveBeenCalledWith(expect.stringMatching(/安装 Prompt 已复制|skillMarket\.detail\.promptCopied/));
 
     fireEvent.click(screen.getByRole("button", { name: downloadButton }));
     await waitFor(() => expect(api.downloadSkill).toHaveBeenCalledWith(skill.id));
-    expect(onFeedback).toHaveBeenCalledWith("skillMarket.detail.downloadStarted");
+    expect(onDownloaded).toHaveBeenCalledTimes(1);
+    expect(onFeedback).not.toHaveBeenCalledWith(expect.stringMatching(/下载已打开|skillMarket\.detail\.downloadStarted/));
   });
 
   it("does not show visibility metadata", async () => {
@@ -73,6 +78,36 @@ describe("SkillDetailModal", () => {
 
     expect(await screen.findByText("meeting-note-cleaner.zip")).toBeInTheDocument();
     expect(screen.queryByText(/空间可见|公开|私有|skillMarket\.detail\.visibility/)).not.toBeInTheDocument();
+  });
+
+  it("shows card metadata without file size", async () => {
+    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
+
+    expect(await screen.findByText("test")).toBeInTheDocument();
+    expect(screen.getByTitle("meeting-note-cleaner")).toBeInTheDocument();
+    expect(screen.getByTitle("办公协作")).toBeInTheDocument();
+    expect(screen.getByTitle("@我")).toBeInTheDocument();
+    expect(screen.getByTitle("v1.1.3")).toBeInTheDocument();
+    expect(screen.getByTitle("浏览次数：12")).toHaveTextContent("12");
+    expect(screen.getByTitle("下载次数：3")).toHaveTextContent("3");
+    expect(screen.getByText("meeting-note-cleaner.zip")).toBeInTheDocument();
+    expect(screen.queryByText("4 KB")).not.toBeInTheDocument();
+  });
+
+  it("tracks a view when the detail modal opens", async () => {
+    render(<SkillDetailModal skillId={skill.id} categories={categories} refreshKey={1} onClose={vi.fn()} />);
+
+    await screen.findByText("meeting-note-cleaner.zip");
+    expect(api.trackSkillView).toHaveBeenCalledWith(skill.id);
+    expect(api.trackSkillView).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps rendering detail content when view tracking fails", async () => {
+    vi.mocked(api.trackSkillView).mockRejectedValue(new Error("metrics unavailable"));
+    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
+
+    expect(await screen.findByText("meeting-note-cleaner.zip")).toBeInTheDocument();
+    expect(await screen.findByText(/输出待办/)).toBeInTheDocument();
   });
 
   it("shows version history tab with current version", async () => {
@@ -86,7 +121,7 @@ describe("SkillDetailModal", () => {
     fireEvent.click(screen.getByRole("button", { name: versionsButton }));
 
     await waitFor(() => expect(screen.getByText(latestText)).toBeInTheDocument());
-    expect(screen.getByText("v1.1.3")).toBeInTheDocument();
+    expect(screen.getAllByText("v1.1.3")).toHaveLength(2);
     expect(screen.getByText("v1.0.0")).toBeInTheDocument();
     expect(screen.getByText("初始发布")).toBeInTheDocument();
   });
@@ -117,6 +152,28 @@ describe("SkillDetailModal", () => {
 
     await waitFor(() => expect(screen.getByText("Skill MD Content")).toBeInTheDocument());
     expect(screen.getByText("From endpoint.")).toBeInTheDocument();
+  });
+
+  it("renders SKILL.md frontmatter as a metadata table", async () => {
+    vi.mocked(api.getSkillMd).mockResolvedValue([
+      "---",
+      "name: skill-creator",
+      "description: 创建新技能、修改和改进现有技能，并衡量技能表现。",
+      "tags:",
+      "  - Skill",
+      "  - Creator",
+      "---",
+      "# 技能创建器",
+      "",
+      "一个用于创建新技能并对其进行迭代改进的技能。",
+    ].join("\n"));
+    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText("技能创建器")).toBeInTheDocument());
+    expect(screen.getByRole("row", { name: /name skill-creator/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /description 创建新技能/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /tags Skill, Creator/ })).toBeInTheDocument();
+    expect(screen.queryByText("---")).not.toBeInTheDocument();
   });
 
   it("falls back to readmeContent when skill-md returns 404", async () => {

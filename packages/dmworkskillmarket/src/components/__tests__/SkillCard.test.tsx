@@ -25,6 +25,8 @@ const skill: Skill = {
   fileName: "ci-helper.zip",
   fileUrl: "mock://skills/ci-helper.zip",
   fileSize: 1024,
+  viewCount: 12,
+  downloadCount: 0,
   createdAt: "2026-06-01T08:00:00.000Z",
   updatedAt: "2026-07-10T08:00:00.000Z",
 };
@@ -41,7 +43,10 @@ describe("SkillCard", () => {
     expect(screen.getByText("日志")).toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();
     expect(screen.queryByText("开发工具")).not.toBeInTheDocument();
-    expect(screen.queryByText("v1.0.0")).not.toBeInTheDocument();
+    expect(screen.getByText("ci-helper")).toBeInTheDocument();
+    expect(screen.getByText("v1.0.0")).toBeInTheDocument();
+    expect(screen.getByLabelText("浏览次数：12")).toHaveTextContent("12");
+    expect(screen.getByLabelText("下载次数：0")).toHaveTextContent("0");
   });
 
   it("supports keyboard open and icon actions without opening the card", () => {
@@ -62,16 +67,16 @@ describe("SkillCard", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: "ci-helper @我" }), { key: "Enter" });
     expect(onOpen).toHaveBeenCalledWith(skill);
 
-    fireEvent.click(screen.getByRole("button", { name: "skillMarket.card.editAriaLabel" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑 ci-helper" }));
     expect(onEdit).toHaveBeenCalledWith(skill);
     expect(onOpen).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "skillMarket.card.deleteAriaLabel" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除 ci-helper" }));
     expect(onDelete).toHaveBeenCalledWith(skill);
     expect(onOpen).toHaveBeenCalledTimes(1);
 
-    fireEvent.keyDown(screen.getByRole("button", { name: "skillMarket.card.editAriaLabel" }), { key: "Enter" });
-    fireEvent.keyDown(screen.getByRole("button", { name: "skillMarket.card.deleteAriaLabel" }), { key: " " });
+    fireEvent.keyDown(screen.getByRole("button", { name: "编辑 ci-helper" }), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "删除 ci-helper" }), { key: " " });
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 

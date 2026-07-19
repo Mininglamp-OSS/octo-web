@@ -20,6 +20,7 @@ export interface UseSkillsResult {
   hasMore: boolean;
   setQuery: (query: string) => void;
   setCategoryId: (categoryId: string) => void;
+  markSkillViewed: (skillId: string) => void;
   refresh: () => void;
   loadMore: () => void;
 }
@@ -133,6 +134,16 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
     setLoading(true);
   }, []);
 
+  const markSkillViewed = useCallback((skillId: string) => {
+    setSkills((current) =>
+      current.map((skill) =>
+        skill.id === skillId
+          ? { ...skill, viewCount: (skill.viewCount ?? 0) + 1 }
+          : skill
+      )
+    );
+  }, []);
+
   return {
     categories,
     skills,
@@ -144,6 +155,7 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
     hasMore: Boolean(cursor),
     setQuery,
     setCategoryId,
+    markSkillViewed,
     refresh: () => void fetchPage(null),
     loadMore: () => {
       if (!cursor || loading || loadingMore) return;

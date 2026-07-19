@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { Copy, Download, FileArchive, Lock, Pencil, RefreshCw, Terminal, Trash2, Users } from "lucide-react";
+import { Copy, Download, Eye, FileArchive, Pencil, RefreshCw, Terminal, Trash2 } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import type { Category, Skill, SkillVersion } from "../types/skill";
-import { downloadSkill, getSkill, getSkillMd, listVersions } from "../api/skillApi";
-import { formatFileSize, formatRelativeTime } from "../utils/format";
+import { downloadSkill, getSkill, getSkillMd, listVersions, trackSkillView } from "../api/skillApi";
+import { formatCount, formatFullDateTime, formatRecentOrDate } from "../utils/format";
 import { buildInstallPrompt, resolveAPIBaseURL } from "../utils/installPrompt";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 
@@ -17,14 +18,86 @@ interface SkillDetailModalProps {
   onClose: () => void;
   onEdit?: (skill: Skill) => void;
   onDelete?: (skill: Skill) => void;
+  onDownloaded?: () => void;
   onFeedback?: (message: string) => void;
 }
 
 type DetailTab = "intro" | "versions";
+type TagTooltipState = { text: string; style: React.CSSProperties } | null;
+
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?\r?\n)---\r?\n?/;
+const FRONTMATTER_FIELD_ORDER = ["name", "description", "version", "tags", "id", "forked_from"];
 
 function formatDate(iso: string): string {
   if (!iso) return "";
   return iso.slice(0, 10);
+}
+
+function stripYamlQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && ((trimmed[0] === "\"" && trimmed.endsWith("\"")) || (trimmed[0] === "'" && trimmed.endsWith("'")))) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function parseFrontmatter(raw: string): { rows: Array<[string, string]>; body: string } {
+  const match = FRONTMATTER_RE.exec(raw);
+  if (!match) return { rows: [], body: raw };
+
+  const values = new Map<string, string>();
+  let activeArrayKey: string | null = null;
+  const arrayValues = new Map<string, string[]>();
+
+  for (const rawLine of match[1].split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    if (activeArrayKey && trimmed.startsWith("- ")) {
+      arrayValues.set(activeArrayKey, [...(arrayValues.get(activeArrayKey) ?? []), stripYamlQuotes(trimmed.slice(2))]);
+      continue;
+    }
+
+    activeArrayKey = null;
+    const idx = line.indexOf(":");
+    if (idx <= 0) continue;
+
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1).trim();
+    if (!key) continue;
+
+    if (!value) {
+      activeArrayKey = key;
+      arrayValues.set(key, []);
+      continue;
+    }
+
+    values.set(key, stripYamlQuotes(value));
+  }
+
+  for (const [key, items] of arrayValues) {
+    if (items.length > 0) values.set(key, items.join(", "));
+  }
+
+  const keys = [
+    ...FRONTMATTER_FIELD_ORDER.filter((key) => values.has(key)),
+    ...Array.from(values.keys()).filter((key) => !FRONTMATTER_FIELD_ORDER.includes(key)),
+  ];
+
+  return {
+    rows: keys.map((key) => [key, values.get(key) ?? ""]),
+    body: raw.slice(match[0].length),
+  };
+}
+
+function fallbackFrontmatterRows(skill: Skill): Array<[string, string]> {
+  return [
+    ["name", skill.name],
+    ["description", skill.description],
+    ["version", skill.version],
+    ...(skill.tags.length ? [["tags", skill.tags.join(", ")] as [string, string]] : []),
+  ];
 }
 
 export default function SkillDetailModal({
@@ -34,6 +107,7 @@ export default function SkillDetailModal({
   onClose,
   onEdit,
   onDelete,
+  onDownloaded,
   onFeedback,
 }: SkillDetailModalProps) {
   useI18n();
@@ -44,11 +118,19 @@ export default function SkillDetailModal({
   const [activeTab, setActiveTab] = useState<DetailTab>("intro");
   const [versions, setVersions] = useState<SkillVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
+  const [tagTooltip, setTagTooltip] = useState<TagTooltipState>(null);
 
   // SKILL.md content fetched from the new endpoint
   const [mdContent, setMdContent] = useState<string | null>(null);
   const [mdLoading, setMdLoading] = useState(false);
   const [mdError, setMdError] = useState(false);
+
+  useEffect(() => {
+    if (!skillId) return;
+    void trackSkillView(skillId).catch(() => {
+      // View tracking is best-effort and should not block the detail page.
+    });
+  }, [skillId]);
 
   useEffect(() => {
     if (!skillId) {
@@ -58,6 +140,7 @@ export default function SkillDetailModal({
       setIconError(false);
       setMdContent(null);
       setMdError(false);
+      setTagTooltip(null);
       return;
     }
     let alive = true;
@@ -139,6 +222,16 @@ export default function SkillDetailModal({
   const currentUid = (WKApp.loginInfo as { uid?: string } | undefined)?.uid;
   const isOwner = Boolean(skill && currentUid && skill.ownerId === currentUid);
   const hasOwnerActions = Boolean(skill && isOwner && (onEdit || onDelete));
+  const parsedMarkdown = skill ? parseFrontmatter(mdContent ?? skill.readmeContent) : { rows: [], body: "" };
+  const frontmatterRows = skill ? (parsedMarkdown.rows.length > 0 ? parsedMarkdown.rows : fallbackFrontmatterRows(skill)) : [];
+  const readmeBody = skill ? (parsedMarkdown.body || t("skillMarket.detail.noDetail")) : "";
+  const ownerLabel = skill ? `@${skill.ownerName}` : "";
+  const displayName = skill ? (skill.displayName || skill.name) : t("skillMarket.detail.title");
+  const versionLabel = skill?.version ? `v${skill.version}` : "";
+  const viewCountLabel = formatCount(skill?.viewCount ?? 0);
+  const downloadCountLabel = formatCount(skill?.downloadCount ?? 0);
+  const updatedTimeLabel = skill ? formatRecentOrDate(skill.updatedAt) : "";
+  const updatedTimeTitle = skill ? formatFullDateTime(skill.updatedAt) : "";
 
   function copyInstallPrompt() {
     if (!skill) return;
@@ -157,13 +250,23 @@ export default function SkillDetailModal({
     if (!skill) return;
     try {
       await downloadSkill(skill.id);
-      onFeedback?.(t("skillMarket.detail.downloadStarted"));
+      onDownloaded?.();
     } catch (err) {
       onFeedback?.(err instanceof Error ? err.message : t("skillMarket.detail.downloadFailed"));
     }
   }
 
+  function showTagTooltip(event: React.MouseEvent<HTMLSpanElement> | React.FocusEvent<HTMLSpanElement>, tag: string) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const viewportPadding = 12;
+    const maxWidth = Math.max(180, Math.min(360, window.innerWidth - viewportPadding * 2));
+    const left = Math.min(Math.max(rect.left, viewportPadding), window.innerWidth - maxWidth - viewportPadding);
+    const top = Math.min(rect.bottom + 6, window.innerHeight - viewportPadding);
+    setTagTooltip({ text: tag, style: { left, top, maxWidth } });
+  }
+
   return (
+    <>
     <WKModal
       visible={Boolean(skillId)}
       onCancel={onClose}
@@ -180,36 +283,47 @@ export default function SkillDetailModal({
               </span>
             )}
           </span>
-          <div className="skill-market-detail-header__center">
-            <div className="skill-market-detail-header__title-row">
-              <h2>{skill?.name ?? t("skillMarket.detail.title")}</h2>
-              {categoryName && <span className="skill-market-detail-header__badge">{categoryName}</span>}
+          <div className="skill-market-detail-header__main">
+            <div className="skill-market-detail-header__top-row">
+              <div className="skill-market-detail-header__title-row">
+                <h2 title={displayName}>{displayName}</h2>
+                {categoryName && (
+                  <span className="skill-market-detail-header__badge" title={categoryName}>
+                    {categoryName}
+                  </span>
+                )}
+              </div>
+              <div className="skill-market-detail-header__right">
+                {versionLabel && (
+                  <span className="skill-market-detail-header__version" title={versionLabel}>
+                    {versionLabel}
+                  </span>
+                )}
+                {hasOwnerActions && skill && (
+                  <div className="skill-market-detail-header__actions">
+                    {onEdit && (
+                      <button type="button" aria-label={t("skillMarket.card.editAriaLabel", { values: { name: skill.name } })} title={t("skillMarket.common.edit")} onClick={() => onEdit(skill)}>
+                        <Pencil size={16} />
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button type="button" aria-label={t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } })} title={t("skillMarket.common.delete")} onClick={() => onDelete(skill)}>
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             {skill && (
-              <div className="skill-market-detail-header__tags">
-                {skill.tags.map((tag) => <span key={tag}>{tag}</span>)}
-              </div>
-            )}
-          </div>
-          <div className="skill-market-detail-header__right">
-            {skill && (
               <div className="skill-market-detail-header__meta">
-                <span>@{skill.ownerName}</span>
-                <span>{t("skillMarket.detail.updatedAt", { values: { time: formatRelativeTime(skill.updatedAt) } })}</span>
-              </div>
-            )}
-            {hasOwnerActions && skill && (
-              <div className="skill-market-detail-header__actions">
-                {onEdit && (
-                  <button type="button" aria-label={t("skillMarket.card.editAriaLabel", { values: { name: skill.name } })} title={t("skillMarket.common.edit")} onClick={() => onEdit(skill)}>
-                    <Pencil size={16} />
-                  </button>
-                )}
-                {onDelete && (
-                  <button type="button" aria-label={t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } })} title={t("skillMarket.common.delete")} onClick={() => onDelete(skill)}>
-                    <Trash2 size={16} />
-                  </button>
-                )}
+                <span className="skill-market-detail-header__name" title={skill.name}>{skill.name}</span>
+                <span className="skill-market-detail-header__separator">·</span>
+                <span className="skill-market-detail-header__owner" title={ownerLabel}>{ownerLabel}</span>
+                <span className="skill-market-detail-header__separator">·</span>
+                <span className="skill-market-detail-header__updated" title={updatedTimeTitle}>
+                  {t("skillMarket.detail.updatedAt", { values: { time: updatedTimeLabel } })}
+                </span>
               </div>
             )}
           </div>
@@ -222,6 +336,32 @@ export default function SkillDetailModal({
       {skill && !loading && (
         <div className="skill-market-detail">
           <p className="skill-market-detail__desc">{skill.description}</p>
+          <div className="skill-market-detail__stats" aria-label={t("skillMarket.card.statsAriaLabel")}>
+            <span title={t("skillMarket.card.viewsTitle", { values: { count: skill.viewCount ?? 0 } })}>
+              <Eye size={13} aria-hidden="true" />
+              <strong>{viewCountLabel}</strong>
+            </span>
+            <span title={t("skillMarket.card.downloadsTitle", { values: { count: skill.downloadCount ?? 0 } })}>
+              <Download size={13} aria-hidden="true" />
+              <strong>{downloadCountLabel}</strong>
+            </span>
+          </div>
+          {skill.tags.length > 0 && (
+            <div className="skill-market-detail__tags" aria-label={t("skillMarket.filter.tags")}>
+              {skill.tags.map((tag) => (
+                <span
+                  key={tag}
+                  tabIndex={0}
+                  onMouseEnter={(event) => showTagTooltip(event, tag)}
+                  onMouseLeave={() => setTagTooltip(null)}
+                  onFocus={(event) => showTagTooltip(event, tag)}
+                  onBlur={() => setTagTooltip(null)}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Tabs */}
           <div className="skill-market-detail__tabs">
@@ -262,9 +402,23 @@ export default function SkillDetailModal({
                   </div>
                 )}
                 {!mdLoading && !mdError && (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                    {mdContent ?? (skill.readmeContent || t("skillMarket.detail.noDetail"))}
-                  </ReactMarkdown>
+                  <>
+                    {frontmatterRows.length > 0 && (
+                      <table className="skill-market-detail__frontmatter">
+                        <tbody>
+                          {frontmatterRows.map(([key, value]) => (
+                            <tr key={key}>
+                              <th>{key}</th>
+                              <td>{value}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                      {readmeBody}
+                    </ReactMarkdown>
+                  </>
                 )}
               </div>
               <aside className="skill-market-install">
@@ -286,8 +440,7 @@ export default function SkillDetailModal({
                     <strong>{t("skillMarket.detail.downloadTitle")}</strong>
                   </div>
                   <div className="skill-market-install__file">
-                    <span>{skill.fileName}</span>
-                    <strong>{formatFileSize(skill.fileSize)}</strong>
+                    <span title={skill.fileName}>{skill.fileName}</span>
                   </div>
                   <div className="skill-market-install__actions">
                     <WKButton variant="secondary" icon={<Download size={15} />} onClick={downloadSkillPackage}>
@@ -331,5 +484,13 @@ export default function SkillDetailModal({
         </div>
       )}
     </WKModal>
+    {tagTooltip &&
+      createPortal(
+        <div className="skill-market-detail__tag-tooltip" role="tooltip" style={tagTooltip.style}>
+          {tagTooltip.text}
+        </div>,
+        document.body
+      )}
+    </>
   );
 }

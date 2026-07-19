@@ -48,12 +48,18 @@
     "label": "Sort:",
     "comprehensive": "Recommended",
     "latest": "Latest",
+    "views": "Most viewed",
     "downloads": "Most downloaded"
   },
   "card": {
     "editAriaLabel": "Edit {{name}}",
     "deleteAriaLabel": "Delete {{name}}",
-    "install": "Install to Agent"
+    "statsAriaLabel": "Skill stats",
+    "viewsLabel": "Views",
+    "viewsTitle": "Views: {{count}}",
+    "downloadsLabel": "Downloads",
+    "downloadsTitle": "Downloads: {{count}}",
+    "install": "Install"
   },
   "category": {
     "ariaLabel": "Skill categories",

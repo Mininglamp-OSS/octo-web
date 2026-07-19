@@ -1,5 +1,5 @@
 export type Visibility = "public" | "space" | "private";
-export type SkillSort = "comprehensive" | "latest" | "downloads";
+export type SkillSort = "comprehensive" | "latest" | "views" | "downloads";
 
 // ─── Frontend (camelCase) types ────────────────────────────────────────────
 
@@ -29,6 +29,8 @@ export interface Skill {
   fileUrl: string;
   fileSize: number;
   fileSha256?: string;
+  viewCount?: number;
+  downloadCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -161,6 +163,8 @@ export interface RawSkill {
   file_url: string;
   file_size: number;
   file_sha256: string;
+  view_count?: number;
+  download_count?: number;
   created_at: string;
   updated_at: string;
 }

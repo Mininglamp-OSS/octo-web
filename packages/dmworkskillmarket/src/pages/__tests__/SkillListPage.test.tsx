@@ -45,6 +45,8 @@ const skill: Skill = {
   fileName: "meeting-note-cleaner.zip",
   fileUrl: "mock://skills/meeting-note-cleaner.zip",
   fileSize: 4096,
+  viewCount: 2,
+  downloadCount: 0,
   createdAt: "2026-06-01T08:00:00.000Z",
   updatedAt: "2026-07-10T08:00:00.000Z",
 };
@@ -75,6 +77,7 @@ describe("SkillListPage", () => {
       { name: "代码" },
     ]);
     vi.mocked(api.getSkill).mockResolvedValue(skill);
+    vi.mocked(api.trackSkillView).mockResolvedValue(undefined);
     vi.mocked(api.getSkillMd).mockResolvedValue(skill.readmeContent);
     vi.mocked(api.updateSkill).mockResolvedValue(skill);
     vi.mocked(api.deleteSkill).mockResolvedValue();
@@ -179,16 +182,29 @@ describe("SkillListPage", () => {
     ).toBeInTheDocument();
     vi.mocked(api.getSkills).mockClear();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "skillMarket.sort.latest" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "浏览最多" }));
 
     await waitFor(() => {
       expect(api.getSkills).toHaveBeenCalledWith(
-        expect.objectContaining({ sort: "latest" }),
+        expect.objectContaining({ sort: "views" }),
         expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
+  });
+
+  it("shows stats on cards and increments the visible view count when opening detail", async () => {
+    render(<SkillListPage />);
+
+    const card = await screen.findByRole("button", {
+      name: "meeting-note-cleaner @我",
+    });
+    expect(screen.getByLabelText(/浏览次数：2|Views: 2/)).toHaveTextContent("2");
+    expect(screen.getByLabelText(/下载次数：0|Downloads: 0/)).toHaveTextContent("0");
+
+    fireEvent.click(card);
+
+    await screen.findByText(skill.fileName);
+    expect(screen.getByLabelText(/浏览次数：3|Views: 3/)).toHaveTextContent("3");
   });
 
   it("confirms deletion and removes the skill through the API", async () => {
@@ -338,9 +354,9 @@ describe("SkillListPage", () => {
     );
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "skillMarket.detail.downloadBtn",
+        name: /下载 Skill 包|skillMarket\.detail\.downloadBtn|Download Skill Package/,
       })
     );
-    expect(api.downloadSkill).toHaveBeenCalledWith(skill.id);
+    await waitFor(() => expect(api.downloadSkill).toHaveBeenCalledWith(skill.id));
   });
 });

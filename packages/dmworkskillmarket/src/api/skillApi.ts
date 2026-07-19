@@ -13,6 +13,7 @@ export const getSkills = api.getSkills;
 export const getMySkills = api.getMySkills;
 export const getSkillTags = api.getSkillTags;
 export const getSkill = api.getSkill;
+export const trackSkillView = api.trackSkillView;
 export const createSkill = api.createSkill;
 export const updateSkill = api.updateSkill;
 export const deleteSkill = api.deleteSkill;

@@ -7,9 +7,35 @@ export function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+export function formatFullDate(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+export function formatFullDateTime(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+export function formatCount(count: number): string {
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(safeCount);
 }
 
 export function formatRelativeTime(iso: string, baseDate = new Date()): string {
@@ -22,6 +48,13 @@ export function formatRelativeTime(iso: string, baseDate = new Date()): string {
   if (diffMs < day) return t("skillMarket.time.hoursAgo", { values: { count: Math.max(1, Math.floor(diffMs / hour)) } });
   if (diffMs < 30 * day) return t("skillMarket.time.daysAgo", { values: { count: Math.max(1, Math.floor(diffMs / day)) } });
   return formatDate(iso);
+}
+
+export function formatRecentOrDate(iso: string, baseDate = new Date()): string {
+  const diffMs = baseDate.getTime() - new Date(iso).getTime();
+  const day = 24 * 60 * 60 * 1000;
+  if (diffMs < 7 * day) return formatRelativeTime(iso, baseDate);
+  return formatFullDate(iso);
 }
 
 export function tagsFromInput(value: string): string[] {

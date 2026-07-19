@@ -135,6 +135,15 @@ export function getSkill(id: string): Promise<Skill> {
   return withDelay(cloneSkill(skill));
 }
 
+export function trackSkillView(id: string): Promise<void> {
+  skills = skills.map((skill) =>
+    skill.id === id
+      ? { ...skill, viewCount: (skill.viewCount ?? 0) + 1 }
+      : skill
+  );
+  return withDelay(undefined);
+}
+
 export function createSkill(form: NewSkillForm): Promise<Skill> {
   const now = new Date().toISOString();
   const baseId =

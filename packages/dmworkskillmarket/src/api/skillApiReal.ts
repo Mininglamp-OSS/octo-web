@@ -210,6 +210,8 @@ function mapSkill(raw: RawSkill): Skill {
     fileUrl: raw.file_url ?? "",
     fileSize: raw.file_size ?? 0,
     fileSha256: raw.file_sha256,
+    viewCount: raw.view_count ?? 0,
+    downloadCount: raw.download_count ?? 0,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
   };
@@ -307,6 +309,39 @@ export function getSkillTags(
 
 export function getSkill(id: string): Promise<Skill> {
   return request<RawSkill>(`/skills/${encodeURIComponent(id)}`).then(mapSkill);
+}
+
+export async function trackSkillView(id: string): Promise<void> {
+  const url = `${API_BASE_URL}/metrics/track`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        resource_type: "skill",
+        resource_id: id,
+        event_type: "view",
+      }),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Network error";
+    throw normalizeError({ code: "network_error", message, details: err });
+  }
+
+  const ok =
+    typeof res.ok === "boolean"
+      ? res.ok
+      : res.status >= 200 && res.status < 300;
+  if (!ok) {
+    const body = (await parseJson(res)) as ErrorEnvelope | null;
+    throw normalizeError({
+      code: body?.error?.code ?? `http_${res.status}`,
+      message: body?.error?.message ?? res.statusText ?? "Request failed",
+      status: res.status,
+      details: body?.error?.details ?? body,
+    });
+  }
 }
 
 /**
