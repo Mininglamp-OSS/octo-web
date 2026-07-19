@@ -3,9 +3,13 @@ import { Input, Spin } from "@douyinfe/semi-ui";
 import { IconEdit } from "@douyinfe/semi-icons";
 import Sections from "../../../Components/Sections";
 import WKButton from "../../../Components/WKButton";
-import UserInfoHeader from "../../../Components/UserInfo/UserInfoHeader";
-import UserInfoFooter from "../../../Components/UserInfo/UserInfoFooter";
+import AiBadge from "../../../Components/AiBadge";
+import RealnameVerifiedBadge from "../../../Components/RealnameVerifiedBadge";
 import type { UserInfoMetaItem } from "../../../Components/UserInfo/UserInfoMetaList";
+import ProfileDetailShell, {
+  ProfileDetailFooter,
+  ProfileDetailHeader,
+} from "../ProfileDetailShell";
 import "./index.css";
 
 type UserInfoViewSections = React.ComponentProps<typeof Sections>["sections"];
@@ -70,87 +74,98 @@ function UserInfoView({
   const hasFooter = !!footerAction || !!footerHint;
 
   return (
-    <div className={`wk-userinfo ${hasFooter ? "wk-userinfo--with-footer" : ""}`}>
-      <div className="wk-userinfo-content">
-        {loading ? (
-          <div className="wk-userinfo-loading">
-            <Spin />
-          </div>
-        ) : (
+    <ProfileDetailShell
+      className={`wk-userinfo ${hasFooter ? "wk-userinfo--with-footer" : ""}`}
+      contentClassName="wk-userinfo-content"
+      loadingClassName="wk-userinfo-loading"
+      loading={loading}
+      loadingNode={<Spin />}
+      footer={
+        <ProfileDetailFooter
+          className="wk-userInfo-footer"
+          actionClassName="wk-userinfo-footer-sendbutton"
+          hintClassName="wk-userinfo-footer-external-hint"
+          action={footerAction}
+          hint={footerHint}
+        />
+      }
+    >
+      <ProfileDetailHeader
+        className="wk-userinfo-header"
+        avatarClassName="wk-userinfo-user-avatar"
+        titleClassName="wk-userinfo-user-info-name"
+        avatar={avatar}
+        title={displayName}
+        badges={
           <>
-            <UserInfoHeader
-              avatar={avatar}
-              displayName={displayName}
-              isBot={isBot}
-              isRealnameVerified={isRealnameVerified}
-              metaItems={metaItems}
-            />
-            {showRemarkEditor && (
-              <div className="wk-userinfo-remark-section">
-                <div className="wk-userinfo-remark-row">
-                  <div className="wk-userinfo-remark-main">
-                    <div className="wk-userinfo-remark-label">{labels.remark}</div>
-                    {editingRemark ? (
-                      <div className="wk-userinfo-remark-editor">
-                        <Input
-                          value={remarkDraft}
-                          onChange={onRemarkDraftChange}
-                          placeholder={labels.remarkPlaceholder}
-                          maxLength={30}
-                        />
-                        <div className="wk-userinfo-remark-actions">
-                          <WKButton
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            disabled={savingRemark}
-                            onClick={onCancelEditRemark}
-                          >
-                            {labels.cancel}
-                          </WKButton>
-                          <WKButton
-                            type="button"
-                            variant="primary"
-                            size="sm"
-                            loading={savingRemark}
-                            onClick={onSaveRemark}
-                          >
-                            {labels.save}
-                          </WKButton>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="wk-userinfo-remark-value">
-                        {remark || (
-                          <span className="wk-userinfo-remark-empty">
-                            {labels.notSet}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {!editingRemark && (
-                    <button
+            {isBot && <AiBadge />}
+            {isRealnameVerified && <RealnameVerifiedBadge />}
+          </>
+        }
+        metaItems={metaItems}
+      />
+      {showRemarkEditor && (
+        <div className="wk-userinfo-remark-section">
+          <div className="wk-userinfo-remark-row">
+            <div className="wk-userinfo-remark-main">
+              <div className="wk-userinfo-remark-label">{labels.remark}</div>
+              {editingRemark ? (
+                <div className="wk-userinfo-remark-editor">
+                  <Input
+                    value={remarkDraft}
+                    onChange={onRemarkDraftChange}
+                    placeholder={labels.remarkPlaceholder}
+                    maxLength={30}
+                  />
+                  <div className="wk-userinfo-remark-actions">
+                    <WKButton
                       type="button"
-                      className="wk-userinfo-remark-edit"
-                      onClick={onStartEditRemark}
-                      aria-label={labels.editRemark}
-                      title={labels.editRemark}
+                      variant="secondary"
+                      size="sm"
+                      disabled={savingRemark}
+                      onClick={onCancelEditRemark}
                     >
-                      <IconEdit />
-                    </button>
+                      {labels.cancel}
+                    </WKButton>
+                    <WKButton
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      loading={savingRemark}
+                      onClick={onSaveRemark}
+                    >
+                      {labels.save}
+                    </WKButton>
+                  </div>
+                </div>
+              ) : (
+                <div className="wk-userinfo-remark-value">
+                  {remark || (
+                    <span className="wk-userinfo-remark-empty">
+                      {labels.notSet}
+                    </span>
                   )}
                 </div>
-              </div>
-            )}
-            <div className="wk-userinfo-sections">
-              <Sections sections={sections} />
+              )}
             </div>
-          </>
-        )}
+            {!editingRemark && (
+              <button
+                type="button"
+                className="wk-userinfo-remark-edit"
+                onClick={onStartEditRemark}
+                aria-label={labels.editRemark}
+                title={labels.editRemark}
+              >
+                <IconEdit />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      <div className="wk-userinfo-sections">
+        <Sections sections={sections} />
       </div>
-      <UserInfoFooter action={footerAction} hint={footerHint} />
-    </div>
+    </ProfileDetailShell>
   );
 }
 

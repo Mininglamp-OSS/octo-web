@@ -1,6 +1,7 @@
 import { ChannelInfoListener, SubscriberChangeListener } from "wukongimjssdk";
 import {
   Channel,
+  ChannelTypeGroup,
   ChannelInfo,
   ChannelTypePerson,
   WKSDK,
@@ -10,11 +11,12 @@ import { Section } from "../../Service/Section";
 import { ProviderListener } from "../../Service/Provider";
 import WKApp from "../../App";
 import RouteContext from "../../Service/Context";
-import { GroupRole } from "../../Service/Const";
+import { ChannelTypeCommunityTopic, GroupRole } from "../../Service/Const";
 import { Convert } from "../../Service/Convert";
 import UserService from "../../Service/UserService";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { isRealnameVerified, displayName as resolveDisplayName } from "../../Utils/displayName";
+import { parseThreadChannelId } from "../../Service/Thread";
 
 export class UserInfoRouteData {
   uid!: string;
@@ -158,12 +160,10 @@ export class UserInfoVM extends ProviderListener {
   }
 
   reloadSubscribers() {
-    if (
-      this.fromChannel &&
-      this.fromChannel.channelType !== ChannelTypePerson
-    ) {
+    const memberChannel = this.memberContextChannel();
+    if (memberChannel) {
       const subscribers = WKSDK.shared().channelManager.getSubscribes(
-        this.fromChannel
+        memberChannel
       );
       if (subscribers && subscribers.length > 0) {
         for (const subscriber of subscribers) {
@@ -334,7 +334,7 @@ export class UserInfoVM extends ProviderListener {
   }
 
   async reloadChannelInfo() {
-    const res = await UserService.getUserProfile(this.uid, this.fromChannel?.channelID);
+    const res = await UserService.getUserProfile(this.uid, this.profileGroupNo());
     this.channelInfo = Convert.userToChannelInfo(res);
     if (!this.vercode || this.vercode === "") {
       if (res.vercode && res.vercode !== "") {
@@ -351,5 +351,26 @@ export class UserInfoVM extends ProviderListener {
       );
       this.notifyListener();
     }
+  }
+
+  private memberContextChannel(): Channel | undefined {
+    if (!this.fromChannel || this.fromChannel.channelType === ChannelTypePerson) {
+      return undefined;
+    }
+    if (this.fromChannel.channelType === ChannelTypeCommunityTopic) {
+      const parsed = parseThreadChannelId(this.fromChannel.channelID);
+      return parsed ? new Channel(parsed.groupNo, ChannelTypeGroup) : undefined;
+    }
+    return this.fromChannel;
+  }
+
+  private profileGroupNo(): string | undefined {
+    if (!this.fromChannel || this.fromChannel.channelType === ChannelTypePerson) {
+      return undefined;
+    }
+    if (this.fromChannel.channelType === ChannelTypeCommunityTopic) {
+      return parseThreadChannelId(this.fromChannel.channelID)?.groupNo;
+    }
+    return this.fromChannel.channelID;
   }
 }

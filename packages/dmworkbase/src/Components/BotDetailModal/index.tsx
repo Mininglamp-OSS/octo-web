@@ -304,7 +304,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
             <>
             <WKModal
                 title={null}
-                visible={visible}
+                visible={visible && !showBotManage}
                 onCancel={this.handleClose}
                 className="wk-bot-detail-modal"
                 options={{ closable: false }}

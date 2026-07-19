@@ -16,11 +16,11 @@
 
 .wk-userInfo-footer {
     width: 100%;
-    height: var(--wk-height-userInfo-footer);
+    min-height: var(--wk-height-userInfo-footer);
     background-color: var(--wk-bg-surface);
     border-top: 1px solid var(--wk-border-subtle);
-    position: absolute;
-    bottom: 0;
+    position: relative;
+    flex: 0 0 auto;
     box-sizing: border-box;
 }
 
@@ -32,23 +32,22 @@
 
 .wk-userinfo-content {
     width: 100%;
-    height: 100%;
     overflow: auto;
     box-sizing: border-box;
     padding: var(--wk-sp-3) 0 var(--wk-sp-4);
 }
 
 .wk-userinfo--with-footer .wk-userinfo-content {
-    height: calc(100% - var(--wk-height-userInfo-footer));
+    padding-bottom: var(--wk-sp-4);
 }
 
 .wk-userinfo-header {
-    margin: 0 var(--wk-sp-4);
-    padding: var(--wk-sp-5);
-    background: var(--wk-bg-surface);
-    border: 1px solid var(--wk-border-subtle);
-    border-radius: var(--wk-r-md);
-    box-shadow: var(--wk-shadow-sm);
+    margin: 0;
+    padding: var(--wk-sp-2) var(--wk-sp-6) var(--wk-sp-4);
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
 }
 
 .wk-userinfo-user-info {
@@ -132,11 +131,14 @@
     width: 100%;
     height: 100%;
     padding: var(--wk-sp-3) var(--wk-sp-5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     box-sizing: border-box;
 }
 
 .wk-userinfo-footer-sendbutton .wk-btn {
-    width: 100%;
+    min-width: calc(var(--wk-sp-12) * 3);
     height: var(--wk-userinfo-action-height);
 }
 
@@ -160,11 +162,11 @@
 
 .wk-userinfo-remark-section {
     overflow: hidden;
-    margin: var(--wk-sp-3) var(--wk-sp-4) 0;
+    margin: 0 var(--wk-sp-4) var(--wk-sp-2);
     border: 1px solid var(--wk-border-subtle);
     border-radius: var(--wk-r-md);
     background: var(--wk-bg-surface);
-    box-shadow: var(--wk-shadow-sm);
+    box-shadow: none;
 }
 
 .wk-userinfo-remark-row {
@@ -266,7 +268,7 @@
     border: 1px solid var(--wk-border-subtle);
     border-radius: var(--wk-r-md);
     background: var(--wk-bg-surface);
-    box-shadow: var(--wk-shadow-sm);
+    box-shadow: none;
 }
 
 .wk-userinfo .wk-section-row + .wk-section-row {

@@ -9,8 +9,11 @@ import BotManageView, {
 
 const labels: BotManageViewLabels = {
   mentionFree: "免@回答",
+  mentionFreeHint: "选择哪些群里 Bot 不需要 @ 也会回答",
   autoApprove: "自动通过",
+  autoApproveHint: "后续支持自动处理好友申请",
   profileCommands: "简介指令",
+  profileCommandsHint: "后续支持管理 Bot 简介和指令",
   comingSoon: "即将上线",
   loading: "加载中...",
   backendComingSoon: "功能即将上线",
@@ -22,11 +25,18 @@ const labels: BotManageViewLabels = {
   empty: "暂无群聊",
   sectionEnabled: (count) => `已开启免@回答 (${count})`,
   sectionOthers: "其他群聊",
+  rowOn: "已开启免@回答",
+  rowOff: "需要 @ 才回答",
+  rowBlocked: "群管理员未允许免@",
 };
 
 const enabledGroups: BotManageGroupItem[] = [
   { groupNo: "group-1", name: "产品需求讨论组", noMention: true },
-  { groupNo: "group-2", name: "Bot 自动化长群名用于验证溢出展示", noMention: true },
+  {
+    groupNo: "group-2",
+    name: "Bot 自动化长群名用于验证溢出展示",
+    noMention: true,
+  },
 ];
 
 const otherGroups: BotManageGroupItem[] = [
@@ -34,9 +44,29 @@ const otherGroups: BotManageGroupItem[] = [
   { groupNo: "group-4", name: "客户支持群", noMention: false },
 ];
 
+const longNameGroups: BotManageGroupItem[] = [
+  {
+    groupNo: "group-long",
+    name: "这是一个非常非常长的群聊名称，用于验证 Bot 管理免@回答列表行不会挤压右侧开关",
+    noMention: true,
+  },
+  {
+    groupNo: "group-blocked",
+    name: "管理员关闭免@能力的群",
+    noMention: false,
+    allowNoMention: false,
+  },
+];
+
 function StoryFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ width: 360, height: 520, border: "1px solid var(--wk-border-default)" }}>
+    <div
+      style={{
+        width: 360,
+        height: 520,
+        border: "1px solid var(--wk-border-default)",
+      }}
+    >
       {children}
     </div>
   );
@@ -50,13 +80,13 @@ function MentionFreeStory(args: Partial<MentionFreeListViewProps>) {
   const toggle = (groupNo: string, next: boolean) => {
     setEnabled((groups) =>
       groups.map((group) =>
-        group.groupNo === groupNo ? { ...group, noMention: next } : group,
-      ),
+        group.groupNo === groupNo ? { ...group, noMention: next } : group
+      )
     );
     setOthers((groups) =>
       groups.map((group) =>
-        group.groupNo === groupNo ? { ...group, noMention: next } : group,
-      ),
+        group.groupNo === groupNo ? { ...group, noMention: next } : group
+      )
     );
   };
 
@@ -138,4 +168,13 @@ export const NoSearchResult: StoryObj<typeof MentionFreeStory> = {
 
 export const LoadingMore: StoryObj<typeof MentionFreeStory> = {
   render: () => <MentionFreeStory loadingMore />,
+};
+
+export const LongGroupName: StoryObj<typeof MentionFreeStory> = {
+  render: () => (
+    <MentionFreeStory
+      enabledGroups={longNameGroups}
+      otherGroups={otherGroups}
+    />
+  ),
 };

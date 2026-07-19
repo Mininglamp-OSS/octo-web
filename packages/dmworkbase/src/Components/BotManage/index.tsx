@@ -111,8 +111,11 @@ export default class BotManageModal extends Component<BotManageModalProps> {
         const { t } = this.context
         return {
             mentionFree: t("base.botManage.menu.mentionFree"),
+            mentionFreeHint: t("base.botManage.menu.mentionFreeHint"),
             autoApprove: t("base.botManage.menu.autoApprove"),
+            autoApproveHint: t("base.botManage.menu.autoApproveHint"),
             profileCommands: t("base.botManage.menu.profileCommands"),
+            profileCommandsHint: t("base.botManage.menu.profileCommandsHint"),
             comingSoon: t("base.botManage.comingSoon"),
             loading: t("base.botManage.loading"),
             backendComingSoon: t("base.botManage.backendComingSoon"),
@@ -127,6 +130,9 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                     values: { count },
                 }),
             sectionOthers: t("base.botManage.mentionFree.sectionOthers"),
+            rowOn: t("base.botManage.mentionFree.rowOn"),
+            rowOff: t("base.botManage.mentionFree.rowOff"),
+            rowBlocked: t("base.botManage.mentionFree.rowBlocked"),
         }
     }
 }

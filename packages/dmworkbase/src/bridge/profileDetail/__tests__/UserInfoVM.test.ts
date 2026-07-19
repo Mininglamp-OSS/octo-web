@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   applyFriend: vi.fn(),
   getUserProfile: vi.fn(),
   fetchChannelInfo: vi.fn(),
+  getSubscribes: vi.fn(() => []),
   changeChannelAvatarTag: vi.fn(),
   userInfos: vi.fn(),
 }));
@@ -18,12 +19,19 @@ vi.mock("wukongimjssdk", () => ({
       this.channelType = channelType;
     }
   },
+  ChannelInfo: class {
+    channel: unknown;
+    title = "";
+    logo = "";
+    orgData: Record<string, unknown> = {};
+  },
+  ChannelTypeGroup: 2,
   ChannelTypePerson: 1,
   WKSDK: {
     shared: () => ({
       channelManager: {
         fetchChannelInfo: mocks.fetchChannelInfo,
-        getSubscribes: vi.fn(() => []),
+        getSubscribes: mocks.getSubscribes,
         addSubscriberChangeListener: vi.fn(),
         removeSubscriberChangeListener: vi.fn(),
         getChannelInfo: vi.fn(),
@@ -63,6 +71,7 @@ beforeEach(() => {
 describe("UserInfoVM profile actions", () => {
   it("saves remark and updates local channel info", async () => {
     mocks.updateRemark.mockResolvedValueOnce(undefined);
+    mocks.getUserProfile.mockReturnValueOnce(new Promise(() => undefined));
     const vm = new UserInfoVM("u1");
     (vm as any).mounted = true;
     vm.channelInfo = {
@@ -106,5 +115,26 @@ describe("UserInfoVM profile actions", () => {
       vercode: "vc-1",
       spaceId: "space-a",
     });
+  });
+
+  it("uses parent group_no when loading profile from a thread", async () => {
+    const vm = new UserInfoVM("u1", { channelID: "group-a____thread-1", channelType: 5 } as any);
+
+    await vm.reloadChannelInfo();
+
+    expect(mocks.getUserProfile).toHaveBeenCalledWith("u1", "group-a");
+  });
+
+  it("uses parent group subscribers when opened from a thread", () => {
+    const vm = new UserInfoVM("u1", { channelID: "group-a____thread-1", channelType: 5 } as any);
+
+    vm.reloadSubscribers();
+
+    expect(mocks.getSubscribes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelID: "group-a",
+        channelType: 2,
+      })
+    );
   });
 });

@@ -12,6 +12,7 @@ import VoiceInputButton, {
   type ReplaceMode,
   type SelectionRange,
 } from "../../../Components/VoiceInputButton";
+import ProfileDetailShell, { ProfileDetailHeader } from "../ProfileDetailShell";
 import "./index.css";
 
 export interface BotDetailViewCommand {
@@ -87,12 +88,14 @@ export interface BotDetailViewProps {
   onCancelEditRemark: () => void;
   onSaveRemark: () => void;
   onStartEditDescription: () => void;
-  onEditDescriptionKeyDown: (event: React.KeyboardEvent<HTMLSpanElement>) => void;
+  onEditDescriptionKeyDown: (
+    event: React.KeyboardEvent<HTMLSpanElement>
+  ) => void;
   onDescriptionDraftChange: (value: string) => void;
   onDescriptionTranscribed: (
     text: string,
     mode: ReplaceMode,
-    savedRange?: SelectionRange,
+    savedRange?: SelectionRange
   ) => void;
   getCurrentDescriptionText: () => string;
   onCancelEditDescription: () => void;
@@ -157,346 +160,332 @@ export function BotDetailView({
   onSubmitApply,
 }: BotDetailViewProps) {
   return (
-    <div className="wk-bot-detail-content">
-      <div className="wk-bot-detail-route-header">
-        <button
-          type="button"
-          className="wk-bot-detail-route-close"
-          onClick={onClose}
-          aria-label={labels.close}
-        >
-          <span className="wk-bot-detail-route-close-icon" aria-hidden="true" />
-        </button>
-      </div>
-      {loading ? (
-        <div className="wk-bot-detail-loading">
-          <Spin size="large" />
+    <ProfileDetailShell
+      className="wk-bot-detail-content"
+      contentClassName="wk-bot-detail-scroll"
+      loadingClassName="wk-bot-detail-loading"
+      loading={loading}
+      loadingNode={<Spin size="large" />}
+      closeLabel={labels.close}
+      onClose={onClose}
+      footer={
+        <div className="wk-bot-detail-actions">
+          {isFriend ? (
+            <Button
+              className="wk-bot-detail-primary-action"
+              theme="solid"
+              type="primary"
+              onClick={onChat}
+            >
+              {labels.sendMessage}
+            </Button>
+          ) : showApplyInput ? (
+            <div className="wk-bot-detail-apply">
+              <div className="wk-bot-detail-apply-label">
+                {labels.applyMessageLabel}
+              </div>
+              <Input
+                value={applyRemark}
+                onChange={onApplyRemarkChange}
+                placeholder={labels.applyMessagePlaceholder}
+              />
+              <Button
+                className="wk-bot-detail-primary-action"
+                theme="solid"
+                type="primary"
+                loading={applying}
+                disabled={!applyRemark}
+                onClick={onSubmitApply}
+              >
+                {labels.applySend}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              className="wk-bot-detail-primary-action"
+              theme="solid"
+              type="primary"
+              onClick={onShowApply}
+            >
+              {labels.addFriend}
+            </Button>
+          )}
         </div>
-      ) : (
-        <>
-          <div className="wk-bot-detail-scroll">
-            <div className="wk-bot-detail-header">
-              {isOwner ? (
-                <div
-                  className="wk-bot-detail-avatar wk-bot-detail-avatar--owner"
-                  onClick={onAvatarClick}
-                  onKeyDown={onAvatarKeyDown}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={labels.changeAvatar}
-                >
-                  {ownerAvatar}
-                  <div className="wk-bot-detail-avatar-overlay" aria-hidden="true">
-                    <IconCamera />
-                  </div>
-                  {uploadingAvatar && (
-                    <div className="wk-bot-detail-avatar-loading">
-                      <Spin />
-                    </div>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple={false}
-                    className="wk-bot-detail-file-input"
-                    onClick={onAvatarInputClick}
-                    onChange={onAvatarFileChange}
-                  />
-                </div>
-              ) : (
-                <div className="wk-bot-detail-avatar wk-bot-detail-avatar--preview">
-                  {previewAvatar}
+      }
+    >
+      <ProfileDetailHeader
+        className="wk-bot-detail-header"
+        avatarClassName="wk-bot-detail-header-avatar"
+        titleClassName="wk-bot-detail-name"
+        subtitleClassName="wk-profile-detail-subtitle--mono wk-bot-detail-id"
+        avatar={
+          isOwner ? (
+            <div
+              className="wk-bot-detail-avatar wk-bot-detail-avatar--owner"
+              onClick={onAvatarClick}
+              onKeyDown={onAvatarKeyDown}
+              role="button"
+              tabIndex={0}
+              aria-label={labels.changeAvatar}
+            >
+              {ownerAvatar}
+              <div className="wk-bot-detail-avatar-overlay" aria-hidden="true">
+                <IconCamera />
+              </div>
+              {uploadingAvatar && (
+                <div className="wk-bot-detail-avatar-loading">
+                  <Spin />
                 </div>
               )}
-              <div className="wk-bot-detail-heading">
-                <div className="wk-bot-detail-name">
-                  <span className="wk-bot-detail-name-text">{displayName}</span>
-                  <AiBadge />
-                </div>
-                <div className="wk-bot-detail-id">@{username}</div>
-                {isOwner && reported !== null && (
-                  <div
-                    className={`wk-bot-detail-octopush-chip ${
-                      reported
-                        ? "wk-bot-detail-octopush-chip--reported"
-                        : "wk-bot-detail-octopush-chip--unmanaged"
-                    }`}
-                  >
-                    <span className="wk-bot-detail-octopush-status">
-                      <span className="wk-bot-detail-octopush-chip-icon">
-                        {reported ? <IconTickCircle /> : <IconAlertCircle />}
-                      </span>
-                      <span className="wk-bot-detail-octopush-chip-text">
-                        {reported ? labels.reported : labels.notReported}
-                      </span>
-                      {!reported && (
-                        <button
-                          type="button"
-                          className="wk-bot-detail-help-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                          }}
-                          title={labels.reportHelp}
-                          aria-label={labels.help}
-                        >
-                          ?
-                        </button>
-                      )}
-                    </span>
-                  </div>
-                )}
-              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple={false}
+                className="wk-bot-detail-file-input"
+                onClick={onAvatarInputClick}
+                onChange={onAvatarFileChange}
+              />
             </div>
-
-            <div className="wk-bot-detail-section">
-              <div className="wk-bot-detail-row wk-bot-detail-row--editable">
-                <div className="wk-bot-detail-row-main">
-                  <div className="wk-bot-detail-label">{labels.remark}</div>
-                  {editingRemark ? (
-                    <div className="wk-bot-detail-editor">
-                      <Input
-                        value={remarkDraft}
-                        onChange={onRemarkDraftChange}
-                        placeholder={labels.remarkPlaceholder}
-                        maxLength={30}
-                      />
-                      <div className="wk-bot-detail-editor-actions">
-                        <Button
-                          size="small"
-                          onClick={onCancelEditRemark}
-                          disabled={savingRemark}
-                        >
-                          {labels.cancel}
-                        </Button>
-                        <Button
-                          size="small"
-                          theme="solid"
-                          type="primary"
-                          loading={savingRemark}
-                          onClick={onSaveRemark}
-                        >
-                          {labels.save}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="wk-bot-detail-value">
-                      {remark || (
-                        <span className="wk-bot-detail-empty">
-                          {labels.noRemark}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {!editingRemark && (
-                  <Button
-                    className="wk-bot-detail-value-edit"
-                    theme="borderless"
-                    type="tertiary"
-                    size="small"
-                    icon={<IconEdit />}
-                    onClick={onStartEditRemark}
-                    onKeyDown={onEditRemarkKeyDown}
-                    aria-label={labels.editRemark}
-                    title={labels.editRemark}
-                  />
-                )}
-              </div>
-              {remark && (
-                <div className="wk-bot-detail-row">
-                  <div className="wk-bot-detail-label">{labels.nickname}</div>
-                  <div className="wk-bot-detail-value wk-bot-detail-value--right">
-                    {botName}
-                  </div>
-                </div>
-              )}
+          ) : (
+            <div className="wk-bot-detail-avatar wk-bot-detail-avatar--preview">
+              {previewAvatar}
             </div>
-
-            <div className="wk-bot-detail-section">
-              <div className="wk-bot-detail-description">
-                <div className="wk-bot-detail-field-header">
-                  <div className="wk-bot-detail-label">{labels.description}</div>
-                  {isOwner && !editingDescription && (
-                    <Button
-                      className="wk-bot-detail-edit-action"
-                      theme="borderless"
-                      type="tertiary"
-                      size="small"
-                      icon={<IconEdit />}
-                      onClick={onStartEditDescription}
-                      onKeyDown={onEditDescriptionKeyDown}
-                      aria-label={labels.editDescription}
-                    >
-                      {labels.edit}
-                    </Button>
-                  )}
-                </div>
-                {isOwner && editingDescription ? (
-                  <div>
-                    <div className="wk-bot-detail-textarea-wrap">
-                      <textarea
-                        ref={descriptionRef}
-                        className="wk-bot-detail-textarea"
-                        value={descriptionDraft}
-                        onChange={(e) => onDescriptionDraftChange(e.target.value)}
-                        placeholder={labels.descriptionPlaceholder}
-                        maxLength={200}
-                        rows={3}
-                      />
-                      <VoiceInputButton
-                        inputRef={descriptionRef}
-                        onTranscribed={onDescriptionTranscribed}
-                        getCurrentText={getCurrentDescriptionText}
-                        showModeMenu
-                        size="sm"
-                        className="wk-vib--textarea-corner"
-                      />
-                    </div>
-                    <div className="wk-bot-detail-editor-actions">
-                      <Button
-                        size="small"
-                        onClick={onCancelEditDescription}
-                        disabled={savingDescription}
-                      >
-                        {labels.cancel}
-                      </Button>
-                      <Button
-                        size="small"
-                        theme="solid"
-                        type="primary"
-                        loading={savingDescription}
-                        onClick={onSaveDescription}
-                      >
-                        {labels.save}
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="wk-bot-detail-description-text">
-                    {displayDescription}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {(creatorName || commands.length > 0) && (
-              <div className="wk-bot-detail-section">
-                {creatorName && (
-                  <div className="wk-bot-detail-row">
-                    <div className="wk-bot-detail-label">{labels.creator}</div>
-                    <div className="wk-bot-detail-value wk-bot-detail-value--right">
-                      {creatorName}
-                    </div>
-                  </div>
-                )}
-                {commands.length > 0 && (
-                  <div className="wk-bot-detail-command-block">
-                    <div className="wk-bot-detail-label">{labels.commands}</div>
-                    <div className="wk-bot-detail-command-list">
-                      {commands.map((cmd, i) => (
-                        <div key={i} className="wk-bot-detail-cmd">
-                          <span className="wk-bot-detail-cmd-name">{cmd.cmd}</span>
-                          <span className="wk-bot-detail-cmd-desc">
-                            {cmd.remark}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {isOwner && (
-              <div className="wk-bot-detail-section">
-                <button
-                  type="button"
-                  onClick={onOpenBotManage}
-                  className="wk-bot-detail-nav-row"
-                  aria-label={labels.botManageTitle}
-                >
-                  <span>{labels.botManageTitle}</span>
-                  <IconChevronRight className="wk-bot-detail-nav-chevron" />
-                </button>
-                {reported !== null && (
+          )
+        }
+        title={displayName}
+        badges={<AiBadge />}
+        subtitle={`@${username}`}
+        status={
+          isOwner && reported !== null ? (
+            <div
+              className={`wk-bot-detail-octopush-chip ${
+                reported
+                  ? "wk-bot-detail-octopush-chip--reported"
+                  : "wk-bot-detail-octopush-chip--unmanaged"
+              }`}
+            >
+              <span className="wk-bot-detail-octopush-status">
+                <span className="wk-bot-detail-octopush-chip-icon">
+                  {reported ? <IconTickCircle /> : <IconAlertCircle />}
+                </span>
+                <span className="wk-bot-detail-octopush-chip-text">
+                  {reported ? labels.reported : labels.notReported}
+                </span>
+                {!reported && (
                   <button
                     type="button"
-                    onClick={onViewClawInfo}
-                    className={`wk-bot-detail-nav-row${
-                      !reported ? " wk-bot-detail-nav-row--disabled" : ""
-                    }`}
-                    disabled={!reported}
-                    aria-label={labels.viewClawInfo}
-                    title={!reported ? labels.reportHelp : undefined}
+                    className="wk-bot-detail-help-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                    title={labels.reportHelp}
+                    aria-label={labels.help}
                   >
-                    <span className="wk-bot-detail-nav-main">
-                      <span
-                        className="wk-bot-detail-claw-action-icon"
-                        aria-hidden="true"
-                      >
-                        🦞
-                      </span>
-                      <span>{labels.viewClawInfo}</span>
-                    </span>
-                    {reported && (
-                      <IconChevronRight className="wk-bot-detail-nav-chevron" />
-                    )}
+                    ?
                   </button>
+                )}
+              </span>
+            </div>
+          ) : undefined
+        }
+      />
+
+      <div className="wk-bot-detail-section">
+        <div className="wk-bot-detail-row wk-bot-detail-row--editable">
+          <div className="wk-bot-detail-row-main">
+            <div className="wk-bot-detail-label">{labels.remark}</div>
+            {editingRemark ? (
+              <div className="wk-bot-detail-editor">
+                <Input
+                  value={remarkDraft}
+                  onChange={onRemarkDraftChange}
+                  placeholder={labels.remarkPlaceholder}
+                  maxLength={30}
+                />
+                <div className="wk-bot-detail-editor-actions">
+                  <Button
+                    size="small"
+                    onClick={onCancelEditRemark}
+                    disabled={savingRemark}
+                  >
+                    {labels.cancel}
+                  </Button>
+                  <Button
+                    size="small"
+                    theme="solid"
+                    type="primary"
+                    loading={savingRemark}
+                    onClick={onSaveRemark}
+                  >
+                    {labels.save}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="wk-bot-detail-value">
+                {remark || (
+                  <span className="wk-bot-detail-empty">{labels.noRemark}</span>
                 )}
               </div>
             )}
           </div>
+          {!editingRemark && (
+            <Button
+              className="wk-bot-detail-value-edit"
+              theme="borderless"
+              type="tertiary"
+              size="small"
+              icon={<IconEdit />}
+              onClick={onStartEditRemark}
+              onKeyDown={onEditRemarkKeyDown}
+              aria-label={labels.editRemark}
+              title={labels.editRemark}
+            />
+          )}
+        </div>
+        {remark && (
+          <div className="wk-bot-detail-row">
+            <div className="wk-bot-detail-label">{labels.nickname}</div>
+            <div className="wk-bot-detail-value wk-bot-detail-value--right">
+              {botName}
+            </div>
+          </div>
+        )}
+      </div>
 
-          <div className="wk-bot-detail-actions">
-            {isFriend ? (
+      <div className="wk-bot-detail-section">
+        <div className="wk-bot-detail-description">
+          <div className="wk-bot-detail-field-header">
+            <div className="wk-bot-detail-label">{labels.description}</div>
+            {isOwner && !editingDescription && (
               <Button
-                className="wk-bot-detail-primary-action"
-                theme="solid"
-                type="primary"
-                block
-                onClick={onChat}
+                className="wk-bot-detail-edit-action"
+                theme="borderless"
+                type="tertiary"
+                size="small"
+                icon={<IconEdit />}
+                onClick={onStartEditDescription}
+                onKeyDown={onEditDescriptionKeyDown}
+                aria-label={labels.editDescription}
               >
-                {labels.sendMessage}
-              </Button>
-            ) : showApplyInput ? (
-              <div className="wk-bot-detail-apply">
-                <div className="wk-bot-detail-apply-label">
-                  {labels.applyMessageLabel}
-                </div>
-                <Input
-                  value={applyRemark}
-                  onChange={onApplyRemarkChange}
-                  placeholder={labels.applyMessagePlaceholder}
-                />
-                <Button
-                  className="wk-bot-detail-primary-action"
-                  theme="solid"
-                  type="primary"
-                  block
-                  loading={applying}
-                  disabled={!applyRemark}
-                  onClick={onSubmitApply}
-                >
-                  {labels.applySend}
-                </Button>
-              </div>
-            ) : (
-              <Button
-                className="wk-bot-detail-primary-action"
-                theme="solid"
-                type="primary"
-                block
-                onClick={onShowApply}
-              >
-                {labels.addFriend}
+                {labels.edit}
               </Button>
             )}
           </div>
-        </>
+          {isOwner && editingDescription ? (
+            <div>
+              <div className="wk-bot-detail-textarea-wrap">
+                <textarea
+                  ref={descriptionRef}
+                  className="wk-bot-detail-textarea"
+                  value={descriptionDraft}
+                  onChange={(e) => onDescriptionDraftChange(e.target.value)}
+                  placeholder={labels.descriptionPlaceholder}
+                  maxLength={200}
+                  rows={3}
+                />
+                <VoiceInputButton
+                  inputRef={descriptionRef}
+                  onTranscribed={onDescriptionTranscribed}
+                  getCurrentText={getCurrentDescriptionText}
+                  showModeMenu
+                  size="sm"
+                  className="wk-vib--textarea-corner"
+                />
+              </div>
+              <div className="wk-bot-detail-editor-actions">
+                <Button
+                  size="small"
+                  onClick={onCancelEditDescription}
+                  disabled={savingDescription}
+                >
+                  {labels.cancel}
+                </Button>
+                <Button
+                  size="small"
+                  theme="solid"
+                  type="primary"
+                  loading={savingDescription}
+                  onClick={onSaveDescription}
+                >
+                  {labels.save}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="wk-bot-detail-description-text">
+              {displayDescription}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {(creatorName || commands.length > 0) && (
+        <div className="wk-bot-detail-section">
+          {creatorName && (
+            <div className="wk-bot-detail-row">
+              <div className="wk-bot-detail-label">{labels.creator}</div>
+              <div className="wk-bot-detail-value wk-bot-detail-value--right">
+                {creatorName}
+              </div>
+            </div>
+          )}
+          {commands.length > 0 && (
+            <div className="wk-bot-detail-command-block">
+              <div className="wk-bot-detail-label">{labels.commands}</div>
+              <div className="wk-bot-detail-command-list">
+                {commands.map((cmd, i) => (
+                  <div key={i} className="wk-bot-detail-cmd">
+                    <span className="wk-bot-detail-cmd-name">{cmd.cmd}</span>
+                    <span className="wk-bot-detail-cmd-desc">{cmd.remark}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
-    </div>
+
+      {isOwner && (
+        <div className="wk-bot-detail-section">
+          <button
+            type="button"
+            onClick={onOpenBotManage}
+            className="wk-bot-detail-nav-row"
+            aria-label={labels.botManageTitle}
+          >
+            <span>{labels.botManageTitle}</span>
+            <IconChevronRight className="wk-bot-detail-nav-chevron" />
+          </button>
+          {reported !== null && (
+            <button
+              type="button"
+              onClick={onViewClawInfo}
+              className={`wk-bot-detail-nav-row${
+                !reported ? " wk-bot-detail-nav-row--disabled" : ""
+              }`}
+              disabled={!reported}
+              aria-label={labels.viewClawInfo}
+              title={!reported ? labels.reportHelp : undefined}
+            >
+              <span className="wk-bot-detail-nav-main">
+                <span
+                  className="wk-bot-detail-claw-action-icon"
+                  aria-hidden="true"
+                >
+                  🦞
+                </span>
+                <span>{labels.viewClawInfo}</span>
+              </span>
+              {reported && (
+                <IconChevronRight className="wk-bot-detail-nav-chevron" />
+              )}
+            </button>
+          )}
+        </div>
+      )}
+    </ProfileDetailShell>
   );
 }
 
