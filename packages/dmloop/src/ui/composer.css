@@ -64,6 +64,7 @@
 }
 
 .loop-mention-menu {
+  position: absolute;
   z-index: 2000;
   min-width: 160px;
   max-height: 240px;
@@ -102,6 +103,51 @@
 .loop-suggest-item:hover,
 .loop-suggest-item.is-selected {
   background: var(--semi-color-fill-0, #f2f3f5);
+}
+
+.loop-suggest-more {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--semi-color-text-2, #7a7a82);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.loop-suggest-more:hover,
+.loop-suggest-more.is-selected {
+  background: var(--semi-color-fill-0, #f2f3f5);
+  color: var(--semi-color-text-0, #1c1c23);
+}
+
+.loop-suggest-more__chevron {
+  flex: 0 0 auto;
+  width: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--semi-color-text-2, #a9a9b0);
+}
+
+.loop-suggest-hint {
+  padding: 5px 10px 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--semi-color-text-2, #a9a9b0);
+}
+
+/* Touch devices only: 44px minimum tap target (WCAG); desktop rows stay compact. */
+@media (pointer: coarse) {
+  .loop-suggest-item,
+  .loop-suggest-more {
+    min-height: 44px;
+  }
 }
 
 .loop-suggest-ava {

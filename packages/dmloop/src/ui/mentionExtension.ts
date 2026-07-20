@@ -4,11 +4,16 @@ import { getPinyin, WKApp } from "@octo/base";
 import type { AssigneeCandidate, Issue } from "../api/types";
 import { searchIssues, listIssues } from "../api/issueApi";
 import { agentStatusMap } from "../api/agentApi";
+import { currentWorkspaceId } from "../api/http";
 import { ISSUE_STATUS_HEX } from "./meta";
+import { getRecencyMap, recordMentionUsage, sortByRecency } from "./mentionRecency";
 import { createMentionMenu, type LoopMentionItem, type MentionMenuLabels } from "./suggestionMenu";
 
-const MAX_USERS = 10;
-const MAX_ISSUES = 6;
+// Browse (empty @) shows a few per type; experts/expert-teams reveal all via
+// "show more" (small sets), members/tasks fall back to search (large sets).
+const MAX_SEARCH = 20; // flat actor list when a query is typed
+const MAX_ISSUE_BROWSE = 51; // recent tasks on empty @ (menu shows up to 50 + a "search" hint past that)
+const MAX_ISSUE_SEARCH = 20; // task matches when a query is typed
 
 export interface MentionExtLabels extends MentionMenuLabels {
   allMembers: string;
@@ -129,20 +134,30 @@ export function buildLoopMention(getCandidates: () => AssigneeCandidate[], label
       items: async ({ query }: { query: string }): Promise<LoopMentionItem[]> => {
         const token = ++queryToken;
         const q = query.trim().toLowerCase();
+        const wsId = currentWorkspaceId();
+        const recency = getRecencyMap(wsId);
         const all: LoopMentionItem[] =
           "all".includes(q) || nameMatches(labels.allMembers, q)
             ? [{ id: "all", label: labels.allMembers, type: "all" }]
             : [];
-        const users: LoopMentionItem[] = getCandidates()
-          .filter((c) => nameMatches(c.name, q))
-          .slice(0, MAX_USERS)
-          .map((c) => ({
-            id: c.id,
-            label: c.name,
-            type: c.type,
-            avatarUrl: c.octo_uid ? WKApp.shared.avatarUser(c.octo_uid) : undefined,
-            dotColor: c.type === "agent" ? agentDotColor(agentStatus.get(c.id)) : undefined,
-          }));
+        // Merge all three types into one recency-ranked list; the popup then
+        // groups by type (browse) or keeps it flat (search). Replaces the old
+        // members-first + slice(10) that buried experts in large workspaces.
+        const ranked = sortByRecency(
+          getCandidates()
+            .filter((c) => nameMatches(c.name, q))
+            .map((c) => ({
+              id: c.id,
+              label: c.name,
+              type: c.type,
+              avatarUrl: c.octo_uid ? WKApp.shared.avatarUser(c.octo_uid) : undefined,
+              dotColor: c.type === "agent" ? agentDotColor(agentStatus.get(c.id)) : undefined,
+            })),
+          recency,
+        );
+        const users: LoopMentionItem[] = q
+          ? ranked.slice(0, MAX_SEARCH).map((u) => ({ ...u, group: "search" as const }))
+          : ranked;
         // Debounce the per-keystroke issue search (empty "@" fires once, no wait). If the
         // query is superseded mid-flight the promise never resolves, so tiptap never renders
         // this stale call's results (gates the whole result, not just issues).
@@ -154,16 +169,27 @@ export function buildLoopMention(getCandidates: () => AssigneeCandidate[], label
             if (token !== queryToken) return stale();
           }
           const r = q
-            ? await searchIssues(query.trim(), { limit: MAX_ISSUES, includeClosed: true })
-            : await listIssues({ limit: MAX_ISSUES });
+            ? await searchIssues(query.trim(), { limit: MAX_ISSUE_SEARCH, includeClosed: true })
+            : await listIssues({ limit: MAX_ISSUE_BROWSE });
           if (token !== queryToken) return stale();
-          issues = r.issues.map(toIssueItem);
+          // Tag search-mode tasks group:"search" too, so the popup treats them as
+          // uncapped, reachable matches (not the capped browse "issues" section).
+          issues = q
+            ? r.issues.map((i) => ({ ...toIssueItem(i), group: "search" as const }))
+            : r.issues.map(toIssueItem);
         } catch {
           /* search failure: degrade to users only */
         }
         return [...all, ...users, ...issues];
       },
-      render: () => createMentionMenu(labels),
+      render: () =>
+        createMentionMenu(labels, (item) => {
+          // Only actors are recency-ranked; @all / issue picks would just crowd
+          // the capped store and evict real ranking data.
+          if (item.type !== "member" && item.type !== "agent" && item.type !== "squad") return;
+          const wsId = currentWorkspaceId();
+          if (wsId) recordMentionUsage(wsId, item);
+        }),
     },
   });
 }

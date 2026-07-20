@@ -473,6 +473,10 @@
   "mention": {
     "groupUsers": "Users",
     "groupIssues": "Tasks",
+    "groupMembers": "Members",
+    "showMore": "Show more",
+    "searchMembersHint": "Keep typing to search members",
+    "searchIssuesHint": "Keep typing to search tasks",
     "allMembers": "All members"
   },
   "agent": {

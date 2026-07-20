@@ -473,6 +473,10 @@
   "mention": {
     "groupUsers": "用户",
     "groupIssues": "任务",
+    "groupMembers": "成员",
+    "showMore": "查看更多",
+    "searchMembersHint": "继续输入以搜索更多成员",
+    "searchIssuesHint": "继续输入以搜索任务",
     "allMembers": "所有成员"
   },
   "agent": {
