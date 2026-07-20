@@ -1941,10 +1941,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleForwardToMatter = () => {
-        const { detail } = this.state;
+        const { detail, personalResult } = this.state;
         if (!detail || detail.status !== TaskStatus.COMPLETED) return;
 
-        const content = detail.result?.content;
+        // #907 review (yujiawei P2): mirror handleForwardToChat's agent
+        // summary fallback so this path won't ship broken when
+        // SHOW_FORWARD_TO_MATTER is flipped back on. See handleForwardToChat
+        // for the full rationale (agent workflow only writes personal_result).
+        const content = detail.result?.content ?? personalResult?.content;
         if (!content?.trim()) {
             Toast.warning(t("summary.detail.noForwardContent"));
             return;
@@ -1954,10 +1958,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleMatterSelected = async (matterId: string, matterTitle: string) => {
-        const { detail } = this.state;
+        const { detail, personalResult } = this.state;
         if (!detail) return;
 
-        const content = detail.result?.content;
+        // Same fallback as handleForwardToMatter (they must stay in sync).
+        const content = detail.result?.content ?? personalResult?.content;
         if (!content?.trim()) return;
 
         this.setState({ forwardingToMatter: true, showMatterPicker: false });
@@ -3314,15 +3319,29 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.continueRefine")}
                             </Button>
                         )}
-                        {detail && detail.status === TaskStatus.COMPLETED && (
-                            <Button
-                                theme="borderless"
-                                icon={<IconSend />}
-                                onClick={this.handleForwardToChat}
-                            >
-                                {t("summary.detail.forwardToChat")}
-                            </Button>
-                        )}
+                        {detail && detail.status === TaskStatus.COMPLETED && (() => {
+                            // #907 review (yujiawei P2-1): agent summary forward
+                            // sources fall through to personalResult.content, which
+                            // is fetched async by loadPersonalResult. During that
+                            // load window a click would silently no-op. Disable +
+                            // loading state until the fallback content is in.
+                            // Traditional workflow has detail.result inline, so it
+                            // is never gated here.
+                            const isAgent = detail.trigger_type === TriggerType.AGENT;
+                            const agentContentReady = !!this.state.personalResult?.content?.trim();
+                            const waitingForFallback = isAgent && !detail.result?.content?.trim() && !agentContentReady;
+                            return (
+                                <Button
+                                    theme="borderless"
+                                    icon={<IconSend />}
+                                    onClick={this.handleForwardToChat}
+                                    loading={waitingForFallback && this.state.personalLoading}
+                                    disabled={waitingForFallback}
+                                >
+                                    {t("summary.detail.forwardToChat")}
+                                </Button>
+                            );
+                        })()}
                         {SHOW_FORWARD_TO_MATTER && detail && detail.status === TaskStatus.COMPLETED && (
                             <Button
                                 theme="borderless"
