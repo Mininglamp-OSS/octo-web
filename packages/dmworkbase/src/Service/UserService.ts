@@ -12,6 +12,12 @@ export interface FriendApplyRequest {
   spaceId?: string
 }
 
+export interface UpdateCurrentUserPayload {
+  name?: string
+  sex?: string | number
+  [key: string]: string | number | undefined
+}
+
 const UserService = {
   getUserProfile(uid: string, groupNo?: string): Promise<UserProfile> {
     return APIClient.shared.get(`users/${uid}`, {
@@ -33,6 +39,19 @@ const UserService = {
       body.space_id = request.spaceId
     }
     return APIClient.shared.post("friend/apply", body)
+  },
+
+  updateCurrentUser(payload: UpdateCurrentUserPayload): Promise<any> {
+    return APIClient.shared.put("user/current", payload)
+  },
+
+  uploadUserAvatar(uid: string, file: File): Promise<any> {
+    const data = new FormData()
+    data.append("file", file)
+    return APIClient.shared.post(`users/${uid}/avatar`, data, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60_000,
+    })
   },
 }
 
