@@ -19,6 +19,7 @@ const selectNewZipLabel = /选择新的 Skill 包文件|skillMarket\.upload\.sel
 const dirtyEditMessage = /确定离开？尚未完成编辑，已上传的文件和填写的信息将丢失。|skillMarket\.confirm\.dirtyEditMessage/;
 const keepEditing = /继续编辑|skillMarket\.confirm\.keepEditing/;
 const leaveButton = /确认离开|skillMarket\.confirm\.leave/;
+const tagPlaceholder = /输入或选择标签|skillMarket\.form\.tagPlaceholder/;
 
 const skill: Skill = {
   id: "meeting-note-cleaner",
@@ -47,6 +48,11 @@ describe("EditSkillModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.updateSkill).mockResolvedValue(skill);
+    vi.mocked(api.getSkillTags).mockResolvedValue([
+      { name: "效率" },
+      { name: "测试12" },
+      { name: "协作" },
+    ]);
     vi.mocked(api.initReupload).mockResolvedValue({
       uploadId: "reupload-456",
       presignedUrl: "http://localhost/upload/456",
@@ -101,7 +107,7 @@ describe("EditSkillModal", () => {
   it("blocks save while a tag validation error is visible", () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 
-    fireEvent.change(screen.getByPlaceholderText(/输入或选择标签|skillMarket\.form\.tagPlaceholder/), { target: { value: "bad<tag" } });
+    fireEvent.change(screen.getByPlaceholderText(tagPlaceholder), { target: { value: "bad<tag" } });
 
     expect(screen.getByText(/标签仅支持文字、数字、空格和 - _ \. \/ # \+|skillMarket\.form\.tagInvalidChars/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /保存|skillMarket\.common\.save/ })).toBeDisabled();
@@ -110,7 +116,27 @@ describe("EditSkillModal", () => {
     expect(api.updateSkill).not.toHaveBeenCalled();
   });
 
-  it("guards closing after the form is changed", () => {
+  it("suggests current-space tags while editing and saves the selected tag", async () => {
+    render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+
+    const tagInput = screen.getByPlaceholderText(tagPlaceholder);
+    fireEvent.change(tagInput, { target: { value: "效" } });
+
+    await waitFor(() => {
+      expect(api.getSkillTags).toHaveBeenCalledWith("效", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    });
+    fireEvent.mouseDown(await screen.findByRole("option", { name: "效率" }));
+
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
+
+    await waitFor(() => {
+      expect(api.updateSkill).toHaveBeenCalledWith("meeting-note-cleaner", expect.objectContaining({
+        tags: ["纪要", "协作", "效率"],
+      }));
+    });
+  });
+
+  it("guards closing after the form is changed and closes the confirm dialog after leaving", async () => {
     const onClose = vi.fn();
     render(<EditSkillModal skill={skill} categories={categories} onClose={onClose} onUpdated={vi.fn()} />);
 
@@ -124,6 +150,9 @@ describe("EditSkillModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /取消|skillMarket\.common\.cancel/ }));
     fireEvent.click(screen.getByRole("button", { name: leaveButton }));
     expect(onClose).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.queryByText(dirtyEditMessage)).not.toBeInTheDocument();
+    });
   });
 
   it("can re-upload a Skill package and save the new file metadata", async () => {
