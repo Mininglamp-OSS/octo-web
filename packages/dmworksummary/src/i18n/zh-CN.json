@@ -6,6 +6,7 @@
         "confirm": "确定",
         "createFailed": "创建失败",
         "createFailedRetry": "创建失败，请稍后重试",
+        "delete": "删除",
         "deleteFailed": "删除失败",
         "edit": "编辑",
         "loading": "加载中...",

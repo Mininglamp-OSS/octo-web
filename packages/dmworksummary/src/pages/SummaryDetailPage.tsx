@@ -287,6 +287,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.streamClosedTaskId = null;
             this.teamStreamClosedTaskId = null;
             this.loadDetail();
+            // 同组件切 task（路由参数变化）：通知列表更新高亮。
+            const nextActiveTaskId = this.taskId;
+            if (nextActiveTaskId != null) {
+                window.dispatchEvent(new CustomEvent("summary-detail-active", { detail: { taskId: nextActiveTaskId } }));
+            }
         }
         if (prevState && prevState.showVersionDetailModal !== this.state.showVersionDetailModal) {
             this.syncVersionDetailScrollLock();
@@ -777,12 +782,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         try {
             await api.deleteSummary(this.taskId);
             if (this.taskId !== requestTaskId) return;
-            Toast.success(t("summary.detail.deletedToast"));
+            Toast.success(t("summary.list.deleteSuccess"));
             WKApp.routeRight.popToRoot();
             WKApp.mittBus.emit("summary-list-refresh-requested" as any);
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
-            Toast.error(err.message || t("summary.detail.deleteFailed"));
+            Toast.error(err.message || t("summary.common.deleteFailed"));
         }
     };
 
@@ -3313,7 +3318,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {detail && isCreator ? (
                             <Popconfirm
                                 title={t("summary.summaryCard.deleteTitle")}
-                                content={t("summary.summaryCard.deleteConfirm")}
+                                content={t("summary.summaryCard.deleteContent", { values: { title: detail?.title || detail?.task_no || "" } })}
                                 onConfirm={this.handleDeleteTask}
                             >
                                 <Button

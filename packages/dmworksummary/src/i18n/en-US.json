@@ -6,6 +6,7 @@
         "confirm": "OK",
         "createFailed": "Failed to create",
         "createFailedRetry": "Failed to create. Please try again.",
+        "delete": "Delete",
         "deleteFailed": "Failed to delete",
         "edit": "Edit",
         "loading": "Loading...",

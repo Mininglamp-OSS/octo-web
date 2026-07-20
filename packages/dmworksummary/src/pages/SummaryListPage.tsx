@@ -69,6 +69,8 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
 
     private handleSpaceChanged_ = () => this.loadData();
 
+    private handleListRefreshRequested_ = () => this.loadData();
+
     private handleTaskRegenerated_ = () => this.loadData();
 
     private handleAttentionCountRefreshed_ = ({ count }: { count: number }) => {
@@ -133,6 +135,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         WKApp.mittBus.on("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated_);
         WKApp.mittBus.on("summary-attention-count-refreshed" as any, this.handleAttentionCountRefreshed_);
+        WKApp.mittBus.on("summary-list-refresh-requested" as any, this.handleListRefreshRequested_);
         window.addEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
         window.addEventListener("summary-read", this.handleSummaryRead_);
         window.addEventListener("summary-detail-active", this.handleDetailActive_);
@@ -146,6 +149,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         WKApp.mittBus.off("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated_);
         WKApp.mittBus.off("summary-attention-count-refreshed" as any, this.handleAttentionCountRefreshed_);
+        WKApp.mittBus.off("summary-list-refresh-requested" as any, this.handleListRefreshRequested_);
         window.removeEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
         window.removeEventListener("summary-read", this.handleSummaryRead_);
         window.removeEventListener("summary-detail-active", this.handleDetailActive_);
