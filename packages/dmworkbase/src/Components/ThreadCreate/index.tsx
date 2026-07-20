@@ -4,7 +4,7 @@ import { X } from "lucide-react"
 import ThreadIcon from "../Icons/ThreadIcon"
 import { I18nContext, t } from "../../i18n"
 import { THREAD_NAME_MAX_LENGTH } from "../../Service/nameLimits"
-import ThreadService from "../../Service/ThreadService"
+import { createThreadByNameAndNotify } from "../../bridge/thread/createThread"
 import { ThreadCreateForm, ThreadCreateLabels } from "../../ui/ThreadCreateDialog"
 import "./index.css"
 
@@ -38,7 +38,7 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
     this.setState({ loading: true, error: null })
 
     try {
-      await ThreadService.createThreadByName(groupNo, name, sourceMessageId)
+      await createThreadByNameAndNotify(groupNo, name, sourceMessageId)
       Toast.success(t("base.threadCreate.success"))
       onSuccess?.()
     } catch (err: unknown) {

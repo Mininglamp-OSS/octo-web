@@ -1,6 +1,6 @@
 import React, { Component } from "react"
 import { I18nContext, t } from "../../i18n"
-import ThreadService from "../../Service/ThreadService"
+import { createThreadByNameAndNotify } from "../../bridge/thread/createThread"
 import ThreadCreateDialog, { ThreadCreateLabels } from "../../ui/ThreadCreateDialog"
 
 const THREAD_CREATE_MODAL_NAME_MAX_LENGTH = 50
@@ -49,7 +49,7 @@ export default class ThreadCreateModal extends Component<
     this.setState({ loading: true, error: null })
 
     try {
-      const result = await ThreadService.createThreadByName(groupNo, name, sourceMessageId)
+      const result = await createThreadByNameAndNotify(groupNo, name, sourceMessageId)
       this.setState({ loading: false })
       if (result.short_id) {
         onSuccess?.(result.short_id)

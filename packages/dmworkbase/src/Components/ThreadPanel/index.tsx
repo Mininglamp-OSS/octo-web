@@ -36,7 +36,7 @@ import { isChannelDisbanded } from "../../Utils/groupDisband";
 import FollowService from "../../Service/FollowService";
 import SidebarService from "../../Service/SidebarService";
 import CategoryService from "../../Service/CategoryService";
-import ThreadService from "../../Service/ThreadService";
+import { createThreadByNameAndNotify } from "../../bridge/thread/createThread";
 import { syncThreadArchiveState } from "../../Service/threadArchiveSync";
 import { FilePreviewInfo } from "../FilePreviewPanel/types";
 import { fileRendererRegistry } from "../FilePreviewPanel/registry";
@@ -1070,7 +1070,7 @@ export default class ThreadPanel extends Component<
 
     this.setState({ createLoading: true, createError: null });
     try {
-      await ThreadService.createThreadByName(groupNo, threadName);
+      await createThreadByNameAndNotify(groupNo, threadName);
       Toast.success(t("base.module.createThread.success"));
       this.setState({ createDialogVisible: false, createLoading: false });
       this.loadThreads();

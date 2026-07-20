@@ -1,21 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const hoisted = vi.hoisted(() => ({
-  mittBusEmit: vi.fn(),
-}))
-
 vi.mock("../APIClient", () => ({
   default: {
     shared: {
       post: vi.fn(),
-    },
-  },
-}))
-
-vi.mock("../../App", () => ({
-  default: {
-    mittBus: {
-      emit: hoisted.mittBusEmit,
     },
   },
 }))
@@ -27,7 +15,6 @@ const apiPost = APIClient.shared.post as unknown as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   apiPost.mockReset()
-  hoisted.mittBusEmit.mockReset()
 })
 
 describe("ThreadService", () => {
@@ -42,16 +29,6 @@ describe("ThreadService", () => {
     })
     expect(apiPost).toHaveBeenCalledWith("groups/group-a/threads", {
       name: "Topic",
-    })
-    expect(hoisted.mittBusEmit).toHaveBeenCalledWith("wk:thread-created", {
-      groupNo: "group-a",
-      shortId: "t1",
-      threadChannelId: "group-a____t1",
-      thread: {
-        ...thread,
-        group_no: "group-a",
-        channel_id: "group-a____t1",
-      },
     })
   })
 
@@ -72,16 +49,6 @@ describe("ThreadService", () => {
     await expect(ThreadService.createThreadByName("group-a", "Topic")).resolves.toEqual({
       ...response,
       group_no: "group-a",
-    })
-
-    expect(hoisted.mittBusEmit).toHaveBeenCalledWith("wk:thread-created", {
-      groupNo: "group-a",
-      shortId: "t3",
-      threadChannelId: "group-a____t3",
-      thread: {
-        ...response,
-        group_no: "group-a",
-      },
     })
   })
 

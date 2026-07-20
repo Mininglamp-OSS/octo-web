@@ -1,5 +1,4 @@
 import APIClient from "./APIClient"
-import WKApp from "../App"
 import { buildThreadChannelId, parseThreadChannelId, type Thread } from "./Thread"
 
 export interface CreateThreadFromMessageReq {
@@ -27,9 +26,7 @@ const ThreadService = {
     const resp = await APIClient.shared.post(`groups/${groupNo}/threads`, {
       ...body,
     })
-    const result = normalizeThreadCreateResult(resp, groupNo)
-    emitThreadCreated(groupNo, result)
-    return result
+    return normalizeThreadCreateResult(resp, groupNo)
   },
 
   createThreadFromMessage(req: CreateThreadFromMessageReq): Promise<ThreadCreateResult> {
@@ -50,19 +47,6 @@ function normalizeThreadCreateResult(resp: ThreadCreateResult, groupNo: string):
     short_id: shortId,
     channel_id: channelId,
   }
-}
-
-function emitThreadCreated(groupNo: string, thread: ThreadCreateResult) {
-  const shortId = thread.short_id
-  const threadChannelId = thread.channel_id || (shortId ? buildThreadChannelId(groupNo, shortId) : undefined)
-  if (!threadChannelId) return
-
-  WKApp.mittBus.emit("wk:thread-created", {
-    groupNo,
-    shortId,
-    threadChannelId,
-    thread: thread as Thread,
-  })
 }
 
 export default ThreadService
