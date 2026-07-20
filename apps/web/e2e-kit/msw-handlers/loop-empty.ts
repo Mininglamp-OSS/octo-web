@@ -238,8 +238,18 @@ export const loopEmptyHandlers = [
 
   http.put("*/fleet/api/v1/issues/:id", async ({ request, params }) => {
     const body = (await request.json()) as Record<string, unknown>;
-    return HttpResponse.json({ ...ISSUE_A, id: params.id, ...body });
+    // 帮 assignee_name 补上, 让 UI 立即反映 (picker 从 cands.find(c=>c.id===value)
+    // 拿 name, 但如果 issue 详情端 cands 未包含新指派人, 补 assignee_name 保底)
+    const patched: Record<string, unknown> = { ...ISSUE_A, id: params.id, ...body };
+    if (body.assignee_id === "agent-alpha") patched.assignee_name = "Agent Alpha";
+    if (body.assignee_id === "u-admin") patched.assignee_name = "Admin User";
+    if (body.assignee_id === null) patched.assignee_name = null;
+    return HttpResponse.json(patched);
   }),
+
+  http.delete("*/fleet/api/v1/issues/:id", () =>
+    new HttpResponse(null, { status: 204 })
+  ),
 
   // GET /issues/:id (issue 详情) — 必须精确, 否则会被下面 `*/fleet/api/v1/*` 兜底 [] 打坏
   http.get("*/fleet/api/v1/issues/:id", ({ params }) =>
@@ -251,6 +261,22 @@ export const loopEmptyHandlers = [
     HttpResponse.json({ issues: [] })
   ),
   http.get("*/fleet/api/v1/issues/:id/comments", () => HttpResponse.json([])),
+  http.post("*/fleet/api/v1/issues/:id/comments", async ({ request, params }) => {
+    const body = (await request.json()) as { content: string };
+    return HttpResponse.json({
+      id: `cm-${Date.now()}`,
+      issue_id: params.id,
+      root_id: null,
+      author_type: "member",
+      author_id: "u-1",
+      author_name: "E2E Tester",
+      content: body.content,
+      created_at: "2026-07-20T10:00:00Z",
+    });
+  }),
+  http.post("*/fleet/api/v1/issues/:id/comments/trigger-preview", () =>
+    HttpResponse.json({ agents: [] })
+  ),
   http.get("*/fleet/api/v1/issues/:id/subscribers", () => HttpResponse.json([])),
   http.get("*/fleet/api/v1/issues/:id/timeline", () => HttpResponse.json([])),
   http.get("*/fleet/api/v1/runs", () => HttpResponse.json([])),
@@ -274,7 +300,11 @@ export const loopEmptyHandlers = [
   // ── workspace members (C23/C24) ───────────────────────────────────────
   http.get("*/fleet/api/v1/workspaces/:id/members", () => {
     const s = scenario();
-    if (s === "ws-with-members" || s === "member-remove") {
+    if (
+      s === "ws-with-members" ||
+      s === "member-remove" ||
+      s === "one-issue"
+    ) {
       const base = [MEMBER_ADMIN, MEMBER_ORD].filter((m) => !isMemberRemoved(m.id));
       return HttpResponse.json([...base, ...getAddedMembers()]);
     }
@@ -307,9 +337,22 @@ export const loopEmptyHandlers = [
   ),
 
   // 兜底: 未被具体路由匹配到的 fleet 端点
-  http.get("*/fleet/api/v1/projects", () => HttpResponse.json([])),
+  http.get("*/fleet/api/v1/projects", () =>
+    HttpResponse.json({ projects: [] })
+  ),
   http.get("*/fleet/api/v1/labels", () => HttpResponse.json([])),
-  http.get("*/fleet/api/v1/issues/candidates", () => HttpResponse.json([])),
+  http.get("*/fleet/api/v1/agents", () =>
+    HttpResponse.json([
+      { id: "agent-alpha", name: "Agent Alpha", archived_at: null },
+    ])
+  ),
+  http.get("*/fleet/api/v1/squads", () => HttpResponse.json([])),
+  http.get("*/fleet/api/v1/issues/candidates", () =>
+    HttpResponse.json([
+      { id: "agent-alpha", type: "agent", name: "Agent Alpha", avatar_color: "#3B82F6", octo_uid: null },
+      { id: "u-admin", type: "member", name: "Admin User", avatar_color: "#10B981", octo_uid: "uid-admin" },
+    ])
+  ),
   http.all("*/fleet/api/v1/*", () => HttpResponse.json([])),
   http.all("*/fleet/api/v1/**", () => HttpResponse.json([])),
 ];
