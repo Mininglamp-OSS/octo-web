@@ -8,7 +8,7 @@ interface SelectedSourcesPanelProps {
     sources: SourceItem[];
 }
 
-const SelectedSourcesPanel: React.FC<SelectedSourcesPanelProps> = ({ sources }) => {
+const SelectedSourcesPanel: React.FC<SelectedSourcesPanelProps> = ({ sources = [] }) => {
     const { t } = useI18n();
 
     const sourceIcon = (sourceType: SourceTypeValue) => {

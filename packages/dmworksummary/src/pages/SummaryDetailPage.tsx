@@ -778,6 +778,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.leaveSuccess"));
             WKApp.routeRight.popToRoot();
+            WKApp.mittBus.emit("summary-list-refresh-requested" as any);
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
             Toast.error(err.message || t("summary.detail.leaveFailed"));
