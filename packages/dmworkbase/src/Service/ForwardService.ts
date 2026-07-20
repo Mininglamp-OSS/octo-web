@@ -219,25 +219,44 @@ export class ForwardService {
         const interDelay = opts.interMessageDelayMs ?? 0;
         const spaceId = opts.spaceId ?? null;
 
+        const recordChannelFailure = (channel: Channel, contents: MessageContent[], error: unknown): void => {
+            const multi = contents.length > 1;
+            for (let i = 0; i < contents.length; i++) {
+                result.failures.push({
+                    channelID: channel.channelID,
+                    messageIndex: multi ? i : undefined,
+                    reason: "send-error",
+                    error,
+                });
+                result.failedMessages++;
+            }
+            result.failedTargets++;
+        };
+
         const sendOneChannel = async (plan: ChannelPlan): Promise<void> => {
             const { channel, contents } = plan;
-            const setting = buildSetting(channel);
             const injectSpaceId = spaceId && channel.channelType === ChannelTypePerson ? spaceId : null;
+            let setting: Setting;
+            try {
+                setting = buildSetting(channel);
+            } catch (error) {
+                // channel 级预处理失败 → 整个 channel 全部 content 计入 send-error，
+                // 不影响其他 channel（对齐 header "每任务隔离" 的承诺）。
+                recordChannelFailure(channel, contents, error);
+                return;
+            }
             let channelFailed = false;
 
             const sendOne = async (content: MessageContent, index: number): Promise<boolean> => {
-                const mention = readMention(content);
-                const wrapped = wrapSendContentForInjection(content, {
-                    spaceId: injectSpaceId,
-                    mentionHumans: mention.humans,
-                    mentionAis: mention.ais,
-                });
+                let message: Message;
                 try {
-                    const message = await sender(wrapped, channel, setting);
-                    // 统一收尾：补齐外部字段（见 vm.ts:2378 一致）。onSent 只做 UI/queue 副作用。
-                    applyMsgLevelExternalFieldsWithFallback(message, undefined);
-                    opts.onSent?.(message, channel, contents.length > 1 ? index : undefined);
-                    return true;
+                    const mention = readMention(content);
+                    const wrapped = wrapSendContentForInjection(content, {
+                        spaceId: injectSpaceId,
+                        mentionHumans: mention.humans,
+                        mentionAis: mention.ais,
+                    });
+                    message = await sender(wrapped, channel, setting);
                 } catch (error) {
                     result.failures.push({
                         channelID: channel.channelID,
@@ -249,6 +268,12 @@ export class ForwardService {
                     channelFailed = true;
                     return false;
                 }
+                // 消息已被 SDK 接受 —— 以下收尾都算"发送成功"，异常不能倒过来记 send-error。
+                // apply 幂等：若自定义 sender（如 vm.sendMessage wrapper）内部已调过，这里重复调无副作用。
+                // onSent 只做 UI/queue 副作用（如塞 sendQueue）。
+                applyMsgLevelExternalFieldsWithFallback(message, undefined);
+                opts.onSent?.(message, channel, contents.length > 1 ? index : undefined);
+                return true;
             };
 
             if (messageMode === "serial") {
