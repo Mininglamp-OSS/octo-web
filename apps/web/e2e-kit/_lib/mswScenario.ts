@@ -31,6 +31,7 @@ export type LoopScenario =
   | "two-ws"
   | "ws-with-members"
   | "member-remove"
+  | "one-project"
   | "no-mock";
 
 export async function installMswScenario(

@@ -206,7 +206,8 @@ export const loopEmptyHandlers = [
       s === "one-ws" ||
       s === "one-issue" ||
       s === "ws-with-members" ||
-      s === "member-remove"
+      s === "member-remove" ||
+      s === "one-project"
     )
       return HttpResponse.json([WS_A]);
     if (s === "two-ws") return HttpResponse.json([WS_A, WS_B]);
@@ -337,9 +338,70 @@ export const loopEmptyHandlers = [
   ),
 
   // 兜底: 未被具体路由匹配到的 fleet 端点
-  http.get("*/fleet/api/v1/projects", () =>
-    HttpResponse.json({ projects: [] })
+  http.get("*/fleet/api/v1/projects", () => {
+    const s = scenario();
+    if (s === "one-project") {
+      return HttpResponse.json({
+        projects: [
+          {
+            id: "proj-a",
+            workspace_id: "ws-a",
+            title: "Project Alpha",
+            description: "existing project",
+            icon: "🚀",
+            status: "in_progress",
+            priority: "medium",
+            lead_type: null,
+            lead_id: null,
+            issue_count: 0,
+            done_count: 0,
+            created_at: "2026-07-20T10:00:00Z",
+            updated_at: "2026-07-20T10:00:00Z",
+          },
+        ],
+      });
+    }
+    return HttpResponse.json({ projects: [] });
+  }),
+  http.post("*/fleet/api/v1/projects", async ({ request }) => {
+    const body = (await request.json()) as { title: string; description?: string };
+    return HttpResponse.json({
+      id: `proj-${Date.now()}`,
+      workspace_id: "ws-a",
+      title: body.title,
+      description: body.description ?? "",
+      icon: "📁",
+      status: "in_progress",
+      priority: "medium",
+      lead_type: null,
+      lead_id: null,
+      issue_count: 0,
+      done_count: 0,
+      created_at: "2026-07-20T10:00:00Z",
+      updated_at: "2026-07-20T10:00:00Z",
+    });
+  }),
+  http.get("*/fleet/api/v1/projects/:id", ({ params }) =>
+    HttpResponse.json({
+      id: params.id,
+      workspace_id: "ws-a",
+      title: "Project Alpha",
+      description: "existing project",
+      icon: "🚀",
+      status: "in_progress",
+      priority: "medium",
+      lead_type: null,
+      lead_id: null,
+      issue_count: 0,
+      done_count: 0,
+      created_at: "2026-07-20T10:00:00Z",
+      updated_at: "2026-07-20T10:00:00Z",
+    })
   ),
+  http.patch("*/fleet/api/v1/projects/:id", async ({ request, params }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    return HttpResponse.json({ id: params.id, ...body });
+  }),
   http.get("*/fleet/api/v1/labels", () => HttpResponse.json([])),
   http.get("*/fleet/api/v1/agents", () =>
     HttpResponse.json([
