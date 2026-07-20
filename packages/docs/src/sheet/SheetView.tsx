@@ -18,7 +18,7 @@ import { SheetVersionPanel } from './SheetVersionPanel.tsx'
 import { SheetCommentPanel, parseCell as parseCommentAnchor } from './SheetCommentPanel.tsx'
 import { useDocComments, useRefreshCommentsOnOpen } from '../comments/useDocComments.ts'
 import { pendingSheetImports } from './xlsxImport.ts'
-import { buildSheetDims, buildSheetMerges, excelSheetName } from './sheetExport.ts'
+import { buildSheetDims, buildSheetMerges, drawingExportText, excelSheetName, mergeDrawingText } from './sheetExport.ts'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
 import { setFormulaEditorOpener, setFormulaPickerOpener, type FormulaEditorRequest } from './floatDom/formulaBridge.ts'
 import { LatexInputModal } from './floatDom/LatexInputModal.tsx'
@@ -44,8 +44,10 @@ import {
 } from '../editor/DocMoreMenu.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { useDocDelete } from '../editor/useDocDelete.ts'
-import { t, getCurrentUid, canForwardToChat, VoiceInputButton } from '../octoweb/index.ts'
-import { applyVoiceTranscription } from '../comments/voiceText.ts'
+import { t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
+import { MentionComposer } from '../mentions/MentionComposer.tsx'
+import { SheetMentionOverlay } from './SheetMentionOverlay.tsx'
+import { setSheetMentionOpener, setSheetMentionSelectHandler, setSheetMentionCloser } from './sheetMentionBridge.ts'
 import '../editor/styles.css'
 
 export type SheetViewProps = Omit<CollabSheetOptions, 'container' | 'onRole' | 'onConnState' | 'onTerminal'> & {
@@ -100,15 +102,16 @@ function SheetCommentComposer({
   dark,
   onSubmit,
   onCancel,
+  spaceId,
 }: {
   anchor: CellAnchor
   dark: boolean
   onSubmit: (body: string) => Promise<void>
   onCancel: () => void
+  spaceId?: string
 }) {
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
-  const bodyRef = useRef<HTMLTextAreaElement>(null)
   const submit = async () => {
     if (busy || !body.trim()) return
     setBusy(true)
@@ -136,32 +139,14 @@ function SheetCommentComposer({
       }}
     >
       <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 4 }}>{t('docs.sheet.comment.menu')} {anchor.a1}</div>
-      <div style={{ position: 'relative' }}>
-        <textarea
-          ref={bodyRef}
-          autoFocus
-          className="octo-comment-input"
-          placeholder={t('docs.sheet.comment.add')}
-          value={body}
-          rows={3}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') onCancel()
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit()
-          }}
-          style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical' }}
-        />
-        <VoiceInputButton
-          inputRef={bodyRef}
-          onTranscribed={(text, mode, savedRange) =>
-            setBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
-          }
-          getCurrentText={() => body}
-          showModeMenu
-          size="sm"
-          className="wk-vib--textarea-corner"
-        />
-      </div>
+      <MentionComposer
+        spaceId={spaceId}
+        placeholder={t('docs.sheet.comment.add')}
+        autoFocus
+        onChange={setBody}
+        onSubmit={() => void submit()}
+        onCancel={onCancel}
+      />
       <div className="octo-comment-compose-actions" style={{ marginTop: 6, display: 'flex', gap: 8 }}>
         <button type="button" className="octo-tb-btn" disabled={busy || !body.trim()} onClick={() => void submit()}>
           {t('docs.sheet.comment.menu')}
@@ -224,6 +209,21 @@ export function SheetView(props: SheetViewProps) {
       setFormulaPickerOpener(null)
     }
   }, [])
+
+  // Wire the cell @-mention ribbon button + overlay pick to the LIVE sheet instance. Keyed on
+  // `sheet` (not the controller constructor) so React StrictMode's throwaway instance can't null
+  // these module-level singletons after the surviving instance registered them.
+  useEffect(() => {
+    if (!sheet) return
+    setSheetMentionOpener(() => sheet.openMentionMenu())
+    setSheetMentionSelectHandler((item) => sheet.pickMention(item))
+    setSheetMentionCloser(() => sheet.closeMention())
+    return () => {
+      setSheetMentionOpener(null)
+      setSheetMentionSelectHandler(null)
+      setSheetMentionCloser(null)
+    }
+  }, [sheet])
 
   useEffect(() => {
     if (!sheet) return
@@ -550,26 +550,34 @@ export function SheetView(props: SheetViewProps) {
         }
         ws[XLSX.utils.encode_cell({ r: Number(rs), c: Number(cs) })] = out as unknown as XLSX.CellObject
       }
-      // Math formulas are float-DOM (DRAWING_DOM) objects — xlsx has no formula-object concept, so
-      // export DEGRADES them to plain text: write the LaTeX into the formula's anchor cell when it
-      // has one. Floating formulas without a cell anchor can't be placed and are dropped (documented).
+      // Float-DOM (DRAWING_DOM) objects — xlsx has no formula/mention-object concept, so export
+      // DEGRADES them to plain text written into the drawing's anchor cell when it has one:
+      //   • math formulas → the raw LaTeX
+      //   • @-mention chips → `@label` (data.type/data.label, no latex — see insertMentionChip)
+      // Floating drawings without a cell anchor can't be placed and are dropped (documented).
       for (const [key, raw] of drawingMap.entries()) {
         if (!key.startsWith(cellPrefix)) continue
         const d = raw as {
           drawingType?: number
-          data?: { latex?: string }
+          data?: { latex?: string; label?: string; type?: string }
           sheetTransform?: { from?: { row?: number; column?: number } }
         }
         if (d.drawingType !== 8) continue // 8 = DRAWING_DOM
-        const latex = d.data?.latex
+        // Prefer the formula's LaTeX; otherwise degrade a mention chip to `@label`. A mention has no
+        // latex but carries data.type + data.label, so it would otherwise be skipped and lost.
+        const text = drawingExportText(d.data ?? {})
         const from = d.sheetTransform?.from
-        if (!latex || !from || !Number.isInteger(from.row) || !Number.isInteger(from.column)) continue
+        if (!text || !from || !Number.isInteger(from.row) || !Number.isInteger(from.column)) continue
         const addr = XLSX.utils.encode_cell({ r: from.row as number, c: from.column as number })
-        if (!ws[addr]) {
-          ws[addr] = { t: 's', v: latex } as unknown as XLSX.CellObject
-          if ((from.row as number) > maxR) maxR = from.row as number
-          if ((from.column as number) > maxC) maxC = from.column as number
-        }
+        // Merge, don't skip: the cell may already hold a value (button-mode mention preserves it)
+        // or an earlier drawing's text; append so nothing is dropped on export (P1).
+        const prevVal = ws[addr] ? (ws[addr] as XLSX.CellObject).v : undefined
+        ws[addr] = {
+          t: 's',
+          v: mergeDrawingText(prevVal as string | number | boolean | null | undefined, text),
+        } as unknown as XLSX.CellObject
+        if ((from.row as number) > maxR) maxR = from.row as number
+        if ((from.column as number) > maxC) maxC = from.column as number
       }
       ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } })
       // Merges: delegated to buildSheetMerges (sheetExport.ts). V2 keys are `${logicalId}:sr:sc:er:ec`;
@@ -775,6 +783,7 @@ export function SheetView(props: SheetViewProps) {
           <SheetCommentComposer
             anchor={composer}
             dark={dark}
+            spaceId={space}
             onCancel={() => setComposer(null)}
             onSubmit={async (body) => {
               const enc = btoa(composer.key)
@@ -783,6 +792,7 @@ export function SheetView(props: SheetViewProps) {
             }}
           />
         )}
+        <SheetMentionOverlay />
         {(panel === 'history' || panel === 'comments') && (
           <aside className="octo-doc-drawer" role="complementary">
             {panel === 'history' && (
@@ -796,6 +806,7 @@ export function SheetView(props: SheetViewProps) {
                 names={names}
                 comments={comments}
                 focusCell={commentFocus}
+                spaceId={space}
                 onClose={closePanel}
               />
             )}

@@ -801,7 +801,7 @@ export function EditorShell(props: EditorShellProps) {
             <LinkBubbleMenu editor={editor} />
             <MathBubbleMenu editor={editor} />
             <TableContextMenu editor={editor} />
-            <CommentBubble editor={editor} onCreate={comments.createRoot} />
+            <CommentBubble editor={editor} onCreate={comments.createRoot} spaceId={props.space} />
             <Outline editor={editor} />
             <div className="octo-editor-main">
               <EditorContent editor={editor} className="octo-prose" />
@@ -827,6 +827,7 @@ export function EditorShell(props: EditorShellProps) {
                 activeCommentId={activeCommentId}
                 onSelectComment={setActiveCommentId}
                 names={names}
+                spaceId={props.space}
                 onClose={closePanel}
               />
             )}

@@ -624,7 +624,12 @@
     "latexTitle": "Insert formula",
     "latexPreview": "Preview",
     "formulaEditorCancel": "Cancel",
-    "formulaEditorOk": "OK"
+    "formulaEditorOk": "OK",
+    "mention": {
+      "menu": "Mention",
+      "search": "Search members or docs…",
+      "empty": "No matches"
+    }
   },
   "error": {
     "permission": {

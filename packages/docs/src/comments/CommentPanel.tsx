@@ -10,12 +10,13 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor } from '@tiptap/core'
 import type { Role } from '../auth/roles.ts'
 import { canComment, canEdit, canManage } from '../auth/roles.ts'
-import { getCurrentUid, t, VoiceInputButton } from '../octoweb/index.ts'
+import { getCurrentUid, t } from '../octoweb/index.ts'
 import { formatRelative, formatAbsolute } from '../versions/format.ts'
 import { decodeRelPos, resolveAnchorRange, getYBinding } from './anchor.ts'
 import type { Comment, CommentThread } from './api.ts'
 import type { UseDocComments } from './useDocComments.ts'
-import { applyVoiceTranscription } from './voiceText.ts'
+import { MentionComposer } from '../mentions/MentionComposer.tsx'
+import { MentionText } from '../mentions/MentionText.tsx'
 
 /** Re-render on editor doc/selection changes so orphan status + scroll targets stay current. */
 function useEditorTick(editor: Editor): void {
@@ -46,22 +47,24 @@ function CommentBody({
   role,
   comments,
   names,
+  spaceId,
 }: {
   comment: Comment
   currentUid: string
   role: Role
   comments: UseDocComments
   names?: Map<string, string>
+  spaceId?: string
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(comment.body)
   const [busy, setBusy] = useState(false)
-  const draftRef = useRef<HTMLTextAreaElement>(null)
 
   const isAuthor = comment.authorUid === currentUid
   const canHardDelete = !isAuthor && canManage(role)
 
   async function saveEdit() {
+    if (busy) return
     if (draft.trim() === '') return
     setBusy(true)
     try {
@@ -92,25 +95,17 @@ function CommentBody({
       </div>
       {editing ? (
         <div className="octo-comment-compose">
-          <div style={{ position: 'relative' }}>
-            <textarea
-              ref={draftRef}
-              className="octo-comment-input"
-              value={draft}
-              autoFocus
-              onChange={(e) => setDraft(e.target.value)}
-            />
-            <VoiceInputButton
-              inputRef={draftRef}
-              onTranscribed={(text, mode, savedRange) =>
-                setDraft((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
-              }
-              getCurrentText={() => draft}
-              showModeMenu
-              size="sm"
-              className="wk-vib--textarea-corner"
-            />
-          </div>
+          <MentionComposer
+            initialBody={comment.body}
+            spaceId={spaceId}
+            autoFocus
+            onChange={setDraft}
+            onSubmit={saveEdit}
+            onCancel={() => {
+              setEditing(false)
+              setDraft(comment.body)
+            }}
+          />
           <div className="octo-comment-compose-actions">
             <button
               type="button"
@@ -134,7 +129,9 @@ function CommentBody({
           </div>
         </div>
       ) : (
-        <p className="octo-comment-text">{comment.body}</p>
+        <p className="octo-comment-text">
+          <MentionText body={comment.body} names={names} />
+        </p>
       )}
       {!editing && (isAuthor || canHardDelete) && (
         <div className="octo-comment-actions">
@@ -163,6 +160,7 @@ function Thread({
   active,
   onSelect,
   names,
+  spaceId,
 }: {
   thread: CommentThread
   editor: Editor
@@ -172,11 +170,11 @@ function Thread({
   active: boolean
   onSelect: () => void
   names?: Map<string, string>
+  spaceId?: string
 }) {
   const [replyOpen, setReplyOpen] = useState(false)
   const [replyBody, setReplyBody] = useState('')
   const [busy, setBusy] = useState(false)
-  const replyRef = useRef<HTMLTextAreaElement>(null)
 
   const ready = getYBinding(editor) != null
   const range = anchorRange(editor, thread)
@@ -194,6 +192,7 @@ function Thread({
   }
 
   async function submitReply() {
+    if (busy) return
     if (replyBody.trim() === '') return
     setBusy(true)
     try {
@@ -216,13 +215,13 @@ function Thread({
         {thread.resolved && <span className="octo-comment-resolved-badge">{t('docs.comment.resolvedBadge')}</span>}
       </button>
 
-      <CommentBody comment={thread} currentUid={currentUid} role={role} comments={comments} names={names} />
+      <CommentBody comment={thread} currentUid={currentUid} role={role} comments={comments} names={names} spaceId={spaceId} />
 
       {thread.replies.length > 0 && (
         <ul className="octo-comment-replies">
           {thread.replies.map((r) => (
             <li key={r.id}>
-              <CommentBody comment={r} currentUid={currentUid} role={role} comments={comments} names={names} />
+              <CommentBody comment={r} currentUid={currentUid} role={role} comments={comments} names={names} spaceId={spaceId} />
             </li>
           ))}
         </ul>
@@ -248,26 +247,17 @@ function Thread({
 
       {replyOpen && (
         <div className="octo-comment-compose">
-          <div style={{ position: 'relative' }}>
-            <textarea
-              ref={replyRef}
-              className="octo-comment-input"
-              placeholder={t('docs.comment.replyPlaceholder')}
-              value={replyBody}
-              autoFocus
-              onChange={(e) => setReplyBody(e.target.value)}
-            />
-            <VoiceInputButton
-              inputRef={replyRef}
-              onTranscribed={(text, mode, savedRange) =>
-                setReplyBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
-              }
-              getCurrentText={() => replyBody}
-              showModeMenu
-              size="sm"
-              className="wk-vib--textarea-corner"
-            />
-          </div>
+          <MentionComposer
+            spaceId={spaceId}
+            placeholder={t('docs.comment.replyPlaceholder')}
+            autoFocus
+            onChange={setReplyBody}
+            onSubmit={submitReply}
+            onCancel={() => {
+              setReplyOpen(false)
+              setReplyBody('')
+            }}
+          />
           <div className="octo-comment-compose-actions">
             <button
               type="button"
@@ -303,6 +293,7 @@ export function CommentPanel({
   activeCommentId,
   onSelectComment,
   names,
+  spaceId,
   onClose,
 }: {
   role: Role
@@ -311,6 +302,7 @@ export function CommentPanel({
   activeCommentId: number | null
   onSelectComment: (id: number | null) => void
   names?: Map<string, string>
+  spaceId?: string
   onClose?: () => void
 }) {
   useEditorTick(editor)
@@ -355,6 +347,7 @@ export function CommentPanel({
             currentUid={currentUid}
             comments={comments}
             names={names}
+            spaceId={spaceId}
             active={activeCommentId === t.id}
             onSelect={() => onSelectComment(t.id)}
           />

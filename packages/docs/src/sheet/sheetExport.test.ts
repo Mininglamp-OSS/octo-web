@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSheetDims, buildSheetMerges, excelSheetName } from './sheetExport.ts'
+import { buildSheetDims, buildSheetMerges, drawingExportText, excelSheetName, mergeDrawingText } from './sheetExport.ts'
 
 // P1-1 regression: a legacy V1 (#537) doc wrote dim/merge keys UNPREFIXED (bare `c1`/`r5`,
 // bare `sr:sc:er:ec`) and never migrated them. The binding reads bare keys as the 'default' sheet
@@ -96,6 +96,55 @@ describe('excelSheetName (P2: unique/sanitized names must never exceed 31 chars)
     // The 12th collision carries the `(12)` suffix and is still ≤31.
     expect(names[11]!.endsWith('(12)')).toBe(true)
     expect(names[11]!.length).toBeLessThanOrEqual(31)
+  })
+})
+
+// P1 regression: @-mention chips are stored as DRAWING_DOM float-DOM objects with NO `latex`
+// (only data.type/data.label). The old degrader keyed solely on `data.latex`, so mentions were
+// SKIPPED on export → the exported .xlsx lost the mention entirely (no chip, no text). This locks
+// that a mention degrades to `@label` while formulas keep degrading to their LaTeX.
+describe('drawingExportText (P1: mentions must survive xlsx export)', () => {
+  it('degrades a math formula to its LaTeX', () => {
+    expect(drawingExportText({ latex: 'a^2+b^2' })).toBe('a^2+b^2')
+  })
+
+  it('degrades an @-mention chip (no latex) to `@label`', () => {
+    expect(drawingExportText({ type: 'user', label: '张三' })).toBe('@张三')
+    expect(drawingExportText({ type: 'doc', label: 'Q3 Plan' })).toBe('@Q3 Plan')
+  })
+
+  it('prefers latex over the mention fields when both are present', () => {
+    expect(drawingExportText({ latex: '\\sum', type: 'user', label: 'x' })).toBe('\\sum')
+  })
+
+  it('returns undefined for a drawing with no text representation (caller skips it)', () => {
+    expect(drawingExportText({})).toBeUndefined()
+    expect(drawingExportText({ latex: '' })).toBeUndefined()
+    expect(drawingExportText({ type: 'user' })).toBeUndefined() // label missing
+    expect(drawingExportText({ label: 'orphan' })).toBeUndefined() // type missing
+  })
+})
+
+describe('mergeDrawingText (P1: occupied cells + multiple mentions per cell must not drop data)', () => {
+  it('writes into an empty cell', () => {
+    expect(mergeDrawingText(undefined, '@Alice')).toBe('@Alice')
+  })
+
+  it('appends to an occupied cell (button-mode insert preserves existing content)', () => {
+    expect(mergeDrawingText('Owner', '@Alice')).toBe('Owner\n@Alice')
+  })
+
+  it('coerces a non-string existing value before appending', () => {
+    expect(mergeDrawingText(42, '@Alice')).toBe('42\n@Alice')
+  })
+
+  it('chains multiple chips sharing one cell instead of dropping later ones', () => {
+    expect(mergeDrawingText(mergeDrawingText('', '@Alice'), '@Bob')).toBe('@Alice\n@Bob')
+  })
+
+  it('treats empty string and null as empty (no leading newline)', () => {
+    expect(mergeDrawingText('', '@X')).toBe('@X')
+    expect(mergeDrawingText(null, '@X')).toBe('@X')
   })
 })
 

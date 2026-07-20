@@ -142,15 +142,16 @@ describe('SheetCommentPanel — compose entry button (XIN-1337)', () => {
     const entry = screen.getByRole('button', { name: /docs\.comment\.commentButton/ }) as HTMLButtonElement
     expect(entry).toBeTruthy()
     expect(entry.disabled).toBe(false)
-    // …and the composer textarea is hidden until the user clicks it.
-    expect(document.querySelector('textarea.octo-comment-input')).toBeNull()
+    // …and the composer is hidden until the user clicks the entry button.
+    expect(document.querySelector('.octo-mention-composer')).toBeNull()
   })
 
   it('reveals the composer + submit button when the entry button is clicked', () => {
     renderPanel(makeSheet({ key: 'default!0:0', a1: 'A1', sheetId: 'default' }))
     fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.commentButton/ }))
-    // The composer now renders…
-    expect(document.querySelector('textarea.octo-comment-input')).not.toBeNull()
+    // The rich MentionComposer now renders (replaced the plain <textarea> when @-mention landed;
+    // it exposes the same octo-comment-input surface via a contenteditable, plus the mention class).
+    expect(document.querySelector('.octo-mention-composer')).not.toBeNull()
     // …and the submit button appears, disabled while the body is empty (spam guard kept).
     const submit = screen.getByRole('button', { name: /docs\.sheet\.comment\.menu A1/ }) as HTMLButtonElement
     expect(submit.disabled).toBe(true)
