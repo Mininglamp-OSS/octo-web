@@ -195,7 +195,8 @@
         "titleRequired": "标题不能为空",
         "saving": "保存中...",
         "noOutputToSave": "当前对话还没有可保存的总结，请先与 AI 对话产出内容",
-        "agentSummaryCreated": "AI 总结已保存"
+        "agentSummaryCreated": "AI 总结已保存",
+        "savedReferenceLostRetry": "保存失败：请重新选择引用总结，或点「新会话」重来"
     },
     "chatSummary": {
         "panelTitle": "聊天内的智能总结",

@@ -509,3 +509,57 @@ describe('SummaryCreatePage agent SSE session_id sync', () => {
         expect(lastMessage.content).toBe('Server response');
     });
 });
+
+describe('SummaryCreatePage handleSubmit error handling', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('shows friendly toast for 40001 (referenced summary lost after refresh)', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+
+        // Mock createAgentSummary to reject with axios-style 40001 error.
+        // This is the exact shape the backend returns when
+        //   session_id has no fetch_channel tool trace AND
+        //   referenced_task_ids is empty AND
+        //   origin_channel_id was not supplied by the front-end.
+        // See internal/api/handler/agent_summary.go: "origin_channel_id 未传且无法从 session 反查".
+        const err = {
+            response: { data: { code: 40001, message: 'origin_channel_id 未传且无法从 session 反查' } },
+        };
+        (api.createAgentSummary as any).mockRejectedValueOnce(err);
+
+        const ref = React.createRef<any>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+
+        // Simulate a completed agent chat session ready to save.
+        await act(async () => {
+            instance.setState({
+                sessionId: 'session-abc',
+                mode: 'agent',
+                messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'summary' }],
+            });
+        });
+
+        (Toast.error as any).mockClear();
+
+        // Trigger the save flow directly on the instance.
+        let result: boolean | undefined;
+        await act(async () => {
+            result = await instance.handleSaveAsSummary('a title');
+            await flushPromises();
+        });
+
+        // Whichever method the component exposes, the 40001 branch should
+        // surface the friendly, actionable copy — NOT the raw backend message.
+        expect(Toast.error).toHaveBeenCalled();
+        const shown = (Toast.error as any).mock.calls[0]?.[0] ?? '';
+        expect(shown).toBe('保存失败：请重新选择引用总结，或点「新会话」重来');
+        expect(result).toBe(false);
+    });
+});

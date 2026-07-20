@@ -39,7 +39,7 @@ import type {
     CreateAgentSummaryParams,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
-import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession } from "../utils/summaryHelpers";
+import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced } from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, type ResolvableTemplate } from "../utils/templateResolver";
 
 const { Text } = Typography;
@@ -161,6 +161,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             this.setState({
                 mode: 'agent',
                 referencedTask: this.props.derivedFromTask,
+            });
+            // 与 session_id 同生命周期持久化引用总结，避免 refresh/重进后
+            // referencedTask 只活在 React state 里而丢失 → 保存时 400。
+            writeAgentChatReferenced(this.agentChannelId(), {
+                task_id: this.props.derivedFromTask.task_id,
+                title: this.props.derivedFromTask.title ?? '',
             });
         }
     }
@@ -575,9 +581,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
      */
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
+        // 恢复引用总结与 session 同生命周期：storage 里有 → 自动回填。
+        // 无 → 保持 state 现值（可能是 mount 时 derivedFromTask 塞进来的）。
+        const storedRef = readAgentChatReferenced(this.agentChannelId());
         this.setState((prev) => ({
             mode: 'agent',
             sessionId: stored || prev.sessionId,
+            referencedTask: storedRef
+                ? { task_id: storedRef.task_id, title: storedRef.title } as SummaryListItem
+                : prev.referencedTask,
         }));
         if (stored) void this.loadAgentHistory(stored);
     }
@@ -603,6 +615,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     /** 「新会话」：清 localStorage 的 session_id、清空消息，下次发送重新生成新 session_id。 */
     handleNewSession = () => {
         clearAgentChatSession(this.agentChannelId());
+        // 引用总结跟 session 同生命周期 → 一起清。
+        clearAgentChatReferenced(this.agentChannelId());
         // 作废在途历史拉取，避免旧会话历史回灌到新会话。
         this.historyLoadToken++;
         this.setState({
@@ -646,6 +660,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             e.stopPropagation();
                             // 移除引用同时强制关闭 SidePanel(引用没了没意义再显示)
                             this.setState({ referencedTask: null, sidePanelOpen: false });
+                            // 引用同步清持久化，避免 refresh 后又回填。
+                            clearAgentChatReferenced(this.agentChannelId());
                         }}
                         title={translate('summary.chatReference.remove')}
                     >
@@ -718,6 +734,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             //   2. 重置组件内 state(messages/sessionId/referencedTask)
             //   3. 后端会在保存事务里 DELETE agent_message 表对应行
             clearAgentChatSession(this.agentChannelId());
+            // 引用总结跟 session 同生命周期 → 一起清。
+            clearAgentChatReferenced(this.agentChannelId());
             this.historyLoadToken++;
             this.setState({
                 messages: [],
@@ -747,6 +765,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 // 40004: session 无产出
                 if (code === 40004) {
                     Toast.error(t('summary.create.noOutputToSave'));
+                    return false;
+                }
+                // 40001: origin_channel_id 反查失败(通常是引用总结退出重进后
+                // referencedTask 丢失,前端没发 referenced_task_ids,后端 fallback
+                // 借 origin 无路可走)。给友好文案指导用户下一步动作。
+                // 见 SUM-161 fast-follow · CHAT-REFERENCE-BASED-DESIGN-v1。
+                if (code === 40001) {
+                    Toast.error(t('summary.create.savedReferenceLostRetry'));
                     return false;
                 }
             }
@@ -844,10 +870,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             <SummaryReferencePicker
                                 visible={this.state.showReferencePicker}
                                 onCancel={() => this.setState({ showReferencePicker: false })}
-                                onSelect={(task) => this.setState({
-                                    referencedTask: task,
-                                    showReferencePicker: false,
-                                })}
+                                onSelect={(task) => {
+                                    this.setState({
+                                        referencedTask: task,
+                                        showReferencePicker: false,
+                                    });
+                                    // 用户选择新引用 → 同步持久化 → refresh 后仍在。
+                                    writeAgentChatReferenced(this.agentChannelId(), {
+                                        task_id: task.task_id,
+                                        title: task.title ?? '',
+                                    });
+                                }}
                                 selectedTaskId={this.state.referencedTask?.task_id}
                             />
                             {/* Modal 保留:未来其他触发点(比如详情页快照预览)可复用;主 UI 已改用 SidePanel */}
