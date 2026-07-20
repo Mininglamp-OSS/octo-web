@@ -1,5 +1,6 @@
 import APIClient from "./APIClient"
-import type { Thread } from "./Thread"
+import WKApp from "../App"
+import { buildThreadChannelId, parseThreadChannelId, type Thread } from "./Thread"
 
 export interface CreateThreadFromMessageReq {
   groupNo: string
@@ -14,14 +15,21 @@ export type ThreadCreateResult = Partial<Thread> & {
 }
 
 const ThreadService = {
-  createThreadByName(groupNo: string, name: string, sourceMessageId?: number): Promise<Thread> {
+  async createThreadByName(
+    groupNo: string,
+    name: string,
+    sourceMessageId?: number
+  ): Promise<ThreadCreateResult> {
     const body: { name: string; source_message_id?: number } = { name }
     if (sourceMessageId !== undefined) {
       body.source_message_id = sourceMessageId
     }
-    return APIClient.shared.post(`groups/${groupNo}/threads`, {
+    const resp = await APIClient.shared.post(`groups/${groupNo}/threads`, {
       ...body,
     })
+    const result = normalizeThreadCreateResult(resp, groupNo)
+    emitThreadCreated(groupNo, result)
+    return result
   },
 
   createThreadFromMessage(req: CreateThreadFromMessageReq): Promise<ThreadCreateResult> {
@@ -31,6 +39,30 @@ const ThreadService = {
       source_message_payload: req.sourceMessagePayload,
     })
   },
+}
+
+function normalizeThreadCreateResult(resp: ThreadCreateResult, groupNo: string): ThreadCreateResult {
+  const shortId = resp.short_id || (resp.channel_id ? parseThreadChannelId(resp.channel_id)?.shortId : undefined)
+  const channelId = resp.channel_id || (shortId ? buildThreadChannelId(groupNo, shortId) : undefined)
+  return {
+    ...resp,
+    group_no: resp.group_no || groupNo,
+    short_id: shortId,
+    channel_id: channelId,
+  }
+}
+
+function emitThreadCreated(groupNo: string, thread: ThreadCreateResult) {
+  const shortId = thread.short_id
+  const threadChannelId = thread.channel_id || (shortId ? buildThreadChannelId(groupNo, shortId) : undefined)
+  if (!threadChannelId) return
+
+  WKApp.mittBus.emit("wk:thread-created", {
+    groupNo,
+    shortId,
+    threadChannelId,
+    thread: thread as Thread,
+  })
 }
 
 export default ThreadService

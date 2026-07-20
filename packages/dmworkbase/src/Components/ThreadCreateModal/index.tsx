@@ -1,8 +1,9 @@
 import React, { Component } from "react"
 import { I18nContext, t } from "../../i18n"
-import { THREAD_NAME_MAX_LENGTH } from "../../Service/nameLimits"
 import ThreadService from "../../Service/ThreadService"
 import ThreadCreateDialog, { ThreadCreateLabels } from "../../ui/ThreadCreateDialog"
+
+const THREAD_CREATE_MODAL_NAME_MAX_LENGTH = 50
 
 export interface ThreadCreateModalProps {
   visible: boolean
@@ -50,11 +51,19 @@ export default class ThreadCreateModal extends Component<
     try {
       const result = await ThreadService.createThreadByName(groupNo, name, sourceMessageId)
       this.setState({ loading: false })
-      onSuccess?.(result.short_id)
+      if (result.short_id) {
+        onSuccess?.(result.short_id)
+      }
       onClose()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("base.module.createThread.failed")
       this.setState({ loading: false, error: msg })
+    }
+  }
+
+  private handleNameChange = () => {
+    if (this.state.error) {
+      this.setState({ error: null })
     }
   }
 
@@ -74,13 +83,14 @@ export default class ThreadCreateModal extends Component<
         visible={visible}
         title={t("base.module.createThread.title")}
         placeholder={t("base.threadCreateModal.topicPlaceholder")}
-        maxLength={THREAD_NAME_MAX_LENGTH}
+        maxLength={THREAD_CREATE_MODAL_NAME_MAX_LENGTH}
         loading={loading}
         error={error}
         labels={labels}
         showVoiceInput
         onSubmit={this.handleSubmit}
         onCancel={onClose}
+        onChange={this.handleNameChange}
       />
     )
   }

@@ -48,6 +48,12 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
     }
   }
 
+  handleNameChange = () => {
+    if (this.state.error) {
+      this.setState({ error: null })
+    }
+  }
+
   render() {
     const { onCancel } = this.props
     const { loading, error } = this.state
@@ -79,6 +85,7 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
             labels={labels}
             onSubmit={this.handleSubmit}
             onCancel={onCancel}
+            onChange={this.handleNameChange}
           />
         </div>
       </div>
