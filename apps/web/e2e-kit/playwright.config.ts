@@ -78,5 +78,9 @@ export default defineConfig({
     url: "http://localhost:3000",
     reuseExistingServer: true,
     timeout: 180_000,
+    env: {
+      // local 模式启动 MSW; test 模式走真后端不启动
+      VITE_E2E_MOCK: TARGET === "local" ? "1" : "0",
+    },
   },
 });

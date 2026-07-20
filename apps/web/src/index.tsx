@@ -80,17 +80,32 @@ WKApp.shared.registerModule(new DocsModule()); // Docs module
 WKApp.shared.registerModule(new LoopModule()); // Loop 面板（Issue/Skill/Project/Agent/Squad/Runtime）
 WKApp.shared.registerModule(new PersonalModule()); // 我的（Runtimes/Skills）
 
-WKApp.shared.startup() // app启动
+// e2e mock: 仅在 VITE_E2E_MOCK=1 时启动 MSW Service Worker.
+// dev / prod 完全走 tree-shake 分支, 无副作用. 必须在 startup() 之前 await,
+// 否则第一发 fetch (common/appconfig) 会漏 mock.
+async function enableMocksIfE2E(): Promise<void> {
+  if (import.meta.env.VITE_E2E_MOCK !== "1") return;
+  const { worker } = await import("./mocks/browser");
+  await worker.start({ onUnhandledRequest: "bypass" });
+  (window as unknown as { __MSW_READY__: boolean }).__MSW_READY__ = true;
+}
+
+async function main(): Promise<void> {
+  await enableMocksIfE2E();
+  WKApp.shared.startup(); // app启动
+
+  const container = document.getElementById("root")!;
+  const root = createRoot(container);
+  root.render(
+    <React.StrictMode>
+      <I18nProvider>
+        <App />
+      </I18nProvider>
+    </React.StrictMode>
+  );
+  reportWebVitals();
+}
 
 // Initialize Electron notification bridge if running in Electron
 
-const container = document.getElementById('root')!
-const root = createRoot(container)
-root.render(
-  <React.StrictMode>
-    <I18nProvider>
-      <App />
-    </I18nProvider>
-  </React.StrictMode>
-);
-reportWebVitals();
+void main();

@@ -81,6 +81,14 @@ export const test = base.extend<Fixtures>({
       );
 
       await page.goto(`/?sid=${E2E_SID}`);
+
+      // MSW 启动就绪信号 (仅在 VITE_E2E_MOCK=1 场景, index.tsx 会设 __MSW_READY__).
+      // 有 SW 拦截才继续 goto 具体 case 页面; 避免竞态.
+      await page.waitForFunction(
+        () => (globalThis as unknown as { __MSW_READY__?: boolean }).__MSW_READY__ === true,
+        undefined,
+        { timeout: 15_000 }
+      );
     } else {
       await page.goto("/");
     }
