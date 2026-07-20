@@ -96,4 +96,28 @@ describe("UserService", () => {
       vercode: "",
     })
   })
+
+  it("updateCurrentUser calls user/current with the payload", async () => {
+    apiPut.mockResolvedValueOnce({ ok: true })
+
+    await expect(UserService.updateCurrentUser({ name: "Alice" })).resolves.toEqual({ ok: true })
+    expect(apiPut).toHaveBeenCalledWith("user/current", { name: "Alice" })
+  })
+
+  it("uploadUserAvatar posts multipart form data to users/:uid/avatar", async () => {
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" })
+    apiPost.mockResolvedValueOnce({ ok: true })
+
+    await expect(UserService.uploadUserAvatar("u1", file)).resolves.toEqual({ ok: true })
+
+    expect(apiPost).toHaveBeenCalledTimes(1)
+    const [path, body, config] = apiPost.mock.calls[0]
+    expect(path).toBe("users/u1/avatar")
+    expect(body).toBeInstanceOf(FormData)
+    expect((body as FormData).get("file")).toBe(file)
+    expect(config).toEqual({
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60_000,
+    })
+  })
 })
