@@ -88,28 +88,24 @@ describe('SummaryCreatePage templates', () => {
         vi.clearAllMocks();
     });
 
-    it('renders the four fallback template cards when topic is empty', async () => {
+    it('renders all builtin template cards when topic is empty', async () => {
         await act(async () => {
             render(<SummaryCreatePage />);
             await flushPromises();
         });
 
-        expect(screen.getByText('试试总结')).toBeInTheDocument();
+        expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
+        // v2: all builtin templates render directly (no "more templates" modal)
         expect(screen.getByText('汇总项目进展')).toBeInTheDocument();
         expect(screen.getByText('跟踪任务进度')).toBeInTheDocument();
         expect(screen.getByText('总结团队周报')).toBeInTheDocument();
         expect(screen.getByText('总结聊天内容')).toBeInTheDocument();
-        expect(screen.getByText('更多模板')).toBeInTheDocument();
-        expect(screen.queryByText('生成个人工作周报')).not.toBeInTheDocument();
-
-        await act(async () => {
-            fireEvent.click(screen.getByText('更多模板'));
-        });
-
         expect(screen.getByText('生成个人工作周报')).toBeInTheDocument();
         expect(screen.getByText('OKR 进展对齐')).toBeInTheDocument();
         expect(screen.getByText('提取待办事项')).toBeInTheDocument();
         expect(screen.getByText('归类用户反馈')).toBeInTheDocument();
+        // "更多模板" modal button no longer exists
+        expect(screen.queryByText('更多模板')).not.toBeInTheDocument();
     });
 
     it('hides templates once the topic has content', async () => {
@@ -123,7 +119,7 @@ describe('SummaryCreatePage templates', () => {
             fireEvent.change(textarea, { target: { value: '总结本周进展' } });
         });
 
-        expect(screen.queryByText('试试总结')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
         expect(screen.queryByText('汇总项目进展')).not.toBeInTheDocument();
     });
 
@@ -140,7 +136,7 @@ describe('SummaryCreatePage templates', () => {
         const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
         expect(textarea.value).toBe('总结主题: 总结团队周报\n内容重点: 总结团队成员每周工作，按成员、重点进展、成果产出、风险问题、下周计划整理');
         // templates hidden after selection
-        expect(screen.queryByText('试试总结')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
     });
 
     it('fills the topic frame from a project progress template', async () => {
