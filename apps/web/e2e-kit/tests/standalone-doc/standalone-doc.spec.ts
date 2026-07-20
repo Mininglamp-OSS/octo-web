@@ -22,7 +22,9 @@ test.beforeEach(async ({ page }) => {
 })
 
 const SID = 'S_e2e'
-const USER_TOKEN = 'tok-user-e2e'
+// Placeholder value used only for e2e mocking — never a real credential.
+// Renamed from a `tok-*` prefix to avoid gitleaks false positive.
+const USER_TOKEN = 'MOCK_USER_TOKEN_PLACEHOLDER_e2e_only'
 
 /** Silence unrelated boot traffic and default every backend call to an innocuous 200 {}. */
 async function stubBackend(page: Page): Promise<void> {

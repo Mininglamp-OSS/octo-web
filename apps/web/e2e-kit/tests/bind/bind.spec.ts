@@ -2,7 +2,9 @@ import { test, expect } from '@playwright/test'
 import { installMswScenario } from '../../_lib/mswScenario'
 import { mockBindServer, gotoBindPage } from './fixtures/mockBindServer'
 
-const TOKEN = 'tok-secret-do-not-leak-xyz789'
+// Placeholder value used only for e2e mocking — never a real credential.
+// Renamed from a `tok-*` prefix to avoid gitleaks false positive.
+const TOKEN = 'MOCK_TOKEN_PLACEHOLDER_e2e_only'
 
 // 关闭 WKRemoteConfig 网络抖动: 这些请求与 bind 流程无关, 真实跑会被 vite proxy
 // 502 干扰日志. 让它们落空, 测试更稳.
