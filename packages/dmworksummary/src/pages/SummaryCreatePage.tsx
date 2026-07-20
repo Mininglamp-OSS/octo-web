@@ -158,9 +158,20 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         // 从详情页「继续优化」打开时:自动切 agent 模式 + 预填引用。
         // 见 CHAT-REFERENCE-BASED-DESIGN-v1 决策 1B(详情页显眼按钮入口)。
         if (this.props.derivedFromTask) {
+            // #907 review (Jerry-Xin) P1 cross-session contamination:
+            // 走「继续优化」= 用户明确要针对当前 task 开新一轮 · 复用工作台
+            // 上一次残留的 session_id 语义完全不匹配(旧 chat 讨论的是别的
+            // 总结 · 现在换了 reference)。如果只 overwrite referenced 不清
+            // session · refresh-before-send 会 restore「旧 session_id + 新
+            // reference」的错配组合 · loadAgentHistory 灌回旧 messages ·
+            // 保存时血统被污染。所以进入时先原子清一遍 session · 再 write
+            // 新 reference · 保证 storage 里的两条永远一致。
+            clearAgentChatSession(this.agentChannelId());
             this.setState({
                 mode: 'agent',
                 referencedTask: this.props.derivedFromTask,
+                sessionId: '',
+                messages: [],
             });
             // 与 session_id 同生命周期持久化引用总结，避免 refresh/重进后
             // referencedTask 只活在 React state 里而丢失 → 保存时 400。
