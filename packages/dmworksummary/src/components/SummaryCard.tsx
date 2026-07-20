@@ -1,22 +1,23 @@
 import React from "react";
 import { Button, Popconfirm, Tag } from "@douyinfe/semi-ui";
 import { IconDelete, IconExit } from "@douyinfe/semi-icons";
+import { CalendarDays, UserRound } from "lucide-react";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
 import { ParticipantStatus, TriggerType } from "../types/summary";
 import TaskStatusBadge from "./TaskStatusBadge";
-import OverflowTooltip from "./OverflowTooltip";
 
 interface SummaryCardProps {
     task: SummaryListItem;
+    active?: boolean;
     onClick: (taskId: number) => void;
     onDelete: (taskId: number) => void;
     onRespond?: (taskId: number, action: "accept" | "reject") => void;
     onLeave?: (taskId: number) => void;
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRespond, onLeave }) => {
+const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave }) => {
     const { t } = useI18n();
     const currentUid = WKApp.loginInfo.uid;
     const myParticipant = task.participants?.find((p) => p.user_id === currentUid);
@@ -39,12 +40,15 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
     const isAgentGenerated = task.trigger_type === TriggerType.AGENT;
 
     return (
-        <div className="summary-card" onClick={() => onClick(task.task_id)}>
+        <div
+            className={`summary-card${active ? " summary-card--active" : ""}`}
+            onClick={() => onClick(task.task_id)}
+        >
             {task.needs_attention && <span className="summary-card-attention-dot" aria-label={t("summary.list.needsAttention")} />}
             <div className="summary-card-header">
-                <OverflowTooltip className="summary-card-title" title={task.title || task.task_no}>
+                <div className="summary-card-title" title={task.title || task.task_no}>
                     {task.title || task.task_no}
-                </OverflowTooltip>
+                </div>
                 <div className="summary-card-header-badges">
                     {isAgentGenerated && (
                         <Tag size="small" color="violet">
@@ -78,49 +82,59 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
             )}
             <div className="summary-card-footer">
                 <span className="summary-card-created">
-                    {t("summary.summaryCard.createdBy", { values: { name: task.creator_name || t("summary.common.unknown") } })}
+                    <UserRound size={13} className="summary-card-footer-icon" />
+                    <span className="summary-card-created-text">
+                        {t("summary.summaryCard.createdBy", { values: { name: task.creator_name || t("summary.common.unknown") } })}
+                    </span>
                 </span>
-                <span className="summary-card-date">{task.created_at?.substring(0, 10) || ''}</span>
+                <span className="summary-card-date">
+                    <CalendarDays size={13} className="summary-card-footer-icon" />
+                    {task.created_at?.substring(0, 10) || ''}
+                </span>
                 {isCreator ? (
-                    <Popconfirm
-                        title={t("summary.summaryCard.deleteTitle")}
-                        content={
-                            isScheduledTask
-                                ? t("summary.summaryCard.deleteScheduledContent", { values: { title: task.title || task.task_no } })
-                                : t("summary.summaryCard.deleteContent", { values: { title: task.title || task.task_no } })
-                        }
-                        onConfirm={(e) => {
-                            e?.stopPropagation();
-                            onDelete(task.task_id);
-                        }}
-                        onCancel={(e) => e?.stopPropagation()}
-                    >
-                        <Button
-                            theme="borderless"
-                            type="danger"
-                            size="small"
-                            icon={<IconDelete />}
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                    </Popconfirm>
+                    <span className="summary-card-action">
+                        <Popconfirm
+                            title={t("summary.summaryCard.deleteTitle")}
+                            content={
+                                isScheduledTask
+                                    ? t("summary.summaryCard.deleteScheduledContent", { values: { title: task.title || task.task_no } })
+                                    : t("summary.summaryCard.deleteContent", { values: { title: task.title || task.task_no } })
+                            }
+                            onConfirm={(e) => {
+                                e?.stopPropagation();
+                                onDelete(task.task_id);
+                            }}
+                            onCancel={(e) => e?.stopPropagation()}
+                        >
+                            <Button
+                                theme="borderless"
+                                type="danger"
+                                size="small"
+                                icon={<IconDelete />}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </Popconfirm>
+                    </span>
                 ) : isParticipant && onLeave ? (
-                    <Popconfirm
-                        title={t("summary.summaryCard.leaveTitle")}
-                        content={t("summary.summaryCard.leaveContent", { values: { title: task.title || task.task_no } })}
-                        onConfirm={(e) => {
-                            e?.stopPropagation();
-                            onLeave(task.task_id);
-                        }}
-                        onCancel={(e) => e?.stopPropagation()}
-                    >
-                        <Button
-                            theme="borderless"
-                            type="danger"
-                            size="small"
-                            icon={<IconExit />}
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                    </Popconfirm>
+                    <span className="summary-card-action">
+                        <Popconfirm
+                            title={t("summary.summaryCard.leaveTitle")}
+                            content={t("summary.summaryCard.leaveContent", { values: { title: task.title || task.task_no } })}
+                            onConfirm={(e) => {
+                                e?.stopPropagation();
+                                onLeave(task.task_id);
+                            }}
+                            onCancel={(e) => e?.stopPropagation()}
+                        >
+                            <Button
+                                theme="borderless"
+                                type="danger"
+                                size="small"
+                                icon={<IconExit />}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </Popconfirm>
+                    </span>
                 ) : null}
             </div>
         </div>

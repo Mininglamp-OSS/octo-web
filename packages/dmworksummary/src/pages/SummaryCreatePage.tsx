@@ -68,7 +68,6 @@ interface SummaryCreatePageState {
     showChatSelector: boolean;
     showMemberSelector: boolean;
     showScheduleConfig: boolean;
-    showMoreTemplates: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
     savingSummary: boolean;
@@ -123,7 +122,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         showChatSelector: false,
         showMemberSelector: false,
         showScheduleConfig: false,
-        showMoreTemplates: false,
         submitting: false,
         agentSubmitting: false,
         savingSummary: false,
@@ -331,10 +329,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         } finally {
             this.setState({ savingTemplate: false });
         }
-    };
-
-    private handleMoreTemplateClick = (template: TopicTemplate) => {
-        this.setState({ showMoreTemplates: false }, () => this.handleTemplateClick(template));
     };
 
     private handleTemplateClick = (template: TopicTemplate) => {
@@ -805,7 +799,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             mode,
             templates,
             selectedChats, selectedMembers, scheduleConfig,
-            showChatSelector, showMemberSelector, showScheduleConfig, showMoreTemplates,
+            showChatSelector, showMemberSelector, showScheduleConfig,
             submitting, agentSubmitting, error, editingTemplate, creatingCustomTemplate,
             editingTemplateLabel, editingTemplateDescription, savingTemplate,
             messages,
@@ -814,8 +808,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         // 模板在 render() 用当前 locale 解析，切语言即时刷新（不在 state 烘焙）。
         const resolvedTemplates = templates.map((tpl) => resolveTemplate(tpl, translate));
         const builtinTemplates = resolvedTemplates.filter((tpl) => !tpl.is_custom);
-        const primaryBuiltinTemplates = builtinTemplates.slice(0, 4);
-        const moreBuiltinTemplates = builtinTemplates.slice(4);
         const customTemplates = resolvedTemplates.filter((tpl) => tpl.is_custom);
         const canCreateCustomTemplate = customTemplates.length < customTemplateLimit;
         const isCustomEditor = creatingCustomTemplate || !!editingTemplate?.is_custom;
@@ -825,7 +817,16 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             <div className="summary-workbench">
                 {/* Header */}
                 <div className="summary-workbench-header">
-                    <div className="summary-workbench-icon">🤖</div>
+                    <div className="summary-workbench-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 8V4H8" />
+                            <rect width="16" height="12" x="4" y="8" rx="2" />
+                            <path d="M2 14h2" />
+                            <path d="M20 14h2" />
+                            <path d="M15 13v2" />
+                            <path d="M9 13v2" />
+                        </svg>
+                    </div>
                     <div>
                         <div className="summary-workbench-title">{translate("summary.create.title")}</div>
                         <div className="summary-workbench-desc">
@@ -915,7 +916,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             placeholder={mode === 'agent'
                                 ? translate("summary.create.agentTopicPlaceholder")
                                 : translate("summary.create.topicPlaceholder")}
-                            rows={1}
+                            rows={3}
                             maxLength={1000}
                         />
                         <VoiceInputButton
@@ -926,6 +927,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             size="sm"
                             className="wk-vib--textarea-corner"
                         />
+                    </div>
+                    <div className="summary-workbench-char-count">
+                        {topic.length}/1000
                     </div>
                     {topic.length >= 1000 && (
                         <div style={{ color: "var(--semi-color-warning)", fontSize: 12, marginTop: 4, padding: "0 16px 8px" }}>
@@ -952,18 +956,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         <>
                             <div className="summary-template-section-header summary-workbench-templates-heading">
                                 <div className="summary-workbench-templates-label">{translate("summary.create.templatesTitle")}</div>
-                                {moreBuiltinTemplates.length > 0 && (
-                                    <button
-                                        type="button"
-                                        className="summary-template-more-button"
-                                        onClick={() => this.setState({ showMoreTemplates: true })}
-                                    >
-                                        {translate("summary.templates.custom.moreTemplates")}
-                                    </button>
-                                )}
                             </div>
                             <div className="summary-workbench-templates">
-                                {primaryBuiltinTemplates.map((tpl) => (
+                                {builtinTemplates.map((tpl) => (
                                     <TemplateCard
                                         key={tpl.id}
                                         template={tpl}
@@ -1185,26 +1180,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     onCancel={() => this.setState({ showScheduleConfig: false })}
                     showGenerationInstruction={false}
                 />
-                <Modal
-                    visible={showMoreTemplates}
-                    title={translate("summary.templates.custom.moreTemplatesTitle")}
-                    onCancel={() => this.setState({ showMoreTemplates: false })}
-                    footer={null}
-                    width={720}
-                    className="summary-more-template-modal"
-                >
-                    <div className="summary-more-template-grid">
-                        {moreBuiltinTemplates.map((tpl) => (
-                            <TemplateCard
-                                key={tpl.id}
-                                template={tpl}
-                                onClick={this.handleMoreTemplateClick}
-                                onEdit={this.handleTemplateEdit}
-                                editLabel={translate("summary.templates.custom.edit")}
-                            />
-                        ))}
-                    </div>
-                </Modal>
                 <Modal
                     visible={templateEditorVisible}
                     title={translate(creatingCustomTemplate
