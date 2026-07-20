@@ -26,7 +26,12 @@
 }
 
 .wk-main-sider-meinfo .wk-modal-body {
-    height: 500px;
+    height: calc(
+        var(--wk-sp-10) + var(--wk-sp-3) +
+        var(--wk-sp-12) + var(--wk-sp-12) + var(--wk-sp-12) + var(--wk-sp-12) + var(--wk-sp-12) +
+        var(--wk-sp-10) + var(--wk-sp-6)
+    );
+    max-height: calc(100vh - var(--wk-sp-12));
 }
 
 /* ========== Empty State: 全息投影 ========== */

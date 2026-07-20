@@ -1,16 +1,5 @@
-import React from "react";
-import QRCodeMy from "../QRCodeMy";
 import WKApp from "../../App";
-import RouteContext, { FinishButtonContext, RouteContextConfig } from "../../Service/Context";
 import { ProviderListener } from "../../Service/Provider";
-import { Row, Section } from "../../Service/Section";
-import { InputEdit } from "../InputEdit";
-import { ListItem, ListItemIcon } from "../ListItem";
-import { Sex, SexSelect } from "../SexSelect";
-import { ListItemAvatar } from "../ListItemAvatar";
-import WKAvatar from "../WKAvatar";
-import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
-import axios from "axios";
 import { Toast } from "@douyinfe/semi-ui";
 import WKSDK, { Channel } from "wukongimjssdk";
 import { ChannelInfoListener } from "wukongimjssdk";
@@ -18,12 +7,12 @@ import { ChannelInfo, ChannelTypePerson } from "wukongimjssdk";
 import { Convert } from "../../Service/Convert";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { resolveRealnameVerifyUrl } from "./realnameVerifyUrl";
-import ExperimentalFeatures from "../ExperimentalFeatures";
 import { t } from "../../i18n";
+import UserService from "../../Service/UserService";
 
 /**
  * 「实验性功能」入口在 MeInfo 默认隐藏 —— 通过连击「OCTO 号」行 5 次解锁
- * （类似 Android 开发者模式）。解锁后写 localStorage flag，sections() 重新
+ * （类似 Android 开发者模式）。解锁后写 localStorage flag，主面板重新
  * 渲染时读 flag 决定是否挂入口。
  *
  * - LAB_MODE_TAP_TARGET：触发解锁需要的连击次数。
@@ -155,7 +144,7 @@ export class MeInfoVM extends ProviderListener {
         const uid = WKApp.loginInfo.uid
         if (!uid) return
         try {
-            const res = await WKApp.apiClient.get<any>(`users/${uid}`)
+            const res = await UserService.getUserProfile(uid)
             const channelInfo = Convert.userToChannelInfo(res)
             this.selfChannelInfo = channelInfo
             this.syncRealnameFromOrgData(channelInfo.orgData)
@@ -275,71 +264,90 @@ export class MeInfoVM extends ProviderListener {
         opened.location.href = verifyUrl
     }
 
-    uploadAvatar(file: File) {
-        const param = new FormData();
-        param.append("file", file);
-        return axios.post(`users/${WKApp.loginInfo.uid}/avatar`, param, {
-            headers: { "Content-Type": "multipart/form-data", "token": WKApp.loginInfo.token || "" },
-        })
+    uid(): string {
+        return WKApp.loginInfo.uid || ""
     }
 
-    updateMyInfo(field: string, value: string) {
-        let param: any = {}
-        param[field] = value
-        return WKApp.apiClient.put("user/current", param).catch((err) => {
-            Toast.error(err.msg)
-        })
+    currentUserChannel(uid = this.uid()): Channel {
+        return new Channel(uid, ChannelTypePerson)
     }
 
-    inputEditPush(context: RouteContext<any>, defaultValue: string, onFinish: (value: string) => Promise<void>, placeholder?: string,maxCount?:number) {
-        let value: string
-        let finishButtonContext: FinishButtonContext
-        context.push(<InputEdit maxCount={maxCount} defaultValue={defaultValue} placeholder={placeholder} onChange={(v) => {
-            value = v
-            if (!value || value === "") {
-                finishButtonContext.disable(true)
-            } else {
-                finishButtonContext.disable(false)
-            }
-        }}></InputEdit>, new RouteContextConfig({
-            showFinishButton: true,
-            onFinishContext: (finishBtnContext) => {
-                finishButtonContext = finishBtnContext
-                finishBtnContext.disable(true)
-            },
-            onFinish: async () => {
-                finishButtonContext.loading(true)
-                await onFinish(value)
-                finishButtonContext.loading(false)
-
-                context.pop()
-            }
-        }))
+    appName(): string {
+        return WKApp.config.appName
     }
 
-    /**
-     * 「名字」行的 subTitle — 已认证时展示 「real_name ✓ 已实名」，
-     * 未认证时退化为普通昵称字符串。
-     * 已实名时的 displayName 走 `loginInfo.selfDisplayName()`，和
-     * 气泡 / QRCode / 好友申请文案同一处结算，规则改动全局一致。
-     */
-    private nameRowSubTitle(): React.ReactNode {
-        if (WKApp.loginInfo.realnameVerified !== true) {
-            return WKApp.loginInfo.name || ""
+    name(): string {
+        return WKApp.loginInfo.name || ""
+    }
+
+    selfDisplayName(): string {
+        if (WKApp.loginInfo.realnameVerified === true) {
+            return WKApp.loginInfo.selfDisplayName()
         }
-        return (
-            <span style={{ display: "inline-flex", alignItems: "center" }}>
-                {WKApp.loginInfo.selfDisplayName()}
-                <RealnameVerifiedBadge />
-            </span>
-        )
+        return WKApp.loginInfo.name || ""
+    }
+
+    shortNo(): string {
+        return WKApp.loginInfo.shortNo || ""
+    }
+
+    sex(): number {
+        const sex = Number(WKApp.loginInfo.sex)
+        return sex === 1 || sex === 2 ? sex : 0
+    }
+
+    sexLabel(): string {
+        const sex = this.sex()
+        if (sex === 1) {
+            return t("base.me.male")
+        }
+        if (sex === 2) {
+            return t("base.me.female")
+        }
+        return t("base.common.notSet")
+    }
+
+    isRealnameVerified(): boolean {
+        return WKApp.loginInfo.realnameVerified === true
+    }
+
+    uploadAvatar(file: File, uid = this.uid()) {
+        return UserService.uploadUserAvatar(uid, file)
+    }
+
+    markAvatarChanged(uid = this.uid()) {
+        if (!uid) return
+        const channel = this.currentUserChannel(uid)
+        WKApp.shared.changeChannelAvatarTag(channel)
+        WKApp.shared.myUserAvatarChange()
+    }
+
+    updateMyInfo(field: string, value: string | number) {
+        return UserService.updateCurrentUser({ [field]: value }).catch((err) => {
+            Toast.error(err?.msg || t("base.me.updateFailed"))
+            throw err
+        })
+    }
+
+    async updateName(value: string) {
+        await this.updateMyInfo("name", value)
+        WKApp.loginInfo.name = value
+        WKApp.loginInfo.save()
+        this.notifyListener()
+    }
+
+    async updateSex(sex: number) {
+        await this.updateMyInfo("sex", sex.toString())
+        WKApp.loginInfo.sex = sex
+        WKApp.loginInfo.save()
+        this.notifyListener()
     }
 
     /**
      * 格式化「已认证 · 2025-03」展示文本。
      * verified_at 字段后端若缺失，只展示「已认证」不拼年月，避免显示 NaN。
      */
-    private formatVerifiedAtLabel(): string {
+    formatVerifiedAtLabel(): string {
         const ts = WKApp.loginInfo.realnameVerifiedAt
         if (!ts || typeof ts !== "number" || ts <= 0) {
             return t("base.me.realname.verified")
@@ -357,148 +365,6 @@ export class MeInfoVM extends ProviderListener {
         })
     }
 
-    sections(context: RouteContext<any>) {
-
-        let sections = new Array<Section>()
-        sections.push(new Section({
-            rows: [
-                new Row({
-                    cell: ListItemAvatar,
-                    properties: {
-                        title: t("base.me.avatar"),
-                        context: context,
-                        avatar: <WKAvatar
-                            channel={new Channel(WKApp.loginInfo.uid || "", ChannelTypePerson)}
-                            style={{ "width": "24px", "height": "24px", "borderRadius": "50%" }}
-                        />,
-                        onFileUpload: async (f: File) => {
-                            await this.uploadAvatar(f)
-                            WKApp.shared.changeChannelAvatarTag(new Channel(WKApp.loginInfo.uid||"", ChannelTypePerson))
-                        }
-                    }
-                }),
-                new Row({
-                    cell: ListItem,
-                    properties: {
-                        title: t("base.me.name"),
-                        subTitle: this.nameRowSubTitle(),
-                        onClick: () => {
-                            this.inputEditPush(context, WKApp.loginInfo.name || "", async (value) => {
-                                if (value.trim() === "") {
-                                    Toast.error(t("base.me.nameRequired"))
-                                    return
-                                }
-                                return this.updateMyInfo("name",value).then(()=>{
-                                    WKApp.loginInfo.name = value
-                                    WKApp.loginInfo.save()
-                                })
-                            }, t("base.me.setName"),20)
-                        }
-                    }
-                }),
-                new Row({
-                    cell: ListItem,
-                    properties: {
-                        title: t("base.me.shortNo", {
-                            values: { appName: WKApp.config.appName },
-                        }),
-                        subTitle: WKApp.loginInfo.shortNo,
-                        onClick: () => {
-                            this.handleShortNoTap()
-                        }
-                    }
-                }),
-                new Row({
-                    cell: ListItemIcon,
-                    properties: {
-                        title: t("base.me.qrCode"),
-                        icon: <img style={{ "width": "24px", "height": "24px" }} src={require("./../../assets/icon_qrcode.png")}></img>,
-                        onClick: () => {
-                            context.push(<QRCodeMy disableHeader={true}></QRCodeMy>)
-                        }
-                    }
-                })
-            ]
-        }))
-
-        let sex = WKApp.loginInfo.sex === 0 ? Sex.Female : Sex.Male
-        let sexStr = t("base.me.male")
-        if (sex === Sex.Female) {
-            sexStr = t("base.me.female")
-        }
-
-        sections.push(new Section({
-            rows: [
-                new Row({
-                    cell: ListItem,
-                    properties: {
-                        title: t("base.me.gender"),
-                        subTitle: sexStr,
-                        onClick: () => {
-                            context.push(<SexSelect sex={sex} onSelect={ async (sex) => {
-                                this.updateMyInfo("sex",sex.toString())
-                                context.pop()
-                                WKApp.loginInfo.sex = sex
-                                WKApp.loginInfo.save()
-                            }}></SexSelect>)
-                        }
-                    }
-                }),
-            ]
-        }))
-
-        // 账号安全 · 实名认证。
-        // Phase 2a：未认证点击直跳 IdP 账户页。
-        const verified = !!WKApp.loginInfo.realnameVerified
-        sections.push(new Section({
-            title: t("base.me.accountSecurity"),
-            rows: [
-                new Row({
-                    cell: ListItem,
-                    properties: {
-                        title: t("base.me.realname.title"),
-                        subTitle: verified
-                            ? this.formatVerifiedAtLabel()
-                            : t("base.me.realname.verifyNow"),
-                        onClick: () => {
-                            if (verified) return
-                            this.startRealnameVerify()
-                        }
-                    }
-                })
-            ]
-        }))
-
-        // 「我的分身」入口在 v1.x 收进「实验性功能」子页面（YUJ-1797 / GH octo-web#98）。
-        // MeInfo 默认不再直接挂入口；用户连击「OCTO 号」行 5 次解锁后写入
-        // localStorage flag，此处读 flag 决定是否挂入。子页面 ExperimentalFeatures
-        // 内部仍以 routeContext 透传方式 push PersonaSettings，与 YUJ-1435 的
-        // 「共享一根 back arrow」约束保持一致。
-        //
-        // 读 flag 失败（譬如禁用 localStorage 的隐私模式）按未解锁处理，不弹错误。
-        if (this.isLabModeEnabled()) {
-            sections.push(new Section({
-                rows: [
-                    new Row({
-                    cell: ListItem,
-                    properties: {
-                            title: t("base.me.experimentalFeatures"),
-                            subTitle: "",
-                            onClick: () => {
-                                context.push(
-                                    <ExperimentalFeatures routeContext={context} />,
-                                    new RouteContextConfig({ title: t("base.me.experimentalFeatures") }),
-                                )
-                            }
-                        }
-                    })
-                ]
-            }))
-        }
-
-        return sections
-    }
-
     /**
      * 「OCTO 号」行连击解锁实验性功能 —— 类似 Android 开发者模式。
      *
@@ -506,7 +372,7 @@ export class MeInfoVM extends ProviderListener {
      *   - 与上次点击间隔 < LAB_MODE_TAP_WINDOW_MS → 计数 +1（连击保持）。
      *   - 否则重置为 1（新一轮连击的第一下）。
      *   - 达到 LAB_MODE_TAP_TARGET → 写 localStorage flag、Toast 成功、
-     *     调 notifyListener 触发 sections 重渲染，把入口挂出来；同时清零计数
+     *     调 notifyListener 触发主面板重渲染，把入口挂出来；同时清零计数
      *     避免再连击重复触发 Toast。
      *
      * 已解锁时直接 no-op：不重弹 Toast，避免反复点击噪音；用户若想关闭实验性
@@ -515,7 +381,7 @@ export class MeInfoVM extends ProviderListener {
      * localStorage 写入失败（隐私模式 / 配额满）静默吞掉 —— 用户最多体验到
      * 「点 5 下没反应」，不阻塞主页面其它交互。
      */
-    private handleShortNoTap() {
+    handleShortNoTap() {
         if (this.isLabModeEnabled()) {
             return
         }
@@ -543,7 +409,7 @@ export class MeInfoVM extends ProviderListener {
     /**
      * 读 localStorage 的 lab_mode flag。读失败（譬如沙箱）一律按未解锁处理。
      */
-    private isLabModeEnabled(): boolean {
+    isLabModeEnabled(): boolean {
         try {
             return window.localStorage.getItem(LAB_MODE_STORAGE_KEY) === "1"
         } catch {
