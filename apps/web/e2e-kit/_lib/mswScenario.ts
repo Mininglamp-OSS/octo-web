@@ -28,13 +28,28 @@ export type LoopScenario =
   | "create-ws"
   | "one-ws"
   | "one-issue"
-  | "two-ws";
+  | "two-ws"
+  | "no-mock";
 
 export async function installMswScenario(
   page: Page,
   scenario: LoopScenario
 ): Promise<void> {
-  // 塞在 addInitScript, 让下一次 goto 时就已生效 (nav 前设置)
+  // no-mock: 阻止 SW 加载 (让 page.route 生效, 因为 SW 一旦 register 会抢
+  // 所有 fetch, page.route 只能拦不经过 SW 的原生 fetch).
+  //   1. context.route 拦 mockServiceWorker.js, 返 404, index.tsx 里
+  //      worker.start() 会抛异常, MSW 未 register
+  //   2. index.tsx 里 catch 掉异常 (下面 patch), 或者接受错误让 app 继续.
+  //      本 kit 目前 __MSW_READY__ 只在成功时 set true, 迁移进来的 spec
+  //      不用 wait 它, 所以不会卡死.
+  //
+  // 塞 addInitScript 让下一次 goto 时就已生效 (nav 前设置)
+  if (scenario === "no-mock") {
+    await page.context().route("**/mockServiceWorker.js", (route) =>
+      route.fulfill({ status: 404, body: "" })
+    );
+  }
+
   await page.addInitScript(
     ({ name }) => {
       try {
@@ -47,13 +62,18 @@ export async function installMswScenario(
     },
     { name: scenario }
   );
-  // 若当前页已加载 (fixture 已 goto '/'), 同步设置一份, 让后续 fetch 也走新 scenario
-  await page.evaluate((name) => {
-    try {
-      sessionStorage.setItem("__e2e_scenario", name);
-      sessionStorage.removeItem("__e2e_c2_created");
-    } catch {
-      /* noop */
-    }
-  }, scenario);
+  // 若当前页已加载 (fixture 已 goto '/'), 同步设置一份, 让后续 fetch 也走新 scenario.
+  // 未加载 (about:blank / bind spec 未 goto) 的情况直接跳过, addInitScript 已足够.
+  try {
+    await page.evaluate((name) => {
+      try {
+        sessionStorage.setItem("__e2e_scenario", name);
+        sessionStorage.removeItem("__e2e_c2_created");
+      } catch {
+        /* noop */
+      }
+    }, scenario);
+  } catch {
+    /* page 未 loaded, 忽略 */
+  }
 }

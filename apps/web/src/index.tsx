@@ -87,15 +87,21 @@ WKApp.shared.registerModule(new PersonalModule()); // 我的（Runtimes/Skills�
 // 动态覆盖 handler 支持有状态场景 (page.route 拦不到 MSW SW 层).
 async function enableMocksIfE2E(): Promise<void> {
   if (import.meta.env.VITE_E2E_MOCK !== "1") return;
-  const { worker } = await import("./mocks/browser");
-  const msw = await import("msw");
-  await worker.start({ onUnhandledRequest: "bypass" });
-  const w = window as unknown as {
-    __MSW_READY__: boolean;
-    __msw?: { worker: typeof worker; http: typeof msw.http; HttpResponse: typeof msw.HttpResponse };
-  };
-  w.__msw = { worker, http: msw.http, HttpResponse: msw.HttpResponse };
-  w.__MSW_READY__ = true;
+  try {
+    const { worker } = await import("./mocks/browser");
+    const msw = await import("msw");
+    await worker.start({ onUnhandledRequest: "bypass" });
+    const w = window as unknown as {
+      __MSW_READY__: boolean;
+      __msw?: { worker: typeof worker; http: typeof msw.http; HttpResponse: typeof msw.HttpResponse };
+    };
+    w.__msw = { worker, http: msw.http, HttpResponse: msw.HttpResponse };
+    w.__MSW_READY__ = true;
+  } catch (e) {
+    // MSW SW 拿不到 (如 e2e no-mock scenario 拦了 mockServiceWorker.js): 静默继续,
+    // 让 app 正常启动. __MSW_READY__ 不 set, no-mock spec 也不 wait 它.
+    console.warn("[e2e] MSW disabled:", e);
+  }
 }
 
 async function main(): Promise<void> {

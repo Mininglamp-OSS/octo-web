@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Route } from '@playwright/test'
+import { installMswScenario } from '../../_lib/mswScenario'
 
 /**
  * Standalone doc page (`/d/:docId`) — clean cold-load end-to-end (octo-web #512 / XIN-294).
@@ -14,6 +15,11 @@ import { test, expect, type Page, type Route } from '@playwright/test'
  * from storage (AC-3). A genuinely anonymous visitor must fall through to the login screen so the
  * post-login bounce returns them to the doc (AC-11).
  */
+
+// kit MSW 层让路: 本 spec 用 page.route 自己精确 mock 各 status code.
+test.beforeEach(async ({ page }) => {
+  await installMswScenario(page, 'no-mock')
+})
 
 const SID = 'S_e2e'
 const USER_TOKEN = 'tok-user-e2e'

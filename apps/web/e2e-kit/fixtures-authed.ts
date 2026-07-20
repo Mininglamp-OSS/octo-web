@@ -35,6 +35,14 @@ const MOCK_LOCALE = "zh-CN";
 
 type Fixtures = {
   authedPage: Page;
+  /**
+   * pagePlain — vanilla page: 不预置 auth, 不 goto, 不 wait __MSW_READY__.
+   *
+   * 用于 spec 自己控 storage 和 page.route 拦截 (如 bind 流程测试未登录跳转,
+   * standalone-doc 测试深链冷启). 依赖 kit 已启动的 webServer (vite dev)
+   * 但绕开 MSW 和 auth seed —— spec 内部 page.route 精确 mock 每种状态码.
+   */
+  pagePlain: Page;
 };
 
 export const test = base.extend<Fixtures>({
@@ -93,6 +101,12 @@ export const test = base.extend<Fixtures>({
       await page.goto("/");
     }
 
+    await use(page);
+  },
+
+  pagePlain: async ({ page }, use) => {
+    // 不预置任何 storage, 不 goto, 不 wait MSW. spec 拿到就是 vanilla page.
+    // spec 需要禁 service worker 时可以自己 context.route('**/mockServiceWorker.js') 拦.
     await use(page);
   },
 });
