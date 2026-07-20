@@ -54,6 +54,8 @@
     "sort": { "label": "排序", "relevance": "相关度", "updated": "最近更新", "verified": "最近验证" },
     "source": { "system": "系统", "space": "Space 团队", "mine": "我创建" },
     "visibility": { "public": "Space", "private": "私有" },
+    "verification": { "verified": "已验证", "unverified": "未验证", "error": "异常" },
+    "tagsPlaceholder": "标签，多项用逗号分隔",
     "mode": {
       "all": "全部",
       "mine": "我的"

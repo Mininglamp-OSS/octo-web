@@ -3,12 +3,13 @@ import { Spin, Toast } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { I18nContext, t, WKApp, WKInput, WKButton } from "@octo/base";
 import { fetchMcpList, fetchMcpMine } from "../api/mcpService";
-import { McpListError } from "../api/mcpListError";
+import { mcpListErrorI18nKey } from "../api/mcpListError";
 import type { McpCategory, McpDetail, McpListItem } from "../types/mcp";
 import McpCard from "../components/McpCard";
 import McpDetailModal from "../components/McpDetailModal";
 import McpCreateModal from "../components/McpCreateModal";
 import "../index.css";
+import { parseMcpListQuery, serializeMcpListQuery } from "./mcpListQuery";
 
 /** Which slice of the marketplace the list view is showing. */
 type ListMode = "all" | "mine";
@@ -29,6 +30,8 @@ interface McpMarketListPageState {
   transports: string[];
   visibilities: string[];
   sources: string[];
+  verificationStatuses: string[];
+  tags: string[];
   sort: "relevance" | "updated" | "verified";
   mode: ListMode;
   offset: number;
@@ -60,7 +63,7 @@ export default class McpMarketListPage extends Component<
     error: null,
     keyword: "",
     categoriesSelected: [],
-    transports: [], visibilities: [], sources: [], sort: "relevance",
+    transports: [], visibilities: [], sources: [], verificationStatuses: [], tags: [], sort: "relevance",
     mode: "all",
     offset: 0,
     total: 0,
@@ -74,15 +77,7 @@ export default class McpMarketListPage extends Component<
   private bodyRef = React.createRef<HTMLDivElement>();
 
   componentDidMount() {
-    const query = new URLSearchParams(window.location.search);
-    this.setState({
-      keyword: query.get("keyword") ?? "",
-      categoriesSelected: query.getAll("category"),
-      transports: query.getAll("transport"),
-      visibilities: query.getAll("visibility"),
-      sources: query.getAll("source"),
-      sort: (query.get("sort") as McpMarketListPageState["sort"]) || "relevance",
-    }, () => this.loadData());
+    this.setState(parseMcpListQuery(window.location.search), () => this.loadData());
     WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated_);
     WKApp.mittBus.on("space-changed", this.handleSpaceChanged_);
   }
@@ -113,6 +108,7 @@ export default class McpMarketListPage extends Component<
         categories: this.state.categoriesSelected,
         transports: this.state.transports as never[], visibilities: this.state.visibilities as never[], sort: this.state.sort,
         sources: this.state.sources as never[],
+        verificationStatuses: this.state.verificationStatuses as never[], tags: this.state.tags,
         limit: PAGE_SIZE,
         offset: 0,
       });
@@ -129,23 +125,14 @@ export default class McpMarketListPage extends Component<
       this.setState({
         loading: false,
         items: [],
-        error: err instanceof McpListError
-          ? t(`mcp.list.error.${err.kind}`)
-          : t("mcp.list.error.unknown"),
+        error: t(mcpListErrorI18nKey(err)),
       });
     }
   }
 
   private syncQuery() {
-    const query = new URLSearchParams(window.location.search);
-    const set = (key: string, value: string) => value ? query.set(key, value) : query.delete(key);
-    set("keyword", this.state.keyword.trim());
-    query.delete("category"); this.state.categoriesSelected.forEach((value) => query.append("category", value));
-    query.delete("transport"); this.state.transports.forEach((value) => query.append("transport", value));
-    query.delete("visibility"); this.state.visibilities.forEach((value) => query.append("visibility", value));
-    query.delete("source"); this.state.sources.forEach((value) => query.append("source", value));
-    set("sort", this.state.sort === "relevance" ? "" : this.state.sort);
-    const next = `${window.location.pathname}${query.size ? `?${query}` : ""}${window.location.hash}`;
+    const query = serializeMcpListQuery(this.state, window.location.search);
+    const next = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
     window.history.replaceState(null, "", next);
   }
 
@@ -166,6 +153,7 @@ export default class McpMarketListPage extends Component<
         categories: this.state.categoriesSelected,
         transports: this.state.transports as never[], visibilities: this.state.visibilities as never[], sort: this.state.sort,
         sources: this.state.sources as never[],
+        verificationStatuses: this.state.verificationStatuses as never[], tags: this.state.tags,
         limit: PAGE_SIZE,
         offset,
       });
@@ -262,7 +250,7 @@ export default class McpMarketListPage extends Component<
     this.setState((prev) => ({ categoriesSelected: key === "all" ? [] : (prev.categoriesSelected.includes(key) ? prev.categoriesSelected.filter((value) => value !== key) : [...prev.categoriesSelected, key]) }), () => this.loadData());
   };
 
-  private toggleFilter = (field: "transports" | "visibilities" | "sources", value: string) => {
+  private toggleFilter = (field: "transports" | "visibilities" | "sources" | "verificationStatuses", value: string) => {
     this.setState((prev) => ({ [field]: prev[field].includes(value) ? prev[field].filter((v) => v !== value) : [...prev[field], value] } as Pick<McpMarketListPageState, typeof field>), () => this.loadData());
   };
 
@@ -275,7 +263,7 @@ export default class McpMarketListPage extends Component<
       error,
       keyword,
       categoriesSelected,
-      transports, visibilities, sources, sort,
+      transports, visibilities, sources, verificationStatuses, tags, sort,
       mode,
       total,
       detailId,
@@ -353,10 +341,12 @@ export default class McpMarketListPage extends Component<
             {["stdio", "streamable-http", "sse"].map((v) => <button key={v} className={transports.includes(v) ? "wk-mcp__pill wk-mcp__pill--active" : "wk-mcp__pill"} onClick={() => this.toggleFilter("transports", v)}>{v}</button>)}
             {["system", "space", "mine"].map((v) => <button key={v} className={sources.includes(v) ? "wk-mcp__pill wk-mcp__pill--active" : "wk-mcp__pill"} onClick={() => this.toggleFilter("sources", v)}>{t(`mcp.list.source.${v}`)}</button>)}
             {["public", "private"].map((v) => <button key={v} className={visibilities.includes(v) ? "wk-mcp__pill wk-mcp__pill--active" : "wk-mcp__pill"} onClick={() => this.toggleFilter("visibilities", v)}>{t(`mcp.list.visibility.${v}`)}</button>)}
+            {["verified", "unverified", "error"].map((v) => <button key={v} className={verificationStatuses.includes(v) ? "wk-mcp__pill wk-mcp__pill--active" : "wk-mcp__pill"} onClick={() => this.toggleFilter("verificationStatuses", v)}>{t(`mcp.list.verification.${v}`)}</button>)}
+            <input value={tags.join(", ")} placeholder={t("mcp.list.tagsPlaceholder")} onChange={(e) => this.setState({ tags: e.target.value.split(",").map((v) => v.trim()).filter(Boolean) })} onBlur={() => this.loadData()} />
             <select value={sort} onChange={(e) => this.setState({ sort: e.target.value as typeof sort }, () => this.loadData())} aria-label={t("mcp.list.sort.label")}>
               <option value="relevance">{t("mcp.list.sort.relevance")}</option><option value="updated">{t("mcp.list.sort.updated")}</option><option value="verified">{t("mcp.list.sort.verified")}</option>
             </select>
-            <button className="wk-mcp__pill" onClick={() => this.setState({ categoriesSelected: [], transports: [], visibilities: [], sources: [], sort: "relevance" }, () => this.loadData())}>{t("mcp.list.clear")}</button>
+            <button className="wk-mcp__pill" onClick={() => this.setState({ categoriesSelected: [], transports: [], visibilities: [], sources: [], verificationStatuses: [], tags: [], sort: "relevance" }, () => this.loadData())}>{t("mcp.list.clear")}</button>
             <span>{t("mcp.list.total", { values: { count: total } })}</span>
           </div>
         </div>

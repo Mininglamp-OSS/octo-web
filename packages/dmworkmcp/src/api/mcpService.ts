@@ -20,7 +20,7 @@ import {
   MOCK_PROBED_TOOLS,
 } from "../mock/mcpMock";
 import { CATEGORY_KEY_ALL, slugifyServerName } from "../utils/constants";
-import { McpListError, classifyMcpListError } from "./mcpListError";
+import { McpListError, classifyMcpListError, executeMcpListRequest } from "./mcpListError";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MCP Market service layer
@@ -574,15 +574,10 @@ async function fetchMcpListPath(
   query.page = Math.floor((params.offset ?? 0) / pageSize) + 1;
   let resp;
   let categoryWire: { key: string; count: number }[];
-  try {
-    [resp, categoryWire] = await Promise.all([
+  [resp, categoryWire] = await executeMcpListRequest(() => Promise.all([
       mcpAxios.get<McpListResponseWire>(`${BASE}${path}`, { params: query }),
       get<{ key: string; count: number }[]>("/mcp_categories"),
-    ]);
-  } catch (err) {
-    if (axios.isCancel(err)) throw err;
-    throw new Error(extractErrorMessage(err));
-  }
+    ]));
   const items = (resp.data.data ?? []).map(mapListItem);
   const categoryCounts = new Map(
     categoryWire.map((item) => [item.key, item.count])

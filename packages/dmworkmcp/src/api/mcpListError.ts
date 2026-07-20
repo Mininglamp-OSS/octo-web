@@ -13,3 +13,15 @@ export function classifyMcpListError(err: unknown): McpListErrorKind {
   if (status && status >= 500) return "server";
   return "unknown";
 }
+
+export async function executeMcpListRequest<T>(request: () => Promise<T>): Promise<T> {
+  try { return await request(); }
+  catch (err) {
+    if (err instanceof McpListError) throw err;
+    throw new McpListError(classifyMcpListError(err));
+  }
+}
+
+export function mcpListErrorI18nKey(err: unknown): string {
+  return `mcp.list.error.${err instanceof McpListError ? err.kind : "unknown"}`;
+}

@@ -54,6 +54,8 @@
     "sort": { "label": "Sort", "relevance": "Relevance", "updated": "Recently updated", "verified": "Recently verified" },
     "source": { "system": "System", "space": "Space team", "mine": "Created by me" },
     "visibility": { "public": "Space", "private": "Private" },
+    "verification": { "verified": "Verified", "unverified": "Unverified", "error": "Error" },
+    "tagsPlaceholder": "Tags, comma separated",
     "mode": {
       "all": "All",
       "mine": "Mine"
