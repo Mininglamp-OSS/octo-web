@@ -791,6 +791,9 @@
 }
 
 .skill-market-card__owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   flex: 0 1 auto;
   max-width: 112px;
   overflow: hidden;
@@ -798,6 +801,10 @@
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.skill-market-card__owner-bot-icon {
+  flex: 0 0 auto;
 }
 
 .skill-market-card__meta-separator {

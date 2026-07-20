@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
-import { Download, Eye, Pencil, Trash2 } from "lucide-react";
+import { Bot, Download, Eye, Pencil, Trash2 } from "lucide-react";
 import { t, useI18n } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { formatCount } from "../utils/format";
@@ -87,8 +87,13 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
   const isOwnerCard = Boolean(onEdit || onDelete);
   const descriptionTooltipId = `skill-card-desc-${skill.id}`;
   const displayName = skill.displayName || skill.name;
+  const hasSeparateCreator = Boolean(skill.creatorId && skill.ownerId && skill.creatorId !== skill.ownerId);
+  const creatorId = skill.creatorId || skill.ownerId;
   const creatorName = skill.creatorName || skill.ownerName;
-  const ownerLabel = `@${creatorName}`;
+  const isBotCreator = hasSeparateCreator && creatorId.endsWith("_bot");
+  const ownerLabel = hasSeparateCreator
+    ? (isBotCreator ? creatorName : `@${creatorName} · @${skill.ownerName}`)
+    : `@${skill.ownerName}`;
   const showOwner = skill.visibility !== "public";
   const ariaLabel = showOwner ? `${skill.name} ${ownerLabel}` : skill.name;
   const rawViewCount = skill.viewCount ?? 0;
@@ -182,11 +187,14 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
             )}
           </div>
           <div className="skill-market-card__meta-row">
-            <span className="skill-market-card__name" title={skill.name}>{skill.name}</span>
+            <span className="skill-market-card__name">{skill.name}</span>
             {showOwner && (
               <>
-                <span className="skill-market-card__meta-separator">·</span>
-                <span className="skill-market-card__owner" title={ownerLabel}>{ownerLabel}</span>
+                {!isBotCreator && <span className="skill-market-card__meta-separator">·</span>}
+                <span className="skill-market-card__owner" title={ownerLabel}>
+                  {isBotCreator && <Bot className="skill-market-card__owner-bot-icon" size={13} aria-hidden="true" />}
+                  {ownerLabel}
+                </span>
               </>
             )}
           </div>

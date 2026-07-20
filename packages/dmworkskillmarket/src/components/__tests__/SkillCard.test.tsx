@@ -62,6 +62,46 @@ describe("SkillCard", () => {
     expect(screen.queryByText("@我")).not.toBeInTheDocument();
   });
 
+  it("shows creator and owner when they are different", () => {
+    render(
+      <SkillCard
+        skill={{
+          ...skill,
+          ownerId: "developer",
+          ownerName: "Developer",
+          creatorId: "bot-1",
+          creatorName: "CI Bot",
+        }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("@CI Bot · @Developer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper @CI Bot · @Developer" })).toBeInTheDocument();
+  });
+
+  it("uses a bot icon instead of @ for bot creators", () => {
+    render(
+      <SkillCard
+        skill={{
+          ...skill,
+          ownerId: "developer",
+          ownerName: "Developer",
+          creatorId: "publisher_bot",
+          creatorName: "Publisher Bot",
+        }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Publisher Bot")).toBeInTheDocument();
+    expect(screen.queryByText("@Publisher Bot · @Developer")).not.toBeInTheDocument();
+    expect(screen.queryByText("@Developer")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper Publisher Bot" })).toBeInTheDocument();
+  });
+
   it("supports keyboard open and exposed owner actions without opening the card", () => {
     const onOpen = vi.fn();
     const onEdit = vi.fn();
