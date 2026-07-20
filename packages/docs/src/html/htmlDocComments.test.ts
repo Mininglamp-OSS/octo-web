@@ -26,15 +26,15 @@ afterEach(() => {
 })
 
 describe('listComments (octo-doc backend)', () => {
-  it('GETs <base>/comments?slug&version with credentials and returns data', async () => {
+  it('GETs <base>/v1/comments?slug&version with credentials and returns data', async () => {
     const spy = stubFetch(() =>
       jsonResponse({ data: [{ id: 'c1', text: 'hi', replies: [] }] }),
     )
     const roots = await listComments('my-slug', 'v3')
     expect(roots).toHaveLength(1)
     expect(roots[0].id).toBe('c1')
-    // Hit the octo-doc /comments endpoint (resolveOctoDocBase), NOT /api/v1.
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/comments?slug=my-slug&version=v3')
+    // Hit the octo-doc /v1/comments endpoint (resolveOctoDocBase), NOT /api/v1.
+    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/comments?slug=my-slug&version=v3')
     expect(spy.mock.calls[0][1]).toMatchObject({ credentials: 'include' })
   })
 
@@ -50,7 +50,7 @@ describe('listComments (octo-doc backend)', () => {
 })
 
 describe('createComment (octo-doc backend)', () => {
-  it('POSTs <base>/comments with {slug,text,version,anchor} and credentials', async () => {
+  it('POSTs <base>/v1/comments with {slug,text,version,anchor} and credentials', async () => {
     const spy = stubFetch(() => jsonResponse({ id: 'new1' }))
     const res = await createComment('my-slug', {
       text: 'please fix',
@@ -58,7 +58,7 @@ describe('createComment (octo-doc backend)', () => {
       anchor: { kind: 'element', aid: 'a42', selector: '[data-odoc-aid="a42"]', label: 'p' },
     })
     expect(res.id).toBe('new1')
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/comments')
+    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/comments')
     const init = spy.mock.calls[0][1] as RequestInit
     expect(init.method).toBe('POST')
     expect(init.credentials).toBe('include')

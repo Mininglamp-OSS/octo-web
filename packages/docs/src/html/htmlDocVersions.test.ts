@@ -25,7 +25,7 @@ afterEach(() => {
 })
 
 describe('listVersions (octo-doc backend)', () => {
-  it('GETs <base>/docs/{slug}/versions and parses data.data.versions', async () => {
+  it('GETs <base>/v1/docs/{slug}/versions and parses data.data.versions', async () => {
     const spy = stubFetch(() =>
       jsonResponse({
         data: {
@@ -42,14 +42,14 @@ describe('listVersions (octo-doc backend)', () => {
     expect(versions).toHaveLength(2)
     expect(versions[0]).toMatchObject({ n: 3 })
     // PATH slug, not a query param; credentialed.
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/docs/my-slug/versions')
+    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/my-slug/versions')
     expect(spy.mock.calls[0][1]).toMatchObject({ credentials: 'include' })
   })
 
   it('encodes the slug in the path', async () => {
     const spy = stubFetch(() => jsonResponse({ data: { versions: [] } }))
     await listVersions('a/b?c')
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/docs/a%2Fb%3Fc/versions')
+    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/a%2Fb%3Fc/versions')
   })
 
   it('returns [] when the payload has no versions', async () => {
@@ -64,10 +64,10 @@ describe('listVersions (octo-doc backend)', () => {
 })
 
 describe('deleteDoc (octo-doc backend)', () => {
-  it('DELETEs <base>/docs-admin/{slug} with credentials', async () => {
+  it('DELETEs <base>/v1/docs/{slug} with credentials', async () => {
     const spy = stubFetch(() => jsonResponse({}, true, 204))
     await deleteDoc('my-slug')
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/docs-admin/my-slug')
+    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/my-slug')
     const init = spy.mock.calls[0][1] as RequestInit
     expect(init.method).toBe('DELETE')
     expect(init.credentials).toBe('include')

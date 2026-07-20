@@ -146,7 +146,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
       string,
       RequestInit
     ]
-    expect(String(post[0])).toBe('https://od.test/comments')
+    expect(String(post[0])).toBe('https://od.test/v1/comments')
     const body = JSON.parse(String(post[1].body))
     expect(body).toMatchObject({
       slug: 'my-slug',

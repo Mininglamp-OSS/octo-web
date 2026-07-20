@@ -3,7 +3,7 @@
 // SEPARATE BACKEND: like htmlDocComments, grants for an html doc live in octo-doc
 // (the deployment that serves the published HTML), NOT the same-origin Yjs
 // `/api/v1` docs backend. Every call is a raw credentialed `fetch` against
-// resolveOctoDocBase() + `/grants`, carrying the octo `token` header so octo-doc
+// resolveOctoDocBase() + `/v1/docs/{slug}/grants`, carrying the octo `token` header so octo-doc
 // resolves the caller to the doc's author (only an author may manage grants).
 // This must never route through the octoweb apiClient.
 //
@@ -21,12 +21,11 @@ function grantHeaders(base: Record<string, string>): Record<string, string> {
   return tok ? { ...base, token: tok } : base
 }
 
-// Backend route is /v1/docs/{slug}/grants (+ /{uid} for DELETE). The web nginx
-// exposes it under a dedicated top-level /grants/{slug} prefix (NOT /docs/... —
-// that collides with the SPA's own /docs route) and rewrites it to the doc's
-// /v1/docs/{slug}/grants, forwarding the token header — same scheme as /comments.
+// Backend route is /v1/docs/{slug}/grants (+ /{uid} for DELETE). The web nginx now
+// forwards the /docs-html prefix through a single strip rewrite, so the frontend
+// builds the real backend path directly and carries the token header.
 function grantsUrl(slug: string): string {
-  return `${resolveOctoDocBase()}/grants/${encodeURIComponent(slug)}`
+  return `${resolveOctoDocBase()}/v1/docs/${encodeURIComponent(slug)}/grants`
 }
 
 /** One grant row, matching the rich-doc Member shape MemberPanel expects. */

@@ -205,10 +205,12 @@ export interface HtmlDocViewProps {
  *      same bundle points at different octo-doc origins per environment without a rebuild.
  *   2. `import.meta.env.VITE_OCTO_DOC_BASE` — build-time override.
  *   3. Default `/docs-html` — a same-origin unified prefix. All web→octo-doc traffic
- *      (render `/d/…`, comments, reactions, grants, docs-admin, versions) is namespaced
+ *      (render `/d/…`, and the real backend paths `/v1/comments`, `/v1/reactions`,
+ *      `/v1/docs/{slug}/grants`, `/v1/docs/{slug}`, `/v1/docs/{slug}/versions`) is namespaced
  *      under this one prefix so it is easy to govern and cannot collide with SPA or other
- *      service routes. The web nginx reverse-proxies `/docs-html/*` to octo-doc (stripping
- *      the prefix). A deployment where octo-doc lives elsewhere sets one of the overrides above.
+ *      service routes. The web nginx strips `/docs-html/` with a single rewrite and forwards
+ *      the remaining real path to octo-doc. A deployment where octo-doc lives elsewhere sets
+ *      one of the overrides above.
  */
 export function resolveOctoDocBase(): string {
   const runtime =

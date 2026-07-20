@@ -3,7 +3,7 @@
 // SEPARATE BACKEND: comments for an html doc live in octo-doc — the SAME distinct deployment
 // that serves the published HTML (see HtmlDocView.resolveOctoDocBase) — NOT the same-origin Yjs
 // `/api/v1` docs backend. So every call here is a raw `fetch` (credentials:'include' to carry the
-// octo-doc share-code cookie / write-token session) against resolveOctoDocBase() + `/comments`,
+// octo-doc share-code cookie / write-token session) against resolveOctoDocBase() + `/v1/comments`,
 // exactly like the read-only render fetch. This must never route through the octoweb apiClient.
 //
 // DISTINCT ANCHOR MODEL: octo-doc anchors are text/element descriptors (see Anchor below), a
@@ -87,19 +87,19 @@ export interface OctoDocCommentThread extends OctoDocComment {
   replies: OctoDocComment[]
 }
 
-/** GET /comments response: roots (each with its `replies`). */
+/** GET /v1/comments response: roots (each with its `replies`). */
 export interface ListCommentsResponse {
   roots: OctoDocCommentThread[]
 }
 
-/** POST /comments response: the created comment id. */
+/** POST /v1/comments response: the created comment id. */
 export interface CreateCommentResponse {
   id: string
 }
 
-/** Build `<octo-doc-base>/comments` — the single comment endpoint (verb differs GET vs POST). */
+/** Build `<octo-doc-base>/v1/comments` — the single comment endpoint (verb differs GET vs POST). */
 function commentsUrl(): string {
-  return `${resolveOctoDocBase()}/comments`
+  return `${resolveOctoDocBase()}/v1/comments`
 }
 
 /**
