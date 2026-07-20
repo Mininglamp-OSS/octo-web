@@ -1887,10 +1887,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleForwardToChat = () => {
-        const { detail } = this.state;
-        if (!detail?.result?.content?.trim()) return;
+        const { detail, personalResult } = this.state;
+        // #158/#161 agent 总结 fallback:agent workflow 只写 personal_result 表,
+        // 不写 summary_result 表(agent_summary.go: creatorPR 是 deliverable,没有
+        // 单独的 SummaryResult 行)。所以 GET /summaries/:id 返 detail.result=null,
+        // 但 detail.personal_result 有 content(前端渲染正文也是走这个 fallback)。
+        // 传统 workflow 优先走 detail.result;agent workflow 走 personalResult。
+        // 两者的 content 语义都是"给用户看的最终交付文本",转发到聊天的姿势一致。
+        const sourceContent = detail?.result?.content ?? personalResult?.content ?? '';
+        if (!sourceContent.trim()) return;
         WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
-            const cleanContent = (detail?.result?.content ?? '').replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
+            const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
             const chunks = splitSummaryText(cleanContent);
             const errors: string[] = [];
 
@@ -2453,7 +2460,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {/* need5：单人 BY_PERSON 定时按钮放「编辑」按钮左边。多人协作不在此区渲染
                             （need1 不显示我的总结区；need5 多人定时按钮在团队框）。 */}
                         {!this.isMultiCollab() && this.renderScheduleButton()}
-                        {detail && detail.status === TaskStatus.COMPLETED && detail.permissions?.can_edit && !this.state.isEditing && (
+                        {/* #158/#161 fast-follow：agent 总结不支持 edit —— 后端 PUT /edit
+                            走的是 SummaryResult 表更新，但 agent 保存路径只写
+                            personal_result 表（agent_summary.go 里 creatorPR 是唯一
+                            deliverable，不建 summary_result 行）。用户点击编辑保存后
+                            会 404 "总结结果不存在"。前端直接不渲染。
+                            如果未来后端为 agent 建 SummaryResult 行，只需删除下面
+                            这行 trigger_type 判断即可。 */}
+                        {detail && detail.status === TaskStatus.COMPLETED && detail.permissions?.can_edit && !this.state.isEditing && detail.trigger_type !== TriggerType.AGENT && (
                             <Button
                                 size="small"
                                 theme="borderless"
@@ -3087,6 +3101,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         // OCT-21 / GPT-S1：草稿编辑态也隐藏 schedule 按钮，与其它编辑态保持一致约束。
         if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport || editingMyDraft) return null;
+        // #158/#161 fast-follow：agent 总结不支持 schedule —— schedule 到点会 trigger
+        // 后端 pipeline 走传统 map-reduce 重跑，但 agent 总结的产出是 chat 交互生成，
+        // 没有可 replay 的 sources/participants。触发后任务会卡在 Pending 或 fail，
+        // 用户体验很差。前端直接不渲染这个按钮，避免用户误点。
+        if (detail?.trigger_type === TriggerType.AGENT) return null;
 
         // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
         // 停用后文案回到「设置定时更新」。
@@ -3267,7 +3286,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         // Build "..." menu items
         const menuItems: { node: string; key: string; onClick: () => void; danger?: boolean }[] = [];
-        if (detail && canRegenerate(detail.status)) {
+        // #158/#161 fast-follow：agent 总结不支持 regenerate —— 传统 regenerate 走
+        // POST /summaries/:id/regenerate → triggerWorker("personal_summary")，会尝试重跑
+        // pipeline 但 agent 任务无 participants / sources 可 replay，任务会卡死或 fail。
+        // 语义上 "重生成" 对 agent 总结应该是 "重开一次 chat"，那是主人的 continueRefine
+        // 已经覆盖的入口。这里直接不给 menu 项，避免用户走错路径。
+        if (detail && canRegenerate(detail.status) && detail.trigger_type !== TriggerType.AGENT) {
             menuItems.push({ node: t("summary.detail.regenerate"), key: "regenerate", onClick: this.handleRegenerate });
         }
         if (detail && canCancel(detail.status)) {
