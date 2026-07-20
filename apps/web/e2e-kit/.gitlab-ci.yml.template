@@ -1,0 +1,284 @@
+# kit-provided GitLab CI 模板 (e2e job).
+#
+# TODO(接入方) 填占位:
+#   <PROJECT_NODE_IMAGE>          — 例 "node:22.16.0" 或内网镜像
+#   <PROJECT_PLAYWRIGHT_IMAGE>    — 例 "mcr.microsoft.com/playwright:v1.61.1-jammy"
+#   <PROJECT_RUNNER_TAG>          — 例 "nb", 或删掉 tags 段
+#   <PROJECT_BUILD_COMMAND>       — 例 "pnpm build:e2e" (产 dist-e2e/)
+#   <PROJECT_TARGET_BRANCH>       — 例 "main" or "e2e-research/playwright"
+#   <PROJECT_E2E_DIR>             — 例 "e2e" (kit 默认), 或 "e2e-research"
+#
+# 关键 kit 姿势 (可选删):
+#   1. VITE_API_BASE_URL 覆盖: 保证 MSW handler 的 /v1/ pattern 拦得住
+#   2. mockServiceWorker.js 手动 copy: 绕开 msw postinstall 在 CI 上 EPERM 问题
+#   3. PW_PREVIEW_PORT 参数化: 各 job 用不同 port 隔离
+#   4. junit 后处理判 visual fail vs business fail: 视觉挂不 block MR, 业务挂 block
+#   5. e2e-nightly schedule: 全量跑 (business + visual)
+#
+# 需要与项目已有 .gitlab-ci.yml 合并使用 (append 到 stages + append 到 jobs).
+
+stages:
+  - install&build
+  - e2e
+
+# ---- Base: 装依赖 + 构建 e2e 产物 ------------------------------------------
+.install_build_e2e_base: &install_build_e2e_base
+  stage: install&build
+  image: <PROJECT_NODE_IMAGE>
+  tags:
+    - <PROJECT_RUNNER_TAG>
+  # 覆盖顶部全局 VITE_API_BASE_URL (若有) → /v1: e2e MSW handlers 走 */v1/* pattern,
+  # 全局 /api 会让业务 fetch 走 /api/xxx, MSW 拦不到, 请求穿透 preview 拿 401/404.
+  variables:
+    VITE_API_BASE_URL: "/v1"
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - .pnpm-store/
+        - .tsbuildinfo/
+  artifacts:
+    name: "build_e2e_dist"
+    expire_in: 30 mins
+    paths:
+      - $CI_PROJECT_DIR/dist-e2e
+      - $CI_PROJECT_DIR/.env.e2e
+  before_script:
+    - npm config set prefix "$CI_PROJECT_DIR/.npm-global"
+    - npm install -g pnpm@11.2.2 --registry=https://registry.npmmirror.com/
+    - export PATH="$CI_PROJECT_DIR/.npm-global/bin:$PATH"
+    - pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
+  script:
+    - pnpm install --frozen-lockfile --prefer-offline
+    # msw postinstall 在 CI runner 上 EPERM 复制不到 public/mockServiceWorker.js
+    # (runner 非 root), 手动 copy 一次让 SW 进 dist-e2e; 否则浏览器 SW 404,
+    # __MSW_READY__ 永远 false, 所有 e2e test fixture 10s 超时全 fail
+    - mkdir -p public && cp node_modules/msw/lib/mockServiceWorker.js public/mockServiceWorker.js
+    - <PROJECT_BUILD_COMMAND>
+
+install_build_e2e:
+  <<: *install_build_e2e_base
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "<PROJECT_TARGET_BRANCH>"'
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $PIPELINE_TASK == "e2e-nightly"'
+    - when: never
+
+# ---- Base: 跑 e2e -----------------------------------------------------------
+.e2e_test_base: &e2e_test_base
+  stage: e2e
+  # 用与视觉基线生成 image 一致的底子, 避免字体 rendering 差异
+  image: <PROJECT_PLAYWRIGHT_IMAGE>
+  tags:
+    - <PROJECT_RUNNER_TAG>
+  needs:
+    - install_build_e2e
+  dependencies:
+    - install_build_e2e
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - .pnpm-store/
+  variables:
+    E2E_TARGET: local
+  before_script:
+    - npm config set prefix "$CI_PROJECT_DIR/.npm-global"
+    - npm install -g pnpm@11.2.2 --registry=https://registry.npmmirror.com/
+    - export PATH="$CI_PROJECT_DIR/.npm-global/bin:$PATH"
+    - pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
+    - pnpm install --frozen-lockfile --prefer-offline
+    # playwright image 自带 chromium + fonts, 不用再 install --with-deps
+  # after_script: (opt-in) 若装了 notify-octo-im optional, uncomment 下面 3 行让
+  # CI 结束后往 Octo IM 发通知. 需 CI variable OCTO_CI_NOTIFY_ENABLED=1 等 (详见
+  # e2e/_kit/ci-notify/README.md). || true 兜底 pipeline 状态不受通知失败影响.
+  # after_script:
+  #   - bash <PROJECT_E2E_DIR>/_kit/ci-notify/notify-octo-im.sh "${CI_JOB_NAME}" || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    reports:
+      junit: <PROJECT_E2E_DIR>/playwright-report/junit.xml
+    paths:
+      - <PROJECT_E2E_DIR>/playwright-report/
+      - <PROJECT_E2E_DIR>/test-results/
+
+# ---- MR 门禁: @p0 + @visual 一个 job, junit 后处理判 visual vs business ---
+e2e_test:
+  <<: *e2e_test_base
+  variables:
+    E2E_TARGET: local
+    PW_PREVIEW_PORT: "5173"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "<PROJECT_TARGET_BRANCH>"'
+    - when: never
+  script:
+    # 单一 shell block: 跑 playwright + PW_EXIT + junit 后处理
+    # 关键: GitLab CI 里每个 `- ` 一行是独立 shell, PW_EXIT 在同一 block 才能传递
+    - |
+      set +e
+      pnpm exec playwright test --config=<PROJECT_E2E_DIR>/playwright.ci.config.ts --grep "@p0|@visual"
+      PW_EXIT=$?
+      set -e
+
+      # junit 后处理: 判断 fail 里有没有非视觉 case
+      JUNIT="<PROJECT_E2E_DIR>/playwright-report/junit.xml"
+      if [[ ! -f "$JUNIT" ]]; then
+        echo "❌ junit.xml missing, treat as hard fail (playwright exit=$PW_EXIT)"
+        exit 1
+      fi
+      FAILED_NAMES=$(awk '
+        /<testcase / { match($0, /name="[^"]*"/); name = substr($0, RSTART+6, RLENGTH-7); has_fail=0; next }
+        /<failure|<error/ { if (name && !has_fail) { print name; has_fail=1 } }
+        /<\/testcase>/ { name="" }
+      ' "$JUNIT")
+      TOTAL_FAIL=$(echo "$FAILED_NAMES" | grep -c . || true)
+      VISUAL_FAIL=$(echo "$FAILED_NAMES" | grep -c "@visual" || true)
+      BUSINESS_FAIL=$((TOTAL_FAIL - VISUAL_FAIL))
+      TOTAL_TESTS=$(grep -oE 'tests="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
+      echo ""
+      echo "═════════════════════════════════════════════════════════════"
+      echo "📊 e2e_test summary (playwright exit=$PW_EXIT):"
+      echo "   total tests:   $TOTAL_TESTS"
+      echo "   total fail:    $TOTAL_FAIL"
+      echo "   business fail: $BUSINESS_FAIL"
+      echo "   visual fail:   $VISUAL_FAIL"
+      if [[ "$TOTAL_FAIL" -gt 0 ]]; then
+        echo ""
+        echo "   fail case names:"
+        echo "$FAILED_NAMES" | sed 's/^/     · /'
+      fi
+      echo "═════════════════════════════════════════════════════════════"
+
+      # 写 e2e-summary.txt 供 e2e_visual_baseline_update job 读, 判断"业务失败 gate"
+      # 该文件跟 junit.xml 同目录, artifacts 已把 <PROJECT_E2E_DIR>/playwright-report/ 收进,
+      # baseline_update job 通过 needs: [{job: e2e_test, artifacts: true}] 消费该文件.
+      # (v0.3 修 MR-5 blocking, reviewer 反馈)
+      SUMMARY_FILE="<PROJECT_E2E_DIR>/playwright-report/e2e-summary.txt"
+      mkdir -p "$(dirname "$SUMMARY_FILE")"
+      {
+        echo "TOTAL_TESTS=$TOTAL_TESTS"
+        echo "TOTAL_FAIL=$TOTAL_FAIL"
+        echo "BUSINESS_FAIL=$BUSINESS_FAIL"
+        echo "VISUAL_FAIL=$VISUAL_FAIL"
+        echo "PW_EXIT=$PW_EXIT"
+        if [[ -n "$FAILED_NAMES" ]]; then
+          echo "---FAIL_NAMES---"
+          echo "$FAILED_NAMES"
+        fi
+      } > "$SUMMARY_FILE"
+
+      # 判定顺序:
+      #  1. tests=0 → webServer / playwright 挂了根本没跑, block
+      #  2. 有业务 fail → block
+      #  3. 仅视觉 fail → allow (需手动 job 更新 baseline)
+      #  4. 全绿 → success
+      if [[ "$TOTAL_TESTS" -eq 0 ]]; then
+        echo "❌ tests=0 (playwright 没跑起 test, 通常是 webServer timeout), block MR"
+        exit 1
+      elif [[ "$BUSINESS_FAIL" -gt 0 ]]; then
+        echo "❌ 有 $BUSINESS_FAIL 个业务 case fail → block MR"
+        exit 1
+      elif [[ "$VISUAL_FAIL" -gt 0 ]]; then
+        echo "⚠️  仅 $VISUAL_FAIL 个视觉 case fail → allow MR"
+        exit 0
+      elif [[ "$PW_EXIT" -ne 0 ]]; then
+        echo "❌ playwright exit=$PW_EXIT 但 junit 无 fail 条目, block MR"
+        exit 1
+      else
+        echo "✅ all pass"
+        exit 0
+      fi
+  artifacts:
+    when: always
+    expire_in: 30 days
+    reports:
+      junit: <PROJECT_E2E_DIR>/playwright-report/junit.xml
+    paths:
+      - <PROJECT_E2E_DIR>/playwright-report/
+      - <PROJECT_E2E_DIR>/test-results/
+    name: "e2e_${CI_COMMIT_REF_SLUG}_${CI_PIPELINE_ID}"
+
+# ---- Nightly 全量 (business + visual + 边界) ------------------------------
+e2e_test_nightly:
+  <<: *e2e_test_base
+  variables:
+    E2E_TARGET: local
+    PW_PREVIEW_PORT: "5174"   # 跟 MR job 隔离
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $PIPELINE_TASK == "e2e-nightly"'
+    - when: never
+  script:
+    - pnpm exec playwright test --config=<PROJECT_E2E_DIR>/playwright.ci.config.ts
+
+# ---- 视觉基线更新 (v0.3 反哺 e2e-research) --------------------------------
+# manual trigger, 改 UI 后手动触发. 输出: <PROJECT_E2E_DIR>/screenshots/ 更新
+# baseline PNG, 自动 push 回 MR source branch (commit 带 [skip ci]).
+#
+# 需要:
+# - CI variable GITLAB_PUSH_TOKEN (Project Access Token, write_repository scope)
+# - Playwright image 带 git binary (mcr.microsoft.com/playwright:*-jammy 默认不带,
+#   需在 apt install 或 rebuild image; 或者用带 git 的 base image)
+#
+# ⚠️ 关键 gate: 若同 pipeline e2e_test 有业务失败 (BUSINESS_FAIL>0), 拒 push,
+# 避免 [skip ci] commit 洗白业务 fail (踩过的坑, reviewer 反馈).
+e2e_visual_baseline_update:
+  <<: *e2e_test_base
+  when: manual
+  allow_failure: false
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "<PROJECT_TARGET_BRANCH>"'
+    - when: never
+  needs:
+    - install_build_e2e
+    - job: e2e_test
+      optional: true      # e2e_test 挂时仍能触发, 但下方 gate 会拒 push
+      artifacts: true
+  dependencies:
+    - install_build_e2e
+    - e2e_test
+  variables:
+    E2E_TARGET: local
+    PW_PREVIEW_PORT: "5175"    # 跟 MR + nightly 都隔离
+    GIT_STRATEGY: clone
+    GIT_DEPTH: 50
+  script:
+    # 1. 更新 baseline
+    - pnpm exec playwright test --config=<PROJECT_E2E_DIR>/playwright.ci.config.ts --grep "@visual" --update-snapshots
+    # 2. 闭环 verify: 用刚生成的 baseline 再跑一遍, fail 说明 baseline 本身不稳
+    - |
+      echo "[verify] re-running @visual against fresh baseline..."
+      pnpm exec playwright test --config=<PROJECT_E2E_DIR>/playwright.ci.config.ts --grep "@visual"
+    # 3. 检查 git binary (老 image 可能不带, apt 装超时被 kill 过, 建议 image 层预装)
+    - |
+      if ! command -v git >/dev/null 2>&1; then
+        echo "[baseline-push] ❌ image 无 git binary, 请 image rebuild 时加入或换 base image"
+        exit 1
+      fi
+    # 4. **业务失败 gate**: 若 e2e_test 有 BUSINESS_FAIL>0, 拒 push (避免洗白)
+    - |
+      SUMMARY_FILE="<PROJECT_E2E_DIR>/playwright-report/e2e-summary.txt"
+      if [[ -f "$SUMMARY_FILE" ]]; then
+        BF=$(grep -oE '^BUSINESS_FAIL=[0-9]+' "$SUMMARY_FILE" | head -1 | cut -d= -f2)
+        if [[ -n "$BF" && "$BF" -gt 0 ]]; then
+          echo "[baseline-push] ❌ 同 pipeline 有 $BF 个业务失败, 拒绝 push baseline"
+          echo "  修完业务失败后再手动触发 e2e_visual_baseline_update"
+          exit 1
+        fi
+      else
+        echo "[baseline-push] ❌ 找不到 $SUMMARY_FILE (e2e_test 未跑或产物没传下来), fail-safe 拒 push"
+        exit 1
+      fi
+    # 5. Push baseline (e2e_test 已自动生成 e2e-summary.txt, 上一 step gate 读它)
+    - |
+      if git diff --quiet <PROJECT_E2E_DIR>/screenshots/; then
+        echo "[baseline-push] baseline 无变化, 跳过 push"
+        exit 0
+      fi
+      git config user.email "ci-bot@example.com"
+      git config user.name "e2e-baseline-bot"
+      git add <PROJECT_E2E_DIR>/screenshots/
+      git commit -m "test(e2e-visual): CI 自动更新 baseline [snapshot-from-ci] [skip ci]"
+      git push "https://oauth2:${GITLAB_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \
+        "HEAD:${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"

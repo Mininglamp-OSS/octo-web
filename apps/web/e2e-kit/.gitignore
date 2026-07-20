@@ -1,0 +1,6 @@
+# Playwright / kit 产物 (不 commit)
+reports/*.json
+reports/*/
+playwright-report/
+screenshots/
+.auth/

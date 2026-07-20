@@ -1,0 +1,178 @@
+# kit-provided GitHub Actions e2e workflow 模板.
+#
+# TODO(接入方) 填占位:
+#   <PROJECT_E2E_DIR>       — 例 "e2e"
+#   <PROJECT_BUILD_COMMAND> — 例 "pnpm build:e2e"
+#   <PROJECT_TARGET_BRANCH> — 例 "main"
+#
+# 姿势跟 GitLab CI 模板对齐:
+# - VITE_API_BASE_URL=/v1 覆盖
+# - mockServiceWorker.js 手动 copy 绕开 msw postinstall EPERM
+# - MR 只跑 @p0|@visual, nightly 全量
+# - junit 后处理判 visual vs business fail: @visual 挂不 block PR, 业务挂 block (对齐 GitLab 模板)
+
+name: e2e
+
+on:
+  pull_request:
+    branches: [<PROJECT_TARGET_BRANCH>]
+    paths:
+      - "<PROJECT_E2E_DIR>/**"
+      - "src/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  schedule:
+    # nightly 每天 03:00 UTC 全量跑
+    - cron: "0 3 * * *"
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 覆盖 /api → /v1: e2e MSW handlers 走 */v1/* pattern
+  VITE_API_BASE_URL: "/v1"
+
+jobs:
+  install-build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 11.2.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      # 绕开 msw postinstall EPERM
+      - run: mkdir -p public && cp node_modules/msw/lib/mockServiceWorker.js public/mockServiceWorker.js
+      - run: <PROJECT_BUILD_COMMAND>
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-e2e
+          path: |
+            dist-e2e/
+            .env.e2e
+          retention-days: 1
+
+  e2e-mr:
+    if: github.event_name == 'pull_request'
+    needs: install-build
+    runs-on: ubuntu-22.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+    env:
+      E2E_TARGET: local
+      PW_PREVIEW_PORT: "5173"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-e2e
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 11.2.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Run e2e
+        shell: bash
+        run: |
+          set +e
+          pnpm exec playwright test --config=<PROJECT_E2E_DIR>/playwright.ci.config.ts --grep "@p0|@visual"
+          PW_EXIT=$?
+          set -e
+          # junit 后处理: 判 fail 里有没有非视觉 case (对齐 GitLab 模板)
+          # 关键: 每个 <testcase> 后跟 <failure>/<error> 才算真挂; @visual fail 不 block PR
+          JUNIT="<PROJECT_E2E_DIR>/playwright-report/junit.xml"
+          if [[ ! -f "$JUNIT" ]]; then
+            echo "❌ junit.xml missing, treat as hard fail (playwright exit=$PW_EXIT)"
+            exit 1
+          fi
+          FAILED_NAMES=$(awk '
+            /<testcase / { match($0, /name="[^"]*"/); name = substr($0, RSTART+6, RLENGTH-7); has_fail=0; next }
+            /<failure|<error/ { if (name && !has_fail) { print name; has_fail=1 } }
+            /<\/testcase>/ { name="" }
+          ' "$JUNIT")
+          TOTAL_FAIL=$(echo "$FAILED_NAMES" | grep -c . || true)
+          VISUAL_FAIL=$(echo "$FAILED_NAMES" | grep -c "@visual" || true)
+          BUSINESS_FAIL=$((TOTAL_FAIL - VISUAL_FAIL))
+          TOTAL_TESTS=$(grep -oE 'tests="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          echo ""
+          echo "═════════════════════════════════════════════════════════════"
+          echo "📊 e2e summary (playwright exit=$PW_EXIT):"
+          echo "   total tests:   $TOTAL_TESTS"
+          echo "   total fail:    $TOTAL_FAIL"
+          echo "   business fail: $BUSINESS_FAIL"
+          echo "   visual fail:   $VISUAL_FAIL"
+          if [[ "$TOTAL_FAIL" -gt 0 ]]; then
+            echo ""
+            echo "   fail case names:"
+            echo "$FAILED_NAMES" | sed 's/^/     · /'
+          fi
+          echo "═════════════════════════════════════════════════════════════"
+          # 判定顺序:
+          #  1. tests=0 → webServer / playwright 挂了根本没跑, block
+          #  2. 有业务 fail → block
+          #  3. 仅视觉 fail → allow (需手动更新 baseline)
+          #  4. 全绿 → success
+          if [[ "$TOTAL_TESTS" -eq 0 ]]; then
+            echo "❌ tests=0 (playwright 没跑起 test, 通常是 webServer timeout), block PR"
+            exit 1
+          elif [[ "$BUSINESS_FAIL" -gt 0 ]]; then
+            echo "❌ 有 $BUSINESS_FAIL 个业务 case fail → block PR"
+            exit 1
+          elif [[ "$VISUAL_FAIL" -gt 0 ]]; then
+            echo "⚠️  仅 $VISUAL_FAIL 个视觉 case fail → allow PR (需手动更新 baseline)"
+            exit 0
+          elif [[ "$PW_EXIT" -ne 0 ]]; then
+            echo "❌ playwright exit=$PW_EXIT 但 junit 无 fail 条目, block PR"
+            exit 1
+          else
+            echo "✅ all pass"
+            exit 0
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-mr
+          path: |
+            <PROJECT_E2E_DIR>/playwright-report/
+            <PROJECT_E2E_DIR>/test-results/
+          retention-days: 30
+
+  e2e-nightly:
+    if: github.event_name == 'schedule'
+    needs: install-build
+    runs-on: ubuntu-22.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+    env:
+      E2E_TARGET: local
+      PW_PREVIEW_PORT: "5174"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-e2e
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 11.2.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      - run: pnpm exec playwright test --config=<PROJECT_E2E_DIR>/playwright.ci.config.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-nightly
+          path: |
+            <PROJECT_E2E_DIR>/playwright-report/
+            <PROJECT_E2E_DIR>/test-results/
+          retention-days: 30
