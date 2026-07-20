@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 //
-// 回归测试（review Critical）：合并转发(merge-forward)到「已解散」的群/子区目标
-// 必须被发送守卫拦截，不得入队出站消息。
+// 回归测试：vm.sendMessage 里 `isConversationDisbanded` 守卫是消息发送的最底层
+// 汇合点，覆盖输入框发送、重发、以及任何未来又走回 vm.sendMessage 的路径。
+// 目前转发流走 ForwardService 独立 disband 过滤（ForwardService.test.ts 已覆盖），
+// vm.sendMessage 层的 guard 在正常 typing 路径上没有其它 test 直接钉住——
+// 若被误删/短路，回归无 fail。本 spec 保留一条 mini test 让守卫不变哑弹。
 //
-// 背景：发送守卫最初只放在组件层 Conversation.sendMessage，而 merge-forward 经
-// vm.sendMergeforward → vm.sendMessage → chatManager.send 直达，绕过组件层。修复
-// 是把守卫下沉到 ConversationVM.sendMessage（所有发送入口的汇合点）。本测试钉住
-// 该不变量：解散目标 → reject 且不调 chatManager.send；混合目标 → 仅正常目标发出，
-// 解散目标计入 failed。
+// 覆盖范围有意最小化：仅验证 disband channel → reject 且不 call chatManager.send。
+// 完整的转发场景已迁到 Service/__tests__/ForwardService.test.ts。
 
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -153,8 +153,14 @@ vi.mock("../historyScroll", () => ({
     getRestoredAnchorScrollTop: ({ anchorOffsetTop, keepOffsetY }: any) => anchorOffsetTop + keepOffsetY,
 }))
 vi.mock("../../../Service/Convert", () => ({ applyMsgLevelExternalFieldsWithFallback: () => {} }))
-vi.mock("../sendContentProxy", () => ({ wrapSendContentForInjection: (content: any) => content }))
+vi.mock("../../../Utils/sendContentProxy", () => ({ wrapSendContentForInjection: (content: any) => content }))
 vi.mock("../../../Service/messageSelection", () => ({ isMessageSelectable: () => true }))
+// i18n barrel 在 jsdom 里会间接拉起 lottie-web（无 canvas 会崩在模块加载期），
+// 与其他 vm 测试保持一致 stub。
+vi.mock("../../../i18n", () => ({
+    t: (key: string) => key,
+    useI18n: () => ({ t: (key: string) => key }),
+}))
 
 import ConversationVM from "../vm"
 import { Channel, ChannelTypeGroup } from "wukongimjssdk"
@@ -162,63 +168,29 @@ import { Channel, ChannelTypeGroup } from "wukongimjssdk"
 const GroupStatusDisband = 2
 const sourceChannel = new Channel("src", ChannelTypeGroup)
 
-function setChannelStatus(channelID: string, status: number) {
-    const ch = new Channel(channelID, ChannelTypeGroup)
-    sdkState.channelInfos.set(ch.getChannelKey(), { channel: ch, orgData: { status } })
-}
-
-describe("merge-forward disband guard", () => {
+describe("vm.sendMessage disband guard", () => {
     beforeEach(() => {
         ConversationVM.sendQueue.clear()
         sdkState.channelInfos.clear()
         sdkState.send.mockReset()
-        // 返回带 channel 的消息：vm.sendMessage 在 send 之后会 new MessageWrap(message)
-        // 并读 message.channel.getChannelKey() 入队，channel 缺失会让正常目标也抛错。
         sdkState.send.mockImplementation((_content: any, channel: any) => Promise.resolve({ channel }))
     })
 
-    it("vm.sendMessage rejects and does NOT reach chatManager.send for a disbanded group", async () => {
+    it("rejects and does NOT reach chatManager.send for a disbanded group", async () => {
         const vm = new ConversationVM(sourceChannel)
         const dest = new Channel("disbanded-g", ChannelTypeGroup)
-        setChannelStatus("disbanded-g", GroupStatusDisband)
+        sdkState.channelInfos.set(dest.getChannelKey(), { orgData: { status: GroupStatusDisband } })
 
         await expect(vm.sendMessage({} as any, dest)).rejects.toThrow(/disband/i)
         expect(sdkState.send).not.toHaveBeenCalled()
     })
 
-    it("merge-forward into a disbanded destination is blocked, normal destination still sends", async () => {
+    it("sends normally to a non-disbanded group", async () => {
         const vm = new ConversationVM(sourceChannel)
-        // 选中一条消息作为合并转发内容来源。
-        vi.spyOn(vm, "getCheckedMessages").mockReturnValue([
-            { message: { fromUID: "u1", remoteExtra: {} } } as any,
-        ])
+        const dest = new Channel("normal-g", ChannelTypeGroup)
+        sdkState.channelInfos.set(dest.getChannelKey(), { orgData: { status: 1 } })
 
-        const disbanded = new Channel("disbanded-g", ChannelTypeGroup)
-        const normal = new Channel("normal-g", ChannelTypeGroup)
-        setChannelStatus("disbanded-g", GroupStatusDisband)
-        setChannelStatus("normal-g", 1) // Normal
-
-        const result = await vm.sendMergeforward([disbanded, normal])
-
-        // 解散目标计入 failed、不影响正常目标；总数为 2。
-        expect(result).toEqual({ failed: 1, total: 2 })
-        // chatManager.send 只对正常目标发生一次（解散目标被守卫拦在 send 之前）。
+        await vm.sendMessage({} as any, dest)
         expect(sdkState.send).toHaveBeenCalledTimes(1)
-    })
-
-    it("merge-forward into all-normal destinations sends to every target", async () => {
-        const vm = new ConversationVM(sourceChannel)
-        vi.spyOn(vm, "getCheckedMessages").mockReturnValue([
-            { message: { fromUID: "u1", remoteExtra: {} } } as any,
-        ])
-        const a = new Channel("a", ChannelTypeGroup)
-        const b = new Channel("b", ChannelTypeGroup)
-        setChannelStatus("a", 1)
-        setChannelStatus("b", 1)
-
-        const result = await vm.sendMergeforward([a, b])
-
-        expect(result).toEqual({ failed: 0, total: 2 })
-        expect(sdkState.send).toHaveBeenCalledTimes(2)
     })
 })

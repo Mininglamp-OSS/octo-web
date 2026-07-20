@@ -142,8 +142,12 @@ vi.mock("../historyScroll", () => ({
     getRestoredAnchorScrollTop: ({ anchorOffsetTop, keepOffsetY }: any) => anchorOffsetTop + keepOffsetY,
 }))
 vi.mock("../../../Service/Convert", () => ({ applyMsgLevelExternalFieldsWithFallback: () => {} }))
-vi.mock("../sendContentProxy", () => ({ wrapSendContentForInjection: (content: any) => content }))
+vi.mock("../../../Utils/sendContentProxy", () => ({ wrapSendContentForInjection: (content: any) => content }))
 vi.mock("../../../Service/messageSelection", () => ({ isMessageSelectable: () => true }))
+vi.mock("../../../i18n", () => ({
+    t: (key: string) => key,
+    useI18n: () => ({ t: (key: string) => key }),
+}))
 
 import ConversationVM from "../vm"
 import { Channel, MessageStatus } from "wukongimjssdk"

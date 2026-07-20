@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReactNode, UIEvent } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import { CellSelection } from '@tiptap/pm/tables'
 import { NodeSelection } from '@tiptap/pm/state'
+import { getMarkRange } from '@tiptap/core'
 import type { Editor } from '@tiptap/core'
 // Univer's own design-system components (@univerjs/design, Apache-2.0) so the docs toolbar uses the
 // SAME controls as the sheet instead of bespoke ones. Its stylesheet is global but scoped to
@@ -61,6 +63,7 @@ import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { INDENT_MAX_LEVEL } from './ParagraphIndent.ts'
 import { TableGridPicker } from './TableControls.tsx'
 import { FormulaControl } from './FormulaControl.tsx'
+import { LatexInputModal } from '../sheet/floatDom/LatexInputModal.tsx'
 import { capturePaintMarks, applyPaintMarks } from './formatPainter.ts'
 import { HIGHLIGHT_COLORS, TEXT_COLORS } from './colorPalette.ts'
 import { t, i18n } from '../octoweb/index.ts'
@@ -280,20 +283,67 @@ export function LinkBubbleMenu({ editor }: { editor: Editor }) {
   useEditorTick(editor)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
+  const [textDraft, setTextDraft] = useState('')
   const href = (editor.getAttributes('link').href as string) || ''
 
-  // Drop edit mode when the caret moves to a different link (or off links), so the card never
-  // reopens in a stale editing state. Render-phase reset keyed off the current href.
-  const seenHref = useRef(href)
-  if (href !== seenHref.current) {
-    seenHref.current = href
+  // The whole link mark's range at the caret, so we can read/replace its displayed text.
+  const linkRange = () => getMarkRange(editor.state.selection.$from, editor.state.schema.marks.link)
+
+  // Drop edit mode when the caret moves to a DIFFERENT link, so the card never reopens in a stale
+  // editing state. Key off the link's range identity (its start position) — NOT the href — otherwise
+  // clicking from link A to an adjacent link B with the SAME url would leave the form open with A's
+  // draft, and Confirm would recompute the range from B and overwrite B's text with A's. Render-phase reset.
+  const seenFrom = useRef<number | null>(null)
+  const curFrom = linkRange()?.from ?? null
+  if (curFrom !== seenFrom.current) {
+    seenFrom.current = curFrom
     if (editing) setEditing(false)
   }
 
+  function startEdit() {
+    const range = linkRange()
+    setTextDraft(range ? editor.state.doc.textBetween(range.from, range.to, ' ') : '')
+    setDraft(href)
+    setEditing(true)
+  }
+
+  // Apply BOTH the (possibly changed) displayed text and the URL — matching the sheet's link dialog.
+  // Text unchanged → just re-point the href on the existing range; text changed → replace the link's
+  // text with a new run that CARRIES OVER the original inline marks (bold/italic/colour/…) and only
+  // swaps the link mark's href — so editing the text of a styled link never drops its other styling.
   function applyEdit() {
     const resolved = resolveLinkHref(draft)
     if (!resolved) return
-    editor.chain().focus().extendMarkRange('link').setLink({ href: resolved }).run()
+    const range = linkRange()
+    if (!range) {
+      setEditing(false)
+      return
+    }
+    const curText = editor.state.doc.textBetween(range.from, range.to, ' ')
+    const text = textDraft.trim()
+    const chain = editor.chain().focus().setTextSelection(range)
+    // Does the linked range hold anything richer than plain-text runs?
+    // Inline nodes (mentions, inline math, icons) are inline but NOT text; rebuilding
+    // the range as a single text node would silently destroy them, so in that case we
+    // never touch the text — we only re-point the href and keep the original content.
+    let onlyText = true
+    editor.state.doc.nodesBetween(range.from, range.to, (node) => {
+      if (node.isInline && !node.isText) onlyText = false
+    })
+    if (!text || text === curText || !onlyText) {
+      chain.extendMarkRange('link').setLink({ href: resolved }).run()
+    } else {
+      // Preserve every non-link mark on the original link text and re-point only the link's href.
+      // We read the marks at the start of the range (the styled run) and swap the link mark; without
+      // this the new text node would carry the link mark alone, silently dropping bold/italic/colour.
+      const linkType = editor.state.schema.marks.link
+      const existing = editor.state.doc.nodeAt(range.from)?.marks ?? []
+      const marks = existing
+        .filter((m) => m.type !== linkType)
+        .map((m) => ({ type: m.type.name, attrs: m.attrs }))
+        .concat([{ type: 'link', attrs: { href: resolved } }])
+      chain.insertContent({ type: 'text', text, marks }).run()
+    }
     setEditing(false)
   }
 
@@ -305,14 +355,40 @@ export function LinkBubbleMenu({ editor }: { editor: Editor }) {
         e.isActive('link') && e.isEditable && !(e.state.selection instanceof CellSelection)
       }
     >
-      <div className="octo-link-bubble">
-        {editing ? (
-          <>
+      {editing ? (
+        <div className="octo-link-bubble octo-link-bubble-form">
+          <label className="octo-link-group">
+            <span className="octo-link-label">{t('docs.toolbar.linkTextLabel')}</span>
             <input
-              className="octo-link-bubble-input"
+              className="octo-link-field"
+              value={textDraft}
+              placeholder={t('docs.toolbar.linkTextPlaceholder')}
+              onMouseDown={(e) => e.stopPropagation()}
+              onChange={(e) => setTextDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  applyEdit()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setEditing(false)
+                }
+              }}
+            />
+          </label>
+          {/* Type row (static): docs links are always web URLs (no cell/range target as in the sheet),
+              so this mirrors the sheet's 类型 row without a single-option dropdown. */}
+          <span className="octo-link-group">
+            <span className="octo-link-label">{t('docs.toolbar.linkType')}</span>
+            <span className="octo-link-type">{t('docs.toolbar.link')}</span>
+          </span>
+          <label className="octo-link-group">
+            <span className="octo-link-label">{t('docs.toolbar.linkUrlLabel')}</span>
+            <input
+              className="octo-link-field"
               autoFocus
               value={draft}
-              placeholder={t('docs.toolbar.linkPlaceholder')}
+              placeholder={t('docs.toolbar.linkUrlPlaceholder')}
               onMouseDown={(e) => e.stopPropagation()}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -325,61 +401,99 @@ export function LinkBubbleMenu({ editor }: { editor: Editor }) {
                 }
               }}
             />
-            <Btn label={t('docs.toolbar.linkConfirm')} onClick={applyEdit} />
-          </>
-        ) : (
-          <>
-            <UniverLinkIcon className="octo-tb-icon octo-link-bubble-icon" />
-            <a
-              className="octo-link-bubble-url"
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={href}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              {href}
-            </a>
-            <Btn
-              label={<CopyIcon className="octo-tb-icon" />}
-              title={t('docs.toolbar.linkCopy')}
-              onClick={() => {
-                if (href && navigator.clipboard) void navigator.clipboard.writeText(href)
-              }}
-            />
-            <Btn
-              label={<WriteIcon className="octo-tb-icon" />}
-              title={t('docs.toolbar.linkEdit')}
-              onClick={() => {
-                setDraft(href)
-                setEditing(true)
-              }}
-            />
-            <Btn
-              label={<UnlinkIcon className="octo-tb-icon" />}
-              title={t('docs.toolbar.linkRemove')}
-              onClick={() => editor.chain().focus().extendMarkRange('link').unsetLink().run()}
-            />
-          </>
-        )}
-      </div>
+          </label>
+          <div className="octo-link-popover-actions">
+            <button type="button" className="octo-link-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => setEditing(false)}>
+              {t('docs.toolbar.linkCancel')}
+            </button>
+            <button type="button" className="octo-link-btn octo-link-btn--primary" onMouseDown={(e) => e.preventDefault()} onClick={applyEdit}>
+              {t('docs.toolbar.linkConfirm')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="octo-link-bubble">
+          <UniverLinkIcon className="octo-tb-icon octo-link-bubble-icon" />
+          <a
+            className="octo-link-bubble-url"
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={href}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {href}
+          </a>
+          <Btn
+            label={<CopyIcon className="octo-tb-icon" />}
+            title={t('docs.toolbar.linkCopy')}
+            onClick={() => {
+              if (href && navigator.clipboard) void navigator.clipboard.writeText(href)
+            }}
+          />
+          <Btn label={<WriteIcon className="octo-tb-icon" />} title={t('docs.toolbar.linkEdit')} onClick={startEdit} />
+          <Btn
+            label={<UnlinkIcon className="octo-tb-icon" />}
+            title={t('docs.toolbar.linkRemove')}
+            onClick={() => editor.chain().focus().extendMarkRange('link').unsetLink().run()}
+          />
+        </div>
+      )}
     </BubbleMenu>
   )
 }
 
 /**
- * Formula bubble (sheet-parity): when a math node (inline or block) is selected, a floating toolbar
- * offers — like the sheet's — A⁻/A⁺ font size, a colour picker and Delete. Editing itself is IN-PLACE
- * (click the formula → it becomes an editable MathLive field, see mathExtended.ts), so there's no
- * edit button and the toolbar matches the sheet's (A⁻/A⁺ · colour · delete). Size/colour write the
- * node's fontSize/color attrs; re-selecting the node after each change keeps the bubble anchored.
+ * Formula bubble (sheet-parity): when a math node is selected, a floating toolbar offers A⁻/A⁺ font
+ * size, a colour picker and Delete. Editing is by DOUBLE-CLICK on the formula (the NodeView dispatches
+ * `octo-math-edit`, caught here to open the centered LaTeX editor modal with the symbol palette) —
+ * NOT an in-place MathLive swap, which broke block-formula centring and fought this bubble for focus.
+ * Size/colour write the node's fontSize/color attrs via a raw setNodeMarkup (no focus/selection churn),
+ * so they apply reliably while the formula is selected.
  */
 export function MathBubbleMenu({ editor }: { editor: Editor }) {
   useEditorTick(editor)
   const [colorOpen, setColorOpen] = useState(false)
+  const [modal, setModal] = useState<{ kind: 'inline' | 'block'; latex: string } | null>(null)
 
   const mathNodeName = (): 'inlineMath' | 'blockMath' | null =>
     editor.isActive('inlineMath') ? 'inlineMath' : editor.isActive('blockMath') ? 'blockMath' : null
+
+  // Double-click a formula → open the LaTeX editor, pre-filled. The NodeView dispatches octo-math-edit
+  // with the node pos; we select the node and open the modal.
+  useEffect(() => {
+    const dom = editor.view.dom
+    const onEdit = (e: Event) => {
+      // Read-only guard: even though the NodeView's dblclick is gated, guard the modal-open path
+      // too (defense-in-depth — a stray octo-math-edit event must not open the editor when the
+      // document is not editable).
+      if (!editor.isEditable) return
+      const pos = (e as CustomEvent<{ pos: number }>).detail?.pos
+      if (typeof pos !== 'number') return
+      const node = editor.state.doc.nodeAt(pos)
+      const kind = node?.type.name === 'inlineMath' ? 'inline' : node?.type.name === 'blockMath' ? 'block' : null
+      if (!node || !kind) return
+      editor.chain().setNodeSelection(pos).run()
+      setModal({ kind, latex: (node.attrs.latex as string) || '' })
+    }
+    dom.addEventListener('octo-math-edit', onEdit as EventListener)
+    return () => dom.removeEventListener('octo-math-edit', onEdit as EventListener)
+  }, [editor])
+
+  function applyEdit(latex: string) {
+    // Read-only guard on the mutation itself: the modal's confirm must never write to a
+    // non-editable document.
+    if (!editor.isEditable) {
+      setModal(null)
+      return
+    }
+    const v = latex.trim()
+    if (modal && v) {
+      if (modal.kind === 'inline') editor.chain().focus().updateInlineMath({ latex: v }).run()
+      else editor.chain().focus().updateBlockMath({ latex: v }).run()
+    }
+    setModal(null)
+  }
 
   // Update the selected formula's attrs WITHOUT touching editor focus or the DOM selection: a raw
   // setNodeMarkup transaction, re-pinning the NodeSelection so the bubble stays anchored. Crucially
@@ -387,6 +501,7 @@ export function MathBubbleMenu({ editor }: { editor: Editor }) {
   // field and kick it out of edit mode) — so adjusting size/colour works whether the formula is just
   // selected OR being edited. The buttons' onMouseDown-preventDefault keeps the field focused.
   function updateMathAttrs(patch: Record<string, unknown>) {
+    if (!editor.isEditable) return
     const pos = editor.state.selection.from
     const node = editor.state.doc.nodeAt(pos)
     if (!node || (node.type.name !== 'inlineMath' && node.type.name !== 'blockMath')) return
@@ -458,6 +573,17 @@ export function MathBubbleMenu({ editor }: { editor: Editor }) {
           onClick={() => editor.chain().focus().deleteSelection().run()}
         />
       </div>
+      {modal &&
+        createPortal(
+          <LatexInputModal
+            initialLatex={modal.latex}
+            showPalette
+            showFontSize={false}
+            onConfirm={(latex) => applyEdit(latex)}
+            onCancel={() => setModal(null)}
+          />,
+          document.body,
+        )}
     </BubbleMenu>
   )
 }

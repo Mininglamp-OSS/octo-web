@@ -25,7 +25,7 @@ import { SystemContent } from "wukongimjssdk";
 import { getFoldSessionExpandedMessages } from "./foldSessionSummary";
 import { getPulldownRestoredScrollTop, getRestoredAnchorScrollTop } from "./historyScroll";
 import { applyMsgLevelExternalFieldsWithFallback } from "../../Service/Convert";
-import { wrapSendContentForInjection } from "./sendContentProxy";
+import { wrapSendContentForInjection } from "../../Utils/sendContentProxy";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import {
     addImConnectStatusListener,
@@ -613,14 +613,11 @@ export default class ConversationVM extends ProviderListener {
         })
     }
 
-    // 返回 { failed, total }：failed 为转发失败的目标数，total 为目标总数。
-    // 单个目标失败不中断其余目标（并发投递，互相隔离）。
-    // 注意：sendMessage→WKSDK.chatManager.send() 是本地乐观语义，入队即 resolve，
-    // 真正投递失败在 ack 阶段异步回调，不在此 catch 覆盖范围内（#273 已知边界）。
-    async sendMergeforward(toChannels: Channel[]): Promise<{ failed: number; total: number }> {
-        let users = new Array<any>();
-
-        let checkedMessages = this.getCheckedMessages().map((messageWrap: MessageWrap) => {
+    // 构建合并转发消息内容（不发送）。发送由上层 ForwardService 统一处理。
+    // 保留 InteractiveCard 校验：不可转发的编辑态卡片抛 InteractiveCardForwardBlockedError
+    // → ForwardService Phase 1 abort，Phase 2 完全不进入。
+    buildMergeforwardContent(checkedMessagesWrap: MessageWrap[]): MergeforwardContent {
+        const checkedMessages = checkedMessagesWrap.map((messageWrap: MessageWrap) => {
             const msg = messageWrap.message
             // 如果消息被编辑过，用编辑后内容替换 content，保证合并转发预览和内容正确
             if (msg.remoteExtra?.isEdit && msg.remoteExtra?.contentEdit) {
@@ -643,38 +640,18 @@ export default class ConversationVM extends ProviderListener {
             }
             return msg
         })
+
+        const users = new Array<any>()
         if (checkedMessages && checkedMessages.length > 0) {
             const addedUIDs = new Set<string>()
             for (const message of checkedMessages) {
                 if (addedUIDs.has(message.fromUID)) continue
                 addedUIDs.add(message.fromUID)
-                let channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
+                const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
                 users.push({ uid: message.fromUID, name: channelInfo?.title })
             }
         }
-        const total = toChannels?.length ?? 0
-        let failed = 0
-        if (toChannels && toChannels.length > 0) {
-            const content = new MergeforwardContent(this.channel.channelType, users, checkedMessages)
-            // 并发投递 + 每个任务 .catch 兜底（语义等价 Promise.allSettled，但本包
-            // tsconfig target=es2019 没有 allSettled 类型，手写更稳）。单目标失败
-            // 被隔离、计数，不影响其余。
-            type SendOutcome = { ok: true } | { ok: false; channelID: string; reason: unknown }
-            const outcomes = await Promise.all(
-                toChannels.map((destChannel): Promise<SendOutcome> =>
-                    this.sendMessage(content, destChannel)
-                        .then((): SendOutcome => ({ ok: true }))
-                        .catch((reason: unknown): SendOutcome => ({ ok: false, channelID: destChannel.channelID, reason }))
-                )
-            )
-            for (const o of outcomes) {
-                if (!o.ok) {
-                    failed++
-                    console.error("[merge-forward] send failed", o.channelID, o.reason)
-                }
-            }
-        }
-        return { failed, total }
+        return new MergeforwardContent(this.channel.channelType, users, checkedMessages)
     }
 
     // 删除消息
@@ -2341,11 +2318,12 @@ export default class ConversationVM extends ProviderListener {
 
     // 发送消息
     async sendMessage(content: MessageContent, channel: Channel): Promise<Message> {
-        // 解散守卫（中央检查·最底层）：所有发送入口最终都汇到这里再调
-        // chatManager.send，因此守卫下沉到此处即可覆盖输入框发送、单条/逐条转发、
-        // 合并转发(sendMergeforward 直接调本方法，绕过组件层)、重发等全部路径。
-        // 群/子区解散后只读，直接 reject——合并转发的 per-target .catch 会把该目标
-        // 计入 failed、不影响其余目标；组件层 sendMessage/resendMessage 另有 toast。
+        // 解散守卫（最底层）：所有走 vm.sendMessage 的入口最终都汇到这里再调
+        // chatManager.send，因此守卫下沉到此处即可覆盖输入框发送、重发等路径。
+        // 转发（单条 / 多选 / 合并）现在走 ForwardService.send 独立发送路径，
+        // 在 Service 层内部也做了 isConversationDisbanded 过滤（见 ForwardService.ts）；
+        // 两条路径互不依赖，各自保留 disband 守卫，互为保险。
+        // 群/子区解散后只读，直接 reject——组件层 sendMessage/resendMessage 另有 toast。
         if (isConversationDisbanded(channel)) {
             return Promise.reject(new Error("group disbanded"))
         }

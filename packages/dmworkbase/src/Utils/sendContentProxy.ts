@@ -53,6 +53,21 @@
 import type { MessageContent } from "wukongimjssdk"
 
 /**
+ * MessageContent 上业务层扩展的字段（SDK 类型未暴露，但运行时存在）。
+ * 抽出命名类型让本文件里的 `as` 收敛到几处、签名可读。
+ */
+interface MentionShape {
+    all?: number | boolean
+    uids?: string[]
+    humans?: number | boolean
+    ais?: number | boolean
+    entities?: unknown[]
+}
+type MentionAware = { mention?: MentionShape }
+type ContentObjAware = { contentObj?: Record<string, any> & { mention?: MentionShape } }
+type ExtendedContent = MessageContent & MentionAware & ContentObjAware
+
+/**
  * 描述本次发送需要注入哪些字段。
  *
  * `spaceId` 为非空字符串时注入 `obj.space_id`。
@@ -76,16 +91,17 @@ export function wrapSendContentForInjection(
     content: MessageContent,
     injection: SendInjection,
 ): MessageContent {
+    const ext = content as ExtendedContent
     const injectSpaceId = !!injection.spaceId
     const injectMentionHumans = !!injection.mentionHumans
     const injectMentionAis = !!injection.mentionAis
-    const mentionAny = (content as any).mention
+    const mentionRoot = ext.mention?.entities
+    const mentionInContentObj = ext.contentObj?.mention?.entities
     const mentionEntities =
-        Array.isArray(mentionAny?.entities) && mentionAny.entities.length > 0
-            ? mentionAny.entities
-            : Array.isArray((content as any).contentObj?.mention?.entities) &&
-                (content as any).contentObj.mention.entities.length > 0
-              ? (content as any).contentObj.mention.entities
+        Array.isArray(mentionRoot) && mentionRoot.length > 0
+            ? mentionRoot
+            : Array.isArray(mentionInContentObj) && mentionInContentObj.length > 0
+              ? mentionInContentObj
               : undefined
     const injectMentionEntities = !!mentionEntities
     const injectMention = injectMentionHumans || injectMentionAis || injectMentionEntities

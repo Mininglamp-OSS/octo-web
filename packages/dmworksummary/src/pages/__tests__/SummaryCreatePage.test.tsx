@@ -509,3 +509,134 @@ describe('SummaryCreatePage agent SSE session_id sync', () => {
         expect(lastMessage.content).toBe('Server response');
     });
 });
+
+describe('SummaryCreatePage handleSubmit error handling', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('shows friendly toast for 40001 (referenced summary lost after refresh)', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+
+        // Mock createAgentSummary to reject with axios-style 40001 error.
+        // This is the exact shape the backend returns when
+        //   session_id has no fetch_channel tool trace AND
+        //   referenced_task_ids is empty AND
+        //   origin_channel_id was not supplied by the front-end.
+        // See internal/api/handler/agent_summary.go: "origin_channel_id 未传且无法从 session 反查".
+        const err = {
+            response: { data: { code: 40001, message: 'origin_channel_id 未传且无法从 session 反查' } },
+        };
+        (api.createAgentSummary as any).mockRejectedValueOnce(err);
+
+        const ref = React.createRef<any>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+
+        // Simulate a completed agent chat session ready to save.
+        await act(async () => {
+            instance.setState({
+                sessionId: 'session-abc',
+                mode: 'agent',
+                messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'summary' }],
+            });
+        });
+
+        (Toast.error as any).mockClear();
+
+        // Trigger the save flow directly on the instance.
+        let result: boolean | undefined;
+        await act(async () => {
+            result = await instance.handleSaveAsSummary('a title');
+            await flushPromises();
+        });
+
+        // Whichever method the component exposes, the 40001 branch should
+        // surface the friendly, actionable copy — NOT the raw backend message.
+        expect(Toast.error).toHaveBeenCalled();
+        const shown = (Toast.error as any).mock.calls[0]?.[0] ?? '';
+        expect(shown).toBe('保存失败：请重新选择引用总结，或点「新会话」重来');
+        expect(result).toBe(false);
+    });
+});
+
+describe('SummaryCreatePage derivedFromTask cross-session isolation (#907 P1 Jerry-Xin)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+    });
+
+    it('clears leftover workbench session_id + messages when mounted with derivedFromTask', async () => {
+        // Pre-seed leftover state from a previous chat about a DIFFERENT summary:
+        //   - session_id survived from earlier workbench chat
+        //   - referencedTask points to the old summary (task_id=99)
+        // This mirrors the exact bug scenario Jerry-Xin flagged:
+        //   user chats about A, closes without saving, opens "continue refine"
+        //   from summary B's detail page → new mount receives derivedFromTask=B
+        //   → old session_id (about A) must be discarded, else refresh-before-send
+        //   restores A's history alongside B's reference and save corrupts derivation.
+        localStorage.setItem('agent-chat-session:__workbench__', 'old-session-about-A');
+        localStorage.setItem(
+            'agent-chat-referenced:__workbench__',
+            JSON.stringify({ task_id: 99, title: 'Old Summary A' }),
+        );
+
+        const derivedFromTaskB = {
+            task_id: 42,
+            task_no: 'ST-B',
+            title: 'New Summary B',
+            summary_mode: 1 as const,
+            status: 3 as const,
+            trigger_type: 3,
+        };
+
+        const ref = React.createRef<any>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} derivedFromTask={derivedFromTaskB as any} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+
+        // 1. Old session_id storage key MUST be gone — no restore of the stale A chat.
+        expect(localStorage.getItem('agent-chat-session:__workbench__')).toBeNull();
+
+        // 2. Referenced storage key MUST point to B (the new derivation target), not A.
+        const storedRef = JSON.parse(localStorage.getItem('agent-chat-referenced:__workbench__') || 'null');
+        expect(storedRef).toEqual({ task_id: 42, title: 'New Summary B' });
+
+        // 3. React state must reflect a fresh session for B, not resumed A.
+        expect(instance.state.sessionId).toBe('');
+        expect(instance.state.messages).toEqual([]);
+        expect(instance.state.referencedTask?.task_id).toBe(42);
+        expect(instance.state.mode).toBe('agent');
+    });
+
+    it('when derivedFromTask is absent, does NOT touch existing workbench session (bare workbench entry unchanged)', async () => {
+        // Reverse guard: bare full-page workbench entry (no derivedFromTask prop)
+        // must NOT clear the user's in-progress session. This test protects the
+        // #158/#161 resume-after-refresh scenario from being broken by the
+        // #907 P1 fix — the two behaviours are orthogonal.
+        localStorage.setItem('agent-chat-session:__workbench__', 'in-progress-session');
+        localStorage.setItem(
+            'agent-chat-referenced:__workbench__',
+            JSON.stringify({ task_id: 7, title: 'Reference C' }),
+        );
+
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+
+        // Both storage keys survive the mount — enterAgentMode will restore them
+        // when the user actually switches into agent mode.
+        expect(localStorage.getItem('agent-chat-session:__workbench__')).toBe('in-progress-session');
+        expect(
+            JSON.parse(localStorage.getItem('agent-chat-referenced:__workbench__') || 'null'),
+        ).toEqual({ task_id: 7, title: 'Reference C' });
+    });
+});

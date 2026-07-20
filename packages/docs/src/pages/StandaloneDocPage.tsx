@@ -3,6 +3,7 @@ import { getWKApp, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { BoardSession } from '../board/BoardSession.tsx'
+import { HtmlDocView } from '../html/HtmlDocView.tsx'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
@@ -590,6 +591,23 @@ export function StandaloneDocPage({
   // that isn't an explicit `'board'` falls through to the rich-text editor (the safe default for
   // plain docs and legacy backends that omit docType). This mirrors DocsHome's buildRightPane
   // dispatch so both open paths agree on the shell for every member.
+  // Read-only HTML doc ('html'): render the view-only HtmlDocView (its content lives in octo-doc,
+  // not the yjs collab store), mirroring DocsHome.buildRightPane. Without this branch an html doc
+  // falls through to the collab EditorShell, which has no yjs data for it and reports "not found".
+  // The preflight already ran (reader gate) and recordDocView above logged the view, so a shared
+  // /d/<docId> html link opens AND lands in "recently viewed" like every other kind.
+  if (meta.docType === 'html') {
+    return (
+      <div className="octo-doc-standalone">
+        <HtmlDocView
+          key={editorDocId}
+          docId={editorDocId}
+          slug={meta.octoDocSlug}
+          space={addressing.space}
+        />
+      </div>
+    )
+  }
   if (meta.docType === 'board') {
     // The whiteboard {board} segment is BoardSession's `docId` (it becomes octo:{space}:{folder}:
     // wb:{board}). Prefer the authoritative segment parsed from the preflight documentName so the

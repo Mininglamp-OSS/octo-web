@@ -73,7 +73,7 @@ vi.mock("../historyScroll", () => ({
     getRestoredAnchorScrollTop: ({ anchorOffsetTop, keepOffsetY }: any) => anchorOffsetTop + keepOffsetY,
 }))
 vi.mock("../../../Service/Convert", () => ({ applyMsgLevelExternalFieldsWithFallback: () => {} }))
-vi.mock("../sendContentProxy", () => ({ wrapSendContentForInjection: (content: any) => content }))
+vi.mock("../../../Utils/sendContentProxy", () => ({ wrapSendContentForInjection: (content: any) => content }))
 vi.mock("../../../Service/messageSelection", () => ({ isMessageSelectable: () => true }))
 // The i18n barrel transitively pulls in lottie-web, which crashes on import
 // under jsdom (no canvas). Stub it the same way MessageRow.test / MarkdownContent

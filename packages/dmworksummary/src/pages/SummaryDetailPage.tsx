@@ -10,8 +10,8 @@ import {
     Popconfirm,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconMore, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit } from "@douyinfe/semi-icons";
-import { Channel, ChannelTypeGroup, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
-import { I18nContext, t } from "@octo/base";
+import { Channel, MessageText } from "wukongimjssdk";
+import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
@@ -47,6 +47,7 @@ import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import MatterPickerModal from "../components/MatterPickerModal";
 import * as matterBridge from "../api/matterBridge";
 import SummaryEditor from "../components/SummaryEditor";
+import SummaryVersionHistory from "../components/SummaryVersionHistory";
 import MemberSelectorModal from "../components/MemberSelectorModal";
 import type { MemberCandidate } from "../types/summary";
 
@@ -1887,46 +1888,40 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleForwardToChat = () => {
-        const { detail } = this.state;
-        if (!detail?.result?.content?.trim()) return;
+        const { detail, personalResult } = this.state;
+        // #158/#161 agent 总结 fallback:agent workflow 只写 personal_result 表,
+        // 不写 summary_result 表(agent_summary.go: creatorPR 是 deliverable,没有
+        // 单独的 SummaryResult 行)。所以 GET /summaries/:id 返 detail.result=null,
+        // 但 detail.personal_result 有 content(前端渲染正文也是走这个 fallback)。
+        // 传统 workflow 优先走 detail.result;agent workflow 走 personalResult。
+        // 两者的 content 语义都是"给用户看的最终交付文本",转发到聊天的姿势一致。
+        const sourceContent = detail?.result?.content ?? personalResult?.content ?? '';
+        if (!sourceContent.trim()) return;
         WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
-            const cleanContent = (detail?.result?.content ?? '').replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
+            const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
             const chunks = splitSummaryText(cleanContent);
-            const errors: string[] = [];
 
-            for (const ch of channels) {
-                try {
-                    for (let i = 0; i < chunks.length; i++) {
-                        const msg = new MessageText(chunks[i]);
+            // 长文分块 → 同 channel 内 serial 保序 + interMessageDelayMs 节流；
+            // 跨 channel 也走 serial（保持与原实现一致的顺序体验）。
+            // 原先手写的 space_id monkey-patch 由 ForwardService 内部
+            // wrapSendContentForInjection + opts.spaceId 代替。
+            const result = await ForwardService.send(
+                channels,
+                () => chunks.map((c) => new MessageText(c)),
+                {
+                    channelMode: "serial",
+                    messageMode: "serial",
+                    interMessageDelayMs: INTER_MESSAGE_DELAY_MS,
+                    spaceId: WKApp.shared.currentSpaceId,
+                },
+            );
 
-                        // Inject space_id for person channels (matching ConversationVM.sendMessage pattern)
-                        const spaceId = WKApp.shared.currentSpaceId;
-                        if (spaceId && ch.channelType === ChannelTypePerson) {
-                            const originalEncodeJSON = msg.encodeJSON.bind(msg);
-                            msg.encodeJSON = () => {
-                                const obj = originalEncodeJSON();
-                                obj.space_id = spaceId;
-                                return obj;
-                            };
-                            msg.contentObj = { ...(msg.contentObj || {}), space_id: spaceId };
-                        }
-
-                        await WKSDK.shared().chatManager.send(msg, ch);
-                        if (i < chunks.length - 1) {
-                            await new Promise((r) => setTimeout(r, INTER_MESSAGE_DELAY_MS));
-                        }
-                    }
-                } catch {
-                    errors.push(ch.channelID);
-                }
-            }
-
-            if (errors.length > 0) {
-                if (errors.length === channels.length) {
-                    Toast.error(t("summary.detail.forwardFailed"));
-                } else {
-                    Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: errors.length, total: channels.length } }));
-                }
+            // 分母保持 channels 数（scope='targets'），不改动用户可见的 Toast 语义。
+            const state = interpretForwardResult(result, "targets");
+            if (state.kind === "all-failed") {
+                Toast.error(t("summary.detail.forwardFailed"));
+            } else if (state.kind === "partial") {
+                Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: state.failed, total: state.total } }));
             } else {
                 Toast.success(t("summary.detail.forwarded"));
             }
@@ -1934,10 +1929,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleForwardToMatter = () => {
-        const { detail } = this.state;
+        const { detail, personalResult } = this.state;
         if (!detail || detail.status !== TaskStatus.COMPLETED) return;
 
-        const content = detail.result?.content;
+        // #907 review (yujiawei P2): mirror handleForwardToChat's agent
+        // summary fallback so this path won't ship broken when
+        // SHOW_FORWARD_TO_MATTER is flipped back on. See handleForwardToChat
+        // for the full rationale (agent workflow only writes personal_result).
+        const content = detail.result?.content ?? personalResult?.content;
         if (!content?.trim()) {
             Toast.warning(t("summary.detail.noForwardContent"));
             return;
@@ -1947,10 +1946,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleMatterSelected = async (matterId: string, matterTitle: string) => {
-        const { detail } = this.state;
+        const { detail, personalResult } = this.state;
         if (!detail) return;
 
-        const content = detail.result?.content;
+        // Same fallback as handleForwardToMatter (they must stay in sync).
+        const content = detail.result?.content ?? personalResult?.content;
         if (!content?.trim()) return;
 
         this.setState({ forwardingToMatter: true, showMatterPicker: false });
@@ -2165,138 +2165,43 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return label === key ? t("summary.detail.versionOperation.generate") : label;
     }
 
-    private formatVersionOperationNote(version: SummaryVersionItem): string {
-        const { t } = this.context;
-        const note = (version.operation_note || "").trim();
-        if (note) return note;
-        if ((version.operation_type || "generate") === "generate") {
-            return t("summary.detail.versionInitialGenerateDesc");
-        }
-        if (version.operation_type === "restore" && version.parent_result_id) {
-            return t("summary.detail.versionRestoreFromResult", { values: { id: version.parent_result_id } });
-        }
-        return this.formatVersionOperation(version);
-    }
-
     renderVersionHistory() {
         const { versions, versionsLoading, detail, restoringVersionId } = this.state;
-        const { t } = this.context;
         if (!detail?.result || versionsLoading || versions.length <= 1) return null;
         const currentVersion = detail.result.version;
+        const canRestore = !!(detail.permissions?.can_edit_team || detail.permissions?.can_edit);
         return (
-            <div className="summary-version-strip">
-                <div className="summary-version-strip-title">
-                    <IconHistory size="small" />
-                    <span>{t("summary.detail.recentVersions")}</span>
-                    <span className="summary-version-strip-hint">{t("summary.detail.recentVersionsLimitHint")}</span>
-                </div>
-                <div className="summary-version-list">
-                    {versions.slice(0, 3).map((version) => {
-                        const isCurrent = version.version === currentVersion;
-                        return (
-                            <div key={version.result_id} className="summary-version-item">
-                                <div className="summary-version-body">
-                                    <div className="summary-version-main">
-                                        <span className="summary-version-number">
-                                            {t("summary.common.version", { values: { version: version.version } })}
-                                        </span>
-                                        {isCurrent && <Tag size="small" color="blue">{t("summary.detail.currentVersion")}</Tag>}
-                                        {version.operation_type === "scheduled_generate" && (
-                                            <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
-                                        )}
-                                        {version.operation_type !== "scheduled_generate" && (
-                                            <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
-                                        )}
-                                    </div>
-                                    <div className="summary-version-note">{this.formatVersionOperationNote(version)}</div>
-                                </div>
-                                <div className="summary-version-actions">
-                                    <Button
-                                        size="small"
-                                        theme="borderless"
-                                        onClick={() => this.handleViewVersion(version, false)}
-                                    >
-                                        {t("summary.detail.viewVersion")}
-                                    </Button>
-                                    {!isCurrent && (detail.permissions?.can_edit_team || detail.permissions?.can_edit) && (
-                                        <Button
-                                            size="small"
-                                            theme="borderless"
-                                            loading={restoringVersionId === version.result_id}
-                                            onClick={() => this.handleRestoreVersion(version)}
-                                        >
-                                            {t("summary.detail.restoreVersion")}
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
+            <SummaryVersionHistory
+                versions={versions}
+                versionsLoading={versionsLoading}
+                currentVersion={currentVersion}
+                restoringVersionId={restoringVersionId}
+                canRestore={canRestore}
+                onViewVersion={(version: SummaryVersionItem) => this.handleViewVersion(version, false)}
+                onRestoreVersion={(version: SummaryVersionItem) => this.handleRestoreVersion(version)}
+            />
         );
     }
 
 
     renderPersonalVersionHistory() {
         const { personalVersions, personalVersionsLoading, personalResult, restoringPersonalVersionId, detail } = this.state;
-        const { t } = this.context;
         // 多人协作最终页只保留团队汇总版本控制；个人报告里的版本历史会让用户误以为
         // 恢复个人版本会直接影响最终团队结果，因此在多人协作场景统一隐藏。
         if (this.isMultiCollab()) return null;
         if (!personalResult?.content || personalVersionsLoading || personalVersions.length <= 1) return null;
-        const currentVersion = personalResult.version || personalVersions[0]?.version;
+        const currentVersion = personalResult.version || personalVersions[0]?.version || 0;
+        const canRestore = !!detail?.permissions?.can_edit_personal;
         return (
-            <div className="summary-version-strip">
-                <div className="summary-version-strip-title">
-                    <IconHistory size="small" />
-                    <span>{t("summary.detail.recentVersions")}</span>
-                    <span className="summary-version-strip-hint">{t("summary.detail.recentVersionsLimitHint")}</span>
-                </div>
-                <div className="summary-version-list">
-                    {personalVersions.slice(0, 3).map((version) => {
-                        const isCurrent = version.version === currentVersion;
-                        return (
-                            <div key={version.result_id} className="summary-version-item">
-                                <div className="summary-version-body">
-                                    <div className="summary-version-main">
-                                        <span className="summary-version-number">
-                                            {t("summary.common.version", { values: { version: version.version } })}
-                                        </span>
-                                        {isCurrent && <Tag size="small" color="blue">{t("summary.detail.currentVersion")}</Tag>}
-                                        {version.operation_type === "scheduled_generate" && (
-                                            <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
-                                        )}
-                                        {version.operation_type !== "scheduled_generate" && (
-                                            <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
-                                        )}
-                                    </div>
-                                    <div className="summary-version-note">{this.formatVersionOperationNote(version)}</div>
-                                </div>
-                                <div className="summary-version-actions">
-                                    <Button
-                                        size="small"
-                                        theme="borderless"
-                                        onClick={() => this.handleViewVersion(version, true)}
-                                    >
-                                        {t("summary.detail.viewVersion")}
-                                    </Button>
-                                    {!isCurrent && detail?.permissions?.can_edit_personal && (
-                                        <Button
-                                            size="small"
-                                            theme="borderless"
-                                            loading={restoringPersonalVersionId === version.result_id}
-                                            onClick={() => this.handleRestorePersonalVersion(version)}
-                                        >
-                                            {t("summary.detail.restoreVersion")}
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
+            <SummaryVersionHistory
+                versions={personalVersions}
+                versionsLoading={personalVersionsLoading}
+                currentVersion={currentVersion}
+                restoringVersionId={restoringPersonalVersionId}
+                canRestore={canRestore}
+                onViewVersion={(version: SummaryVersionItem) => this.handleViewVersion(version, true)}
+                onRestoreVersion={(version: SummaryVersionItem) => this.handleRestorePersonalVersion(version)}
+            />
         );
     }
 
@@ -2453,7 +2358,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {/* need5：单人 BY_PERSON 定时按钮放「编辑」按钮左边。多人协作不在此区渲染
                             （need1 不显示我的总结区；need5 多人定时按钮在团队框）。 */}
                         {!this.isMultiCollab() && this.renderScheduleButton()}
-                        {detail && detail.status === TaskStatus.COMPLETED && detail.permissions?.can_edit && !this.state.isEditing && (
+                        {/* #158/#161 fast-follow：agent 总结不支持 edit —— 后端 PUT /edit
+                            走的是 SummaryResult 表更新，但 agent 保存路径只写
+                            personal_result 表（agent_summary.go 里 creatorPR 是唯一
+                            deliverable，不建 summary_result 行）。用户点击编辑保存后
+                            会 404 "总结结果不存在"。前端直接不渲染。
+                            如果未来后端为 agent 建 SummaryResult 行，只需删除下面
+                            这行 trigger_type 判断即可。 */}
+                        {detail && detail.status === TaskStatus.COMPLETED && detail.permissions?.can_edit && !this.state.isEditing && detail.trigger_type !== TriggerType.AGENT && (
                             <Button
                                 size="small"
                                 theme="borderless"
@@ -3087,6 +2999,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         // OCT-21 / GPT-S1：草稿编辑态也隐藏 schedule 按钮，与其它编辑态保持一致约束。
         if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport || editingMyDraft) return null;
+        // #158/#161 fast-follow：agent 总结不支持 schedule —— schedule 到点会 trigger
+        // 后端 pipeline 走传统 map-reduce 重跑，但 agent 总结的产出是 chat 交互生成，
+        // 没有可 replay 的 sources/participants。触发后任务会卡在 Pending 或 fail，
+        // 用户体验很差。前端直接不渲染这个按钮，避免用户误点。
+        if (detail?.trigger_type === TriggerType.AGENT) return null;
 
         // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
         // 停用后文案回到「设置定时更新」。
@@ -3267,7 +3184,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         // Build "..." menu items
         const menuItems: { node: string; key: string; onClick: () => void; danger?: boolean }[] = [];
-        if (detail && canRegenerate(detail.status)) {
+        // #158/#161 fast-follow：agent 总结不支持 regenerate —— 传统 regenerate 走
+        // POST /summaries/:id/regenerate → triggerWorker("personal_summary")，会尝试重跑
+        // pipeline 但 agent 任务无 participants / sources 可 replay，任务会卡死或 fail。
+        // 语义上 "重生成" 对 agent 总结应该是 "重开一次 chat"，那是主人的 continueRefine
+        // 已经覆盖的入口。这里直接不给 menu 项，避免用户走错路径。
+        if (detail && canRegenerate(detail.status) && detail.trigger_type !== TriggerType.AGENT) {
             menuItems.push({ node: t("summary.detail.regenerate"), key: "regenerate", onClick: this.handleRegenerate });
         }
         if (detail && canCancel(detail.status)) {
@@ -3290,15 +3212,29 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.continueRefine")}
                             </Button>
                         )}
-                        {detail && detail.status === TaskStatus.COMPLETED && (
-                            <Button
-                                theme="borderless"
-                                icon={<IconSend />}
-                                onClick={this.handleForwardToChat}
-                            >
-                                {t("summary.detail.forwardToChat")}
-                            </Button>
-                        )}
+                        {detail && detail.status === TaskStatus.COMPLETED && (() => {
+                            // #907 review (yujiawei P2-1): agent summary forward
+                            // sources fall through to personalResult.content, which
+                            // is fetched async by loadPersonalResult. During that
+                            // load window a click would silently no-op. Disable +
+                            // loading state until the fallback content is in.
+                            // Traditional workflow has detail.result inline, so it
+                            // is never gated here.
+                            const isAgent = detail.trigger_type === TriggerType.AGENT;
+                            const agentContentReady = !!this.state.personalResult?.content?.trim();
+                            const waitingForFallback = isAgent && !detail.result?.content?.trim() && !agentContentReady;
+                            return (
+                                <Button
+                                    theme="borderless"
+                                    icon={<IconSend />}
+                                    onClick={this.handleForwardToChat}
+                                    loading={waitingForFallback && this.state.personalLoading}
+                                    disabled={waitingForFallback}
+                                >
+                                    {t("summary.detail.forwardToChat")}
+                                </Button>
+                            );
+                        })()}
                         {SHOW_FORWARD_TO_MATTER && detail && detail.status === TaskStatus.COMPLETED && (
                             <Button
                                 theme="borderless"

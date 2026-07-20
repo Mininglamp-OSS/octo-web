@@ -751,6 +751,9 @@
   border-radius: 8px;
   padding: 4px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  /* Above the sticky toolbar (z-index 6) so a bubble anchored near the top of the doc isn't hidden
+     behind it. */
+  z-index: 20;
 }
 
 /* Link bubble (sheet-parity link card): 🔗 + URL (opens in a new tab) + copy / edit / unlink, or a
@@ -766,6 +769,18 @@
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  /* Above the sticky toolbar (z-index 6) so the card/edit-form isn't hidden behind it near the top. */
+  z-index: 20;
+}
+/* Edit form variant: stacked 文本 / 类型 / 链接地址 fields + 取消/确认, matching the sheet's link
+   dialog. Overrides the row layout above. */
+.octo-link-bubble-form {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  max-width: none;
+  width: 280px;
+  padding: 12px;
 }
 .octo-link-bubble-icon {
   flex: 0 0 auto;
@@ -3946,4 +3961,14 @@ body.octo-table-reordering {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+
+/* @tiptap/react's BubbleMenu wraps each bubble in a bare positioned <div> with no z-index of its
+   own, so the sticky toolbar (z-index 6 + its own stacking context via transform) painted OVER the
+   bubble whenever a formula / link / selection sat near the top of the viewport (the "弹窗被挡住"
+   report). Lift that wrapper above the toolbar via :has() — the wrapper is the direct parent of our
+   .octo-bubble-menu / .octo-link-bubble. */
+div:has(> .octo-bubble-menu),
+div:has(> .octo-link-bubble) {
+  z-index: 50;
 }

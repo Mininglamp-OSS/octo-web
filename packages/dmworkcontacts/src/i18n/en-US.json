@@ -44,5 +44,7 @@
   "section.groups": "Group chats",
   "share.cardTitle": "Share contact card",
   "share.success": "Shared",
+  "share.failed": "Share failed",
+  "share.partialFailed": "Shared to {{total}} contacts, {{failed}} failed",
   "tag.group": "Group"
 }

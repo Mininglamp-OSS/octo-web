@@ -140,8 +140,12 @@ vi.mock("../../../Utils/const", () => ({ SuperGroup: 1 }))
 vi.mock("../foldSessionSummary", () => ({ getFoldSessionExpandedMessages: (opts: any) => opts.messages }))
 vi.mock("../historyScroll", () => ({ getPulldownRestoredScrollTop: () => 0, getRestoredAnchorScrollTop: () => 0 }))
 vi.mock("../../../Service/Convert", () => ({ applyMsgLevelExternalFieldsWithFallback: () => {} }))
-vi.mock("../sendContentProxy", () => ({ wrapSendContentForInjection: (content: any) => content }))
+vi.mock("../../../Utils/sendContentProxy", () => ({ wrapSendContentForInjection: (content: any) => content }))
 vi.mock("../../../Service/messageSelection", () => ({ isMessageSelectable: () => true }))
+vi.mock("../../../i18n", () => ({
+    t: (key: string) => key,
+    useI18n: () => ({ t: (key: string) => key }),
+}))
 
 import ConversationVM from "../vm"
 import { Channel } from "wukongimjssdk"

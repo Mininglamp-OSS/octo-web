@@ -7,6 +7,8 @@ import type { ConversationSelectGrant } from "../ConversationSelect";
 import type { DocForwardOpen, ForwardGrant } from "../ForwardModal/grant";
 import { buildForwardMessageText } from "../ForwardModal/forwardMessageText";
 import { isConversationDisbanded } from "../../Utils/groupDisband";
+import { ForwardService } from "../../Service/ForwardService";
+import { interpretForwardResult } from "../../Service/forwardResultToast";
 import UserInfo from "../UserInfo";
 import BotDetailModal from "../BotDetailModal";
 import WKApp from "../../App";
@@ -303,13 +305,9 @@ export default class WKBase
     const { t } = this.context;
     let grantFailures: string[] | undefined;
 
-    // 0) disband guard. runDocForward calls chatManager.send directly (below),
-    // bypassing ConversationVM.sendMessage's central isConversationDisbanded
-    // guard (vm.ts). A disbanded group / topic is read-only, so we must neither
-    // grant nor send to it — decide up front. Blocked targets count as failed
-    // forwards so the user still gets an accurate partial-failure Toast.
+    // 0) disband guard 提前一次，仅为 grant 阶段决定是否有可授权目标。真正的 send 阶段
+    // disband 计入交给 ForwardService（它同样过滤 disband 并计入 failedTargets）。
     const sendable = channels.filter((ch) => !isConversationDisbanded(ch));
-    const disbandedCount = channels.length - sendable.length;
     if (sendable.length === 0) {
       Toast.error(t("base.forwardModal.grant.sendFailed"));
       forward.onResult?.({ sent: 0, failed: channels.length, grantFailures: undefined });
@@ -331,47 +329,27 @@ export default class WKBase
       }
     }
 
-    // 2) send the message to each (non-disbanded) target (reuses the Summary
-    // forward send/toast pattern). Title + link are escaped so a user-controlled
-    // title cannot break out of the card structure (see forwardMessageText).
+    // 2) send the message to each target via ForwardService (统一 disband 守卫、
+    // space_id / mention 注入、错误隔离)。原先手写的 encodeJSON monkey-patch
+    // 由 wrapSendContentForInjection + opts.spaceId 代替。
     const text = buildForwardMessageText(forward.messageTitle, forward.link);
-    const errors: string[] = [];
-    let sent = 0;
-    for (const ch of sendable) {
-      try {
-        const msg = new MessageText(text);
-        // Inject space_id for person channels (matching ConversationVM.sendMessage / Summary).
-        const spaceId = WKApp.shared.currentSpaceId;
-        if (spaceId && ch.channelType === ChannelTypePerson) {
-          const originalEncodeJSON = msg.encodeJSON.bind(msg);
-          msg.encodeJSON = () => {
-            const obj = originalEncodeJSON();
-            obj.space_id = spaceId;
-            return obj;
-          };
-          msg.contentObj = { ...(msg.contentObj || {}), space_id: spaceId };
-        }
-        await WKSDK.shared().chatManager.send(msg, ch);
-        sent++;
-      } catch {
-        errors.push(ch.channelID);
-      }
-    }
+    const result = await ForwardService.send(
+      channels,
+      () => new MessageText(text),
+      { spaceId: WKApp.shared.currentSpaceId },
+    );
 
-    // 3) partial-failure Toast (reuse the dmworksummary范式). Disbanded targets
-    // that were skipped in step 0 are folded into the failed total against the
-    // original channel count.
-    const failed = errors.length + disbandedCount;
-    if (failed > 0) {
-      if (failed === channels.length) {
-        Toast.error(t("base.forwardModal.grant.sendFailed"));
-      } else {
-        Toast.error(
-          t("base.forwardModal.grant.partialSendFailed", {
-            values: { failed, total: channels.length },
-          })
-        );
-      }
+    // 3) partial-failure Toast (reuse the dmworksummary范式). 分母维度用 targets，
+    // 保留旧的用户可见语义（原代码 total=channels.length，即 result.targets）。
+    const state = interpretForwardResult(result, "targets");
+    if (state.kind === "all-failed") {
+      Toast.error(t("base.forwardModal.grant.sendFailed"));
+    } else if (state.kind === "partial") {
+      Toast.error(
+        t("base.forwardModal.grant.partialSendFailed", {
+          values: { failed: state.failed, total: state.total },
+        })
+      );
     } else if (grantFailures && grantFailures.length > 0) {
       Toast.warning(
         t("base.forwardModal.grant.partialGrantFailed", {
@@ -382,7 +360,8 @@ export default class WKBase
       Toast.success(t("base.forwardModal.grant.forwarded"));
     }
 
-    forward.onResult?.({ sent, failed, grantFailures });
+    const sent = state.total - state.failed;
+    forward.onResult?.({ sent, failed: state.failed, grantFailures });
   }
 
   hideUserInfo() {

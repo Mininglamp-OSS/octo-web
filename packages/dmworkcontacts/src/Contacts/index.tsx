@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t } from "@octo/base"
+import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
@@ -932,16 +932,32 @@ export default class ContactsList extends Component<any, ContactsState> {
                         }
                     }, {
                         title: t("contacts.context.shareToFriend"), onClick: () => {
-                            WKApp.shared.baseContext.showConversationSelect((channels: Channel[]) => {
+                            WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
                                 const { selectedItem } = this.state
-                                if (channels && channels.length > 0) {
-                                    for (const channel of channels) {
+                                if (!channels || channels.length === 0) return
+                                // buildContent 每 channel 调一次 —— 名片本身无 per-channel 差异，
+                                // 但生成新实例避免 wrapSendContentForInjection 复用同一 content 引用。
+                                //
+                                // 注意行为变化：ForwardService 会给 person channel 注入 space_id
+                                // （与 vm.sendMessage / Summary 转发对齐，服务端 BotFather 依赖此字段
+                                // 识别用户当前 Space）。老代码走裸 chatManager.send 未注入 —— 属修正。
+                                const result = await ForwardService.send(
+                                    channels,
+                                    () => {
                                         const card = new Card()
                                         card.uid = selectedItem?.uid || ""
                                         card.name = selectedItem?.name || ""
                                         card.vercode = selectedItem?.vercode || ""
-                                        WKSDK.shared().chatManager.send(card, channel)
-                                    }
+                                        return card
+                                    },
+                                    { spaceId: WKApp.shared.currentSpaceId },
+                                )
+                                const state = interpretForwardResult(result, "targets")
+                                if (state.kind === "all-failed") {
+                                    Toast.error(t("contacts.share.failed"))
+                                } else if (state.kind === "partial") {
+                                    Toast.error(t("contacts.share.partialFailed", { values: { failed: state.failed, total: state.total } }))
+                                } else {
                                     Toast.success(t("contacts.share.success"))
                                 }
                             }, t("contacts.share.cardTitle"))

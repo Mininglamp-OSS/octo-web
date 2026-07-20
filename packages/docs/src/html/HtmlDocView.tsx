@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
 import { canForwardToChat, openDocForward, t, getWKApp } from '../octoweb/index.ts'
+import { buildDocLink } from '../forward/link.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
 import { HtmlPresenceBar } from './HtmlPresenceBar.tsx'
@@ -305,12 +306,13 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
   // Author-only affordances (member management, delete) gate on the backend flag, never on uid math.
   const creatorUid = meta?.creator_uid
   const canManage = isAuthor
-  // Browser-openable address for this doc (new-page / forward). window.location keeps whatever
-  // route the viewer is on; buildOctoDocUrl is the canonical /d/{slug}/v/{version} fallback.
-  const docUrl =
-    typeof window !== 'undefined' && window.location?.href
-      ? window.location.href
-      : buildOctoDocUrl(effectiveSlug, version)
+  // Browser-openable address for forwarding this doc to chat. Build the PATH-style standalone
+  // link (/d/<docId>?sp=<space>) like every other kind (buildDocLink), NOT window.location.href:
+  // the in-shell address is the legacy /docs?doc= query form, whose docId is wiped by the host's
+  // pathname-only route re-push, so a forwarded query link lands the recipient on the wrong page.
+  // The path form carries the docId in the path (survives the re-push), routes through
+  // StandaloneDocPage's html branch (reader preflight + auto recordDocView), and needs no JS rescue.
+  const docUrl = buildDocLink({ docId, space })
   const canForward = canForwardToChat()
 
   const doForward = useCallback(() => {
