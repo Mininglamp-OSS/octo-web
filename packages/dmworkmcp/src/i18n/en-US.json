@@ -49,13 +49,7 @@
     "empty": "No matching MCP servers",
     "loadMore": "Scroll down to load more",
     "reachedEnd": "You've reached the end",
-    "clear": "Clear filters",
-    "total": "{{count}} results",
-    "sort": { "label": "Sort", "relevance": "Relevance", "updated": "Recently updated", "verified": "Recently verified" },
-    "source": { "system": "System", "space": "Space team", "mine": "Created by me" },
-    "visibility": { "public": "Space", "private": "Private" },
-    "verification": { "verified": "Verified", "unverified": "Unverified", "error": "Error" },
-    "tagsPlaceholder": "Tags, comma separated",
+    "mineTotal": "{{count}} MCPs created by me",
     "mode": {
       "all": "All",
       "mine": "Mine"
@@ -65,8 +59,7 @@
     "hitTool": "Matched tool",
     "hitTag": "Matched tag",
     "matchReason": { "name": "Matched name", "description": "Matched summary", "tool": "Matched tool", "tag": "Matched tag", "category": "Matched category", "usage": "Matched usage example", "creator": "Matched publisher", "other": "Matched content" },
-    "toolCount": "Tools: {{count}}",
-    "viewDetail": "View details"
+    "toolCount": "Tools: {{count}}"
   },
   "detail": {
     "title": "MCP Details",

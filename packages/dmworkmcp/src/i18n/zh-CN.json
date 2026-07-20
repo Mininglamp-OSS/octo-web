@@ -49,13 +49,7 @@
     "empty": "没有匹配的 MCP 服务",
     "loadMore": "向下滚动加载更多",
     "reachedEnd": "已经到底了",
-    "clear": "清空筛选",
-    "total": "共 {{count}} 个结果",
-    "sort": { "label": "排序", "relevance": "相关度", "updated": "最近更新", "verified": "最近验证" },
-    "source": { "system": "系统", "space": "Space 团队", "mine": "我创建" },
-    "visibility": { "public": "Space", "private": "私有" },
-    "verification": { "verified": "已验证", "unverified": "未验证", "error": "异常" },
-    "tagsPlaceholder": "标签，多项用逗号分隔",
+    "mineTotal": "共 {{count}} 个我创建的 MCP",
     "mode": {
       "all": "全部",
       "mine": "我的"
@@ -65,8 +59,7 @@
     "hitTool": "命中工具",
     "hitTag": "命中标签",
     "matchReason": { "name": "命中名称", "description": "命中简介", "tool": "命中工具", "tag": "命中标签", "category": "命中分类", "usage": "命中使用示例", "creator": "命中发布者", "other": "命中内容" },
-    "toolCount": "工具数量: {{count}} 个",
-    "viewDetail": "查看详情"
+    "toolCount": "工具数量: {{count}} 个"
   },
   "detail": {
     "title": "MCP 详情",

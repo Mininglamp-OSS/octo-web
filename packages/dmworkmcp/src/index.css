@@ -124,7 +124,16 @@
 }
 
 .wk-mcp__toolbar--mine {
-  display: none;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  justify-content: space-between;
+}
+
+.wk-mcp__mine-count {
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  white-space: nowrap;
 }
 
 .wk-mcp__search {
@@ -182,8 +191,32 @@
   font-size: var(--wk-text-size-xs);
   opacity: 0.7;
 }
-.wk-mcp__filters { display: flex; align-items: center; gap: var(--wk-sp-2); flex-wrap: wrap; }
-.wk-mcp-card__reason { margin-bottom: var(--wk-sp-2); color: var(--wk-text-accent); font-size: var(--wk-text-size-sm); }
+.wk-mcp-card__reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-1);
+  margin-bottom: var(--wk-sp-3);
+}
+
+.wk-mcp-card__reason {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  height: 20px;
+  padding: 0 var(--wk-sp-1-5);
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  border: 1px dashed var(--wk-ai-border);
+  color: var(--wk-text-accent);
+  font-size: var(--wk-text-size-xs);
+  line-height: 1;
+}
+
+.wk-mcp-card__reason-label {
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-card mark, .wk-mcp-tag mark { background: #f59e0b; color: #fff; font-weight: var(--wk-font-semibold); padding: 0 3px; border-radius: 3px; }
 
 /* ── Card grid ───────────────────────────────────────────────────────────── */
 .wk-mcp__grid {
@@ -281,11 +314,6 @@
   border-top: 1px solid var(--wk-border-subtle);
   font-size: var(--wk-text-size-sm);
   color: var(--wk-text-tertiary);
-}
-
-.wk-mcp-card__link {
-  color: var(--wk-text-accent);
-  font-weight: var(--wk-font-medium);
 }
 
 /* ── Empty / loading ─────────────────────────────────────────────────────── */

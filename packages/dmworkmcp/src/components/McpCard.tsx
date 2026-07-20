@@ -24,7 +24,25 @@ export function parseMatchReason(reason: string): { key: string; value?: string 
 }
 
 export function MatchReasons({ reasons, keyword = "" }: { reasons: string[]; keyword?: string }) {
-  return <>{reasons.map((reason) => { const parsed = parseMatchReason(reason); const value = parsed.value || keyword; return <div className="wk-mcp-card__reason" key={reason}>{t(parsed.key)}{value ? <> <Highlight text={value} keyword={keyword} /></> : null}</div>; })}</>;
+  const revealing = reasons.filter((reason) => {
+    const type = reason.split(":", 1)[0];
+    return type === "tool" || type === "usage_example" || type === "creator";
+  });
+  if (!revealing.length) return null;
+  return (
+    <div className="wk-mcp-card__reasons">
+      {revealing.map((reason) => {
+        const parsed = parseMatchReason(reason);
+        const value = parsed.value || keyword;
+        return (
+          <span className="wk-mcp-card__reason" key={reason}>
+            <span className="wk-mcp-card__reason-label">{t(parsed.key)}</span>
+            {value ? <Highlight text={value} keyword={keyword} /> : null}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 /** A single MCP server card in the list grid. */
@@ -51,7 +69,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, keyword }) => {
           <div className="wk-mcp-card__tags">
             {item.tags.map((tag) => (
               <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
-                {tag}
+                <Highlight text={tag} keyword={keyword} />
               </span>
             ))}
           </div>
@@ -63,7 +81,6 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, keyword }) => {
         <span>
           {t("mcp.card.toolCount", { values: { count: item.toolCount } })}
         </span>
-        <span className="wk-mcp-card__link">{t("mcp.card.viewDetail")} →</span>
       </div>
     </div>
   );

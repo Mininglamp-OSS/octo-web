@@ -562,21 +562,20 @@ async function fetchMcpListPath(
   const keyword = params.keyword?.trim();
   if (keyword) query.keyword = keyword;
   // `all` disables the filter server-side; send it verbatim per §0.
-  query.category = params.categories?.length ? params.categories : (params.category ?? CATEGORY_KEY_ALL);
-  if (params.transports?.length) query.transport = params.transports;
-  if (params.visibilities?.length) query.visibility = params.visibilities;
-  if (params.sources?.length) query.source = params.sources;
-  if (params.verificationStatuses?.length) query.verification_status = params.verificationStatuses;
-  if (params.tags?.length) query.tag = params.tags;
-  if (params.sort) query.sort = params.sort;
+  query.category = params.categories?.length ? params.categories[0] : (params.category ?? CATEGORY_KEY_ALL);
+  // Relevance is only meaningful with a keyword — every row scores 0 otherwise,
+  // making the sort order arbitrary. When browsing, surface freshest first.
+  query.sort = keyword ? "relevance" : "updated";
   const pageSize = params.limit && params.limit > 0 ? params.limit : 20;
   query.page_size = pageSize;
   query.page = Math.floor((params.offset ?? 0) / pageSize) + 1;
   let resp;
   let categoryWire: { key: string; count: number }[];
+  // /mcps/mine → categories scoped to caller-owned records (backend §mcp_categories mode=mine).
+  const categoriesPath = path === "/mcps/mine" ? "/mcp_categories?mode=mine" : "/mcp_categories";
   [resp, categoryWire] = await executeMcpListRequest(() => Promise.all([
       mcpAxios.get<McpListResponseWire>(`${BASE}${path}`, { params: query }),
-      get<{ key: string; count: number }[]>("/mcp_categories"),
+      get<{ key: string; count: number }[]>(categoriesPath),
     ]));
   const items = (resp.data.data ?? []).map(mapListItem);
   const categoryCounts = new Map(
