@@ -207,7 +207,9 @@ export const loopEmptyHandlers = [
       s === "one-issue" ||
       s === "ws-with-members" ||
       s === "member-remove" ||
-      s === "one-project"
+      s === "one-project" ||
+      s === "one-agent" ||
+      s === "one-squad"
     )
       return HttpResponse.json([WS_A]);
     if (s === "two-ws") return HttpResponse.json([WS_A, WS_B]);
@@ -403,12 +405,121 @@ export const loopEmptyHandlers = [
     return HttpResponse.json({ id: params.id, ...body });
   }),
   http.get("*/fleet/api/v1/labels", () => HttpResponse.json([])),
-  http.get("*/fleet/api/v1/agents", () =>
-    HttpResponse.json([
+  http.get("*/fleet/api/v1/agents", () => {
+    const s = scenario();
+    if (s === "one-agent") {
+      return HttpResponse.json([
+        {
+          id: "agent-existing",
+          name: "Existing Agent",
+          description: "existing agent for e2e",
+          runtime_id: "rt-1",
+          runtime_name: "Local Runtime",
+          model: "gpt-4",
+          visibility: "workspace",
+          archived_at: null,
+          created_at: "2026-07-20T10:00:00Z",
+          updated_at: "2026-07-20T10:00:00Z",
+        },
+      ]);
+    }
+    return HttpResponse.json([
       { id: "agent-alpha", name: "Agent Alpha", archived_at: null },
+    ]);
+  }),
+  http.post("*/fleet/api/v1/agents", async ({ request }) => {
+    const body = (await request.json()) as { name: string; runtime_id: string };
+    return HttpResponse.json({
+      id: `agent-${Date.now()}`,
+      name: body.name,
+      runtime_id: body.runtime_id,
+      runtime_name: "Local Runtime",
+      visibility: "workspace",
+      archived_at: null,
+      created_at: "2026-07-20T10:00:00Z",
+      updated_at: "2026-07-20T10:00:00Z",
+    });
+  }),
+  http.get("*/fleet/api/v1/agents/:id", ({ params }) =>
+    HttpResponse.json({
+      id: params.id,
+      name: "Existing Agent",
+      description: "existing agent for e2e",
+      runtime_id: "rt-1",
+      runtime_name: "Local Runtime",
+      model: "gpt-4",
+      visibility: "workspace",
+      archived_at: null,
+      created_at: "2026-07-20T10:00:00Z",
+      updated_at: "2026-07-20T10:00:00Z",
+    })
+  ),
+  http.get("*/fleet/api/v1/agents/:id/env", () =>
+    HttpResponse.json({ custom_env: {} })
+  ),
+  http.get("*/fleet/api/v1/agents/:id/skills", () => HttpResponse.json([])),
+  http.get("*/fleet/api/v1/agents/:id/tasks", () => HttpResponse.json([])),
+  http.get("*/fleet/api/v1/agents/:id/contributions", () =>
+    HttpResponse.json({ data: [] })
+  ),
+  http.get("*/fleet/api/v1/runtimes", () =>
+    HttpResponse.json([
+      { id: "rt-1", name: "Local Runtime", provider: "local", can_bind: true },
     ])
   ),
-  http.get("*/fleet/api/v1/squads", () => HttpResponse.json([])),
+  http.get("*/fleet/api/v1/squads", () => {
+    const s = scenario();
+    if (s === "one-squad") {
+      return HttpResponse.json([
+        {
+          id: "squad-existing",
+          name: "Existing Squad",
+          description: "existing squad for e2e",
+          leader_id: "agent-alpha",
+          leader_name: "Agent Alpha",
+          leader_avatar: null,
+          creator_id: "u-1",
+          creator_name: "E2E Tester",
+          member_count: 2,
+          members: [],
+          member_preview: [],
+          archived_at: null,
+          created_at: "2026-07-20T10:00:00Z",
+        },
+      ]);
+    }
+    return HttpResponse.json([]);
+  }),
+  http.post("*/fleet/api/v1/squads", async ({ request }) => {
+    const body = (await request.json()) as { name: string };
+    return HttpResponse.json({
+      id: `squad-${Date.now()}`,
+      name: body.name,
+      leader_id: "agent-alpha",
+      leader_name: "Agent Alpha",
+      member_count: 1,
+      created_at: "2026-07-20T10:00:00Z",
+    });
+  }),
+  http.get("*/fleet/api/v1/squads/:id", ({ params }) =>
+    HttpResponse.json({
+      id: params.id,
+      name: "Existing Squad",
+      description: "existing squad",
+      leader_id: "agent-alpha",
+      leader_name: "Agent Alpha",
+      member_count: 2,
+      instructions: "",
+      created_at: "2026-07-20T10:00:00Z",
+    })
+  ),
+  http.get("*/fleet/api/v1/squads/:id/members", () =>
+    HttpResponse.json([
+      { id: "sm-1", squad_id: "squad-existing", member_id: "agent-alpha", member_name: "Agent Alpha", member_avatar: null, role: "leader" },
+      { id: "sm-2", squad_id: "squad-existing", member_id: "agent-beta", member_name: "Agent Beta", member_avatar: null, role: "member" },
+    ])
+  ),
+  http.get("*/fleet/api/v1/squads/:id/members/status", () => HttpResponse.json([])),
   http.get("*/fleet/api/v1/issues/candidates", () =>
     HttpResponse.json([
       { id: "agent-alpha", type: "agent", name: "Agent Alpha", avatar_color: "#3B82F6", octo_uid: null },
