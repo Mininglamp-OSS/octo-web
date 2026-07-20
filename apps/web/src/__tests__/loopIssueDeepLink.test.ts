@@ -124,10 +124,13 @@ describe("Loop issue deep links", () => {
 
     expect(moduleSource).toContain("normalizeCurrentLoopIssueDeepLink()");
     expect(bridgeSource).toContain("consumePendingLoopIssueDeepLink");
+    expect(bridgeSource).toContain("readPendingLoopIssueDeepLink");
     expect(bridgeSource).toContain("if (applyPendingIssueDeepLink(list)) return;");
     expect(bridgeSource).toContain("resolveIssueByIdentifier");
-    expect(bridgeSource).toContain("const seq = spaceResolveSeqRef.current;");
-    expect(bridgeSource).toContain("if (!canWriteLoopPane(seq)) return;");
+    expect(bridgeSource).toContain("const spaceSeq = spaceResolveSeqRef.current;");
+    expect(bridgeSource).toContain("const paneSeq = paneResolveSeqRef.current;");
+    expect(bridgeSource).toContain("if (!canWriteLoopPane(spaceSeq, paneSeq)) return;");
+    expect(bridgeSource).toContain("paneResolveSeqRef.current += 1;");
     expect(bridgeSource).toContain('WKApp.currentMenuId !== "loop"');
     expect(bridgeSource).toContain("replaceFleetIssueDeepLink(workspace.slug, issue.identifier)");
     expect(bridgeSource).toContain("return false;");

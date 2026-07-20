@@ -101,6 +101,8 @@ export function normalizeCurrentLoopIssueDeepLink(): LoopIssueDeepLink | null {
     // Storage can be unavailable; the live path can still be parsed during this boot.
   }
   try {
+    // Fleet issue links are standalone product links; query-based flows such as
+    // CLI authorization are handled by their own route before this normalization.
     window.history.replaceState(window.history.state, "", LOOP_ROUTE_PATH);
   } catch {
     // Keep the original URL when History is unavailable.

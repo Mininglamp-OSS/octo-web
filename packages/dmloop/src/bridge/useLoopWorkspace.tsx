@@ -9,6 +9,7 @@ import { resolveIssueByIdentifier } from "../api/issueApi";
 import { createWorkspace, listWorkspaces } from "../api/workspaceApi";
 import {
   consumePendingLoopIssueDeepLink,
+  readPendingLoopIssueDeepLink,
   replaceFleetIssueDeepLink,
   replaceLoopRootPath,
 } from "../issueDeepLink";
@@ -97,15 +98,20 @@ export function useLoopWorkspace({
   // nav-menu-activated handler consumes it to force a fresh re-resolve instead
   // of painting the stale old-space workspaces/wsId it still holds in state.
   const pendingSpaceReresolveRef = useRef(false);
+  const paneResolveSeqRef = useRef(0);
   const renderTabRef = useRef(renderTab);
   const renderIssueDetailRef = useRef(renderIssueDetail);
   const renderEmptyGuideRef = useRef(renderEmptyGuide);
+  const workspacesRef = useRef<Workspace[]>([]);
   renderTabRef.current = renderTab;
   renderIssueDetailRef.current = renderIssueDetail;
   renderEmptyGuideRef.current = renderEmptyGuide;
+  workspacesRef.current = workspaces;
 
   const reloadWorkspaces = async (): Promise<Workspace[]> => {
+    const seq = spaceResolveSeqRef.current;
     const list = await listWorkspaces().catch(() => [] as Workspace[]);
+    if (seq !== spaceResolveSeqRef.current) return workspacesRef.current;
     setWorkspaces(list);
     return list;
   };
@@ -117,8 +123,9 @@ export function useLoopWorkspace({
     setTimeout(() => WKApp.mittBus.emit("wk:loop-issues-refresh"), 0);
   };
 
-  const canWriteLoopPane = (seq: number) => {
-    if (seq !== spaceResolveSeqRef.current) return false;
+  const canWriteLoopPane = (spaceSeq: number, paneSeq: number) => {
+    if (paneSeq !== paneResolveSeqRef.current) return false;
+    if (spaceSeq !== spaceResolveSeqRef.current) return false;
     if (WKApp.currentMenuId !== "loop") {
       pendingSpaceReresolveRef.current = true;
       return false;
@@ -131,7 +138,8 @@ export function useLoopWorkspace({
     issueIdentifier: string,
     list: Workspace[]
   ) => {
-    const seq = spaceResolveSeqRef.current;
+    const spaceSeq = spaceResolveSeqRef.current;
+    const paneSeq = paneResolveSeqRef.current;
     setWorkspaceContext(workspace.slug, workspace.id, workspace.name);
     setWsId(workspace.id);
     setTab("issue");
@@ -141,7 +149,7 @@ export function useLoopWorkspace({
     WKApp.routeRight.replaceToRoot(<div className="loop-page" />);
 
     const issue = await resolveIssueByIdentifier(issueIdentifier);
-    if (!canWriteLoopPane(seq)) return;
+    if (!canWriteLoopPane(spaceSeq, paneSeq)) return;
     if (!issue) {
       WKApp.routeRight.replaceToRoot(renderTabView("issue", workspace));
       replaceLoopRootPath();
@@ -165,13 +173,18 @@ export function useLoopWorkspace({
   const applyPendingIssueDeepLink = (list: Workspace[]): boolean => {
     let pending = null;
     try {
-      pending = consumePendingLoopIssueDeepLink(window.sessionStorage);
+      pending = readPendingLoopIssueDeepLink(window.sessionStorage);
     } catch {
       pending = null;
     }
     if (!pending) return false;
     const workspace = list.find((w) => w.slug === pending.workspaceSlug) ?? null;
     if (!workspace) return false;
+    try {
+      consumePendingLoopIssueDeepLink(window.sessionStorage);
+    } catch {
+      // Storage can be unavailable; the in-memory fallback is cleared by consume when possible.
+    }
     void openIssueDeepLink(workspace, pending.issueIdentifier, list);
     return true;
   };
@@ -198,6 +211,8 @@ export function useLoopWorkspace({
     // 重解析窗口期(切 space 后 loaded=false 直到新 space 的 workspace 解析完成)不响应:
     // 此时 workspaces/wsId 尚属旧 space,点击会用旧作用域渲染 workspace 级页面。
     if (!loaded) return;
+    // User navigation wins over any pending deep-link resolve.
+    paneResolveSeqRef.current += 1;
     replaceLoopRootPath();
     setTab(key);
     WKApp.routeRight.replaceToRoot(renderTabView(key, findWorkspace(workspaces, wsId)));
@@ -356,6 +371,8 @@ export function useLoopWorkspace({
   const switchWorkspace = (workspace: Workspace) => {
     // 重解析窗口期不响应:下拉里的 w 属于旧 space 的 workspaces,选它会把旧 slug 写回。
     if (!loaded) return;
+    // User navigation wins over any pending deep-link resolve.
+    paneResolveSeqRef.current += 1;
     replaceLoopRootPath();
     setWorkspaceContext(workspace.slug, workspace.id, workspace.name);
     setWsId(workspace.id);

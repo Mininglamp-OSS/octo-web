@@ -71,7 +71,7 @@ export async function enrichIssue(issue: Issue): Promise<Issue> {
 }
 
 export async function getIssue(id: string): Promise<Issue> {
-  const issue = await httpGet<Issue>(`/issues/${id}`);
+  const issue = await httpGet<Issue>(`/issues/${encodeURIComponent(id)}`);
   return enrichIssue(issue);
 }
 
