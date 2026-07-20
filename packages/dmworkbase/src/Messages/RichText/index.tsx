@@ -1,7 +1,7 @@
 import React from "react";
 import WKApp from "../../App";
 import { getRichTextMessageUI } from "../../bridge/message/useRichTextMessageUI";
-import { isMessageSelectable } from "../../Service/messageSelection";
+import { isMessageSelectable, isMeaningfulReply } from "../../Service/messageSelection";
 import MessageRow from "../../ui/message/MessageRow";
 import MixedContent from "../../ui/message/MixedContent";
 import ReplyBlock from "../../ui/message/ReplyBlock";
@@ -58,7 +58,7 @@ export class RichTextCell extends MessageCell {
         onSenderNameClick={() => context.showUser(message.fromUID)}
       >
         <div className="wk-message-richtext">
-          {content.reply && (
+          {isMeaningfulReply(content.reply) && (
             <ReplyBlock
               fromName={content.reply.fromName || ""}
               digest={content.reply.content?.conversationDigest || ""}
