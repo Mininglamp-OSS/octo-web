@@ -8,14 +8,26 @@ import {
 } from "./content";
 import { Onboarding } from ".";
 
-const { runOnboardingViewTransition } = vi.hoisted(() => ({
-  runOnboardingViewTransition: vi.fn(
-    ({ onTransition }: { onTransition: () => void }) => {
-      onTransition();
-      return true;
-    }
-  ),
-}));
+const { runOnboardingViewTransition, viewTransitionState } = vi.hoisted(() => {
+  const viewTransitionState: { onFinished?: () => void } = {};
+
+  return {
+    viewTransitionState,
+    runOnboardingViewTransition: vi.fn(
+      ({
+        onFinished,
+        onTransition,
+      }: {
+        onFinished?: () => void;
+        onTransition: () => void;
+      }) => {
+        viewTransitionState.onFinished = onFinished;
+        onTransition();
+        return true;
+      }
+    ),
+  };
+});
 
 const translations: Record<string, string> = {
   "app.onboarding.dialog.introAria": "Octo onboarding introduction",
@@ -66,6 +78,7 @@ vi.mock("./viewTransition", () => ({
 describe("Onboarding", () => {
   beforeEach(() => {
     runOnboardingViewTransition.mockClear();
+    delete viewTransitionState.onFinished;
     localStorageMock.clear();
     Object.defineProperty(window, "localStorage", {
       configurable: true,
@@ -79,7 +92,7 @@ describe("Onboarding", () => {
     vi.unstubAllGlobals();
   });
 
-  it("dismisses and persists the onboarding when the intro is skipped", () => {
+  it("keeps a neutral transition target mounted until the intro skip transition finishes", () => {
     const onDismiss = vi.fn();
 
     render(<Onboarding forceVisible onDismiss={onDismiss} />);
@@ -89,6 +102,33 @@ describe("Onboarding", () => {
     expect(window.localStorage.getItem(getOnboardingSeenStorageKey())).toBe(
       "seen"
     );
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(
+      document.querySelector(".wk-onboarding-skip-transition-target")
+    ).toBeInTheDocument();
+
+    act(() => viewTransitionState.onFinished?.());
+
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      document.querySelector(".wk-onboarding-skip-transition-target")
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the timed intro skip fallback when view transitions are unavailable", () => {
+    vi.useFakeTimers();
+    runOnboardingViewTransition.mockImplementationOnce(() => false);
+    const onDismiss = vi.fn();
+
+    render(<Onboarding forceVisible onDismiss={onDismiss} />);
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(620));
+
     expect(onDismiss).toHaveBeenCalledOnce();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

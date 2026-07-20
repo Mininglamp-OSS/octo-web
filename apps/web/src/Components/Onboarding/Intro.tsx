@@ -212,7 +212,7 @@ export const OnboardingIntro: React.FC<OnboardingIntroProps> = ({
         type="button"
         onClick={onSkip}
         aria-label={t("app.onboarding.intro.actions.skipAria")}
-        data-cursor-interactive="true"
+        data-cursor-native="true"
       >
         <span>{t("app.onboarding.intro.actions.skip")}</span>
         <X size={15} aria-hidden="true" />
