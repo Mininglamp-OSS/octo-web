@@ -29,7 +29,7 @@
     height: calc(
         var(--wk-sp-10) + var(--wk-sp-3) +
         var(--wk-sp-12) + var(--wk-sp-12) + var(--wk-sp-12) + var(--wk-sp-12) + var(--wk-sp-12) +
-        var(--wk-sp-10) + var(--wk-sp-8)
+        var(--wk-sp-10) + var(--wk-sp-8) + var(--wk-sp-12)
     );
     max-height: calc(100vh - var(--wk-sp-12));
 }
