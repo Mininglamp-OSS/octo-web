@@ -624,7 +624,12 @@
     "latexTitle": "插入公式",
     "latexPreview": "预览",
     "formulaEditorCancel": "取消",
-    "formulaEditorOk": "确定"
+    "formulaEditorOk": "确定",
+    "mention": {
+      "menu": "提及",
+      "search": "搜索成员或文档…",
+      "empty": "无匹配"
+    }
   },
   "error": {
     "permission": {

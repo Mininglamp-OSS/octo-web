@@ -99,3 +99,21 @@ export function excelSheetName(raw: string | undefined, used: Set<string>): stri
   return n
 }
 
+/**
+ * Degrade a float-DOM (DRAWING_DOM) drawing to the plain text that xlsx export writes into its
+ * anchor cell — xlsx has no formula/mention-object concept. Extracted from SheetView.buildWs so
+ * the "mention chips must survive export" regression (P1) is unit-testable without XLSX/Univer:
+ *   • math formula → its raw LaTeX (`data.latex`)
+ *   • @-mention chip → `@label` (has `data.type` + `data.label`, but NO latex)
+ * Returns undefined for anything with no text representation (so the caller skips it).
+ */
+export function drawingExportText(data: {
+  latex?: string
+  label?: string
+  type?: string
+}): string | undefined {
+  if (typeof data?.latex === 'string' && data.latex) return data.latex
+  if (data?.type && data?.label) return `@${data.label}`
+  return undefined
+}
+

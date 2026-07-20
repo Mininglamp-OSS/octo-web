@@ -20,12 +20,23 @@ import { IMenuManagerService, RibbonInsertGroup, MenuItemType, IFontService } fr
 import { createUniver } from './createUniver.ts'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
 import { MathFormula, OCTO_MATH_FORMULA_KEY } from './floatDom/MathFormula.tsx'
+import { MentionChip, OCTO_MENTION_CHIP_KEY } from './floatDom/MentionChip.tsx'
 import { setFormulaSaveHandler, setDrawingBlurHandler, setFormulaResizeHandler, setFormulaStyleHandler, setFormulaDeleteHandler, requestFormulaPicker } from './floatDom/formulaBridge.ts'
 import { PiIcon, OCTO_FORMULA_PI_ICON_KEY } from './floatDom/PiIcon.tsx'
+import { AtIcon, OCTO_MENTION_AT_ICON_KEY } from './AtIcon.tsx'
+import { requestSheetMentionOpen } from './sheetMentionBridge.ts'
 
 /** The single merged formula ribbon entry: a π button that opens the React formula picker. */
 const OCTO_FORMULA_MENU_ID = 'octo.menu.insert-formula'
 const OCTO_FORMULA_PICKER_CMD = 'octo.command.formula.picker'
+
+/** The @-mention ribbon entry: an @ button that opens the cell mention picker (next to π). */
+const OCTO_MENTION_MENU_ID = 'octo.menu.insert-mention'
+const OCTO_MENTION_CMD = 'octo.command.mention.open'
+// Sheet gutter sizes used to convert a (row,col) cell into scene coords for the mention chip anchor
+// (Univer's default row-header width / column-header height).
+const OCTO_MENTION_ROW_HEADER_W = 40
+const OCTO_MENTION_COL_HEADER_H = 20
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core'
 import sheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN'
 import '@univerjs/preset-sheets-core/lib/index.css'
@@ -58,6 +69,8 @@ import type { ConnState, TerminalState } from '../collab/createCollabEditor.ts'
 import { UniverYjsBinding, type DrawingReaderLike, type HyperLinkModelLike } from './binding.ts'
 import { SheetCursorOverlay } from './sheetCursors.ts'
 import { SheetCommentMarkers, type MarkedCell } from './sheetCommentMarkers.ts'
+import { SheetCellMention, stripTrailingQuery } from './sheetMention.ts'
+import type { MentionItem } from '../mentions/source.ts'
 import { colorFromId } from '../awareness/presence.ts'
 
 /** 0-based column index → spreadsheet letters (0→A, 26→AA). */
@@ -148,6 +161,7 @@ export class CollabSheet {
   } | null = null
   private cursors: SheetCursorOverlay | null = null
   private commentMarkers: SheetCommentMarkers | null = null
+  private cellMention: SheetCellMention | null = null
   private commentMarkerClick: ((row: number, col: number, sheetId: string) => void) | null = null
   private commentMenuClick: (() => void) | null = null
   private readonly cacheKeyStr: string
@@ -210,6 +224,7 @@ export class CollabSheet {
       octo: {
         insertFormula: t('docs.sheet.formula.insert'),
         formulaMenu: t('docs.sheet.formula.menu'),
+        mentionMenu: t('docs.sheet.mention.menu'),
         formula: {
           circleArea: t('docs.sheet.formula.circleArea'),
           binomial: t('docs.sheet.formula.binomial'),
@@ -393,6 +408,38 @@ export class CollabSheet {
             },
           },
         })
+        // The @-mention ribbon button, sitting next to π. Opens the cell mention picker instead of
+        // requiring the user to type `@` inside a cell.
+        cmd.registerCommand({
+          id: OCTO_MENTION_CMD,
+          type: CommandType.COMMAND,
+          handler: () => {
+            requestSheetMentionOpen()
+            return true
+          },
+        })
+        try {
+          ;(univerAPI as unknown as { registerComponent?: (k: string, c: unknown) => void }).registerComponent?.(
+            OCTO_MENTION_AT_ICON_KEY,
+            AtIcon,
+          )
+        } catch {
+          /* icon optional */
+        }
+        menuMgr.mergeMenu({
+          [RibbonInsertGroup.OTHERS]: {
+            [OCTO_MENTION_MENU_ID]: {
+              order: 100, // just after the π formula entry (order 99)
+              menuItemFactory: () => ({
+                id: OCTO_MENTION_CMD,
+                type: MenuItemType.BUTTON,
+                title: 'octo.mentionMenu',
+                tooltip: 'octo.mentionMenu',
+                icon: OCTO_MENTION_AT_ICON_KEY,
+              }),
+            },
+          },
+        })
       }
     } catch {
       drawingReader = null
@@ -413,6 +460,16 @@ export class CollabSheet {
       setFormulaDeleteHandler((id) => this.deleteFormula(id))
     } catch {
       // formula feature unavailable — sheet still loads
+    }
+    // Register the @-mention chip float-DOM component (same key on every client so a synced mention
+    // drawing renders). The chip is inserted by insertMentionChip when a mention is picked.
+    try {
+      ;(univerAPI as unknown as { registerComponent?: (k: string, c: unknown) => void }).registerComponent?.(
+        OCTO_MENTION_CHIP_KEY,
+        MentionChip,
+      )
+    } catch {
+      // mention chip unavailable — sheet still loads (picker just won't render a chip)
     }
     // Pass a live write-gate: readers / downgraded users must NOT write to the shared Y.Doc
     // (the server rejects their writes anyway, but an ungated binding would still persist the
@@ -506,6 +563,17 @@ export class CollabSheet {
       opts.container,
       (row, col, sheetId) => this.commentMarkerClick?.(row, col, sheetId),
       () => this.binding.activeLogicalId(),
+    )
+    // Cell @-mention: `@` in a cell / the ribbon @ button → shared mention popup → drops a
+    // float-DOM mention chip (MentionChip) on the cell. Rendered by our own React component (like
+    // the comment MentionText), so the chip is blue, @user is inert, @doc opens the doc, and there
+    // is no hyperlink URL popup. OSS-only; degrades to no-op if Univer's float-DOM API drifts.
+    this.cellMention = new SheetCellMention(
+      univerAPI as unknown as ConstructorParameters<typeof SheetCellMention>[0],
+      opts.container,
+      opts.space,
+      (item, cell, ctx) => this.insertMentionChip(item, cell, ctx),
+      () => canEdit(this.currentRole),
     )
     // Role controller: runtime stateless role changes (monotonic epoch).
     this.roleController = new RoleController({
@@ -614,6 +682,27 @@ export class CollabSheet {
    * The sheet segment is the STABLE logical id (not Univer's per-client sheet id) so a comment
    * authored on Sheet2 anchors to Sheet2 for every client — see binding.ts multi-sheet identity.
    */
+  /** Open the cell @-mention picker (ribbon @ button). Wired by SheetView keyed on the live sheet.
+   *  Gated on the LIVE role: a reader (or a writer downgraded at runtime) must not be able to open
+   *  the picker, or they'd insert a local-only "phantom" chip the Yjs write-gate silently drops. */
+  openMentionMenu(): void {
+    if (!canEdit(this.currentRole)) return
+    this.cellMention?.openMenu()
+  }
+
+  /** Insert a picked mention into the target cell (overlay click / button-mode keyboard).
+   *  Role-gated too — the picker could have been opened before a writer→reader downgrade. */
+  pickMention(item: MentionItem): void {
+    if (!canEdit(this.currentRole)) return
+    this.cellMention?.pick(item)
+  }
+
+  /** Dismiss the cell @-mention picker without a pick (overlay Escape / click-away). Resets the
+   *  controller so the inline `@` trigger keeps working. */
+  closeMention(): void {
+    this.cellMention?.closeMenu()
+  }
+
   getActiveCellRef(): { key: string; a1: string; sheetId: string } | null {
     const wb = this.univerAPI.getActiveWorkbook()
     if (!wb) return null
@@ -920,6 +1009,130 @@ export class CollabSheet {
   }
 
   /**
+   * Drop a float-DOM @-mention chip on a cell. Uses the SAME persisted path as formulas
+   * (addFloatDomToPosition writes to the drawing model → replicated + restored by binding.ts;
+   * addFloatDomToRange is a transient overlay that does NOT persist → "vanishes on reopen").
+   * Rendered by our own MentionChip React component: blue @label, @user inert, @doc opens the doc.
+   */
+  insertMentionChip(
+    item: MentionItem,
+    cell?: { row: number; col: number },
+    ctx?: { mode: 'inline' | 'button'; query: string },
+  ): string | null {
+    // Final write-gate on the LIVE role. Covers the inline `@` trigger too (not just the ribbon):
+    // a reader — or a writer downgraded mid-session — must never persist a chip here, or the Yjs
+    // binding declines to sync it and it becomes a misleading local-only phantom. (Mirrors
+    // openMentionMenu/pickMention; this is the single sink both the overlay and inline paths reach.)
+    if (!canEdit(this.currentRole)) return null
+    const ws = this.univerAPI.getActiveWorkbook()?.getActiveSheet() as unknown as {
+      addFloatDomToPosition?: (
+        layer: {
+          componentKey: string
+          initPosition: { startX: number; endX: number; startY: number; endY: number }
+          data?: Record<string, unknown>
+          allowTransform?: boolean
+        },
+        id?: string,
+      ) => { id: string } | null
+      getColumnWidth?: (c: number) => number
+      getRowHeight?: (r: number) => number
+      getRange?: (
+        r: number,
+        c: number,
+      ) => {
+        setValue?: (v: unknown) => void
+        activate?: () => void
+        getValue?: () => unknown
+      } | null
+      refresh?: () => void
+      getSelection?: () => { getActiveRange?: () => { getRow?: () => number; getColumn?: () => number } | null } | null
+    } | null
+    if (!ws?.addFloatDomToPosition) return null
+
+    const row = cell?.row ?? ws.getSelection?.()?.getActiveRange?.()?.getRow?.() ?? 0
+    const col = cell?.col ?? ws.getSelection?.()?.getActiveRange?.()?.getColumn?.() ?? 0
+
+    // Box sized to fit the full "@label" — CJK glyphs ~full-width, latin ~half at the chip's 14px.
+    const label = `@${item.label || item.id}`
+    let w = 0
+    for (const ch of label) w += ch.charCodeAt(0) > 0xff ? 15 : 8
+    w = Math.max(52, Math.min(400, w + 18))
+    const h = 20
+
+    // Anchor at the target cell's top-left in scene coords (header offset + accumulated col/row
+    // sizes) — the SAME persisted float-DOM path formulas use.
+    let startX = OCTO_MENTION_ROW_HEADER_W
+    let startY = OCTO_MENTION_COL_HEADER_H
+    try {
+      if (typeof ws.getColumnWidth === 'function' && typeof ws.getRowHeight === 'function') {
+        for (let c = 0; c < col; c++) startX += ws.getColumnWidth(c) || 0
+        for (let r = 0; r < row; r++) startY += ws.getRowHeight(r) || 0
+      }
+    } catch {
+      startX = 100
+      startY = 80
+    }
+    // Small inset so the chip sits inside the cell (not on its border), vertically centered-ish.
+    startX += 2
+    startY += 2
+
+    // Unique id for the float-DOM drawing. Prefer crypto.randomUUID (collision-free across
+    // replicated clients); fall back to time+random where it's unavailable (old webviews).
+    const id =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? `mention-${crypto.randomUUID()}`
+        : `mention-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+    let chipId: string
+    try {
+      const res = ws.addFloatDomToPosition(
+        {
+          componentKey: OCTO_MENTION_CHIP_KEY,
+          initPosition: { startX, endX: startX + w, startY, endY: startY + h },
+          data: { id: item.id, label: item.label, type: item.type },
+          allowTransform: true,
+        },
+        id,
+      )
+      chipId = res?.id ?? id
+    } catch {
+      // Insertion failed — return WITHOUT touching cell content. (Previously the cell was cleared
+      // before this call, so a failure here permanently destroyed the cell's data.)
+      return null
+    }
+
+    // Chip is in — now reconcile the cell's text. Only after a confirmed insert, so a failed insert
+    // can never lose data.
+    //  • inline mode: the user typed `@query` into the cell → strip ONLY that trailing `@query`,
+    //    preserving any prefix (e.g. `owner: @ali` → `owner: `).
+    //  • button mode: the ribbon opened the picker on an existing cell → DO NOT touch its content
+    //    (the chip is an overlay; nulling the cell here erased pre-existing text/numbers/formulas).
+    if (ctx?.mode === 'inline') {
+      try {
+        const rng = ws.getRange?.(row, col)
+        const raw = rng?.getValue?.()
+        const text = typeof raw === 'string' ? raw : raw == null ? '' : String(raw)
+        // Strip ONLY the trailing `@query` the popup mirrored. `undefined` means the needle wasn't
+        // found (query/cell desync — IME, paste, concurrent edit) → leave the cell untouched rather
+        // than erasing it. See stripTrailingQuery for the data-loss rationale.
+        const next = stripTrailingQuery(text, ctx.query)
+        if (next !== undefined) rng?.setValue?.({ v: next })
+      } catch {
+        /* best-effort: leave cell as-is rather than risk clobbering it */
+      }
+    }
+
+    // Nudge a repaint so a freshly-added chip shows immediately (the float-DOM layer otherwise
+    // waits for the next selection/scroll).
+    try {
+      ws.getRange?.(row, col)?.activate?.()
+      ws.refresh?.()
+    } catch {
+      /* best-effort repaint nudge */
+    }
+    return chipId
+  }
+
+  /**
    * Persist an inline formula edit (LaTeX + font size) by patching the DRAWING_DOM record's `data`
    * via SetSheetDrawingCommand, which fires the drawing mutation the Yjs sync observes — so the edit
    * persists + replicates. Assumes the formula is on the active sheet. Best-effort (silent no-op if
@@ -1035,6 +1248,7 @@ export class CollabSheet {
     if (this.sealTimer) clearTimeout(this.sealTimer)
     this.cursors?.dispose()
     this.commentMarkers?.dispose()
+    this.cellMention?.dispose()
     setFormulaSaveHandler(null)
     setFormulaResizeHandler(null)
     setFormulaStyleHandler(null)

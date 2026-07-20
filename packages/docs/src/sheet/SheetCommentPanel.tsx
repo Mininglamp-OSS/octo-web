@@ -14,12 +14,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
 import { canComment, canEdit, canManage } from '../auth/roles.ts'
-import { getCurrentUid, t, VoiceInputButton } from '../octoweb/index.ts'
+import { getCurrentUid, t } from '../octoweb/index.ts'
 import { formatRelative, formatAbsolute } from '../versions/format.ts'
 import type { UseDocComments } from '../comments/useDocComments.ts'
 import type { Comment, CommentThread } from '../comments/api.ts'
 import type { CollabSheet } from './CollabSheet.ts'
-import { applyVoiceTranscription } from '../comments/voiceText.ts'
+import { MentionComposer } from '../mentions/MentionComposer.tsx'
+import { MentionText } from '../mentions/MentionText.tsx'
 
 /**
  * Legacy V1 single-sheet docs anchored comments to the raw Univer sheet id (`octo-sheet-1`,
@@ -73,22 +74,24 @@ function CommentBody({
   role,
   comments,
   names,
+  spaceId,
 }: {
   comment: Comment
   currentUid: string
   role: Role
   comments: UseDocComments
   names?: Map<string, string>
+  spaceId?: string
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(comment.body)
   const [busy, setBusy] = useState(false)
-  const draftRef = useRef<HTMLTextAreaElement>(null)
 
   const isAuthor = comment.authorUid === currentUid
   const canHardDelete = !isAuthor && canManage(role)
 
   async function saveEdit() {
+    if (busy) return
     if (draft.trim() === '') return
     setBusy(true)
     try {
@@ -119,25 +122,17 @@ function CommentBody({
       </div>
       {editing ? (
         <div className="octo-comment-compose">
-          <div style={{ position: 'relative' }}>
-            <textarea
-              ref={draftRef}
-              className="octo-comment-input"
-              value={draft}
-              autoFocus
-              onChange={(e) => setDraft(e.target.value)}
-            />
-            <VoiceInputButton
-              inputRef={draftRef}
-              onTranscribed={(text, mode, savedRange) =>
-                setDraft((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
-              }
-              getCurrentText={() => draft}
-              showModeMenu
-              size="sm"
-              className="wk-vib--textarea-corner"
-            />
-          </div>
+          <MentionComposer
+            initialBody={comment.body}
+            spaceId={spaceId}
+            autoFocus
+            onChange={setDraft}
+            onSubmit={saveEdit}
+            onCancel={() => {
+              setEditing(false)
+              setDraft(comment.body)
+            }}
+          />
           <div className="octo-comment-compose-actions">
             <button type="button" className="octo-tb-btn" disabled={busy || draft.trim() === ''} onClick={saveEdit}>
               {t('docs.comment.save')}
@@ -156,7 +151,9 @@ function CommentBody({
           </div>
         </div>
       ) : (
-        <p className="octo-comment-text">{comment.body}</p>
+        <p className="octo-comment-text">
+          <MentionText body={comment.body} names={names} />
+        </p>
       )}
       {!editing && (isAuthor || canHardDelete) && (
         <div className="octo-comment-actions">
@@ -183,6 +180,7 @@ function Thread({
   onSelect,
   onJump,
   names,
+  spaceId,
 }: {
   thread: CommentThread
   role: Role
@@ -192,18 +190,19 @@ function Thread({
   onSelect: () => void
   onJump: () => void
   names?: Map<string, string>
+  spaceId?: string
 }) {
   const [replyOpen, setReplyOpen] = useState(false)
   const [replyBody, setReplyBody] = useState('')
   const [busy, setBusy] = useState(false)
   const ref = useRef<HTMLLIElement>(null)
-  const replyRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (active) ref.current?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
   async function submitReply() {
+    if (busy) return
     if (replyBody.trim() === '') return
     setBusy(true)
     try {
@@ -229,13 +228,13 @@ function Thread({
         {thread.resolved && <span className="octo-comment-resolved-badge">{t('docs.comment.resolvedBadge')}</span>}
       </button>
 
-      <CommentBody comment={thread} currentUid={currentUid} role={role} comments={comments} names={names} />
+      <CommentBody comment={thread} currentUid={currentUid} role={role} comments={comments} names={names} spaceId={spaceId} />
 
       {thread.replies.length > 0 && (
         <ul className="octo-comment-replies">
           {thread.replies.map((r) => (
             <li key={r.id}>
-              <CommentBody comment={r} currentUid={currentUid} role={role} comments={comments} names={names} />
+              <CommentBody comment={r} currentUid={currentUid} role={role} comments={comments} names={names} spaceId={spaceId} />
             </li>
           ))}
         </ul>
@@ -261,26 +260,17 @@ function Thread({
 
       {replyOpen && (
         <div className="octo-comment-compose">
-          <div style={{ position: 'relative' }}>
-            <textarea
-              ref={replyRef}
-              className="octo-comment-input"
-              placeholder={t('docs.comment.replyPlaceholder')}
-              value={replyBody}
-              autoFocus
-              onChange={(e) => setReplyBody(e.target.value)}
-            />
-            <VoiceInputButton
-              inputRef={replyRef}
-              onTranscribed={(text, mode, savedRange) =>
-                setReplyBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
-              }
-              getCurrentText={() => replyBody}
-              showModeMenu
-              size="sm"
-              className="wk-vib--textarea-corner"
-            />
-          </div>
+          <MentionComposer
+            spaceId={spaceId}
+            placeholder={t('docs.comment.replyPlaceholder')}
+            autoFocus
+            onChange={setReplyBody}
+            onSubmit={submitReply}
+            onCancel={() => {
+              setReplyOpen(false)
+              setReplyBody('')
+            }}
+          />
           <div className="octo-comment-compose-actions">
             <button type="button" className="octo-tb-btn" disabled={busy || replyBody.trim() === ''} onClick={submitReply}>
               {t('docs.comment.reply')}
@@ -309,6 +299,7 @@ export function SheetCommentPanel({
   names,
   comments,
   focusCell,
+  spaceId,
   onClose,
 }: {
   docId: string
@@ -318,18 +309,23 @@ export function SheetCommentPanel({
   comments: UseDocComments
   /** When set (e.g. from a marker click), select the thread anchored to this cell. */
   focusCell?: { row: number; col: number; sheetId: string } | null
+  spaceId?: string
   onClose?: () => void
 }) {
   const currentUid = getCurrentUid()
   const { threads, loading, error, nextCursor, includeResolved, setIncludeResolved, loadMore, createRoot } = comments
 
   const [body, setBody] = useState('')
+  // Two-step entry (XIN-1337): the composer is hidden behind an always-clickable button so it never
+  // reads as a permanently-disabled control. Revealing it mounts a fresh MentionComposer.
   const [composing, setComposing] = useState(false)
+  // Bumped after a successful post to remount MentionComposer (it is uncontrolled — reads initialBody
+  // once, so setBody('') alone would leave stale text). Changing its `key` forces a fresh empty editor.
+  const [composeSeq, setComposeSeq] = useState(0)
   const [activeId, setActiveId] = useState<number | null>(null)
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null)
   const [composeError, setComposeError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   // Map every thread to its cell (for selection matching), keyed by thread id.
   const cellByThread = useMemo(() => {
@@ -393,6 +389,7 @@ export function SheetCommentPanel({
       const encoded = btoa(ref.key)
       await createRoot({ body: body.trim(), anchorStart: encoded, anchorEnd: encoded, anchorText: ref.a1 })
       setBody('')
+      setComposeSeq((n) => n + 1)
       setComposeError(null)
       // Collapse back to the always-visible entry button (two-step interaction, mirrors the
       // doc CommentBubble). Keeping the composer open would re-disable the submit button on the
@@ -424,27 +421,14 @@ export function SheetCommentPanel({
         <div className="octo-comment-compose">
           {composing ? (
             <>
-              <div style={{ position: 'relative' }}>
-                <textarea
-                  ref={bodyRef}
-                  className="octo-comment-input"
-                  placeholder={t('docs.sheet.comment.placeholder')}
-                  value={body}
-                  autoFocus
-                  onChange={(e) => setBody(e.target.value)}
-                  rows={2}
-                />
-                <VoiceInputButton
-                  inputRef={bodyRef}
-                  onTranscribed={(text, mode, savedRange) =>
-                    setBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
-                  }
-                  getCurrentText={() => body}
-                  showModeMenu
-                  size="sm"
-                  className="wk-vib--textarea-corner"
-                />
-              </div>
+              <MentionComposer
+                key={composeSeq}
+                spaceId={spaceId}
+                autoFocus
+                placeholder={t('docs.sheet.comment.placeholder')}
+                onChange={setBody}
+                onSubmit={() => void submit()}
+              />
               <div className="octo-comment-compose-actions">
                 <button type="button" className="octo-tb-btn" disabled={busy || !body.trim()} onClick={() => void submit()}>
                   {activeCellKey ? `${t('docs.sheet.comment.menu')} ${activeCellKey}` : t('docs.sheet.comment.current')}
@@ -470,7 +454,7 @@ export function SheetCommentPanel({
             </>
           ) : (
             // Always-visible, always-clickable entry affordance (disabled only while the sheet
-            // is not yet connected). Clicking it reveals the composer and focuses the input —
+            // is not yet connected). Clicking it reveals the MentionComposer and focuses the input —
             // the two-step interaction the doc CommentBubble already uses. This replaces the
             // old layout where the compose box + a `!body.trim()`-locked submit button showed
             // up-front, which read as a permanently-disabled control (XIN-1337).
@@ -502,6 +486,7 @@ export function SheetCommentPanel({
             currentUid={currentUid}
             comments={comments}
             names={names}
+            spaceId={spaceId}
             active={activeId === th.id}
             onSelect={() => setActiveId(th.id)}
             onJump={() => {
