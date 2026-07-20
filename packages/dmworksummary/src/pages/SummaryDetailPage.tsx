@@ -4,7 +4,6 @@ import {
     Spin,
     Toast,
     Banner,
-    Dropdown,
     Tag,
     Modal,
     Popconfirm,
@@ -54,6 +53,10 @@ import type { MemberCandidate } from "../types/summary";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
+    /** Only the list-owned detail route emits list-highlight events. Embedded
+     *  instances (ChatSummaryPanel, SummaryConfirmPage) must not pollute the
+     *  list selection state. */
+    emitSelection?: boolean;
 }
 
 // Matters 转发入口暂时隐藏，保留相关代码和弹窗，后续需要时打开此开关即可。
@@ -251,9 +254,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.addEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.addEventListener("summary-list-unmount", this.handleListPageUnmount);
         this.loadDetail();
-        const activeTaskId = this.taskId;
-        if (activeTaskId != null) {
-            window.dispatchEvent(new CustomEvent("summary-detail-active", { detail: { taskId: activeTaskId } }));
+        if (this.props.emitSelection) {
+            const activeTaskId = this.taskId;
+            if (activeTaskId != null) {
+                window.dispatchEvent(new CustomEvent("summary-detail-active", { detail: { taskId: activeTaskId } }));
+            }
         }
     }
 
@@ -287,10 +292,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.streamClosedTaskId = null;
             this.teamStreamClosedTaskId = null;
             this.loadDetail();
-            // 同组件切 task（路由参数变化）：通知列表更新高亮。
-            const nextActiveTaskId = this.taskId;
-            if (nextActiveTaskId != null) {
-                window.dispatchEvent(new CustomEvent("summary-detail-active", { detail: { taskId: nextActiveTaskId } }));
+            if (this.props.emitSelection) {
+                const nextActiveTaskId = this.taskId;
+                if (nextActiveTaskId != null) {
+                    window.dispatchEvent(new CustomEvent("summary-detail-active", { detail: { taskId: nextActiveTaskId } }));
+                }
             }
         }
         if (prevState && prevState.showVersionDetailModal !== this.state.showVersionDetailModal) {
@@ -305,9 +311,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.removeEventListener("summary-list-unmount", this.handleListPageUnmount);
         this.setVersionDetailScrollLock(false);
         this.clearAllTimers();
-        const inactiveTaskId = this.taskId;
-        if (inactiveTaskId != null) {
-            window.dispatchEvent(new CustomEvent("summary-detail-inactive", { detail: { taskId: inactiveTaskId } }));
+        if (this.props.emitSelection) {
+            const inactiveTaskId = this.taskId;
+            if (inactiveTaskId != null) {
+                window.dispatchEvent(new CustomEvent("summary-detail-inactive", { detail: { taskId: inactiveTaskId } }));
+            }
         }
     }
 

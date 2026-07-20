@@ -298,7 +298,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     handleCardClick = (taskId: number) => {
         this.setState({ activeTaskId: taskId });
         WKApp.routeRight.popToRoot();
-        WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} />);
+        WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} emitSelection />);
     };
 
     handleLeave = async (taskId: number) => {
