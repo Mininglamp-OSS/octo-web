@@ -383,7 +383,7 @@
     "clearAnchor": "Clear target",
     "placeholder": "Write a comment…",
     "send": "Send",
-    "handleWithAI": "Ask AI to handle",
+    "handleWithAI": "Hand off to AI",
     "anonymous": "Anonymous",
     "agentInstructionTitle": "Ask AI to handle comment: {{request}} (doc {{slug}} · {{target}})"
   },
