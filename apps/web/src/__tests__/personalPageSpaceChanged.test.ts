@@ -46,7 +46,7 @@ describe('PersonalPage — re-resolve workspace on space switch', () => {
 
   beforeAll(() => {
     personalPage = fs.readFileSync(
-      path.join(__dirname, '../../../../packages/dmpersonal/src/PersonalPage.tsx'),
+      path.join(__dirname, '../../../../packages/dmpersonal/src/bridge/usePersonalWorkspace.tsx'),
       'utf-8',
     );
   });
@@ -133,6 +133,17 @@ describe('PersonalPage — re-resolve workspace on space switch', () => {
     const checks = (body.match(/WKApp\.currentMenuId\s*!==\s*["']dmpersonal["']/g) || []).length;
     expect(checks).toBeGreaterThanOrEqual(2); // .then and .catch
   });
+
+  it('keeps PersonalPage as a thin container over bridge and UI', () => {
+    const source = fs.readFileSync(
+      path.join(__dirname, '../../../../packages/dmpersonal/src/PersonalPage.tsx'),
+      'utf-8',
+    );
+    expect(source).toContain('usePersonalWorkspace');
+    expect(source).toContain('PersonalSidebarView');
+    expect(source).not.toContain('workspaceApi.listWorkspaces');
+    expect(source).not.toContain('WKApp.routeRight.replaceToRoot');
+  });
 });
 
 /**
@@ -148,7 +159,7 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
 
   beforeAll(() => {
     loopPage = fs.readFileSync(
-      path.join(__dirname, '../../../../packages/dmloop/src/pages/LoopPage.tsx'),
+      path.join(__dirname, '../../../../packages/dmloop/src/bridge/useLoopWorkspace.tsx'),
       'utf-8',
     );
   });
@@ -199,7 +210,7 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     // applyWorkspace runs from a mount-once (deps []) handler; it must read the
     // live tab via a ref, else switching space while on a non-issue tab paints
     // the wrong pane. Assert applyWorkspace renders via tabRef, not closure tab.
-    expect(loopPage).toMatch(/renderTab\(\s*tabRef\.current/);
+    expect(loopPage).toMatch(/renderTabView\(\s*tabRef\.current/);
   });
 
   it('guards the mount initial resolve with the same seq (cross-entry race)', () => {
@@ -239,14 +250,14 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     expect(body.search(/routeRight\.replaceToRoot/)).toBeLessThan(body.search(/listWorkspaces\(/));
   });
 
-  it('guards doCreateWs against a space switch mid-create without wedging loaded', () => {
-    // doCreateWs writes workspace context after awaits, so it must drop that
+  it('guards submitCreateWorkspace against a space switch mid-create without wedging loaded', () => {
+    // submitCreateWorkspace writes workspace context after awaits, so it must drop that
     // write when a space switch happened during creation. It CAPTURES the
     // generation (does not bump it): bumping would invalidate onSpaceChanged's
     // own resolve, whose .then/.catch are the only paths that restore loaded —
     // leaving the page stuck !loaded. So: a stale-seq guard must exist, but no
-    // ++ bump inside doCreateWs.
-    const start = loopPage.search(/const\s+doCreateWs\s*=/);
+    // ++ bump inside submitCreateWorkspace.
+    const start = loopPage.search(/const\s+submitCreateWorkspace\s*=/);
     expect(start).toBeGreaterThanOrEqual(0);
     const end = loopPage.slice(start).search(/\n  const\s+\w+\s*=/);
     const body = end < 0 ? loopPage.slice(start) : loopPage.slice(start, start + end);
@@ -262,7 +273,7 @@ describe('LoopPage — re-resolve workspace on space switch', () => {
     // Create entry must be blocked during the re-resolve window, and any open
     // create modal must close on space-changed, so no create can land while the
     // page is re-resolving a new space.
-    const openBody = loopPage.slice(loopPage.search(/const\s+openCreateWs\s*=/), loopPage.search(/const\s+openCreateWs\s*=/) + 160);
+    const openBody = loopPage.slice(loopPage.search(/const\s+openCreateWorkspace\s*=/), loopPage.search(/const\s+openCreateWorkspace\s*=/) + 160);
     expect(openBody).toMatch(/if\s*\(\s*!loaded\s*\)\s*return/);
     const onSpaceBody = reResolveSpaceBody(loopPage);
     expect(onSpaceBody).toMatch(/setWsModalOpen\(\s*false\s*\)/);

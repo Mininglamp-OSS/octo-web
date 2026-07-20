@@ -32,6 +32,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
+import { currentWorkspaceSlug } from "../api/http";
 import type {
   Issue,
   IssueComment,
@@ -78,6 +79,10 @@ import { useCommentTriggerPreview } from "../ui/useCommentTriggerPreview";
 import { buildRepliesByParent, collectThreadReplies } from "../ui/threadReplies";
 import LoopAttachments from "../ui/LoopAttachments";
 import { confirmDelete } from "../ui/confirmDelete";
+import {
+  pushFleetIssueDeepLink,
+  replaceFleetIssueDeepLink,
+} from "../issueDeepLink";
 import RunDetailModal from "./RunDetailModal";
 import CreateIssueModal from "../ui/CreateIssueModal";
 import {
@@ -261,13 +266,14 @@ function fmt(iso?: string | null): string {
 export interface IssueDetailPageProps {
   issueId: string;
   onChanged?: () => void;
+  onClose?: () => boolean | void;
 }
 
 /**
  * Issue 独立详情页（对齐产品设计）：主体(标题/描述/评论) + 右侧属性栏 + 执行日志。
  * 渲染在右主栏（routeRight.push），顶部返回按钮 pop 回列表/看板。
  */
-export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageProps) {
+export default function IssueDetailPage({ issueId, onChanged, onClose }: IssueDetailPageProps) {
   const { t } = useI18n();
   const [issue, setIssue] = useState<Issue | null>(null);
   const [comments, setComments] = useState<IssueComment[]>([]);
@@ -607,7 +613,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     });
   };
 
-  const back = () => WKApp.routeRight.pop();
+  const back = () => {
+    if (onClose?.() === false) return;
+    WKApp.routeRight.pop();
+  };
 
   const openRun = (run: TaskRun) => {
     setActiveRun(run);
@@ -616,7 +625,22 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   // 打开子回路详情（递归复用本页，key 隔离跨 issue 陈旧写入）。
   const openChild = (id: string) => {
-    WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={onChanged} />);
+    const workspaceSlug = currentWorkspaceSlug();
+    const child = children.find((item) => item.id === id);
+    if (workspaceSlug && child?.identifier) {
+      pushFleetIssueDeepLink(workspaceSlug, child.identifier);
+    }
+    WKApp.routeRight.push(
+      <IssueDetailPage
+        key={id}
+        issueId={id}
+        onChanged={onChanged}
+        onClose={() => {
+          if (workspaceSlug && issue?.identifier) replaceFleetIssueDeepLink(workspaceSlug, issue.identifier);
+          else onClose?.();
+        }}
+      />
+    );
   };
 
   const reloadRuns = () => listRuns(issueId).then(setRuns).catch(() => {});

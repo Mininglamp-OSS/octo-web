@@ -44,6 +44,10 @@
   white-space: nowrap;
 }
 
+.loop-sidebar__ws-menu-name {
+  flex: 1;
+}
+
 /* 新建入口 */
 .loop-sidebar__new {
   padding: 2px 10px 8px;
@@ -65,6 +69,11 @@
 
 .loop-sidebar__new-btn:hover {
   background: var(--semi-color-fill-0, #f0f1f3);
+}
+
+.loop-sidebar__new-plus {
+  margin-left: auto;
+  opacity: 0.5;
 }
 
 .loop-sidebar__menu {

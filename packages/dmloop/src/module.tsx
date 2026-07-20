@@ -1,6 +1,7 @@
 import React from "react";
 import { WKApp, Menus, i18n, t as translate } from "@octo/base";
 import type { IModule } from "@octo/base";
+import { Workflow } from "lucide-react";
 import LoopPage from "./pages/LoopPage";
 import LoopCliAuthorizePage from "./pages/LoopCliAuthorizePage";
 import {
@@ -9,6 +10,7 @@ import {
   resolveLoopCliAuthorizeSearch,
   visibleLoopCliAuthorizeSearch,
 } from "./cliAuthorizeSession";
+import { normalizeCurrentLoopIssueDeepLink } from "./issueDeepLink";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 
@@ -27,23 +29,7 @@ if (import.meta.hot) {
 
 function LoopIcon({ active }: { active?: boolean }) {
   const color = active ? "var(--wk-brand-primary, #7C5CFC)" : "currentColor";
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M17 2l4 4-4 4" />
-      <path d="M3 11v-1a4 4 0 014-4h14" />
-      <path d="M7 22l-4-4 4-4" />
-      <path d="M21 13v1a4 4 0 01-4 4H3" />
-    </svg>
-  );
+  return <Workflow size={22} color={color} strokeWidth={2} />;
 }
 
 /** LoopModule — Loop 一级 Panel（二级菜单：Issue/Skill/Project/Agent/Squad）。 */
@@ -60,6 +46,11 @@ export default class LoopModule implements IModule {
       "zh-CN": zhCN,
       "en-US": enUS,
     });
+
+    // Capture issue deep-links before the host tries to activate a menu route.
+    // Only `/loop` has a NavRail entry, so dynamic issue paths are normalized
+    // first and restored after Loop resolves the target workspace.
+    normalizeCurrentLoopIssueDeepLink();
 
     if (
       typeof window !== "undefined" &&

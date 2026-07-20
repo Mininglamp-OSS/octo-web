@@ -75,6 +75,22 @@ export async function getIssue(id: string): Promise<Issue> {
   return enrichIssue(issue);
 }
 
+export async function resolveIssueByIdentifier(identifier: string): Promise<Issue | null> {
+  const key = identifier.trim();
+  if (!key) return null;
+
+  const direct = await getIssue(key).catch(() => null);
+  if (direct?.identifier?.toLowerCase() === key.toLowerCase()) return direct;
+
+  const searched = await searchIssues(key, { limit: 50, includeClosed: true }).catch(
+    () => ({ issues: [] as Issue[], total: 0 })
+  );
+  return (
+    searched.issues.find((issue) => issue.identifier.toLowerCase() === key.toLowerCase()) ??
+    null
+  );
+}
+
 // 子 issue 列表(GET /issues/:id/children):后端包裹 { issues }。子项含 status,
 // 进度(done/total)由页面本地算,不再调批量 /child-progress(那是列表/看板用的)。
 export async function listChildren(id: string): Promise<Issue[]> {

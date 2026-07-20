@@ -12,6 +12,7 @@ import {
 import LoopButton from "../ui/LoopButton";
 import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, SlidersHorizontal, Filter } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
+import { currentWorkspaceSlug } from "../api/http";
 import type {
   Issue,
   IssueGroup,
@@ -33,6 +34,7 @@ import IssueGroupBoard from "../panel/IssueGroupBoard";
 import IssueList from "../panel/IssueList";
 import IssueDetailPage from "../panel/IssueDetailPage";
 import CreateIssueModal from "../ui/CreateIssueModal";
+import { pushFleetIssueDeepLink, replaceLoopRootPath } from "../issueDeepLink";
 import { readView, writeView } from "../ui/viewMode";
 
 type ViewMode = "board" | "grouped" | "list";
@@ -246,7 +248,21 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   // key=id:issueId 变化即整体重挂载 → 详情页所有异步状态从零开始,结构性杜绝跨 issue 陈旧写入
   // (如未来点子 issue 原地切换时,慢请求无法把旧 issue 数据写进新 issue 视图)。
   const openDetail = (id: string) => {
-    WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={onMutated} />);
+    const workspaceSlug = currentWorkspaceSlug();
+    const issue =
+      issues.find((item) => item.id === id) ??
+      groups.flatMap((group) => group.issues).find((item) => item.id === id);
+    if (workspaceSlug && issue?.identifier) {
+      pushFleetIssueDeepLink(workspaceSlug, issue.identifier);
+    }
+    WKApp.routeRight.push(
+      <IssueDetailPage
+        key={id}
+        issueId={id}
+        onChanged={onMutated}
+        onClose={replaceLoopRootPath}
+      />
+    );
   };
 
   const [createOpen, setCreateOpen] = useState(false);

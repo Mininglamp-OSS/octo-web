@@ -1,6 +1,7 @@
 import React from "react";
 import { WKApp, Menus, i18n, t as translate } from "@octo/base";
 import type { IModule } from "@octo/base";
+import { Cpu } from "lucide-react";
 import PersonalPage from "./PersonalPage";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
@@ -19,23 +20,7 @@ if (import.meta.hot) {
 function PersonalIcon({ active }: { active?: boolean }) {
   const color = active ? "var(--wk-brand-primary)" : "currentColor";
 
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M16 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2" />
-      <circle cx="9.5" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 00-3-3.87" />
-      <path d="M16 3.13a4 4 0 010 7.75" />
-    </svg>
-  );
+  return <Cpu size={22} color={color} strokeWidth={2} />;
 }
 
 export default class PersonalModule implements IModule {
