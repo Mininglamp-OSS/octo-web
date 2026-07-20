@@ -148,6 +148,7 @@
     border-radius: 999px;
 }
 
+/* The old snapshot must stay opaque so the live app cannot leak outside the expanding circle. */
 html[data-octo-onboarding-vt="active"]::view-transition-old(root),
 html[data-octo-onboarding-vt="active"]::view-transition-new(root) {
     animation: none;
@@ -156,10 +157,6 @@ html[data-octo-onboarding-vt="active"]::view-transition-new(root) {
 
 html[data-octo-onboarding-vt="active"]::view-transition-group(root) {
     animation-duration: var(--wk-onboarding-vt-duration);
-}
-
-html[data-octo-onboarding-vt="active"]::view-transition-old(root) {
-    animation: wkOnboardingVtOldOut var(--wk-onboarding-vt-duration) cubic-bezier(0.42, 0, 0.18, 1) both;
 }
 
 html[data-octo-onboarding-vt="active"]::view-transition-new(root) {
@@ -1316,13 +1313,6 @@ html[data-octo-onboarding-vt="active"]::view-transition-new(root) {
     to {
         background: var(--wk-onboarding-overlay-bg);
         backdrop-filter: blur(1.5px);
-    }
-}
-
-@keyframes wkOnboardingVtOldOut {
-    to {
-        opacity: 0.78;
-        filter: blur(2px);
     }
 }
 
