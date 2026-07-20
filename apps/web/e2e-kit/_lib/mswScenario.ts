@@ -34,6 +34,7 @@ export type LoopScenario =
   | "one-project"
   | "one-agent"
   | "one-squad"
+  | "one-automation"
   | "no-mock";
 
 export async function installMswScenario(

@@ -209,7 +209,8 @@ export const loopEmptyHandlers = [
       s === "member-remove" ||
       s === "one-project" ||
       s === "one-agent" ||
-      s === "one-squad"
+      s === "one-squad" ||
+      s === "one-automation"
     )
       return HttpResponse.json([WS_A]);
     if (s === "two-ws") return HttpResponse.json([WS_A, WS_B]);
@@ -520,6 +521,78 @@ export const loopEmptyHandlers = [
     ])
   ),
   http.get("*/fleet/api/v1/squads/:id/members/status", () => HttpResponse.json([])),
+
+  // ── automation / autopilot ────────────────────────────────────────────
+  http.get("*/fleet/api/v1/autopilots", () => {
+    const s = scenario();
+    if (s === "one-automation") {
+      return HttpResponse.json({
+        autopilots: [
+          {
+            id: "auto-1",
+            title: "Existing Automation",
+            description: "sample",
+            status: "active",
+            assignee_type: "agent",
+            assignee_id: "agent-alpha",
+            assignee_name: "Agent Alpha",
+            project_id: null,
+            last_run_status: null,
+            next_run_at: "2026-07-21T10:00:00Z",
+            triggers: [{ id: "trg-1", kind: "schedule", cron_expression: "0 9 * * *", timezone: "Asia/Shanghai" }],
+            created_at: "2026-07-20T10:00:00Z",
+            updated_at: "2026-07-20T10:00:00Z",
+          },
+        ],
+      });
+    }
+    return HttpResponse.json({ autopilots: [] });
+  }),
+  http.post("*/fleet/api/v1/autopilots", async ({ request }) => {
+    const body = (await request.json()) as { title: string };
+    return HttpResponse.json({
+      id: `auto-${Date.now()}`,
+      title: body.title,
+      status: "active",
+      assignee_type: "agent",
+      assignee_id: "agent-alpha",
+      created_at: "2026-07-20T10:00:00Z",
+    });
+  }),
+  http.post("*/fleet/api/v1/autopilots/:id/triggers", async ({ request, params }) => {
+    const body = (await request.json()) as { cron_expression: string; timezone: string };
+    return HttpResponse.json({
+      id: `trg-${Date.now()}`,
+      autopilot_id: params.id,
+      kind: "schedule",
+      cron_expression: body.cron_expression,
+      timezone: body.timezone,
+    });
+  }),
+  http.post("*/fleet/api/v1/autopilots/:id/trigger", () =>
+    HttpResponse.json({ ok: true })
+  ),
+  http.get("*/fleet/api/v1/autopilots/:id", ({ params }) =>
+    HttpResponse.json({
+      id: params.id,
+      title: "Existing Automation",
+      description: "sample",
+      status: "active",
+      assignee_type: "agent",
+      assignee_id: "agent-alpha",
+      assignee_name: "Agent Alpha",
+      project_id: null,
+      last_run_status: null,
+      triggers: [{ id: "trg-1", kind: "schedule", cron_expression: "0 9 * * *", timezone: "Asia/Shanghai" }],
+      created_at: "2026-07-20T10:00:00Z",
+      updated_at: "2026-07-20T10:00:00Z",
+    })
+  ),
+  http.get("*/fleet/api/v1/autopilots/:id/runs", () => HttpResponse.json([])),
+  http.patch("*/fleet/api/v1/autopilots/:id/triggers/:tid", async ({ request, params }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    return HttpResponse.json({ id: params.tid, autopilot_id: params.id, ...body });
+  }),
   http.get("*/fleet/api/v1/issues/candidates", () =>
     HttpResponse.json([
       { id: "agent-alpha", type: "agent", name: "Agent Alpha", avatar_color: "#3B82F6", octo_uid: null },
