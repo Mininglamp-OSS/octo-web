@@ -27,8 +27,10 @@ const hoisted = vi.hoisted(() => {
   const apiClientPost = vi.fn()
   const apiClientGet = vi.fn()
   const userProfileGet = vi.fn()
+  const updateCurrentUser = vi.fn()
   const toastError = vi.fn()
   const toastWarning = vi.fn()
+  const toastSuccess = vi.fn()
   const channelManager = {
     addListener: vi.fn(),
     removeListener: vi.fn(),
@@ -67,7 +69,17 @@ const hoisted = vi.hoisted(() => {
     },
     config: { appName: "OCTO" },
   }
-  return { apiClientPost, apiClientGet, userProfileGet, toastError, toastWarning, channelManager, fakeWKApp }
+  return {
+    apiClientPost,
+    apiClientGet,
+    userProfileGet,
+    updateCurrentUser,
+    toastError,
+    toastWarning,
+    toastSuccess,
+    channelManager,
+    fakeWKApp,
+  }
 })
 
 vi.mock("wukongimjssdk", () => {
@@ -89,7 +101,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
     error: hoisted.toastError,
     warning: hoisted.toastWarning,
     info: hoisted.toastWarning,
-    success: vi.fn(),
+    success: hoisted.toastSuccess,
   },
 }))
 
@@ -98,7 +110,7 @@ vi.mock("../../../App", () => ({ default: hoisted.fakeWKApp }))
 vi.mock("../../../Service/UserService", () => ({
   default: {
     getUserProfile: hoisted.userProfileGet,
-    updateCurrentUser: vi.fn(),
+    updateCurrentUser: hoisted.updateCurrentUser,
     uploadUserAvatar: vi.fn(),
   },
 }))
@@ -150,25 +162,74 @@ vi.mock("../../PersonaSettings", () => ({ default: () => null }))
 // 真正要测的 class
 import { MeInfoVM } from "../vm"
 
-describe("MeInfoVM.sex — v2 three-state mapping", () => {
+describe("MeInfoVM.sex — legacy 0/1 mapping", () => {
+  beforeEach(() => {
+    hoisted.updateCurrentUser.mockReset()
+    hoisted.updateCurrentUser.mockResolvedValue({})
+    hoisted.fakeWKApp.loginInfo.save.mockReset()
+  })
+
   afterEach(() => {
     hoisted.fakeWKApp.loginInfo.sex = 1
   })
 
-  it("treats 0 and empty values as not set, and keeps 1/2 as male/female", () => {
+  it("keeps 0 as female and 1 as male, with 2 treated as female compatibility data", () => {
     const vm = new MeInfoVM()
 
     hoisted.fakeWKApp.loginInfo.sex = 0
-    expect(vm.sex()).toBe(0)
-
-    hoisted.fakeWKApp.loginInfo.sex = undefined as unknown as number
     expect(vm.sex()).toBe(0)
 
     hoisted.fakeWKApp.loginInfo.sex = 1
     expect(vm.sex()).toBe(1)
 
     hoisted.fakeWKApp.loginInfo.sex = 2
-    expect(vm.sex()).toBe(2)
+    expect(vm.sex()).toBe(0)
+  })
+
+  it("normalizes any female value back to the persisted 0 contract", async () => {
+    const vm = new MeInfoVM()
+    const notifySpy = vi.spyOn(vm, "notifyListener")
+
+    await vm.updateSex(2)
+
+    expect(hoisted.updateCurrentUser).toHaveBeenCalledWith({ sex: "0" })
+    expect(hoisted.fakeWKApp.loginInfo.sex).toBe(0)
+    expect(hoisted.fakeWKApp.loginInfo.save).toHaveBeenCalledTimes(1)
+    expect(notifySpy).toHaveBeenCalledTimes(1)
+  })
+
+  it("persists male as 1", async () => {
+    const vm = new MeInfoVM()
+
+    await vm.updateSex(1)
+
+    expect(hoisted.updateCurrentUser).toHaveBeenCalledWith({ sex: "1" })
+    expect(hoisted.fakeWKApp.loginInfo.sex).toBe(1)
+    expect(hoisted.fakeWKApp.loginInfo.save).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("MeInfoVM.handleShortNoTap — lab-mode unlock", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem("lab_mode_enabled")
+    hoisted.toastSuccess.mockReset()
+  })
+
+  afterEach(() => {
+    window.localStorage.removeItem("lab_mode_enabled")
+  })
+
+  it("writes the lab flag and notifies after five taps", () => {
+    const vm = new MeInfoVM()
+    const notifySpy = vi.spyOn(vm, "notifyListener")
+
+    for (let i = 0; i < 5; i += 1) {
+      vm.handleShortNoTap()
+    }
+
+    expect(window.localStorage.getItem("lab_mode_enabled")).toBe("1")
+    expect(hoisted.toastSuccess).toHaveBeenCalledTimes(1)
+    expect(notifySpy).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -293,7 +293,10 @@ export class MeInfoVM extends ProviderListener {
 
     sex(): number {
         const sex = Number(WKApp.loginInfo.sex)
-        return sex === 1 || sex === 2 ? sex : 0
+        // Keep the legacy app/backend contract as 0 = female, 1 = male.
+        // Treat 2 as female defensively if a newer payload appears, but do not
+        // write 2 back from this component.
+        return sex === 0 || sex === 2 ? 0 : 1
     }
 
     sexLabel(): string {
@@ -301,10 +304,7 @@ export class MeInfoVM extends ProviderListener {
         if (sex === 1) {
             return t("base.me.male")
         }
-        if (sex === 2) {
-            return t("base.me.female")
-        }
-        return t("base.common.notSet")
+        return t("base.me.female")
     }
 
     isRealnameVerified(): boolean {
@@ -337,8 +337,9 @@ export class MeInfoVM extends ProviderListener {
     }
 
     async updateSex(sex: number) {
-        await this.updateMyInfo("sex", sex.toString())
-        WKApp.loginInfo.sex = sex
+        const normalizedSex = sex === 1 ? 1 : 0
+        await this.updateMyInfo("sex", normalizedSex.toString())
+        WKApp.loginInfo.sex = normalizedSex
         WKApp.loginInfo.save()
         this.notifyListener()
     }

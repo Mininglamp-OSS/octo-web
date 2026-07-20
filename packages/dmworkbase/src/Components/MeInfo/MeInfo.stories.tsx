@@ -66,6 +66,7 @@ function MeInfoPreview({
             onNameDraftChange={() => undefined}
             onCancelName={() => undefined}
             onSaveName={() => undefined}
+            onShortNoTap={() => undefined}
             onShowQrCode={() => undefined}
             onShowGender={() => undefined}
             onRealnameClick={() => undefined}

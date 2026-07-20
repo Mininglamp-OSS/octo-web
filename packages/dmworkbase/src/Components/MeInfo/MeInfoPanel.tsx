@@ -52,6 +52,7 @@ export interface MeInfoPanelProps {
     onNameDraftChange: (value: string) => void;
     onCancelName: () => void;
     onSaveName: () => void;
+    onShortNoTap: () => void;
     onShowQrCode: () => void;
     onShowGender: () => void;
     onRealnameClick: () => void;
@@ -119,6 +120,7 @@ export default function MeInfoPanel({
     onNameDraftChange,
     onCancelName,
     onSaveName,
+    onShortNoTap,
     onShowQrCode,
     onShowGender,
     onRealnameClick,
@@ -205,7 +207,7 @@ export default function MeInfoPanel({
                     <Edit3 size={16} />
                 </button>}
             </div>
-            <MeInfoNavRow title={shortNoLabel} value={shortNo || notSetLabel} />
+            <MeInfoNavRow title={shortNoLabel} value={shortNo || notSetLabel} onClick={onShortNoTap} />
             <MeInfoNavRow title={qrcodeLabel} right={<QrCode size={16} aria-hidden="true" />} onClick={onShowQrCode} />
         </MeInfoSection>
 

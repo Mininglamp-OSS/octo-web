@@ -245,9 +245,8 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
         const avatar = <WKAvatar channel={vm.currentUserChannel()} />
         const avatarMini = <WKAvatar channel={vm.currentUserChannel()} />
         const sexOptions = [
-            { value: 0, label: t("base.common.notSet") },
             { value: 1, label: t("base.sexSelect.male") },
-            { value: 2, label: t("base.sexSelect.female") },
+            { value: 0, label: t("base.sexSelect.female") },
         ]
 
         return <>
@@ -296,6 +295,7 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
                     onNameDraftChange={(value) => this.setState({ nameDraft: value })}
                     onCancelName={this.cancelEditName}
                     onSaveName={() => this.saveName(vm)}
+                    onShortNoTap={() => vm.handleShortNoTap()}
                     onShowQrCode={() => this.setState({ showQrCode: true })}
                     onShowGender={() => this.setState({ showSexSelect: true })}
                     onRealnameClick={() => vm.startRealnameVerify()}
