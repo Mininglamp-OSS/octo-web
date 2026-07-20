@@ -29,6 +29,8 @@ export type LoopScenario =
   | "one-ws"
   | "one-issue"
   | "two-ws"
+  | "ws-with-members"
+  | "member-remove"
   | "no-mock";
 
 export async function installMswScenario(
@@ -56,6 +58,8 @@ export async function installMswScenario(
         sessionStorage.setItem("__e2e_scenario", name);
         // 清历史场景残留标记
         sessionStorage.removeItem("__e2e_c2_created");
+        sessionStorage.removeItem("__e2e_removed_members");
+        sessionStorage.removeItem("__e2e_added_members");
       } catch {
         /* noop */
       }

@@ -101,6 +101,80 @@ const ISSUE_A = {
   creator_name: "E2E Tester",
 };
 
+// members baseline (scenario ws-with-members / member-remove)
+const MEMBER_ADMIN = {
+  id: "m-admin",
+  workspace_id: "ws-a",
+  user_id: "u-admin",
+  role: "admin",
+  name: "Admin User",
+  email: "admin@example.com",
+  octo_uid: "uid-admin",
+  avatar_url: null,
+};
+const MEMBER_ORD = {
+  id: "m-ord",
+  workspace_id: "ws-a",
+  user_id: "u-ord",
+  role: "member",
+  name: "Ordinary Member",
+  email: "ord@example.com",
+  octo_uid: "uid-ord",
+  avatar_url: null,
+};
+
+// space 全量成员 (SpaceService.getAllMembers), C23 添加成员候选来源
+const SPACE_HUMANS = [
+  MEMBER_ADMIN,
+  MEMBER_ORD,
+  { uid: "uid-newbie", name: "Newbie User", short_no: "20000", robot: 0, sex: 1, role: 0 },
+].map((m: Record<string, unknown>) => ({
+  uid: m.uid ?? (m as { octo_uid?: string }).octo_uid ?? "uid-x",
+  name: m.name ?? "User",
+  short_no: (m as { short_no?: string }).short_no ?? "00000",
+  robot: 0,
+  sex: 1,
+  role: 0,
+  status: 1,
+  ...m,
+}));
+
+// sessionStorage 里追踪 "已 remove 的 member id" (C24 用)
+function isMemberRemoved(memberId: string): boolean {
+  try {
+    const removed = JSON.parse(sessionStorage.getItem("__e2e_removed_members") || "[]") as string[];
+    return removed.includes(memberId);
+  } catch {
+    return false;
+  }
+}
+function markMemberRemoved(memberId: string): void {
+  try {
+    const removed = JSON.parse(sessionStorage.getItem("__e2e_removed_members") || "[]") as string[];
+    removed.push(memberId);
+    sessionStorage.setItem("__e2e_removed_members", JSON.stringify(removed));
+  } catch {
+    /* noop */
+  }
+}
+// sessionStorage 存"新加成员" (C23 用)
+function getAddedMembers(): typeof MEMBER_ADMIN[] {
+  try {
+    return JSON.parse(sessionStorage.getItem("__e2e_added_members") || "[]");
+  } catch {
+    return [];
+  }
+}
+function addMember(m: typeof MEMBER_ADMIN): void {
+  try {
+    const list = getAddedMembers();
+    list.push(m);
+    sessionStorage.setItem("__e2e_added_members", JSON.stringify(list));
+  } catch {
+    /* noop */
+  }
+}
+
 export const loopEmptyHandlers = [
   // scenario="no-mock" opt-out: 迁移进来的老 spec (bind / standalone-doc) 用
   // page.route 自己 mock, 需要 kit 层不打扰. 全域最优先 passthrough:
@@ -128,7 +202,13 @@ export const loopEmptyHandlers = [
 
   http.get("*/fleet/api/v1/workspaces", () => {
     const s = scenario();
-    if (s === "one-ws" || s === "one-issue") return HttpResponse.json([WS_A]);
+    if (
+      s === "one-ws" ||
+      s === "one-issue" ||
+      s === "ws-with-members" ||
+      s === "member-remove"
+    )
+      return HttpResponse.json([WS_A]);
     if (s === "two-ws") return HttpResponse.json([WS_A, WS_B]);
     if (s === "create-ws") {
       return HttpResponse.json(wasPostCreated() ? [WS_CREATED] : []);
@@ -184,6 +264,47 @@ export const loopEmptyHandlers = [
       title: body.title,
     });
   }),
+
+  // ── workspace PATCH (C7) ──────────────────────────────────────────────
+  http.patch("*/fleet/api/v1/workspaces/:id", async ({ request, params }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    return HttpResponse.json({ ...WS_A, id: params.id, ...body });
+  }),
+
+  // ── workspace members (C23/C24) ───────────────────────────────────────
+  http.get("*/fleet/api/v1/workspaces/:id/members", () => {
+    const s = scenario();
+    if (s === "ws-with-members" || s === "member-remove") {
+      const base = [MEMBER_ADMIN, MEMBER_ORD].filter((m) => !isMemberRemoved(m.id));
+      return HttpResponse.json([...base, ...getAddedMembers()]);
+    }
+    return HttpResponse.json([]);
+  }),
+  http.get("*/fleet/api/v1/workspaces/:id/invitations", () => HttpResponse.json([])),
+  http.post("*/fleet/api/v1/workspaces/:id/octo-members", async ({ request, params }) => {
+    const body = (await request.json()) as { octo_uid: string; role?: string };
+    const added = {
+      id: `m-added-${body.octo_uid}`,
+      workspace_id: params.id as string,
+      user_id: `u-${body.octo_uid}`,
+      role: body.role ?? "member",
+      name: SPACE_HUMANS.find((h) => h.uid === body.octo_uid)?.name ?? `User ${body.octo_uid}`,
+      email: `${body.octo_uid}@e2e.local`,
+      octo_uid: body.octo_uid,
+      avatar_url: null,
+    };
+    addMember(added);
+    return HttpResponse.json(added);
+  }),
+  http.delete("*/fleet/api/v1/workspaces/:id/members/:memberId", ({ params }) => {
+    markMemberRemoved(params.memberId as string);
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  // ── SpaceService.getAllMembers (C23 候选下拉) ────────────────────────
+  http.get("*/api/v1/space/:spaceId/members", () =>
+    HttpResponse.json(SPACE_HUMANS)
+  ),
 
   // 兜底: 未被具体路由匹配到的 fleet 端点
   http.get("*/fleet/api/v1/projects", () => HttpResponse.json([])),
