@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Box, FileArchive, Loader2, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
-import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse } from "../api/skillApi";
+import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag } from "../utils/format";
 import IconCropModal from "./IconCropModal";
 
@@ -40,6 +40,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     [categories],
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const tagFieldRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef(false);
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -47,6 +48,10 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   const [categoryId, setCategoryId] = useState("dev-tools");
   const [tags, setTags] = useState<string[]>([]);
   const [tagDraft, setTagDraft] = useState("");
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+  const [tagSuggestOpen, setTagSuggestOpen] = useState(false);
+  const [tagSuggestionStyle, setTagSuggestionStyle] = useState<React.CSSProperties>({});
+  const [activeTagSuggestion, setActiveTagSuggestion] = useState(0);
   const [tagError, setTagError] = useState<string | null>(null);
   const [version, setVersion] = useState("1.0.0");
   const [uploadStage, setUploadStage] = useState<UploadStage>("idle");
@@ -75,6 +80,10 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     setCategoryId(skill.categoryId);
     setTags(skill.tags);
     setTagDraft("");
+    setTagSuggestions([]);
+    setTagSuggestOpen(false);
+    setTagSuggestionStyle({});
+    setActiveTagSuggestion(0);
     setTagError(null);
     setVersion(skill.version);
     setUploadStage("idle");
@@ -120,6 +129,30 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     !tagSubmitError,
   );
 
+  function updateTagSuggestionStyle() {
+    const field = tagFieldRef.current;
+    if (!field) return;
+
+    const rect = field.getBoundingClientRect();
+    const gap = 6;
+    const viewportPadding = 12;
+    const maxPanelHeight = 180;
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding - gap;
+    const availableAbove = rect.top - viewportPadding - gap;
+    const placeAbove = availableBelow < 120 && availableAbove > availableBelow;
+    const maxHeight = Math.max(
+      96,
+      Math.min(maxPanelHeight, placeAbove ? availableAbove : availableBelow)
+    );
+
+    setTagSuggestionStyle({
+      left: rect.left,
+      top: placeAbove ? rect.top - gap - maxHeight : rect.bottom + gap,
+      width: rect.width,
+      maxHeight,
+    });
+  }
+
   function requestClose() {
     if (busy) {
       setConfirmClose(true);
@@ -134,6 +167,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
 
   function confirmLeave() {
     abortRef.current = true;
+    setConfirmClose(false);
     setUploadStage("idle");
     setProgress(0);
     setUploadedFile(null);
@@ -143,24 +177,80 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
 
   function addTag() {
     const next = tagDraft.trim();
+    addTagValue(next);
+  }
+
+  function addTagValue(next: string) {
     if (!next) return;
     const validationError = validateSkillTag(next);
     if (validationError) {
       setTagError(validationError);
+      setTagSuggestOpen(false);
       return;
     }
     if (tags.includes(next)) {
       setTagError(t("skillMarket.form.tagDuplicate"));
+      setTagSuggestOpen(false);
       return;
     }
     if (tags.length >= MAX_SKILL_TAGS) {
       setTagError(t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } }));
+      setTagSuggestOpen(false);
       return;
     }
     setTags([...tags, next].slice(0, MAX_SKILL_TAGS));
     setTagDraft("");
+    setTagSuggestOpen(false);
+    setActiveTagSuggestion(0);
     setTagError(null);
   }
+
+  useEffect(() => {
+    if (!skill) return;
+    const query = tagDraft.trim();
+    if (!query || tags.length >= MAX_SKILL_TAGS || validateSkillTag(query)) {
+      setTagSuggestions([]);
+      setTagSuggestOpen(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      getSkillTags(query, { signal: controller.signal })
+        .then((items) => {
+          const next = items
+            .map((item) => item.name)
+            .filter((name) => name && !tags.includes(name))
+            .slice(0, 8);
+          setTagSuggestions(next);
+          setActiveTagSuggestion(0);
+          setTagSuggestOpen(next.length > 0);
+        })
+        .catch((err) => {
+          if (!(err instanceof DOMException && err.name === "AbortError")) {
+            setTagSuggestions([]);
+            setTagSuggestOpen(false);
+          }
+        });
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [tagDraft, tags, skill]);
+
+  useLayoutEffect(() => {
+    if (!tagSuggestOpen || tagSuggestions.length === 0) return;
+    updateTagSuggestionStyle();
+
+    window.addEventListener("resize", updateTagSuggestionStyle);
+    window.addEventListener("scroll", updateTagSuggestionStyle, true);
+    return () => {
+      window.removeEventListener("resize", updateTagSuggestionStyle);
+      window.removeEventListener("scroll", updateTagSuggestionStyle, true);
+    };
+  }, [tagSuggestOpen, tagSuggestions.length]);
 
   async function startUpload(nextFile: File) {
     if (!skill) return;
@@ -413,36 +503,87 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             </label>
             <label>
               <span>{t("skillMarket.form.tags")}</span>
-              <div className="skill-market-tag-input">
-                {tags.map((tag) => (
-                  <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
-                    {tag}
-                    <XCircle size={12} />
-                  </button>
-                ))}
-                <input
-                  value={tagDraft}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    setTagDraft(next);
-                    setTagError(validateSkillTag(next));
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addTag();
-                    }
-                  }}
-                  onBlur={addTag}
-                  placeholder={t("skillMarket.form.tagPlaceholder")}
-                  aria-describedby={(tagError || tags.length >= MAX_SKILL_TAGS) ? "skill-market-edit-tag-hint" : undefined}
-                />
+              <div className="skill-market-tag-field" ref={tagFieldRef}>
+                <div className="skill-market-tag-input">
+                  {tags.map((tag) => (
+                    <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
+                      {tag}
+                      <XCircle size={12} />
+                    </button>
+                  ))}
+                  <input
+                    value={tagDraft}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setTagDraft(next);
+                      setTagError(validateSkillTag(next));
+                    }}
+                    onFocus={() => setTagSuggestOpen(tagSuggestions.length > 0)}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowDown" && tagSuggestions.length) {
+                        event.preventDefault();
+                        setTagSuggestOpen(true);
+                        setActiveTagSuggestion((current) => (current + 1) % tagSuggestions.length);
+                        return;
+                      }
+                      if (event.key === "ArrowUp" && tagSuggestions.length) {
+                        event.preventDefault();
+                        setTagSuggestOpen(true);
+                        setActiveTagSuggestion((current) => (current - 1 + tagSuggestions.length) % tagSuggestions.length);
+                        return;
+                      }
+                      if (event.key === "Escape") {
+                        setTagSuggestOpen(false);
+                        return;
+                      }
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        if (tagSuggestOpen && tagSuggestions[activeTagSuggestion]) {
+                          addTagValue(tagSuggestions[activeTagSuggestion]);
+                        } else {
+                          addTag();
+                        }
+                      }
+                    }}
+                    onBlur={addTag}
+                    placeholder={t("skillMarket.form.tagPlaceholder")}
+                    aria-label={t("skillMarket.form.tags")}
+                    aria-autocomplete="list"
+                    aria-expanded={tagSuggestOpen}
+                    aria-describedby={(tagError || tags.length >= MAX_SKILL_TAGS) ? "skill-market-edit-tag-hint" : undefined}
+                  />
+                </div>
+                {(tagError || tags.length >= MAX_SKILL_TAGS) && (
+                  <small id="skill-market-edit-tag-hint" className={tagError ? "skill-market-tag-hint is-error" : "skill-market-tag-hint"}>
+                    {tagError ?? t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } })}
+                  </small>
+                )}
+                {tagSuggestOpen && tagSuggestions.length > 0 && (
+                  <div
+                    className="skill-market-tag-suggestions"
+                    role="listbox"
+                    aria-label={t("skillMarket.form.tagSuggestions")}
+                    style={tagSuggestionStyle}
+                  >
+                    {tagSuggestions.map((tag, index) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        role="option"
+                        aria-selected={index === activeTagSuggestion}
+                        className={index === activeTagSuggestion ? "is-active" : ""}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          addTagValue(tag);
+                        }}
+                        onMouseEnter={() => setActiveTagSuggestion(index)}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              {(tagError || tags.length >= MAX_SKILL_TAGS) && (
-                <small id="skill-market-edit-tag-hint" className={tagError ? "skill-market-tag-hint is-error" : "skill-market-tag-hint"}>
-                  {tagError ?? t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } })}
-                </small>
-              )}
             </label>
           </div>
         </div>
