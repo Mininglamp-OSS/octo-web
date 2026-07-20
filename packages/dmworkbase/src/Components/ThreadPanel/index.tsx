@@ -1084,6 +1084,12 @@ export default class ThreadPanel extends Component<
     }
   };
 
+  private handleCreateThreadNameChange = () => {
+    if (this.state.createError) {
+      this.setState({ createError: null });
+    }
+  };
+
   /** 文件选择回调：切换预览的文件（从 ConversationFile 构造 FilePreviewInfo） */
   private handleFileSelect = (file: ConversationFile) => {
     const { filePreview, onFilePreviewChange } = this.props;
@@ -1518,6 +1524,7 @@ export default class ThreadPanel extends Component<
           showCounter
           formVariant="confirm"
           onSubmit={this.handleSubmitCreateThread}
+          onChange={this.handleCreateThreadNameChange}
           onCancel={() =>
             this.setState({ createDialogVisible: false, createError: null })
           }

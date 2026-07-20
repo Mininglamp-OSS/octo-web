@@ -24,8 +24,10 @@ export interface ThreadCreateFormProps {
   showVoiceInput?: boolean
   showCounter?: boolean
   formVariant?: "modal" | "confirm"
+  resetKey?: string | number
   onSubmit: (name: string) => void
   onCancel?: () => void
+  onChange?: (name: string) => void
 }
 
 export interface ThreadCreateDialogProps extends ThreadCreateFormProps {
@@ -51,8 +53,10 @@ export function ThreadCreateForm({
   showVoiceInput = false,
   showCounter = false,
   formVariant = "modal",
+  resetKey,
   onSubmit,
   onCancel,
+  onChange,
 }: ThreadCreateFormProps) {
   const [name, setName] = useState(initialValue)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -61,7 +65,7 @@ export function ThreadCreateForm({
   useEffect(() => {
     setName(initialValue)
     setLocalError(null)
-  }, [initialValue])
+  }, [initialValue, resetKey])
 
   const currentError = localError || error || null
   const trimmedName = name.trim()
@@ -76,6 +80,12 @@ export function ThreadCreateForm({
       return
     }
     onSubmit(trimmedName)
+  }
+
+  const updateName = (nextName: string) => {
+    setName(nextName)
+    setLocalError(null)
+    onChange?.(nextName)
   }
 
   return (
@@ -99,8 +109,7 @@ export function ThreadCreateForm({
           autoFocus
           disabled={loading}
           onChange={(event) => {
-            setName(event.target.value)
-            setLocalError(null)
+            updateName(event.target.value)
           }}
         />
         {showVoiceInput && (
@@ -114,8 +123,7 @@ export function ThreadCreateForm({
                 const pos = savedRange?.from ?? name.length
                 nextName = name.slice(0, pos) + text + name.slice(pos)
               }
-              setName(nextName)
-              setLocalError(null)
+              updateName(nextName)
             }}
             size="sm"
           />
@@ -164,6 +172,14 @@ export default function ThreadCreateDialog({
   onCancel,
   ...formProps
 }: ThreadCreateDialogProps) {
+  const [openSession, setOpenSession] = useState(0)
+
+  useEffect(() => {
+    if (visible) {
+      setOpenSession((current) => current + 1)
+    }
+  }, [visible])
+
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Escape") {
       onCancel?.()
@@ -183,7 +199,7 @@ export default function ThreadCreateDialog({
           </div>
         </div>
         <div className="wk-thread-modal-body">
-          <ThreadCreateForm key="open" {...formProps} onCancel={onCancel} />
+          <ThreadCreateForm {...formProps} resetKey={openSession} onCancel={onCancel} />
         </div>
       </div>
     </div>
