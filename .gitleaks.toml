@@ -1,0 +1,24 @@
+# gitleaks config — allowlist obvious false positives in this repo.
+# See https://github.com/gitleaks/gitleaks#configuration
+#
+# We extend the default ruleset (extend.useDefault = true) and only add
+# path-based allowlist entries for files that consist entirely of e2e-only
+# mock data or kit-generated checksum artifacts.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlist e2e mock literals and kit-managed checksum files"
+paths = [
+    # e2e-kit sync writes MD5 hashes of template files into manifest.yaml.
+    # These are 32-char hex "generic-api-key" false positives — never a real credential.
+    '''apps/web/e2e-kit/manifest\.yaml''',
+
+    # e2e specs may contain obvious mock-token placeholder literals for
+    # page.route mock responses. They are never real credentials — the names
+    # are `MOCK_TOKEN_PLACEHOLDER_*` post-rename, but this covers any
+    # accidental "tok-*" survival too.
+    '''apps/web/e2e-kit/tests/.*\.spec\.ts''',
+    '''apps/web/e2e-kit/tests/.*/fixtures/.*\.ts''',
+]
