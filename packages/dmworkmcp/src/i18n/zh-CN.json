@@ -33,10 +33,16 @@
     "productivity": "效率协作",
     "ai": "AI 能力"
   },
+  "source": {
+    "human": "人工创建",
+    "bot": "Bot 创建",
+    "import": "从仓库导入",
+    "botTooltip": "由 {{owner}} 的 Bot 创建"
+  },
   "list": {
     "desc": "浏览并接入 MCP 服务，为你的智能体扩展工具能力。",
     "create": "新建 MCP",
-    "searchPlaceholder": "搜索 MCP、工具或能力",
+    "searchPlaceholder": "搜索 MCP、工具、标签或能力",
     "errorTitle": "加载 MCP 失败",
     "retry": "重试",
     "error": {
@@ -53,6 +59,10 @@
     "mode": {
       "all": "全部",
       "mine": "我的"
+    },
+    "source": {
+      "filterLabel": "按来源筛选",
+      "all": "全部来源"
     }
   },
   "card": {

@@ -121,6 +121,10 @@
   flex: none;
   padding: var(--wk-sp-3) var(--wk-sp-4);
   border-bottom: 1px solid var(--wk-border-subtle);
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  flex-wrap: wrap;
 }
 
 .wk-mcp__toolbar--mine {
@@ -128,6 +132,45 @@
   align-items: center;
   gap: var(--wk-sp-3);
   justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+/* Source segmented control (issue #894). Sits to the right of the category
+   pills so it reads as an orthogonal refinement. Neutral pill style shared
+   with the category pills, only smaller. */
+.wk-mcp__source-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-elevated);
+  margin-left: auto;
+}
+
+.wk-mcp__source-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--wk-sp-3);
+  border: none;
+  border-radius: var(--wk-r-full);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.wk-mcp__source-btn:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp__source-btn--active {
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .wk-mcp__mine-count {
@@ -270,6 +313,64 @@
   font-weight: var(--wk-font-semibold);
   color: var(--wk-text-primary);
   margin-bottom: var(--wk-sp-1);
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  /* Ellipsis-clip the name so a runaway MCP name doesn't wrap and blow the
+     card height out. min-width:0 lets the text span shrink inside its
+     flex parent (the .wk-mcp-card__heading), which is a required
+     incantation for flex ellipsis to work. */
+  min-width: 0;
+}
+
+.wk-mcp-card__name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Provenance badge (issue #894). Rendered next to the MCP name for bot-
+   authored rows only; human/legacy rows show no chip. Reuses `.wk-mcp-tag`
+   as the base primitive (size / padding / radius / typography) and only
+   layers on the bot-specific colour and the icon-shape variant, so any
+   design-token nudge to the tag chip lands here for free. Cursor is
+   intentionally unset — the badge has no click handler; on the card it
+   inherits the parent card's pointer, and clicking still opens the detail
+   as usual. */
+.wk-mcp-source {
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.wk-mcp-source__icon {
+  font-size: var(--wk-text-size-xs);
+  line-height: 1;
+}
+
+.wk-mcp-source__label {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wk-mcp-source--bot {
+  /* Slightly bluer surface than plain tags to distinguish "meta" from "tag". */
+  background: rgba(56, 132, 255, 0.10);
+  color: rgba(56, 132, 255, 0.95);
+}
+
+/* Icon-only variant used in the card grid — square-ish chip, no label,
+   tooltip on hover carries the full "bot name · owner" context. */
+.wk-mcp-source--icon {
+  width: 22px;
+  padding: 0;
+  justify-content: center;
+}
+
+.wk-mcp-source--icon .wk-mcp-source__icon {
+  font-size: 13px;
 }
 
 .wk-mcp-card__tags {
@@ -292,6 +393,70 @@
 .wk-mcp-tag--accent {
   background: var(--wk-ai-glow);
   color: var(--wk-text-accent);
+}
+
+/* Detail modal slogan — same voice as the card slogan but no line clamp,
+   because the detail page has room to show the full pitch. */
+.wk-mcp-detail__slogan {
+  margin-top: var(--wk-sp-2);
+  font-size: var(--wk-text-size-base);
+  color: var(--wk-text-secondary);
+  line-height: 1.5;
+}
+
+/* "+N" overflow chip — neutral surface so it visibly reads as "there are
+   more tags here" rather than a real tag. Same size as tag chips so the
+   row height doesn't jump. Hover reveals the collapsed labels via
+   Tooltip. */
+.wk-mcp-tag--more {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Overflow tooltip body — a mini pill cloud that mirrors the card's tag
+   row style so hovering "+N" reads as "here are the rest of those
+   pills". */
+.wk-mcp-tag-overflow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 320px;
+  padding: 2px 0;
+}
+
+/* Light-surface tooltip. Semi's default is a dark popover which reads as an
+   OS-level tooltip; for this content (a cluster of chips extending the tag
+   row) we want the surface to feel like a floating card so the chips keep
+   their normal accent colours.
+   IMPORTANT: `.wk-mcp-tooltip-light` is applied to the SAME element that
+   already carries `.semi-tooltip-wrapper` — Semi merges the caller's
+   `className` onto the wrapper. So the wrapper selector must join the two
+   classes without a space; a descendant selector (`.wk-mcp-tooltip-light
+   .semi-tooltip-wrapper`) misses because there's no ancestor–descendant
+   relation, and the dark fill leaked through. */
+.wk-mcp-tooltip-light.semi-tooltip-wrapper,
+.wk-mcp-tooltip-light .semi-tooltip-content {
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+/* Content already sits inside the wrapper's box; kill the redundant shadow
+   so the two elevations don't stack. */
+.wk-mcp-tooltip-light .semi-tooltip-content {
+  box-shadow: none;
+  border: none;
+  padding: 8px 10px;
+}
+
+/* Semi renders a tiny arrow — recolour it so the transition into the light
+   surface is seamless. */
+.wk-mcp-tooltip-light .semi-tooltip-icon-arrow,
+.wk-mcp-tooltip-light .semi-tooltip-icon-arrow path {
+  fill: #ffffff;
 }
 
 .wk-mcp-card__slogan {

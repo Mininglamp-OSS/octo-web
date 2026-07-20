@@ -5,6 +5,7 @@ import { deleteMcp, fetchMcpDetail } from "../api/mcpService";
 import { buildQuickStartTabs } from "../api/quickStartTemplates";
 import type { McpDetail, McpQuickStart } from "../types/mcp";
 import { IconGlyph } from "../utils/icon";
+import { SourceBadge } from "./McpCard";
 
 interface McpDetailModalProps {
   /** The id of the MCP to show; null closes the modal. */
@@ -232,7 +233,18 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
                 {t("mcp.card.toolCount", {
                   values: { count: detail.toolCount },
                 })}
+                {/* Source chip lives at the tail of the meta line so the
+                    familiar `@owner · N tools` prefix stays put. The chip
+                    hides itself for human/legacy rows. */}
+                <SourceBadge item={detail} />
               </div>
+              {/* Slogan / 简介 — same one-line pitch shown on the card. The
+                  detail modal is the natural place to read it in full, so
+                  no clamp here; long slogans wrap freely. Kept below the
+                  meta line so `@owner · N tools` stays the top-most anchor. */}
+              {detail.slogan && (
+                <div className="wk-mcp-detail__slogan">{detail.slogan}</div>
+              )}
             </div>
           </div>
 

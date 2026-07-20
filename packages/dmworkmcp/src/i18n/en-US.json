@@ -33,10 +33,16 @@
     "productivity": "Productivity",
     "ai": "AI"
   },
+  "source": {
+    "human": "Human",
+    "bot": "Bot",
+    "import": "Imported",
+    "botTooltip": "Created by {{owner}}'s bot"
+  },
   "list": {
     "desc": "Browse and connect MCP servers to extend your agent's tools.",
     "create": "New MCP",
-    "searchPlaceholder": "Search MCPs, tools, or capabilities",
+    "searchPlaceholder": "Search MCPs, tools, tags, or capabilities",
     "errorTitle": "Failed to load MCPs",
     "retry": "Retry",
     "error": {
@@ -53,6 +59,10 @@
     "mode": {
       "all": "All",
       "mine": "Mine"
+    },
+    "source": {
+      "filterLabel": "Filter by source",
+      "all": "All sources"
     }
   },
   "card": {

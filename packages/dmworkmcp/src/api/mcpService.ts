@@ -93,15 +93,19 @@ function assertSafeUploadURL(raw: string): void {
 
 // ─── Mock implementations ──────────────────────────────────────────────────
 
-function buildCategories(): McpCategory[] {
+/** Category pill counts over an arbitrary MCP set. Callers pass the same
+ *  filtered slice they showed as items, so pill numbers stay coherent with
+ *  the visible list — matches the real backend's `/mcp_categories` which
+ *  respects `created_by_type` (issue #894 follow-up). */
+function buildCategories(source: McpListItem[] = MOCK_MCP_LIST): McpCategory[] {
   const counts = new Map<string, number>();
-  for (const item of MOCK_MCP_LIST) {
+  for (const item of source) {
     counts.set(item.category, (counts.get(item.category) ?? 0) + 1);
   }
   return MCP_CATEGORY_ORDER.map((key) => ({
     key,
     label: MCP_CATEGORY_LABELS[key] ?? key,
-    count: key === "all" ? MOCK_MCP_LIST.length : counts.get(key) ?? 0,
+    count: key === "all" ? source.length : counts.get(key) ?? 0,
   }));
 }
 
@@ -129,13 +133,18 @@ async function fetchMcpListMockFiltered(
 ): Promise<ListMcpResponse> {
   const keyword = (params.keyword ?? "").trim().toLowerCase();
   const category = params.category ?? "all";
+  const createdBy = params.createdByType;
   const filtered = source.filter((item) => {
     const matchCategory = category === "all" || item.category === category;
     const matchKeyword =
       !keyword ||
       item.name.toLowerCase().includes(keyword) ||
       item.slogan.toLowerCase().includes(keyword);
-    return matchCategory && matchKeyword;
+    // Legacy fixtures without createdByType are treated as human — same
+    // read-side default the wire mapper applies for pre-#894 records.
+    const rowType = item.createdByType ?? "human";
+    const matchCreatedBy = !createdBy || rowType === createdBy;
+    return matchCategory && matchKeyword && matchCreatedBy;
   });
   const offset = params.offset && params.offset > 0 ? params.offset : 0;
   const limit =
@@ -144,7 +153,7 @@ async function fetchMcpListMockFiltered(
   return delay({
     items,
     total: filtered.length,
-    categories: buildCategories(),
+    categories: buildCategories(filtered),
   });
 }
 
@@ -215,8 +224,14 @@ async function updateMcpMock(
   if (idx === -1) throw new Error(`MCP not found: ${id}`);
   const prev = MOCK_MCP_DETAILS[idx];
   const next = buildDetailFromCreate(id, params);
-  // Preserve creator identity — the wire never lets the client change it.
+  // Preserve server-owned fields — the wire never lets the client change
+  // these, so the mock must match: creator identity and the provenance
+  // triple (issue #894). Otherwise a mock edit of a bot record would
+  // silently drop its 🤖 badge on the next read.
   next.creatorName = prev.creatorName;
+  next.createdByType = prev.createdByType;
+  next.createdByBotUid = prev.createdByBotUid;
+  next.createdByBotName = prev.createdByBotName;
   MOCK_MCP_DETAILS[idx] = next;
   const listIdx = MOCK_MCP_LIST.findIndex((it) => it.id === id);
   if (listIdx !== -1) MOCK_MCP_LIST[listIdx] = projectListItem(next);
@@ -266,7 +281,9 @@ function buildDetailFromCreate(id: string, params: CreateMcpParams): McpDetail {
   };
 }
 
-/** Derive the list-card projection from a full detail. */
+/** Derive the list-card projection from a full detail. Carries provenance
+ *  through (issue #894) so a bot-created record keeps its 🤖 badge on the
+ *  card view after create/update in USE_MOCK mode. */
 function projectListItem(d: McpDetail): McpListItem {
   return {
     id: d.id,
@@ -276,6 +293,10 @@ function projectListItem(d: McpDetail): McpListItem {
     tags: d.tags,
     toolCount: d.toolCount,
     icon: d.icon,
+    createdByType: d.createdByType,
+    createdByBotUid: d.createdByBotUid,
+    createdByBotName: d.createdByBotName,
+    creatorName: d.creatorName,
   };
 }
 
@@ -293,7 +314,30 @@ function slugify(s: string): string {
 // <origin>/market/api/v1 (nginx / vite proxy strips the /market prefix to the
 // service's own /api/v1), mirroring the summary + matter service convention.
 
-const mcpAxios = axios.create({ baseURL: "" });
+const mcpAxios = axios.create({
+  baseURL: "",
+  // Serialise array params as repeated keys (`?a=1&a=2`) instead of axios
+  // 0.25's default `?a[]=1&a[]=2`. gin's QueryArray on the marketplace
+  // backend only recognises the plain-repeat form; a bracketed key would
+  // silently become a single-string param that never matches. Also drops
+  // undefined/null keys so callers can just pass an optional value without
+  // pre-filtering.
+  paramsSerializer: (params) => {
+    const usp = new URLSearchParams();
+    for (const [key, value] of Object.entries(params ?? {})) {
+      if (value === undefined || value === null) continue;
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item === undefined || item === null) continue;
+          usp.append(key, String(item));
+        }
+      } else {
+        usp.append(key, String(value));
+      }
+    }
+    return usp.toString();
+  },
+});
 
 const BASE = "/market/api/v1";
 
@@ -442,6 +486,9 @@ interface McpListItemWire {
   tool_count: number;
   visibility?: McpListItem["visibility"];
   creator_name?: string;
+  created_by_type?: McpListItem["createdByType"];
+  created_by_bot_uid?: string;
+  created_by_bot_name?: string;
   transport?: McpListItem["transport"];
   source?: McpListItem["source"];
   verification_status?: McpListItem["verificationStatus"];
@@ -486,6 +533,9 @@ function mapListItem(raw: McpListItemWire): McpListItem {
     toolCount: raw.tool_count,
     visibility: raw.visibility,
     creatorName: raw.creator_name,
+    createdByType: raw.created_by_type,
+    createdByBotUid: raw.created_by_bot_uid,
+    createdByBotName: raw.created_by_bot_name,
     transport: raw.transport, source: raw.source,
     verificationStatus: raw.verification_status,
     matchReasons: raw.match_reasons ?? [], relevance: raw.relevance,
@@ -563,19 +613,31 @@ async function fetchMcpListPath(
   if (keyword) query.keyword = keyword;
   // `all` disables the filter server-side; send it verbatim per §0.
   query.category = params.categories?.length ? params.categories[0] : (params.category ?? CATEGORY_KEY_ALL);
+  if (params.createdByType) {
+    query.created_by_type = params.createdByType;
+  }
   // Relevance is only meaningful with a keyword — every row scores 0 otherwise,
   // making the sort order arbitrary. When browsing, surface freshest first.
   query.sort = keyword ? "relevance" : "updated";
   const pageSize = params.limit && params.limit > 0 ? params.limit : 20;
   query.page_size = pageSize;
   query.page = Math.floor((params.offset ?? 0) / pageSize) + 1;
-  let resp;
-  let categoryWire: { key: string; count: number }[];
-  // /mcps/mine → categories scoped to caller-owned records (backend §mcp_categories mode=mine).
-  const categoriesPath = path === "/mcps/mine" ? "/mcp_categories?mode=mine" : "/mcp_categories";
-  [resp, categoryWire] = await executeMcpListRequest(() => Promise.all([
+  // Category counts must honour the SAME `created_by_type` filter as the
+  // item list, otherwise the pill numbers become misleading when a source
+  // filter is active (issue #894 follow-up). `/mcps/mine` scopes to the
+  // caller via mode=mine; the source filter piggy-backs on top. Both are
+  // passed through the shared axios params serializer, so there's a single
+  // wire-shape truth for repeated-array values.
+  const categoryParams: Record<string, unknown> = {};
+  if (path === "/mcps/mine") categoryParams.mode = "mine";
+  if (params.createdByType) categoryParams.created_by_type = params.createdByType;
+  const [resp, categoryWire] = await executeMcpListRequest(() => Promise.all([
       mcpAxios.get<McpListResponseWire>(`${BASE}${path}`, { params: query }),
-      get<{ key: string; count: number }[]>(categoriesPath),
+      mcpAxios
+        .get<{ data: { key: string; count: number }[] }>(`${BASE}/mcp_categories`, {
+          params: categoryParams,
+        })
+        .then((r) => r.data.data),
     ]));
   const items = (resp.data.data ?? []).map(mapListItem);
   const categoryCounts = new Map(

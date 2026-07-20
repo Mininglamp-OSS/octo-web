@@ -4,7 +4,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { I18nContext, t, WKApp, WKInput, WKButton } from "@octo/base";
 import { fetchMcpList, fetchMcpMine } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
-import type { McpCategory, McpDetail, McpListItem } from "../types/mcp";
+import type { McpCategory, McpCreatedByType, McpDetail, McpListItem } from "../types/mcp";
 import McpCard from "../components/McpCard";
 import McpDetailModal from "../components/McpDetailModal";
 import McpCreateModal from "../components/McpCreateModal";
@@ -19,6 +19,18 @@ const PAGE_SIZE = 20;
 /** Fire the next page when the user scrolls within this many px of bottom. */
 const SCROLL_THRESHOLD_PX = 200;
 
+/** Source (来源) segmented control options. Module-level const so the array
+ *  is stable across renders — otherwise every parent update re-allocates it
+ *  and defeats any downstream memoisation on the pills. */
+const SOURCE_FILTER_OPTIONS: ReadonlyArray<{
+  value: McpCreatedByType | undefined;
+  labelKey: string;
+}> = [
+  { value: undefined, labelKey: "mcp.list.source.all" },
+  { value: "human", labelKey: "mcp.source.human" },
+  { value: "bot", labelKey: "mcp.source.bot" },
+];
+
 interface McpMarketListPageState {
   items: McpListItem[];
   categories: McpCategory[];
@@ -27,6 +39,8 @@ interface McpMarketListPageState {
   error: string | null;
   keyword: string;
   categoriesSelected: string[];
+  /** Provenance filter (issue #894). Single-select; undefined = 全部来源. */
+  createdByType?: McpCreatedByType;
   mode: ListMode;
   offset: number;
   total: number;
@@ -57,6 +71,7 @@ export default class McpMarketListPage extends Component<
     error: null,
     keyword: "",
     categoriesSelected: [],
+    createdByType: undefined,
     mode: "all",
     offset: 0,
     total: 0,
@@ -99,6 +114,7 @@ export default class McpMarketListPage extends Component<
       const resp = await fetcher({
         keyword: this.state.keyword,
         categories: this.state.categoriesSelected,
+        createdByType: this.state.createdByType,
         limit: PAGE_SIZE,
         offset: 0,
       });
@@ -135,16 +151,25 @@ export default class McpMarketListPage extends Component<
     const requestVersion = this.requestVersion;
     const requestKeyword = this.state.keyword;
     const requestCategories = this.state.categoriesSelected.join(",");
+    const requestCreatedBy = this.state.createdByType ?? "";
     this.setState({ loadingMore: true });
     try {
       const fetcher = this.state.mode === "mine" ? fetchMcpMine : fetchMcpList;
       const resp = await fetcher({
         keyword: this.state.keyword,
         categories: this.state.categoriesSelected,
+        createdByType: this.state.createdByType,
         limit: PAGE_SIZE,
         offset,
       });
-      if (requestVersion !== this.requestVersion || requestKeyword !== this.state.keyword || requestCategories !== this.state.categoriesSelected.join(",")) return;
+      if (
+        requestVersion !== this.requestVersion ||
+        requestKeyword !== this.state.keyword ||
+        requestCategories !== this.state.categoriesSelected.join(",") ||
+        requestCreatedBy !== (this.state.createdByType ?? "")
+      ) {
+        return;
+      }
       this.setState((prev) => ({
         items: [...prev.items, ...resp.items],
         // categories intentionally not overwritten mid-scroll — pill counts
@@ -175,7 +200,7 @@ export default class McpMarketListPage extends Component<
 
   private handleMode = (mode: ListMode) => {
     if (mode === this.state.mode) return;
-    this.setState({ mode, categoriesSelected: [] }, () => this.loadData());
+    this.setState({ mode, categoriesSelected: [], createdByType: undefined }, () => this.loadData());
   };
 
   /** Patch a single row after a successful edit — keeps scroll position
@@ -240,6 +265,13 @@ export default class McpMarketListPage extends Component<
     }), () => this.loadData());
   };
 
+  /** Toggle the "来源" segmented filter (issue #894). value === undefined
+   *  means the 全部 pill. */
+  private handleCreatedBy = (value: McpCreatedByType | undefined) => {
+    if (value === this.state.createdByType) return;
+    this.setState({ createdByType: value }, () => this.loadData());
+  };
+
   render() {
     const {
       items,
@@ -249,6 +281,7 @@ export default class McpMarketListPage extends Component<
       error,
       keyword,
       categoriesSelected,
+      createdByType,
       mode,
       total,
       detailId,
@@ -319,6 +352,29 @@ export default class McpMarketListPage extends Component<
                 <span className="wk-mcp__pill-count">{cat.count}</span>
               </button>
             ))}
+          </div>
+          {/* Provenance filter — segmented, single-select. Positioned to the
+              right of the category pills so it reads as an orthogonal
+              refinement. `全部` = clear filter. */}
+          <div className="wk-mcp__source-filter" role="group" aria-label={t("mcp.list.source.filterLabel")}>
+            {SOURCE_FILTER_OPTIONS.map(({ value, labelKey }) => {
+              const active =
+                value === undefined ? createdByType === undefined : createdByType === value;
+              return (
+                <button
+                  key={value ?? "all"}
+                  type="button"
+                  className={
+                    active
+                      ? "wk-mcp__source-btn wk-mcp__source-btn--active"
+                      : "wk-mcp__source-btn"
+                  }
+                  onClick={() => this.handleCreatedBy(value)}
+                >
+                  {t(labelKey)}
+                </button>
+              );
+            })}
           </div>
           {mode === "mine" && (
             <span className="wk-mcp__mine-count">

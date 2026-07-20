@@ -74,6 +74,17 @@ export interface McpListItem {
   /** Snapshot of the publisher's nickname at create time (mcp-v1.md §3.2).
    *  Optional so legacy fixtures without the field still type-check. */
   creatorName?: string;
+  /** Provenance: who authored this row (mcp-v1.md §3.1; issue #894). Optional
+   *  on the client type so legacy fixtures without the field still type-check;
+   *  the backend always sends it. Purely a display marker — the card shows a
+   *  🤖 badge when this is "bot". */
+  createdByType?: McpCreatedByType;
+  /** Bot's identity when createdByType === "bot". Present ONLY on bot rows —
+   *  human/import rows omit both bot fields. */
+  createdByBotUid?: string;
+  /** Snapshot of the Bot's display name at create time so the market badge
+   *  stays intact after a bot rename / delete. */
+  createdByBotName?: string;
   transport?: McpTransport;
   source?: "system" | "space" | "mine";
   verificationStatus?: "verified" | "unverified" | "error";
@@ -88,6 +99,10 @@ export interface McpDetail extends McpListItem {
    *  `@name` next to the tool count. Optional so legacy fixtures without
    *  the field still type-check. */
   creatorName?: string;
+  /** Same provenance triple as McpListItem; see there for semantics. */
+  createdByType?: McpCreatedByType;
+  createdByBotUid?: string;
+  createdByBotName?: string;
   /** Structured quick-access data — the 3 tabs are generated from this. */
   quickStart: McpQuickStart;
   /** The tools grid (2 columns) in the detail modal. */
@@ -103,6 +118,11 @@ export interface McpDetail extends McpListItem {
   createdAt?: string;
   updatedAt?: string;
 }
+
+/** Provenance of an MCP row (mcp-v1.md §3.1; issue #894). "human" = created
+ *  via a user token; "bot" = created via a Bot token on behalf of its owner;
+ *  "import" is reserved for the Git-import path (#867). */
+export type McpCreatedByType = "human" | "bot" | "import";
 
 /** A category filter option with its live count. */
 export interface McpCategory {
@@ -120,6 +140,11 @@ export interface ListMcpParams {
   visibilities?: McpVisibility[];
   sources?: Array<"system" | "space" | "mine">;
   verificationStatuses?: Array<"verified" | "unverified" | "error">;
+  /** Provenance filter (mcp-v1.md §4.2; issue #894). Single-select today —
+   *  the toolbar segmented control is one-of-three. Kept as a single value
+   *  rather than an array because YAGNI: multi-select can be added later
+   *  by widening the type when the UX actually needs it. */
+  createdByType?: McpCreatedByType;
   tags?: string[];
   sort?: "relevance" | "updated" | "verified";
   /** Page size; backend clamps to [1, 100], defaulting to 20 when 0/absent. */

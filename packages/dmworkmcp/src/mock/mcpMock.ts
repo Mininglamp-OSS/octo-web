@@ -70,6 +70,11 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
   {
     id: "github",
     creatorName: "GitHub Bot",
+    // Sample bot-authored entry so the 🤖 badge and the "Bot" filter have
+    // something to display when USE_MOCK is toggled on (issue #894).
+    createdByType: "bot",
+    createdByBotUid: "bot_gh01",
+    createdByBotName: "GitHub Autoposter",
     name: "GitHub MCP",
     slogan: "读写仓库、Issue、PR，让智能体直接操作你的 GitHub。",
     category: "dev",
@@ -361,7 +366,9 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
   },
 ];
 
-/** Card/list projection derived from the detail fixtures. */
+/** Card/list projection derived from the detail fixtures. Provenance fields
+ *  are carried through so bot-authored records keep their 🤖 badge in the
+ *  card grid — mirrors the shape projectListItem returns (mcpService.ts). */
 export const MOCK_MCP_LIST: McpListItem[] = MOCK_MCP_DETAILS.map((d) => ({
   id: d.id,
   name: d.name,
@@ -370,6 +377,10 @@ export const MOCK_MCP_LIST: McpListItem[] = MOCK_MCP_DETAILS.map((d) => ({
   tags: d.tags,
   toolCount: d.toolCount,
   icon: d.icon,
+  createdByType: d.createdByType,
+  createdByBotUid: d.createdByBotUid,
+  createdByBotName: d.createdByBotName,
+  creatorName: d.creatorName,
 }));
 
 /**
