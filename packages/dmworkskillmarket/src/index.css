@@ -44,7 +44,8 @@
   color: var(--wk-text-secondary);
   font: 500 13px/1 var(--wk-font-sans);
   text-align: left;
-  transition: background var(--wk-dur-fast) var(--wk-ease), color var(--wk-dur-fast) var(--wk-ease);
+  transition: background var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .skill-market-sidebar__nav button:hover,
@@ -97,6 +98,81 @@
   flex: 0 0 auto;
   align-items: center;
   gap: var(--wk-sp-2);
+}
+
+.skill-market-publish-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.skill-market-publish-menu__panel {
+  position: absolute;
+  z-index: var(--wk-z-dropdown);
+  top: calc(100% + var(--wk-sp-2));
+  right: 0;
+  display: grid;
+  gap: var(--wk-sp-1);
+  width: 220px;
+  padding: var(--wk-sp-1);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  box-shadow: var(--wk-shadow-md);
+}
+
+.skill-market-publish-menu__panel button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--wk-sp-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--wk-sp-2);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.skill-market-publish-menu__panel button:hover,
+.skill-market-publish-menu__panel button:focus-visible {
+  outline: none;
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+}
+
+.skill-market-publish-menu__panel button > svg {
+  color: var(--wk-icon-default);
+}
+
+.skill-market-publish-menu__panel span,
+.skill-market-publish-menu__panel strong,
+.skill-market-publish-menu__panel small {
+  display: block;
+  min-width: 0;
+}
+
+.skill-market-publish-menu__panel strong {
+  overflow: hidden;
+  color: var(--wk-text-strong);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-market-publish-menu__panel small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .skill-market-tabs {
@@ -162,7 +238,9 @@
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-base);
   color: var(--wk-text-tertiary);
-  transition: border-color var(--wk-dur-fast) var(--wk-ease), box-shadow var(--wk-dur-fast) var(--wk-ease), background var(--wk-dur-fast) var(--wk-ease);
+  transition: border-color var(--wk-dur-fast) var(--wk-ease),
+    box-shadow var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease);
 }
 
 .skill-market-search__control:focus-within {
@@ -477,7 +555,6 @@
   display: none;
 }
 
-
 .skill-market-content {
   display: flex;
   flex-direction: column;
@@ -519,7 +596,9 @@
   background: var(--wk-bg-base);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   cursor: pointer;
-  transition: border-color var(--wk-dur-fast) var(--wk-ease), background var(--wk-dur-fast) var(--wk-ease), box-shadow var(--wk-dur-fast) var(--wk-ease);
+  transition: border-color var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease),
+    box-shadow var(--wk-dur-fast) var(--wk-ease);
 }
 
 .skill-market-card:hover,
@@ -769,7 +848,9 @@
   color: var(--wk-bg-base);
   font: 500 12px/1 var(--wk-font-sans);
   cursor: pointer;
-  transition: background var(--wk-dur-fast) var(--wk-ease), border-color var(--wk-dur-fast) var(--wk-ease), color var(--wk-dur-fast) var(--wk-ease);
+  transition: background var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .skill-market-card__install:hover {
@@ -799,7 +880,8 @@
   border-radius: var(--wk-r-sm);
   background: transparent;
   color: var(--wk-icon-muted);
-  transition: background var(--wk-dur-fast) var(--wk-ease), color var(--wk-dur-fast) var(--wk-ease);
+  transition: background var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .skill-market-card__actions button:hover,
@@ -827,8 +909,12 @@
   content: "";
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(90deg, transparent, color-mix(in srgb, var(--wk-bg-surface) 70%, transparent), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--wk-bg-surface) 70%, transparent),
+    transparent
+  );
   animation: skill-market-skeleton 1.1s linear infinite;
   transform: translateX(-100%);
 }
@@ -990,6 +1076,13 @@
 
 .skill-market-prompt-modal__body a:hover {
   text-decoration: underline;
+}
+
+.skill-market-prompt-modal__pre {
+  margin: 0;
+  color: var(--wk-text-primary);
+  font: 13px/1.7 var(--wk-font-sans);
+  white-space: pre-wrap;
 }
 
 .skill-market-state,
@@ -1383,7 +1476,8 @@
   color: var(--wk-text-secondary);
   font: 500 14px/1 var(--wk-font-sans);
   cursor: pointer;
-  transition: color var(--wk-dur-fast) var(--wk-ease), border-color var(--wk-dur-fast) var(--wk-ease);
+  transition: color var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .skill-market-detail__tabs button:hover {
@@ -1429,7 +1523,8 @@
   background: var(--wk-bg-surface);
   color: var(--wk-text-secondary);
   cursor: pointer;
-  transition: color var(--wk-dur-fast) var(--wk-ease), border-color var(--wk-dur-fast) var(--wk-ease);
+  transition: color var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .skill-market-versions__upload:hover {
@@ -1496,7 +1591,11 @@
   display: inline-block;
   padding: 1px 8px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--wk-color-accent, #7c3aed) 12%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--wk-color-accent, #7c3aed) 12%,
+    transparent
+  );
   color: var(--wk-color-accent, #7c3aed);
   font-size: 11px;
   font-weight: 500;
@@ -1812,7 +1911,9 @@
   color: var(--wk-text-secondary);
   text-align: center;
   cursor: pointer;
-  transition: background var(--wk-dur-fast) var(--wk-ease), border-color var(--wk-dur-fast) var(--wk-ease), color var(--wk-dur-fast) var(--wk-ease);
+  transition: background var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .skill-market-upload-dropzone:hover,
@@ -2157,6 +2258,16 @@
   .skill-market-topbar__actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .skill-market-publish-menu {
+    width: 100%;
+  }
+
+  .skill-market-publish-menu__panel {
+    right: auto;
+    left: 0;
+    width: 100%;
   }
 
   .skill-market-search {

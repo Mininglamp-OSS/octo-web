@@ -27,7 +27,13 @@ import type {
 
 interface SuccessEnvelope<T> {
   data: T;
-  pagination?: { has_more: boolean; next_cursor?: string; total?: number };
+  pagination?: {
+    has_more?: boolean;
+    next_cursor?: string;
+    total?: number;
+    page?: number;
+    page_size?: number;
+  };
 }
 
 interface ErrorEnvelope {
@@ -194,8 +200,15 @@ function assertSafeExternalURL(raw: string): void {
     throw normalizeError({ code: "invalid_response", message: "URL 无效" });
   }
   if (u.protocol === "https:") return;
-  if (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) return;
-  throw normalizeError({ code: "invalid_response", message: "URL scheme 不允许" });
+  if (
+    u.protocol === "http:" &&
+    (u.hostname === "localhost" || u.hostname === "127.0.0.1")
+  )
+    return;
+  throw normalizeError({
+    code: "invalid_response",
+    message: "URL scheme 不允许",
+  });
 }
 
 // ─── Mappers ───────────────────────────────────────────────────────────────
@@ -353,36 +366,14 @@ export function getSkill(id: string): Promise<Skill> {
 }
 
 export async function trackSkillView(id: string): Promise<void> {
-  const url = `${API_BASE_URL}/metrics/track`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        resource_type: "skill",
-        resource_id: id,
-        event_type: "view",
-      }),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Network error";
-    throw normalizeError({ code: "network_error", message, details: err });
-  }
-
-  const ok =
-    typeof res.ok === "boolean"
-      ? res.ok
-      : res.status >= 200 && res.status < 300;
-  if (!ok) {
-    const body = (await parseJson(res)) as ErrorEnvelope | null;
-    throw normalizeError({
-      code: body?.error?.code ?? `http_${res.status}`,
-      message: body?.error?.message ?? res.statusText ?? "Request failed",
-      status: res.status,
-      details: body?.error?.details ?? body,
-    });
-  }
+  await request<Record<string, never>>("/metrics/track", {
+    method: "POST",
+    body: JSON.stringify({
+      resource_type: "skill",
+      resource_id: id,
+      event_type: "view",
+    }),
+  });
 }
 
 /**
@@ -393,29 +384,10 @@ export async function getSkillMd(
   id: string,
   opts?: RequestOptions
 ): Promise<string> {
-  const url = `${API_BASE_URL}/skills/${encodeURIComponent(id)}/skill-md`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      headers: getAuthHeaders(),
-      signal: opts?.signal,
-    });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
-    const message = err instanceof Error ? err.message : "Network error";
-    throw normalizeError({ code: "network_error", message, details: err });
-  }
-  if (res.status === 404) {
-    throw normalizeError({ code: "not_found", message: "SKILL.md not found", status: 404 });
-  }
-  if (!res.ok) {
-    throw normalizeError({
-      code: `http_${res.status}`,
-      message: res.statusText || "Request failed",
-      status: res.status,
-    });
-  }
-  return res.text();
+  return request<{ content: string }>(
+    `/skills/${encodeURIComponent(id)}/skill_md`,
+    opts?.signal ? { signal: opts.signal } : undefined
+  ).then((data) => data.content ?? "");
 }
 
 export function createSkill(form: NewSkillForm): Promise<Skill> {
@@ -512,7 +484,7 @@ export async function uploadFile(
   headers?: Record<string, string>,
   onProgress?: (percent: number) => void
 ): Promise<void> {
-    assertSafeExternalURL(presignedUrl);
+  assertSafeExternalURL(presignedUrl);
   // Use XMLHttpRequest for progress support
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -559,7 +531,10 @@ export async function uploadIcon(blob: Blob): Promise<string> {
   // response would otherwise dereference `undefined.presigned_url` inside
   // `uploadFile` as a bare TypeError instead of a normalized Toast error.
   if (!initResp?.presigned_url || !initResp?.object_key) {
-    throw normalizeError({ code: "invalid_response", message: "上传失败：响应字段缺失" });
+    throw normalizeError({
+      code: "invalid_response",
+      message: "上传失败：响应字段缺失",
+    });
   }
   // Step 2: Upload the file to presigned URL
   const file = new File([blob], fileName, { type: "image/png" });

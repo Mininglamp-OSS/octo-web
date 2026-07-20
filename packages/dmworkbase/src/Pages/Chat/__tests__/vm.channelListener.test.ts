@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest"
 // 捕获 ChatVM.channelListener（didMount 里通过 channelManager.addListener 注册）。
 const hoisted = vi.hoisted(() => ({
     channelListener: undefined as undefined | ((channelInfo: any) => void),
+    spaceChangedHandler: undefined as undefined | ((space: any) => void),
+    popToRoot: vi.fn(),
 }))
 
 vi.mock("wukongimjssdk", () => ({
@@ -75,9 +77,16 @@ vi.mock("../../../App", () => ({
             notifyListener: () => {},
         },
         config: { appName: "Octo" },
-        mittBus: { emit: () => {}, on: () => {}, off: () => {} },
+        currentMenuId: "chat",
+        mittBus: {
+            emit: () => {},
+            on: (event: string, handler: (payload: any) => void) => {
+                if (event === "space-changed") hoisted.spaceChangedHandler = handler
+            },
+            off: () => {},
+        },
         menus: { refresh: () => {} },
-        routeRight: { popToRoot: () => {} },
+        routeRight: { popToRoot: hoisted.popToRoot },
         endpointManager: { invoke: () => {} },
         conversationProvider: { clearConversationMessages: () => Promise.resolve() },
         apiClient: { get: () => Promise.resolve({}) },
@@ -136,6 +145,7 @@ vi.mock("../../../Utils/download", () => ({
 }))
 
 import { ChatVM } from "../vm"
+import WKApp from "../../../App"
 
 // 真实 Const 值：子区频道 channelType = 5
 const ChannelTypeCommunityTopic = 5
@@ -211,5 +221,27 @@ describe("ChatVM.channelListener — CommunityTopic 子区同步 (issue #345)", 
         // status 变化（1 → 2 归档）：再次 notify
         hoisted.channelListener!({ channel, orgData: { thread: { status: 2 } } })
         expect(notifySpy).toHaveBeenCalledTimes(2)
+    })
+})
+
+describe("ChatVM.spaceChangedHandler", () => {
+    it("does not clear the shared right pane while Chat is mounted in the background", () => {
+        mountVM()
+        ;(WKApp as any).currentMenuId = "mcp-market"
+        hoisted.popToRoot.mockClear()
+
+        hoisted.spaceChangedHandler!({ space_id: "space-next" })
+
+        expect(hoisted.popToRoot).not.toHaveBeenCalled()
+    })
+
+    it("clears the shared right pane when Chat is the active menu", () => {
+        mountVM()
+        ;(WKApp as any).currentMenuId = "chat"
+        hoisted.popToRoot.mockClear()
+
+        hoisted.spaceChangedHandler!({ space_id: "space-next" })
+
+        expect(hoisted.popToRoot).toHaveBeenCalledTimes(1)
     })
 })

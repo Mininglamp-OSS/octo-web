@@ -288,13 +288,7 @@ describe("skillApiReal", () => {
   });
 
   it("trackSkillView sends a best-effort view metric", async () => {
-    mockFetch.mockReturnValueOnce(
-      Promise.resolve({
-        ok: true,
-        status: 204,
-        json: () => Promise.resolve(null),
-      })
-    );
+    mockFetch.mockReturnValueOnce(jsonResponse({}));
 
     await expect(trackSkillView("skill/with space")).resolves.toBeUndefined();
 
@@ -900,18 +894,12 @@ describe("skillApiReal", () => {
   describe("getSkillMd", () => {
     it("returns markdown text on success", async () => {
       const mdText = "# My Skill\n\nThis is a skill description.";
-      mockFetch.mockReturnValueOnce(
-        Promise.resolve({
-          ok: true,
-          status: 200,
-          text: () => Promise.resolve(mdText),
-        })
-      );
+      mockFetch.mockReturnValueOnce(jsonResponse({ content: mdText }));
 
       const result = await getSkillMd("skill-123");
       expect(result).toBe(mdText);
       expect(mockFetch).toHaveBeenCalledWith(
-        "/market/api/v1/skills/skill-123/skill-md",
+        "/market/api/v1/skills/skill-123/skill_md",
         expect.objectContaining({
           headers: {
             "Content-Type": "application/json",
@@ -928,18 +916,27 @@ describe("skillApiReal", () => {
           ok: false,
           status: 404,
           statusText: "Not Found",
-          text: () => Promise.resolve(""),
+          json: () =>
+            Promise.resolve({
+              error: {
+                code: "NOT_FOUND",
+                message: "SKILL.md not found",
+                details: {},
+              },
+            }),
         })
       );
 
       await expect(getSkillMd("skill-missing")).rejects.toMatchObject({
         status: 404,
-        code: "not_found",
+        code: "NOT_FOUND",
       });
     });
 
     it("throws on network error", async () => {
-      mockFetch.mockReturnValueOnce(Promise.reject(new Error("Network failure")));
+      mockFetch.mockReturnValueOnce(
+        Promise.reject(new Error("Network failure"))
+      );
 
       await expect(getSkillMd("skill-123")).rejects.toMatchObject({
         code: "network_error",

@@ -66,6 +66,12 @@
     "ariaLabel": "Skill 分类",
     "more": "更多"
   },
+  "publishMenu": {
+    "botTitle": "Bot 上架",
+    "botHint": "复制提示词给 Agent",
+    "manualTitle": "手动上传",
+    "manualHint": "上传 .zip / .skill"
+  },
   "detail": {
     "title": "Skill 详情",
     "notFound": "Skill 不存在或已被删除",
@@ -162,6 +168,12 @@
     "hint": "复制后粘贴到 Agent 对话中，将自动完成安装",
     "copied": "已复制",
     "copyBtn": "复制安装 Prompt"
+  },
+  "botPublish": {
+    "title": "Bot 上架",
+    "hint": "复制提示词给 Agent，让它帮你完成上架",
+    "copyBtn": "复制提示词",
+    "copied": "已复制"
   },
   "crop": {
     "title": "裁剪图标",

@@ -34,6 +34,11 @@ interface MarketSidebarState {
   activeId: string;
 }
 
+function findMarketItemByRoutePath(path?: string): MarketItem | undefined {
+  if (!path) return undefined;
+  return MARKET_ITEMS.find((item) => item.routePath === path);
+}
+
 /**
  * "Markets" sidebar rendered in WKLayout.contentLeft when the mcp-market
  * NavRail entry is active. Users click items to switch which market page
@@ -49,17 +54,69 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
   declare context: React.ContextType<typeof I18nContext>;
 
   state: MarketSidebarState = {
-    activeId: MARKET_ITEMS[0].id,
+    activeId:
+      findMarketItemByRoutePath(WKApp.route.currentPath)?.id ??
+      findMarketItemByRoutePath(window.location.pathname)?.id ??
+      MARKET_ITEMS[0].id,
+  };
+
+  componentDidMount() {
+    WKApp.mittBus.on("space-changed", this.handleSpaceChanged);
+    WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated);
+    if (WKApp.currentMenuId === "mcp-market") {
+      this.replaceRightPane(this.currentItem());
+    }
+  }
+
+  componentWillUnmount() {
+    WKApp.mittBus.off("space-changed", this.handleSpaceChanged);
+    WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated);
+  }
+
+  private currentItem = () => {
+    return (
+      findMarketItemByRoutePath(WKApp.route.currentPath) ??
+      findMarketItemByRoutePath(window.location.pathname) ??
+      MARKET_ITEMS.find((item) => item.id === this.state.activeId) ??
+      MARKET_ITEMS[0]
+    );
+  };
+
+  private replaceRightPane = (item: MarketItem) => {
+    try {
+      WKApp.routeRight.replaceToRoot(item.render());
+    } catch {
+      window.setTimeout(() => {
+        try {
+          WKApp.routeRight.replaceToRoot(item.render());
+        } catch (retryError) {
+          console.error("[mcp-market] failed to mount right pane", retryError);
+        }
+      }, 0);
+    }
   };
 
   private handleClick = (item: MarketItem) => {
     if (item.id !== this.state.activeId) {
       this.setState({ activeId: item.id });
     }
-    WKApp.routeRight.replaceToRoot(item.render());
+    this.replaceRightPane(item);
     // Sync the URL so refresh/copy-link/back button land on this tab
     // rather than whatever stale path was in the address bar before.
     WKApp.route.syncPath(item.routePath);
+  };
+
+  private handleSpaceChanged = () => {
+    if (WKApp.currentMenuId !== "mcp-market") return;
+    this.replaceRightPane(this.currentItem());
+  };
+
+  private handleNavMenuActivated = ({ menuId }: { menuId: string }) => {
+    if (menuId !== "mcp-market") return;
+    const item = this.currentItem();
+    if (item.id !== this.state.activeId) {
+      this.setState({ activeId: item.id });
+    }
   };
 
   render() {

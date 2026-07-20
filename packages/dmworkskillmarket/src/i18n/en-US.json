@@ -66,6 +66,12 @@
     "ariaLabel": "Skill categories",
     "more": "More"
   },
+  "publishMenu": {
+    "botTitle": "Bot Publish",
+    "botHint": "Copy a prompt for Agent",
+    "manualTitle": "Manual Upload",
+    "manualHint": "Upload .zip / .skill"
+  },
   "detail": {
     "title": "Skill Details",
     "notFound": "Skill does not exist or has been deleted",
@@ -162,6 +168,12 @@
     "hint": "Copy and paste into an Agent conversation to complete installation automatically",
     "copied": "Copied",
     "copyBtn": "Copy Install Prompt"
+  },
+  "botPublish": {
+    "title": "Bot Publish",
+    "hint": "Copy the prompt for Agent to publish this Skill",
+    "copyBtn": "Copy Prompt",
+    "copied": "Copied"
   },
   "crop": {
     "title": "Crop Icon",

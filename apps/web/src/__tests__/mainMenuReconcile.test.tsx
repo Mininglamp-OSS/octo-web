@@ -267,7 +267,7 @@ describe("MainVM — pending deep-link wiring", () => {
     // Any explicit menu selection (the currentMenus setter) must cancel the pending activation so
     // a late docs_on toggle never yanks a user off a view they chose.
     expect(source).toContain("this._pendingRouteActivation = undefined");
-    const setterClearIdx = source.indexOf(
+    const setterClearIdx = source.lastIndexOf(
       "this._pendingRouteActivation = undefined"
     );
     const setterIdx = source.indexOf("set currentMenus(");

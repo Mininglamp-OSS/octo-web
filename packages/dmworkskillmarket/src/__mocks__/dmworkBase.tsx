@@ -93,6 +93,10 @@ export const WKApp = {
   menus: {
     register: () => undefined,
   },
+  mittBus: {
+    on: () => undefined,
+    off: () => undefined,
+  },
 };
 
 import zhCN from "../i18n/zh-CN.json";
