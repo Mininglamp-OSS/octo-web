@@ -48,10 +48,41 @@
 }
 
 /**
- * 发送方消息（和接收方一样左对齐，只是可能没有头像）
+ * 发送方消息：只对 avatar+content 的 wrapper 做镜像，checkbox 不参与反转
  */
-.wk-msg-row--send {
-  /* 发送方和接收方布局相同，都是左对齐 */
+.wk-msg-row--send .wk-msg-row-body-wrap {
+  flex-direction: row-reverse;
+}
+
+/**
+ * 发送方：内容区文本靠右
+ */
+.wk-msg-row--send .wk-msg-row-content {
+  align-items: flex-end;
+}
+
+/**
+ * 发送方：隐藏整个发送者身份组（名字/实名徽章/@Space 后缀作为整体隐藏）
+ */
+.wk-msg-row--send .wk-msg-row-sender,
+.wk-msg-row--send .wk-msg-row-sender-space,
+.wk-msg-row--send .wk-realname-badge {
+  display: none;
+}
+
+/**
+ * 发送方：header 右对齐（消息编辑标签 + 时间戳靠右）
+ */
+.wk-msg-row--send .wk-msg-row-header {
+  flex-direction: row-reverse;
+}
+
+/**
+ * 发送方：连续消息 hover 时间戳靠右对齐
+ */
+.wk-msg-row--send .wk-msg-row-avatar-placeholder {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /**
@@ -84,6 +115,16 @@
   flex-shrink: 0;
   width: 24px;
   cursor: pointer;
+}
+
+/**
+ * avatar + content 包裹层（checkbox 独立在外，不受发送方镜像影响）
+ */
+.wk-msg-row-body-wrap {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  min-width: 0;
 }
 
 /**
