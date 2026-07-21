@@ -120,6 +120,12 @@ import {
   classifyCardSender,
   isTrustedCardSender,
 } from "../../Messages/InteractiveCard/senderTrust";
+import {
+  addImChannelInfoListener,
+  fetchImChannelInfo,
+  getImChannelInfo,
+  getImChannelSubscribers,
+} from "../../im-runtime/channelRuntime";
 
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
@@ -294,7 +300,7 @@ function offsetMentionEntities(
  * WuKongIM SDK 的 Message 只带 fromUID, 不带 fromName; name 必须前端自己解析。
  * 参考 useMessageRow.ts + Messages/Base/index.tsx 的群成员名字解析路径:
  *
- *   1. 群消息: 从 channelManager.getSubscribes(groupChannel) 拉群成员列表,
+ *   1. 群消息: 从 channel runtime 拉群成员列表,
  *      按 uid 匹配后用 subscriberDisplayName (real_name(verified) > remark > name)
  *      — 群内用户大概率没开过 1v1, Person channelInfo 缓存常 miss,
  *      群成员列表缓存命中率高得多, 是主路径
@@ -312,7 +318,7 @@ function resolveFromUName(m: Message | undefined | null): string {
   try {
     const ch = m.channel;
     if (ch && ch.channelType === ChannelTypeGroup) {
-      const subs = WKSDK.shared().channelManager.getSubscribes(ch) as
+      const subs = getImChannelSubscribers(WKSDK.shared(), ch) as
         | {
             uid?: string;
             name?: string;
@@ -333,7 +339,8 @@ function resolveFromUName(m: Message | undefined | null): string {
 
   // 2. Person channelInfo 兜底
   try {
-    const info = WKSDK.shared().channelManager.getChannelInfo(
+    const info = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(fromUID, ChannelTypePerson)
     );
     if (info?.title) return info.title;
@@ -435,6 +442,7 @@ export class Conversation
   private _guardId: symbol = Symbol("pendingAttachmentGuard");
   // 监听 channelInfo 变化：群解散时 status 翻转为 2，需重渲染以隐藏成员栏/置灰发送框
   private _channelInfoListener?: (channelInfo: ChannelInfo) => void;
+  private _unsubscribeChannelInfoListener?: () => void;
   private draftSaveGeneration = 0;
   private latestSavedDraft = "";
   private _addAttachmentFn?: (
@@ -574,7 +582,8 @@ export class Conversation
     ) {
       return;
     }
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+    const channelInfo = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(fromUID, ChannelTypePerson)
     );
     this._messageInputContext?.addMention(fromUID, channelInfo?.title || "");
@@ -1380,15 +1389,19 @@ export class Conversation
         this.forceUpdate();
       }
     };
-    WKSDK.shared().channelManager.addListener(this._channelInfoListener);
+    this._unsubscribeChannelInfoListener = addImChannelInfoListener(
+      WKSDK.shared(),
+      this._channelInfoListener
+    );
     // 进入会话时主动拉取一次最新 channelInfo，确保解散状态(status)不依赖陈旧缓存。
     // 群聊查自身；子区(CommunityTopic)解散状态在父群上，需拉父群。
     if (channel.channelType === ChannelTypeGroup) {
-      WKSDK.shared().channelManager.fetchChannelInfo(channel);
+      fetchImChannelInfo(WKSDK.shared(), channel);
     } else if (channel.channelType === ChannelTypeCommunityTopic) {
       const parsed = parseThreadChannelId(channel.channelID);
       if (parsed) {
-        WKSDK.shared().channelManager.fetchChannelInfo(
+        fetchImChannelInfo(
+          WKSDK.shared(),
           new Channel(parsed.groupNo, ChannelTypeGroup)
         );
       }
@@ -1417,7 +1430,8 @@ export class Conversation
     }
     window.removeEventListener("beforeunload", this._beforeUnloadHandler);
     if (this._channelInfoListener) {
-      WKSDK.shared().channelManager.removeListener(this._channelInfoListener);
+      this._unsubscribeChannelInfoListener?.();
+      this._unsubscribeChannelInfoListener = undefined;
       this._channelInfoListener = undefined;
     }
     // 注销附件守卫：只清除自己注册的，防止新实例 guard 被旧实例 unmount 覆盖
@@ -2457,7 +2471,7 @@ export class Conversation
   render() {
     const { chatBg, channel, initLocateMessageSeq } = this.props;
 
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
 
     // 群已解散（企业微信式只读态）：保留历史，但禁发消息/建子区、收起成员栏。
     // 覆盖群聊与子区（子区随父群解散一并只读）。
@@ -2828,8 +2842,10 @@ export class Conversation
                           channel.channelType !== ChannelTypeCommunityTopic
                         )
                           return;
-                        const channelInfo =
-                          WKSDK.shared().channelManager.getChannelInfo(channel);
+                        const channelInfo = getImChannelInfo(
+                          WKSDK.shared(),
+                          channel
+                        );
                         // 传原始文本（含 @[uid:name] 占位符），由 GlobalMatterModal 先 parse 再截断
                         // 避免 slice 截断位置落在占位符中间导致 mention 残留乱码
                         const rawText = (
@@ -2865,8 +2881,10 @@ export class Conversation
                         const { channel } = this.props;
                         await this.vm.ensureSubscribersLoaded();
 
-                        const channelInfo =
-                          WKSDK.shared().channelManager.getChannelInfo(channel);
+                        const channelInfo = getImChannelInfo(
+                          WKSDK.shared(),
+                          channel
+                        );
                         let groupName: string | undefined;
                         let threadName: string | undefined;
 
@@ -2876,10 +2894,10 @@ export class Conversation
                             channel.channelID
                           );
                           if (parsed) {
-                            const parentInfo =
-                              WKSDK.shared().channelManager.getChannelInfo(
-                                new Channel(parsed.groupNo, ChannelTypeGroup)
-                              );
+                            const parentInfo = getImChannelInfo(
+                              WKSDK.shared(),
+                              new Channel(parsed.groupNo, ChannelTypeGroup)
+                            );
                             groupName = parentInfo?.title;
                           }
                         } else if (channel.channelType === ChannelTypeGroup) {
@@ -2896,7 +2914,8 @@ export class Conversation
                           loginUID: WKApp.loginInfo.uid,
                           channelInfo:
                             channel.channelType === ChannelTypePerson
-                              ? (WKSDK.shared().channelManager.getChannelInfo(
+                              ? (getImChannelInfo(
+                                  WKSDK.shared(),
                                   channel
                                 ) as ChatContextChannelInfo | null)
                               : undefined,
@@ -2951,13 +2970,13 @@ export class Conversation
                           reply.messageID = vm.currentReplyMessage.messageID;
                           reply.messageSeq = vm.currentReplyMessage.messageSeq;
                           reply.fromUID = vm.currentReplyMessage.fromUID;
-                          const channelInfo =
-                            WKSDK.shared().channelManager.getChannelInfo(
-                              new Channel(
-                                vm.currentReplyMessage.fromUID,
-                                ChannelTypePerson
-                              )
-                            );
+                          const channelInfo = getImChannelInfo(
+                            WKSDK.shared(),
+                            new Channel(
+                              vm.currentReplyMessage.fromUID,
+                              ChannelTypePerson
+                            )
+                          );
                           if (channelInfo) {
                             reply.fromName = channelInfo.title;
                           }
@@ -3397,8 +3416,10 @@ export class Conversation
                         this.vm.selectUID,
                         ChannelTypePerson
                       );
-                      const channelInfo =
-                        WKSDK.shared().channelManager.getChannelInfo(channel);
+                      const channelInfo = getImChannelInfo(
+                        WKSDK.shared(),
+                        channel
+                      );
 
                       this.messageInputContext()?.addMention(
                         this.vm.selectUID,
@@ -3604,7 +3625,8 @@ interface ReplyViewProps {
 class ReplyView extends Component<ReplyViewProps> {
   render(): React.ReactNode {
     const { message, onClose, vm } = this.props;
-    const fromChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+    const fromChannelInfo = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(message.fromUID, ChannelTypePerson)
     );
     const isEdit = vm.currentHandlerType === 2;

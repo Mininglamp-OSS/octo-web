@@ -39,6 +39,11 @@ import { I18nContext, t, useI18n } from "../../i18n";
 import { formatDraftPreview } from "../../Utils/draftPreview";
 import { wkConfirm } from "../WKModal";
 import { collapsedThreadUnread } from "./unread";
+import {
+  addImChannelInfoListener,
+  fetchImChannelInfo,
+  getImChannelInfo,
+} from "../../im-runtime/channelRuntime";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
 // ── 在线态判定/渲染 helper ──────────────────────────────────────────────
@@ -110,7 +115,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
   // channelInfo 未加载时主动拉取，加载完触发 re-render
   React.useEffect(() => {
     if (!channelInfo) {
-      WKSDK.shared().channelManager.fetchChannelInfo(conversationWrap.channel);
+      void fetchImChannelInfo(WKSDK.shared(), conversationWrap.channel);
     }
   }, [conversationWrap.channel.channelID]);
 
@@ -125,7 +130,8 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
     ? (channelInfo?.orgData?.parentGroupNo as string | undefined)
     : undefined;
   const parentChannelInfo = parentGroupNo
-    ? WKSDK.shared().channelManager.getChannelInfo(
+    ? getImChannelInfo(
+        WKSDK.shared(),
         new Channel(parentGroupNo, ChannelTypeGroup)
       )
     : undefined;
@@ -332,6 +338,7 @@ export default class ConversationList extends Component<
   channelListener!: ChannelInfoListener;
   contextMenusContext!: ContextMenusContext;
   typingListener!: TypingListener;
+  private unsubscribeChannelInfoListener?: () => void;
   private listRef = React.createRef<HTMLDivElement>();
   private itemRefs = new Map<string, HTMLDivElement>();
   private lastRenderableItems: ConversationWrap[] = [];
@@ -366,7 +373,10 @@ export default class ConversationList extends Component<
     this.channelListener = (channelInfo: ChannelInfo) => {
       this.setState({});
     };
-    WKSDK.shared().channelManager.addListener(this.channelListener);
+    this.unsubscribeChannelInfoListener = addImChannelInfoListener(
+      WKSDK.shared(),
+      this.channelListener
+    );
 
     this.typingListener = (channel: Channel, add: boolean) => {
       this.setState({});
@@ -400,7 +410,8 @@ export default class ConversationList extends Component<
       window.clearTimeout(this.unreadNudgeTimer);
       this.unreadNudgeTimer = null;
     }
-    WKSDK.shared().channelManager.removeListener(this.channelListener);
+    this.unsubscribeChannelInfoListener?.();
+    this.unsubscribeChannelInfoListener = undefined;
     TypingManager.shared.removeTypingListener(this.typingListener);
   }
 
@@ -601,11 +612,11 @@ export default class ConversationList extends Component<
       if (lastMessage.fromUID && lastMessage.fromUID !== "") {
         const fromChannel = new Channel(lastMessage.fromUID, ChannelTypePerson);
         const fromChannelInfo =
-          WKSDK.shared().channelManager.getChannelInfo(fromChannel);
+          getImChannelInfo(WKSDK.shared(), fromChannel);
         if (fromChannelInfo) {
           from = `${fromChannelInfo.title}: `;
         } else {
-          WKSDK.shared().channelManager.fetchChannelInfo(fromChannel);
+          void fetchImChannelInfo(WKSDK.shared(), fromChannel);
         }
       }
 
@@ -629,7 +640,7 @@ export default class ConversationList extends Component<
   ) {
     let channelInfo = conversationWrap.channelInfo;
     if (!channelInfo) {
-      WKSDK.shared().channelManager.fetchChannelInfo(conversationWrap.channel);
+      void fetchImChannelInfo(WKSDK.shared(), conversationWrap.channel);
     }
 
     const { compact } = this.props;
@@ -648,10 +659,10 @@ export default class ConversationList extends Component<
       ? new Channel(parentGroupNo, ChannelTypeGroup)
       : undefined;
     const parentChannelInfo = parentChannel
-      ? WKSDK.shared().channelManager.getChannelInfo(parentChannel)
+      ? getImChannelInfo(WKSDK.shared(), parentChannel)
       : undefined;
     if (parentChannel && !parentChannelInfo) {
-      WKSDK.shared().channelManager.fetchChannelInfo(parentChannel);
+      void fetchImChannelInfo(WKSDK.shared(), parentChannel);
     }
 
     // ── Compact 模式（群聊 Tab）：用 CompactGroupItem 函数组件（支持拖拽） ──
@@ -898,7 +909,7 @@ export default class ConversationList extends Component<
     ChannelSettingManager.shared.mute(value, channelInfo.channel)
       .then(() => {
         // 直接重拉（不删缓存），新数据覆盖旧缓存，避免删除期间出现 loading 骨架
-        WKSDK.shared().channelManager.fetchChannelInfo(channelInfo.channel)
+        fetchImChannelInfo(WKSDK.shared(), channelInfo.channel)
           .then(() => this.setState({}))
       })
   }
@@ -1231,7 +1242,8 @@ export default class ConversationList extends Component<
         if (!hasThreads) return 0;
         if (this._isThreadExpanded(conv.channel.channelID)) return 0;
         const threads = threadsByParent.get(conv.channel.channelID) ?? [];
-        const parentInfo = WKSDK.shared().channelManager.getChannelInfo(
+        const parentInfo = getImChannelInfo(
+          WKSDK.shared(),
           new Channel(conv.channel.channelID, ChannelTypeGroup)
         );
         return collapsedThreadUnread(threads, !!parentInfo?.mute, !!compact);
@@ -1328,7 +1340,7 @@ export default class ConversationList extends Component<
               ? (channelInfo?.orgData?.parentGroupNo as string | undefined)
               : undefined
             const menuParentChannelInfo = menuParentGroupNo
-              ? WKSDK.shared().channelManager.getChannelInfo(new Channel(menuParentGroupNo, ChannelTypeGroup))
+              ? getImChannelInfo(WKSDK.shared(), new Channel(menuParentGroupNo, ChannelTypeGroup))
               : undefined
             const menuRawMute = menuIsThread
               ? (channelInfo?.orgData?.thread as any)?.mute as number | null | undefined

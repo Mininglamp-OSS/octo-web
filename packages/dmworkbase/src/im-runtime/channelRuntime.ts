@@ -3,6 +3,10 @@ export interface ImChannelLike {
   channelType: number;
 }
 
+export interface ImChannelCacheKeyLike extends ImChannelLike {
+  getChannelKey: () => string;
+}
+
 export interface ImChannelInfoLike {
   channel: ImChannelLike;
   title?: string;
@@ -64,11 +68,13 @@ export interface ImChannelSubscribersRuntimeSdk<
 > {
   channelManager: {
     getSubscribes: (channel: TChannel) => TSubscriber[] | undefined | null;
+    getSubscribeOfMe: (channel: TChannel) => TSubscriber | null | undefined;
     syncSubscribes: (channel: TChannel) => Promise<void> | void;
     addSubscriberChangeListener: (listener: ImSubscriberChangeListener) => void;
     removeSubscriberChangeListener: (
       listener: ImSubscriberChangeListener
     ) => void;
+    notifySubscribeChangeListeners: (channel: TChannel) => void;
   };
 }
 
@@ -142,6 +148,16 @@ export function getImChannelSubscribers<
   return sdk.channelManager.getSubscribes(channel) || [];
 }
 
+export function getImChannelSubscriberOfMe<
+  TChannel extends ImChannelLike,
+  TSubscriber = ImSubscriberLike
+>(
+  sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
+  channel: TChannel
+) {
+  return sdk.channelManager.getSubscribeOfMe(channel);
+}
+
 export function syncImChannelSubscribers<
   TChannel extends ImChannelLike,
   TSubscriber = ImSubscriberLike
@@ -158,6 +174,17 @@ export function getImSubscribeCacheMap<TSubscriber = ImSubscriberLike>(
   return sdk.channelManager.subscribeCacheMap;
 }
 
+export function setImChannelSubscribersCache<
+  TChannel extends ImChannelCacheKeyLike,
+  TSubscriber = ImSubscriberLike
+>(
+  sdk: ImSubscribeCacheRuntimeSdk<TSubscriber>,
+  channel: TChannel,
+  subscribers: TSubscriber[]
+) {
+  sdk.channelManager.subscribeCacheMap.set(channel.getChannelKey(), subscribers);
+}
+
 export function addImSubscriberChangeListener<
   TChannel extends ImChannelLike,
   TSubscriber = ImSubscriberLike
@@ -169,6 +196,13 @@ export function addImSubscriberChangeListener<
   return () => {
     sdk.channelManager.removeSubscriberChangeListener(listener);
   };
+}
+
+export function notifyImSubscriberChangeListeners<
+  TChannel extends ImChannelLike,
+  TSubscriber = ImSubscriberLike
+>(sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>, channel: TChannel) {
+  sdk.channelManager.notifySubscribeChangeListeners(channel);
 }
 
 export function patchImChannelInfoOrgData<

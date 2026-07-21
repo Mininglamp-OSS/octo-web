@@ -31,6 +31,7 @@ import "yet-another-react-lightbox/styles.css";
 import { I18nContext } from "../../i18n";
 
 import MergeforwardCard from "../../ui/message/MergeforwardCard";
+import { fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 import "./index.css";
 
@@ -305,7 +306,7 @@ export default class MergeforwardMessageList extends Component<
       });
       const previewMsgs = (nestedContent.msgs || []).slice(0, 4).map((m) => {
         const name = userNameMap.get(m.fromUID)
-          || WKSDK.shared().channelManager.getChannelInfo(new Channel(m.fromUID, ChannelTypePerson))?.title
+          || getImChannelInfo(WKSDK.shared(), new Channel(m.fromUID, ChannelTypePerson))?.title
           || "";
         const digest = m.content?.conversationDigest || "";
         return {
@@ -421,9 +422,9 @@ export default class MergeforwardMessageList extends Component<
             {currentContent.msgs.map((m, i) => {
               const fromChannel = new Channel(m.fromUID, ChannelTypePerson);
               let fromChannelInfo =
-                WKSDK.shared().channelManager.getChannelInfo(fromChannel);
+                getImChannelInfo(WKSDK.shared(), fromChannel);
               if (!fromChannelInfo) {
-                WKSDK.shared().channelManager.fetchChannelInfo(fromChannel);
+                void fetchImChannelInfo(WKSDK.shared(), fromChannel);
               }
               const showAvatar =
                 i === 0 ||

@@ -15,6 +15,13 @@ import {
 import moment from 'moment'
 import { isMessageContinuation } from '../../Service/messageContinuity'
 import { formatMessageTimestamp } from '../../Utils/time'
+import {
+  addImChannelInfoListener,
+  addImSubscriberChangeListener,
+  fetchImChannelInfo,
+  getImChannelInfo,
+  getImChannelSubscribers,
+} from '../../im-runtime/channelRuntime'
 
 export interface MessageRowSelectionState {
   /** 当前会话是否处于多选模式（不可选消息也需要知道，用于禁用行内操作） */
@@ -63,8 +70,8 @@ function getGroupMemberInfo(message: MessageWrap): { member: any | undefined; me
     return { member: undefined, memberName: '' }
   }
   try {
-    const subs = WKSDK.shared().channelManager.getSubscribes(message.channel) as any[] | null | undefined
-    const member = subs?.find((s) => s && s.uid === message.fromUID)
+    const subs = getImChannelSubscribers(WKSDK.shared(), message.channel) as any[]
+    const member = subs.find((s) => s && s.uid === message.fromUID)
     return { member, memberName: subscriberDisplayName(member) }
   } catch {
     return { member: undefined, memberName: '' }
@@ -85,7 +92,8 @@ export function getMessageRow(
   selection?: MessageRowSelectionState,
   interaction?: MessageRowInteractionState
 ): Omit<MessageRowUIProps, 'children'> {
-  const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+  const channelInfo = getImChannelInfo(
+    WKSDK.shared(),
     new Channel(message.fromUID, ChannelTypePerson)
   )
 
@@ -210,7 +218,7 @@ export function getMessageRow(
   //   再 rerender 决定真实值。这样不会把「你发给朋友」也压下去（若朋友的
   //   Person channelInfo 已缓存，conversationChannelInfo !== undefined）。
   const conversationChannelInfo = message.channel
-    ? WKSDK.shared().channelManager.getChannelInfo(message.channel)
+    ? getImChannelInfo(WKSDK.shared(), message.channel)
     : undefined
   const isOwnMessage = message.fromUID === WKApp.loginInfo.uid
   const isPersonConversation =
@@ -296,9 +304,9 @@ export function useMessageRow(
     const channel = new Channel(fromUID, ChannelTypePerson)
 
     // 没有缓存时发起请求
-    const cached = WKSDK.shared().channelManager.getChannelInfo(channel)
+    const cached = getImChannelInfo(WKSDK.shared(), channel)
     if (!cached) {
-      WKSDK.shared().channelManager.fetchChannelInfo(channel)
+      void fetchImChannelInfo(WKSDK.shared(), channel)
     }
 
     // R4（Jerry R3 timing race）：会话对端（message.channel，Person
@@ -319,9 +327,9 @@ export function useMessageRow(
       convChannel.channelType === ChannelTypePerson &&
       !convChannel.isEqual(channel)
     ) {
-      const convCached = WKSDK.shared().channelManager.getChannelInfo(convChannel)
+      const convCached = getImChannelInfo(WKSDK.shared(), convChannel)
       if (!convCached) {
-        WKSDK.shared().channelManager.fetchChannelInfo(convChannel)
+        void fetchImChannelInfo(WKSDK.shared(), convChannel)
       }
     }
 
@@ -341,7 +349,7 @@ export function useMessageRow(
         forceUpdate()
       }
     }
-    WKSDK.shared().channelManager.addListener(listener)
+    const unsubscribeChannelInfo = addImChannelInfoListener(WKSDK.shared(), listener)
 
     // 群成员到达 / 更新时触发重渲染：群消息发送者名字主路径读群成员列表，
     // 成员列表是异步同步的，消息可能先于成员列表到达，需要通知一次。
@@ -351,11 +359,11 @@ export function useMessageRow(
         forceUpdate()
       }
     }
-    WKSDK.shared().channelManager.addSubscriberChangeListener(subListener)
+    const unsubscribeSubscriberChange = addImSubscriberChangeListener(WKSDK.shared(), subListener)
 
     return () => {
-      WKSDK.shared().channelManager.removeListener(listener)
-      WKSDK.shared().channelManager.removeSubscriberChangeListener(subListener)
+      unsubscribeChannelInfo()
+      unsubscribeSubscriberChange()
     }
   }, [message.fromUID, message.channel, forceUpdate])
 

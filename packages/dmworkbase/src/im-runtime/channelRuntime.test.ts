@@ -5,10 +5,13 @@ import {
   deleteImChannelInfo,
   fetchImChannelInfo,
   getImChannelInfo,
+  getImChannelSubscriberOfMe,
   getImChannelSubscribers,
   getImSubscribeCacheMap,
   notifyImChannelInfoListeners,
+  notifyImSubscriberChangeListeners,
   patchImChannelInfoOrgData,
+  setImChannelSubscribersCache,
   setImChannelInfoCache,
   syncImChannelSubscribers,
   type ImChannelInfoLike,
@@ -29,10 +32,12 @@ function createSdk() {
       removeListener: vi.fn(),
       deleteChannelInfo: vi.fn(),
       getSubscribes: vi.fn(),
+      getSubscribeOfMe: vi.fn(),
       syncSubscribes: vi.fn(),
       subscribeCacheMap: new Map(),
       addSubscriberChangeListener: vi.fn(),
       removeSubscriberChangeListener: vi.fn(),
+      notifySubscribeChangeListeners: vi.fn(),
     },
   } satisfies ImChannelRuntimeSdk &
     ImChannelCacheRuntimeSdk &
@@ -136,6 +141,16 @@ describe("channelRuntime", () => {
     expect(getImChannelSubscribers(sdk, channel)).toEqual([]);
   });
 
+  it("reads the current user's subscriber through the SDK channel manager", () => {
+    const sdk = createSdk();
+    const channel = { channelID: "g1", channelType: 2 };
+    const subscriber = { uid: "me", role: 1 };
+    sdk.channelManager.getSubscribeOfMe.mockReturnValue(subscriber);
+
+    expect(getImChannelSubscriberOfMe(sdk, channel)).toBe(subscriber);
+    expect(sdk.channelManager.getSubscribeOfMe).toHaveBeenCalledWith(channel);
+  });
+
   it("syncs subscribers through the SDK channel manager", async () => {
     const sdk = createSdk();
     const channel = { channelID: "g1", channelType: 2 };
@@ -154,6 +169,20 @@ describe("channelRuntime", () => {
     );
   });
 
+  it("writes subscribers to the SDK subscribe cache", () => {
+    const sdk = createSdk();
+    const channel = {
+      channelID: "g1",
+      channelType: 2,
+      getChannelKey: () => "2@g1",
+    };
+    const subscribers = [{ uid: "u1" }, { uid: "u2" }];
+
+    setImChannelSubscribersCache(sdk, channel, subscribers);
+
+    expect(sdk.channelManager.subscribeCacheMap.get("2@g1")).toBe(subscribers);
+  });
+
   it("returns an unsubscribe when adding a subscriber change listener", () => {
     const sdk = createSdk();
     const listener = vi.fn();
@@ -167,6 +196,17 @@ describe("channelRuntime", () => {
     expect(
       sdk.channelManager.removeSubscriberChangeListener
     ).toHaveBeenCalledWith(listener);
+  });
+
+  it("notifies SDK subscriber change listeners", () => {
+    const sdk = createSdk();
+    const channel = { channelID: "g1", channelType: 2 };
+
+    notifyImSubscriberChangeListeners(sdk, channel);
+
+    expect(
+      sdk.channelManager.notifySubscribeChangeListeners
+    ).toHaveBeenCalledWith(channel);
   });
 
   it("patches orgData while preserving existing fields", () => {

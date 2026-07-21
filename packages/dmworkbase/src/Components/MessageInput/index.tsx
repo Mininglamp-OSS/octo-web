@@ -47,6 +47,11 @@ import {
   restoreOctoRichTextClipboardToEditor,
 } from "./richTextPaste";
 import { handleSecretPaste } from "./secretPasteDetect";
+import {
+  addImChannelInfoListener,
+  fetchImChannelInfo,
+  getImChannelInfo,
+} from "../../im-runtime/channelRuntime";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -414,7 +419,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
   const [placeholder, setPlaceholder] = useState(() => {
     const channel = props.context.channel();
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
     return buildPlaceholder(channel, channelInfo?.title || "", t);
   });
 
@@ -433,19 +438,19 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         updateName(channelInfo.title || "");
       }
     };
-    WKSDK.shared().channelManager.addListener(listener);
+    const unsubscribeChannelInfo = addImChannelInfoListener(WKSDK.shared(), listener);
 
     // 检查本地缓存；没有则主动 fetch（fetch 完成后 listener 会收到通知）
-    const cached = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const cached = getImChannelInfo(WKSDK.shared(), channel);
     if (cached) {
       updateName(cached.title || "");
     } else {
-      WKSDK.shared().channelManager.fetchChannelInfo(channel).catch(() => {});
+      fetchImChannelInfo(WKSDK.shared(), channel).catch(() => {});
     }
 
     return () => {
       aborted = true;
-      WKSDK.shared().channelManager.removeListener(listener);
+      unsubscribeChannelInfo();
     };
   }, [props.context, t]);
 

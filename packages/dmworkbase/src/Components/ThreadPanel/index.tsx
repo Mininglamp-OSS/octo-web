@@ -67,6 +67,11 @@ import {
   restoreThreadWidth,
   persistThreadWidth,
 } from "../WKLayout/layoutWidth";
+import {
+  deleteImChannelInfo,
+  fetchImChannelInfo,
+  getImChannelInfo,
+} from "../../im-runtime/channelRuntime";
 import "./index.css";
 
 /**
@@ -1000,8 +1005,8 @@ export default class ThreadPanel extends Component<
         : "");
     if (!channelID) return;
     const threadChannel = new Channel(channelID, ChannelTypeCommunityTopic);
-    WKSDK.shared().channelManager.deleteChannelInfo(threadChannel);
-    WKSDK.shared().channelManager.fetchChannelInfo(threadChannel);
+    deleteImChannelInfo(WKSDK.shared(), threadChannel);
+    void fetchImChannelInfo(WKSDK.shared(), threadChannel);
   }
 
   /**
@@ -1538,7 +1543,8 @@ export default class ThreadPanel extends Component<
       return thread.creator_name;
     }
     if (thread.creator_uid) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+      const channelInfo = getImChannelInfo(
+        WKSDK.shared(),
         new Channel(thread.creator_uid, ChannelTypePerson)
       );
       return channelInfo?.title || thread.creator_uid;

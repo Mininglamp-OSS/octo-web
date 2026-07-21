@@ -70,6 +70,12 @@ import {
 } from "../../Hooks/useFollowSidebar";
 import { SidebarTargetType } from "../../Service/SidebarService";
 import { I18nContext, t } from "../../i18n";
+import {
+  addImChannelInfoListener,
+  deleteImChannelInfo,
+  fetchImChannelInfo,
+  getImChannelInfo,
+} from "../../im-runtime/channelRuntime";
 
 // 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
@@ -107,7 +113,7 @@ interface SidebarTabBarWithBadgesProps {
  *   不再 sum IM 缓存——sidebar-only 的关注（用户关注但还没聊过，IM 缓存里没有）会被丢掉。
  * - 最近 tab：sum IM 缓存里非勿扰的 conversations，和 recent tab filter='all' 一致。
  *
- * 勿扰判定：通过 WKSDK.channelManager 查 channelInfo.mute（拿不到当作非勿扰）；
+ * 勿扰判定：通过 IM runtime 查 channelInfo.mute（拿不到当作非勿扰）；
  * 子区未显式 mute 时回看父群组的 mute（与列表渲染保持一致）。
  *
  * 数据源由 <FollowSidebarProvider> 统一注入，避免双 hook 实例导致的重复
@@ -134,7 +140,8 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     else if (it.target_type === SidebarTargetType.THREAD)
       channelType = ChannelTypeCommunityTopic;
     if (channelType == null) return false;
-    const info = WKSDK.shared().channelManager.getChannelInfo(
+    const info = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(it.target_id, channelType)
     );
     const isThread = it.target_type === SidebarTargetType.THREAD;
@@ -143,7 +150,8 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
       const parentGroupNo =
         it.parent_channel_id || parseThreadChannelId(it.target_id)?.groupNo;
       if (parentGroupNo) {
-        parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+        parentChannelInfo = getImChannelInfo(
+          WKSDK.shared(),
           new Channel(parentGroupNo, ChannelTypeGroup)
         );
       }
@@ -283,6 +291,7 @@ export class ChatContentPage extends Component<
   private channelSearchDataSourceKey = "";
   private channelSearchDataSource?: ChannelSearchDataSource;
   private channelSearchPanelState?: ChannelSearchPanelState;
+  private _unsubscribeChannelInfoListener?: () => void;
   private _unsubscribeChannelSearchConfig?: () => void;
 
   constructor(props: any) {
@@ -540,7 +549,10 @@ export class ChatContentPage extends Component<
         this.setState({});
       }
     };
-    WKSDK.shared().channelManager.addListener(this.channelInfoListener);
+    this._unsubscribeChannelInfoListener = addImChannelInfoListener(
+      WKSDK.shared(),
+      this.channelInfoListener
+    );
     this._unsubscribeChannelSearchConfig =
       WKApp.remoteConfig.addConfigChangeListener(() => {
         if (
@@ -752,16 +764,12 @@ export class ChatContentPage extends Component<
 
     // 子区：预先获取父群组信息
     if (channel.channelType === ChannelTypeCommunityTopic) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+      const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
       const parentGroupNo = channelInfo?.orgData?.parentGroupNo;
       if (parentGroupNo) {
         this.parentGroupChannel = new Channel(parentGroupNo, ChannelTypeGroup);
-        if (
-          !WKSDK.shared().channelManager.getChannelInfo(this.parentGroupChannel)
-        ) {
-          WKSDK.shared().channelManager.fetchChannelInfo(
-            this.parentGroupChannel
-          );
+        if (!getImChannelInfo(WKSDK.shared(), this.parentGroupChannel)) {
+          void fetchImChannelInfo(WKSDK.shared(), this.parentGroupChannel);
         }
       }
     }
@@ -852,16 +860,12 @@ export class ChatContentPage extends Component<
       channel.channelType === ChannelTypeCommunityTopic &&
       !this.parentGroupChannel
     ) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+      const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
       const parentGroupNo = channelInfo?.orgData?.parentGroupNo;
       if (parentGroupNo) {
         this.parentGroupChannel = new Channel(parentGroupNo, ChannelTypeGroup);
-        if (
-          !WKSDK.shared().channelManager.getChannelInfo(this.parentGroupChannel)
-        ) {
-          WKSDK.shared().channelManager.fetchChannelInfo(
-            this.parentGroupChannel
-          );
+        if (!getImChannelInfo(WKSDK.shared(), this.parentGroupChannel)) {
+          void fetchImChannelInfo(WKSDK.shared(), this.parentGroupChannel);
         }
       }
     }
@@ -916,7 +920,8 @@ export class ChatContentPage extends Component<
     }
     this._unsubscribeChannelSearchConfig?.();
     this._unsubscribeChannelSearchConfig = undefined;
-    WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
+    this._unsubscribeChannelInfoListener?.();
+    this._unsubscribeChannelInfoListener = undefined;
   }
 
   private getThreadStatus(channelInfo?: ChannelInfo | null) {
@@ -929,7 +934,7 @@ export class ChatContentPage extends Component<
     const { channel } = this.props;
     if (channel.channelType !== ChannelTypeCommunityTopic) return;
 
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
     if (this.getThreadStatus(channelInfo) !== ThreadStatus.Archived) return;
 
     const threadInfo = parseThreadChannelId(channel.channelID);
@@ -995,8 +1000,8 @@ export class ChatContentPage extends Component<
   }
 
   private async refreshCurrentThreadChannelInfo(channel: Channel) {
-    WKSDK.shared().channelManager.deleteChannelInfo(channel);
-    await WKSDK.shared().channelManager.fetchChannelInfo(channel);
+    deleteImChannelInfo(WKSDK.shared(), channel);
+    await fetchImChannelInfo(WKSDK.shared(), channel);
   }
 
   private sleep(ms: number): Promise<void> {
@@ -1021,9 +1026,9 @@ export class ChatContentPage extends Component<
     } = this.state;
     // 子区页面不显示讨论串按钮
     const isThreadChannel = channel.channelType === ChannelTypeCommunityTopic;
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
     if (!channelInfo) {
-      WKSDK.shared().channelManager.fetchChannelInfo(channel);
+      void fetchImChannelInfo(WKSDK.shared(), channel);
     }
     const threadStatus = this.getThreadStatus(channelInfo);
     return (
@@ -1129,7 +1134,8 @@ export class ChatContentPage extends Component<
                                   }
                                 }}
                               >
-                                {WKSDK.shared().channelManager.getChannelInfo(
+                                {getImChannelInfo(
+                                  WKSDK.shared(),
                                   new Channel(
                                     channelInfo.orgData.parentGroupNo,
                                     ChannelTypeGroup

@@ -274,7 +274,7 @@ describe("PersonaEditVM", () => {
         const ok = await vm.toggleGlobal(true)
         expect(ok).toBe(true)
         expect(vm.grant.global_enabled).toBe(true)
-        expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", { global_enabled: true })
+        expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", { global_enabled: 1 })
     })
 
     it("addScope POST then reloads", async () => {

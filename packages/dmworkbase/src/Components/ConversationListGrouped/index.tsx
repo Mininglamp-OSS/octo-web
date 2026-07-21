@@ -34,6 +34,7 @@ import {
 import { filterArchivedThreads, isArchivedThreadConversation, type ThreadSidebarStatusMap } from "./archivedThreads"
 import { useI18n } from "../../i18n"
 import { wkConfirm } from "../WKModal"
+import { getImChannelInfo } from "../../im-runtime/channelRuntime"
 
 // 兜底相关 helper 迁移至 ./categoriesFallback 独立模块，便于无依赖地单元测试。
 // 这里保留 re-export 以保持对外 API 不变（ConversationList.tsx / storybook 可直接从本模块引用）。
@@ -607,7 +608,8 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 const parentGroupNo = c.channelInfo?.orgData?.parentGroupNo
                     || parseThreadChannelId(c.channel.channelID)?.groupNo
                 if (parentGroupNo) {
-                    parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+                    parentChannelInfo = getImChannelInfo(
+                        WKSDK.shared(),
                         new Channel(parentGroupNo, ChannelTypeGroup)
                     )
                 }

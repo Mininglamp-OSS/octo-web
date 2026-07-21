@@ -32,6 +32,16 @@ import {
     handleImReconnectRefresh,
     removeImConnectStatusListener,
 } from "../../im-runtime/connectStatus";
+import {
+    addImChannelInfoListener,
+    addImSubscriberChangeListener,
+    fetchImChannelInfo,
+    getImChannelInfo,
+    getImChannelSubscribers,
+    notifyImSubscriberChangeListeners,
+    setImChannelSubscribersCache,
+    syncImChannelSubscribers,
+} from "../../im-runtime/channelRuntime";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -114,7 +124,9 @@ export default class ConversationVM extends ProviderListener {
     messageStatusListener!: MessageStatusListener // 消息状态监听
     conversationListener!: ConversationListener // 会话监听
     private channelInfoListener!: ChannelInfoListener // channelInfo 变化监听（bot 身份识别）
-    subscriberChangeListener!: (channel: Channel) => void // 订阅者变化监听
+    private unsubscribeChannelInfoListener?: () => void
+    subscriberChangeListener?: (channel: Channel) => void // 订阅者变化监听
+    private unsubscribeSubscriberChangeListener?: () => void
     lastMessage?: MessageWrap // 此会话的最后一条最新的消息
     lastLocalMessageElement?: HTMLElement | null // 最后一条消息的dom元素
     private _showScrollToBottomBtn?: boolean = false // 是否显示底部按钮
@@ -297,7 +309,7 @@ export default class ConversationVM extends ProviderListener {
             || message.contentType === MessageContentTypeConst.typing) {
             return false
         }
-        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
+        const channelInfo = getImChannelInfo(WKSDK.shared(), new Channel(message.fromUID, ChannelTypePerson))
         return channelInfo?.orgData?.robot === 1
     }
 
@@ -329,7 +341,7 @@ export default class ConversationVM extends ProviderListener {
             }
             seenUIDs.add(message.fromUID)
             const channel = new Channel(message.fromUID, ChannelTypePerson)
-            const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
+            const channelInfo = getImChannelInfo(WKSDK.shared(), channel)
             // 优先使用 message.from.title, 再用 channelInfo.title, 最后用 fromUID
             const name = message.from?.title || channelInfo?.title || message.fromUID
             participants.push({
@@ -469,7 +481,7 @@ export default class ConversationVM extends ProviderListener {
             const lastItem = renderItems[renderItems.length - 1]
             // isBotMessage() excludes typing content type, so check fromUID directly
             const typingFromBot = typingMessage.fromUID &&
-                WKSDK.shared().channelManager.getChannelInfo(new Channel(typingMessage.fromUID, ChannelTypePerson))?.orgData?.robot === 1
+                getImChannelInfo(WKSDK.shared(), new Channel(typingMessage.fromUID, ChannelTypePerson))?.orgData?.robot === 1
             if (lastItem?.type === "foldSession" && lastItem.session.isActive && typingFromBot) {
                 lastItem.session.typing = typingMessage
                 lastItem.session.expandedMessages = getFoldSessionExpandedMessages({
@@ -519,10 +531,10 @@ export default class ConversationVM extends ProviderListener {
         for (const msg of this.messagesOfOrigin) {
             if (!msg.send && msg.fromUID && !seenUIDs.has(msg.fromUID)) {
                 seenUIDs.add(msg.fromUID)
-                const ci = WKSDK.shared().channelManager.getChannelInfo(new Channel(msg.fromUID, ChannelTypePerson))
+                const ci = getImChannelInfo(WKSDK.shared(), new Channel(msg.fromUID, ChannelTypePerson))
                 if (!ci) {
                     // channelInfo 还没缓存，fetch 后触发 channelInfoListener 自然 rebuild
-                    WKSDK.shared().channelManager.fetchChannelInfo(new Channel(msg.fromUID, ChannelTypePerson))
+                    fetchImChannelInfo(WKSDK.shared(), new Channel(msg.fromUID, ChannelTypePerson))
                 } else if (ci.orgData?.robot === 1) {
                     botUIDs.add(msg.fromUID)
                 }
@@ -647,7 +659,7 @@ export default class ConversationVM extends ProviderListener {
             for (const message of checkedMessages) {
                 if (addedUIDs.has(message.fromUID)) continue
                 addedUIDs.add(message.fromUID)
-                const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
+                const channelInfo = getImChannelInfo(WKSDK.shared(), new Channel(message.fromUID, ChannelTypePerson))
                 users.push({ uid: message.fromUID, name: channelInfo?.title })
             }
         }
@@ -940,7 +952,7 @@ export default class ConversationVM extends ProviderListener {
                 this.notifyListener()
             }
         }
-        WKSDK.shared().channelManager.addListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this.channelInfoListener)
 
         WKApp.endpointManager.setMethod(EndpointID.clearChannelMessages, (channel: Channel) => {
             if (channel.isEqual(this.channel)) {
@@ -965,12 +977,12 @@ export default class ConversationVM extends ProviderListener {
         if (this.supportsFolding) {
 
             // 加载频道信息
-            this.channelInfo = WKSDK.shared().channelManager.getChannelInfo(this.channel)
+            this.channelInfo = getImChannelInfo(WKSDK.shared(), this.channel)
             if (this.channelInfo) {
                 this.loadChannelInfoFinished()
             } else {
-                WKSDK.shared().channelManager.fetchChannelInfo(this.channel).then(() => {
-                    this.channelInfo = WKSDK.shared().channelManager.getChannelInfo(this.channel)
+                fetchImChannelInfo(WKSDK.shared(), this.channel).then((channelInfo) => {
+                    this.channelInfo = channelInfo
                     this.loadChannelInfoFinished()
                 }).catch((err) => {
                     console.error('[ConversationVM] fetchChannelInfo failed:', err)
@@ -1090,8 +1102,10 @@ export default class ConversationVM extends ProviderListener {
         TypingManager.shared.removeTypingListener(this.typingListener)
         removeImConnectStatusListener(WKSDK.shared(), this.connectStatusListener)
         WKSDK.shared().conversationManager.removeConversationListener(this.conversationListener)
-        WKSDK.shared().channelManager.removeSubscriberChangeListener(this.subscriberChangeListener)
-        WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
+        this.unsubscribeSubscriberChangeListener?.()
+        this.unsubscribeSubscriberChangeListener = undefined
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
         if (this.foldSessionActiveTimer) {
             clearTimeout(this.foldSessionActiveTimer)
             this.foldSessionActiveTimer = null
@@ -1110,7 +1124,7 @@ export default class ConversationVM extends ProviderListener {
             const parentGroupNo = this.channelInfo?.orgData?.parentGroupNo
             if (parentGroupNo) {
                 const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup)
-                const parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(parentChannel)
+                const parentChannelInfo = getImChannelInfo(WKSDK.shared(), parentChannel)
                 const isSuperGroup = parentChannelInfo?.orgData?.group_type == SuperGroup
                 if (isSuperGroup) {
                     // 超级群：只取第一页
@@ -1121,25 +1135,27 @@ export default class ConversationVM extends ProviderListener {
                     this._resolveSubscribersReady()
                 } else {
                     // 普通群：从缓存拿，没有则同步
-                    const cached = WKSDK.shared().channelManager.getSubscribes(parentChannel)
+                    const cached = getImChannelSubscribers(WKSDK.shared(), parentChannel)
                     if (cached && cached.length > 0) {
                         this.subscribers = cached
                         this._resolveSubscribersReady()
                     } else {
-                        await WKSDK.shared().channelManager.syncSubscribes(parentChannel)
-                        this.subscribers = WKSDK.shared().channelManager.getSubscribes(parentChannel) || []
+                        await syncImChannelSubscribers(WKSDK.shared(), parentChannel)
+                        this.subscribers = getImChannelSubscribers(WKSDK.shared(), parentChannel)
                         this._resolveSubscribersReady()
                         // 注册前先移除旧监听器，避免多次调用时重复注册
-                        if (this.subscriberChangeListener) {
-                            WKSDK.shared().channelManager.removeSubscriberChangeListener(this.subscriberChangeListener)
-                        }
+                        this.unsubscribeSubscriberChangeListener?.()
+                        this.unsubscribeSubscriberChangeListener = undefined
                         this.subscriberChangeListener = (channel: Channel) => {
                             if (channel.channelID !== parentGroupNo) return
-                            this.subscribers = WKSDK.shared().channelManager.getSubscribes(parentChannel) || []
+                            this.subscribers = getImChannelSubscribers(WKSDK.shared(), parentChannel)
                             this._resolveSubscribersReady()
                             this.notifyListener()
                         }
-                        WKSDK.shared().channelManager.addSubscriberChangeListener(this.subscriberChangeListener)
+                        this.unsubscribeSubscriberChangeListener = addImSubscriberChangeListener(
+                            WKSDK.shared(),
+                            this.subscriberChangeListener
+                        )
                     }
                 }
                 this.notifyListener()
@@ -1157,17 +1173,21 @@ export default class ConversationVM extends ProviderListener {
             this.reloadSubscribers()
             this._resolveSubscribersReady()
         }
-        WKSDK.shared().channelManager.addSubscriberChangeListener(this.subscriberChangeListener)
+        this.unsubscribeSubscriberChangeListener?.()
+        this.unsubscribeSubscriberChangeListener = addImSubscriberChangeListener(
+            WKSDK.shared(),
+            this.subscriberChangeListener
+        )
 
         if (this.channelInfo?.orgData?.group_type == SuperGroup) {
             // 如果是超级群则只获取第一页成员
             this.subscribers = await this.getFirstPageMembers()
             this._resolveSubscribersReady()
-            WKSDK.shared().channelManager.subscribeCacheMap.set(this.channel.getChannelKey(), this.subscribers)
-            WKSDK.shared().channelManager.notifySubscribeChangeListeners(this.channel)
+            setImChannelSubscribersCache(WKSDK.shared(), this.channel, this.subscribers)
+            notifyImSubscriberChangeListeners(WKSDK.shared(), this.channel)
             this.notifyListener()
         } else {
-            WKSDK.shared().channelManager.syncSubscribes(this.channel)
+            syncImChannelSubscribers(WKSDK.shared(), this.channel)
         }
 
     }
@@ -1274,7 +1294,7 @@ export default class ConversationVM extends ProviderListener {
 
     // 重新加载订阅者
     reloadSubscribers() {
-        this.subscribers = WKSDK.shared().channelManager.getSubscribes(this.channel)
+        this.subscribers = getImChannelSubscribers(WKSDK.shared(), this.channel)
         if (this.subscribers.length > 0) {
             this._resolveSubscribersReady()
         }
@@ -1308,7 +1328,7 @@ export default class ConversationVM extends ProviderListener {
                     return
                 }
                 const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup)
-                const parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(parentChannel)
+                const parentChannelInfo = getImChannelInfo(WKSDK.shared(), parentChannel)
                 const isSuperGroup = parentChannelInfo?.orgData?.group_type == SuperGroup
                 if (isSuperGroup) {
                     // 超级群父群：只拉第一页（与进频道时一致）
@@ -1318,8 +1338,8 @@ export default class ConversationVM extends ProviderListener {
                     })
                 } else {
                     // 普通父群：全量同步后取缓存
-                    await WKSDK.shared().channelManager.syncSubscribes(parentChannel)
-                    this.subscribers = WKSDK.shared().channelManager.getSubscribes(parentChannel) || []
+                    await syncImChannelSubscribers(WKSDK.shared(), parentChannel)
+                    this.subscribers = getImChannelSubscribers(WKSDK.shared(), parentChannel)
                 }
                 this._resolveSubscribersReady()
                 this.notifyListener()
@@ -1332,12 +1352,12 @@ export default class ConversationVM extends ProviderListener {
                 // 超级群只拉第一页（与进频道时一致）
                 this.subscribers = await this.getFirstPageMembers()
                 this._resolveSubscribersReady()
-                WKSDK.shared().channelManager.subscribeCacheMap.set(this.channel.getChannelKey(), this.subscribers)
-                WKSDK.shared().channelManager.notifySubscribeChangeListeners(this.channel)
+                setImChannelSubscribersCache(WKSDK.shared(), this.channel, this.subscribers)
+                notifyImSubscriberChangeListeners(WKSDK.shared(), this.channel)
                 this.notifyListener()
             } else {
                 // 普通群走服务端全量同步，完成后 subscriberChangeListener 回调刷新
-                await WKSDK.shared().channelManager.syncSubscribes(this.channel)
+                await syncImChannelSubscribers(WKSDK.shared(), this.channel)
                 this.reloadSubscribers()
             }
         } catch (e) {
@@ -2344,7 +2364,7 @@ export default class ConversationVM extends ProviderListener {
             mentionHumans: !!(mentionAny && mentionAny.humans),
             mentionAis: !!(mentionAny && mentionAny.ais),
         })
-        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
+        const channelInfo = getImChannelInfo(WKSDK.shared(), channel)
         let setting = new Setting()
         if (channelInfo?.orgData.receipt === 1) {
             setting.receiptEnabled = true

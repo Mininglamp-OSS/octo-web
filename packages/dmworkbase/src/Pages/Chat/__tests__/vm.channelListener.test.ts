@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest"
 const hoisted = vi.hoisted(() => ({
     channelListener: undefined as undefined | ((channelInfo: any) => void),
     spaceChangedHandler: undefined as undefined | ((space: any) => void),
+    removeChannelListener: vi.fn(),
     popToRoot: vi.fn(),
 }))
 
@@ -29,7 +30,7 @@ vi.mock("wukongimjssdk", () => ({
                 addListener: (listener: (channelInfo: any) => void) => {
                     hoisted.channelListener = listener
                 },
-                removeListener: () => {},
+                removeListener: hoisted.removeChannelListener,
             },
         }),
     },
@@ -221,6 +222,17 @@ describe("ChatVM.channelListener — CommunityTopic 子区同步 (issue #345)", 
         // status 变化（1 → 2 归档）：再次 notify
         hoisted.channelListener!({ channel, orgData: { thread: { status: 2 } } })
         expect(notifySpy).toHaveBeenCalledTimes(2)
+    })
+
+    it("卸载时反注册 channelInfo listener", () => {
+        const vm = mountVM()
+        expect(hoisted.channelListener).toBeTypeOf("function")
+        hoisted.removeChannelListener.mockClear()
+
+        vm.didUnMount()
+
+        expect(hoisted.removeChannelListener).toHaveBeenCalledTimes(1)
+        expect(hoisted.removeChannelListener).toHaveBeenCalledWith(hoisted.channelListener)
     })
 })
 

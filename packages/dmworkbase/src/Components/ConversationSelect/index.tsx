@@ -12,6 +12,7 @@ import WKSDK, { Channel, ChannelTypePerson } from "wukongimjssdk"
 import { ForwardModal } from "../ForwardModal/ForwardModal"
 import { useForwardModal } from "../ForwardModal/useForwardModal"
 import type { ForwardFinished, ForwardGrantConfig, ForwardGrantRole } from "../ForwardModal/grant"
+import { getImChannelSubscribers, syncImChannelSubscribers } from "../../im-runtime/channelRuntime"
 
 export interface ConversationSelectGrant {
   canGrant: boolean
@@ -79,16 +80,12 @@ export default function ConversationSelect({
       }
       for (const ch of groups) {
         try {
-          await Promise.resolve(WKSDK.shared().channelManager.syncSubscribes(ch))
+          await syncImChannelSubscribers(WKSDK.shared(), ch)
         } catch {
           // best-effort：拉取失败时退回已缓存的成员快照。
         }
         if (cancelled) return
-        const subs =
-          (WKSDK.shared().channelManager.getSubscribes(ch) as
-            | { uid?: string }[]
-            | null
-            | undefined) ?? []
+        const subs = getImChannelSubscribers(WKSDK.shared(), ch) as { uid?: string }[]
         for (const s of subs) {
           if (s?.uid) uids.add(s.uid)
         }

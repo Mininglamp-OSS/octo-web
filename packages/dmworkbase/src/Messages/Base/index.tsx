@@ -45,6 +45,13 @@ import { isMessageContinuation } from "../../Service/messageContinuity";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { I18nContext } from "../../i18n";
 import { formatMessageTimestamp } from "../../Utils/time";
+import {
+  addImChannelInfoListener,
+  addImSubscriberChangeListener,
+  fetchImChannelInfo,
+  getImChannelInfo,
+  getImChannelSubscribers,
+} from "../../im-runtime/channelRuntime";
 
 interface MessageBaseProps extends HTMLProps<any> {
   message: MessageWrap;
@@ -64,6 +71,8 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
   channelInfoListener!: ChannelInfoListener;
   subscriberChangeListener!: (channel: Channel) => void;
   conversationProvider: IConversationProvider;
+  private unsubscribeChannelInfoListener?: () => void;
+  private unsubscribeSubscriberChangeListener?: () => void;
 
   constructor(props: any) {
     super(props);
@@ -87,11 +96,9 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
       msgChannel.channelType === ChannelTypePerson &&
       !(msgFromUID && msgChannel.channelID === msgFromUID)
     ) {
-      const convCached = WKSDK.shared().channelManager.getChannelInfo(
-        msgChannel
-      );
+      const convCached = getImChannelInfo(WKSDK.shared(), msgChannel);
       if (!convCached) {
-        WKSDK.shared().channelManager.fetchChannelInfo(msgChannel);
+        void fetchImChannelInfo(WKSDK.shared(), msgChannel);
       }
     }
 
@@ -116,7 +123,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
         self.setState({});
       }
     };
-    WKSDK.shared().channelManager.addListener(this.channelInfoListener);
+    this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this.channelInfoListener);
 
     // 群成员到达 / 更新时触发重渲染：群消息发送者名字优先从群成员列表取，
     // 成员列表是异步同步的，消息可能先于成员列表到达，需要通知一次。
@@ -126,16 +133,17 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
         self.setState({});
       }
     };
-    WKSDK.shared().channelManager.addSubscriberChangeListener(
+    this.unsubscribeSubscriberChangeListener = addImSubscriberChangeListener(
+      WKSDK.shared(),
       this.subscriberChangeListener
     );
   }
 
   componentWillUnmount() {
-    WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
-    WKSDK.shared().channelManager.removeSubscriberChangeListener(
-      this.subscriberChangeListener
-    );
+    this.unsubscribeChannelInfoListener?.();
+    this.unsubscribeChannelInfoListener = undefined;
+    this.unsubscribeSubscriberChangeListener?.();
+    this.unsubscribeSubscriberChangeListener = undefined;
   }
 
   forceStandalone() {
@@ -265,7 +273,8 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
   isAiMessage() {
     const { message } = this.props;
     if (message.send) return false;
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+    const channelInfo = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(message.fromUID, ChannelTypePerson)
     );
     return channelInfo?.orgData?.robot === 1;
@@ -301,7 +310,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
         if (context) {
           const ch = context.channel();
           if (ch && ch.channelType === ChannelTypePerson) {
-            const chInfo = WKSDK.shared().channelManager.getChannelInfo(ch);
+            const chInfo = getImChannelInfo(WKSDK.shared(), ch);
             if (chInfo?.orgData?.robot === 1) {
               return this.context.t("base.messageBase.error.addBotFriendFirst");
             }
@@ -317,7 +326,8 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
   render() {
     const { message, context, hiddeBubble, bubbleStyle } = this.props;
     const hasContinue = this.isContinue();
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+    const channelInfo = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(message.fromUID, ChannelTypePerson)
     );
     const avatarChannel =
@@ -332,10 +342,8 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     let groupMember: any = undefined;
     if (message.channel.channelType === ChannelTypeGroup && message.fromUID) {
       try {
-        const subs = WKSDK.shared().channelManager.getSubscribes(
-          message.channel
-        ) as any[] | null | undefined;
-        const member = subs?.find((s) => s && s.uid === message.fromUID);
+        const subs = getImChannelSubscribers(WKSDK.shared(), message.channel) as any[];
+        const member = subs.find((s) => s && s.uid === message.fromUID);
         groupMemberName = subscriberDisplayName(member);
         groupMember = member;
       } catch {
@@ -379,7 +387,8 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
         channelInfo?.title ||
         "";
     if (!channelInfo && !webhookFrom && message.fromUID && message.fromUID !== "") {
-      WKSDK.shared().channelManager.fetchChannelInfo(
+      void fetchImChannelInfo(
+        WKSDK.shared(),
         new Channel(message.fromUID, ChannelTypePerson)
       );
     }
@@ -436,7 +445,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     // isBotSender → groupMember orgData → channelInfo orgData → self-fallback。
     // 判定维度对齐 `src/bridge/message/useMessageRow.ts`，任何规则改动请同步两处。
     const conversationChannelInfo = message.channel
-      ? WKSDK.shared().channelManager.getChannelInfo(message.channel)
+      ? getImChannelInfo(WKSDK.shared(), message.channel)
       : undefined;
     const isOwnMessage = message.fromUID === WKApp.loginInfo.uid;
     // Legacy dir 例外：和 bridge 路径 useMessageRow.ts 对齐。
