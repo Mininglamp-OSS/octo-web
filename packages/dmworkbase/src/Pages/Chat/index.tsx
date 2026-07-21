@@ -1480,7 +1480,8 @@ export class ChatContentPage extends Component<
         {showSummaryPanel && (
           <div className="wk-summary-panel">
             {WKApp.endpoints.chatSummaryPanel(channel, () =>
-              this.setState({ showSummaryPanel: false })
+              this.setState({ showSummaryPanel: false }),
+              summaryPanelView
             )}
           </div>
         )}

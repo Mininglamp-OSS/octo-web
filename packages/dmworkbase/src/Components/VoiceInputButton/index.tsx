@@ -17,6 +17,8 @@ const VOICE_MODES: { value: VoiceMode; labelKey: string }[] = [
 ];
 
 const FLOATING_GAP = 12;
+const FLOATING_WIDTH = 184;
+const FLOATING_HORIZONTAL_MARGIN = 8;
 const INDICATOR_HEIGHT = 48;
 const PREPARING_DELAY_MS = 300;
 const RECORDING_DELAY_MS = 500;
@@ -94,9 +96,15 @@ export default function VoiceInputButton({
   const updateFloatingPosition = useCallback(() => {
     if (!buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
+    const preferredLeft = rect.left + rect.width / 2 - FLOATING_WIDTH / 2;
+    const maxLeft = window.innerWidth - FLOATING_WIDTH - FLOATING_HORIZONTAL_MARGIN;
+    const left = Math.max(
+      FLOATING_HORIZONTAL_MARGIN,
+      Math.min(preferredLeft, maxLeft),
+    );
     setFloatingPosition({
       top: rect.top - FLOATING_GAP - INDICATOR_HEIGHT,
-      left: rect.left + rect.width / 2,
+      left,
     });
   }, []);
 
@@ -352,7 +360,7 @@ export default function VoiceInputButton({
         style={{
           top: floatingPosition.top,
           left: floatingPosition.left,
-          transform: "translateX(-50%)",
+          transform: "none",
         }}
       >
         <div className="wk-voice-floating-content">

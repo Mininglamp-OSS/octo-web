@@ -2,6 +2,7 @@ import React, { Component } from 'react';
 import axios from 'axios';
 import { Toast } from '@douyinfe/semi-ui';
 import { I18nContext } from '@octo/base';
+import { X } from 'lucide-react';
 import * as summaryApi from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
 import { TaskStatus } from '../types/summary';
@@ -9,6 +10,7 @@ import SummaryCard from './SummaryCard';
 
 interface ChatSummaryHistoryProps {
     channel: { channelID: string; channelType: number };
+    onClose: () => void;
     onCreateNew: () => void;
     onViewDetail: (taskId: number) => void;
     paused?: boolean;
@@ -162,14 +164,30 @@ export default class ChatSummaryHistory extends Component<
     };
 
     render() {
-        const { onCreateNew, onViewDetail } = this.props;
+        const { onClose, onCreateNew, onViewDetail } = this.props;
         const { items, loading } = this.state;
         const { t } = this.context;
 
         return (
-            <div className="chat-summary-history" style={{ padding: '16px', height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: 'var(--wk-text-primary, #1C1F23)' }}>
-                    {t('summary.chatSummary.panelTitle')}
+            <div className="chat-summary-history" style={{ padding: '8px 12px 16px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--wk-text-primary, #1C1F23)' }}>
+                        {t('summary.chatSummary.panelTitle')}
+                    </span>
+                    <button
+                        onClick={onClose}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: 4,
+                            color: 'var(--wk-text-secondary, #646A73)',
+                            display: 'flex',
+                            alignItems: 'center',
+                        }}
+                    >
+                        <X size={18} />
+                    </button>
                 </div>
 
                 <div
@@ -198,15 +216,20 @@ export default class ChatSummaryHistory extends Component<
                 </div>
 
                 {loading ? (
-                    <div style={{ textAlign: 'center', color: 'var(--wk-text-tertiary, #8F959E)', paddingTop: 40 }}>
+                    <div className="chat-summary-history-empty chat-summary-history-empty--loading">
                         {t('summary.common.loading')}
                     </div>
                 ) : items.length === 0 ? (
-                    <div style={{ textAlign: 'center', color: 'var(--wk-text-tertiary, #8F959E)', paddingTop: 40 }}>
-                        {t('summary.list.emptyTitle')}
+                    <div className="chat-summary-history-empty">
+                        <div className="chat-summary-history-empty-title">
+                            {t('summary.list.emptyTitle')}
+                        </div>
+                        <div className="chat-summary-history-empty-description">
+                            {t('summary.chatSummary.emptyDescription')}
+                        </div>
                     </div>
                 ) : (
-                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                    <div className="chat-summary-history-list">
                         {items.map((item) => (
                             <SummaryCard
                                 key={item.task_id}

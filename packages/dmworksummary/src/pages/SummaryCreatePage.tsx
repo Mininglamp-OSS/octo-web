@@ -39,6 +39,7 @@ import type {
     CreateAgentSummaryParams,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
+import { Channel, WKSDK } from "wukongimjssdk";
 import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced } from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
 
@@ -53,6 +54,14 @@ interface SummaryCreatePageProps {
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1。
      */
     derivedFromTask?: SummaryListItem;
+    /** 当前聊天会话（面板模式）。传入后自动预选该会话。 */
+    channel?: { channelID: string; channelType: number };
+    /** 面板内嵌模式：不使用 routeRight 导航，改用回调。 */
+    embedded?: boolean;
+    /** 面板模式关闭回调。 */
+    onClose?: () => void;
+    /** 面板模式创建成功回调（替代 routeRight.push 详情页）。 */
+    onSubmit?: (taskId: number) => void;
 }
 
 interface SummaryCreatePageState {
@@ -116,7 +125,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         mode: 'normal',
         templates: TOPIC_TEMPLATES,
         templatePlaceholderRange: null,
-        selectedChats: [],
+        selectedChats: (() => {
+            const ch = this.props.channel;
+            if (!ch) return [];
+            const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(ch.channelID, ch.channelType));
+            const chat_type = ch.channelID.includes("____") ? "thread" as const
+                            : ch.channelType === 2 ? "group" as const
+                            : "direct" as const;
+            return [{
+                chat_id: ch.channelID,
+                chat_type,
+                name: channelInfo?.title || ch.channelID,
+            }];
+        })(),
         selectedMembers: [],
         scheduleConfig: null,
         showChatSelector: false,
@@ -145,7 +166,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     // 完整创建页无频道上下文：session_id 落到统一兜底 key（见 summaryHelpers）。
     // 单独抽成方法便于与 ChatSummaryNewModal（按 channelID 隔离）保持对称。
     private agentChannelId(): string | undefined {
-        return undefined;
+        return this.props.channel?.channelID;
     }
 
     // 拉历史的竞态守卫：每次新的 hydrate 自增，异步返回时比对，丢弃过期请求。
@@ -432,6 +453,21 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 summary_mode: SummaryMode.BY_PERSON,
             };
 
+            // 面板模式下传入 origin_channel_id，后端据此关联来源聊天
+            if (this.props.channel) {
+                const ch = this.props.channel;
+                params.origin_channel_id = ch.channelID;
+                // 后端要求 origin_channel_type: 1=私聊, 2=群聊, 3=子区
+                // wukongim 中子区的 channelType 也是 2，但 channelID 带 "____" 前缀
+                if (ch.channelID.includes("____")) {
+                    params.origin_channel_type = 3;
+                } else if (ch.channelType === 1) {
+                    params.origin_channel_type = 1;
+                } else {
+                    params.origin_channel_type = 2;
+                }
+            }
+
             if (selectedChats.length > 0) {
                 // 不传 source_name：让后端按 source_id 现查 IM 库最新群名（带类型后缀）。
                 // 避免把创建那一刻的群名冻结进定时配置，从而群改名后定时仍显示旧名。
@@ -483,8 +519,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             Toast.success(t("summary.create.success"));
-            WKApp.routeRight.popToRoot();
-            WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+
+            // 派发创建事件，通知 ChatSummaryStarButton 刷新计数
+            const channelId = this.props.channel?.channelID ?? '';
+            window.dispatchEvent(new CustomEvent('chat-summary-created', {
+                detail: { taskId: result.task_id, channelId },
+            }));
+
+            if (this.props.embedded && this.props.onSubmit) {
+                this.props.onSubmit(result.task_id);
+            } else {
+                WKApp.routeRight.popToRoot();
+                WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+            }
             this.props.onCreated?.();
         } catch (err: any) {
             this.setState({ error: err.message || t("summary.common.createFailed") });
@@ -769,8 +816,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             window.dispatchEvent(event);
             
             // 跳转到详情页
-            WKApp.routeRight.popToRoot();
-            WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+            if (this.props.embedded && this.props.onSubmit) {
+                this.props.onSubmit(result.task_id);
+            } else {
+                WKApp.routeRight.popToRoot();
+                WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+            }
             this.props.onCreated?.();
             return true;
         } catch (err: unknown) {
@@ -825,7 +876,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         const templateEditorVisible = creatingCustomTemplate || !!editingTemplate;
 
         return (
-            <div className="summary-workbench">
+            <div className={`summary-workbench${this.props.embedded ? " summary-workbench--panel" : ""}`}>
                 {/* Header */}
                 <div className="summary-workbench-header">
                     <div className="summary-workbench-icon">
@@ -1080,7 +1131,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 </Button>
                                 </>
                             )}
-                            <span style={{ marginLeft: 8, fontSize: 12, color: "var(--semi-color-text-2)" }}>
+                            <span className="summary-workbench-archived-notice" style={{ marginLeft: 8, fontSize: 12, color: "var(--semi-color-text-2)" }}>
                                 {translate("summary.create.archivedNotice")}
                             </span>
                         </div>
@@ -1128,25 +1179,25 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             </Dropdown>
                         </SplitButtonGroup>
                     </div>
-                </div>
 
-                {/* Selected chats summary */}
-                {selectedChats.length > 0 && (
-                    <div className="summary-workbench-selected-chats">
-                        {selectedChats.map((c) => (
-                            <Tag
-                                key={c.chat_id}
-                                closable
-                                onClose={() => this.setState({
-                                    selectedChats: selectedChats.filter((x) => x.chat_id !== c.chat_id)
-                                })}
-                                style={{ marginRight: 6, marginBottom: 4 }}
-                            >
-                                {c.name}
-                            </Tag>
-                        ))}
-                    </div>
-                )}
+                    {/* Selected chats stay inside the same workbench card as the selector. */}
+                    {selectedChats.length > 0 && (
+                        <div className="summary-workbench-selected-chats">
+                            {selectedChats.map((c) => (
+                                <Tag
+                                    key={c.chat_id}
+                                    closable
+                                    onClose={() => this.setState({
+                                        selectedChats: selectedChats.filter((x) => x.chat_id !== c.chat_id)
+                                    })}
+                                    style={{ marginRight: 6, marginBottom: 4 }}
+                                >
+                                    {c.name}
+                                </Tag>
+                            ))}
+                        </div>
+                    )}
+                </div>
 
                 {/* Selected members summary */}
                 {selectedMembers.length > 0 && (

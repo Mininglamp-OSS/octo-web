@@ -203,6 +203,7 @@
     "chatSummary": {
         "panelTitle": "聊天内的智能总结",
         "createNew": "新建总结",
+        "emptyDescription": "创建一个总结，开始整理当前聊天内容。",
         "back": "返回",
         "starTooltip": "智能总结"
     },
