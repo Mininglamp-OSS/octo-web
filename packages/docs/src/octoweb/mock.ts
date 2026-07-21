@@ -220,6 +220,17 @@ export function createMockWKApp(
       const start = Math.max(0, (page - 1) * limit)
       return Promise.resolve(spaceMembers.slice(start, start + limit))
     },
+    // Server-side keyword search double: filter the whole fake roster by name/uid (case-
+    // insensitive substring), capped at `limit`. Mirrors the backend list endpoint's keyword
+    // path so search finds a member regardless of the getSpaceMembers page cap.
+    searchSpaceMembers(_spaceId: string, keyword: string, limit: number) {
+      const q = keyword.trim().toLowerCase()
+      if (!q) return Promise.resolve([] as SpaceMemberLite[])
+      const hits = spaceMembers.filter(
+        (m) => m.name.toLowerCase().includes(q) || m.uid.toLowerCase().includes(q),
+      )
+      return Promise.resolve(hits.slice(0, limit))
+    },
     shared: {
       // Selected Space id. '' by default (host default); tests set it before/after a
       // mockMittBus.emitSpaceChanged() to simulate switching Space.

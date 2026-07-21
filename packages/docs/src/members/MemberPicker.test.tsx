@@ -30,14 +30,32 @@ describe('MemberPicker (Problem 1)', () => {
     expect(screen.getByText('docs.member.aiTag')).toBeTruthy()
   })
 
-  it('filters locally by name as you type', async () => {
+  it('searches members server-side as you type (debounced), narrowing the list to matches', async () => {
     render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
     await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
     fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
       target: { value: 'ada' },
     })
-    expect(screen.queryByText('Grace Hopper')).toBeNull()
+    // Search is server-side and debounced, so wait for the roster to reflect the query.
+    await waitFor(() => expect(screen.queryByText('Grace Hopper')).toBeNull())
     expect(screen.getByText('Ada Lovelace')).toBeTruthy()
+  })
+
+  it('finds a member via server search even when absent from the browse page (past-the-cap fix)', async () => {
+    // Browse view returns only Grace; u_zoe is NOT in it, mirroring a member past the old 1000
+    // client-fetch cap. Server search, however, can still surface her — the whole point of the fix.
+    wk.getSpaceMembers = () => Promise.resolve([{ uid: 'u_grace', name: 'Grace Hopper' }])
+    wk.searchSpaceMembers = (_s: string, kw: string) =>
+      Promise.resolve(kw.toLowerCase().includes('zoe') ? [{ uid: 'u_zoe', name: 'Zoe Capped' }] : [])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
+    // Zoe is invisible in the browse roster (she'd be past the cap)...
+    expect(screen.queryByText('Zoe Capped')).toBeNull()
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'zoe' },
+    })
+    // ...but the server-side keyword search finds her.
+    await waitFor(() => expect(screen.getByText('Zoe Capped')).toBeTruthy())
   })
 
   it('marks an already-added member disabled and non-selectable', async () => {

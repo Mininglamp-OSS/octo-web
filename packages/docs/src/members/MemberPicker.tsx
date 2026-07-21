@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
-import { fetchAllSpaceMembers, fetchMyBots, t, type SpaceMemberLite } from '../octoweb/index.ts'
+import {
+  fetchSpaceRoster,
+  fetchMyBots,
+  searchSpaceMembers,
+  t,
+  type SpaceMemberLite,
+} from '../octoweb/index.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { sortPickerMembers } from './sort.ts'
 
 const DEFAULT_ROLES: Role[] = ['reader', 'writer', 'admin']
+
+/** Debounce (ms) for search-as-you-type so a large space gets one backend search per pause. */
+const SEARCH_DEBOUNCE_MS = 250
 
 /** First glyph of a name for the fallback avatar (uppercased; '?' when empty). */
 function initial(name: string): string {
@@ -13,31 +22,17 @@ function initial(name: string): string {
 }
 
 /**
- * Candidate roster = space members (fetchAllSpaceMembers) ∪ the caller's friend-added agents
- * (fetchMyBots), de-duplicated by uid (octo-web #839). The space-member entry wins on a uid
- * collision because it carries the richer host data (avatar / robot flag); a friend agent not
- * already in the space roster is appended, flagged isBot. `my_bots` is a pure friend-dimension
- * query, so this never surfaces a non-friend agent owned by others — the picker still cannot
- * offer, and the admin cannot authorize, an agent the user has not befriended and did not create.
+ * Searchable, MULTI-SELECT space-member picker (#A2). Shows the space roster (avatar + name +
+ * human/AI badge), lets the admin tick several members and add them with one role, and pins
+ * already-added members at the top (#A3) shown disabled.
  *
- * A my_bots failure resolves to [] so it can never break the human-member roster path.
- */
-async function fetchCandidateRoster(space: string): Promise<SpaceMemberLite[]> {
-  const [members, myBots] = await Promise.all([
-    fetchAllSpaceMembers(space),
-    space ? fetchMyBots(space).catch(() => [] as SpaceMemberLite[]) : Promise.resolve([]),
-  ])
-  const byUid = new Map<string, SpaceMemberLite>()
-  for (const m of members) byUid.set(m.uid, m)
-  for (const b of myBots) if (!byUid.has(b.uid)) byUid.set(b.uid, b)
-  return [...byUid.values()]
-}
-
-/**
- * Searchable, MULTI-SELECT space-member picker (#A2). Lists the real space members (via
- * fetchAllSpaceMembers through the octoweb seam) with avatar + name + a human/AI badge, filters
- * locally by name/uid, pins already-added members at the top (#A3) shown disabled, and lets the
- * admin tick several members then add them all with one role in a single action.
+ * Search is SERVER-SIDE (debounced): typing a keyword calls searchSpaceMembers so a match is
+ * found regardless of roster size — the old client-side filter over a 1000-capped local fetch
+ * meant everyone past the cap (5760-member space observed) was unsearchable. The empty-query
+ * browse view also pulls server-side via fetchSpaceRoster (full roster, no 1000 cap), matching
+ * the top global search's model. The caller's friend-added agents (fetchMyBots, #839) are
+ * unioned in and filtered client-side by the same keyword; a my_bots failure resolves to [] so
+ * it never breaks the human-member path.
  */
 export function MemberPicker({
   space,
@@ -64,9 +59,13 @@ export function MemberPicker({
 }) {
   // An empty roles={[]} would yield an undefined role + empty dropdown; fall back to defaults.
   const effectiveRoles = roles.length > 0 ? roles : DEFAULT_ROLES
-  const [members, setMembers] = useState<SpaceMemberLite[]>([])
+  // Human space members for the current view: the browse roster (empty query) or the server-side
+  // search hits (non-empty query). Friend agents are tracked separately and merged in `filtered`.
+  const [spaceMembers, setSpaceMembers] = useState<SpaceMemberLite[]>([])
+  const [bots, setBots] = useState<SpaceMemberLite[]>([])
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   // Default to 'writer' when offered (keeps rich-doc's prior initial), else the sole/first role
   // so a single-role dropdown ('reader' for HTML) is selected without an empty state.
@@ -74,12 +73,47 @@ export function MemberPicker({
     effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0],
   )
 
+  // Debounce the raw query so search-as-you-type issues at most one backend search per pause,
+  // not one request per keystroke against a multi-thousand-member roster.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(id)
+  }, [query])
+
+  // Friend-added agents (my_bots) are a small, caller-scoped dimension: fetch once per space and
+  // filter locally. A failure resolves to [] so it never breaks the human-member path (#839).
+  useEffect(() => {
+    let active = true
+    if (!space) {
+      setBots([])
+      return () => {
+        active = false
+      }
+    }
+    void fetchMyBots(space)
+      .catch(() => [] as SpaceMemberLite[])
+      .then((list) => {
+        if (active) setBots(list)
+      })
+    return () => {
+      active = false
+    }
+  }, [space])
+
+  // Space members: with a keyword, search server-side (finds matches past the browse cap); empty
+  // query shows the first roster page(s) as a browse view (carries avatars).
   useEffect(() => {
     let active = true
     setLoading(true)
-    void fetchCandidateRoster(space ?? '')
+    const load = debouncedQuery
+      ? searchSpaceMembers(space ?? '', debouncedQuery)
+      : fetchSpaceRoster(space ?? '')
+    void load
       .then((list) => {
-        if (active) setMembers(list)
+        if (active) setSpaceMembers(list)
+      })
+      .catch(() => {
+        if (active) setSpaceMembers([])
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -87,20 +121,25 @@ export function MemberPicker({
     return () => {
       active = false
     }
-  }, [space])
+  }, [space, debouncedQuery])
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    // Drop hidden uids (self / owner) from the roster entirely before filtering/sorting.
-    const roster = hideUids?.size ? members.filter((m) => !hideUids.has(m.uid)) : members
-    const base = q
-      ? roster.filter(
-          (m) => m.name.toLowerCase().includes(q) || m.uid.toLowerCase().includes(q),
-        )
-      : roster
+    const q = debouncedQuery.toLowerCase()
+    // Friend agents are filtered client-side by the same keyword (space members already come
+    // back server-filtered when a query is set, or as the browse page when it isn't).
+    const botMatches = q
+      ? bots.filter((b) => b.name.toLowerCase().includes(q) || b.uid.toLowerCase().includes(q))
+      : bots
+    // Space-member entry wins on a uid collision (richer host data); friend agent appended (#839).
+    const byUid = new Map<string, SpaceMemberLite>()
+    for (const m of spaceMembers) byUid.set(m.uid, m)
+    for (const b of botMatches) if (!byUid.has(b.uid)) byUid.set(b.uid, b)
+    let roster = [...byUid.values()]
+    // Drop hidden uids (self / owner) entirely before sorting.
+    if (hideUids?.size) roster = roster.filter((m) => !hideUids.has(m.uid))
     // Already-added members pinned at the top (#A3).
-    return sortPickerMembers(base, existingUids)
-  }, [members, query, existingUids, hideUids])
+    return sortPickerMembers(roster, existingUids)
+  }, [spaceMembers, bots, debouncedQuery, existingUids, hideUids])
 
   // Drop selections that have been added elsewhere (e.g. after a successful add + refresh).
   useEffect(() => {

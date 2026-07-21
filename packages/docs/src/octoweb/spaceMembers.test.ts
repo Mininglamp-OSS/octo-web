@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { setWKApp, getSpaceMembers, fetchAllSpaceMembers, fetchSpaceBotNames, fetchMyBots } from './index.ts'
+import { setWKApp, getSpaceMembers, fetchAllSpaceMembers, fetchSpaceRoster, fetchSpaceBotNames, fetchMyBots } from './index.ts'
 import { createMockWKApp } from './mock.ts'
 
 // Seam spike acceptance (#7): prove the docs package can reach the host's space-member source
@@ -44,6 +44,19 @@ describe('octoweb space-member seam', () => {
 
   it('returns an empty list for a blank space id without touching the host', async () => {
     expect(await fetchAllSpaceMembers('')).toEqual([])
+  })
+
+  it('fetchSpaceRoster pulls the FULL roster past the old 1000-member browse cap', async () => {
+    // 1100 members: the default fetchAllSpaceMembers caps at 20×50=1000, but the browse roster
+    // must return everyone so the picker's default list is not silently truncated (5760-space bug).
+    for (let i = 0; i < 1100; i++) {
+      wk.spaceMembers.push({ uid: `u_${i}`, name: `User ${i}` })
+    }
+    const capped = await fetchAllSpaceMembers('s_1')
+    expect(capped).toHaveLength(1000) // old behavior: still capped
+    const full = await fetchSpaceRoster('s_1')
+    expect(full).toHaveLength(1100) // browse: uncapped
+    expect(full[1099]).toEqual({ uid: 'u_1099', name: 'User 1099' })
   })
 
   it('carries avatar + isBot through when present, omitting them otherwise', async () => {

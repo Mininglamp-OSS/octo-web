@@ -246,6 +246,18 @@ export interface WKAppShape {
    */
   getSpaceMembers?(spaceId: string, page: number, limit: number): Promise<SpaceMemberLite[]>
   /**
+   * Keyword-search the CURRENT space's members server-side (uid + display name). Optional,
+   * declared like `getSpaceMembers`: production octoweb/index.ts calls the any-member list
+   * endpoint `GET /space/{id}/members?keyword=` (NOT the admin-gated /members/search), which
+   * matches name/real_name/uid and resolves the same DisplayName fallback; the test mock
+   * filters its fake roster. Unlike the paged getSpaceMembers, this pushes the keyword to the
+   * backend so a match is found regardless of roster size (the picker's old client-side filter
+   * over a 1000-capped roster hid every member past the cap — the 5760-member-space bug).
+   * Absent → the seam emulates it by paging getSpaceMembers and filtering locally, so
+   * pre-existing mocks keep working.
+   */
+  searchSpaceMembers?(spaceId: string, keyword: string, limit: number): Promise<SpaceMemberLite[]>
+  /**
    * The host global event bus (WKApp.mittBus). Optional in the shape, declared like
    * `routeRight`: surfaced via the host static cast in production; the test mock supplies a
    * lightweight emitter. Docs subscribes to its `space-changed` event so the list reloads

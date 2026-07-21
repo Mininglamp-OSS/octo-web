@@ -109,6 +109,16 @@ const SPACE_MEMBERS_PAGE_SIZE = 50
 /** Cap total pages so an unexpectedly huge space can't loop unbounded (1000 members). */
 const SPACE_MEMBERS_MAX_PAGES = 20
 
+/**
+ * Browse-view (empty-query) roster fetch: larger page + higher page cap so the picker's default
+ * list is the FULL space roster pulled server-side (no client-side 1000 cap), matching the top
+ * global search's model. Big page keeps it to few round trips (≈12 requests for a 5760 space);
+ * the cap still bounds a pathologically huge space (up to 20000). Search (non-empty query) does
+ * not use this — it hits the backend keyword endpoint directly.
+ */
+const SPACE_MEMBERS_BROWSE_PAGE_SIZE = 500
+const SPACE_MEMBERS_BROWSE_MAX_PAGES = 40
+
 /** Minimal view of the host SpaceService the docs seam touches (uid + name + avatar/robot). */
 interface HostSpaceMember {
   uid: string
@@ -163,22 +173,84 @@ export async function getSpaceMembers(
 }
 
 /**
- * Fetch ALL members of a space, looping pages until exhausted (page size 50), mirroring the
- * host useMemberList "loop to fetch all pages" pattern. Bounded by SPACE_MEMBERS_MAX_PAGES so
- * a very large space can't loop forever. Returns `{ uid, name }` pairs.
+ * Fetch ALL members of a space, looping pages until exhausted, mirroring the host useMemberList
+ * "loop to fetch all pages" pattern. `pageSize` / `maxPages` default to the small browse-safe
+ * values; callers wanting the full roster (the picker's empty-query browse) pass the larger
+ * SPACE_MEMBERS_BROWSE_* so the default list is not silently capped at 1000. Returns
+ * `{ uid, name }` pairs.
  */
-export async function fetchAllSpaceMembers(spaceId: string): Promise<SpaceMemberLite[]> {
+export async function fetchAllSpaceMembers(
+  spaceId: string,
+  opts: { pageSize?: number; maxPages?: number } = {},
+): Promise<SpaceMemberLite[]> {
   if (!spaceId) return []
+  const pageSize = opts.pageSize ?? SPACE_MEMBERS_PAGE_SIZE
+  const maxPages = opts.maxPages ?? SPACE_MEMBERS_MAX_PAGES
   const all: SpaceMemberLite[] = []
   let page = 1
-  while (page <= SPACE_MEMBERS_MAX_PAGES) {
-    const batch = await getSpaceMembers(spaceId, page, SPACE_MEMBERS_PAGE_SIZE)
+  while (page <= maxPages) {
+    const batch = await getSpaceMembers(spaceId, page, pageSize)
     if (!batch || batch.length === 0) break
     all.push(...batch)
-    if (batch.length < SPACE_MEMBERS_PAGE_SIZE) break // last page
+    if (batch.length < pageSize) break // last page
     page++
   }
   return all
+}
+
+/** Fetch the FULL space roster for the browse (empty-query) view — server-side, no 1000 cap. */
+export function fetchSpaceRoster(spaceId: string): Promise<SpaceMemberLite[]> {
+  return fetchAllSpaceMembers(spaceId, {
+    pageSize: SPACE_MEMBERS_BROWSE_PAGE_SIZE,
+    maxPages: SPACE_MEMBERS_BROWSE_MAX_PAGES,
+  })
+}
+
+/** Max matches returned for a single keyword search (a picker only needs a bounded hit list). */
+const SPACE_MEMBER_SEARCH_LIMIT = 50
+
+/**
+ * Keyword-search a space's members through the seam, mapped to `{ uid, name }`.
+ *
+ * WHY (the fix): the picker used to `fetchAllSpaceMembers` + filter client-side, but that pages
+ * at most SPACE_MEMBERS_MAX_PAGES × SPACE_MEMBERS_PAGE_SIZE = 1000 members — in a large space
+ * (5760 members observed) everyone past the cap was never loaded and thus unsearchable. Pushing
+ * the keyword to the backend (the top global search's approach) finds a match regardless of
+ * roster size.
+ *
+ * Production/dev: `GET /space/{id}/members?keyword=` — the ANY-MEMBER list endpoint (callable by
+ * any space member, unlike the admin-gated `/members/search`), which matches name/real_name/uid
+ * and resolves the same DisplayName fallback, so a member shown by real_name is searchable by it.
+ * That endpoint returns no avatar; toLite falls back to a color-initial avatar.
+ *
+ * Test path: use the mock's `searchSpaceMembers` when provided; otherwise emulate the server by
+ * paging `getSpaceMembers` and filtering locally, so mocks predating this seam keep working.
+ * Empty keyword / empty space → [] (the caller shows the browse roster instead).
+ */
+export async function searchSpaceMembers(
+  spaceId: string,
+  keyword: string,
+  limit: number = SPACE_MEMBER_SEARCH_LIMIT,
+): Promise<SpaceMemberLite[]> {
+  const kw = keyword.trim()
+  if (!spaceId || !kw) return []
+  if (override) {
+    if (override.searchSpaceMembers) {
+      const batch = await override.searchSpaceMembers(spaceId, kw, limit)
+      return (batch ?? []).map((m) => toLite(m as HostSpaceMember & { isBot?: boolean }))
+    }
+    const q = kw.toLowerCase()
+    const all = await fetchAllSpaceMembers(spaceId)
+    return all
+      .filter((m) => m.name.toLowerCase().includes(q) || m.uid.toLowerCase().includes(q))
+      .slice(0, limit)
+  }
+  const query = `keyword=${encodeURIComponent(kw)}&page=1&limit=${limit}`
+  const { data } = await apiClient().get<HostSpaceMember[]>(
+    `/space/${encodeURIComponent(spaceId)}/members?${query}`,
+  )
+  const arr = Array.isArray(data) ? data : []
+  return arr.filter((m): m is HostSpaceMember => !!m && !!m.uid).map((m) => toLite(m))
 }
 
 /** Minimal view of a `/robot/space_bots` entry the docs seam reads (uid + display name). */
