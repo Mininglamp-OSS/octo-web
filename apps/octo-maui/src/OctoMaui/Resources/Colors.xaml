@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                    xmlns:conv="clr-namespace:OctoMaui.Resources">
+
+    <!-- Brand -->
+    <Color x:Key="Primary">#6C4CF1</Color>
+    <Color x:Key="PrimaryDark">#4A2DB8</Color>
+    <Color x:Key="Accent">#00C2A8</Color>
+
+    <!-- Surfaces (light) -->
+    <Color x:Key="PageBackground">#F5F6F8</Color>
+    <Color x:Key="HeaderBackground">#FFFFFF</Color>
+    <Color x:Key="SidebarBackground">#1E1F26</Color>
+    <Color x:Key="CardBackground">#FFFFFF</Color>
+
+    <!-- Text -->
+    <Color x:Key="PrimaryText">#1A1A2E</Color>
+    <Color x:Key="SecondaryText">#8A8D99</Color>
+
+    <!-- States -->
+    <Color x:Key="Danger">#E5484D</Color>
+    <Color x:Key="Success">#30A46C</Color>
+    <Color x:Key="Warning">#F5A623</Color>
+
+    <!-- Borders -->
+    <Color x:Key="Border">#E1E2E6</Color>
+
+    <!-- Converters -->
+    <conv:InverseBoolConverter x:Key="InverseBoolConverter" />
+    <conv:NotNullConverter x:Key="NotNullConverter" />
+    <conv:GreaterThanZeroConverter x:Key="GreaterThanZeroConverter" />
+
+</ResourceDictionary>

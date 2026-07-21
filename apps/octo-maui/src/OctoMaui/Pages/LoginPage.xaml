@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:models="clr-namespace:OctoMaui.Models"
+             x:Class="OctoMaui.Pages.LoginPage"
+             Title="登录 OCTO"
+             BackgroundColor="{DynamicResource PageBackground}">
+
+    <Grid RowDefinitions="Auto,*,*,*"
+          Padding="32">
+
+        <!-- Top bar with theme toggle -->
+        <HorizontalStackLayout Grid.Row="0"
+                               HorizontalOptions="End">
+            <Button Text="{Binding ThemeLabel}"
+                    Command="{Binding ToggleThemeCommand}"
+                    BackgroundColor="Transparent"
+                    TextColor="{DynamicResource SecondaryText}"
+                    FontSize="12"
+                    Padding="10,4" />
+        </HorizontalStackLayout>
+
+        <!-- Spacer -->
+        <BoxView Grid.Row="1" />
+
+        <!-- Logo / Title -->
+        <VerticalStackLayout Grid.Row="2"
+                             HorizontalOptions="Center"
+                             Spacing="8">
+            <Label Text="🐙"
+                   FontSize="56"
+                   HorizontalOptions="Center" />
+            <Label Text="OCTO"
+                   FontSize="28"
+                   FontAttributes="Bold"
+                   HorizontalOptions="Center"
+                   TextColor="{DynamicResource Primary}" />
+            <Label Text="the open workplace built for humans × AI agents"
+                   FontSize="12"
+                   TextColor="{DynamicResource SecondaryText}"
+                   HorizontalOptions="Center" />
+        </VerticalStackLayout>
+
+        <!-- Login form -->
+        <VerticalStackLayout Grid.Row="3"
+                             Spacing="12"
+                             MaximumWidthRequest="360"
+                             HorizontalOptions="Center"
+                             VerticalOptions="Center">
+
+            <!-- OIDC / Enterprise passport buttons -->
+            <VerticalStackLayout Spacing="8"
+                                 IsVisible="{Binding HasOidcProviders}">
+                <CollectionView ItemsSource="{Binding OidcProviders}"
+                                Margin="0">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:OidcProvider">
+                            <Button Text="{Binding Name}"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.LoginWithOidcCommand}"
+                                    CommandParameter="{Binding .}"
+                                    BackgroundColor="{DynamicResource CardBackground}"
+                                    TextColor="{DynamicResource PrimaryText}"
+                                    CornerRadius="8"
+                                    HeightRequest="44"
+                                    Margin="0,0,0,4"
+                                    BorderWidth="1"
+                                    BorderColor="{DynamicResource Border}" />
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <!-- OIDC polling status -->
+                <Label Text="{Binding OidcStatus}"
+                       FontSize="13"
+                       TextColor="{DynamicResource SecondaryText}"
+                       IsVisible="{Binding HasOidcStatus}"
+                       HorizontalOptions="Center" />
+
+                <!-- Separator -->
+                <HorizontalStackLayout HorizontalOptions="Center"
+                                       Margin="0,8">
+                    <BoxView Color="{DynamicResource Border}"
+                             HeightRequest="1"
+                             WidthRequest="120"
+                             VerticalOptions="Center" />
+                    <Label Text="或使用账号密码登录"
+                           FontSize="11"
+                           TextColor="{DynamicResource SecondaryText}"
+                           Margin="8,0" />
+                    <BoxView Color="{DynamicResource Border}"
+                             HeightRequest="1"
+                             WidthRequest="120"
+                             VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
+
+            <!-- Local login form -->
+            <Entry Placeholder="用户名"
+                   Text="{Binding Username}"
+                   ReturnType="Next"
+                   FontSize="16" />
+
+            <Entry Placeholder="密码"
+                   Text="{Binding Password}"
+                   IsPassword="True"
+                   ReturnType="Done"
+                   ReturnCommand="{Binding LoginCommand}"
+                   FontSize="16" />
+
+            <Label Text="{Binding ErrorMessage}"
+                   TextColor="{DynamicResource Danger}"
+                   FontSize="13"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource NotNullConverter}}" />
+
+            <Button Text="登录"
+                    Command="{Binding LoginCommand}"
+                    BackgroundColor="{DynamicResource Primary}"
+                    TextColor="White"
+                    CornerRadius="8"
+                    HeightRequest="44"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}"
+                               IsVisible="{Binding IsBusy}"
+                               Color="{DynamicResource Primary}" />
+
+            <Button Text="切换服务端"
+                    Command="{Binding SwitchServerCommand}"
+                    BackgroundColor="Transparent"
+                    TextColor="{DynamicResource SecondaryText}"
+                    FontSize="12"
+                    Padding="10,4"
+                    HorizontalOptions="Center" />
+        </VerticalStackLayout>
+
+    </Grid>
+
+</ContentPage>

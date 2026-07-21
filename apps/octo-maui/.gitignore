@@ -1,0 +1,33 @@
+# Build output
+bin/
+obj/
+*.user
+*.suo
+
+# Visual Studio
+.vs/
+*.vspscc
+*.vssscc
+
+# Rider / JetBrains
+.idea/
+
+# macOS
+.DS_Store
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# Test results
+TestResults/
+coverage/
+
+# MAUI / Android
+*.apk
+*.aab
+*.keystore
+
+# iOS / MacCatalyst
+*.ipa

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Dark theme overrides — same resource keys as Colors.xaml so that swapping
+     this dictionary into App.Resources.MergedDictionaries retints the whole
+     app. Only colors that differ from the light theme are redefined here.
+     MergedDictionary semantics: later entries override earlier ones for the
+     same key, so these override Colors.xaml while merged. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                    x:Class="OctoMaui.Resources.ColorsDark">
+
+    <!-- Brand (slightly lifted for contrast on dark surfaces) -->
+    <Color x:Key="Primary">#8B6FF5</Color>
+    <Color x:Key="PrimaryDark">#6C4CF1</Color>
+    <Color x:Key="Accent">#1FD9BC</Color>
+
+    <!-- Surfaces (dark) -->
+    <Color x:Key="PageBackground">#1A1B22</Color>
+    <Color x:Key="HeaderBackground">#24252E</Color>
+    <Color x:Key="SidebarBackground">#14151A</Color>
+    <Color x:Key="CardBackground">#24252E</Color>
+
+    <!-- Text -->
+    <Color x:Key="PrimaryText">#E8E9EE</Color>
+    <Color x:Key="SecondaryText">#9CA0AD</Color>
+
+    <!-- States (kept vivid on dark) -->
+    <Color x:Key="Danger">#FF5C61</Color>
+    <Color x:Key="Success">#3DD68C</Color>
+    <Color x:Key="Warning">#FFB84D</Color>
+
+    <!-- Borders -->
+    <Color x:Key="Border">#2E2F38</Color>
+
+</ResourceDictionary>

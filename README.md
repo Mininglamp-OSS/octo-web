@@ -26,18 +26,31 @@
 
 # OCTO Web
 
-> **Web & PC (Electron) client** for the OCTO messaging platform — one React codebase, two shipped surfaces.
+> **Web, PC (Electron), and PC (.NET MAUI) clients** for the OCTO messaging platform.
 
-`octo-web` is the TypeScript / React front-end that talks to
+`octo-web` is a pnpm / turbo monorepo that talks to
 [`octo-server`](https://github.com/Mininglamp-OSS/octo-server) over REST +
-WebSocket. The same codebase ships two ways: as a browser build (the canonical
-OCTO chat surface), and as an Electron-packaged desktop PC client.
+WebSocket. It ships several client surfaces from a single repo:
+
+- **Web** (`apps/web`) — the canonical browser build (React / TypeScript)
+- **PC (Electron)** (`apps/web/src-election`) — wraps the same React app in an
+  Electron shell for desktop
+- **PC (.NET MAUI)** (`apps/octo-maui`) — a native .NET 8 cross-platform
+  client (C#), targeting Windows / macOS / Android / iOS
+- **Browser extension** (`apps/extension`) — browser add-on built with WXT
 
 ## 🌟 Why OCTO Web
 
-- **One codebase, two products.** Browser + PC (Electron) are built from the same `src/` — no parallel React trees, no diverging UX. Branch switches happen at platform-capability boundaries only.
-- **Lobster-ready UI.** First-class surfaces for AI agent conversations: streaming replies, typing indicator, inline tool-call previews, read receipts, agent-vs-human identity chips.
-- **Full bilingual shell.** English and Simplified Chinese ship together out of the box; i18n keys live in `src/locales/` and are enforced in CI.
+- **One web codebase, two desktop shells.** Browser + Electron PC are built
+  from the same `apps/web/src/` — no parallel React trees, no diverging UX.
+  A separate .NET MAUI client offers a native alternative for .NET-centric
+  teams.
+- **Lobster-ready UI.** First-class surfaces for AI agent conversations:
+  streaming replies, typing indicator, inline tool-call previews, read
+  receipts, agent-vs-human identity chips.
+- **Full bilingual shell.** English and Simplified Chinese ship together out
+  of the box; i18n keys live in `apps/web/src/locales/` and are enforced in
+  CI.
 
 ## 🚀 Quickstart
 
@@ -54,30 +67,46 @@ By default the web build expects an `octo-server` instance reachable at
 
 ## 📦 Modules / Architecture
 
-Top-level layout:
+This is a pnpm workspace (`pnpm-workspace.yaml`) orchestrated by turbo. The
+top-level apps and shared packages live under `apps/` and `packages/`:
 
 | Path | Purpose |
 |---|---|
-| `src/pages/` | Route-level React views (chat, channels, org, settings) |
-| `src/components/` | Shared UI kit (message bubbles, inputs, agent chips, streaming renderers) |
-| `src/store/` | Client state (auth, channels, draft, agent orchestration UI state) |
-| `src/api/` | REST + WebSocket client talking to `octo-server` |
-| `src/locales/` | i18n resources (English · 简体中文) |
-| `electron/` | Electron main/renderer bootstrap for the PC build |
+| `apps/web/src/pages/` | Route-level React views (chat, channels, org, settings) |
+| `apps/web/src/components/` | Shared UI kit (message bubbles, inputs, agent chips, streaming renderers) |
+| `apps/web/src/store/` | Client state (auth, channels, draft, agent orchestration UI state) |
+| `apps/web/src/api/` | REST + WebSocket client talking to `octo-server` |
+| `apps/web/src/locales/` | i18n resources (English · 简体中文) |
+| `apps/web/src-election/` | Electron main/renderer bootstrap for the PC build |
+| `apps/web/src-tauri/` | Tauri shell (experimental) |
+| `apps/octo-maui/` | .NET MAUI native PC/mobile client (C# / .NET 8) |
+| `apps/extension/` | Browser extension (WXT) |
+| `packages/` | Shared internal libraries (dmworklogin, dmworkbase, dmworkcontacts, …) |
 | `docs/` | Design docs, architecture notes, screenshots |
 
 Key build targets:
 
 ```bash
-pnpm build        # build the browser bundle
-pnpm pc:dev       # launch the Electron shell against the dev build
-pnpm pc:package   # produce a distributable PC bundle (macOS / Windows / Linux)
-pnpm test         # run unit + component tests
+pnpm dev             # run the web dev server
+pnpm dev-ele         # run the Electron PC shell against the dev build
+pnpm build           # build the browser bundle
+pnpm build-ele       # build + package the Electron PC bundle
+pnpm build-ele:win   # Windows-only Electron package
+pnpm build-ele:mac   # macOS-only Electron package
+pnpm build-ele:linux # Linux-only Electron package
+pnpm test            # run unit + component tests
 ```
 
-The PC Electron shell is intentionally thin — it hosts the same React app and
-forwards IPC for native capabilities (tray, notifications, file drop, auto-
-update). The browser build runs without any Electron dependency.
+The Electron PC shell (`apps/web/src-election/`) is intentionally thin — it
+hosts the same React app and forwards IPC for native capabilities (tray,
+notifications, file drop, auto-update). The browser build runs without any
+Electron dependency.
+
+The .NET MAUI client (`apps/octo-maui/`) is built separately with the .NET 8
+SDK — see [`apps/octo-maui/README.md`](apps/octo-maui/README.md) for details.
+It is independent of the pnpm / Node toolchain and offers a native desktop
+experience with server-discovery, enterprise OIDC/SSO login, and a guided
+initial-connection setup.
 
 ## 🔗 OCTO Ecosystem
 
@@ -120,7 +149,7 @@ graph TD
 | [`octo-server`](https://github.com/Mininglamp-OSS/octo-server) | Go | Backend API · business orchestration · Lobster agent scheduling |
 | [`octo-matter`](https://github.com/Mininglamp-OSS/octo-matter) | Go | Task / Todo / Matter micro-service |
 | [`octo-smart-summary`](https://github.com/Mininglamp-OSS/octo-smart-summary) | Go | LLM-powered conversation summarisation |
-| [`octo-web`](https://github.com/Mininglamp-OSS/octo-web) | TypeScript / React | Web & PC (Electron) client |
+| [`octo-web`](https://github.com/Mininglamp-OSS/octo-web) | TypeScript / React + C# | Web, PC (Electron) & PC (.NET MAUI) clients |
 | [`octo-android`](https://github.com/Mininglamp-OSS/octo-android) | Kotlin / Java | Native Android client |
 | [`octo-ios`](https://github.com/Mininglamp-OSS/octo-ios) | Swift / Objective-C | Native iOS client |
 | [`octo-admin`](https://github.com/Mininglamp-OSS/octo-admin) | TypeScript / React | Admin console (tenant / org / user / channel management) |

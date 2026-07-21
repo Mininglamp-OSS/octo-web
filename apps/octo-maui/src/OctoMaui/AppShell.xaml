@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+       xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+       xmlns:pages="clr-namespace:OctoMaui.Pages"
+       x:Class="OctoMaui.AppShell"
+       FlyoutBehavior="Disabled"
+       Shell.FlyoutItemIsVisible="False">
+
+    <ShellContent
+        Title="服务端设置"
+        ContentTemplate="{DataTemplate pages:ServerConfigPage}"
+        Route="server-config" />
+
+    <ShellContent
+        Title="Login"
+        ContentTemplate="{DataTemplate pages:LoginPage}"
+        Route="login" />
+
+    <ShellContent
+        Title="OCTO"
+        ContentTemplate="{DataTemplate pages:ChatPage}"
+        Route="chat" />
+
+</Shell>

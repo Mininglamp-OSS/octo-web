@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<maui:MauiWinUIApplication
+    x:Class="OctoMaui.Platforms.Windows.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:maui="using:Microsoft.Maui"
+    xmlns:local="using:OctoMaui.Platforms.Windows">
+</maui:MauiWinUIApplication>

@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:models="clr-namespace:OctoMaui.Models"
+             xmlns:controls="clr-namespace:OctoMaui.Controls"
+             x:Class="OctoMaui.Pages.ChatPage"
+             Title="OCTO"
+             BackgroundColor="{DynamicResource PageBackground}">
+
+    <Grid ColumnDefinitions="280,*">
+        <!-- ===== Channel sidebar ===== -->
+        <Border Grid.Column="0"
+                BackgroundColor="{DynamicResource SidebarBackground}"
+                StrokeThickness="0">
+            <Grid RowDefinitions="Auto,*">
+                <!-- Header -->
+                <Grid Grid.Row="0"
+                      Padding="16,16,16,8"
+                      ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                    <Label Grid.Column="0"
+                           Text="🐙"
+                           FontSize="20"
+                           VerticalOptions="Center" />
+                    <Label Grid.Column="1"
+                           Text="OCTO"
+                           FontSize="16"
+                           FontAttributes="Bold"
+                           TextColor="White"
+                           VerticalOptions="Center"
+                           Margin="8,0,0,0" />
+                    <Button Grid.Column="2"
+                            Text="{Binding ThemeLabel}"
+                            Command="{Binding ToggleThemeCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="{DynamicResource SecondaryText}"
+                            FontSize="12"
+                            Padding="8,2"
+                            Margin="0,0,4,0" />
+                    <Button Grid.Column="3"
+                            Text="服务端"
+                            Command="{Binding SwitchServerCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="{DynamicResource SecondaryText}"
+                            FontSize="12"
+                            Padding="8,2"
+                            Margin="0,0,4,0" />
+                    <Button Grid.Column="4"
+                            Text="退出"
+                            Command="{Binding LogoutCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="{DynamicResource SecondaryText}"
+                            FontSize="12"
+                            Padding="8,2" />
+                </Grid>
+
+                <!-- Channel list -->
+                <CollectionView Grid.Row="1"
+                                ItemsSource="{Binding Channels}"
+                                SelectionMode="Single"
+                                SelectedItem="{Binding SelectedChannel}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:Channel">
+                            <Grid Padding="16,12" ColumnDefinitions="*,Auto">
+                                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                    <Label Text="{Binding Name}"
+                                           TextColor="White"
+                                           FontSize="14" />
+                                    <Label Text="{Binding LastMessagePreview}"
+                                           TextColor="{DynamicResource SecondaryText}"
+                                           FontSize="11"
+                                           LineBreakMode="TailTruncation"
+                                           MaxLines="1" />
+                                </VerticalStackLayout>
+                                <Border Grid.Column="1"
+                                        BackgroundColor="{DynamicResource Danger}"
+                                        StrokeThickness="0"
+                                        StrokeShape="RoundRectangle 10"
+                                        WidthRequest="20"
+                                        HeightRequest="20"
+                                        IsVisible="{Binding UnreadCount, Converter={StaticResource GreaterThanZeroConverter}}"
+                                        HorizontalOptions="Center"
+                                        VerticalOptions="Center">
+                                    <Label Text="{Binding UnreadCount}"
+                                           TextColor="White"
+                                           FontSize="11"
+                                           HorizontalTextAlignment="Center"
+                                           VerticalTextAlignment="Center" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </Grid>
+        </Border>
+
+        <!-- ===== Chat area ===== -->
+        <Grid Grid.Column="1"
+              RowDefinitions="Auto,*,Auto,Auto"
+              BackgroundColor="{DynamicResource PageBackground}">
+
+            <Grid.GestureRecognizers>
+                <DropGestureRecognizer AllowDrop="True"
+                                       DragOver="OnDragOver"
+                                       DragLeave="OnDragLeave"
+                                       Drop="OnDrop" />
+            </Grid.GestureRecognizers>
+
+            <!-- Chat header -->
+            <Border Grid.Row="0"
+                    BackgroundColor="{DynamicResource HeaderBackground}"
+                    StrokeThickness="0"
+                    Padding="16,12">
+                <HorizontalStackLayout Spacing="8">
+                    <Label Text="{Binding SelectedChannel.Name}"
+                           FontSize="16"
+                           FontAttributes="Bold"
+                           TextColor="{DynamicResource PrimaryText}" />
+                    <Label Text="{Binding StatusText}"
+                           FontSize="11"
+                           TextColor="{DynamicResource SecondaryText}"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </Border>
+
+            <!-- Message list -->
+            <CollectionView Grid.Row="1"
+                            x:Name="MessagesList"
+                            ItemsSource="{Binding Messages}"
+                            Margin="0">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="models:Message">
+                        <Grid Padding="16,6" ColumnDefinitions="100,*">
+                            <Label Grid.Column="0"
+                                   Text="{Binding SenderName}"
+                                   FontAttributes="Bold"
+                                   FontSize="13"
+                                   TextColor="{DynamicResource Primary}"
+                                   LineBreakMode="TailTruncation"
+                                   VerticalOptions="Start" />
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <!-- Markdown content (replaces plain Label for text messages) -->
+                                <controls:MarkdownView Markdown="{Binding Content}"
+                                                       IsVisible="{Binding HasImage, Converter={StaticResource InverseBoolConverter}}" />
+
+                                <!-- Image attachment -->
+                                <Image Source="{Binding SafeImageUrl}"
+                                       MaximumHeightRequest="200"
+                                       Aspect="AspectFill"
+                                       IsVisible="{Binding HasImage}" />
+
+                                <!-- File attachment -->
+                                <Border IsVisible="{Binding HasFile}"
+                                        BackgroundColor="{DynamicResource CardBackground}"
+                                        Stroke="{DynamicResource Border}"
+                                        StrokeThickness="1"
+                                        Padding="10,8"
+                                        StrokeShape="RoundRectangle 8">
+                                    <HorizontalStackLayout Spacing="8">
+                                        <Label Text="📄" FontSize="20" VerticalOptions="Center" />
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="{Binding FileName}"
+                                                   FontSize="13"
+                                                   TextColor="{DynamicResource PrimaryText}"
+                                                   LineBreakMode="TailTruncation"
+                                                   MaxLines="1" />
+                                            <Label Text="{Binding FileSizeText}"
+                                                   FontSize="11"
+                                                   TextColor="{DynamicResource SecondaryText}" />
+                                        </VerticalStackLayout>
+                                    </HorizontalStackLayout>
+                                </Border>
+
+                                <!-- Timestamp + streaming indicator -->
+                                <HorizontalStackLayout Spacing="4">
+                                    <Label Text="{Binding CreatedAtFormatted}"
+                                           FontSize="10"
+                                           TextColor="{DynamicResource SecondaryText}" />
+                                    <Label Text="● 输入中…"
+                                           FontSize="10"
+                                           TextColor="{DynamicResource Accent}"
+                                           IsVisible="{Binding IsStreaming}" />
+                                </HorizontalStackLayout>
+                            </VerticalStackLayout>
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <!-- Empty state overlay -->
+            <Grid Grid.Row="1"
+                  BackgroundColor="{DynamicResource PageBackground}"
+                  IsVisible="{Binding IsEmpty}">
+                <VerticalStackLayout HorizontalOptions="Center"
+                                     VerticalOptions="Center"
+                                     Spacing="8">
+                    <Label Text="💬"
+                           FontSize="48"
+                           HorizontalOptions="Center"
+                           TextColor="{DynamicResource SecondaryText}" />
+                    <Label Text="暂无消息"
+                           FontSize="14"
+                           TextColor="{DynamicResource SecondaryText}"
+                           HorizontalOptions="Center" />
+                    <Label Text="选择一个频道开始对话"
+                           FontSize="12"
+                           TextColor="{DynamicResource SecondaryText}"
+                           HorizontalOptions="Center" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <!-- Typing indicator -->
+            <Border Grid.Row="2"
+                    BackgroundColor="{DynamicResource HeaderBackground}"
+                    StrokeThickness="0"
+                    Padding="16,6"
+                    IsVisible="{Binding IsAgentTyping}">
+                <HorizontalStackLayout Spacing="6">
+                    <Label Text="🦞"
+                           FontSize="14"
+                           VerticalOptions="Center" />
+                    <Label Text="Lobster 正在思考…"
+                           FontSize="12"
+                           TextColor="{DynamicResource SecondaryText}"
+                           VerticalOptions="Center" />
+                    <ActivityIndicator Color="{DynamicResource Primary}"
+                                       IsRunning="True"
+                                       WidthRequest="14"
+                                       HeightRequest="14"
+                                       VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </Border>
+
+            <!-- Composer -->
+            <Border Grid.Row="3"
+                    BackgroundColor="{DynamicResource HeaderBackground}"
+                    StrokeThickness="0"
+                    Padding="12,8">
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                    <Button Grid.Column="0"
+                            Text="📎"
+                            Command="{Binding AttachFileCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="{DynamicResource SecondaryText}"
+                            FontSize="18"
+                            Padding="8,2"
+                            Margin="0,0,4,0" />
+                    <Button Grid.Column="1"
+                            Text="🖼️"
+                            Command="{Binding AttachImageCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="{DynamicResource SecondaryText}"
+                            FontSize="18"
+                            Padding="8,2"
+                            Margin="0,0,4,0" />
+                    <Entry Grid.Column="2"
+                           Text="{Binding Draft}"
+                           Placeholder="输入消息，按 Enter 发送…"
+                           ReturnType="Send"
+                           ReturnCommand="{Binding SendCommand}"
+                           FontSize="14"
+                           HeightRequest="38" />
+                    <Button Grid.Column="3"
+                            Text="发送"
+                            Command="{Binding SendCommand}"
+                            BackgroundColor="{DynamicResource Primary}"
+                            TextColor="White"
+                            CornerRadius="6"
+                            HeightRequest="38" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+
+</ContentPage>

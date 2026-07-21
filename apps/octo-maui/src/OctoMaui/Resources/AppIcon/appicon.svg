@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" fill="#6C4CF1" rx="28"/>
+  <!-- Octopus head -->
+  <circle cx="64" cy="50" r="22" fill="white"/>
+  <!-- Tentacles -->
+  <rect x="44" y="68" width="7" height="30" rx="3.5" fill="white"/>
+  <rect x="54" y="68" width="7" height="36" rx="3.5" fill="white"/>
+  <rect x="64" y="68" width="7" height="34" rx="3.5" fill="white"/>
+  <rect x="74" y="68" width="7" height="30" rx="3.5" fill="white"/>
+  <!-- Eyes -->
+  <circle cx="56" cy="46" r="4" fill="#6C4CF1"/>
+  <circle cx="72" cy="46" r="4" fill="#6C4CF1"/>
+</svg>
