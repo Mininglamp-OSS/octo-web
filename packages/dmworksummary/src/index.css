@@ -740,6 +740,12 @@
     color: var(--semi-color-text-0);
 }
 
+.summary-detail-content-box .summary-content-markdown table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+}
+
 .summary-detail-personal h3,
 .summary-detail-team h3,
 .summary-detail-members h3 {
