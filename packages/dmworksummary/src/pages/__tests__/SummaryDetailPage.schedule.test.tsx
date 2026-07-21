@@ -65,6 +65,16 @@ function makePage(taskId: number | string) {
     return page;
 }
 
+it('keeps regeneration voice insertion within the 2000-character limit', () => {
+    const page = makePage(1);
+    page.state = { ...page.state, regenerateTopic: '总'.repeat(1999) };
+
+    (page as any).handleRegenerateTopicVoice('语音内容', 'insert', { from: 1999, to: 1999 });
+
+    expect(page.state.regenerateTopic).toHaveLength(2000);
+    expect(page.state.regenerateTopic.endsWith('语')).toBe(true);
+});
+
 const baseDetail = (over: any = {}) => ({
     task_id: 1,
     task_no: 'T1',

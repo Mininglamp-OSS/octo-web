@@ -191,6 +191,61 @@ describe('SummaryCreatePage templates', () => {
         expect(screen.getByText('新建模板').closest('button')).toBeDisabled();
     });
 
+    it('allows up to 2000 characters in template summary content', async () => {
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+
+        fireEvent.click(screen.getByText('新建模板'));
+        const textarea = screen.getByPlaceholderText('例如：总结任务的进度和负责人') as HTMLTextAreaElement;
+        expect(textarea.maxLength).toBe(2000);
+
+        fireEvent.change(textarea, { target: { value: '总'.repeat(2001) } });
+        expect(textarea.value).toHaveLength(2000);
+    });
+
+    it('preserves a max-length template description when applying and submitting it', async () => {
+        const pageRef = React.createRef<SummaryCreatePage>();
+        const paragraphs = '第一段\n\n第二段\n';
+        const description = paragraphs + '总'.repeat(2000 - paragraphs.length);
+        vi.mocked(getTopicTemplatesConfig).mockResolvedValueOnce({ custom_template_limit: 30, templates: [
+            { id: 'custom_long', label: '长内容模板', icon: 'FileText', description, type: 'fixed', pattern: description, is_custom: true },
+        ] });
+
+        await act(async () => {
+            render(<SummaryCreatePage ref={pageRef} />);
+            await flushPromises();
+        });
+
+        fireEvent.click(screen.getByText('长内容模板'));
+        const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
+        expect(textarea.value).toContain(description);
+        expect(textarea.value.length).toBeGreaterThan(1000);
+        const editedDescription = `已${description.slice(1)}`;
+        fireEvent.change(textarea, { target: { value: textarea.value.replace(description, editedDescription) } });
+        expect(textarea.value).toContain(editedDescription);
+
+        const voiceEditAt = textarea.value.indexOf(editedDescription) + 1;
+        await act(async () => {
+            pageRef.current?.handleVoiceTranscribed('语', 'selection', { from: voiceEditAt, to: voiceEditAt + 1 });
+        });
+        const voiceEditedDescription = `已语${editedDescription.slice(2)}`;
+        expect(textarea.value).toContain(voiceEditedDescription);
+        const submittedTopic = textarea.value;
+
+        await act(async () => {
+            const submit = document.querySelector('.summary-workbench-actions .chat-summary-modal-split > button') as HTMLButtonElement;
+            fireEvent.click(submit);
+            await flushPromises();
+        });
+
+        expect(api.createSummary).toHaveBeenCalledWith(expect.objectContaining({
+            topic: submittedTopic,
+            title: '已语段',
+        }));
+    });
+
 });
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

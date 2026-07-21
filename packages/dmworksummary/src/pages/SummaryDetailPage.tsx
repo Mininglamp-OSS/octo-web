@@ -18,6 +18,7 @@ import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/Voic
 import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
+import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
 // RefineSection 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
 // (见 CHAT-REFERENCE-BASED-DESIGN-v1)
 import OverflowTooltip from "../components/OverflowTooltip";
@@ -148,12 +149,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         savedRange?: SelectionRange
     ) => {
         if (mode === "all") {
-            this.setState({ regenerateTopic: text.slice(0, 1000) });
+            this.setState({ regenerateTopic: text.slice(0, SUMMARY_INPUT_MAX_LENGTH) });
         } else if (mode === "selection" && savedRange) {
             this.setState((prev) => {
                 const before = prev.regenerateTopic.slice(0, savedRange.from);
                 const after = prev.regenerateTopic.slice(savedRange.to);
-                const budget = Math.max(0, 1000 - before.length - after.length);
+                const budget = Math.max(0, SUMMARY_INPUT_MAX_LENGTH - before.length - after.length);
                 return { regenerateTopic: before + text.slice(0, budget) + after };
             });
         } else {
@@ -161,7 +162,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 const pos = savedRange?.from ?? prev.regenerateTopic.length;
                 const before = prev.regenerateTopic.slice(0, pos);
                 const after = prev.regenerateTopic.slice(pos);
-                const budget = Math.max(0, 1000 - before.length - after.length);
+                const budget = Math.max(0, SUMMARY_INPUT_MAX_LENGTH - before.length - after.length);
                 return { regenerateTopic: before + text.slice(0, budget) + after };
             });
         }
@@ -3628,9 +3629,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     aria-labelledby="regenerate-topic-label"
                                     className="summary-regenerate-topic-textarea"
                                     rows={3}
-                                    maxLength={1000}
+                                    maxLength={SUMMARY_INPUT_MAX_LENGTH}
                                     value={this.state.regenerateTopic}
-                                    onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
+                                    onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH) })}
                                 />
                                 <VoiceInputButton
                                     inputRef={this.regenerateTopicRef}

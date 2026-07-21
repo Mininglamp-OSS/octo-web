@@ -154,6 +154,66 @@ describe('ChatSummaryNewModal', () => {
         expect(screen.getByTestId('template-chat_content')).toBeInTheDocument();
     });
 
+    it('allows up to 2000 characters in custom template summary content', async () => {
+        await act(async () => {
+            render(<ChatSummaryNewModal {...defaultProps} />);
+            await flushPromises();
+        });
+
+        fireEvent.click(screen.getByText('新建模板'));
+        const textarea = screen.getByPlaceholderText('例如：总结任务的进度和负责人') as HTMLTextAreaElement;
+        expect(textarea.maxLength).toBe(2000);
+
+        fireEvent.change(textarea, { target: { value: '总'.repeat(2001) } });
+        expect(textarea.value).toHaveLength(2000);
+    });
+
+    it('caps voice insertion at the 2000-character summary input limit', () => {
+        const modal = new ChatSummaryNewModal(defaultProps as any);
+        (modal as any).setState = function (this: any, patch: any) {
+            this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) };
+        };
+        modal.state = { ...modal.state, topic: '总'.repeat(1999), appliedTemplateLabel: '' };
+
+        (modal as any).handleVoiceTranscribed('语音内容', 'insert', { from: 1999, to: 1999 });
+
+        expect(modal.state.topic).toHaveLength(2000);
+        expect(modal.state.topic.endsWith('语')).toBe(true);
+    });
+
+    it('preserves a max-length template description when applying and submitting it', async () => {
+        const paragraphs = '第一段\n\n第二段\n';
+        const description = paragraphs + '总'.repeat(2000 - paragraphs.length);
+        vi.mocked(summaryApi.getTopicTemplatesConfig).mockResolvedValueOnce({ custom_template_limit: 30, templates: [
+            { id: 'custom_long', label: '长内容模板', icon: 'FileText', description, type: 'fixed', pattern: description, is_custom: true },
+        ] } as any);
+
+        await act(async () => {
+            render(<ChatSummaryNewModal {...defaultProps} />);
+            await flushPromises();
+        });
+
+        fireEvent.click(screen.getByTestId('template-custom_long'));
+        const textarea = screen.getByPlaceholderText('输入聊天内你想总结的主题') as HTMLTextAreaElement;
+        expect(textarea.value).toContain(description);
+        expect(textarea.value.length).toBeGreaterThan(1000);
+        const editedDescription = `已${description.slice(1)}`;
+        fireEvent.change(textarea, { target: { value: textarea.value.replace(description, editedDescription) } });
+        expect(textarea.value).toContain(editedDescription);
+        const submittedTopic = textarea.value;
+
+        await act(async () => {
+            const submit = document.querySelector('.chat-summary-modal-footer .chat-summary-modal-split > button') as HTMLButtonElement;
+            fireEvent.click(submit);
+            await flushPromises();
+        });
+
+        expect(summaryApi.createSummary).toHaveBeenCalledWith(expect.objectContaining({
+            topic: submittedTopic,
+            title: '已一段',
+        }));
+    });
+
     it('hides templates when input has content', async () => {
         await act(async () => {
             render(<ChatSummaryNewModal {...defaultProps} />);
@@ -181,6 +241,7 @@ describe('ChatSummaryNewModal', () => {
         expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
         expect(screen.getByTestId('template-weekly_report')).toBeInTheDocument();
     });
+
 
     it('renders templates inside the unified input-area container', async () => {
         await act(async () => {
