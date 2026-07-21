@@ -81,6 +81,8 @@ import { VideoCell, VideoContent } from "./Messages/Video";
 import { TypingCell } from "./Messages/Typing";
 import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
 import { buildAddStickerMenu } from "./Messages/LottieSticker/collectMenu";
+import { isMessageReactionEnabled } from "./Service/featureFlags";
+import { reactionPickerOverlay } from "./ui/message/MessageReactionPicker/ReactionPickerOverlay";
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast, Tag } from "@douyinfe/semi-ui";
 import { ChannelSettingManager } from "./Service/ChannelSetting";
@@ -889,6 +891,31 @@ export default class BaseModule implements IModule {
         });
       },
       1150
+    );
+
+    WKApp.endpoints.registerMessageContextMenus(
+      "contextmenus.reaction",
+      (message) => {
+        // feature flag gate（默认关，详见 Service/featureFlags.ts）。
+        if (!isMessageReactionEnabled()) {
+          return null;
+        }
+        // demo 阶段 ReactionSlot 只接入了 TextCell（纯文本消息），右键入口同口径
+        // 仅放行 text，避免在 RichText 等未渲染 summary 的消息上选表情后 store
+        // 更新却无处回显。放开更多消息类型时，需同步在对应 cell 渲染 ReactionSlot。
+        if (message.contentType !== MessageContentType.text) {
+          return null;
+        }
+        return {
+          title: t("base.module.contextMenus.react"),
+          onClick: () => {
+            reactionPickerOverlay.openAtLastPointer(
+              message.messageID || message.clientMsgNo
+            );
+          },
+        };
+      },
+      1200
     );
 
     WKApp.endpoints.registerMessageContextMenus(

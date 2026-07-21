@@ -617,6 +617,46 @@ describe("EmojiPanel sticker hover preview（原位放大预览）", () => {
     });
 });
 
+describe("EmojiPanel hideStickerTab prop", () => {
+    it("hides the sticker tab and all sticker controls even when stickerCustomEnabled is true", () => {
+        // reaction 等场景传入 hideStickerTab 后应压过全局灰度: 即便 stickerCustomEnabled=true
+        // 也不渲染贴纸 tab / 上传按钮 / 贴纸网格 / 空态占位。
+        hoisted.state.stickerCustomEnabled = true;
+        render(<EmojiPanel hideStickerTab />);
+
+        expect(tabs()).toHaveLength(1);
+        expect(container.querySelector(".wk-sticker-add")).toBeNull();
+        expect(container.querySelector(".wk-sticker-item")).toBeNull();
+        expect(container.querySelector(".wk-sticker-empty")).toBeNull();
+    });
+
+    it("stays on the emoji tab when hideStickerTab is true (both gates closed, no regression)", () => {
+        // hideStickerTab 与 stickerCustomEnabled 双关: 幂等, 保证任何一个关掉都能可靠隐藏。
+        hoisted.state.stickerCustomEnabled = false;
+        render(<EmojiPanel hideStickerTab />);
+
+        expect(tabs()).toHaveLength(1);
+        expect(container.querySelector(".wk-sticker-add")).toBeNull();
+    });
+
+    it("remains sticker-free when remoteConfig flips stickerCustomEnabled while hideStickerTab is true", () => {
+        // 后端灰度翻回 true 也不能让 hideStickerTab 场景突然出现贴纸 tab: 保证 reaction 面板
+        // 在任意灰度状态下都是纯 emoji, 不会因为 configChangeListener 触发 forceUpdate 而漏出。
+        hoisted.state.stickerCustomEnabled = false;
+        render(<EmojiPanel hideStickerTab />);
+        expect(tabs()).toHaveLength(1);
+
+        // 模拟后端把 flag 打开 + notifyConfigChangeListeners。
+        hoisted.state.stickerCustomEnabled = true;
+        act(() => {
+            hoisted.state.listener?.();
+        });
+
+        expect(tabs()).toHaveLength(1);
+        expect(container.querySelector(".wk-sticker-add")).toBeNull();
+    });
+});
+
 describe("EmojiPanel sticker upload validation (WKApp.remoteConfig.stickerUploadLimits)", () => {
     const bytes = (size: number) => new Uint8Array(size);
 
