@@ -77,6 +77,7 @@
     "or": "或"
   },
   "download": {
+    "addressLoadFailed": "下载地址获取失败",
     "android": "Android",
     "androidDirectDownload": "直接下载 APK",
     "androidHoverHint": "悬停或点击查看 Android 下载二维码",
@@ -84,10 +85,11 @@
     "githubManualDownload": "或前往 GitHub 手动下载",
     "openGithubReleases": "打开 GitHub Releases",
     "ios": "iOS",
-    "iosDirectDownload": "打开 TestFlight",
     "iosHoverHint": "悬停或点击查看 iOS 安装二维码",
     "iosQrLabel": "TestFlight 安装二维码",
-    "iosQrTitle": "扫码下载"
+    "iosQrTitle": "扫码下载",
+    "loadingAddress": "正在获取下载地址",
+    "retry": "重试"
   },
   "form": {
     "code": "验证码",
