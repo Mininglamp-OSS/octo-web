@@ -1,0 +1,36 @@
+.appbot-chat-header {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  height: var(--wk-sp-12);
+  padding: 0 var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-default);
+  background: var(--wk-bg-surface);
+  flex-shrink: 0;
+}
+
+.appbot-chat-header-avatar {
+  width: var(--wk-sp-8);
+  height: var(--wk-sp-8);
+  border-radius: var(--wk-avatar-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.appbot-chat-header-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.appbot-chat-header-name {
+  font-size: var(--wk-text-size-lg);
+  font-weight: var(--wk-font-semibold);
+  color: var(--wk-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
