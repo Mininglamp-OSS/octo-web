@@ -115,9 +115,9 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     listLabels().then(setLabels).catch(() => {});
   }, []);
 
-  const reload = useCallback(() => {
+  const reload = useCallback((silent = false) => {
     const my = ++seq.current;
-    setLoading(true);
+    if (!silent) setLoading(true);
     // 请求失败(网络/权限/500):清空结果集 + 提示。不保留旧行——否则旧数据会残留在新筛选态下,
     // 且列表勾选态仍指向陈旧行,可能被批量删改误作用。seq 守卫:仅最新一次在途请求可清。
     const onErr = () => {
@@ -151,14 +151,8 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
     // 分组板:走 /issues/grouped(按负责人)。
     if (view === "grouped") {
-      const gkw = f.keyword.trim();
-      // 关键词(仅主看板,非「我的回路」)→ 全文搜索平铺结果,前端按负责人分组呈现。搜索端点
-      // 独立语义(不吃 scope/其它筛选,上限 50),故与常规分组拉取分道;「我的回路」隐藏关键词、不入此路。
-      if (gkw && !isMyLoop) {
-        searchIssues(gkw, { limit: 50 })
-          .then(({ issues }) => { if (my === seq.current) setGroups(groupIssuesByAssignee(issues)); })
-          .catch(onErr)
-          .finally(() => { if (my === seq.current) setLoading(false); });
+      if (scope === "involves" && !myMemberId) {
+        if (my === seq.current) { setGroups([]); if (!silent) setLoading(false); }
         return;
       }
       // 「与我相关」(仅「我的回路」页)= 指派给我 ∪ 我创建 ∪ 间接关联的并集扇出;需当前成员
@@ -178,7 +172,7 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       listGroupedIssues({ ...common, assignee_types: scopeToAssigneeTypes(scope), limit: 100 })
         .then((gs) => { if (my === seq.current) setGroups(gs); })
         .catch(onErr)
-        .finally(() => { if (my === seq.current) setLoading(false); });
+        .finally(() => { if (my === seq.current && !silent) setLoading(false); });
       return;
     }
 
@@ -206,10 +200,12 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
         setTotal(total);
       })
       .catch(onErr)
-      .finally(() => { if (my === seq.current) setLoading(false); });
+      .finally(() => { if (my === seq.current && !silent) setLoading(false); });
   }, [f, view, page, scope, myMemberId, noAssigneeActive]);
 
-  useEffect(reload, [reload]);
+  // 注意:useEffect 直接传 reload 会将 effect 的 cleanup 参数当作 silent 传入;
+  // 改为箭头函数包裹,确保 reactive 首次加载仍走全屏 spinner(silent=false)。
+  useEffect(() => { reload(); }, [reload]);
 
   // 运行中快照:视图/筛选无关(工作区级),故不进 reload 的依赖 —— 不随筛选/翻页/切视图白拉。
   // seq 守卫:agent 任务独立起停,多次刷新在途时只让最新一次落地,防旧响应覆盖新。
@@ -230,7 +226,8 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   // 任务状态自动刷新:无 WS 推送时看板/分组/列表均需定期重取,否则只有切走再切回才能更新。
   // 30s 轮询覆盖绝大多数 agent 执行周期;seq 守卫已防并发乱序,轮询与手动操作安全并存。
   useEffect(() => {
-    const timer = setInterval(reload, 30000);
+    // 后台轮询静默刷新(silent=true):不触发全屏 loading,原地更新数据,用户无感知。
+    const timer = setInterval(() => reload(true), 30000);
     return () => clearInterval(timer);
   }, [reload]);
 
