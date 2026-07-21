@@ -84,6 +84,7 @@ import { buildAddStickerMenu } from "./Messages/LottieSticker/collectMenu";
 import { isMessageReactionEnabled } from "./Service/featureFlags";
 import { reactionPickerOverlay, enablePointerTracking } from "./ui/message/MessageReactionPicker/ReactionPickerOverlay";
 import { messageReactionController } from "./features/messageReaction/runtime";
+import { isMessageReactionChannelSupported } from "./features/messageReaction/controller";
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast, Tag } from "@douyinfe/semi-ui";
 import { ChannelSettingManager } from "./Service/ChannelSetting";
@@ -918,7 +919,10 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.reaction",
       (message) => {
-        if (!isMessageReactionEnabled()) {
+        if (
+          !isMessageReactionEnabled() ||
+          !isMessageReactionChannelSupported(message.channel.channelType)
+        ) {
           return null;
         }
         // 服务端本期只接受纯文本；尚未拿到服务端 message_id 的本地待发送消息也不展示。

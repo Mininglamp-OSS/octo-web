@@ -4,9 +4,21 @@ import {
   type ToggleMessageReactionRequest,
   type ToggleMessageReactionResult,
 } from "../../Service/MessageReactionService";
+import { ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
+import { ChannelTypeCommunityTopic } from "../../Service/Const";
 
 export const MESSAGE_REACTION_UPDATED_EVENT =
   "message-reaction-updated" as const;
+
+export function isMessageReactionChannelSupported(
+  channelType: number
+): boolean {
+  return (
+    channelType === ChannelTypePerson ||
+    channelType === ChannelTypeGroup ||
+    channelType === ChannelTypeCommunityTopic
+  );
+}
 
 export interface MessageReactionTarget {
   messageID: string;

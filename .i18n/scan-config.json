@@ -67,10 +67,6 @@
     {
       "path": "packages/dmworksummary/src/utils/channelType.ts",
       "reason": "Error message template with interpolation placeholder; already covered by runtime error handling with proper i18n."
-    },
-    {
-      "path": "packages/dmworkbase/src/ui/message/MessageReactionPicker/data.ts",
-      "reason": "Quick-reaction key/char values are stable cross-client message protocol tokens. Bracketed custom-emoji names such as [使命必达] must byte-match the common/emojis manifest and are not translatable UI copy."
     }
   ]
 }

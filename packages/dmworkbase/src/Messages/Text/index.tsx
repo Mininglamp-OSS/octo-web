@@ -12,6 +12,7 @@ import MessageRow from "../../ui/message/MessageRow"
 import ReplyBlock from "../../ui/message/ReplyBlock";
 import TextContent from "../../ui/message/TextContent";
 import ReactionSlot from "../../features/messageReaction/ReactionSlot";
+import { isMessageReactionChannelSupported } from "../../features/messageReaction/controller";
 import { isMessageReactionEnabled } from "../../Service/featureFlags";
 import { getTextMessageUI } from "../../bridge/message/useTextMessageUI";
 import { isMessageSelectable } from "../../Service/messageSelection";
@@ -219,7 +220,9 @@ export class TextCell extends MessageCell {
                             {...uiProps.content}
                             onMentionClick={(uid) => context.showUser(uid)}
                         />
-                        {isMessageReactionEnabled() && message.messageID && (
+                        {isMessageReactionEnabled() &&
+                            isMessageReactionChannelSupported(message.channel.channelType) &&
+                            message.messageID && (
                             <ReactionSlot
                                 message={message.message}
                             />

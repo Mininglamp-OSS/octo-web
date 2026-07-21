@@ -1,3 +1,5 @@
+import { BUILTIN_CUSTOM_EMOJI_KEYS } from "../../../Service/EmojiService";
+
 /**
  * 静态 emoji 数据（截图 / story 用）。
  *
@@ -7,15 +9,17 @@
 
 export interface PickerEmoji {
   /** 稳定 React key；对于自定义 token，用 wire 侧的 `[xxx]` 原文 */
-  key: string
+  key: string;
   /** 展示字符（unicode），或自定义 token 原文（`[使命必达]`）；有 image 时可作降级 */
-  char: string
+  char: string;
   /** 若为图片型表情（项目专属 token），此字段承载 <img src>；缺省回退到 char 文本 */
-  image?: string
+  image?: string;
   /** 无障碍 aria-label / tooltip */
-  name?: string
+  name?: string;
+  /** 由业务层通过 i18n 解析为 name，静态数据中不保存用户可见文案 */
+  nameKey?: string;
   /** 搜索关键字（英中都可） */
-  keywords?: string[]
+  keywords?: string[];
 }
 
 /**
@@ -25,14 +29,14 @@ export interface PickerEmoji {
  * 身份 = reactionKey = 该 char，picker 选中态用 emoji.key 比对，需与之统一。
  */
 export const DEFAULT_FREQUENT: PickerEmoji[] = [
-  { key: "👍", char: "👍", name: "赞" },
-  { key: "👌", char: "👌", name: "好的" },
-  { key: "😁", char: "😁", name: "666" },
-  { key: "🌹", char: "🌹", name: "花" },
-  { key: "🎉", char: "🎉", name: "庆祝" },
-  { key: "❤️", char: "❤️", name: "爱心" },
-  { key: "🔥", char: "🔥", name: "火" },
-]
+  { key: "👍", char: "👍", nameKey: "base.reaction.emoji.thumbsUp" },
+  { key: "👌", char: "👌", nameKey: "base.reaction.emoji.ok" },
+  { key: "😁", char: "😁", nameKey: "base.reaction.emoji.grin" },
+  { key: "🌹", char: "🌹", nameKey: "base.reaction.emoji.rose" },
+  { key: "🎉", char: "🎉", nameKey: "base.reaction.emoji.celebrate" },
+  { key: "❤️", char: "❤️", nameKey: "base.reaction.emoji.heart" },
+  { key: "🔥", char: "🔥", nameKey: "base.reaction.emoji.fire" },
+];
 
 /**
  * 项目专属表情（quick-pick 顶行首位）。
@@ -42,8 +46,38 @@ export const DEFAULT_FREQUENT: PickerEmoji[] = [
  * 请调 `EmojiService.getEmojiUrl(item)` 拿绝对地址（含 manifest 下发的 CDN url 优先）。
  */
 export const DEFAULT_TOKENS: PickerEmoji[] = [
-  { key: "[使命必达]", char: "[使命必达]", image: "/emoji/custom_mission.png", name: "使命必达" },
-  { key: "[崇尚行动]", char: "[崇尚行动]", image: "/emoji/custom_action.png", name: "崇尚行动" },
-  { key: "[有品位]", char: "[有品位]", image: "/emoji/custom_taste.png", name: "有品位" },
-  { key: "[尚方宝剑]", char: "[尚方宝剑]", image: "/emoji/custom_shangfang.png", name: "尚方宝剑" },
-]
+  {
+    key: BUILTIN_CUSTOM_EMOJI_KEYS.mission,
+    char: BUILTIN_CUSTOM_EMOJI_KEYS.mission,
+    image: "/emoji/custom_mission.png",
+    nameKey: "base.reaction.emoji.mission",
+  },
+  {
+    key: BUILTIN_CUSTOM_EMOJI_KEYS.action,
+    char: BUILTIN_CUSTOM_EMOJI_KEYS.action,
+    image: "/emoji/custom_action.png",
+    nameKey: "base.reaction.emoji.action",
+  },
+  {
+    key: BUILTIN_CUSTOM_EMOJI_KEYS.taste,
+    char: BUILTIN_CUSTOM_EMOJI_KEYS.taste,
+    image: "/emoji/custom_taste.png",
+    nameKey: "base.reaction.emoji.taste",
+  },
+  {
+    key: BUILTIN_CUSTOM_EMOJI_KEYS.shangfang,
+    char: BUILTIN_CUSTOM_EMOJI_KEYS.shangfang,
+    image: "/emoji/custom_shangfang.png",
+    nameKey: "base.reaction.emoji.shangfang",
+  },
+];
+
+export function localizePickerEmojis(
+  emojis: readonly PickerEmoji[],
+  translate: (key: string) => string
+): PickerEmoji[] {
+  return emojis.map((emoji) => ({
+    ...emoji,
+    name: emoji.nameKey ? translate(emoji.nameKey) : emoji.name,
+  }));
+}

@@ -2,7 +2,12 @@ import React from "react";
 import ReactDOM from "react-dom";
 
 import MessageReactionPicker from "./index";
-import { DEFAULT_FREQUENT, DEFAULT_TOKENS, type PickerEmoji } from "./data";
+import {
+  DEFAULT_FREQUENT,
+  DEFAULT_TOKENS,
+  localizePickerEmojis,
+  type PickerEmoji,
+} from "./data";
 import { EmojiPanel } from "../../../Components/EmojiToolbar";
 import { t } from "../../../i18n";
 
@@ -91,8 +96,8 @@ class ReactionPickerOverlayController {
     this.render(
       <div style={{ position: "fixed", left, top, zIndex: 9999 }}>
         <MessageReactionPicker
-          tokens={DEFAULT_TOKENS}
-          frequentlyUsed={DEFAULT_FREQUENT}
+          tokens={localizePickerEmojis(DEFAULT_TOKENS, t)}
+          frequentlyUsed={localizePickerEmojis(DEFAULT_FREQUENT, t)}
           selectedKeys={opts.selectedKeys}
           moreLabel={t("base.reaction.more")}
           onSelect={(emoji: PickerEmoji) => {

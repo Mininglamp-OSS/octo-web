@@ -131,28 +131,31 @@ export function createMessageReactionSyncController(
 
     let changed = false;
     let progressed = false;
-    while (cursor < targetSeq) {
-      const startSeq = cursor;
-      const records = await dependencies.sync({
-        channelId: dependencies.channel.channelID,
-        channelType: dependencies.channel.channelType,
-        seq: startSeq,
-      });
-      if (records.length === 0) break;
+    try {
+      while (cursor < targetSeq) {
+        const startSeq = cursor;
+        const records = await dependencies.sync({
+          channelId: dependencies.channel.channelID,
+          channelType: dependencies.channel.channelType,
+          seq: startSeq,
+        });
+        if (records.length === 0) break;
 
-      let nextSeq = startSeq;
-      for (const record of records) {
-        if (typeof record.seq === "number" && record.seq > nextSeq) {
-          nextSeq = record.seq;
+        let nextSeq = startSeq;
+        for (const record of records) {
+          if (typeof record.seq === "number" && record.seq > nextSeq) {
+            nextSeq = record.seq;
+          }
+          changed = apply(record) || changed;
         }
-        changed = apply(record) || changed;
+        if (nextSeq <= startSeq) break;
+        cursor = nextSeq;
+        progressed = true;
       }
-      if (nextSeq <= startSeq) break;
-      cursor = nextSeq;
-      progressed = true;
+      return progressed;
+    } finally {
+      if (changed) dependencies.notify();
     }
-    if (changed) dependencies.notify();
-    return progressed;
   };
 
   const drain = async (): Promise<void> => {
