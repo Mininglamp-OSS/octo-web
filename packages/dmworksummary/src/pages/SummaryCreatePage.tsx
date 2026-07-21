@@ -457,15 +457,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (this.props.channel) {
                 const ch = this.props.channel;
                 params.origin_channel_id = ch.channelID;
-                // 后端要求 origin_channel_type: 1=私聊, 2=群聊, 3=子区
-                // wukongim 中子区的 channelType 也是 2，但 channelID 带 "____" 前缀
-                if (ch.channelID.includes("____")) {
-                    params.origin_channel_type = 3;
-                } else if (ch.channelType === 1) {
-                    params.origin_channel_type = 1;
-                } else {
-                    params.origin_channel_type = 2;
-                }
+                // origin_channel_type 与 SourceType 一致: 1=群聊, 2=子区, 3=私聊
+                params.origin_channel_type = getOriginChannelType(ch);
             }
 
             if (selectedChats.length > 0) {
