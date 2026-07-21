@@ -1,9 +1,14 @@
 import React from "react";
 import { IconGithubLogo } from "@douyinfe/semi-icons";
 import { Popover } from "@douyinfe/semi-ui";
-import { apiFetchJson, WKApp, WKButton } from "@octo/base";
+import { WKButton } from "@octo/base";
 import { QRCodeSVG } from "qrcode.react";
 import { loginT as t } from "./i18n";
+import {
+  resolveMobileUpdaterUrl,
+  startMobileDownload,
+  useMobileDownloadUrl,
+} from "./mobileDownloadUpdater";
 import "./MobileDownloadPopover.css";
 
 export const ANDROID_APK_PATH = "/download/dmwork.apk";
@@ -18,46 +23,8 @@ export function resolveAndroidApkUrl(
   return new URL(ANDROID_APK_PATH, `${origin.replace(/\/$/, "")}/`).toString();
 }
 
-export function resolveAndroidUpdaterUrl(
-  apiUrl = WKApp.apiClient.config.apiURL
-) {
-  return `${apiUrl.replace(/\/?$/, "/")}${ANDROID_UPDATER_PATH}`;
-}
-
-function resolveSafeDownloadUrl(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  try {
-    const url = new URL(value, window.location.origin);
-    if (url.protocol === "http:" || url.protocol === "https:") {
-      return url.toString();
-    }
-  } catch {
-    // Invalid updater responses fall back to the legacy same-origin APK path.
-  }
-  return undefined;
-}
-
-function startBrowserDownload(url: string) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "";
-  link.style.display = "none";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-}
-
-export async function downloadLatestAndroidApk() {
-  let downloadUrl = resolveAndroidApkUrl();
-  try {
-    const result = await apiFetchJson<{ url?: unknown }>(
-      resolveAndroidUpdaterUrl()
-    );
-    downloadUrl = resolveSafeDownloadUrl(result?.url) ?? downloadUrl;
-  } catch {
-    // Keep the legacy same-origin APK path available when the updater fails.
-  }
-  startBrowserDownload(downloadUrl);
+export function resolveAndroidUpdaterUrl(apiUrl?: string) {
+  return resolveMobileUpdaterUrl(ANDROID_UPDATER_PATH, apiUrl);
 }
 
 export function openAndroidReleases() {
@@ -77,47 +44,55 @@ type PopoverHoverProps = Pick<
 
 export const AndroidDownloadPopoverContent: React.FC<PopoverHoverProps> = (
   hoverProps
-) => (
-  <div
-    className="wk-login-mobile-download-popover"
-    role="dialog"
-    aria-label={t("download.androidQrTitle")}
-    {...hoverProps}
-  >
+) => {
+  const fallbackUrl = resolveAndroidApkUrl();
+  const { downloadUrl, resolveDownloadUrl } = useMobileDownloadUrl(
+    ANDROID_UPDATER_PATH,
+    fallbackUrl
+  );
+
+  return (
     <div
-      className="wk-login-mobile-popover-qr"
-      role="img"
+      className="wk-login-mobile-download-popover"
+      role="dialog"
       aria-label={t("download.androidQrTitle")}
+      {...hoverProps}
     >
-      <QRCodeSVG value={resolveAndroidApkUrl()} size={104} />
+      <div
+        className="wk-login-mobile-popover-qr"
+        role="img"
+        aria-label={t("download.androidQrTitle")}
+      >
+        <QRCodeSVG value={downloadUrl} size={104} />
+      </div>
+      <strong className="wk-login-mobile-download-popover-title">
+        {t("download.androidQrTitle")}
+      </strong>
+      <a
+        className="wk-login-mobile-download-direct-link"
+        href={downloadUrl}
+        download
+        onClick={(event) => {
+          event.preventDefault();
+          void resolveDownloadUrl().then(startMobileDownload);
+        }}
+      >
+        {t("download.androidDirectDownload")}
+      </a>
+      <WKButton
+        type="button"
+        className="wk-login-android-popover-manual-download"
+        variant="ghost"
+        size="sm"
+        icon={<IconGithubLogo aria-hidden="true" />}
+        aria-label={t("download.openGithubReleases")}
+        onClick={openAndroidReleases}
+      >
+        {t("download.githubManualDownload")}
+      </WKButton>
     </div>
-    <strong className="wk-login-mobile-download-popover-title">
-      {t("download.androidQrTitle")}
-    </strong>
-    <a
-      className="wk-login-mobile-download-direct-link"
-      href={resolveAndroidApkUrl()}
-      download
-      onClick={(event) => {
-        event.preventDefault();
-        void downloadLatestAndroidApk();
-      }}
-    >
-      {t("download.androidDirectDownload")}
-    </a>
-    <WKButton
-      type="button"
-      className="wk-login-android-popover-manual-download"
-      variant="ghost"
-      size="sm"
-      icon={<IconGithubLogo aria-hidden="true" />}
-      aria-label={t("download.openGithubReleases")}
-      onClick={openAndroidReleases}
-    >
-      {t("download.githubManualDownload")}
-    </WKButton>
-  </div>
-);
+  );
+};
 
 export const AndroidDownloadButton: React.FC = () => {
   const [hoverVisible, setHoverVisible] = React.useState(false);

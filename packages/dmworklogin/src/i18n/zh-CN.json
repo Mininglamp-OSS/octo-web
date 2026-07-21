@@ -84,7 +84,6 @@
     "githubManualDownload": "或前往 GitHub 手动下载",
     "openGithubReleases": "打开 GitHub Releases",
     "ios": "iOS",
-    "iosDirectDownload": "打开 TestFlight",
     "iosHoverHint": "悬停或点击查看 iOS 安装二维码",
     "iosQrLabel": "TestFlight 安装二维码",
     "iosQrTitle": "扫码下载"

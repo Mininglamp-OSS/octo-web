@@ -265,15 +265,9 @@ describe("AndroidDownloadButton", () => {
     expect(directDownload?.textContent).toBe("直接下载 APK");
   });
 
-  it("downloads the updater-provided APK URL when the direct action is clicked", async () => {
+  it("uses one updater-provided APK URL for the QR code and direct action", async () => {
     const updaterUrl = "https://cdn.example.com/releases/octo-latest.apk";
     apiFetchJsonMock.mockResolvedValue({ url: updaterUrl });
-    let clickedHref = "";
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
-      function (this: HTMLAnchorElement) {
-        clickedHref = this.href;
-      }
-    );
     const container = document.createElement("div");
     document.body.appendChild(container);
     mountedContainers.push(container);
@@ -284,13 +278,6 @@ describe("AndroidDownloadButton", () => {
       );
     });
 
-    act(() => {
-      Simulate.click(
-        container.querySelector(
-          ".wk-login-mobile-download-direct-link"
-        ) as Element
-      );
-    });
     await act(async () => {
       await Promise.resolve();
     });
@@ -298,28 +285,21 @@ describe("AndroidDownloadButton", () => {
     expect(apiFetchJsonMock).toHaveBeenCalledWith(
       "/api/v1/common/updater/android/1.0"
     );
-    expect(clickedHref).toBe(updaterUrl);
-  });
+    expect(
+      container.querySelector("[data-qr-value]")?.getAttribute("data-qr-value")
+    ).toBe(updaterUrl);
+    expect(
+      container.querySelector<HTMLAnchorElement>(
+        ".wk-login-mobile-download-direct-link"
+      )?.href
+    ).toBe(updaterUrl);
 
-  it("falls back to the same-origin APK when the updater request fails", async () => {
-    apiFetchJsonMock.mockRejectedValue(new Error("network error"));
     let clickedHref = "";
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
-      function (this: HTMLAnchorElement) {
-        clickedHref = this.href;
-      }
-    );
-
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    mountedContainers.push(container);
-    act(() => {
-      ReactDOM.render(
-        React.createElement(AndroidDownloadPopoverContent),
-        container
-      );
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement
+    ) {
+      clickedHref = this.href;
     });
-
     act(() => {
       Simulate.click(
         container.querySelector(
@@ -330,8 +310,35 @@ describe("AndroidDownloadButton", () => {
     await act(async () => {
       await Promise.resolve();
     });
+    expect(clickedHref).toBe(updaterUrl);
+    expect(apiFetchJsonMock).toHaveBeenCalledTimes(1);
+  });
 
-    expect(clickedHref).toBe(`${window.location.origin}${ANDROID_APK_PATH}`);
+  it("falls back to the same-origin APK when the updater request fails", async () => {
+    apiFetchJsonMock.mockRejectedValue(new Error("network error"));
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    mountedContainers.push(container);
+    act(() => {
+      ReactDOM.render(
+        React.createElement(AndroidDownloadPopoverContent),
+        container
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const fallbackUrl = `${window.location.origin}${ANDROID_APK_PATH}`;
+    expect(
+      container.querySelector("[data-qr-value]")?.getAttribute("data-qr-value")
+    ).toBe(fallbackUrl);
+    expect(
+      container.querySelector<HTMLAnchorElement>(
+        ".wk-login-mobile-download-direct-link"
+      )?.href
+    ).toBe(fallbackUrl);
   });
 
   it("opens GitHub Releases safely in a new tab", () => {

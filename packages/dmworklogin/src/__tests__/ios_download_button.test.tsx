@@ -5,6 +5,19 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act, Simulate } from "react-dom/test-utils";
 import { i18n } from "@octo/base/src/i18n/instance";
 
+const { apiFetchJsonMock } = vi.hoisted(() => ({
+  apiFetchJsonMock: vi.fn(),
+}));
+
+vi.mock("@octo/base", () => ({
+  apiFetchJson: apiFetchJsonMock,
+  WKApp: {
+    apiClient: {
+      config: { apiURL: "/api/v1/" },
+    },
+  },
+}));
+
 vi.mock("@douyinfe/semi-ui", () => ({
   Popover: ({
     children,
@@ -53,6 +66,7 @@ import {
   IOSDownloadButton,
   IOSDownloadPopoverContent,
   IOS_DOWNLOAD_URL,
+  IOS_UPDATER_PATH,
 } from "../IOSDownloadButton";
 
 const mountedContainers: HTMLDivElement[] = [];
@@ -70,6 +84,7 @@ function renderInteractiveButton() {
 describe("IOSDownloadButton", () => {
   beforeEach(() => {
     i18n.setLocale("zh-CN", { persist: false });
+    apiFetchJsonMock.mockReset();
     vi.useFakeTimers();
   });
 
@@ -83,8 +98,9 @@ describe("IOSDownloadButton", () => {
     vi.useRealTimers();
   });
 
-  it("points at the public TestFlight URL", () => {
+  it("keeps the public TestFlight URL as the updater fallback", () => {
     expect(IOS_DOWNLOAD_URL).toBe("https://testflight.apple.com/join/uPrdCcy3");
+    expect(IOS_UPDATER_PATH).toBe("common/updater/ios/1.0.0");
   });
 
   it("renders a non-navigation button trigger", () => {
@@ -145,7 +161,7 @@ describe("IOSDownloadButton", () => {
     expect(popover?.getAttribute("data-visible")).toBe("false");
   });
 
-  it("renders the TestFlight URL as a scannable QR code", () => {
+  it("renders the fallback TestFlight URL during server rendering", () => {
     const html = renderToStaticMarkup(
       React.createElement(IOSDownloadPopoverContent)
     );
@@ -159,18 +175,36 @@ describe("IOSDownloadButton", () => {
     expect(html).not.toContain("手机扫码安装");
   });
 
-  it("provides a direct TestFlight action for same-device mobile users", () => {
+  it("renders the updater-provided iOS URL as a scannable QR code", async () => {
+    const updaterUrl = "https://testflight.apple.com/join/backendCode";
+    apiFetchJsonMock.mockResolvedValue({ url: updaterUrl });
     const container = document.createElement("div");
-    container.innerHTML = renderToStaticMarkup(
+    document.body.appendChild(container);
+    mountedContainers.push(container);
+    act(() => {
+      ReactDOM.render(
+        React.createElement(IOSDownloadPopoverContent),
+        container
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(apiFetchJsonMock).toHaveBeenCalledWith(
+      "/api/v1/common/updater/ios/1.0.0"
+    );
+    expect(
+      container.querySelector("[data-qr-value]")?.getAttribute("data-qr-value")
+    ).toBe(updaterUrl);
+  });
+
+  it("does not render the removed direct TestFlight action", () => {
+    const html = renderToStaticMarkup(
       React.createElement(IOSDownloadPopoverContent)
     );
 
-    const directDownload = container.querySelector<HTMLAnchorElement>(
-      ".wk-login-mobile-download-direct-link"
-    );
-    expect(directDownload?.href).toBe(IOS_DOWNLOAD_URL);
-    expect(directDownload?.target).toBe("_blank");
-    expect(directDownload?.rel).toBe("noopener noreferrer");
-    expect(directDownload?.textContent).toBe("打开 TestFlight");
+    expect(html).not.toContain("wk-login-mobile-download-direct-link");
+    expect(html).not.toContain("打开 TestFlight");
   });
 });
