@@ -227,6 +227,13 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     return () => clearInterval(timer);
   }, [refreshRunning]);
 
+  // 任务状态自动刷新:无 WS 推送时看板/分组/列表均需定期重取,否则只有切走再切回才能更新。
+  // 30s 轮询覆盖绝大多数 agent 执行周期;seq 守卫已防并发乱序,轮询与手动操作安全并存。
+  useEffect(() => {
+    const timer = setInterval(reload, 30000);
+    return () => clearInterval(timer);
+  }, [reload]);
+
   // 变更后刷新:既重取列表,又刷新运行中快照(指派/状态变更可能起/停 agent run)。
   const onMutated = useCallback(() => { reload(); refreshRunning(); }, [reload, refreshRunning]);
   // 订阅 `wk:loop-issues-refresh` 重取列表:由 LoopPage 在「点击 loop 导航」与「新建回路成功」时补发,
