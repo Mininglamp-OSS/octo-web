@@ -33,6 +33,13 @@ export function deriveSummaryTitle(topic: string): string {
     return (match?.[2] || source).trim();
 }
 
+export function deriveSummaryDisplayContent(topic: string): string {
+    const trimmed = topic.trim();
+    const contentMatch = /(?:^|\n)(?:内容重点|总结内容|Content focus|Summary content)\s*[:：]\s*/i.exec(trimmed);
+    if (!contentMatch) return trimmed;
+    return trimmed.slice(contentMatch.index + contentMatch[0].length).trim();
+}
+
 /** Keep template framing visible while limiting only the editable summary content. */
 export function limitTemplateSummaryContent(topic: string, maxLength: number): string {
     const contentMatch = /(?:^|\n)(?:内容重点|总结内容|Content focus|Summary content)\s*[:：]\s*/i.exec(topic);

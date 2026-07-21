@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent } from '../templateResolver';
+import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, deriveSummaryDisplayContent, limitTemplateSummaryContent } from '../templateResolver';
 import type { TopicTemplate } from '../../types/summary';
 import { TOPIC_TEMPLATES } from '../../constants/templates';
 
@@ -106,6 +106,18 @@ describe('deriveSummaryTitle', () => {
 
     it('returns an empty string for empty input', () => {
         expect(deriveSummaryTitle('   ')).toBe('');
+    });
+});
+
+describe('deriveSummaryDisplayContent', () => {
+    it('returns all content after the template content label', () => {
+        expect(deriveSummaryDisplayContent('总结主题：项目复盘\n总结内容：第一行\n第二行\n第三行'))
+            .toBe('第一行\n第二行\n第三行');
+    });
+
+    it('returns the complete direct input when no template label exists', () => {
+        expect(deriveSummaryDisplayContent('第一行\n第二行'))
+            .toBe('第一行\n第二行');
     });
 });
 

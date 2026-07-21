@@ -35,10 +35,9 @@ interface SummaryListPageState {
     activeTaskId: number | null;
 }
 
-const getStatusOptions = () => [
+export const getStatusOptions = () => [
     { value: "", label: t("summary.list.allStatus") },
     { value: TaskStatus.PENDING, label: getStatusLabel(TaskStatus.PENDING) },
-    { value: TaskStatus.WAITING_CONFIRM, label: getStatusLabel(TaskStatus.WAITING_CONFIRM) },
     { value: TaskStatus.PROCESSING, label: getStatusLabel(TaskStatus.PROCESSING) },
     { value: TaskStatus.COMPLETED, label: getStatusLabel(TaskStatus.COMPLETED) },
     { value: TaskStatus.FAILED, label: getStatusLabel(TaskStatus.FAILED) },

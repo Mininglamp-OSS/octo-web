@@ -5,8 +5,9 @@ import { CalendarDays, UserRound } from "lucide-react";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
-import { ParticipantStatus, TriggerType } from "../types/summary";
+import { ParticipantStatus, TaskStatus, TriggerType } from "../types/summary";
 import TaskStatusBadge from "./TaskStatusBadge";
+import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 
 interface SummaryCardProps {
     task: SummaryListItem;
@@ -23,6 +24,10 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     const myParticipant = task.participants?.find((p) => p.user_id === currentUid);
     const isMultiParticipant = (task.participants?.length ?? 0) > 1;
     const isPendingInvite = isMultiParticipant && myParticipant != null && myParticipant.status === ParticipantStatus.PENDING;
+    const displaysWaiting = task.has_pending_invitation === true
+        || (isMultiParticipant && task.has_pending_submission === true)
+        || isPendingInvite;
+    const displayTitle = deriveSummaryDisplayContent(task.topic || task.title || task.task_no);
 
     // 是否创建者：以 creator_id 为准。非创建者且是参与者 -> 退出；
     // 创建者 -> 删除。
@@ -46,8 +51,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         >
             {task.needs_attention && <span className="summary-card-attention-dot" aria-label={t("summary.list.needsAttention")} />}
             <div className="summary-card-header">
-                <div className="summary-card-title" title={task.title || task.task_no}>
-                    {task.title || task.task_no}
+                <div className="summary-card-title">
+                    {displayTitle}
                 </div>
                 <div className="summary-card-header-badges">
                     {isAgentGenerated && (
@@ -55,7 +60,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                             🤖 {t("summary.summaryCard.aiGenerated")}
                         </Tag>
                     )}
-                    <TaskStatusBadge status={task.status} />
+                    <TaskStatusBadge status={displaysWaiting ? TaskStatus.PENDING : task.status} />
                 </div>
             </div>
 

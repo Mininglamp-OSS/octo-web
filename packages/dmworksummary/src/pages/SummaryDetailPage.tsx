@@ -19,6 +19,7 @@ import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
+import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 // RefineSection 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
 // (见 CHAT-REFERENCE-BASED-DESIGN-v1)
 import OverflowTooltip from "../components/OverflowTooltip";
@@ -707,6 +708,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     }, () => this.syncWorkflowProgress(result));
                     if (result.worker_status !== 0 && result.worker_status !== 1) {
                         if (this.personalPollTimer) clearInterval(this.personalPollTimer);
+                        // When a participant report reaches a terminal worker state, the list
+                        // may need to switch from Processing to Waiting (pending submission).
+                        // task.status remains PROCESSING, so status polling cannot detect this;
+                        // explicitly reload the list when the terminal state first arrives.
+                        window.dispatchEvent(new CustomEvent("summary-task-regenerated", {
+                            detail: { taskIds: [requestTaskId] },
+                        }));
                         // 终态一次性补拉 members：轮询已停，给它一个新 seq 即可。
                         this.loadMembers(this.nextScheduleSeq());
                     }
@@ -731,6 +739,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // F1：最后一人提交后团队总结/状态由 meta 聚合产生，team 区读 state.detail，
             // 必须 loadDetail 才能刷出新团队总结与状态，否则显示旧数据。
             this.loadDetail();
+            // Submission changes the list-only has_pending_submission flag while task.status
+            // may remain PROCESSING. Status polling cannot detect that change, so explicitly
+            // notify the list to reload.
+            window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskIds: [this.taskId] } }));
         } catch (err: any) {
             Toast.error(err.message || t("summary.detail.submitFailed"));
         }
@@ -3240,13 +3252,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const myUid = WKApp.loginInfo.uid;
         const isCreator = detail?.creator_id != null && detail.creator_id === myUid;
         const isParticipant = !!detail?.participants?.some((p) => p.user_id === myUid);
+        const displayTitle = deriveSummaryDisplayContent(detail?.topic || detail?.title || "") || t("summary.detail.defaultTitle");
 
         return (
             <div className="summary-detail-header">
                 <div className="summary-detail-header-inner">
                     <div className="summary-detail-header-title-wrap">
-                        <OverflowTooltip as="h2" className="summary-detail-title" title={detail?.title || t("summary.detail.defaultTitle")}>
-                            {detail?.title || t("summary.detail.defaultTitle")}
+                        <OverflowTooltip as="h2" className="summary-detail-title" title={displayTitle}>
+                            {displayTitle}
                         </OverflowTooltip>
                         {this.renderScheduleSummary()}
                     </div>

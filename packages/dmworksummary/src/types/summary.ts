@@ -169,6 +169,7 @@ export interface SummaryListItem {
     task_id: number;
     task_no: string;
     title: string;
+    topic?: string;
     summary_mode: SummaryModeType;
     status: TaskStatusType;
     trigger_type: number;
@@ -188,6 +189,7 @@ export interface SummaryListItem {
     completed_at: string | null;
     is_unread?: boolean;
     has_pending_invitation?: boolean;
+    has_pending_submission?: boolean;
     needs_attention?: boolean;
     current_result_id?: number | null;
     current_personal_version_id?: number | null;
@@ -199,6 +201,7 @@ export interface SummaryDetail {
     task_id: number;
     task_no: string;
     title: string;
+    topic?: string;
     summary_mode: SummaryModeType;
     status: TaskStatusType;
     trigger_type: number;
