@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import axios from 'axios'
 
-// vi.hoisted runs before vi.mock hoisting, so these are available in factories
-const { TaskStatus, mockApiGet } = vi.hoisted(() => ({
+// Shared mock for the isolated (no-interceptor) axios instance created by task.ts.
+// vi.hoisted ensures this runs before vi.mock factories so the factory can
+// reference it.  task.ts calls axios.create() at module-load time; we capture
+// the returned mock via the factory below.
+const { TaskStatus, mockApiGet, mockNoInterceptorAxiosPut } = vi.hoisted(() => ({
   TaskStatus: {
     wait: 0,
     success: 1,
@@ -12,6 +15,7 @@ const { TaskStatus, mockApiGet } = vi.hoisted(() => ({
     cancel: 5,
   } as const,
   mockApiGet: vi.fn(),
+  mockNoInterceptorAxiosPut: vi.fn(),
 }))
 
 vi.mock('wukongimjssdk', () => {
@@ -34,12 +38,26 @@ vi.mock('@octo/base', () => ({
   WKApp: {
     apiClient: {
       get: (...args: any[]) => mockApiGet(...args),
+      config: { apiURL: 'https://api.example.com/' },
     },
   },
 }))
 
+// Mock datasource so we can control shouldAttachUploadToken.
+// Default: return false (foreign-origin upload URL) — the common production
+// case where files are uploaded directly to COS.
+const mockShouldAttach = vi.fn().mockReturnValue(false)
+vi.mock('./datasource', () => ({
+  shouldAttachUploadToken: (...args: any[]) => mockShouldAttach(...args),
+}))
+
 vi.mock('axios', () => ({
-  default: { put: vi.fn() },
+  default: {
+    put: vi.fn(),
+    // task.ts calls axios.create() at module load to build noInterceptorAxios.
+    // Return a stub whose .put we can inspect independently of the global put.
+    create: vi.fn(() => ({ put: mockNoInterceptorAxiosPut })),
+  },
 }))
 
 // --- Import under test (after mocks) ---
@@ -79,19 +97,23 @@ function createTask(fileOrNull: File | null = makeFile(), remoteUrl = ''): Media
 describe('MediaMessageUploadTask', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default: foreign-origin upload URL (COS) — noInterceptorAxios should be used.
+    mockShouldAttach.mockReturnValue(false)
+    // Make noInterceptorAxios.put succeed by default so existing tests keep passing.
+    mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
   })
 
   describe('start() — normal upload flow', () => {
     it('sets status=success when upload succeeds', async () => {
       const creds = makeCredentials()
       mockApiGet.mockResolvedValue(creds)
-      vi.mocked(axios.put).mockResolvedValue({ status: 200, data: {} })
+      mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
 
       const task = createTask()
       await task.start()
 
       expect(mockApiGet).toHaveBeenCalledOnce()
-      expect(axios.put).toHaveBeenCalledOnce()
+      expect(mockNoInterceptorAxiosPut).toHaveBeenCalledOnce()
       expect(task.status).toBe(TaskStatus.success)
       expect((task.message.content as any).remoteUrl).toBe(creds.downloadUrl)
     })
@@ -99,7 +121,7 @@ describe('MediaMessageUploadTask', () => {
     it('sets both content.url and content.remoteUrl on success', async () => {
       const creds = makeCredentials()
       mockApiGet.mockResolvedValue(creds)
-      vi.mocked(axios.put).mockResolvedValue({ status: 200, data: {} })
+      mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
 
       const task = createTask()
       await task.start()
@@ -146,7 +168,7 @@ describe('MediaMessageUploadTask', () => {
     it('sets status=fail when axios.put rejects', async () => {
       const creds = makeCredentials()
       mockApiGet.mockResolvedValue(creds)
-      vi.mocked(axios.put).mockRejectedValue(new Error('ECONNRESET'))
+      mockNoInterceptorAxiosPut.mockRejectedValue(new Error('ECONNRESET'))
 
       const task = createTask()
       await task.start()
@@ -159,7 +181,7 @@ describe('MediaMessageUploadTask', () => {
     it('sets status=fail when response status is 403', async () => {
       const creds = makeCredentials()
       mockApiGet.mockResolvedValue(creds)
-      vi.mocked(axios.put).mockResolvedValue({ status: 403, data: {} })
+      mockNoInterceptorAxiosPut.mockResolvedValue({ status: 403, data: {} })
 
       const task = createTask()
       await task.start()
@@ -174,7 +196,7 @@ describe('MediaMessageUploadTask', () => {
       mockApiGet.mockResolvedValue(creds)
 
       let abortSignal: AbortSignal | undefined
-      vi.mocked(axios.put).mockImplementation((_url: any, _data: any, config: any) => {
+      mockNoInterceptorAxiosPut.mockImplementation((_url: any, _data: any, config: any) => {
         abortSignal = config?.signal
         return new Promise(() => {}) // hang forever
       })
@@ -183,7 +205,7 @@ describe('MediaMessageUploadTask', () => {
       const startPromise = task.start()
 
       // Wait for axios.put to be called
-      await vi.waitFor(() => expect(axios.put).toHaveBeenCalled())
+      await vi.waitFor(() => expect(mockNoInterceptorAxiosPut).toHaveBeenCalled())
 
       task.cancel()
       expect(task.status).toBe(TaskStatus.cancel)
@@ -195,7 +217,7 @@ describe('MediaMessageUploadTask', () => {
       mockApiGet.mockResolvedValue(creds)
 
       // Simulate abort rejection
-      vi.mocked(axios.put).mockImplementation((_url: any, _data: any, config: any) => {
+      mockNoInterceptorAxiosPut.mockImplementation((_url: any, _data: any, config: any) => {
         return new Promise((_, reject) => {
           config?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
         })
@@ -204,7 +226,7 @@ describe('MediaMessageUploadTask', () => {
       const task = createTask()
       const startPromise = task.start()
 
-      await vi.waitFor(() => expect(axios.put).toHaveBeenCalled())
+      await vi.waitFor(() => expect(mockNoInterceptorAxiosPut).toHaveBeenCalled())
 
       task.cancel()
       // Let microtasks settle (catch handler runs)
@@ -219,7 +241,7 @@ describe('MediaMessageUploadTask', () => {
     it('re-fetches credentials and uploads again', async () => {
       const creds = makeCredentials()
       mockApiGet.mockResolvedValue(creds)
-      vi.mocked(axios.put).mockResolvedValue({ status: 200, data: {} })
+      mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
 
       const task = createTask()
       task.status = TaskStatus.fail
@@ -227,7 +249,7 @@ describe('MediaMessageUploadTask', () => {
       await task.restart()
 
       expect(mockApiGet).toHaveBeenCalledOnce()
-      expect(axios.put).toHaveBeenCalledOnce()
+      expect(mockNoInterceptorAxiosPut).toHaveBeenCalledOnce()
       expect(task.status).toBe(TaskStatus.success)
     })
 
@@ -244,7 +266,7 @@ describe('MediaMessageUploadTask', () => {
   describe('file.name empty fallback', () => {
     it('uses "file" when file.name is empty', async () => {
       mockApiGet.mockResolvedValue(makeCredentials())
-      vi.mocked(axios.put).mockResolvedValue({ status: 200, data: {} })
+      mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
 
       const file = makeFile('', 'application/octet-stream')
       const task = createTask(file)
@@ -260,12 +282,12 @@ describe('MediaMessageUploadTask', () => {
     it('includes Content-Disposition when present in credentials', async () => {
       const creds = makeCredentials({ contentDisposition: 'attachment; filename="photo.jpg"' })
       mockApiGet.mockResolvedValue(creds)
-      vi.mocked(axios.put).mockResolvedValue({ status: 200, data: {} })
+      mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
 
       const task = createTask()
       await task.start()
 
-      const putCall = vi.mocked(axios.put).mock.calls[0]
+      const putCall = mockNoInterceptorAxiosPut.mock.calls[0]
       const headers = putCall[2]?.headers as Record<string, string>
       expect(headers['Content-Disposition']).toBe('attachment; filename="photo.jpg"')
     })
@@ -274,12 +296,12 @@ describe('MediaMessageUploadTask', () => {
       const creds = makeCredentials()
       delete (creds as any).contentDisposition
       mockApiGet.mockResolvedValue(creds)
-      vi.mocked(axios.put).mockResolvedValue({ status: 200, data: {} })
+      mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
 
       const task = createTask()
       await task.start()
 
-      const putCall = vi.mocked(axios.put).mock.calls[0]
+      const putCall = mockNoInterceptorAxiosPut.mock.calls[0]
       const headers = putCall[2]?.headers as Record<string, string>
       expect(headers['Content-Disposition']).toBeUndefined()
     })
@@ -306,6 +328,71 @@ describe('MediaMessageUploadTask', () => {
     it('returns 0 initially', () => {
       const task = createTask()
       expect(task.progress()).toBe(0)
+    })
+  })
+
+  describe('token isolation — COS pre-signed upload URL', () => {
+    it('uses noInterceptorAxios (not global axios) for foreign-origin upload URLs', async () => {
+      // Arrange: foreign-origin COS URL
+      mockShouldAttach.mockReturnValue(false)
+      const creds = makeCredentials({ uploadUrl: 'https://bucket.cos.ap-shanghai.myqcloud.com/file.jpg' })
+      mockApiGet.mockResolvedValue(creds)
+      mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
+
+      const task = createTask()
+      await task.start()
+
+      // The isolated instance must be used — not global axios.put
+      expect(mockNoInterceptorAxiosPut).toHaveBeenCalledOnce()
+      expect(axios.put).not.toHaveBeenCalled()
+    })
+
+    it('uses global axios for same-origin upload URLs', async () => {
+      // Arrange: same-origin URL (self-hosted storage)
+      mockShouldAttach.mockReturnValue(true)
+      const creds = makeCredentials({ uploadUrl: 'https://api.example.com/upload/file.jpg' })
+      mockApiGet.mockResolvedValue(creds)
+      vi.mocked(axios.put).mockResolvedValue({ status: 200, data: {} })
+
+      const task = createTask()
+      await task.start()
+
+      // Global axios carries the session token — correct for same-origin
+      expect(axios.put).toHaveBeenCalledOnce()
+      expect(mockNoInterceptorAxiosPut).not.toHaveBeenCalled()
+    })
+
+    it('empty locationHref (non-browser): fail-closed — noInterceptorAxios, no token leaked', async () => {
+      // Production code: !!locationHref && shouldAttachUploadToken(url, api, locationHref)
+      // When locationHref is empty the &&-short-circuit fires before shouldAttachUploadToken
+      // is called — useSameOriginAxios=false → noInterceptorAxios (fail-closed).
+      // jsdom sets window.location.href = 'http://localhost/' (truthy) by default, so we
+      // must stub it to empty to actually exercise the short-circuit branch.
+      const originalLocation = window.location
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        writable: true,
+        value: { href: '' },
+      })
+      try {
+        const creds = makeCredentials({ uploadUrl: 'https://bucket.cos.ap-shanghai.myqcloud.com/file.jpg' })
+        mockApiGet.mockResolvedValue(creds)
+        mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
+
+        const task = createTask()
+        await task.start()
+
+        // With empty locationHref the !!locationHref guard fires — noInterceptorAxios
+        // must be chosen (fail-closed: token withheld regardless of upload URL)
+        expect(mockNoInterceptorAxiosPut).toHaveBeenCalledOnce()
+        expect(axios.put).not.toHaveBeenCalled()
+      } finally {
+        Object.defineProperty(window, 'location', {
+          configurable: true,
+          writable: true,
+          value: originalLocation,
+        })
+      }
     })
   })
 })

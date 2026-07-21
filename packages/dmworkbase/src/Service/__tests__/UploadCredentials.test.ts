@@ -1,9 +1,32 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import axios from "axios"
 import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import APIClient from "../APIClient"
-import { precheckUploadCredentials } from "../UploadCredentials"
+import { precheckUploadCredentials, uploadChatMedia, noInterceptorAxios } from "../UploadCredentials"
 import { i18n } from "../../i18n"
+
+// Block the barrel re-export paths that transitively pull in lottie-web / Semi-UI
+// canvas initialisers, which crash under jsdom ("Cannot set properties of null").
+// These stubs are enough for the tests in this file.
+vi.mock("../../i18n", () => ({
+    i18n: {
+        setLocale: vi.fn(),
+        t: (key: string) => key,
+        locale: "zh-CN",
+    },
+    // Map the keys used by UploadCredentials.ts to their Chinese strings so that
+    // the message-text assertions continue to match after the i18n mock.
+    t: (key: string): string => {
+        const map: Record<string, string> = {
+            "base.uploadCredentials.missingFields": "响应缺少凭证字段",
+            "base.uploadCredentials.failed": "上传凭证获取失败",
+            "base.conversation.upload.failed": "上传失败",
+        }
+        return map[key] ?? key
+    },
+}))
+vi.mock("@douyinfe/semi-ui", () => ({}))
+vi.mock("lottie-web", () => ({}))
 
 /**
  * GH Mininglamp-OSS/octo-web#119 / #135 — preflight credentials helper.
@@ -108,5 +131,70 @@ describe("precheckUploadCredentials", () => {
             expect(typeof msg).toBe("string")
             expect(msg!.length).toBeGreaterThan(0)
         }
+    })
+})
+
+// ---------------------------------------------------------------------------
+// uploadChatMedia — token isolation
+// ---------------------------------------------------------------------------
+describe("uploadChatMedia — token isolation (COS pre-signed URL)", () => {
+    const fakeChannel = new Channel("u-test", ChannelTypePerson)
+    const fakeFile = (name = "photo.jpg", type = "image/jpeg", size = 1024): File =>
+        new File([new Uint8Array(size)], name, { type })
+
+    const makeCreds = (uploadUrl: string) => ({
+        uploadUrl,
+        downloadUrl: "https://cdn.example.com/file.jpg",
+        contentType: "image/jpeg",
+    })
+
+    // noInterceptorAxios is the module-level interceptor-free axios instance.
+    // It is now exported (@internal) so we can spy on it directly without
+    // module re-isolation.  This replaces the vi.isolateModules approach that
+    // was removed in Vitest 4.
+
+    beforeEach(() => {
+        APIClient.shared.config.apiURL = "https://api.example.com/"
+    })
+
+    it("uses noInterceptorAxios (no token) for foreign-origin COS upload URL", async () => {
+        const cosUrl = "https://bucket.cos.ap-shanghai.myqcloud.com/1/u-test/abc.jpg"
+        const getStub = vi.spyOn(APIClient.shared, "get").mockResolvedValue(makeCreds(cosUrl))
+        // Spy on the exported no-interceptor instance — the production code will call
+        // noInterceptorAxios.put for foreign-origin URLs.
+        const noInterceptorPutSpy = vi
+            .spyOn(noInterceptorAxios, "put")
+            .mockResolvedValue({ status: 200, data: {} })
+        const globalPutSpy = vi.spyOn(axios, "put").mockResolvedValue({ status: 200, data: {} })
+
+        const result = await uploadChatMedia(fakeFile(), fakeChannel, "jpg")
+
+        // The isolated (no-interceptor) instance must handle the PUT — not global axios
+        expect(noInterceptorPutSpy).toHaveBeenCalledOnce()
+        expect(globalPutSpy).not.toHaveBeenCalled()
+        expect(result).toBe("https://cdn.example.com/file.jpg")
+
+        getStub.mockRestore()
+        noInterceptorPutSpy.mockRestore()
+        globalPutSpy.mockRestore()
+    })
+
+    it("uses global axios (with token) for same-origin upload URL", async () => {
+        const sameOriginUrl = "https://api.example.com/upload/1/u-test/abc.jpg"
+        const getStub = vi.spyOn(APIClient.shared, "get").mockResolvedValue(makeCreds(sameOriginUrl))
+        const noInterceptorPutSpy = vi
+            .spyOn(noInterceptorAxios, "put")
+            .mockResolvedValue({ status: 200, data: {} })
+        const globalPutSpy = vi.spyOn(axios, "put").mockResolvedValue({ status: 200, data: {} })
+
+        await uploadChatMedia(fakeFile(), fakeChannel, "jpg")
+
+        // Same-origin: global axios carries the session token — correct
+        expect(globalPutSpy).toHaveBeenCalledOnce()
+        expect(noInterceptorPutSpy).not.toHaveBeenCalled()
+
+        getStub.mockRestore()
+        noInterceptorPutSpy.mockRestore()
+        globalPutSpy.mockRestore()
     })
 })

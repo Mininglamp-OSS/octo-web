@@ -2,6 +2,17 @@ import { WKApp } from "@octo/base";
 import axios from "axios";
 import { MediaMessageContent } from "wukongimjssdk";
 import {  MessageTask, TaskStatus } from "wukongimjssdk";
+import { shouldAttachUploadToken } from "./datasource";
+
+// Isolated axios instance: carries NONE of the global request interceptors.
+// The shared `axios` has an interceptor (APIClient) that injects the Octo
+// session token into EVERY outgoing request.  The COS pre-signed upload URL
+// is a *foreign-origin* endpoint — sending the token there causes COS to
+// reject the request with 403/400 (unexpected Authorization header on a
+// pre-signed URL).  datasource.ts already guards uploadSticker with the same
+// pattern; this instance mirrors that fix for chat-file uploads.
+// A finite timeout avoids hanging on an unreachable foreign host.
+const noInterceptorAxios = axios.create({ timeout: 10 * 60 * 1000 })  // 10 min ceiling
 
 interface UploadCredentials {
     uploadUrl: string
@@ -54,14 +65,28 @@ export class MediaMessageUploadTask extends MessageTask {
     }
 
     async uploadFile(file: File, credentials: UploadCredentials) {
-        // 动态超时：每 MB 预留 10 秒，最低 2 分钟兜底
+        // Dynamic timeout: 10 s/MB, minimum 2 min, so a 40 MB file gets ~6 min 40 s.
         const fileSizeMB = file.size / (1024 * 1024);
         const timeoutMs = Math.max(2 * 60 * 1000, fileSizeMB * 10 * 1000);
         const headers: Record<string, string> = { "Content-Type": credentials.contentType }
         if (credentials.contentDisposition) {
             headers["Content-Disposition"] = credentials.contentDisposition
         }
-        const resp = await axios.put(credentials.uploadUrl, file, {
+        // Use the isolated axios instance (no token injected) when the upload
+        // target is a foreign origin (e.g. COS pre-signed URL).  Sending the
+        // Octo session token to a third-party host causes 403/400 rejections
+        // because COS treats any unexpected Authorization/token header on a
+        // pre-signed URL as a conflict.  Mirror the same origin-check used by
+        // datasource.ts uploadSticker.
+        const locationHref = typeof window !== "undefined" ? window.location.href : ""
+        const apiBaseURL = WKApp.apiClient.config.apiURL
+        // Mirror datasource.ts uploadSticker exactly: !!locationHref && shouldAttachUploadToken.
+        // When locationHref is empty (non-browser / origin undetermined), default to
+        // noInterceptorAxios (fail-closed: withhold the token rather than leak it).
+        const useSameOriginAxios = !!locationHref &&
+            shouldAttachUploadToken(credentials.uploadUrl, apiBaseURL, locationHref)
+        const client = useSameOriginAxios ? axios : noInterceptorAxios
+        const resp = await client.put(credentials.uploadUrl, file, {
             headers,
             signal: (this.controller = new AbortController()).signal,
             timeout: timeoutMs,

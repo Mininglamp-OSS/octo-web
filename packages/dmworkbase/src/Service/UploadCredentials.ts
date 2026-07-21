@@ -3,6 +3,36 @@ import axios from "axios"
 import APIClient, { extractErrorMsg } from "./APIClient"
 import { t } from "../i18n"
 
+// Isolated axios instance — carries NONE of the global request interceptors.
+// The shared axios has a request interceptor (APIClient.initAxios) that injects
+// the Octo session token into every outgoing request.  COS pre-signed upload
+// URLs are foreign-origin; sending the token there causes 403/400 (unexpected
+// header conflicts with the pre-signed signature).  This mirrors the pattern
+// used in packages/dmworkdatasource/src/task.ts and datasource.ts (uploadSticker).
+/** @internal — exported only for token-isolation tests; do not use in production code. */
+export const noInterceptorAxios = axios.create({ timeout: 10 * 60 * 1000 }) // 10 min ceiling
+
+/**
+ * Return true iff uploadURL should receive the Octo session token, i.e. it
+ * shares its origin with the API base URL or the document origin.
+ * Inlined from dmworkdatasource/src/datasource.ts to avoid a cross-package
+ * import (dmworkbase does not depend on dmworkdatasource).
+ */
+function shouldAttachToken(uploadURL: string, apiBaseURL: string): boolean {
+    try {
+        const locationHref = typeof window !== "undefined" ? window.location.href : ""
+        // Mirror datasource.ts: when origin is undetermined, default fail-closed
+        // (withhold the token) rather than fail-open (leak it to a foreign host).
+        if (!locationHref) return false
+        const docOrigin = new URL(locationHref).origin
+        const apiOrigin = new URL(apiBaseURL || locationHref, locationHref).origin
+        const target = new URL(uploadURL, locationHref).origin
+        return target === apiOrigin || target === docOrigin
+    } catch {
+        return false // URL-parse failure: fail-closed, withhold token
+    }
+}
+
 interface UploadCredentials {
     uploadUrl: string
     downloadUrl: string
@@ -110,8 +140,13 @@ export async function uploadChatMedia(
         headers["Content-Disposition"] = credentials.contentDisposition
     }
 
+    // Use the isolated axios instance (no token injected) when the upload target
+    // is a foreign origin (e.g. COS pre-signed URL).  Mirrors task.ts / datasource.ts.
+    const apiBaseURL = APIClient.shared.config.apiURL
+    const client = shouldAttachToken(credentials.uploadUrl, apiBaseURL) ? axios : noInterceptorAxios
+
     try {
-        const resp = await axios.put(credentials.uploadUrl, file, { headers, timeout: timeoutMs })
+        const resp = await client.put(credentials.uploadUrl, file, { headers, timeout: timeoutMs })
         if (!(resp.status >= 200 && resp.status < 300)) {
             throwWithMsg(t("base.conversation.upload.failed"))
         }
