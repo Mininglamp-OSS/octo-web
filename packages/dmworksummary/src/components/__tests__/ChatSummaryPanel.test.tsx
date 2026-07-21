@@ -99,7 +99,8 @@ describe('ChatSummaryPanel', () => {
         fireEvent.click(screen.getByText('create-new'));
 
         expect(screen.getByTestId('summary-create')).toBeInTheDocument();
-        expect(screen.queryByTestId('summary-list')).not.toBeInTheDocument();
+        // List stays mounted but hidden (display:none) to preserve scroll
+        expect(screen.queryByTestId('summary-list')).not.toBeVisible();
         // Must NOT emit wk:open-summary-modal — create is now in-panel
         expect(mockEmit).not.toHaveBeenCalledWith('wk:open-summary-modal', expect.anything());
     });
@@ -153,7 +154,8 @@ describe('ChatSummaryPanel', () => {
             />,
         );
         expect(screen.getByTestId('summary-create')).toBeInTheDocument();
-        expect(screen.queryByTestId('summary-list')).not.toBeInTheDocument();
+        // List stays mounted but hidden (display:none) to preserve scroll
+        expect(screen.queryByTestId('summary-list')).not.toBeVisible();
     });
 
     it('emits summary-list-refresh-requested after create submit', () => {

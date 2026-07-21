@@ -61,9 +61,10 @@ export default class ChatSummaryPanel extends Component<
         const next = this.props.channel;
         if (
             prev.channelID !== next.channelID ||
-            prev.channelType !== next.channelType
+            prev.channelType !== next.channelType ||
+            prevProps.summaryPanelView !== this.props.summaryPanelView
         ) {
-            // 切换会话时回到初始视图，避免残留上个会话的详情/表单
+            // 切换会话或面板视图请求变化时，重置到对应初始视图
             const initialView = this.props.summaryPanelView === 'new' ? 'create' : 'list';
             this.setState({ view: initialView, selectedTaskId: null });
         }

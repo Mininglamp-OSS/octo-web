@@ -517,8 +517,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 detail: { taskId: result.task_id, channelId },
             }));
 
-            if (this.props.embedded && this.props.onSubmit) {
-                this.props.onSubmit(result.task_id);
+            if (this.props.embedded) {
+                this.props.onSubmit?.(result.task_id);
             } else {
                 WKApp.routeRight.popToRoot();
                 WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
@@ -809,8 +809,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             window.dispatchEvent(event);
             
             // 跳转到详情页
-            if (this.props.embedded && this.props.onSubmit) {
-                this.props.onSubmit(result.task_id);
+            if (this.props.embedded) {
+                this.props.onSubmit?.(result.task_id);
             } else {
                 WKApp.routeRight.popToRoot();
                 WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
