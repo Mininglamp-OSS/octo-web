@@ -9,7 +9,6 @@ import {
 import PersonalSidebarView from "./ui/PersonalSidebarView";
 import PersonalWorkspaceState from "./ui/PersonalWorkspaceState";
 import "@octo/loop/src/pages/loop.css";
-import "@octo/loop/src/ui/loopControls.css";
 import "./personal.css";
 
 function renderTab(key: PersonalTabKey): JSX.Element {

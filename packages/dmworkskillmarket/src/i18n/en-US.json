@@ -1,0 +1,200 @@
+{
+  "menu": {
+    "title": "Skills"
+  },
+  "sidebar": {
+    "header": "Skill Market",
+    "nav": "Skill Market Navigation"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "create": "Create",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "loadFailed": "Failed to load",
+    "search": "Search",
+    "more": "More",
+    "confirm": "OK"
+  },
+  "errors": {
+    "unauthorized": "Session expired, please sign in again",
+    "fileTooLarge": "File is too large, please compress it and try again",
+    "invalidUrl": "Invalid URL",
+    "urlSchemeNotAllowed": "URL scheme not allowed",
+    "invalidDownloadUrl": "Invalid download URL",
+    "uploadResponseMissing": "Upload failed: response field missing",
+    "parseFailed": "Parse failed",
+    "parseTimeout": "Parse timed out, please retry"
+  },
+  "list": {
+    "mine": "Mine",
+    "tabSkills": "Skills",
+    "publish": "Publish",
+    "publishSkill": "Publish Skill",
+    "search": "Search",
+    "errorTitle": "Failed to load",
+    "retry": "Retry",
+    "empty": "No data",
+    "totalCount": "Total {{count}} Skills",
+    "loadMore": "Load more...",
+    "deleted": "Deleted",
+    "created": "Created successfully",
+    "saved": "Saved",
+    "navAriaLabel": "Skill Market Navigation",
+    "loadingAriaLabel": "Loading skills",
+    "closeToast": "Close notification"
+  },
+  "filter": {
+    "searchNameDescription": "Search name or description...",
+    "tags": "Tags",
+    "searchTags": "Search tags",
+    "noTags": "No matching tags",
+    "noTagsSelected": "No tags selected",
+    "tagsSelected": "Tags selected",
+    "clear": "Clear"
+  },
+  "sort": {
+    "ariaLabel": "Skill sort",
+    "label": "Sort:",
+    "comprehensive": "Recommended",
+    "latest": "Latest",
+    "views": "Most viewed",
+    "downloads": "Most downloaded"
+  },
+  "card": {
+    "editAriaLabel": "Edit {{name}}",
+    "deleteAriaLabel": "Delete {{name}}",
+    "statsAriaLabel": "Skill stats",
+    "viewsLabel": "Views",
+    "viewsTitle": "Views: {{count}}",
+    "downloadsLabel": "Downloads",
+    "downloadsTitle": "Downloads: {{count}}",
+    "install": "Install"
+  },
+  "category": {
+    "ariaLabel": "Skill categories",
+    "all": "All",
+    "more": "More"
+  },
+  "publishMenu": {
+    "botTitle": "Bot Publish",
+    "botHint": "Copy a prompt for Agent",
+    "manualTitle": "Manual Upload",
+    "manualHint": "Upload .zip / .skill"
+  },
+  "detail": {
+    "title": "Skill Details",
+    "notFound": "Skill does not exist or has been deleted",
+    "promptCopied": "Install prompt copied",
+    "downloadStarted": "Download started",
+    "downloadFailed": "Download failed",
+    "updatedAt": "Updated {{time}}",
+    "tabIntro": "Introduction",
+    "tabVersions": "Version History",
+    "installTitle": "Install to Agent",
+    "installHint": "Copy the install prompt and paste it into an Agent conversation to complete installation automatically.",
+    "copyPrompt": "Copy Install Prompt",
+    "downloadTitle": "Download",
+    "downloadBtn": "Download Skill Package",
+    "latest": "Latest",
+    "noVersions": "No version history",
+    "retry": "Retry",
+    "noDetail": "No details available"
+  },
+  "form": {
+    "editTitle": "Edit {{name}}",
+    "editTitleFallback": "Edit Skill",
+    "createTitle": "Publish Skill",
+    "versionSection": "Version Info",
+    "versionLabel": "Version",
+    "versionPlaceholder": "e.g. 1.2.0",
+    "changelogLabel": "Changelog",
+    "changelogPlaceholder": "Briefly describe changes in this version",
+    "basicInfoSection": "Basic Info",
+    "uploadIcon": "Upload Icon",
+    "englishName": "English Name",
+    "displayName": "Display Name",
+    "displayNamePlaceholder": "Enter display name, max 20 characters",
+    "category": "Category",
+    "categoryPlaceholder": "Select a category",
+    "tags": "Tags",
+    "tagPlaceholder": "Type or select a tag",
+    "tagSuggestions": "Tag suggestions",
+    "tagLimit": "Add up to {{count}} tags",
+    "tagLengthLimit": "Each tag can be up to {{count}} characters",
+    "tagInvalidChars": "Tags support letters, numbers, spaces, and - _ . / # +",
+    "tagDuplicate": "Tag already exists",
+    "initialChangelog": "Initial Skill publish.",
+    "currentVersionChangelog": "Current published version.",
+    "docNote": "Auto-parsed from SKILL.md. Re-upload the Skill package to modify.",
+    "validationRequired": "Please fill in the version, changelog, display name, and category",
+    "validationNoUpload": "Please upload and parse a Skill package first",
+    "saveFailed": "Failed to save",
+    "createFailed": "Failed to create"
+  },
+  "upload": {
+    "invalidFormat": "Invalid file format",
+    "fileTooLarge": "File exceeds 20MB",
+    "dropzoneTitle": "Upload Skill package (.zip / .skill)",
+    "dropzoneHint": "The Skill package must contain a SKILL.md file",
+    "parseAutofillHint": "The Skill package must contain SKILL.md. Parsed fields will be filled automatically.",
+    "selectFileAction": "Select file",
+    "selectFileAriaLabel": "Select Skill package file",
+    "selectNewFileAriaLabel": "Select a new Skill package file",
+    "uploading": "Uploading",
+    "uploadProgress": "Upload progress",
+    "progressBarAriaLabel": "Upload progress bar",
+    "parsing": "Parsing...",
+    "parseFailed": "Parse failed",
+    "parseTimeout": "Parse timed out, please retry",
+    "uploadFailed": "Upload failed",
+    "reselect": "Reselect file",
+    "reupload": "Re-upload Skill package",
+    "reuploadShort": "Re-upload",
+    "parsed": "SKILL.md parsed",
+    "parsedWithName": "SKILL.md parsed · English name {{name}}",
+    "currentPackage": "Current Skill package",
+    "currentPackageWithName": "Current Skill package · English name {{name}}",
+    "newVersionParsedWithName": "New version parsed · English name {{name}}",
+    "nameMismatch": "The name in SKILL.md must remain {{expected}}. Current value: {{actual}}"
+  },
+  "confirm": {
+    "title": "Leave this page?",
+    "keepEditing": "Continue Editing",
+    "keepUploading": "Continue Uploading",
+    "leave": "Leave",
+    "busyMessage": "Are you sure you want to leave? The Skill package is being uploaded/parsed. Progress will be lost and you will need to re-upload.",
+    "dirtyEditMessage": "Are you sure you want to leave? Editing is not complete. Uploaded files and entered information will be lost.",
+    "dirtyCreateMessage": "Are you sure you want to leave? Creation is not complete. Uploaded files and entered information will be lost."
+  },
+  "delete": {
+    "title": "Delete Skill",
+    "confirmMessage": "Are you sure you want to delete \"{{name}}\"?",
+    "warning": "This action cannot be undone",
+    "failed": "Failed to delete"
+  },
+  "install": {
+    "title": "Install Prompt",
+    "hint": "Copy and paste into an Agent conversation to complete installation automatically",
+    "copied": "Copied",
+    "copyBtn": "Copy Install Prompt"
+  },
+  "botPublish": {
+    "title": "Bot Publish",
+    "hint": "Copy the prompt for Agent to publish this Skill",
+    "copyBtn": "Copy Prompt",
+    "copied": "Copied"
+  },
+  "crop": {
+    "title": "Crop Icon",
+    "scale": "Scale"
+  },
+  "time": {
+    "justNow": "Just now",
+    "minutesAgo": "{{count}} minutes ago",
+    "hoursAgo": "{{count}} hours ago",
+    "daysAgo": "{{count}} days ago"
+  }
+}

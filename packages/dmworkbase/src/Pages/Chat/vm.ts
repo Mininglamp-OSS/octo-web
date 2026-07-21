@@ -154,8 +154,11 @@ export class ChatVM extends ProviderListener {
             this.selectedConversation = undefined // 清空选中的会话
             WKApp.shared.openChannel = undefined // 清空全局打开的频道
             this._showChannelSetting = false // 关闭频道设置面板
-            // 强制关闭右侧聊天窗口，防止跨 Space 消息污染
-            WKApp.routeRight.popToRoot()
+            // 强制关闭右侧聊天窗口，防止跨 Space 消息污染。routeRight 是全局共享右栏；
+            // Chat 常驻在隐藏 tab 时不能清空当前激活模块（如市场/Loop/Personal）的右栏。
+            if (WKApp.currentMenuId === "chat") {
+                WKApp.routeRight.popToRoot()
+            }
             WKApp.shared.notifyListener()
             this.requestConversationList()
         }

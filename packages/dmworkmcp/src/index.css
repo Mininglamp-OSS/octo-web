@@ -1,0 +1,1285 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   MCP Market styles
+   All colors / radius / spacing / typography reference octo-web design tokens
+   (packages/dmworkbase/src/theme/semantic.css). No hard-coded hex, no indigo,
+   no custom values — accent uses --wk-text-accent (purple-500), primary
+   surfaces use --wk-brand-primary (brand black). BEM with the wk-mcp- prefix.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.wk-mcp {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-md);
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────
+   Mirrors dmworkskillmarket's `.skill-market-topbar`: tabs on the left,
+   action cluster (primary button + search) on the right, single border-
+   bottom separator. Keeps the two market pages visually consistent under
+   the shared "/mcp-market" shell. */
+.wk-mcp__topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-4);
+  min-height: 64px;
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-mcp__topbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
+
+/* Underline-style tabs — matches skill-market-tabs. Active tab uses
+   --wk-text-accent with a 2px underline pseudo-element. */
+.wk-mcp__tabs {
+  display: flex;
+  gap: 0;
+}
+
+.wk-mcp__tabs button {
+  position: relative;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--wk-text-secondary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.wk-mcp__tabs button:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp__tabs button.is-active {
+  color: var(--wk-text-accent);
+  font-weight: 600;
+}
+
+.wk-mcp__tabs button.is-active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 16px;
+  right: 16px;
+  height: 2px;
+  background: var(--wk-text-accent);
+  border-radius: 1px;
+}
+
+/* ── Scroll body ─────────────────────────────────────────────────────────── */
+.wk-mcp__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--wk-sp-6);
+}
+
+.wk-mcp__inner {
+  max-width: 1360px;
+  margin: 0 auto;
+}
+
+/* ── Notice banner ───────────────────────────────────────────────────────── */
+.wk-mcp__notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-4);
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  margin-bottom: var(--wk-sp-6);
+  background: var(--wk-ai-glow);
+  border: 1px solid var(--wk-ai-border);
+  border-radius: var(--wk-r-md);
+  font-size: var(--wk-text-size-base);
+  color: var(--wk-text-secondary);
+}
+
+.wk-mcp__notice-text {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
+
+/* ── Page head ─── (removed, header now lives in .wk-mcp__topbar) ────── */
+
+/* ── Toolbar (category pills) ────────────────────────────────────────────
+   Sits below the topbar as its own row — mirrors dmworkskillmarket's
+   `.skill-market-toolbar`. Hidden on the "mine" tab, same as skillmarket. */
+.wk-mcp__toolbar {
+  flex: none;
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  flex-wrap: wrap;
+}
+
+.wk-mcp__toolbar--mine {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+/* Source segmented control (issue #894). Sits to the right of the category
+   pills so it reads as an orthogonal refinement. Neutral pill style shared
+   with the category pills, only smaller. */
+.wk-mcp__source-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-elevated);
+  margin-left: auto;
+}
+
+.wk-mcp__source-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--wk-sp-3);
+  border: none;
+  border-radius: var(--wk-r-full);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.wk-mcp__source-btn:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp__source-btn--active {
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.wk-mcp__mine-count {
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  white-space: nowrap;
+}
+
+.wk-mcp__search {
+  width: 240px;
+  max-width: 100%;
+}
+
+.wk-mcp__pills {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  flex-wrap: wrap;
+}
+
+.wk-mcp__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  height: 30px;
+  padding: 0 var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+/* 未选中 chip 的 hover：显式给出浅色底 + 主文本色，
+   不再只依赖基础态背景被继承——避免任何祖先/全局 button:hover
+   规则把底色改成深色、或 token 缺失时坍缩成黑底黑字（本次 bug）。 */
+.wk-mcp__pill:hover {
+  background: var(--wk-bg-elevated, var(--wk-bg-surface));
+  border-color: var(--wk-border-strong, var(--wk-border-default));
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp__pill--active {
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+  color: var(--wk-text-inverse);
+}
+
+/* 选中态的 hover 单独定义，保持品牌黑底 + 反色文字，
+   优先级高于通用 :hover，避免选中 chip 悬停时被改成浅色。 */
+.wk-mcp__pill--active:hover {
+  background: var(--wk-brand-primary-hover, var(--wk-brand-primary));
+  border-color: var(--wk-brand-primary-hover, var(--wk-brand-primary));
+  color: var(--wk-text-inverse);
+}
+
+.wk-mcp__pill-count {
+  font-size: var(--wk-text-size-xs);
+  opacity: 0.7;
+}
+.wk-mcp-card__reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-1);
+  margin-bottom: var(--wk-sp-3);
+}
+
+.wk-mcp-card__reason {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  height: 20px;
+  padding: 0 var(--wk-sp-1-5);
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  border: 1px dashed var(--wk-ai-border);
+  color: var(--wk-text-accent);
+  font-size: var(--wk-text-size-xs);
+  line-height: 1;
+}
+
+.wk-mcp-card__reason-label {
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-card mark, .wk-mcp-tag mark { background: #f59e0b; color: #fff; font-weight: var(--wk-font-semibold); padding: 0 3px; border-radius: 3px; }
+
+/* ── Card grid ───────────────────────────────────────────────────────────── */
+.wk-mcp__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--wk-sp-4);
+}
+
+.wk-mcp-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--wk-sp-4);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.wk-mcp-card:hover {
+  border-color: var(--wk-border-strong, var(--wk-border-default));
+  box-shadow: var(--wk-shadow-md);
+}
+
+.wk-mcp-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-3);
+  margin-bottom: var(--wk-sp-3);
+}
+
+.wk-mcp-card__icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+}
+
+.wk-mcp-card__heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-mcp-card__name {
+  font-size: var(--wk-text-size-lg);
+  font-weight: var(--wk-font-semibold);
+  color: var(--wk-text-primary);
+  margin-bottom: var(--wk-sp-1);
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  /* Ellipsis-clip the name so a runaway MCP name doesn't wrap and blow the
+     card height out. min-width:0 lets the text span shrink inside its
+     flex parent (the .wk-mcp-card__heading), which is a required
+     incantation for flex ellipsis to work. */
+  min-width: 0;
+}
+
+.wk-mcp-card__name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Provenance badge (issue #894). Rendered next to the MCP name for bot-
+   authored rows only; human/legacy rows show no chip. Reuses `.wk-mcp-tag`
+   as the base primitive (size / padding / radius / typography) and only
+   layers on the bot-specific colour and the icon-shape variant, so any
+   design-token nudge to the tag chip lands here for free. Cursor is
+   intentionally unset — the badge has no click handler; on the card it
+   inherits the parent card's pointer, and clicking still opens the detail
+   as usual. */
+.wk-mcp-source {
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.wk-mcp-source__icon {
+  font-size: var(--wk-text-size-xs);
+  line-height: 1;
+}
+
+.wk-mcp-source__label {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wk-mcp-source--bot {
+  /* Slightly bluer surface than plain tags to distinguish "meta" from "tag". */
+  background: rgba(56, 132, 255, 0.10);
+  color: rgba(56, 132, 255, 0.95);
+}
+
+/* Icon-only variant used in the card grid — square-ish chip, no label,
+   tooltip on hover carries the full "bot name · owner" context. */
+.wk-mcp-source--icon {
+  width: 22px;
+  padding: 0;
+  justify-content: center;
+}
+
+.wk-mcp-source--icon .wk-mcp-source__icon {
+  font-size: 13px;
+}
+
+.wk-mcp-card__tags {
+  display: flex;
+  gap: var(--wk-sp-1);
+  flex-wrap: wrap;
+}
+
+.wk-mcp-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--wk-sp-1-5);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+}
+
+.wk-mcp-tag--accent {
+  background: var(--wk-ai-glow);
+  color: var(--wk-text-accent);
+}
+
+/* Detail modal slogan — same voice as the card slogan but no line clamp,
+   because the detail page has room to show the full pitch. */
+.wk-mcp-detail__slogan {
+  margin-top: var(--wk-sp-2);
+  font-size: var(--wk-text-size-base);
+  color: var(--wk-text-secondary);
+  line-height: 1.5;
+}
+
+/* "+N" overflow chip — neutral surface so it visibly reads as "there are
+   more tags here" rather than a real tag. Same size as tag chips so the
+   row height doesn't jump. Hover reveals the collapsed labels via
+   Tooltip. */
+.wk-mcp-tag--more {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Overflow tooltip body — a mini pill cloud that mirrors the card's tag
+   row style so hovering "+N" reads as "here are the rest of those
+   pills". */
+.wk-mcp-tag-overflow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 320px;
+  padding: 2px 0;
+}
+
+/* Light-surface tooltip. Semi's default is a dark popover which reads as an
+   OS-level tooltip; for this content (a cluster of chips extending the tag
+   row) we want the surface to feel like a floating card so the chips keep
+   their normal accent colours.
+   IMPORTANT: `.wk-mcp-tooltip-light` is applied to the SAME element that
+   already carries `.semi-tooltip-wrapper` — Semi merges the caller's
+   `className` onto the wrapper. So the wrapper selector must join the two
+   classes without a space; a descendant selector (`.wk-mcp-tooltip-light
+   .semi-tooltip-wrapper`) misses because there's no ancestor–descendant
+   relation, and the dark fill leaked through. */
+.wk-mcp-tooltip-light.semi-tooltip-wrapper,
+.wk-mcp-tooltip-light .semi-tooltip-content {
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+/* Content already sits inside the wrapper's box; kill the redundant shadow
+   so the two elevations don't stack. */
+.wk-mcp-tooltip-light .semi-tooltip-content {
+  box-shadow: none;
+  border: none;
+  padding: 8px 10px;
+}
+
+/* Semi renders a tiny arrow — recolour it so the transition into the light
+   surface is seamless. */
+.wk-mcp-tooltip-light .semi-tooltip-icon-arrow,
+.wk-mcp-tooltip-light .semi-tooltip-icon-arrow path {
+  fill: #ffffff;
+}
+
+.wk-mcp-card__slogan {
+  font-size: var(--wk-text-size-base);
+  color: var(--wk-text-secondary);
+  line-height: 1.5;
+  margin-bottom: var(--wk-sp-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.wk-mcp-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: var(--wk-sp-3);
+  border-top: 1px solid var(--wk-border-subtle);
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-tertiary);
+}
+
+/* ── Empty / loading ─────────────────────────────────────────────────────── */
+.wk-mcp__state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-base);
+}
+
+.wk-mcp__state--error {
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+}
+
+/* ═══ Detail modal ═════════════════════════════════════════════════════════ */
+.wk-mcp-detail__meta {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-3);
+  margin-bottom: var(--wk-sp-5);
+}
+
+.wk-mcp-detail__icon {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+}
+
+.wk-mcp-detail__meta-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-mcp-detail__toolcount {
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-tertiary);
+  margin-top: var(--wk-sp-1);
+}
+
+.wk-mcp-detail__desc {
+  font-size: var(--wk-text-size-base);
+  color: var(--wk-text-secondary);
+  line-height: 1.6;
+  margin-bottom: var(--wk-sp-5);
+}
+
+.wk-mcp-section {
+  margin-bottom: var(--wk-sp-5);
+}
+
+.wk-mcp-section__title {
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-semibold);
+  color: var(--wk-text-primary);
+  margin: 0 0 var(--wk-sp-2) 0;
+}
+
+/* Quick-access: tab switcher (提示词 / 命令行 / JSON) */
+.wk-mcp-qa__tabs {
+  display: flex;
+  gap: var(--wk-sp-1);
+  margin-bottom: var(--wk-sp-2);
+}
+
+.wk-mcp-qa__tab {
+  height: 28px;
+  padding: 0 var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wk-mcp-qa__tab:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-qa__tab--active {
+  border-color: var(--wk-text-accent);
+  background: var(--wk-ai-glow);
+  color: var(--wk-text-accent);
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-mcp-qa__hint {
+  display: block;
+  margin-top: var(--wk-sp-2);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  line-height: 1.5;
+}
+
+/* Quick-access dark code block */
+.wk-mcp-code {
+  position: relative;
+  background: var(--wk-brand-primary);
+  border-radius: var(--wk-r-md);
+  padding: var(--wk-sp-4);
+  overflow: auto;
+}
+
+.wk-mcp-code__pre {
+  margin: 0;
+  font-family: var(--wk-font-mono);
+  font-size: var(--wk-text-size-sm);
+  line-height: 1.6;
+  color: var(--wk-text-inverse);
+  white-space: pre;
+}
+
+.wk-mcp-code__copy {
+  position: absolute;
+  top: var(--wk-sp-2);
+  right: var(--wk-sp-2);
+}
+
+/* Tools grid (2 columns) */
+.wk-mcp-tools {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--wk-sp-2);
+}
+
+.wk-mcp-tool {
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-base);
+}
+
+.wk-mcp-tool__name {
+  font-family: var(--wk-font-mono, "JetBrains Mono", monospace);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-tool__desc {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  margin-top: 2px;
+}
+
+/* Usage example quote */
+.wk-mcp-example {
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  border-left: 3px solid var(--wk-text-accent);
+  background: var(--wk-ai-glow);
+  border-radius: 0 var(--wk-r-sm) var(--wk-r-sm) 0;
+  font-size: var(--wk-text-size-base);
+  color: var(--wk-text-secondary);
+  line-height: 1.6;
+}
+
+/* FAQ */
+.wk-mcp-faq__item {
+  padding: var(--wk-sp-2) 0;
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-mcp-faq__item:last-child {
+  border-bottom: none;
+}
+
+.wk-mcp-faq__q {
+  font-size: var(--wk-text-size-base);
+  font-weight: var(--wk-font-medium);
+  color: var(--wk-text-primary);
+  margin-bottom: 2px;
+}
+
+.wk-mcp-faq__a {
+  font-size: var(--wk-text-size-base);
+  color: var(--wk-text-secondary);
+  line-height: 1.5;
+}
+
+/* Notes / cautions */
+.wk-mcp-notes {
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  background: var(--wk-bg-elevated);
+  border-radius: var(--wk-r-md);
+}
+
+.wk-mcp-notes__item {
+  position: relative;
+  padding-left: var(--wk-sp-4);
+  font-size: var(--wk-text-size-base);
+  color: var(--wk-text-secondary);
+  line-height: 1.6;
+}
+
+.wk-mcp-notes__item::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--wk-text-tertiary);
+}
+
+/* ── Left sidebar (contentLeft, "Markets" list) ──────────────────────────
+   Lives inside .wk-layout-content-left (fixed width, splitter on the right)
+   and hands off the actual market page to .wk-layout-content-right via
+   WKApp.routeRight.replaceToRoot. See MarketSidebar.tsx / module.tsx. */
+.wk-mcp-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--wk-bg-base);
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-sidebar__header {
+  flex: none;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--wk-sp-5);
+  font-size: var(--wk-text-size-lg);
+  font-weight: var(--wk-font-semibold);
+  color: var(--wk-text-primary);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-mcp-sidebar__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--wk-sp-2);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.wk-mcp-sidebar__item {
+  width: 100%;
+  display: block;
+  text-align: left;
+  padding: var(--wk-sp-3) var(--wk-sp-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--wk-r-md);
+  font-size: var(--wk-text-size-base);
+  color: var(--wk-text-primary);
+  cursor: pointer;
+  transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-sidebar__item:hover {
+  background: var(--wk-bg-item-hover);
+}
+
+/* 选中态与 ConversationList 对齐：只改背景，不动文字颜色 / 字重，
+   避免与未选中项形成视觉断层（see ConversationList/index.css:154）。 */
+.wk-mcp-sidebar__item--active,
+.wk-mcp-sidebar__item--active:hover {
+  background: var(--wk-brand-tint-06);
+}
+
+/* ── Image icons (card + detail) ────────────────────────────────────────── */
+.wk-mcp-card__icon-img,
+.wk-mcp-detail__icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
+/* ═══ Create form (redesigned) ═════════════════════════════════════════════
+   Single-column, section-card layout — mirrors the density of SpaceCreate /
+   WebhookEditModal but scales to a longer form via clearly demarcated cards.
+   Uses only WKInput / WKButton / Semi Select+TextArea (no new dependencies).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.wk-mcp-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+}
+
+/* Step indicator strip at the top of the create modal. */
+.wk-mcp-form-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-1) 0 var(--wk-sp-3);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  margin-bottom: var(--wk-sp-1);
+}
+
+.wk-mcp-form-step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: 4px var(--wk-sp-2);
+  border-radius: var(--wk-r-md);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition: color var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-form-step:hover {
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-item-hover);
+}
+
+.wk-mcp-form-step__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  font-weight: var(--wk-font-medium);
+  flex: none;
+}
+
+.wk-mcp-form-step--active {
+  color: var(--wk-text-primary);
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-mcp-form-step--active .wk-mcp-form-step__num {
+  background: var(--wk-brand-primary);
+  color: var(--wk-text-inverse);
+}
+
+.wk-mcp-form-step--done {
+  color: var(--wk-text-secondary);
+}
+
+.wk-mcp-form-step--done .wk-mcp-form-step__num {
+  background: var(--wk-brand-tint-15);
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-form-steps__sep {
+  flex: 1;
+  height: 1px;
+  background: var(--wk-border-subtle);
+  max-width: 60px;
+}
+
+/* Custom footer row for the stepped form (prev / next / submit). */
+.wk-mcp-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
+  width: 100%;
+}
+
+.wk-mcp-form-footer__right {
+  display: flex;
+  gap: var(--wk-sp-2);
+}
+
+/* Detail-modal footer row for owner actions (edit/delete). */
+.wk-mcp-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+  width: 100%;
+}
+
+/* Inline delete-confirm state: 提示文案居左、确认/取消按钮居右，
+   footer 内就地二次确认，不再叠加新的确认弹窗。 */
+.wk-mcp-detail-actions--confirm {
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.wk-mcp-detail-actions__hint {
+  flex: 1;
+  min-width: 0;
+  margin-right: var(--wk-sp-2);
+  font-size: 13px;
+  color: var(--wk-text-secondary);
+  text-align: left;
+}
+
+/* ── Section card ────────────────────────────────────────────────────────── */
+.wk-mcp-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-4);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-base);
+}
+
+.wk-mcp-form-section__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-form-section__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wk-mcp-form-section__title {
+  font-size: var(--wk-text-size-base);
+  font-weight: var(--wk-font-semibold);
+  color: var(--wk-text-primary);
+  line-height: 1.4;
+}
+
+.wk-mcp-form-section__desc {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  line-height: 1.5;
+}
+
+.wk-mcp-form-section__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+}
+
+/* ── Field (label + control + hint) ─────────────────────────────────────── */
+.wk-mcp-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+}
+
+.wk-mcp-field__label {
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-secondary);
+  line-height: 1.4;
+}
+
+.wk-mcp-field__label--req::after {
+  content: " *";
+  color: var(--wk-color-danger);
+}
+
+.wk-mcp-field__hint {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  line-height: 1.5;
+}
+
+/* Side-by-side row inside a field (e.g. icon + name) */
+.wk-mcp-field-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-4);
+}
+
+.wk-mcp-field-row__grow {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Two-up field grid (used sparingly for short paired controls) */
+.wk-mcp-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--wk-sp-3);
+}
+
+/* ── Icon picker ─────────────────────────────────────────────────────────── */
+.wk-mcp-icon-picker {
+  position: relative;
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+  border: 1px solid var(--wk-border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-icon-picker:hover {
+  border-color: var(--wk-border-default);
+}
+
+.wk-mcp-icon-picker--empty {
+  border-style: dashed;
+  background: var(--wk-bg-surface);
+}
+
+.wk-mcp-icon-picker__placeholder {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  text-align: center;
+  padding: 0 6px;
+  line-height: 1.3;
+}
+
+.wk-mcp-icon-picker__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wk-mcp-icon-picker__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  background: var(--wk-black-alpha-50);
+  color: var(--wk-color-white);
+  font-size: var(--wk-text-size-xs);
+  opacity: 0;
+  transition: opacity var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-icon-picker:hover .wk-mcp-icon-picker__overlay,
+.wk-mcp-icon-picker:focus-within .wk-mcp-icon-picker__overlay {
+  opacity: 1;
+}
+
+.wk-mcp-icon-picker__action {
+  padding: 2px 6px;
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-white-alpha-12);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wk-mcp-icon-picker__action:hover {
+  background: var(--wk-white-alpha-40);
+}
+
+/* ── Chip / tag input ────────────────────────────────────────────────────── */
+.wk-mcp-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  min-height: 34px;
+  padding: 4px 6px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  cursor: text;
+  transition: border-color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-tags:focus-within {
+  border-color: var(--wk-text-accent);
+}
+
+.wk-mcp-tags__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-brand-tint-06);
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-xs);
+}
+
+.wk-mcp-tags__chip-remove {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 1;
+}
+
+.wk-mcp-tags__chip-remove:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-tags__input {
+  flex: 1;
+  min-width: 80px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-sm);
+  padding: 4px 2px;
+}
+
+/* ── Segmented button group (auth type / visibility) ────────────────────── */
+.wk-mcp-segments {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+  gap: 2px;
+}
+
+.wk-mcp-segments--full {
+  display: flex;
+  width: 100%;
+}
+
+.wk-mcp-segments__item {
+  flex: 1;
+  padding: 6px var(--wk-sp-3);
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--wk-r-md) - 2px);
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+  transition: background var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.wk-mcp-segments__item:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-segments__item--active,
+.wk-mcp-segments__item--active:hover {
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  font-weight: var(--wk-font-medium);
+  box-shadow: 0 1px 2px var(--wk-black-alpha-05);
+}
+
+/* ── Advanced expandable panel (env / headers) ──────────────────────────── */
+.wk-mcp-advanced {
+  border-top: 1px dashed var(--wk-border-subtle);
+  padding-top: var(--wk-sp-3);
+  margin-top: var(--wk-sp-1);
+}
+
+.wk-mcp-advanced__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  cursor: pointer;
+}
+
+.wk-mcp-advanced__toggle:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-advanced__caret {
+  display: inline-block;
+  transition: transform var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-advanced__caret--open {
+  transform: rotate(90deg);
+}
+
+.wk-mcp-advanced__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+  margin-top: var(--wk-sp-3);
+}
+
+/* ── Dynamic row list (usage examples / notes) ──────────────────────────── */
+.wk-mcp-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+}
+
+.wk-mcp-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
+
+.wk-mcp-row__grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-mcp-row__index {
+  flex: none;
+  width: 22px;
+  text-align: right;
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-rows__empty {
+  padding: var(--wk-sp-3);
+  border: 1px dashed var(--wk-border-subtle);
+  border-radius: var(--wk-r-sm);
+  text-align: center;
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-tertiary);
+}
+
+/* ── FAQ card (structured Q + A pair) ───────────────────────────────────── */
+.wk-mcp-faq-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-surface);
+}
+
+.wk-mcp-faq-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
+}
+
+.wk-mcp-faq-card__index {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+}
+
+/* ── Create modal: hide scrollbar (still scrollable) ─────────────────────
+   The form is long enough to overflow — we keep the scroll behavior but
+   hide the chrome to match the calmer look of the market page. Same trick
+   as ConversationList's default state. */
+.wk-mcp-create-modal .wk-modal-body,
+.wk-mcp-detail-modal .wk-modal-body {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge / IE */
+}
+.wk-mcp-create-modal .wk-modal-body::-webkit-scrollbar,
+.wk-mcp-detail-modal .wk-modal-body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* WebKit */
+}
+
+/* ── Create form: tool editor row ────────────────────────────────────────
+   Same rhythm as .wk-mcp-faq-card — a stacked block with a head row plus
+   the fields, so long tool descriptions have room without breaking layout. */
+.wk-mcp-tool-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-surface);
+}
+
+.wk-mcp-tool-editor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
+}
+
+/* ── Market page: 全部 / 我的 mode toggle ─────────────────────────────────
+   Removed — the segmented pill was replaced by the underline-style
+   `.wk-mcp__tabs` in the topbar (see the top of this file). Kept this
+   comment as a signpost so future grep-by-classname lands somewhere. */
+
+/* ── Infinite scroll footer note (loading spinner / reached end / hint) ── */
+.wk-mcp__footnote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-4) 0 var(--wk-sp-2);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+}

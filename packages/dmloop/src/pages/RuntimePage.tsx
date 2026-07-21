@@ -199,9 +199,9 @@ export default function RuntimePage() {
         title={t("loop.runtime.addComputerTitle")}
         size="lg"
         footer={(
-          <LoopButton variant="secondary" onClick={closeAddDialog}>
+          <Button theme="borderless" type="tertiary" onClick={closeAddDialog}>
             {t("loop.action.cancel")}
-          </LoopButton>
+          </Button>
         )}
       >
         <div className="loop-runtime-add">

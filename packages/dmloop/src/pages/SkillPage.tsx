@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Typography, Input, Spin, Modal, Toast, Banner,
+  Typography, Input, Button, Spin, Modal, Toast, Banner,
   Select, Checkbox, Tooltip, Popover,
 } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Sparkles, Download, FileText, Link2, Copy, Clock3, Users } from "lucide-react";
@@ -249,9 +249,10 @@ export default function SkillPage() {
                     <div className="loop-skill-list__meta">
                       {renderUsedBy(row.id)}
                       <span className="loop-skill-list__time"><Clock3 size={13} />{formatRelativeTime(row.updated_at ?? row.created_at, format)}</span>
-                      <LoopButton
-                        variant="danger"
-                        size="sm"
+                      <Button
+                        theme="borderless"
+                        type="danger"
+                        size="small"
                         icon={<Trash2 size={14} />}
                         className="loop-skill-list__delete"
                         onClick={(e) => {
@@ -342,7 +343,7 @@ export default function SkillPage() {
                     <Select value={rtId} onChange={(v) => setRtId(v as string)} dropdownClassName="loop-fields__dropdown" style={{ flex: 1 }} placeholder={t("loop.agent.runtime")}>
                       {runtimes.map((r) => <Select.Option key={r.id} value={r.id}>{r.name}（{r.provider}）</Select.Option>)}
                     </Select>
-                    <LoopButton variant="secondary" loading={rtBusy} onClick={loadRuntimeSkills}>{t("loop.skill.fetch")}</LoopButton>
+                    <Button loading={rtBusy} onClick={loadRuntimeSkills}>{t("loop.skill.fetch")}</Button>
                   </div>
                   {rtErr && <Banner type="warning" description={rtErr} closeIcon={null} />}
                   {rtBusy && rtSkills.length === 0 && !rtErr && <div className="loop-nsk__rtloading"><Spin /></div>}
@@ -414,7 +415,7 @@ export default function SkillPage() {
 
           {/* 底部操作 */}
           <div className="loop-nsk__footer">
-            <LoopButton variant="secondary" onClick={() => setCreateOpen(false)}>{t("loop.action.cancel")}</LoopButton>
+            <Button onClick={() => setCreateOpen(false)}>{t("loop.action.cancel")}</Button>
             {createTab === "local" && (
               <LoopButton icon={<Plus size={14} />} disabled={!nName.trim()} onClick={createLocal}>{t("loop.action.create")}</LoopButton>
             )}

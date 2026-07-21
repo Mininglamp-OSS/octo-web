@@ -52,8 +52,8 @@ const IMPORT_ENABLED = true
  *
  * Why this exists: the octo host's self-built RouteManager (dmworkbase Service/Route.tsx)
  * handles `pageshow`/`popstate` by re-pushing `window.location.pathname` ONLY — it drops the
- * query string. So immediately after we navigate to `/docs?…&doc=<id>` the host can normalize
- * the browser URL back to the route pathname, wiping `?doc=`. That re-push fires
+ * query string. So immediately after we navigate to `/docs?…&doc=<id>` the host re-pushes
+ * `/docs` and the browser URL collapses to `/docs?sid=…`, wiping `?doc=`. That re-push fires
  * repeatedly, each time re-rendering DocsHome with an empty query. We cannot patch the host
  * (shared infra), so we mirror the target here: a deep-link or an in-app open writes it, and
  * resolveDocTarget falls back to it whenever the query no longer carries a doc. It is cleared
@@ -161,7 +161,7 @@ export function resolveDocTarget(search: string, uid?: string): DocTarget | null
   }
 
   // 1. Deep-link via query. Persist it so the editor stays addressable after the host's
-  //    pathname-only route normalization wipes `?doc=` (the second-blocker root cause). Addressing stays a
+  //    pathname-only re-push wipes `?doc=` (the second-blocker root cause). Addressing stays a
   //    single `?doc=` param (three-party-fixed), so the kind is resolved from the local board
   //    registry rather than a separate query param.
   if (queryDoc) {

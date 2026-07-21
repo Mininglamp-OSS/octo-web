@@ -3,9 +3,9 @@ import { WKApp, IModule } from '@octo/base'
 import BindPage from './BindPage'
 
 // 在 module init 时 (startup 同步阶段, 早于 RouteManager 的 pageshow handler)
-// 抓住 location.search 快照。RouteManager / 宿主路由后续可能把地址归一到
-// pathname，导致 bind 入口参数 (token / authcode / return_to / provider) 从
-// live URL 消失；BindPage 再去读 window.location.search 就拿不到了。
+// 抓住 location.search 快照. RouteManager 的 pageshow 监听器会 push 一个带
+// sid= 的新 URL, 把 bind 入口参数 (token / authcode / return_to / provider)
+// 一起冲掉; BindPage 再去读 window.location.search 就拿不到了.
 //
 // 这个 snapshot 在 BindModule.init() 调用瞬间 capture, 然后通过 prop 注入,
 // 比 useEffect 里读 window.location.search 更早, 也更确定.
@@ -27,10 +27,11 @@ export default class BindModule implements IModule {
     if (typeof window !== 'undefined' && window.location.pathname === '/oidc/bind') {
       bindInitialSearch = window.location.search
       // Scrub the live URL *synchronously* here, before RouteManager's
-      // pageshow handler has a chance to normalize or push another route entry.
-      // If we wait for BindPage's useEffect, replaceState there can leave the
-      // original `?token=...` entry behind in the Back stack — pressing Back
-      // exposes the bind token via address bar / referrer.
+      // pageshow handler runs window.history.pushState to add the sid URL on
+      // top. If we wait for BindPage's useEffect, the current entry is
+      // already the sid URL (see Route.tsx push()), and replaceState there
+      // leaves the original `?token=...` entry behind in the Back stack —
+      // pressing Back exposes the bind token via address bar / referrer.
       // The snapshot above keeps the params available to BindPage via prop,
       // so wiping window.location.search is safe.
       try {

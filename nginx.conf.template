@@ -19,6 +19,7 @@ server {
         # string that the corresponding location block tests for.
         set $summary_api_url "${SUMMARY_API_URL}";
         set $matter_api_url "${MATTER_API_URL}";
+        set $market_api_url "${MARKET_API_URL}";
         # octo-doc (DOC_APP_URL) + octo-docs-backend (DOCS_BACKEND_URL) upstreams, as
         # runtime nginx variables so the doc/backend hosts resolve per-request (with a
         # resolver) instead of at config load — an unset/unresolvable host then 503s its
@@ -169,6 +170,27 @@ server {
             # upstream URI first, then proxy_pass without a URI.
             rewrite ^/matter/api/v1/(.*)$ /api/v1/$1 break;
             proxy_pass  $matter_api_url;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size 100m;
+        }
+
+        # octo-marketplace MCP catalog API — the MCP market page targets
+        # /market/api/v1/mcps* via this prefix. Set MARKET_API_URL (e.g.
+        # http://octo-marketplace:8080) at container start; blank yields a 503
+        # so a missing marketplace does not break nginx startup.
+        location /market/api/v1/ {
+            default_type application/json;
+            if ($market_api_url = "") {
+                return 503 '{"status":503,"msg":"marketplace API is not configured"}';
+            }
+            resolver 127.0.0.11 ipv6=off valid=30s;
+            # Same variable-in-proxy_pass caveat as /summary/: rewrite to the
+            # upstream URI first, then proxy_pass without a URI.
+            rewrite ^/market/api/v1/(.*)$ /api/v1/$1 break;
+            proxy_pass  $market_api_url;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

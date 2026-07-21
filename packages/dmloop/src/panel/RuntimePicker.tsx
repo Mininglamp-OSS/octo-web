@@ -4,7 +4,6 @@ import { Cloud, Monitor, Lock, Check } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { RuntimeDevice } from "../api/types";
 import { ProviderLogo } from "../ui/providerLogo";
-import EllipsisText from "../ui/EllipsisText";
 import { deviceName } from "../pages/runtimeDevices";
 
 type Filter = "mine" | "all";
@@ -96,7 +95,7 @@ export default function RuntimePicker({
     return (
       <span className="loop-adp__rt-ro">
         <TriggerIcon size={13} className="loop-adp__rt-ico" />
-        <EllipsisText className="loop-adp__edit-val loop-mono-text" text={selected?.name ?? "—"} />
+        <span className="loop-adp__edit-val loop-mono-text">{selected?.name ?? "—"}</span>
         {selected && dot(selected.status === "online")}
       </span>
     );
@@ -172,7 +171,7 @@ export default function RuntimePicker({
     <Dropdown trigger="click" position="bottomRight" visible={open} onVisibleChange={setOpen} render={menu}>
       <button type="button" className="loop-adp__edit loop-adp__rt-trigger" aria-label={t("loop.agent.runtime")}>
         <TriggerIcon size={13} className="loop-adp__rt-ico" />
-        <EllipsisText className="loop-adp__edit-val loop-mono-text" text={selected?.name ?? "—"} />
+        <span className="loop-adp__edit-val loop-mono-text">{selected?.name ?? "—"}</span>
         {selected && dot(selected.status === "online")}
       </button>
     </Dropdown>

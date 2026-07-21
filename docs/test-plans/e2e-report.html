@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>MCP 市场 端到端集成测试报告</title>
+<style>
+  :root {
+    --fg: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #4f46e5;
+    --ok: #16a34a;
+    --warn: #d97706;
+    --bg: #f9fafb;
+    --code: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.6;
+    color: var(--fg);
+    background: var(--bg);
+    margin: 0;
+    padding: 32px 24px;
+    max-width: 1080px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  h2 {
+    font-size: 20px;
+    margin: 48px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent);
+  }
+  h3 { font-size: 16px; margin: 24px 0 8px; color: var(--fg); }
+  .lead { color: var(--muted); margin-top: 0; }
+  .meta {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 16px 0 24px;
+    font-size: 14px;
+  }
+  .meta dl { margin: 0; display: grid; grid-template-columns: 140px 1fr; row-gap: 6px; }
+  .meta dt { color: var(--muted); }
+  .meta dd { margin: 0; }
+  .scenario {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 20px 0;
+  }
+  .scenario h2 { margin-top: 0; }
+  .step {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 16px;
+    padding: 16px 0;
+    border-top: 1px dashed var(--border);
+  }
+  .step:first-child { border-top: none; }
+  .step-num {
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 24px;
+  }
+  .step-title { font-weight: 600; margin: 0 0 4px; }
+  .step-desc { color: var(--muted); margin: 0 0 12px; font-size: 14px; }
+  .step-verify { margin: 8px 0; padding: 8px 12px; background: #f0fdf4; border-left: 3px solid var(--ok); font-size: 14px; }
+  .step-verify strong { color: var(--ok); }
+  .shot {
+    display: block;
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    margin: 8px 0;
+    cursor: zoom-in;
+  }
+  code, .mono { font-family: SFMono-Regular, Menlo, monospace; font-size: 13px; background: var(--code); padding: 1px 6px; border-radius: 3px; }
+  .ok-badge { display: inline-block; background: var(--ok); color: white; padding: 2px 8px; border-radius: 3px; font-size: 12px; margin-left: 8px; }
+  .warn-badge { display: inline-block; background: var(--warn); color: white; padding: 2px 8px; border-radius: 3px; font-size: 12px; margin-left: 8px; }
+  .toc {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 24px;
+    margin: 16px 0 32px;
+  }
+  .toc ol { margin: 0; padding-left: 24px; }
+  .toc li { padding: 3px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .summary {
+    background: #ecfdf5;
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 24px 0;
+  }
+  .summary h3 { margin-top: 0; color: #166534; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  th { background: var(--code); color: var(--fg); font-weight: 600; }
+  footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 48px; }
+</style>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.shot').forEach(img => {
+      img.addEventListener('click', () => {
+        const full = document.createElement('div');
+        full.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';
+        const bigImg = document.createElement('img');
+        bigImg.src = img.src;
+        bigImg.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+        full.appendChild(bigImg);
+        full.addEventListener('click', () => document.body.removeChild(full));
+        document.body.appendChild(full);
+      });
+    });
+  });
+</script>
+</head>
+<body>
+
+<h1>MCP 市场端到端集成测试报告</h1>
+<p class="lead">跨端全流程：admin 建系统 MCP → web 查看 → web 自建/编辑/删除 → admin 编辑/删除，每步 UI 截图。</p>
+
+<div class="meta">
+<dl>
+  <dt>测试日期</dt><dd>2026-07-15</dd>
+  <dt>被测系统</dt>
+  <dd>
+    <div>octo-web · <span class="mono">http://localhost:3000</span></div>
+    <div>octo-admin · <span class="mono">http://localhost:3101</span></div>
+    <div>octo-marketplace · <span class="mono">http://localhost:8092</span></div>
+  </dd>
+  <dt>测试账号</dt>
+  <dd>
+    <div>web: <span class="mono">Nancy</span> (uid <span class="mono">7edea73a...</span>)</div>
+    <div>admin: <span class="mono">superAdmin</span></div>
+  </dd>
+  <dt>覆盖场景</dt><dd>6 组（A-F），共 18 步截图</dd>
+</dl>
+</div>
+
+<div class="toc">
+  <strong>目录</strong>
+  <ol>
+    <li><a href="#s-a">Scenario A · admin 建立系统 MCP「GitHub Ops」</a></li>
+    <li><a href="#s-b">Scenario B · web 端看到 admin 建的系统 MCP</a></li>
+    <li><a href="#s-c">Scenario C · web 用户建立自己的 MCP</a></li>
+    <li><a href="#s-d">Scenario D · web 用户编辑自己的 MCP</a></li>
+    <li><a href="#s-e">Scenario E · web 用户删除自己的 MCP</a></li>
+    <li><a href="#s-f">Scenario F · admin 编辑并删除系统 MCP</a></li>
+    <li><a href="#summary">汇总</a></li>
+  </ol>
+</div>
+
+<!-- Scenario A -->
+<div class="scenario" id="s-a">
+<h2>Scenario A · admin 建立系统 MCP</h2>
+<p class="lead">admin 端走完整 3 步向导，把「GitHub Ops」这条系统 MCP 从零建到落库并出现在管理列表中。</p>
+
+<div class="step">
+<div class="step-num">A1</div>
+<div>
+<p class="step-title">admin 空态<span class="ok-badge">PASS</span></p>
+<p class="step-desc">清库后进入「系统 MCP」页，空态文案与新建 CTA 就位。</p>
+<img class="shot" src="e2e-screenshots/01-admin-empty.png" alt="admin 空态">
+<div class="step-verify"><strong>断言：</strong> 表头「名称/分类/标签/工具数/创建者」显示；空态「还没有系统 MCP…」；右上角「+ 新建系统 MCP」按钮可点。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">A2</div>
+<div>
+<p class="step-title">打开向导 · Step 1 空态<span class="ok-badge">PASS</span></p>
+<p class="step-desc">Steps 头「基本信息 → 接入配置 → 文档说明」，Step 1 字段：图标预览 + 名称* + 图标 emoji/URL + 服务标识 slug + 分类 + 标签 + 简介。</p>
+<img class="shot" src="e2e-screenshots/02-admin-wizard-step1-empty.png" alt="admin wizard step 1 空">
+<div class="step-verify"><strong>断言：</strong> 顶部 Steps 编号 1/2/3；「服务标识 (slug)」输入框存在带 hint「生成 mcpServers JSON 时用作 key…」；名称带红色 * 必填标记。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">A3</div>
+<div>
+<p class="step-title">Step 1 填字段 · slug 自动生成<span class="ok-badge">PASS</span></p>
+<p class="step-desc">填写：名称=<code>GitHub Ops</code>、图标=<code>🐙</code>、标签=<code>开发工具</code>（回车 pill）、简介=<code>通过 GitHub API…</code>。slug 自动派生 <code>github-ops</code>。</p>
+<img class="shot" src="e2e-screenshots/03-admin-wizard-step1-filled.png" alt="admin step 1 已填">
+<div class="step-verify"><strong>断言：</strong> slug 自动填充；标签变为 pill；图标预览显示章鱼 emoji。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">A4</div>
+<div>
+<p class="step-title">Step 2 · 接入配置 + 工具清单<span class="ok-badge">PASS</span></p>
+<p class="step-desc">传输方式=远程 HTTP，URL=<code>https://api.github.com/mcp</code>，认证=无。工具清单加 2 条：<code>list_repos</code>、<code>create_issue</code>。</p>
+<img class="shot" src="e2e-screenshots/04-admin-wizard-step2-filled.png" alt="admin step 2">
+<div class="step-verify"><strong>断言：</strong> 「+ 新增一条」按钮动态添加行；每行输入独立；工具序号 #1 #2 显示。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">A5</div>
+<div>
+<p class="step-title">Step 3 · 文档说明（system 无可见范围）<span class="ok-badge">PASS</span></p>
+<p class="step-desc">3 个可选段：使用示例 / 常见问题 / 注意事项。system MCP 强制 visibility=system，故不展示公开/仅自己选项。</p>
+<img class="shot" src="e2e-screenshots/05-admin-wizard-step3-docs.png" alt="admin step 3">
+<div class="step-verify"><strong>断言：</strong> 3 个段各带 desc + 空态引导「点击「新增一条」…」；底部「提交」按钮就位；无可见范围控件。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">A6</div>
+<div>
+<p class="step-title">提交 · 记录出现在列表<span class="ok-badge">PASS</span></p>
+<p class="step-desc">点击「提交」→ Toast「已创建」→ Modal 关闭 → 列表新增一行。</p>
+<img class="shot" src="e2e-screenshots/06-admin-list-after-create.png" alt="admin list after create">
+<div class="step-verify"><strong>断言：</strong> 行显示章鱼图标 + <code>GitHub Ops</code> + 副标题 + 分类「开发工具」pill + 标签 pill + 工具数=2 + 创建者=Developer；DB 里 visibility=system。</div>
+</div>
+</div>
+</div>
+
+<!-- Scenario B -->
+<div class="scenario" id="s-b">
+<h2>Scenario B · web 端看到 admin 建的系统 MCP</h2>
+<p class="lead">切换到 octo-web MCP 市场，验证 admin 端建立的系统 MCP 对普通用户可见。</p>
+
+<div class="step">
+<div class="step-num">B1</div>
+<div>
+<p class="step-title">web 全部 tab 展示系统 MCP<span class="ok-badge">PASS</span></p>
+<p class="step-desc">用户 Nancy 进入 MCP 市场，全部 tab 展示 1 条：GitHub Ops（admin 刚建的）。</p>
+<img class="shot" src="e2e-screenshots/07-web-market-with-system-mcp.png" alt="web market shows system MCP">
+<div class="step-verify"><strong>断言：</strong> 卡片显示章鱼图标 + 名称 + 分类 pill + 简介 + 工具数 2 + 「查看详情」；分类过滤条只显示「开发工具 1」。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">B2</div>
+<div>
+<p class="step-title">web 打开系统 MCP 详情<span class="ok-badge">PASS</span></p>
+<p class="step-desc">点击卡片 → 详情弹窗，展示快速接入模板、创建者信息、工具清单。</p>
+<img class="shot" src="e2e-screenshots/08-web-detail-of-system-mcp.png" alt="web detail of system mcp">
+<div class="step-verify"><strong>断言：</strong> 详情标题、创建者 <code>@Developer</code>、快速接入代码块（含 name/transport/url）、Copy 按钮、工具清单段全部渲染。<strong>非 owner 用户看不到编辑/删除</strong>。</div>
+</div>
+</div>
+</div>
+
+<!-- Scenario C -->
+<div class="scenario" id="s-c">
+<h2>Scenario C · web 用户建立自己的 MCP</h2>
+<p class="lead">Nancy 在自己账号下新建一条 MCP。走 web 的 3 步向导（与 admin 结构一致）。</p>
+
+<div class="step">
+<div class="step-num">C1</div>
+<div>
+<p class="step-title">Step 1 填名字<span class="ok-badge">PASS</span></p>
+<p class="step-desc">名称=<code>My Note Taking</code>。web 与 admin 同款 3 步向导。</p>
+<img class="shot" src="e2e-screenshots/09-web-wizard-step1-filled.png" alt="web wizard step 1">
+<div class="step-verify"><strong>断言：</strong> 顶部步骤条 1/2/3；服务标识（slug）字段存在（可与 admin 侧对齐）；简介说明存在。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">C2</div>
+<div>
+<p class="step-title">走完 Step 2/3 提交 · 列表出现新记录<span class="ok-badge">PASS</span></p>
+<p class="step-desc">填 URL <code>https://note.example.com/mcp</code>，提交。Toast「创建成功」（BUG-01 fix 后不再是「（Mock）」）。</p>
+<img class="shot" src="e2e-screenshots/10-web-list-after-create.png" alt="web list after user create">
+<div class="step-verify"><strong>断言：</strong> 「全部」tab 现在 2 条：My Note Taking（用户）+ GitHub Ops（系统）；两条并列展示，混合渲染正确；分类计数「全部 2」「开发工具 2」。</div>
+</div>
+</div>
+</div>
+
+<!-- Scenario D -->
+<div class="scenario" id="s-d">
+<h2>Scenario D · web 用户编辑自己的 MCP</h2>
+<p class="lead">切「我的」tab，打开自建 MCP 详情，编辑名称并保存。验证 owner-only 权限 + 向导 hydrate 完整性。</p>
+
+<div class="step">
+<div class="step-num">D1</div>
+<div>
+<p class="step-title">「我的」tab · 详情显示编辑/删除<span class="ok-badge">PASS</span></p>
+<p class="step-desc">从「我的」tab 打开 My Note Taking → 详情右下角出现「删除」+「编辑」按钮（canManage = mode==='mine'）。</p>
+<img class="shot" src="e2e-screenshots/11-web-detail-own-with-edit-delete.png" alt="web detail own with edit/delete">
+<div class="step-verify"><strong>断言：</strong> 详情标题「My Note Taking」；footer 显示 <strong>删除（红色）</strong>+<strong>编辑（黑色）</strong> 双按钮，位置右下。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">D2</div>
+<div>
+<p class="step-title">编辑向导 · Step 1 字段完整 hydrate<span class="ok-badge">PASS</span></p>
+<p class="step-desc">点编辑 → 向导打开，Step 1 名称字段预填「My Note Taking」，修改为「My Note Taking (renamed)」。</p>
+<img class="shot" src="e2e-screenshots/12-web-edit-wizard-hydrated.png" alt="web edit wizard hydrated">
+<div class="step-verify"><strong>断言：</strong> 向导标题变「编辑 MCP」；名称已 hydrate；service 标识、简介、分类等全部按记录预填。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">D3</div>
+<div>
+<p class="step-title">保存 · 列表卡片刷新<span class="ok-badge">PASS</span></p>
+<p class="step-desc">Step 3 提交 → Toast「已保存」→ Modal 关 → 列表卡片名字变成「My Note Taking (renamed)」。</p>
+<img class="shot" src="e2e-screenshots/13-web-list-after-edit.png" alt="web list after edit">
+<div class="step-verify"><strong>断言：</strong> Toast「已保存」显示；卡片名字已更新；「我的」tab 计数 1。</div>
+</div>
+</div>
+</div>
+
+<!-- Scenario E -->
+<div class="scenario" id="s-e">
+<h2>Scenario E · web 用户删除自己的 MCP</h2>
+
+<div class="step">
+<div class="step-num">E1</div>
+<div>
+<p class="step-title">详情内联删除确认<span class="ok-badge">PASS</span></p>
+<p class="step-desc">在详情内点「删除」→ 内联展开 [取消][确认删除] 二次确认，无系统 confirm 弹窗。</p>
+<img class="shot" src="e2e-screenshots/14-web-inline-delete-confirm.png" alt="web inline delete confirm">
+<div class="step-verify"><strong>断言：</strong> 删除按钮消失，替代为「取消」+「确认删除」两个按钮；「确认删除」明显为危险色调。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">E2</div>
+<div>
+<p class="step-title">确认后列表刷新 · 我的 tab 变空<span class="ok-badge">PASS</span></p>
+<p class="step-desc">点确认 → Toast「已删除」→ Modal 关 → 我的 tab 变空态。</p>
+<img class="shot" src="e2e-screenshots/15-web-empty-after-delete.png" alt="web empty after delete">
+<div class="step-verify"><strong>断言：</strong> 「我的」tab「没有匹配的 MCP 服务」空态；「全部」tab 仍有 GitHub Ops（系统 MCP 未受影响）。</div>
+</div>
+</div>
+</div>
+
+<!-- Scenario F -->
+<div class="scenario" id="s-f">
+<h2>Scenario F · admin 编辑并删除系统 MCP</h2>
+<p class="lead">回到 admin 端，编辑 GitHub Ops 名称并保存，然后删除。验证跨端一致的 CRUD。</p>
+
+<div class="step">
+<div class="step-num">F1</div>
+<div>
+<p class="step-title">编辑向导 · 字段完整 hydrate<span class="ok-badge">PASS</span></p>
+<p class="step-desc">admin 点行 → Drawer → 编辑 → 向导 Step 1 预填 GitHub Ops → 修改名称为「GitHub Ops (更新版)」。<strong>BUG-04</strong>（旧版 antd Form hydrate 时序）在重写后天生消失。</p>
+<img class="shot" src="e2e-screenshots/16-admin-edit-wizard-hydrated.png" alt="admin edit hydrate">
+<div class="step-verify"><strong>断言：</strong> Step 1 name/icon/slug/tag/slogan 全部预填正确；无「请填写…」的假 validation 报错。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">F2</div>
+<div>
+<p class="step-title">Drawer 内联删除确认<span class="ok-badge">PASS</span></p>
+<p class="step-desc">保存后回列表 → 再点行 → Drawer 删除 → 内联「取消 / 确认删除」。</p>
+<img class="shot" src="e2e-screenshots/17-admin-inline-delete-confirm.png" alt="admin inline delete">
+<div class="step-verify"><strong>断言：</strong> Drawer footer 展开为 [取消][确认删除] 二次确认，与 web 端交互一致。</div>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">F3</div>
+<div>
+<p class="step-title">确认后列表变空<span class="ok-badge">PASS</span></p>
+<p class="step-desc">确认删除 → Toast「已删除」→ Drawer 关 → 列表空态。</p>
+<img class="shot" src="e2e-screenshots/18-admin-empty-after-delete.png" alt="admin empty after delete">
+<div class="step-verify"><strong>断言：</strong> 列表空态文案回来；DB <code>WHERE visibility='system' AND deleted_at IS NULL</code> 结果 0。</div>
+</div>
+</div>
+</div>
+
+<!-- Summary -->
+<div class="summary" id="summary">
+<h3>汇总</h3>
+<table>
+<thead><tr><th>Scenario</th><th>步数</th><th>Pass</th><th>Fail</th><th>关键验证</th></tr></thead>
+<tbody>
+<tr><td>A · admin 建系统 MCP</td><td>6</td><td>6</td><td>0</td><td>3 步向导 + slug 自动派生 + 动态工具清单 + visibility=system 强制</td></tr>
+<tr><td>B · web 看到 admin 建的</td><td>2</td><td>2</td><td>0</td><td>跨端可见 + 非 owner 无编辑/删除按钮</td></tr>
+<tr><td>C · web 自建 MCP</td><td>2</td><td>2</td><td>0</td><td>Toast「创建成功」（BUG-01 fix 生效）+ 系统 + 用户混合列表</td></tr>
+<tr><td>D · web 编辑</td><td>3</td><td>3</td><td>0</td><td>「我的」tab 展 edit/delete 按钮 + 向导 hydrate 完整</td></tr>
+<tr><td>E · web 删除</td><td>2</td><td>2</td><td>0</td><td>内联二次确认 + 我的空态但系统 MCP 未受影响</td></tr>
+<tr><td>F · admin 编辑并删除</td><td>3</td><td>3</td><td>0</td><td>BUG-04 hydrate 修复生效 + 交互与 web 端一致</td></tr>
+<tr><td><strong>合计</strong></td><td><strong>18</strong></td><td><strong>18</strong></td><td><strong>0</strong></td><td></td></tr>
+</tbody>
+</table>
+
+<h3>本次链路修复的 bug</h3>
+<ul>
+<li><strong>BUG-01（前修）</strong> <code>mcp.create.success</code> 遗留「（Mock）」→ 已改「创建成功」<span class="ok-badge">R5 确认</span></li>
+<li><strong>BUG-02（前修）</strong> system MCP 允许重名（NULL space_id 让 UNIQUE 失效）→ 加 service 层预检 + repo Query + 4 单测<span class="ok-badge">Fixed</span></li>
+<li><strong>BUG-03（前修）</strong> admin 图标 label 重复「（可选）」→ i18n 修正<span class="ok-badge">Fixed</span></li>
+<li><strong>BUG-04（前修）</strong> admin 旧版 FormModal 编辑时 URL/tools 未 hydrate → 重写用 useState，天生绕过<span class="ok-badge">Fixed</span></li>
+</ul>
+
+<h3>本次未提交的临时改动</h3>
+<ul>
+<li><code>octo-admin/src/auth/capabilities.ts</code>: <code>mcp.read/mcp.write</code> 临时旁路（后端未下发 capability）</li>
+<li><code>octo-marketplace/scripts/restart-api.sh</code>: <code>DEV_AUTH_UID</code> = Nancy 的真实 uid（本地测试需要，让 web 端 owner 检查通过）</li>
+</ul>
+
+<p style="margin-top: 20px; color: var(--muted); font-size: 13px;">
+  <strong>提示：</strong>点击任一截图放大查看。所有截图存放于 <code>docs/test-plans/e2e-screenshots/</code>，通过 html2canvas 从真实浏览器 DOM 抓取。
+</p>
+</div>
+
+<footer>
+Generated 2026-07-15 · octo-web / octo-admin / octo-marketplace 三端 E2E 集成测试
+</footer>
+
+</body>
+</html>

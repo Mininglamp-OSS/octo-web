@@ -56,6 +56,8 @@
   },
   "dependencies": {
     "@dmwork/appbot": "workspace:*",
+    "@dmwork/mcp": "workspace:*",
+    "@dmwork/skillmarket": "workspace:*",
     "@dmwork/summary": "workspace:*",
     "@douyinfe/semi-icons": "^2.93.0",
     "@douyinfe/semi-ui": "^2.93.0",
@@ -80,6 +82,7 @@
     "electron-screenshots": "^0.5.26",
     "electron-updater": "^6.1.8",
     "lucide-react": "^0.577.0",
+    "mathlive": "^0.104.2",
     "ms": "^2.1.3",
     "ogl": "^1.0.11",
     "react": "^18.3.1",

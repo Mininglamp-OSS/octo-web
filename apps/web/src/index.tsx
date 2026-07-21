@@ -4,12 +4,14 @@ import '@octo/base/src/theme/tokens.css';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import  { BaseModule, I18nProvider, ensureSessionSid, i18n, stripSessionSidFromUrl, WKApp } from '@octo/base';
+import  { BaseModule, I18nProvider, i18n, WKApp } from '@octo/base';
 import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
 import { MatterModule } from '@octo/todo';
 import { SummaryModule } from '@dmwork/summary';
+import { McpMarketModule } from '@dmwork/mcp';
+import { SkillMarketModule } from '@dmwork/skillmarket';
 import { AppBotModule } from '@dmwork/appbot';
 import { DocsModule } from '@octo/docs';
 import { LoopModule } from '@octo/loop';
@@ -53,8 +55,6 @@ WKApp.apiClient.config.spaceIdCallback = () => {
 WKApp.config.appVersion = import.meta.env.VITE_VERSION || pkgVersion
 WKApp.config.appName = "Octo"
 
-ensureSessionSid()
-stripSessionSidFromUrl()
 WKApp.loginInfo.load() // 加载登录信息
 i18n.registerNamespace("app", {
   "zh-CN": appZhCN,
@@ -75,6 +75,8 @@ WKApp.shared.registerModule(new BindModule()); // OIDC 自助绑定页 (/oidc/bi
 WKApp.shared.registerModule(new ContactsModule()); // 联系模块
 WKApp.shared.registerModule(new MatterModule()); // Matter module
 WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
+WKApp.shared.registerModule(new McpMarketModule()); // MCP 市场模块
+WKApp.shared.registerModule(new SkillMarketModule()); // Skill 市场模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
 WKApp.shared.registerModule(new DocsModule()); // Docs module
 WKApp.shared.registerModule(new LoopModule()); // Loop 面板（Issue/Skill/Project/Agent/Squad/Runtime）

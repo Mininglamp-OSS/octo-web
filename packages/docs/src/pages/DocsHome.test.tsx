@@ -173,8 +173,8 @@ describe('resolveDocTarget', () => {
   it('captures a forwarded /docs?doc= link at boot so a first-time recipient opens the doc, not the empty list (XIN-328)', () => {
     // End-to-end regression for the forward defect: unlike the "second blocker" test above,
     // the RECIPIENT has never opened this doc, so nothing is pre-persisted. The code-split
-    // DocsHome only mounts AFTER the host's pageshow route normalization has already removed
-    // the query, so resolveDocTarget at mount time sees no `?doc=` and — without the boot
+    // DocsHome only mounts AFTER the host's pageshow re-push has already collapsed the URL to
+    // `/docs?sid=…`, so resolveDocTarget at mount time sees no `?doc=` and — without the boot
     // capture — would return null → empty document list (the reported symptom).
     //
     // captureDocTargetDeepLink() runs at DocsModule.init() (app boot, BEFORE the re-push) and
@@ -182,7 +182,7 @@ describe('resolveDocTarget', () => {
     // the doc from that mirror even though the query is already wiped.
     window.location.search = '?space=sp9&folder=fd9&doc=d_forwarded'
     captureDocTargetDeepLink()
-    // Host RouteManager re-pushes pathname-only → URL no longer carries doc addressing.
+    // Host RouteManager re-pushes pathname-only → URL collapses to /docs?sid=… (no doc).
     window.location.search = '?sid=abc123'
     const opened = resolveDocTarget(window.location.search)
     expect(opened).toEqual({
@@ -474,10 +474,11 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
-  it('XIN-513/519: the standalone link opens with `?sp` (doc space) but no `?sid`, even when the shell has a session sid', async () => {
+  it('XIN-513/519: the standalone link opens with `?sp` (doc space) but no `?sid`, even when the in-shell URL carries a sid', async () => {
     const openSpy = vi.fn()
     Object.defineProperty(window, 'open', { configurable: true, writable: true, value: openSpy })
-    // The shell has an active session sid. The opened standalone link must NOT copy that sid forward: an
+    // In-shell URL carries the active session's sid (the host's RouteManager re-push collapses the
+    // docs route to `/docs?sid=…`). The opened standalone link must NOT copy that sid forward: an
     // already-logged-in user's session is recovered from storage independently of the URL (XIN-513),
     // so a sid-less `/d/:docId` opens the document directly. It MUST, however, carry `?sp` (the doc's
     // real space) so the recipient's standalone preflight can address the doc's own space — dropping

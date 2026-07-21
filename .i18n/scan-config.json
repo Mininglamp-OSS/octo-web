@@ -37,6 +37,30 @@
       "reason": "Toolbar font-family presets. The only CJK literals are the localized family-name aliases inside the CSS font-family values (e.g. \"微软雅黑\", \"宋体\") that must byte-match the native font name so browsers matching a font by its Chinese name still render it; they are font resource identifiers, not translatable UI copy (mirrors export/docx/styles.ts). The user-facing display name is localized separately via the labelKey i18n keys resolved with t()."
     },
     {
+      "path": "packages/dmworkmcp/src/mock/mcpMock.ts",
+      "reason": "MCP Market demo fixtures (server names, slogans, descriptions, FAQ, notes). This is sample content data returned by the mock service layer, replaced wholesale by the real backend response later; it is not translatable UI chrome and has no i18n namespace key to bind to."
+    },
+    {
+      "path": "packages/dmworkmcp/src/api/quickStartTemplates.ts",
+      "reason": "Quick-start snippet generators. The CJK literals are fragments of the copy-ready prompt/CLI/JSON text (e.g. 名称/传输方式/鉴权 labels inside the generated instruction) that must byte-match what the user pastes into an agent client; they are generated code/prompt content, not translatable UI chrome."
+    },
+    {
+      "path": "packages/dmworkskillmarket/src/api/mockData.ts",
+      "reason": "Skill Market demo fixtures (category names, skill names, slogans, prompts, tags). Sample content data returned by the mock service layer, replaced wholesale by the real backend response later; not translatable UI chrome. Same category as dmworkmcp/src/mock/mcpMock.ts."
+    },
+    {
+      "path": "packages/dmworkskillmarket/src/__mocks__/dmworkBase.tsx",
+      "reason": "Vitest __mocks__ stub for @octo/base — provides a minimal fake t() and WKModal-shaped closer used only in unit tests. The single CJK literal ('关闭') is the test-mock modal close label and never surfaces in production UI."
+    },
+    {
+      "path": "packages/dmworkskillmarket/src/utils/installPrompt.ts",
+      "reason": "Agent prompt template for the octo-cli install flow. The CJK literals are fragments of the copy-ready prompt text that must byte-match what the user pastes into an agent client (Skill ID / Space ID / API 地址 labels + step-by-step instructions); they are generated agent-facing content, not translatable UI chrome. Same category as dmworkmcp/src/api/quickStartTemplates.ts."
+    },
+    {
+      "path": "packages/dmworkskillmarket/src/utils/botPublishPrompt.ts",
+      "reason": "Agent prompt template for the Bot publish flow. Same rationale as installPrompt.ts above — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
+    },
+    {
       "path": "packages/dmworksummary/src/__mocks__/handlers.ts",
       "reason": "MSW test fixture data with sample user names, titles, and message bodies; not UI copy."
     },

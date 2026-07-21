@@ -293,8 +293,7 @@
     "deleteTable": "删除表格",
     "pickerHint": "选择尺寸",
     "pickerLabel": "表格尺寸",
-    "reorderConflict": "表格已被协同修改，换序已取消，请重试。",
-    "rowResizeConflict": "表格已被协同修改，行高调整已取消，请重试。"
+    "reorderConflict": "表格已被协同修改，换序已取消，请重试。"
   },
   "callout": {
     "info": "信息",

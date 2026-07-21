@@ -220,7 +220,16 @@ export class RequestConfig {
      * server-side renders (large document export) need a higher ceiling.
      */
     timeout?: number
-    /** Cancels stale searches and other request/response races. */
+    /**
+     * `AbortSignal` for per-request cancellation. Two active consumers today:
+     *   - SearchService.ts (list/message search) — passes the query's own
+     *     signal so a stale search cancels its in-flight HTTP.
+     *   - GlobalMessageSearchService.ts — same pattern for global search.
+     * Removing this field silently drops the cancel contract (axios still
+     * runs to completion, but the abort controller thinks it worked), so
+     * stale requests keep hitting the server. Reinstated per PR#851 P1 by
+     * yujiawei.
+     */
     signal?: AbortSignal
 }
 

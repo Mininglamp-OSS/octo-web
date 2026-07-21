@@ -191,9 +191,9 @@ describe('DocsModule (octo-web same-origin integration)', () => {
 
   it('captures a /docs?doc=<id> deep-link into sessionStorage on init() so it survives the host query-wipe (XIN-328)', () => {
     // A forwarded-doc link is `${origin}/docs?...&doc=<docId>`, but the host RouteManager's
-    // pageshow/popstate handler can normalize the URL to pathname-only, wiping `?doc=` before
-    // the code-split DocsHome mounts. init() must stash the target BEFORE that normalization
-    // (same window as normalizeInviteDeepLink) so resolveDocTarget's persisted-target
+    // pageshow/popstate handler re-pushes pathname-only and re-stamps the URL to `/docs?sid=…`,
+    // wiping `?doc=` before the code-split DocsHome mounts. init() must stash the target BEFORE
+    // that re-push (same window as normalizeInviteDeepLink) so resolveDocTarget's persisted-target
     // fallback opens the document instead of the empty list.
     window.history.replaceState(null, '', '/docs?space=s_1&folder=f_1&doc=d_forwarded')
     try {

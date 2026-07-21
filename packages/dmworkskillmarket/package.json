@@ -1,0 +1,26 @@
+{
+  "name": "@dmwork/skillmarket",
+  "version": "1.0.0",
+  "main": "src/index.tsx",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@octo/base": "workspace:*",
+    "classnames": "^2.3.1",
+    "lucide-react": "^0.577.0",
+    "react-avatar-editor": "^13.0.0",
+    "react-markdown": "8",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "3"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^13.4.0",
+    "@types/react": "^18.3.28",
+    "@types/react-avatar-editor": "^13.0.0",
+    "@types/react-dom": "^18.3.7",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2"
+  }
+}

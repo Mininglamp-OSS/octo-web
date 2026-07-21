@@ -5,9 +5,9 @@ import * as path from 'path'
  * Regression for the forwarded-doc deep-link capture (feature #511, XIN-328 / XIN-332 / XIN-333).
  *
  * The forwarded-doc card link opens a new tab at `/docs?...&doc=<docId>`, but the octo host's
- * RouteManager / host route normalization can wipe `?doc=` before the code-split docs chunk
- * mounts — XIN-332 proved DocsModule.init() runs AFTER that wipe on device.
- * The fix moves the primary capture into an inline <script> at the top of
+ * RouteManager re-pushes pathname-only on pageshow/popstate and wipes `?doc=` to `/docs?sid=…`
+ * before the code-split docs chunk mounts — XIN-332 proved DocsModule.init() runs AFTER that
+ * wipe on device. The fix moves the primary capture into an inline <script> at the top of
  * index.html, which runs during HTML parse (earliest synchronous entry). These tests extract that
  * inline script and execute it against jsdom so the behaviour and the observability marker cannot
  * silently regress or drift from the `octo.docs.target` key the docs module reads.

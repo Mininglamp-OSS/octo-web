@@ -62,8 +62,8 @@ export default class LoopModule implements IModule {
         window.sessionStorage
       );
 
-      // Capture the callback above, then remove it from the address bar before
-      // host route normalization can leave a callback-bearing entry in history.
+      // RouteManager keeps only `sid` on pageshow. Capture the callback above,
+      // then remove it from the address bar before it can remain in history.
       if (new URLSearchParams(window.location.search).get("cli_callback")) {
         try {
           window.history.replaceState(

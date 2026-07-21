@@ -140,6 +140,17 @@ export default defineConfig(({ mode }) => {
           secure: false,
           rewrite: (path: string) => path.replace(/^\/summary/, ""),
         },
+        // Marketplace (MCP catalog) API — must be before the general /api/ rule.
+        // octo-marketplace serves its own /api/v1/*; the /market prefix is
+        // stripped here (dev) and by nginx (prod). See octo-marketplace
+        // docs/api/mcp-v1.md §0.
+        "/market/api/v1": {
+          target:
+            env.VITE_MARKET_API_URL || "http://127.0.0.1:8092",
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path: string) => path.replace(/^\/market/, ""),
+        },
         // Matters service API — must be before the general /api/ rule
         // When target is the main gateway (nginx), no rewrite needed — nginx routes /matter/* to todos service.
         // When target is todos service directly (e.g. localhost:3000), set VITE_MATTER_API_URL and add rewrite.
@@ -168,7 +179,7 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_FLEET_API_URL || "http://127.0.0.1:8092",
           changeOrigin: true,
           secure: false,
-          rewrite: (path: string) => path.replace(/^\/fleet\/api/, ''),
+          rewrite: (path: string) => path.replace(/^\/fleet\/api/, ""),
         },
         "/api/": {
           target: apiOrigin,
