@@ -26,3 +26,16 @@ export interface ContactsSearchResult {
   contacts: Array<SpaceMember | ContactsSearchBot>;
   groups: ContactsSearchGroup[];
 }
+
+export type ContactsSearchPerson = SpaceMember | ContactsSearchBot;
+
+export interface ContactsSearchEntry<T> {
+  item: T;
+  searchText: string;
+}
+
+export interface ContactsSearchIndex {
+  people: Array<ContactsSearchEntry<ContactsSearchPerson>>;
+  groups: Array<ContactsSearchEntry<ContactsSearchGroup>>;
+  pinyinByUid: Map<string, string>;
+}

@@ -24,7 +24,12 @@ import { shouldShowOnlineStatus, selectOnlineStatusUids } from "./onlineStatusGa
 import ContactsSearch from "../ui/ContactsSearch";
 import { ContactsDirectory, ContactsDirectorySection } from "../ui/ContactsDirectory";
 import type { ContactsDirectorySectionKey } from "../ui/ContactsDirectory/types";
-import { searchContacts } from "../bridge/contactsSearch/searchContacts";
+import {
+    buildContactsSearchIndex,
+    createEmptyContactsSearchIndex,
+    searchContacts,
+} from "../bridge/contactsSearch/searchContacts";
+import type { ContactsSearchIndex } from "../bridge/contactsSearch/types";
 
 function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
     const [visible, setVisible] = useState(false)
@@ -211,6 +216,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     private spaceChangedHandler!: (space: any) => void
     private flatItems: Contacts[] = []
     private indexCache = new Map<ContactFilterMode, ContactIndexData>()
+    private contactsSearchIndex: ContactsSearchIndex = createEmptyContactsSearchIndex()
     private filterScrollTops: Record<ContactFilterMode, number> = { all: 0, bots: 0, humans: 0 }
     // 已预取过 channelInfo（含在线态）的 uid 集合，跨 filter/滚动去重，避免重复请求
     private prefetchedUids = new Set<string>()
@@ -234,10 +240,14 @@ export default class ContactsList extends Component<any, ContactsState> {
             )
             if (idx !== -1) {
                 const members = [...this.state.spaceMembers]
+                const nameChanged = members[idx].name !== channelInfo.title
                 members[idx] = { ...members[idx], name: channelInfo.title }
                 this.setState({ spaceMembers: members }, () => {
-                    this.clearIndexCache()
-                    this.rebuildIndex()
+                    if (nameChanged) {
+                        this.rebuildContactsSearchIndex()
+                        this.clearIndexCache()
+                        this.rebuildIndex()
+                    }
                 })
                 return
             }
@@ -252,6 +262,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         this.spaceChangedHandler = (space: any) => {
             const sp = space as Space | undefined
             this.clearIndexCache()
+            this.contactsSearchIndex = createEmptyContactsSearchIndex()
             this.resetFilterScrollTops()
             this.prefetchedUids.clear()
             if (sp) {
@@ -346,6 +357,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                 myGroups: myGroups || [],
                 loading: false,
             }, () => {
+                this.rebuildContactsSearchIndex()
                 this.clearIndexCache()
                 this.rebuildIndex()
                 // 「已添加AI」列表数量有界，数据就绪时整批预取一次在线态。
@@ -358,6 +370,15 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private clearIndexCache() {
         this.indexCache.clear()
+    }
+
+    private rebuildContactsSearchIndex() {
+        this.contactsSearchIndex = buildContactsSearchIndex({
+            spaceMembers: this.state.spaceMembers,
+            spaceBots: this.state.spaceBots,
+            myGroups: this.state.myGroups,
+            currentUid: WKApp.loginInfo.uid || "",
+        })
     }
 
     private resetFilterScrollTops() {
@@ -486,7 +507,8 @@ export default class ContactsList extends Component<any, ContactsState> {
         const pinyinCache = new Map<string, string>()
         for (const item of items) {
             let name = (item.remark || item.name || '').replace(/\*\*/g, '')
-            pinyinCache.set(item.uid, getPinyin(toSimplized(name)).toUpperCase())
+            const cachedPinyin = this.contactsSearchIndex.pinyinByUid.get(item.uid)
+            pinyinCache.set(item.uid, (cachedPinyin || getPinyin(toSimplized(name))).toUpperCase())
         }
 
         // 按拼音排序
@@ -540,12 +562,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             return
         }
 
-        const { contacts, groups } = searchContacts(keyword, {
-            spaceMembers: this.state.spaceMembers,
-            spaceBots: this.state.spaceBots,
-            myGroups: this.state.myGroups,
-            currentUid: WKApp.loginInfo.uid || "",
-        })
+        const { contacts, groups } = searchContacts(keyword, this.contactsSearchIndex)
 
         this.setState({
             isSearching: true,
@@ -936,7 +953,11 @@ export default class ContactsList extends Component<any, ContactsState> {
                             const spaceId = WKApp.shared.currentSpaceId
                             if (spaceId) {
                                 WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).then((res: any) => {
-                                    this.setState({ spaceBots: res || [] }, () => this.rebuildIndex())
+                                    this.setState({ spaceBots: res || [] }, () => {
+                                        this.rebuildContactsSearchIndex()
+                                        this.clearIndexCache()
+                                        this.rebuildIndex()
+                                    })
                                 }).catch(() => {})
                             }
                         }}
