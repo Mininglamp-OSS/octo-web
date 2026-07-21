@@ -9,9 +9,11 @@ export function resolveMobileUpdaterUrl(
 }
 
 function resolveSafeDownloadUrl(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return undefined;
+  if (typeof value !== "string") return undefined;
+  const normalizedValue = value.trim();
+  if (!normalizedValue) return undefined;
   try {
-    const url = new URL(value, window.location.origin);
+    const url = new URL(normalizedValue, window.location.origin);
     if (url.protocol === "http:" || url.protocol === "https:") {
       return url.toString();
     }
