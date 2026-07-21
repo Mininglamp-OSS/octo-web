@@ -189,9 +189,9 @@ describe("IOSDownloadButton", () => {
     expect(html).not.toContain("手机扫码安装");
   });
 
-  it("renders the updater-provided iOS URL as a scannable QR code", async () => {
+  it("trims Unicode whitespace from the updater URL before rendering the QR code", async () => {
     const updaterUrl = "https://testflight.apple.com/join/backendCode";
-    apiFetchJsonMock.mockResolvedValue({ url: updaterUrl });
+    apiFetchJsonMock.mockResolvedValue({ url: `\u2004${updaterUrl}\u2004` });
     const container = document.createElement("div");
     document.body.appendChild(container);
     mountedContainers.push(container);
