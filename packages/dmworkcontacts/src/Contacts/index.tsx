@@ -342,10 +342,27 @@ export default class ContactsList extends Component<any, ContactsState> {
         }
     }
 
+    // 翻页拉取空间全部成员。宿主 getMembers 单次 limit 上限 10000，超大空间若只请求一页会把
+    // 第 10000 名之后的成员静默丢弃（与文档成员选择器同源的问题）。这里 10000/页循环到取尽为止；
+    // MAX_PAGES 兜底防异常空间无限循环（20×10000=20 万，远超任何真实空间）。同一 getMembers
+    // 接口、page/limit 传参不变，不碰后端、不影响移动端。
+    private async fetchAllSpaceMembers(spaceId: string): Promise<any[]> {
+        const PAGE_SIZE = 10000
+        const MAX_PAGES = 20
+        const all: any[] = []
+        for (let page = 1; page <= MAX_PAGES; page++) {
+            const batch = await SpaceService.shared.getMembers(spaceId, page, PAGE_SIZE)
+            if (!batch || batch.length === 0) break
+            all.push(...batch)
+            if (batch.length < PAGE_SIZE) break // 最后一页
+        }
+        return all
+    }
+
     private async loadAllData(spaceId: string) {
         try {
             const [members, myBots, spaceBots, myGroups] = await Promise.all([
-                SpaceService.shared.getMembers(spaceId, 1, 10000),
+                this.fetchAllSpaceMembers(spaceId),
                 WKApp.apiClient.get("/robot/my_bots", { param: { space_id: spaceId } }).catch(() => []),
                 WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).catch(() => []),
                 WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).catch(() => []),
