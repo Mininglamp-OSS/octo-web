@@ -1,4 +1,4 @@
-import { Channel, ChannelInfo, ChannelTypePerson, WKSDK } from "wukongimjssdk"
+import { Channel, ChannelInfo, ChannelTypePerson, MessageContentType, MessageText, WKSDK } from "wukongimjssdk"
 import { MessageCell } from '../MessageCell'
 import { MessageWrap } from '../../Service/Model'
 import WKApp from '../../App'
@@ -6,6 +6,37 @@ import React from 'react'
 import "./index.css"
 import { ChannelInfoListener } from "wukongimjssdk"
 import { I18nContext, t } from "../../i18n"
+import ConversationContext from "../../Components/Conversation/context"
+
+/**
+ * 从纲文 text + mention entities ({uid, offset, length}[]) 重建 @[uid:label] 草稿序列化格式。
+ * restoreDraft → parseDraftToContent 仅能识别 @[uid:label] 模式，而发送消息里存的是
+ * 纯显示文本（如 "hi @张三"）+ entities。此函数将二者合并为 draft 字符串。
+ */
+export function rebuildDraftText(
+    text: string,
+    entities: Array<{ uid: string; offset: number; length: number }>
+): string {
+    if (!entities || entities.length === 0) return text
+
+    // 按 offset 排序，防止乱序
+    const sorted = [...entities].sort((a, b) => a.offset - b.offset)
+    let result = ''
+    let cursor = 0
+    for (const entity of sorted) {
+        const { uid, offset, length } = entity
+        if (offset < cursor || offset + length > text.length) continue
+        // 追加 offset 前的纯文本
+        result += text.slice(cursor, offset)
+        // 追加 @[uid:label] 标记，label 从原文本中提取（跳过 offset 处的 '@' 字符）
+        // entity 的 offset 指向 '@' 本身，length 包含 '@'；draft 序列化中 label 不含 '@'
+        const label = text.slice(offset + 1, offset + length)
+        result += `@[${uid}:${label}]`
+        cursor = offset + length
+    }
+    result += text.slice(cursor)
+    return result
+}
 
 
 export class RevokeCell extends MessageCell {
@@ -64,9 +95,65 @@ export class RevokeCell extends MessageCell {
         }
     }
 
+    /**
+     * 判断是否展示「重新编辑」按钮：
+     * - 必须是自己撤回的（revoker === 自己 uid）
+     * - 且原始消息为文本类型
+     */
+    private canReEdit(): boolean {
+        const { message } = this.props
+        return (
+            message.revoker === WKApp.loginInfo.uid &&
+            message.fromUID === WKApp.loginInfo.uid &&
+            message.contentType === MessageContentType.text
+        )
+    }
+
+    /**
+     * 点击「重新编辑」：将原文夹回输入框
+     *
+     * text 与 entities 必须来自同一来源，否则 offset 错位会导致 mention 标签截断错误。
+     *
+     * 处理策略：
+     * - 如果消息被编辑过（isEdit）：用原始 text + 原始 entities
+     *   contentEdit 只序列化文本，不携带 entities；而编辑内容改变后原始 offset 已对应不上新文本。
+     *   确保 text+entities 始终来自同一版本，用户看到的是编辑前的原始内容（可见、可预期）。
+     * - 如果消息未编辑：用原始 text + 原始 entities，与上面相同。
+     */
+    private handleReEdit = () => {
+        const { message } = this.props
+        const conversationContext = this.props.context as ConversationContext
+        if (!conversationContext?.restoreDraft) return
+
+        // text 和 entities 始终来自原始 content，保证两者 offset 一致
+        const originalContent = message.content as any
+        const rawText: string = originalContent?.text ?? ''
+        if (!rawText) return
+
+        const entities: Array<{ uid: string; offset: number; length: number }> =
+            originalContent?.mention?.entities ??
+            originalContent?.contentObj?.mention?.entities ??
+            []
+
+        const draftText = rebuildDraftText(rawText, entities)
+        conversationContext.restoreDraft(draftText)
+    }
+
     render() {
         const { message } = this.props
         this.context.locale
-        return <div className="wk-message-system">{RevokeCell.tip(message)}</div>
+        return (
+            <div className="wk-revoke-row">
+                <span className="wk-message-system">{RevokeCell.tip(message)}</span>
+                {this.canReEdit() && (
+                    <button
+                        className="wk-revoke-reedit-btn"
+                        onClick={this.handleReEdit}
+                    >
+                        {this.context.t("base.revoke.reEdit")}
+                    </button>
+                )}
+            </div>
+        )
     }
 }
