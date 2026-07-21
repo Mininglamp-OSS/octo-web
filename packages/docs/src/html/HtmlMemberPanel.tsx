@@ -1,35 +1,59 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
+import { canManage } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
 import { MemberPicker } from '../members/MemberPicker.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { listGrants, addGrant, removeGrant, type HtmlGrant } from './htmlGrantsApi.ts'
+import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
+import { InvitePanel } from '../invite/InvitePanel.tsx'
+import { useAccessRequests } from '../access-request/useAccessRequests.ts'
+import { PendingRequests } from '../access-request/PendingRequests.tsx'
 
-// Member panel for HTML docs. Reuses the rich-doc MemberPicker (selection UI) and
-// the shared octo-member CSS so it looks/behaves identically, but talks to the
-// octo-doc grants backend instead of the Yjs members API. Distinct from the rich
-// MemberPanel so that backend stays untouched (zero regression there).
+// Member panel for HTML docs. Two backends live behind one modal:
+//   1. Legacy octo-doc grants (author-only) — the existing "reader" member list, kept intact so
+//      the current author-managed grant flow keeps working while the docs-backend hop is on trial.
+//   2. docs-backend (OCT-195) — link share scope, invite links, and pending access requests. These
+//      three sections reuse the rich-doc components verbatim; only the option surface is narrowed
+//      via allowedRoles so html can never publish writer/admin.
 //
-// octo-doc grants are reader-only today (author = the creator, shown as a locked
-// owner row). No invite links / access-requests — those are rich-doc features not
-// backed here — so this panel omits both sections by design.
+// The two gates are intentionally different:
+//   - Author gate (isAuthor) governs the octo-doc grant section — it stays byte-compatible with
+//     the pre-OCT-195 behavior. octo-doc author is not always the docs-backend admin.
+//   - Backend role gate (canManage(role)) governs Share/Invite/Requests — role comes from
+//     docs-backend resolveRole via HtmlDocView, single source of truth for that surface.
+// A reader that is also octo-doc author still sees the grant list (backwards compatible); an
+// admin that is not octo-doc author still sees Share/Invite/Requests.
 
 export function HtmlMemberPanel({
   slug,
   space,
   creatorUid,
-  canManage,
+  canManage: canManageGrants,
   onClose,
+  docId,
+  role,
+  isAuthor,
 }: {
   slug: string
   /** Space id for the member picker roster. */
   space?: string
   /** The doc creator (author). Shown as a locked owner row; never removable. */
   creatorUid?: string
-  /** Backend-authoritative author flag (window.__ODOC_CAP__.isAuthor). Management is offered
-   *  only when true; a viewer-side uid comparison is unsafe (see HtmlDocView parseOdocCap). */
+  /** Kept for backward compatibility: octo-doc author flag (window.__ODOC_CAP__.isAuthor).
+   *  When both this and `isAuthor` are supplied they mean the same thing; the new prop is preferred
+   *  and this one is treated as a fallback so no existing call site breaks during the OCT-195 rollout. */
   canManage?: boolean
   onClose?: () => void
+  /** docs-backend doc id (not slug). Required for /docs/{docId}/share|invites|access-requests. */
+  docId: string
+  /** Backend-resolved role from HtmlDocView.getDoc → resolveRole. Null while resolving; three
+   *  Share/Invite/Requests sections stay in a loading placeholder until it settles. Fail-soft:
+   *  a 403/404 leaves role=null and the sections stay hidden (never crash). */
+  role: Role | null
+  /** octo-doc author flag from HtmlDocView (parseOdocCap). Same authority as the legacy
+   *  canManage prop; passing both is redundant but harmless. */
+  isAuthor: boolean
 }) {
   // uid → display name for member rows (falls back to uid until the roster resolves).
   const names = useMemberNames(space ?? '')
@@ -38,7 +62,16 @@ export function HtmlMemberPanel({
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  // Grant management is octo-doc-author-only. Prefer the new explicit isAuthor prop; keep the
+  // legacy canManage prop as a fallback so an older call site that only sets that one still works.
+  const canManageAuthorGrants = isAuthor || canManageGrants === true
+  // Share / Invite / Requests use the backend role — admin only. `null` role (still resolving or a
+  // fail-soft miss) collapses to false: the sections render a loading placeholder rather than a
+  // half-baked admin UI, and never crash.
+  const canManageBackend = role != null && canManage(role)
+
   const refresh = useCallback(async () => {
+    if (!canManageAuthorGrants) return
     setLoading(true)
     try {
       setGrants(await listGrants(slug))
@@ -47,15 +80,15 @@ export function HtmlMemberPanel({
     } finally {
       setLoading(false)
     }
-  }, [slug])
+  }, [slug, canManageAuthorGrants])
 
   useEffect(() => {
-    if (canManage) void refresh()
-  }, [canManage, refresh])
+    if (canManageAuthorGrants) void refresh()
+  }, [canManageAuthorGrants, refresh])
 
-  // Only the author manages members; a non-author sees nothing (parity with the
-  // rich MemberPanel's canManage gate).
-  if (!canManage) return null
+  // Access-request hook: enabled only when the backend says we can manage; a non-admin never hits
+  // the pending endpoint (it would 403).
+  const accessRequests = useAccessRequests(docId, canManageBackend)
 
   // reader is the only grantable role today; MemberPicker returns a Role but we
   // pin it to reader before calling the backend.
@@ -93,6 +126,12 @@ export function HtmlMemberPanel({
     if (g.source !== 'owner' && g.uid !== creatorUid) rows.push(g)
   }
 
+  // Nothing to render at all when neither gate lets the viewer manage anything AND the backend
+  // has already resolved (role != null); a viewer with no capability sees the modal only on the
+  // affordance the parent still opens. When role is still resolving we render the shell so the
+  // Share/Invite/Requests placeholders can show a loading state.
+  if (!canManageAuthorGrants && !canManageBackend && role != null) return null
+
   return (
     <section className="octo-member-panel">
       <div className="octo-member-row">
@@ -104,47 +143,75 @@ export function HtmlMemberPanel({
         )}
       </div>
 
-      <div className="octo-member-section">
-        <h4 className="octo-member-subtitle">{t('docs.member.addMember')}</h4>
-        <MemberPicker
-          space={space}
-          existingUids={existingUids}
-          hideUids={new Set([creatorUid].filter(Boolean) as string[])}
-          roles={['reader']}
-          onAdd={(uids: string[], _role: Role) => onAdd(uids)}
-          busy={busy}
-        />
-        {error && <p className="octo-member-error">{error}</p>}
-      </div>
+      {/* Link share scope: rendered while role is resolving so the admin isn't hit with a flash of
+          empty panel. `null` role → loading placeholder; admin resolves → real controls; reader
+          resolves → hidden by the gate below. */}
+      {role == null ? (
+        <p className="octo-loading">{t('docs.member.loading')}</p>
+      ) : canManageBackend ? (
+        <>
+          <ShareScopePanel docId={docId} allowedRoles={['read']} />
+          <div className="octo-member-section">
+            <h4 className="octo-member-subtitle">{t('docs.member.inviteTitle')}</h4>
+            <InvitePanel docId={docId} role={role} allowedRoles={['reader']} />
+          </div>
+          <PendingRequests
+            requests={accessRequests.requests}
+            loading={accessRequests.loading}
+            error={accessRequests.error}
+            approve={accessRequests.approve}
+            deny={accessRequests.deny}
+            displayName={(uid) => names.get(uid) || uid}
+            allowedRoles={['reader']}
+          />
+        </>
+      ) : null}
 
-      <div className="octo-member-section">
-        <h4 className="octo-member-subtitle">{t('docs.member.currentMembers')}</h4>
-        {loading && <p className="octo-loading">{t('docs.member.loading')}</p>}
-        {!loading && rows.length === 0 && (
-          <p className="octo-member-empty">{t('docs.member.empty')}</p>
-        )}
-        {rows.map((m) => {
-          const isOwner = m.source === 'owner'
-          return (
-            <div className="octo-member-row" key={m.uid}>
-              <span className="octo-uid">
-                {names.get(m.uid) || m.uid}{' '}
-                {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
-                {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {t('docs.role.reader')}</small>}
-              </span>
-              {!isOwner && (
-                <button
-                  type="button"
-                  className="octo-tb-btn"
-                  onClick={() => onRemove(m.uid)}
-                >
-                  {t('docs.member.remove')}
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
+      {canManageAuthorGrants && (
+        <>
+          <div className="octo-member-section">
+            <h4 className="octo-member-subtitle">{t('docs.member.addMember')}</h4>
+            <MemberPicker
+              space={space}
+              existingUids={existingUids}
+              hideUids={new Set([creatorUid].filter(Boolean) as string[])}
+              roles={['reader']}
+              onAdd={(uids: string[], _role: Role) => onAdd(uids)}
+              busy={busy}
+            />
+            {error && <p className="octo-member-error">{error}</p>}
+          </div>
+
+          <div className="octo-member-section">
+            <h4 className="octo-member-subtitle">{t('docs.member.currentMembers')}</h4>
+            {loading && <p className="octo-loading">{t('docs.member.loading')}</p>}
+            {!loading && rows.length === 0 && (
+              <p className="octo-member-empty">{t('docs.member.empty')}</p>
+            )}
+            {rows.map((m) => {
+              const isOwner = m.source === 'owner'
+              return (
+                <div className="octo-member-row" key={m.uid}>
+                  <span className="octo-uid">
+                    {names.get(m.uid) || m.uid}{' '}
+                    {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
+                    {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {t('docs.role.reader')}</small>}
+                  </span>
+                  {!isOwner && (
+                    <button
+                      type="button"
+                      className="octo-tb-btn"
+                      onClick={() => onRemove(m.uid)}
+                    >
+                      {t('docs.member.remove')}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
     </section>
   )
 }

@@ -654,6 +654,9 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
               creatorUid={creatorUid}
               canManage={canManage}
               onClose={() => setMembersOpen(false)}
+              docId={docId}
+              role={role}
+              isAuthor={isAuthor}
             />
           </div>
         </div>
