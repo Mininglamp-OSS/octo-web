@@ -376,7 +376,16 @@ export class OrganizationalGroupNew extends Component<
     if (spaceId) {
       try {
         const { SpaceService } = await import("@octo/base/src/Service/SpaceService");
-        const members = await SpaceService.shared.getMembers(spaceId, 1, 10000);
+        // 翻页拉取空间全部成员：getMembers 单次 limit 上限 10000，超大空间只请求一页会把第
+        // 10000 名之后的成员静默丢弃。10000/页循环到取尽，最多 20 页兜底（20 万）。同一
+        // getMembers 接口、page/limit 传参不变，不碰后端、不影响移动端。
+        const members: any[] = [];
+        for (let page = 1; page <= 20; page++) {
+          const batch = await SpaceService.shared.getMembers(spaceId, page, 10000);
+          if (!batch || batch.length === 0) break;
+          members.push(...batch);
+          if (batch.length < 10000) break; // 最后一页
+        }
         members.forEach((m: any) => {
           if (!subscriberUids.includes(m.uid) && !systemUids.includes(m.uid) && m.uid !== WKApp.loginInfo.uid) {
             setFriendData.push({ name: m.name, uid: m.uid, avatar: m.avatar, robot: m.robot === 1 });
