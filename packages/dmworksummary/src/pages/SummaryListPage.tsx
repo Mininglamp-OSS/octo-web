@@ -191,6 +191,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 page_size: pageSize,
                 status: statusFilter,
                 keyword: keyword || undefined,
+                origin_channel_id: this.props.channelId || undefined,
             };
             const resp = await api.listSummaries(params);
             this.attentionCount = resp.attention_count ?? 0;

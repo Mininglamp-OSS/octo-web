@@ -3068,6 +3068,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         // OCT-21 / GPT-S1：草稿编辑态也隐藏 schedule 按钮，与其它编辑态保持一致约束。
         if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport || editingMyDraft) return null;
+        // Agent 总结不支持定时更新：schedule 到点会 trigger 传统 map-reduce pipeline，
+        // 但 agent 总结产出是 chat 交互生成，无 replayable sources/participants。
+        if (detail?.trigger_type === TriggerType.AGENT) return null;
 
         // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
         // 停用后文案回到「设置定时更新」。
@@ -3332,7 +3335,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                             <Dropdown.Item
                                                 type="danger"
                                                 icon={<IconDelete />}
-                                                onClick={this.handleDeleteTask}
+                                                onClick={() => Modal.confirm({
+                                                    title: t("summary.summaryCard.deleteTitle"),
+                                                    content: t("summary.summaryCard.deleteContent", { values: { title: detail?.title || detail?.task_no || "" } }),
+                                                    onOk: this.handleDeleteTask,
+                                                })}
                                             >
                                                 {t("summary.common.delete")}
                                             </Dropdown.Item>
@@ -3341,7 +3348,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                             <Dropdown.Item
                                                 type="danger"
                                                 icon={<IconMinusCircle />}
-                                                onClick={this.handleLeaveTask}
+                                                onClick={() => Modal.confirm({
+                                                    title: t("summary.detail.leaveTask"),
+                                                    content: t("summary.detail.leaveConfirm"),
+                                                    onOk: this.handleLeaveTask,
+                                                })}
                                             >
                                                 {t("summary.detail.leaveTask")}
                                             </Dropdown.Item>
