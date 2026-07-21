@@ -1,7 +1,4 @@
 import React, { useEffect, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import rehypeSanitize from "rehype-sanitize";
-import remarkGfm from "remark-gfm";
 import { Check, Copy, Terminal } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import { buildInstallPrompt, resolveAPIBaseURL } from "../utils/installPrompt";
@@ -59,9 +56,7 @@ export default function InstallPromptModal({ skillId, onClose }: InstallPromptMo
       }
     >
       <div className="skill-market-prompt-modal__body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-          {prompt}
-        </ReactMarkdown>
+        <pre className="skill-market-prompt-modal__pre">{prompt}</pre>
       </div>
     </WKModal>
   );

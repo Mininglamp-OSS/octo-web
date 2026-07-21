@@ -290,7 +290,7 @@ describe("SkillListPage", () => {
         expect.stringContaining("Space ID：`space-123`")
       );
       expect(writeText).toHaveBeenCalledWith(
-        expect.stringContaining("API 地址：`http://localhost:3000/api`")
+        expect.stringContaining("API 地址：`http://localhost:3000`")
       );
       expect(writeText).toHaveBeenCalledWith(
         expect.not.stringContaining("<space-id>")
