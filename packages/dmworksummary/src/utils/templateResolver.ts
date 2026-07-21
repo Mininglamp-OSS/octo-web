@@ -33,6 +33,14 @@ export function deriveSummaryTitle(topic: string): string {
     return (match?.[2] || source).trim();
 }
 
+/** Keep template framing visible while limiting only the editable summary content. */
+export function limitTemplateSummaryContent(topic: string, maxLength: number): string {
+    const contentMatch = /(?:^|\n)(?:内容重点|总结内容|Content focus|Summary content)\s*[:：]\s*/i.exec(topic);
+    if (!contentMatch) return topic.slice(0, maxLength);
+    const contentStart = contentMatch.index + contentMatch[0].length;
+    return topic.slice(0, contentStart) + topic.slice(contentStart).slice(0, maxLength);
+}
+
 /** 以 `labelKey` 是否存在判别是否为前端兜底（需解析 i18n key）类型。 */
 function isLocalTemplate(template: ResolvableTemplate): template is LocalTopicTemplate {
     return typeof (template as LocalTopicTemplate).labelKey === 'string';

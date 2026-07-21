@@ -8,13 +8,13 @@ import type { TopicTemplate, ChatCandidate, ScheduleConfig, CreateAgentSummaryPa
 import { SourceType, SummaryMode } from '../types/summary';
 import { getSourceType, getOriginChannelType } from '../utils/channelType';
 import { channelToChatCandidate } from '../utils/channelConvert';
-import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, type ResolvableTemplate } from '../utils/templateResolver';
+import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from '../utils/templateResolver';
 
 import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession } from '../utils/summaryHelpers';
 import * as summaryApi from '../api/summaryApi';
 import { getTopicTemplatesConfig } from '../api/summaryApi';
 import { TOPIC_TEMPLATES } from '../constants/templates';
-import { MAX_CHAT_SELECT } from '../constants/limits';
+import { MAX_CHAT_SELECT, SUMMARY_INPUT_MAX_LENGTH, TEMPLATE_CONTENT_MAX_LENGTH, TEMPLATE_NAME_MAX_LENGTH } from '../constants/limits';
 import TemplateCard from './TemplateCard';
 import AgentChatPanel from './AgentChatPanel';
 import ChatSelectorModal from './ChatSelectorModal';
@@ -67,18 +67,30 @@ export default class ChatSummaryNewModal extends Component<
         mode: ReplaceMode,
         savedRange?: SelectionRange
     ) => {
+        const limitTopic = (topic: string, appliedTemplateLabel: string) => appliedTemplateLabel
+            ? limitTemplateSummaryContent(topic, TEMPLATE_CONTENT_MAX_LENGTH)
+            : topic.slice(0, SUMMARY_INPUT_MAX_LENGTH);
         if (mode === 'all') {
-            this.setState({ topic: text, templatePlaceholderRange: null });
+            this.setState((prev) => ({
+                topic: limitTopic(text, prev.appliedTemplateLabel),
+                templatePlaceholderRange: null,
+            }));
         } else if (mode === 'selection' && savedRange) {
             this.setState((prev) => ({
-                topic: prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to),
+                topic: limitTopic(
+                    prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to),
+                    prev.appliedTemplateLabel,
+                ),
                 templatePlaceholderRange: null,
             }));
         } else {
             this.setState((prev) => {
                 const pos = savedRange?.from ?? prev.topic.length;
                 return {
-                    topic: prev.topic.slice(0, pos) + text + prev.topic.slice(pos),
+                    topic: limitTopic(
+                        prev.topic.slice(0, pos) + text + prev.topic.slice(pos),
+                        prev.appliedTemplateLabel,
+                    ),
                     templatePlaceholderRange: null,
                 };
             });
@@ -780,7 +792,13 @@ export default class ChatSummaryNewModal extends Component<
                                         className="chat-summary-modal-input"
                                         placeholder={t('summary.create.topicPlaceholderInChat')}
                                         value={topic}
-                                        onChange={(e) => this.setState({ topic: e.target.value, templatePlaceholderRange: null })}
+                                        onChange={(e) => {
+                                            const nextTopic = appliedTemplateLabel
+                                                ? limitTemplateSummaryContent(e.target.value, TEMPLATE_CONTENT_MAX_LENGTH)
+                                                : e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH);
+                                            this.setState({ topic: nextTopic, templatePlaceholderRange: null });
+                                        }}
+                                        maxLength={appliedTemplateLabel ? undefined : SUMMARY_INPUT_MAX_LENGTH}
                                         onFocus={this.handleInputFocus}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter' && !e.shiftKey && !submitting) {
@@ -1006,10 +1024,10 @@ export default class ChatSummaryNewModal extends Component<
                         <input
                             className="summary-template-edit-input"
                             value={editingTemplateLabel}
-                            maxLength={100}
+                            maxLength={TEMPLATE_NAME_MAX_LENGTH}
                             disabled={savingTemplate}
                             placeholder={t('summary.templates.custom.namePlaceholder')}
-                            onChange={(e) => this.setState({ editingTemplateLabel: e.target.value.slice(0, 100) })}
+                            onChange={(e) => this.setState({ editingTemplateLabel: e.target.value.slice(0, TEMPLATE_NAME_MAX_LENGTH) })}
                         />
                     </div>
                     <div className="summary-template-edit-field">
@@ -1019,10 +1037,10 @@ export default class ChatSummaryNewModal extends Component<
                         <textarea
                             className="summary-template-edit-input summary-template-edit-desc"
                             value={editingTemplateDescription}
-                            maxLength={200}
+                            maxLength={TEMPLATE_CONTENT_MAX_LENGTH}
                             disabled={savingTemplate}
                             placeholder={t('summary.templates.custom.descriptionPlaceholder')}
-                            onChange={(e) => this.setState({ editingTemplateDescription: e.target.value.slice(0, 200) })}
+                            onChange={(e) => this.setState({ editingTemplateDescription: e.target.value.slice(0, TEMPLATE_CONTENT_MAX_LENGTH) })}
                         />
                     </div>
                     <div className="summary-template-edit-hint">

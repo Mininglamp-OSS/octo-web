@@ -27,7 +27,7 @@ import SummaryReferencePicker from "../components/SummaryReferencePicker";
 import SummaryPreviewModal from "../components/SummaryPreviewModal";
 import SummaryReferenceSidePanel from "../components/SummaryReferenceSidePanel";
 import { TOPIC_TEMPLATES } from "../constants/templates";
-import { MAX_CHAT_SELECT } from "../constants/limits";
+import { MAX_CHAT_SELECT, SUMMARY_INPUT_MAX_LENGTH, TEMPLATE_CONTENT_MAX_LENGTH, TEMPLATE_NAME_MAX_LENGTH } from "../constants/limits";
 import type {
     CreateSummaryParams,
     ChatMessage,
@@ -40,7 +40,7 @@ import type {
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
 import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced } from "../utils/summaryHelpers";
-import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, type ResolvableTemplate } from "../utils/templateResolver";
+import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
 
 const { Text } = Typography;
 
@@ -392,18 +392,29 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     handleVoiceTranscribed = (text: string, mode: ReplaceMode, savedRange?: SelectionRange) => {
         if (mode === "all") {
-            this.setState({ topic: text.slice(0, 1000) }, this.autoResizeTextarea);
+            const topic = this.state.appliedTemplateLabel
+                ? limitTemplateSummaryContent(text, TEMPLATE_CONTENT_MAX_LENGTH)
+                : text.slice(0, SUMMARY_INPUT_MAX_LENGTH);
+            this.setState({ topic }, this.autoResizeTextarea);
         } else if (mode === "selection" && savedRange) {
             // Note: savedRange indices are from recording start; assumes input is read-only during recording
             this.setState((prev) => {
                 const updated = prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to);
-                return { topic: updated.slice(0, 1000) };
+                return {
+                    topic: prev.appliedTemplateLabel
+                        ? limitTemplateSummaryContent(updated, TEMPLATE_CONTENT_MAX_LENGTH)
+                        : updated.slice(0, SUMMARY_INPUT_MAX_LENGTH),
+                };
             }, this.autoResizeTextarea);
         } else {
             this.setState((prev) => {
                 const pos = savedRange?.from ?? prev.topic.length;
                 const updated = prev.topic.slice(0, pos) + text + prev.topic.slice(pos);
-                return { topic: updated.slice(0, 1000) };
+                return {
+                    topic: prev.appliedTemplateLabel
+                        ? limitTemplateSummaryContent(updated, TEMPLATE_CONTENT_MAX_LENGTH)
+                        : updated.slice(0, SUMMARY_INPUT_MAX_LENGTH),
+                };
             }, this.autoResizeTextarea);
         }
     };
@@ -909,7 +920,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             className="summary-workbench-textarea"
                             value={topic}
                             onChange={(e) => {
-                                this.setState({ topic: e.target.value.slice(0, 1000), templatePlaceholderRange: null });
+                                const nextTopic = appliedTemplateLabel
+                                    ? limitTemplateSummaryContent(e.target.value, TEMPLATE_CONTENT_MAX_LENGTH)
+                                    : e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH);
+                                this.setState({ topic: nextTopic, templatePlaceholderRange: null });
                                 this.autoResizeTextarea();
                             }}
                             onFocus={this.handleInputFocus}
@@ -917,7 +931,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 ? translate("summary.create.agentTopicPlaceholder")
                                 : translate("summary.create.topicPlaceholder")}
                             rows={3}
-                            maxLength={1000}
+                            maxLength={appliedTemplateLabel ? undefined : SUMMARY_INPUT_MAX_LENGTH}
                         />
                         <VoiceInputButton
                             inputRef={this.textareaRef}
@@ -929,11 +943,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         />
                     </div>
                     <div className="summary-workbench-char-count">
-                        {topic.length}/1000
+                        {topic.length}/{SUMMARY_INPUT_MAX_LENGTH}
                     </div>
-                    {topic.length >= 1000 && (
+                    {topic.length >= SUMMARY_INPUT_MAX_LENGTH && (
                         <div style={{ color: "var(--semi-color-warning)", fontSize: 12, marginTop: 4, padding: "0 16px 8px" }}>
-                            {translate("summary.common.charLimitReached", { values: { count: 1000 } })}
+                            {translate("summary.common.charLimitReached", { values: { count: SUMMARY_INPUT_MAX_LENGTH } })}
                         </div>
                     )}
                     {topic.trim() && appliedTemplateLabel && (
@@ -1199,10 +1213,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         <input
                             className="summary-template-edit-input"
                             value={editingTemplateLabel}
-                            maxLength={100}
+                            maxLength={TEMPLATE_NAME_MAX_LENGTH}
                             disabled={savingTemplate}
                             placeholder={translate("summary.templates.custom.namePlaceholder")}
-                            onChange={(e) => this.setState({ editingTemplateLabel: e.target.value.slice(0, 100) })}
+                            onChange={(e) => this.setState({ editingTemplateLabel: e.target.value.slice(0, TEMPLATE_NAME_MAX_LENGTH) })}
                         />
                     </div>
                     <div className="summary-template-edit-field">
@@ -1212,10 +1226,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         <textarea
                             className="summary-template-edit-input summary-template-edit-desc"
                             value={editingTemplateDescription}
-                            maxLength={200}
+                            maxLength={TEMPLATE_CONTENT_MAX_LENGTH}
                             disabled={savingTemplate}
                             placeholder={translate("summary.templates.custom.descriptionPlaceholder")}
-                            onChange={(e) => this.setState({ editingTemplateDescription: e.target.value.slice(0, 200) })}
+                            onChange={(e) => this.setState({ editingTemplateDescription: e.target.value.slice(0, TEMPLATE_CONTENT_MAX_LENGTH) })}
                         />
                     </div>
                     <div className="summary-template-edit-hint">

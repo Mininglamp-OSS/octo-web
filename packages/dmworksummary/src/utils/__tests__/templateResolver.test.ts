@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle } from '../templateResolver';
-import { TOPIC_TEMPLATES } from '../../constants/templates';
+import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent } from '../templateResolver';
 import type { TopicTemplate } from '../../types/summary';
+import { TOPIC_TEMPLATES } from '../../constants/templates';
 
 // 读 zh-CN 资源的简易 t（与 dmworkBase mock 行为一致）：把 `summary.<path>` 映射到明文。
 import zhCN from '../../i18n/zh-CN.json';
@@ -109,6 +109,14 @@ describe('deriveSummaryTitle', () => {
     });
 });
 
+describe('limitTemplateSummaryContent', () => {
+    it('preserves framing and limits only the summary content', () => {
+        const framing = '总结主题: 周报\n内容重点: ';
+        expect(limitTemplateSummaryContent(framing + '总'.repeat(2001), 2000))
+            .toBe(framing + '总'.repeat(2000));
+    });
+});
+
 describe('computeTemplateSelection', () => {
     it('locates the placeholder token for legacy parameterized templates', () => {
         const legacy: TopicTemplate = {
@@ -173,4 +181,5 @@ describe('computeTemplateSelection', () => {
         expect(text).toBe('总结主题: 任务划分总结\n内容重点: 每个任务都是谁负责，什么进度');
         expect(range).toBeNull();
     });
+
 });
