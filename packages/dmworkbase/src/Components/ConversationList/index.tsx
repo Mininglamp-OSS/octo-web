@@ -903,9 +903,14 @@ export default class ConversationList extends Component<
       })
   }
 
-  onCloseChat(channel: Channel) {
+  async onCloseChat(channel: Channel) {
     // 关闭聊天
-    WKApp.conversationProvider.deleteConversation(channel);
+    await WKApp.conversationProvider.deleteConversation(channel);
+    // conversationDeleted 是异步 CMD，不能作为本地列表更新的唯一触发源。
+    // 例如他人退群的系统消息已把会话更新到最近列表时，推送缺失会
+    // 让该会话永久残留。服务端删除成功后立即清理 SDK cache；迟到的
+    // conversationDeleted 再次删除是幂等的。
+    WKSDK.shared().conversationManager.removeConversation(channel);
   }
 
   async onClearMessages(channel: Channel) {

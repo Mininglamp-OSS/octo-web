@@ -13,6 +13,8 @@ import {
 
 let ConversationList: typeof import("../index").default;
 let container: HTMLDivElement;
+const deleteConversation = vi.fn();
+const removeConversation = vi.fn();
 
 class MockChannel {
   channelID: string;
@@ -44,6 +46,9 @@ beforeAll(async () => {
           removeListener: vi.fn(),
           fetchChannelInfo: vi.fn(),
           getChannelInfo: vi.fn(),
+        },
+        conversationManager: {
+          removeConversation,
         },
       }),
     };
@@ -90,7 +95,7 @@ beforeAll(async () => {
         getChannelAvatarTag: () => "avatar",
       },
       apiClient: { put: vi.fn() },
-      conversationProvider: { deleteConversation: vi.fn() },
+      conversationProvider: { deleteConversation },
     },
   }));
 
@@ -173,6 +178,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  deleteConversation.mockReset();
+  deleteConversation.mockResolvedValue(undefined);
+  removeConversation.mockReset();
   container = document.createElement("div");
   document.body.appendChild(container);
 });
@@ -305,5 +313,29 @@ describe("ConversationList unread indicators", () => {
     expect(
       container.querySelector(".wk-conversationlist-item-indicators")
     ).toBeNull();
+  });
+});
+
+describe("ConversationList close chat", () => {
+  it("removes a system-message conversation locally after the server confirms deletion", async () => {
+    const channel = makeChannel("group-with-member-leave-message", 2);
+    const list = new ConversationList({ conversations: [] });
+
+    await list.onCloseChat(channel as any);
+
+    expect(deleteConversation).toHaveBeenCalledWith(channel);
+    expect(removeConversation).toHaveBeenCalledWith(channel);
+  });
+
+  it("keeps the local conversation when server deletion fails", async () => {
+    deleteConversation.mockRejectedValue(new Error("delete failed"));
+    const channel = makeChannel("group-delete-failed", 2);
+    const list = new ConversationList({ conversations: [] });
+
+    await expect(list.onCloseChat(channel as any)).rejects.toThrow(
+      "delete failed"
+    );
+
+    expect(removeConversation).not.toHaveBeenCalled();
   });
 });
