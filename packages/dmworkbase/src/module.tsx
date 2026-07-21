@@ -83,6 +83,7 @@ import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
 import { buildAddStickerMenu } from "./Messages/LottieSticker/collectMenu";
 import { isMessageReactionEnabled } from "./Service/featureFlags";
 import { reactionPickerOverlay, enablePointerTracking } from "./ui/message/MessageReactionPicker/ReactionPickerOverlay";
+import { messageReactionController } from "./features/messageReaction/runtime";
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast, Tag } from "@douyinfe/semi-ui";
 import { ChannelSettingManager } from "./Service/ChannelSetting";
@@ -917,31 +918,30 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.reaction",
       (message) => {
-        // feature flag gate（默认关，详见 Service/featureFlags.ts）。
         if (!isMessageReactionEnabled()) {
           return null;
         }
-        // demo 阶段 ReactionSlot 只接入了 TextCell（纯文本消息），右键入口同口径
-        // 仅放行 text，避免在 RichText 等未渲染 summary 的消息上选表情后 store
-        // 更新却无处回显。放开更多消息类型时，需同步在对应 cell 渲染 ReactionSlot。
-        if (message.contentType !== MessageContentType.text) {
+        // 服务端本期只接受纯文本；尚未拿到服务端 message_id 的本地待发送消息也不展示。
+        if (message.contentType !== MessageContentType.text || !message.messageID) {
           return null;
         }
         return {
           title: t("base.module.contextMenus.react"),
           onClick: () => {
-            reactionPickerOverlay.openAtLastPointer(
-              message.messageID || message.clientMsgNo
-            );
+            reactionPickerOverlay.openAtLastPointer({
+              messageId: message.messageID,
+              selectedKeys: messageReactionController.selectedKeys(message),
+              onSelect: (emoji) => {
+                void messageReactionController.toggle(message, emoji);
+              },
+            });
           },
         };
       },
       1200
     );
 
-    // 仅在 feature flag 打开时安装 reaction picker 的全局指针追踪（右键菜单项
-    // onClick 拿不到坐标，需靠它定位 picker）。flag 关时不安装 → 生产会话零全局
-    // 副作用，兑现「flag OFF = 运行时 no-op」。DEV 改 localStorage 后刷新会重跑此处。
+    // 仅在 feature flag 打开时安装指针追踪；关闭时保持运行时 no-op。
     if (isMessageReactionEnabled()) {
       enablePointerTracking();
     }

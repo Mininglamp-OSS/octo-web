@@ -13,8 +13,8 @@ export type MittEvents = {
   /** App 回前台(visibilitychange/focus):打开中的会话据此重同步成员列表,
    * 修复合盖/息屏久后 WS 断连期间成员变更 CMD 丢失导致 @ 搜不到新成员(octo-web#567) */
   "wk:app-foreground": undefined;
-  /** DEMO-ONLY 消息 reaction 本地 mock store 变更（携带 messageId），随 feature flag 一并移除 */
-  "message-reaction-mock-updated": string;
+  /** 消息 reaction 乐观更新或服务端对账完成，携带 messageId 做局部刷新 */
+  "message-reaction-updated": string;
   "wk:pending-thread": {
     groupNo: string;
     thread: import("./Service/Thread").Thread | null;

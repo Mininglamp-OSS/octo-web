@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../APIClient", () => ({
   default: {
@@ -6,20 +6,20 @@ vi.mock("../APIClient", () => ({
       post: vi.fn(),
     },
   },
-}))
+}));
 
-import APIClient from "../APIClient"
+import APIClient from "../APIClient";
 import MessageReactionService, {
   mergeMessageReaction,
   normalizeMessageReactions,
-} from "../MessageReactionService"
+} from "../MessageReactionService";
 
-const apiPost = APIClient.shared.post as unknown as ReturnType<typeof vi.fn>
+const apiPost = APIClient.shared.post as unknown as ReturnType<typeof vi.fn>;
 
 describe("MessageReactionService", () => {
   beforeEach(() => {
-    apiPost.mockReset()
-  })
+    apiPost.mockReset();
+  });
 
   it("posts the deployed toggle wire contract and returns the authoritative state", async () => {
     apiPost.mockResolvedValueOnce({
@@ -29,7 +29,7 @@ describe("MessageReactionService", () => {
       emoji: "👍",
       seq: 42,
       is_deleted: 0,
-    })
+    });
 
     await expect(
       MessageReactionService.toggle({
@@ -37,7 +37,7 @@ describe("MessageReactionService", () => {
         channelId: "group-1",
         channelType: 2,
         emoji: "👍",
-      }),
+      })
     ).resolves.toEqual({
       messageId: "123",
       channelId: "group-1",
@@ -45,14 +45,14 @@ describe("MessageReactionService", () => {
       emoji: "👍",
       seq: 42,
       isDeleted: 0,
-    })
+    });
     expect(apiPost).toHaveBeenCalledWith("reactions", {
       message_id: "123",
       channel_id: "group-1",
       channel_type: 2,
       emoji: "👍",
-    })
-  })
+    });
+  });
 
   it("syncs by channel and seq and normalizes message-scoped records", async () => {
     apiPost.mockResolvedValueOnce([
@@ -67,15 +67,14 @@ describe("MessageReactionService", () => {
         is_deleted: 1,
         created_at: "2026-07-21 10:00:00",
       },
-    ])
+    ]);
 
     await expect(
       MessageReactionService.sync({
         channelId: "group-1",
         channelType: 2,
         seq: 42,
-        limit: 1000,
-      }),
+      })
     ).resolves.toEqual([
       {
         messageId: "123",
@@ -90,14 +89,13 @@ describe("MessageReactionService", () => {
         isDeleted: 1,
         createdAt: "2026-07-21 10:00:00",
       },
-    ])
+    ]);
     expect(apiPost).toHaveBeenCalledWith("reaction/sync", {
       channel_id: "group-1",
       channel_type: 2,
       seq: 42,
-      limit: 1000,
-    })
-  })
+    });
+  });
 
   it("normalizes inline reactions and drops malformed records", () => {
     expect(
@@ -112,7 +110,7 @@ describe("MessageReactionService", () => {
         },
         { seq: 5, uid: "u2", name: "Bob", emoji: "" },
         null,
-      ]),
+      ])
     ).toEqual([
       {
         seq: 4,
@@ -124,22 +122,22 @@ describe("MessageReactionService", () => {
         isDeleted: 0,
         createdAt: "2026-07-21 10:00:00",
       },
-    ])
-  })
+    ]);
+  });
 
   it("merges by uid and emoji without allowing an older seq to overwrite a newer state", () => {
     const current = normalizeMessageReactions([
       { seq: 10, uid: "u1", name: "Alice", emoji: "👍", is_deleted: 0 },
       { seq: 8, uid: "u2", name: "Bob", emoji: "❤️", is_deleted: 0 },
-    ])
+    ]);
     const stale = normalizeMessageReactions([
       { seq: 9, uid: "u1", name: "Alice", emoji: "👍", is_deleted: 1 },
-    ])[0]
+    ])[0];
     const fresh = normalizeMessageReactions([
       { seq: 11, uid: "u1", name: "Alice 2", emoji: "👍", is_deleted: 1 },
-    ])[0]
+    ])[0];
 
-    expect(mergeMessageReaction(current, stale)).toEqual(current)
+    expect(mergeMessageReaction(current, stale)).toEqual(current);
     expect(mergeMessageReaction(current, fresh)).toEqual([
       {
         seq: 11,
@@ -152,6 +150,6 @@ describe("MessageReactionService", () => {
         createdAt: undefined,
       },
       current[1],
-    ])
-  })
-})
+    ]);
+  });
+});

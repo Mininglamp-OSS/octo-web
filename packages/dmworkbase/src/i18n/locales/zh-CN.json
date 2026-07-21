@@ -1118,6 +1118,7 @@
   "reaction.moreUsers": "{{names}}等 {{count}} 人",
   "reaction.more": "更多",
   "reaction.noPermission": "无操作权限",
+  "reaction.textOnly": "仅文本消息支持贴表情",
   "reaction.unavailable": "功能暂不可用",
   "realnameVerified.label": "已实名",
   "realnameVerified.title": "已完成实名认证",

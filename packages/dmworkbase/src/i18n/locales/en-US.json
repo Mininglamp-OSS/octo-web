@@ -1118,6 +1118,7 @@
   "reaction.moreUsers": "{{names}} and {{count}} total",
   "reaction.more": "More",
   "reaction.noPermission": "No permission",
+  "reaction.textOnly": "Only text messages support reactions",
   "reaction.unavailable": "Reactions are unavailable",
   "realnameVerified.label": "Verified",
   "realnameVerified.title": "Real-name verification completed",
