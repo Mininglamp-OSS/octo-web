@@ -11,6 +11,7 @@ import { ContactsIcon } from '../Components/Icons/ContactsIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
+import { runSummaryDetailLanding } from './summaryDetailLanding';
 
 let _summaryBadgeCount = 0;
 let _badgeListenerSetup = false;
@@ -45,8 +46,26 @@ function useRealnameVerifiedLandingHandler() {
   }, []);
 }
 
+function useSummaryDetailLandingHandler() {
+  useEffect(() => {
+    const cleanup = runSummaryDetailLanding({
+      getPathname: () => window.location.pathname,
+      getSearch: () => window.location.search,
+      isLoggedIn: () => WKApp.loginInfo.isLogined(),
+      getOpenSummaryDetail: () => WKApp.openSummaryDetail,
+      cleanUrl: () => {
+        window.history.replaceState(null, '', '/' + window.location.hash);
+      },
+      setRetry: (cb, delayMs) => window.setTimeout(cb, delayMs),
+      clearRetry: (handle) => window.clearTimeout(handle),
+    });
+    return cleanup;
+  }, []);
+}
+
 function App() {
   useRealnameVerifiedLandingHandler()
+  useSummaryDetailLandingHandler()
   useDeprecatedFriendApplyReddotCleanup()
   registerMenus()
   return (
