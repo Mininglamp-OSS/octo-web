@@ -318,7 +318,8 @@ export async function gotoBindPage(
     provider?: string
   } = {},
 ): Promise<void> {
-  const token = opts.token ?? 'tok-secret-do-not-leak'
+  // Placeholder token for e2e mocking only — never a real credential.
+  const token = opts.token ?? 'MOCK_TOKEN_PLACEHOLDER_e2e_default'
   const authcode = opts.authcode ?? 'ac-fe-12345'
   const returnTo = opts.returnTo ?? '/'
   const provider = opts.provider ?? 'aegis'

@@ -1,11 +1,18 @@
 import { test, expect } from '@playwright/test'
+import { installMswScenario } from '../../_lib/mswScenario'
 import { mockBindServer, gotoBindPage } from './fixtures/mockBindServer'
 
-const TOKEN = 'tok-secret-do-not-leak-xyz789'
+// Placeholder value used only for e2e mocking — never a real credential.
+// Renamed from a `tok-*` prefix to avoid gitleaks false positive.
+const TOKEN = 'MOCK_TOKEN_PLACEHOLDER_e2e_only'
 
 // 关闭 WKRemoteConfig 网络抖动: 这些请求与 bind 流程无关, 真实跑会被 vite proxy
 // 502 干扰日志. 让它们落空, 测试更稳.
 test.beforeEach(async ({ page }) => {
+  // kit MSW 层让路 (scenario=no-mock 让 baseline handler passthrough).
+  // bind 用 page.route 自己精确 mock 每种状态码, 不需要 kit 打扰.
+  await installMswScenario(page, 'no-mock')
+
   await page.route('**/api/v1/common/**', (route) =>
     route.fulfill({
       status: 200,
@@ -16,11 +23,13 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
   )
-  // 清登录态, 避免上一个测试残留把 BindPage 跳过.
+  // 清登录态 + 锁 locale=zh-CN (spec 断言中文文案, 依赖 navigator locale 不稳).
+  // 上一个测试残留可能把 BindPage 跳过, 必须清.
   await page.addInitScript(() => {
     try {
       localStorage.clear()
       sessionStorage.clear()
+      localStorage.setItem('octo:locale', 'zh-CN')
     } catch {
       /* noop */
     }

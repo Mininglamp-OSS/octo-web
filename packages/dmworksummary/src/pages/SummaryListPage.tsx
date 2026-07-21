@@ -32,6 +32,7 @@ interface SummaryListPageState {
     error: string | null;
     statusFilter: TaskStatusType | undefined;
     keyword: string;
+    activeTaskId: number | null;
 }
 
 const getStatusOptions = () => [
@@ -57,6 +58,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         error: null,
         statusFilter: undefined,
         keyword: "",
+        activeTaskId: null,
     };
 
     private searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -66,6 +68,8 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     private attentionRefreshLoading = false;
 
     private handleSpaceChanged_ = () => this.loadData();
+
+    private handleListRefreshRequested_ = () => this.loadData();
 
     private handleTaskRegenerated_ = () => this.loadData();
 
@@ -106,6 +110,20 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         this.emitBadgeUpdate();
     };
 
+    private handleDetailActive_ = (event: Event) => {
+        const taskId = (event as CustomEvent<{ taskId: number }>).detail?.taskId;
+        if (typeof taskId !== "number") return;
+        this.setState({ activeTaskId: taskId });
+    };
+
+    private handleDetailInactive_ = (event: Event) => {
+        const taskId = (event as CustomEvent<{ taskId: number }>).detail?.taskId;
+        if (typeof taskId !== "number") return;
+        // 只清「自己」——切 task 时旧详情卸载与新详情挂载的顺序不确定，
+        // 仅当当前高亮正是这个 taskId 才清空，避免误清掉已切到的新卡片。
+        this.setState((state) => (state.activeTaskId === taskId ? { activeTaskId: null } : null));
+    };
+
     private handleNavMenuActivated_ = ({ menuId }: { menuId: string }) => {
         if (menuId === "summary") {
             this.loadData();
@@ -117,8 +135,11 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         WKApp.mittBus.on("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated_);
         WKApp.mittBus.on("summary-attention-count-refreshed" as any, this.handleAttentionCountRefreshed_);
+        WKApp.mittBus.on("summary-list-refresh-requested" as any, this.handleListRefreshRequested_);
         window.addEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
         window.addEventListener("summary-read", this.handleSummaryRead_);
+        window.addEventListener("summary-detail-active", this.handleDetailActive_);
+        window.addEventListener("summary-detail-inactive", this.handleDetailInactive_);
     }
 
     componentWillUnmount() {
@@ -128,8 +149,11 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         WKApp.mittBus.off("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated_);
         WKApp.mittBus.off("summary-attention-count-refreshed" as any, this.handleAttentionCountRefreshed_);
+        WKApp.mittBus.off("summary-list-refresh-requested" as any, this.handleListRefreshRequested_);
         window.removeEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
         window.removeEventListener("summary-read", this.handleSummaryRead_);
+        window.removeEventListener("summary-detail-active", this.handleDetailActive_);
+        window.removeEventListener("summary-detail-inactive", this.handleDetailInactive_);
     }
 
     async loadData() {
@@ -272,8 +296,9 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     };
 
     handleCardClick = (taskId: number) => {
+        this.setState({ activeTaskId: taskId });
         WKApp.routeRight.popToRoot();
-        WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} />);
+        WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} emitSelection />);
     };
 
     handleLeave = async (taskId: number) => {
@@ -305,7 +330,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     };
 
     render() {
-        const { items, total, page, pageSize, loading, error, statusFilter, keyword } = this.state;
+        const { items, total, page, pageSize, loading, error, statusFilter, keyword, activeTaskId } = this.state;
         const { locale, t: translate } = this.context;
         const statusOptions = getStatusOptions();
 
@@ -331,24 +356,26 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                         onChange={this.handleKeywordChange}
                         showClear
                     />
-                    <Select
-                        className="summary-list-status-filter"
-                        key={locale}
-                        value={statusFilter ?? ""}
-                        onChange={this.handleStatusChange}
-                    >
-                        {statusOptions.map((opt) => (
-                            <Select.Option key={String(opt.value)} value={opt.value}>
-                                {opt.label}
-                            </Select.Option>
-                        ))}
-                    </Select>
-                    <Button
-                        className="summary-list-refresh"
-                        icon={<IconRefresh />}
-                        theme="borderless"
-                        onClick={() => this.loadData()}
-                    />
+                    <div className="summary-list-actions">
+                        <Select
+                            className="summary-list-status-filter"
+                            key={locale}
+                            value={statusFilter ?? ""}
+                            onChange={this.handleStatusChange}
+                        >
+                            {statusOptions.map((opt) => (
+                                <Select.Option key={String(opt.value)} value={opt.value}>
+                                    {opt.label}
+                                </Select.Option>
+                            ))}
+                        </Select>
+                        <Button
+                            className="summary-list-refresh"
+                            icon={<IconRefresh />}
+                            theme="borderless"
+                            onClick={() => this.loadData()}
+                        />
+                    </div>
                 </div>
 
                 {error && (
@@ -392,6 +419,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                                 <SummaryCard
                                     key={item.task_id}
                                     task={item}
+                                    active={item.task_id === activeTaskId}
                                     onClick={this.handleCardClick}
                                     onDelete={this.handleDelete}
                                     onRespond={this.handleRespond}

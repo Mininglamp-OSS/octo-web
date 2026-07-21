@@ -423,7 +423,8 @@
     "lead": "负责人",
     "descPlaceholder": "添加描述...",
     "namePlaceholder": "项目名称，例如 增长实验",
-    "descHint": "会作为项目上下文提供给智能体，应用于该项目下的每个任务。"
+    "descHint": "会作为项目上下文提供给智能体，应用于该项目下的每个任务。",
+    "changeIcon": "更换图标"
   },
   "webhook": {
     "title": "Webhook",
@@ -663,6 +664,7 @@
   "settings": {
     "general": "通用",
     "members": "成员管理",
+    "webhooks": "Webhook",
     "noWorkspace": "请先选择或创建工作区",
     "wsName": "工作区名称",
     "wsSlug": "工作区 slug",

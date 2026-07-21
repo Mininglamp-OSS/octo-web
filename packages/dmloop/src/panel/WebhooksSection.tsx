@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Button, Input, Switch, Spin, Toast, Modal, Typography } from "@douyinfe/semi-ui";
+import { Input, Switch, Spin, Toast, Modal, Typography } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
 import { Plus, Trash2, Copy } from "lucide-react";
 import { useI18n } from "@octo/base";
@@ -9,9 +9,10 @@ import { confirmDelete } from "../ui/confirmDelete";
 
 const { Text } = Typography;
 
-/** 项目 Webhook 配置分区：列表 + 启用开关 + 删除 + 新增（创建后一次性展示 secret）。
+/** Webhook 配置分区：列表 + 启用开关 + 删除 + 新增（创建后一次性展示 secret）。
+ *  projectId 省略 = workspace 级；给了 = 项目级。二者交互一致，仅作用域不同。
  *  Webhook 端点限 owner/admin，故非管理员只展示占位、不发任何请求。 */
-export default function ProjectWebhooksSection({ projectId, isAdmin }: { projectId: string; isAdmin?: boolean }) {
+export default function WebhooksSection({ projectId, isAdmin }: { projectId?: string; isAdmin?: boolean }) {
   const { t } = useI18n();
   const [rows, setRows] = useState<WebhookSubscription[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +34,7 @@ export default function ProjectWebhooksSection({ projectId, isAdmin }: { project
     if (!value) { Toast.warning(t("loop.webhook.urlRequired")); return; }
     setBusy(true);
     try {
-      const created = await createWebhook({ url: value, project_id: projectId });
+      const created = await createWebhook({ url: value, ...(projectId ? { project_id: projectId } : {}) });
       setUrl("");
       Toast.success(t("loop.webhook.created"));
       if (created.secret) setSecret(created.secret);
@@ -101,10 +102,9 @@ export default function ProjectWebhooksSection({ projectId, isAdmin }: { project
               onChange={(v) => toggle(row, v)}
               aria-label={t("loop.webhook.enabled")}
             />
-            <Button
-              theme="borderless"
-              type="danger"
-              size="small"
+            <LoopButton
+              variant="danger"
+              size="sm"
               icon={<Trash2 size={14} />}
               aria-label={t("loop.webhook.delete")}
               onClick={() =>
@@ -149,7 +149,7 @@ export default function ProjectWebhooksSection({ projectId, isAdmin }: { project
         </Text>
         <div className="loop-wh__secret">
           <code>{secret}</code>
-          <Button icon={<Copy size={14} />} onClick={copySecret}>{t("loop.webhook.copy")}</Button>
+          <LoopButton variant="secondary" size="sm" icon={<Copy size={14} />} onClick={copySecret}>{t("loop.webhook.copy")}</LoopButton>
         </div>
       </Modal>
     </div>

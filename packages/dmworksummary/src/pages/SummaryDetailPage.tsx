@@ -4,12 +4,12 @@ import {
     Spin,
     Toast,
     Banner,
-    Dropdown,
     Tag,
     Modal,
     Popconfirm,
 } from "@douyinfe/semi-ui";
-import { IconEdit, IconMore, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit } from "@douyinfe/semi-icons";
+import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete } from "@douyinfe/semi-icons";
+import { ChevronDown } from "lucide-react";
 import { Channel, MessageText } from "wukongimjssdk";
 import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -53,6 +53,10 @@ import type { MemberCandidate } from "../types/summary";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
+    /** Only the list-owned detail route emits list-highlight events. Embedded
+     *  instances (ChatSummaryPanel, SummaryConfirmPage) must not pollute the
+     *  list selection state. */
+    emitSelection?: boolean;
 }
 
 // Matters 转发入口暂时隐藏，保留相关代码和弹窗，后续需要时打开此开关即可。
@@ -77,6 +81,7 @@ interface SummaryDetailPageState {
     pendingScheduleInstruction: string;
     lastKnownStatus?: number;
     expandedReports: Record<string, boolean>;
+    personalExpanded: boolean;
     isEditing: boolean;
     /** need3：行内编辑「自己的个人报告」中。 */
     editingPersonalReport: boolean;
@@ -176,6 +181,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         showScheduleConfig: false,
         scheduleConfig: null,
         expandedReports: {},
+        personalExpanded: true,
         isEditing: false,
         editingPersonalReport: false,
         editingTeamSummary: false,
@@ -248,6 +254,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.addEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.addEventListener("summary-list-unmount", this.handleListPageUnmount);
         this.loadDetail();
+        if (this.props.emitSelection) {
+            const activeTaskId = this.taskId;
+            if (activeTaskId != null) {
+                window.dispatchEvent(new CustomEvent("summary-detail-active", { detail: { taskId: activeTaskId } }));
+            }
+        }
     }
 
     componentDidUpdate(prevProps: any, prevState?: SummaryDetailPageState) {
@@ -280,6 +292,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.streamClosedTaskId = null;
             this.teamStreamClosedTaskId = null;
             this.loadDetail();
+            if (this.props.emitSelection) {
+                const nextActiveTaskId = this.taskId;
+                if (nextActiveTaskId != null) {
+                    window.dispatchEvent(new CustomEvent("summary-detail-active", { detail: { taskId: nextActiveTaskId } }));
+                }
+            }
         }
         if (prevState && prevState.showVersionDetailModal !== this.state.showVersionDetailModal) {
             this.syncVersionDetailScrollLock();
@@ -293,6 +311,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.removeEventListener("summary-list-unmount", this.handleListPageUnmount);
         this.setVersionDetailScrollLock(false);
         this.clearAllTimers();
+        if (this.props.emitSelection) {
+            const inactiveTaskId = this.taskId;
+            if (inactiveTaskId != null) {
+                window.dispatchEvent(new CustomEvent("summary-detail-inactive", { detail: { taskId: inactiveTaskId } }));
+            }
+        }
     }
 
     private clearAllTimers() {
@@ -754,9 +778,25 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.leaveSuccess"));
             WKApp.routeRight.popToRoot();
+            WKApp.mittBus.emit("summary-list-refresh-requested" as any);
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
             Toast.error(err.message || t("summary.detail.leaveFailed"));
+        }
+    };
+
+    handleDeleteTask = async () => {
+        if (this.taskId == null) return;
+        const requestTaskId = this.taskId;
+        try {
+            await api.deleteSummary(this.taskId);
+            if (this.taskId !== requestTaskId) return;
+            Toast.success(t("summary.list.deleteSuccess"));
+            WKApp.routeRight.popToRoot();
+            WKApp.mittBus.emit("summary-list-refresh-requested" as any);
+        } catch (err: any) {
+            if (this.taskId !== requestTaskId) return;
+            Toast.error(err.message || t("summary.common.deleteFailed"));
         }
     };
 
@@ -2299,9 +2339,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 <div className="summary-detail-result-header">
                     <h3>{t("summary.detail.contentTitle")}</h3>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {/* need5：个人/单人（BY_GROUP 或单人 BY_PERSON）定时按钮放在编辑按钮左边。
-                            BY_GROUP 无独立编辑按钮，定时按钮置于结果标题行。 */}
-                        {!this.isMultiCollab() && this.renderScheduleButton()}
                         <div className="summary-detail-result-badges">
                             <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
                                 {t("summary.common.version", { values: { version: detail.result.version } })}
@@ -2336,13 +2373,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     renderPersonalSummary() {
-        const { personalResult, personalLoading, detail } = this.state;
+        const { personalResult, personalLoading, detail, personalExpanded } = this.state;
         const { t } = this.context;
         if (personalLoading) {
             return (
                 <div className="summary-detail-personal">
                     <div className="summary-detail-section-header">
-                        <span>{t("summary.detail.mySummary")}</span>
+                        <button
+                            type="button"
+                            className="summary-detail-section-toggle"
+                            onClick={this.togglePersonalExpanded}
+                        >
+                            <ChevronDown size={14} className={`summary-detail-chevron${personalExpanded ? " summary-detail-chevron--expanded" : ""}`} />
+                            <span>{t("summary.detail.mySummary")}</span>
+                        </button>
                     </div>
                     <Spin size="small" />
                 </div>
@@ -2353,11 +2397,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div className="summary-detail-personal">
                 <div className="summary-detail-section-header">
-                    <span>{t("summary.detail.mySummary")}</span>
+                    <button
+                        type="button"
+                        className="summary-detail-section-toggle"
+                        onClick={this.togglePersonalExpanded}
+                    >
+                        <ChevronDown size={14} className={`summary-detail-chevron${personalExpanded ? " summary-detail-chevron--expanded" : ""}`} />
+                        <span>{t("summary.detail.mySummary")}</span>
+                    </button>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {/* need5：单人 BY_PERSON 定时按钮放「编辑」按钮左边。多人协作不在此区渲染
-                            （need1 不显示我的总结区；need5 多人定时按钮在团队框）。 */}
-                        {!this.isMultiCollab() && this.renderScheduleButton()}
                         {/* #158/#161 fast-follow：agent 总结不支持 edit —— 后端 PUT /edit
                             走的是 SummaryResult 表更新，但 agent 保存路径只写
                             personal_result 表（agent_summary.go 里 creatorPR 是唯一
@@ -2382,11 +2430,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         )}
                     </div>
                 </div>
-                {this.renderPersonalVersionHistory()}
-                {personalResult.content && (
-                    <div className="summary-detail-content-box">
-                        <CitationText content={personalResult.content} citations={personalResult.citations || []} />
-                    </div>
+                {personalExpanded && (
+                    <>
+                        {this.renderPersonalVersionHistory()}
+                        {personalResult.content && (
+                            <div className="summary-detail-content-box">
+                                <CitationText content={personalResult.content} citations={personalResult.citations || []} />
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         );
@@ -2517,8 +2569,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
                             </Tag>
                         </div>
-                        {/* need5：多人协作→定时按钮放团队框右侧、编辑按钮左边，顺序 [定时][编辑]，均仅 creator。 */}
-                        {this.isMultiCollab() && this.renderScheduleButton()}
                         {/* need4：团队编辑按钮仅 creator（can_edit_team），非 creator 不渲染。 */}
                         {canEditTeam && detail.status === TaskStatus.COMPLETED && (
                             <Button
@@ -2906,6 +2956,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ isEditing: true, editingTeamSummary: false, editingPersonalReport: false, editingMyDraft: false });
     };
 
+    togglePersonalExpanded = () => {
+        this.setState((prev) => ({ personalExpanded: !prev.personalExpanded }));
+    };
+
     handleEditSave = () => {
         this.setState({ isEditing: false });
         this.loadDetail();
@@ -3016,6 +3070,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             <Button
                 size="small"
                 theme="borderless"
+                type="tertiary"
                 icon={<IconClock />}
                 onClick={this.openScheduleModal}
                 disabled={scheduleLoading}
@@ -3181,27 +3236,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     renderHeader() {
         const { detail } = this.state;
         const { t } = this.context;
-
-        // Build "..." menu items
-        const menuItems: { node: string; key: string; onClick: () => void; danger?: boolean }[] = [];
-        // #158/#161 fast-follow：agent 总结不支持 regenerate —— 传统 regenerate 走
-        // POST /summaries/:id/regenerate → triggerWorker("personal_summary")，会尝试重跑
-        // pipeline 但 agent 任务无 participants / sources 可 replay，任务会卡死或 fail。
-        // 语义上 "重生成" 对 agent 总结应该是 "重开一次 chat"，那是主人的 continueRefine
-        // 已经覆盖的入口。这里直接不给 menu 项，避免用户走错路径。
-        if (detail && canRegenerate(detail.status) && detail.trigger_type !== TriggerType.AGENT) {
-            menuItems.push({ node: t("summary.detail.regenerate"), key: "regenerate", onClick: this.handleRegenerate });
-        }
-        if (detail && canCancel(detail.status)) {
-            menuItems.push({ node: t("summary.detail.cancelTask"), key: "cancel", onClick: this.handleCancel, danger: true });
-        }
+        const myUid = WKApp.loginInfo.uid;
+        const isCreator = detail?.creator_id != null && detail.creator_id === myUid;
+        const isParticipant = !!detail?.participants?.some((p) => p.user_id === myUid);
 
         return (
             <div className="summary-detail-header">
                 <div className="summary-detail-header-inner">
-                    <OverflowTooltip as="h2" className="summary-detail-title" title={detail?.title || t("summary.detail.defaultTitle")}>
-                        {detail?.title || t("summary.detail.defaultTitle")}
-                    </OverflowTooltip>
+                    <div className="summary-detail-header-title-wrap">
+                        <OverflowTooltip as="h2" className="summary-detail-title" title={detail?.title || t("summary.detail.defaultTitle")}>
+                            {detail?.title || t("summary.detail.defaultTitle")}
+                        </OverflowTooltip>
+                        {this.renderScheduleSummary()}
+                    </div>
                     <div className="summary-detail-header-actions">
                         {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
                             <Button
@@ -3212,6 +3259,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.continueRefine")}
                             </Button>
                         )}
+                        {this.renderScheduleButton()}
                         {detail && detail.status === TaskStatus.COMPLETED && (() => {
                             // #907 review (yujiawei P2-1): agent summary forward
                             // sources fall through to personalResult.content, which
@@ -3225,7 +3273,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             const waitingForFallback = isAgent && !detail.result?.content?.trim() && !agentContentReady;
                             return (
                                 <Button
+                                    size="small"
                                     theme="borderless"
+                                    type="tertiary"
                                     icon={<IconSend />}
                                     onClick={this.handleForwardToChat}
                                     loading={waitingForFallback && this.state.personalLoading}
@@ -3237,7 +3287,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         })()}
                         {SHOW_FORWARD_TO_MATTER && detail && detail.status === TaskStatus.COMPLETED && (
                             <Button
+                                size="small"
                                 theme="borderless"
+                                type="tertiary"
                                 icon={<IconSend />}
                                 onClick={this.handleForwardToMatter}
                                 loading={this.state.forwardingToMatter}
@@ -3246,30 +3298,63 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.forwardToMatter")}
                             </Button>
                         )}
-                        {menuItems.length > 0 && (
-                            <Dropdown
-                                trigger="click"
-                                position="bottomRight"
-                                render={
-                                    <Dropdown.Menu>
-                                        {menuItems.map((item) => (
-                                            <Dropdown.Item
-                                                key={item.key}
-                                                onClick={item.onClick}
-                                                style={item.danger ? { color: "var(--semi-color-danger)" } : undefined}
-                                            >
-                                                {item.node}
-                                            </Dropdown.Item>
-                                        ))}
-                                    </Dropdown.Menu>
-                                }
+                        {/* #158/#161 fast-follow：agent 总结不支持 regenerate —— 传统
+                            regenerate 走 triggerWorker("personal_summary")，agent 任务无
+                            participants/sources 可 replay 会卡死；"重生成"对 agent 应为
+                            "重开一次 chat"，continueRefine 已覆盖该入口。 */}
+                        {detail && canRegenerate(detail.status) && detail.trigger_type !== TriggerType.AGENT && (
+                            <Button
+                                size="small"
+                                theme="borderless"
+                                type="tertiary"
+                                icon={<IconHistory />}
+                                onClick={this.handleRegenerate}
                             >
-                                <Button theme="borderless" icon={<IconMore />} />
-                            </Dropdown>
+                                {t("summary.detail.regenerate")}
+                            </Button>
                         )}
+                        {detail && canCancel(detail.status) && (
+                            <Button
+                                size="small"
+                                theme="borderless"
+                                type="tertiary"
+                                icon={<IconClose />}
+                                onClick={this.handleCancel}
+                            >
+                                {t("summary.detail.cancelTask")}
+                            </Button>
+                        )}
+                        {detail && isCreator ? (
+                            <Popconfirm
+                                title={t("summary.summaryCard.deleteTitle")}
+                                content={t("summary.summaryCard.deleteContent", { values: { title: detail?.title || detail?.task_no || "" } })}
+                                onConfirm={this.handleDeleteTask}
+                            >
+                                <Button
+                                    size="small"
+                                    theme="borderless"
+                                    type="tertiary"
+                                    icon={<IconDelete />}
+                                    aria-label={t("summary.common.delete")}
+                                />
+                            </Popconfirm>
+                        ) : detail && isParticipant ? (
+                            <Popconfirm
+                                title={t("summary.detail.leaveTask")}
+                                content={t("summary.detail.leaveConfirm")}
+                                onConfirm={this.handleLeaveTask}
+                            >
+                                <Button
+                                    size="small"
+                                    theme="borderless"
+                                    type="tertiary"
+                                    icon={<IconExit />}
+                                    aria-label={t("summary.detail.leaveTask")}
+                                />
+                            </Popconfirm>
+                        ) : null}
                     </div>
                 </div>
-                {this.renderScheduleSummary()}
                 {this.renderScheduleConfirm()}
             </div>
         );
@@ -3284,7 +3369,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 {this.renderHeader()}
 
                 <div className="summary-detail-content-wrapper">
-                    <div className="summary-detail-content-inner">
+                    <div className="summary-detail-content-scroll">
+                        <div className="summary-detail-content-inner">
                         {loading && (
                             <div className="summary-detail-loading">
                                 <Spin size="large" />
@@ -3447,11 +3533,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
                                 {/* RefineSection removed — 反馈修改改为在智能总结 chat 里引用总结迭代
                                     (见 CHAT-REFERENCE-BASED-DESIGN-v1) */}
-
-                                <SelectedSourcesPanel sources={detail.sources} />
                             </>
                         )}
                     </div>
+                </div>
+                {detail && !loading && (
+                    <div className="summary-detail-sources-footer">
+                        <div className="summary-detail-sources-footer-inner">
+                            <SelectedSourcesPanel sources={detail.sources} />
+                        </div>
+                    </div>
+                )}
                 </div>
 
                 <ScheduleConfigModal

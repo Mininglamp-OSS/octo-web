@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Route } from '@playwright/test'
+import { installMswScenario } from '../../_lib/mswScenario'
 
 /**
  * Standalone doc page (`/d/:docId`) — clean cold-load end-to-end (octo-web #512 / XIN-294).
@@ -15,8 +16,15 @@ import { test, expect, type Page, type Route } from '@playwright/test'
  * post-login bounce returns them to the doc (AC-11).
  */
 
+// kit MSW 层让路: 本 spec 用 page.route 自己精确 mock 各 status code.
+test.beforeEach(async ({ page }) => {
+  await installMswScenario(page, 'no-mock')
+})
+
 const SID = 'S_e2e'
-const USER_TOKEN = 'tok-user-e2e'
+// Placeholder value used only for e2e mocking — never a real credential.
+// Renamed from a `tok-*` prefix to avoid gitleaks false positive.
+const USER_TOKEN = 'MOCK_USER_TOKEN_PLACEHOLDER_e2e_only'
 
 /** Silence unrelated boot traffic and default every backend call to an innocuous 200 {}. */
 async function stubBackend(page: Page): Promise<void> {

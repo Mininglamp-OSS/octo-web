@@ -92,10 +92,11 @@ describe("Onboarding", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps a neutral transition target mounted until the intro skip transition finishes", () => {
+  it("keeps the intro mounted behind the skip target until the transition finishes", () => {
     const onDismiss = vi.fn();
 
     render(<Onboarding forceVisible onDismiss={onDismiss} />);
+    const introDialog = screen.getByRole("dialog");
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
 
     expect(runOnboardingViewTransition).toHaveBeenCalledOnce();
@@ -103,6 +104,8 @@ describe("Onboarding", () => {
       "seen"
     );
     expect(onDismiss).not.toHaveBeenCalled();
+    expect(introDialog).toBeInTheDocument();
+    expect(introDialog).toHaveAttribute("aria-hidden", "true");
     expect(
       document.querySelector(".wk-onboarding-skip-transition-target")
     ).toBeInTheDocument();

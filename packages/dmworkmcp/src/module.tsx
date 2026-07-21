@@ -1,6 +1,6 @@
 import React from "react";
 import type { IModule } from "@octo/base";
-import { i18n, I18nProvider, WKApp, Menus, t as translate } from "@octo/base";
+import { ChatPage, i18n, I18nProvider, WKApp, Menus, t as translate } from "@octo/base";
 import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "./pages/McpMarketListPage";
 import MarketSidebar from "./components/MarketSidebar";
@@ -41,30 +41,42 @@ export class McpMarketModule implements IModule {
       "en-US": enUS,
     });
 
+    // The three `/mcp-market*` routes are sidebar-level (opened inside the
+    // Main shell), NOT full pages. Two distinct callers hit these handlers:
+    //   • MainContentLeft (apps/web/src/Pages/Main/index.tsx:28) reads via
+    //     `WKApp.route.get(routePath)` to mount the sidebar panel — wants
+    //     the raw sidebar / page component below.
+    //   • RouteManager.renderCurrentPath (dmworkbase Service/Route.tsx) fires
+    //     on cold-load / bfcache pageshow / back-forward — before PR#851's
+    //     fix it also used the same handler, so refreshing /mcp-market/*
+    //     collapsed the whole host to a bare sidebar (no NavRail, no shell).
+    //
+    // The `hostShell` opt-in on register() tells RouteManager: for URL-driven
+    // renders, mount <ChatPage /> (the full Main shell) instead, and let the
+    // shell's syncMenuFromBrowserPath activate the correct NavRail entry from
+    // the URL, which triggers the `mcp-market` menu.onPress below to mount
+    // the sidebar + right-pane page. See dmworkbase Service/Route.tsx for the
+    // RouteRegisterOptions comment and the two-code-path map.
+    const marketHostShell = () => <ChatPage />;
+
     // Left sidebar (renders in WKLayout.contentLeft when the "mcp-market"
     // NavRail entry is active). Its children — MCP 市场（未来还会追加 Skills
     // 市场等）— push their actual page into WKApp.routeRight, so the market
     // content lives in the right pane just like chat/summary detail views.
-    WKApp.route.register("/mcp-market", () => {
-      return <MarketSidebar />;
-    });
+    WKApp.route.register("/mcp-market", () => <MarketSidebar />, { hostShell: marketHostShell });
 
     // Route mounted into WKLayout.contentRight by MarketSidebar / the menu's
     // onPress. Kept separate from the sidebar so future markets (Skills 市场,
     // …) can register additional /mcp-market/* routes without touching this
     // one.
-    WKApp.route.register("/mcp-market/mcp", () => {
-      return <McpMarketListPage />;
-    });
+    WKApp.route.register("/mcp-market/mcp", () => <McpMarketListPage />, { hostShell: marketHostShell });
 
     // Skills market tab — physically owned by @dmwork/skillmarket (i18n +
     // page live there), but mounted under the shared "/mcp-market" shell so
     // both markets share one NavRail entry + one sidebar. dmworkskillmarket's
     // module no longer registers its own NavRail icon; this route is the
     // single source of truth for the Skills market URL.
-    WKApp.route.register("/mcp-market/skills", () => {
-      return <SkillListPage />;
-    });
+    WKApp.route.register("/mcp-market/skills", () => <SkillListPage />, { hostShell: marketHostShell });
 
     // 顶层 NavRail 菜单入口。sort=5003 紧跟在 summary(4002/5000) 之后，
     // 与既有 chat(1000)/contacts(4000) 图标栏共用同一注册机制

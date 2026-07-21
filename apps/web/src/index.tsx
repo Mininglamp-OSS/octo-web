@@ -82,17 +82,46 @@ WKApp.shared.registerModule(new DocsModule()); // Docs module
 WKApp.shared.registerModule(new LoopModule()); // Loop 面板（Issue/Skill/Project/Agent/Squad/Runtime）
 WKApp.shared.registerModule(new PersonalModule()); // 我的（Runtimes/Skills）
 
-WKApp.shared.startup() // app启动
+// e2e mock: 仅在 VITE_E2E_MOCK=1 时启动 MSW Service Worker.
+// dev / prod 完全走 tree-shake 分支, 无副作用. 必须在 startup() 之前 await,
+// 否则第一发 fetch (common/appconfig) 会漏 mock.
+// 暴露 worker + http/HttpResponse 到 window, 让 e2e spec 用 worker.use(...)
+// 动态覆盖 handler 支持有状态场景 (page.route 拦不到 MSW SW 层).
+async function enableMocksIfE2E(): Promise<void> {
+  if (import.meta.env.VITE_E2E_MOCK !== "1") return;
+  try {
+    const { worker } = await import("./mocks/browser");
+    const msw = await import("msw");
+    await worker.start({ onUnhandledRequest: "bypass" });
+    const w = window as unknown as {
+      __MSW_READY__: boolean;
+      __msw?: { worker: typeof worker; http: typeof msw.http; HttpResponse: typeof msw.HttpResponse };
+    };
+    w.__msw = { worker, http: msw.http, HttpResponse: msw.HttpResponse };
+    w.__MSW_READY__ = true;
+  } catch (e) {
+    // MSW SW 拿不到 (如 e2e no-mock scenario 拦了 mockServiceWorker.js): 静默继续,
+    // 让 app 正常启动. __MSW_READY__ 不 set, no-mock spec 也不 wait 它.
+    console.warn("[e2e] MSW disabled:", e);
+  }
+}
+
+async function main(): Promise<void> {
+  await enableMocksIfE2E();
+  WKApp.shared.startup(); // app启动
+
+  const container = document.getElementById("root")!;
+  const root = createRoot(container);
+  root.render(
+    <React.StrictMode>
+      <I18nProvider>
+        <App />
+      </I18nProvider>
+    </React.StrictMode>
+  );
+  reportWebVitals();
+}
 
 // Initialize Electron notification bridge if running in Electron
 
-const container = document.getElementById('root')!
-const root = createRoot(container)
-root.render(
-  <React.StrictMode>
-    <I18nProvider>
-      <App />
-    </I18nProvider>
-  </React.StrictMode>
-);
-reportWebVitals();
+void main();
