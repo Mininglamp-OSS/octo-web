@@ -9,6 +9,8 @@ import VoiceFeedbackNotice from "../MessageInput/VoiceFeedbackNotice";
 import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../MessageInput/useSpaceFeedbackSetting";
 import WKApp from "../../App";
 import { useI18n } from "../../i18n";
+import useVoiceTriggerKey from "../MessageInput/useVoiceTriggerKey";
+import type { VoiceTriggerKey } from "../MessageInput/useVoiceTriggerKey";
 import "./index.css";
 
 const VOICE_MODES: { value: VoiceMode; labelKey: string }[] = [
@@ -71,6 +73,21 @@ export default function VoiceInputButton({
   isOnlineRef.current = isOnline;
   const localAvailableRef = useRef(localAvailable);
   localAvailableRef.current = localAvailable;
+
+  // Voice trigger key (ShiftLeft / ShiftRight), toggled by 7 rapid presses.
+  // Must be called AFTER useTextareaVoice so isVoiceEnabled is already declared.
+  const { voiceTriggerKey } = useVoiceTriggerKey(
+    (newKey: VoiceTriggerKey) => {
+      const msgKey =
+        newKey === "ShiftRight"
+          ? "base.voiceInput.triggerKey.switchedToRight"
+          : "base.voiceInput.triggerKey.switchedToLeft";
+      Toast.info(t(msgKey));
+    },
+    { isVoiceEnabled }
+  );
+  const voiceTriggerKeyRef = useRef(voiceTriggerKey);
+  voiceTriggerKeyRef.current = voiceTriggerKey;
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -185,7 +202,7 @@ export default function VoiceInputButton({
       if (!inputRef.current || document.activeElement !== inputRef.current) return;
 
       if (
-        e.code === "ShiftLeft" &&
+        e.code === voiceTriggerKeyRef.current &&
         !e.repeat &&
         !e.metaKey &&
         !e.ctrlKey &&
@@ -221,7 +238,7 @@ export default function VoiceInputButton({
         return;
       }
 
-      if (shiftTimerRef.current !== null && e.code !== "ShiftLeft") {
+      if (shiftTimerRef.current !== null && e.code !== voiceTriggerKeyRef.current) {
         if (
           e.code.startsWith("Control") ||
           e.code.startsWith("Alt") ||
@@ -247,13 +264,13 @@ export default function VoiceInputButton({
 
       if (!isRecordingRef.current && !isInputFocused) return;
 
-      if (e.code === "ShiftLeft" && shiftTimerRef.current !== null) {
+      if (e.code === voiceTriggerKeyRef.current && shiftTimerRef.current !== null) {
         clearShiftTimer();
         return;
       }
 
       if (
-        e.code === "ShiftLeft" &&
+        e.code === voiceTriggerKeyRef.current &&
         shiftRecordingRef.current &&
         !isRecordingRef.current
       ) {
@@ -263,7 +280,7 @@ export default function VoiceInputButton({
       }
 
       if (
-        e.code === "ShiftLeft" &&
+        e.code === voiceTriggerKeyRef.current &&
         shiftRecordingRef.current &&
         isRecordingRef.current
       ) {

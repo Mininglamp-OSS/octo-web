@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { Toast, Dropdown } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
 import useVoiceInput from "./useVoiceInput";
+import useVoiceTriggerKey from "./useVoiceTriggerKey";
+import type { VoiceTriggerKey } from "./useVoiceTriggerKey";
 import "./voiceInput.css";
 import { ChatContextResult } from "../Conversation/chatContext";
 import { VoiceMode } from "../../Service/VoiceService";
@@ -192,6 +194,21 @@ export default function VoiceInputIndicator({
     setIsPreparing(false);
   };
 
+  // Voice trigger key (ShiftLeft / ShiftRight), toggled by 7 rapid presses.
+  // Must be called AFTER useVoiceInput so isVoiceEnabled is already declared.
+  const { voiceTriggerKey } = useVoiceTriggerKey(
+    (newKey: VoiceTriggerKey) => {
+      const msgKey =
+        newKey === "ShiftRight"
+          ? "base.voiceInput.triggerKey.switchedToRight"
+          : "base.voiceInput.triggerKey.switchedToLeft";
+      Toast.info(t(msgKey));
+    },
+    { isVoiceEnabled, checkIsInputActive }
+  );
+  const voiceTriggerKeyRef = useRef(voiceTriggerKey);
+  voiceTriggerKeyRef.current = voiceTriggerKey;
+
   // Handle transition from preparing/pending -> actual recording or auto-cancel.
   useEffect(() => {
     if (isRecording && cancelPendingRef.current) {
@@ -299,9 +316,9 @@ export default function VoiceInputIndicator({
         return;
       }
 
-      // Long-press ShiftLeft: start 500ms timer
+      // Long-press voiceTriggerKey: start 500ms timer
       if (
-        e.code === "ShiftLeft" &&
+        e.code === voiceTriggerKeyRef.current &&
         !e.repeat &&
         !e.metaKey &&
         !e.ctrlKey &&
@@ -349,7 +366,7 @@ export default function VoiceInputIndicator({
         return;
       }
 
-      if (shiftTimerRef.current !== null && e.code !== "ShiftLeft") {
+      if (shiftTimerRef.current !== null && e.code !== voiceTriggerKeyRef.current) {
         // Modifier chord (Ctrl/Meta/Alt pressed): cancel voice intent
         if (
           e.code.startsWith("Control") ||
@@ -378,15 +395,15 @@ export default function VoiceInputIndicator({
         return;
       }
 
-      // ShiftLeft released while timer is pending: cancel (normal Shift press)
-      if (e.code === "ShiftLeft" && shiftTimerRef.current !== null) {
+      // voiceTriggerKey released while timer is pending: cancel (normal Shift press)
+      if (e.code === voiceTriggerKeyRef.current && shiftTimerRef.current !== null) {
         clearShiftTimer();
         return;
       }
 
-      // ShiftLeft released while waiting for getUserMedia (recording not yet started)
+      // voiceTriggerKey released while waiting for getUserMedia (recording not yet started)
       if (
-        e.code === "ShiftLeft" &&
+        e.code === voiceTriggerKeyRef.current &&
         shiftRecordingRef.current &&
         !isRecordingRef.current
       ) {
@@ -395,9 +412,9 @@ export default function VoiceInputIndicator({
         return;
       }
 
-      // ShiftLeft released after long-press recording started: stop recording
+      // voiceTriggerKey released after long-press recording started: stop recording
       if (
-        e.code === "ShiftLeft" &&
+        e.code === voiceTriggerKeyRef.current &&
         shiftRecordingRef.current &&
         isRecordingRef.current
       ) {

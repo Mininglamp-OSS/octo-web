@@ -1203,6 +1203,8 @@
   "voiceInput.status.transcribingDots": "Transcribing...",
   "voiceInput.title.input": "Voice input",
   "voiceInput.title.inputLongPress": "Voice input (hold Shift)",
+  "voiceInput.triggerKey.switchedToRight": "Voice trigger key switched to Right Shift",
+  "voiceInput.triggerKey.switchedToLeft": "Voice trigger key switched to Left Shift",
   "voiceInput.title.networkUnavailable": "Network unavailable",
   "todo.outputs.tabLabel": "Output Files",
   "todo.outputs.emptySearch": "No matching output files",
