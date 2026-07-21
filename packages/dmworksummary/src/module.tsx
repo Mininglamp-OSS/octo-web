@@ -194,11 +194,12 @@ export class SummaryModule implements IModule {
 
         WKApp.endpoints.registerChatSummaryPanel(
             "chatsummarypanel",
-            ({ channel, onClose }) => (
+            ({ channel, onClose, summaryPanelView }) => (
                 <ChatSummaryPanel
                     visible={true}
                     channel={channel}
                     onClose={onClose}
+                    summaryPanelView={summaryPanelView}
                 />
             ),
         );

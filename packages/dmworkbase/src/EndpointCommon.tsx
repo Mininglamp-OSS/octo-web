@@ -357,10 +357,12 @@ export class EndpointCommon {
   chatSummaryPanel(
     channel: Channel,
     onClose: () => void,
+    summaryPanelView?: "history" | "new",
   ): JSX.Element | undefined {
     return EndpointManager.shared.invoke(EndpointCategory.chatSummaryPanel, {
       channel,
       onClose,
+      summaryPanelView,
     });
   }
 

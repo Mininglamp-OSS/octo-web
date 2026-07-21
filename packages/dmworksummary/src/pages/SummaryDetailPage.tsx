@@ -7,8 +7,10 @@ import {
     Tag,
     Modal,
     Popconfirm,
+    Tooltip,
+    Dropdown,
 } from "@douyinfe/semi-ui";
-import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete } from "@douyinfe/semi-icons";
+import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { ChevronDown } from "lucide-react";
 import { Channel, MessageText } from "wukongimjssdk";
 import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base";
@@ -3066,11 +3068,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         // OCT-21 / GPT-S1：草稿编辑态也隐藏 schedule 按钮，与其它编辑态保持一致约束。
         if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport || editingMyDraft) return null;
-        // #158/#161 fast-follow：agent 总结不支持 schedule —— schedule 到点会 trigger
-        // 后端 pipeline 走传统 map-reduce 重跑，但 agent 总结的产出是 chat 交互生成，
-        // 没有可 replay 的 sources/participants。触发后任务会卡在 Pending 或 fail，
-        // 用户体验很差。前端直接不渲染这个按钮，避免用户误点。
-        if (detail?.trigger_type === TriggerType.AGENT) return null;
 
         // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
         // 停用后文案回到「设置定时更新」。
@@ -3254,6 +3251,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const isParticipant = !!detail?.participants?.some((p) => p.user_id === myUid);
         const displayTitle = deriveSummaryDisplayContent(detail?.topic || detail?.title || "") || t("summary.detail.defaultTitle");
 
+        // #907 review (yujiawei P2-1): agent summary forward sources fall through to
+        // personalResult.content, which is fetched async by loadPersonalResult. During
+        // that load window a click would silently no-op. Disable until the fallback
+        // content is in. Traditional workflow has detail.result inline, so it is never
+        // gated here.
+        const isAgent = detail?.trigger_type === TriggerType.AGENT;
+        const agentContentReady = !!this.state.personalResult?.content?.trim();
+        const waitingForFallback = !!detail && isAgent && !detail.result?.content?.trim() && !agentContentReady;
+
+        const showForwardToChat = !!detail && detail.status === TaskStatus.COMPLETED;
+        const showForwardToMatter = SHOW_FORWARD_TO_MATTER && !!detail && detail.status === TaskStatus.COMPLETED;
+        const showRegenerate = !!detail && canRegenerate(detail.status) && !isAgent;
+        const showCancel = !!detail && canCancel(detail.status);
+        const showDelete = !!detail && isCreator;
+        const showLeave = !!detail && isParticipant && !isCreator;
+        const hasMoreActions = showForwardToChat || showForwardToMatter || showRegenerate || showCancel || showDelete || showLeave;
+
         return (
             <div className="summary-detail-header">
                 <div className="summary-detail-header-inner">
@@ -3274,99 +3288,70 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             </Button>
                         )}
                         {this.renderScheduleButton()}
-                        {detail && detail.status === TaskStatus.COMPLETED && (() => {
-                            // #907 review (yujiawei P2-1): agent summary forward
-                            // sources fall through to personalResult.content, which
-                            // is fetched async by loadPersonalResult. During that
-                            // load window a click would silently no-op. Disable +
-                            // loading state until the fallback content is in.
-                            // Traditional workflow has detail.result inline, so it
-                            // is never gated here.
-                            const isAgent = detail.trigger_type === TriggerType.AGENT;
-                            const agentContentReady = !!this.state.personalResult?.content?.trim();
-                            const waitingForFallback = isAgent && !detail.result?.content?.trim() && !agentContentReady;
-                            return (
-                                <Button
-                                    size="small"
-                                    theme="borderless"
-                                    type="tertiary"
-                                    icon={<IconSend />}
-                                    onClick={this.handleForwardToChat}
-                                    loading={waitingForFallback && this.state.personalLoading}
-                                    disabled={waitingForFallback}
-                                >
-                                    {t("summary.detail.forwardToChat")}
-                                </Button>
-                            );
-                        })()}
-                        {SHOW_FORWARD_TO_MATTER && detail && detail.status === TaskStatus.COMPLETED && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                type="tertiary"
-                                icon={<IconSend />}
-                                onClick={this.handleForwardToMatter}
-                                loading={this.state.forwardingToMatter}
-                                disabled={this.state.forwardingToMatter}
+                        {hasMoreActions && (
+                            <Dropdown
+                                trigger="click"
+                                position="bottomRight"
+                                render={
+                                    <Dropdown.Menu>
+                                        {showForwardToChat && (
+                                            <Dropdown.Item
+                                                icon={<IconSend />}
+                                                onClick={this.handleForwardToChat}
+                                                disabled={waitingForFallback}
+                                            >
+                                                {t("summary.detail.forwardToChat")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showForwardToMatter && (
+                                            <Dropdown.Item
+                                                icon={<IconExit />}
+                                                onClick={this.handleForwardToMatter}
+                                                disabled={this.state.forwardingToMatter}
+                                            >
+                                                {t("summary.detail.forwardToMatter")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showRegenerate && (
+                                            <Dropdown.Item
+                                                icon={<IconHistory />}
+                                                onClick={this.handleRegenerate}
+                                            >
+                                                {t("summary.detail.regenerate")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showCancel && (
+                                            <Dropdown.Item
+                                                icon={<IconClose />}
+                                                onClick={this.handleCancel}
+                                            >
+                                                {t("summary.detail.cancelTask")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showDelete && (
+                                            <Dropdown.Item
+                                                type="danger"
+                                                icon={<IconDelete />}
+                                                onClick={this.handleDeleteTask}
+                                            >
+                                                {t("summary.common.delete")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showLeave && (
+                                            <Dropdown.Item
+                                                type="danger"
+                                                icon={<IconMinusCircle />}
+                                                onClick={this.handleLeaveTask}
+                                            >
+                                                {t("summary.detail.leaveTask")}
+                                            </Dropdown.Item>
+                                        )}
+                                    </Dropdown.Menu>
+                                }
                             >
-                                {t("summary.detail.forwardToMatter")}
-                            </Button>
+                                <Button size="small" theme="borderless" type="tertiary" icon={<IconMore />} />
+                            </Dropdown>
                         )}
-                        {/* #158/#161 fast-follow：agent 总结不支持 regenerate —— 传统
-                            regenerate 走 triggerWorker("personal_summary")，agent 任务无
-                            participants/sources 可 replay 会卡死；"重生成"对 agent 应为
-                            "重开一次 chat"，continueRefine 已覆盖该入口。 */}
-                        {detail && canRegenerate(detail.status) && detail.trigger_type !== TriggerType.AGENT && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                type="tertiary"
-                                icon={<IconHistory />}
-                                onClick={this.handleRegenerate}
-                            >
-                                {t("summary.detail.regenerate")}
-                            </Button>
-                        )}
-                        {detail && canCancel(detail.status) && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                type="tertiary"
-                                icon={<IconClose />}
-                                onClick={this.handleCancel}
-                            >
-                                {t("summary.detail.cancelTask")}
-                            </Button>
-                        )}
-                        {detail && isCreator ? (
-                            <Popconfirm
-                                title={t("summary.summaryCard.deleteTitle")}
-                                content={t("summary.summaryCard.deleteContent", { values: { title: detail?.title || detail?.task_no || "" } })}
-                                onConfirm={this.handleDeleteTask}
-                            >
-                                <Button
-                                    size="small"
-                                    theme="borderless"
-                                    type="tertiary"
-                                    icon={<IconDelete />}
-                                    aria-label={t("summary.common.delete")}
-                                />
-                            </Popconfirm>
-                        ) : detail && isParticipant ? (
-                            <Popconfirm
-                                title={t("summary.detail.leaveTask")}
-                                content={t("summary.detail.leaveConfirm")}
-                                onConfirm={this.handleLeaveTask}
-                            >
-                                <Button
-                                    size="small"
-                                    theme="borderless"
-                                    type="tertiary"
-                                    icon={<IconExit />}
-                                    aria-label={t("summary.detail.leaveTask")}
-                                />
-                            </Popconfirm>
-                        ) : null}
                     </div>
                 </div>
                 {this.renderScheduleConfirm()}

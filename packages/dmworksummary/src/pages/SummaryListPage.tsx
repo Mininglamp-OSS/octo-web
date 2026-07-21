@@ -10,6 +10,7 @@ import {
     Tooltip,
 } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus, IconRefresh } from "@douyinfe/semi-icons";
+import { X } from "lucide-react";
 import { I18nContext, t, WKApp } from "@octo/base";
 import * as api from "../api/summaryApi";
 import type {
@@ -22,6 +23,16 @@ import { getStatusLabel } from "../utils/summaryHelpers";
 import SummaryCard from "../components/SummaryCard";
 import SummaryCreatePage from "./SummaryCreatePage";
 import SummaryDetailPage from "./SummaryDetailPage";
+
+interface SummaryListPageProps {
+    channelId?: string;
+    /** Called when the user clicks the close button (panel mode only). */
+    onClose?: () => void;
+    /** Called when the user clicks "new summary" in panel mode. */
+    onCreateNew?: () => void;
+    /** Called when a card is clicked in panel mode (instead of routeRight.push). */
+    onViewDetail?: (taskId: number) => void;
+}
 
 interface SummaryListPageState {
     items: SummaryListItem[];
@@ -44,7 +55,7 @@ export const getStatusOptions = () => [
     { value: TaskStatus.CANCELLED, label: getStatusLabel(TaskStatus.CANCELLED) },
 ];
 
-export default class SummaryListPage extends Component<{}, SummaryListPageState> {
+export default class SummaryListPage extends Component<SummaryListPageProps, SummaryListPageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
 
@@ -52,7 +63,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         items: [],
         total: 0,
         page: 1,
-        pageSize: 20,
+        pageSize: this.props?.channelId ? 50 : 20,
         loading: false,
         error: null,
         statusFilter: undefined,
@@ -153,6 +164,22 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         window.removeEventListener("summary-read", this.handleSummaryRead_);
         window.removeEventListener("summary-detail-active", this.handleDetailActive_);
         window.removeEventListener("summary-detail-inactive", this.handleDetailInactive_);
+    }
+
+    async fetchData(): Promise<{ items: SummaryListItem[]; total: number; attention_count: number }> {
+        const { page, pageSize, statusFilter, keyword } = this.state;
+        const { channelId } = this.props;
+        const params: ListSummariesParams = {
+            page,
+            page_size: pageSize,
+            status: statusFilter,
+            keyword: keyword || undefined,
+            origin_channel_id: channelId || undefined,
+        };
+        const resp = await api.listSummaries(params);
+        this.attentionCount = resp.attention_count ?? 0;
+        this.emitBadgeUpdate(resp.attention_count);
+        return { items: resp.items, total: resp.total, attention_count: resp.attention_count ?? 0 };
     }
 
     async loadData() {
@@ -284,11 +311,32 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         try {
             await api.deleteSummary(taskId);
             Toast.success(t("summary.list.deleteSuccess"));
-            WKApp.routeRight.popToRoot();
-            WKApp.routeRight.push(
-                <SummaryCreatePage onCreated={() => this.loadData()} />
-            );
-            this.loadData();
+            // 刷新列表，拿到删除后的最新数据
+            const fresh = await this.fetchData();
+            if (fresh.items.length > 0) {
+                // 跳到最近的一个总结
+                const next = fresh.items[0];
+                this.setState({ activeTaskId: next.task_id, items: fresh.items, total: fresh.total }, () => {
+                    if (this.props.onViewDetail) {
+                        this.props.onViewDetail(next.task_id);
+                    } else {
+                        WKApp.routeRight.popToRoot();
+                        WKApp.routeRight.push(<SummaryDetailPage taskId={next.task_id} emitSelection />);
+                    }
+                });
+            } else {
+                // 没有总结了，回到列表/创建页
+                this.setState({ items: [], total: 0, activeTaskId: null }, () => {
+                    if (this.props.onCreateNew) {
+                        this.props.onCreateNew();
+                    } else {
+                        WKApp.routeRight.popToRoot();
+                        WKApp.routeRight.push(
+                            <SummaryCreatePage onCreated={() => this.loadData()} />
+                        );
+                    }
+                });
+            }
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.deleteFailed"));
         }
@@ -296,8 +344,12 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
 
     handleCardClick = (taskId: number) => {
         this.setState({ activeTaskId: taskId });
-        WKApp.routeRight.popToRoot();
-        WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} emitSelection />);
+        if (this.props.onViewDetail) {
+            this.props.onViewDetail(taskId);
+        } else {
+            WKApp.routeRight.popToRoot();
+            WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} emitSelection />);
+        }
     };
 
     handleLeave = async (taskId: number) => {
@@ -322,6 +374,10 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     };
 
     handleCreate = () => {
+        if (this.props.onCreateNew) {
+            this.props.onCreateNew();
+            return;
+        }
         WKApp.routeRight.popToRoot();
         WKApp.routeRight.push(
             <SummaryCreatePage onCreated={() => this.loadData()} />
@@ -330,20 +386,44 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
 
     render() {
         const { items, total, page, pageSize, loading, error, statusFilter, keyword, activeTaskId } = this.state;
+        const { channelId, onClose } = this.props;
         const { locale, t: translate } = this.context;
         const statusOptions = getStatusOptions();
+        const isPanel = Boolean(channelId);
 
         return (
-            <div className="summary-list-page">
+            <div className={`summary-list-page${isPanel ? " summary-list-page--panel" : ""}`}>
                 <div className="summary-list-header">
-                    <h2 className="summary-list-title">{translate("summary.list.title")}</h2>
-                    <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
-                        <Button
-                            icon={<IconPlus />}
-                            theme="borderless"
-                            onClick={this.handleCreate}
-                        />
-                    </Tooltip>
+                    <h2 className="summary-list-title">
+                        {isPanel ? translate("summary.chatSummary.panelTitle") : translate("summary.list.title")}
+                    </h2>
+                    <div className="summary-list-header-actions">
+                        {isPanel && (
+                            <Tooltip content={translate("summary.chatSummary.createNew")} position="bottom">
+                                <Button
+                                    icon={<IconPlus />}
+                                    theme="borderless"
+                                    onClick={this.handleCreate}
+                                />
+                            </Tooltip>
+                        )}
+                        {isPanel && onClose ? (
+                            <Button
+                                icon={<X size={18} />}
+                                theme="borderless"
+                                type="tertiary"
+                                onClick={onClose}
+                            />
+                        ) : (
+                            <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
+                                <Button
+                                    icon={<IconPlus />}
+                                    theme="borderless"
+                                    onClick={this.handleCreate}
+                                />
+                            </Tooltip>
+                        )}
+                    </div>
                 </div>
 
                 <div className="summary-list-toolbar">
@@ -400,14 +480,26 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
 
                 {!loading && !error && items.length === 0 && (
                     <div className="summary-list-empty">
-                        <div className="summary-list-empty-icon">📄</div>
-                        <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
-                        <div className="summary-list-empty-desc">
-                            {translate("summary.list.emptyDesc")}
-                        </div>
-                        <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
-                            {translate("summary.list.createFirst")}
-                        </Button>
+                        {isPanel ? (
+                            <>
+                                <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
+                                <div className="summary-list-empty-desc">{translate("summary.chatSummary.emptyDescription")}</div>
+                                <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                    {translate("summary.chatSummary.createNew")}
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <div className="summary-list-empty-icon">📄</div>
+                                <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
+                                <div className="summary-list-empty-desc">
+                                    {translate("summary.list.emptyDesc")}
+                                </div>
+                                <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                    {translate("summary.list.createFirst")}
+                                </Button>
+                            </>
+                        )}
                     </div>
                 )}
 
@@ -426,7 +518,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                                 />
                             ))}
                         </div>
-                        {total > pageSize && (
+                        {!isPanel && total > pageSize && (
                             <div className="summary-list-pagination">
                                 <Pagination
                                     currentPage={page}
