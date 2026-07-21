@@ -120,8 +120,10 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     if (!silent) setLoading(true);
     // 请求失败(网络/权限/500):清空结果集 + 提示。不保留旧行——否则旧数据会残留在新筛选态下,
     // 且列表勾选态仍指向陈旧行,可能被批量删改误作用。seq 守卫:仅最新一次在途请求可清。
+    // silent 轮询失败静默处理:保留当前已有数据,不清空、不弹 toast —— 后台瞬时错误不应打扰用户。
     const onErr = () => {
       if (my !== seq.current) return;
+      if (silent) return; // 后台轮询失败:保留旧数据,不清空,不提示
       setIssues([]); setGroups([]); setTotal(0);
       Toast.error(t("loop.toast.loadFailed"));
     };
@@ -155,7 +157,8 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       // 后端 id,未解析出则清空并等待(不回退成无 scope 全量)。myMemberId 在依赖里,解析后自动重取。
       if (scope === "involves") {
         if (!myMemberId) {
-          if (my === seq.current) { setGroups([]); setLoading(false); }
+          // silent 轮询时 myMemberId 暂未解析:不清空已有分组,仅清 loading,等解析完成后自动重取。
+          if (my === seq.current) { if (!silent) setGroups([]); setLoading(false); }
           return;
         }
         listMyGroupedIssues(myMemberId, { ...common, limit: 100 })
