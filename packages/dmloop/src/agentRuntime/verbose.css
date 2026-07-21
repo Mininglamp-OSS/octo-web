@@ -1,0 +1,37 @@
+/* @octo/loop — verbose renderer */
+.loop-verbose-root { display: flex; flex-direction: column; gap: 16px; }
+.loop-verbose-section { display: flex; flex-direction: column; gap: 6px; }
+.loop-verbose-section-title {
+  display: flex; align-items: center; gap: 5px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--semi-color-text-2);
+}
+.loop-verbose-message { font-size: 14px; line-height: 1.6; color: var(--semi-color-text-0); white-space: pre-wrap; }
+.loop-verbose-empty { font-size: 13px; color: var(--semi-color-text-2); font-style: italic; }
+
+.loop-verbose-thinking {
+  margin: 0; padding: 8px 10px; font-size: 12px; line-height: 1.5; white-space: pre-wrap;
+  background: var(--semi-color-fill-0); border-left: 2px solid var(--semi-color-info); border-radius: 0 4px 4px 0;
+  color: var(--semi-color-text-1);
+}
+
+.loop-verbose-tool { border: 1px solid var(--semi-color-border); border-radius: 6px; overflow: hidden; }
+.loop-verbose-tool-head {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; cursor: pointer;
+  border: none; background: var(--semi-color-fill-0); padding: 6px 10px; font-size: 12px; color: var(--semi-color-text-1);
+}
+.loop-verbose-tool-head:disabled { cursor: default; }
+.loop-verbose-tool-name { font-weight: 600; color: var(--semi-color-text-0); }
+.loop-verbose-tool-summary { flex: 1; color: var(--semi-color-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--code-font, monospace); }
+.loop-verbose-tool-status { font-size: 10px; text-transform: uppercase; padding: 1px 6px; border-radius: 8px; }
+.loop-verbose-tool-status.running { color: var(--semi-color-info); background: var(--semi-color-info-light-default); }
+.loop-verbose-tool-status.done { color: var(--semi-color-success, #52c41a); background: var(--semi-color-success-light-default, #f6ffed); }
+.loop-verbose-tool-status.error { color: var(--semi-color-danger); background: var(--semi-color-danger-light-default); }
+.loop-verbose-tool-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.loop-verbose-kv { display: flex; flex-direction: column; gap: 2px; }
+.loop-verbose-k { font-size: 10px; text-transform: uppercase; color: var(--semi-color-text-2); }
+.loop-verbose-pre {
+  margin: 0; padding: 8px; font-size: 12px; line-height: 1.45; overflow-x: auto; white-space: pre-wrap;
+  background: var(--semi-color-fill-0); border-radius: 4px; font-family: var(--code-font, monospace); color: var(--semi-color-text-1);
+}
+.loop-verbose-pre.raw { max-height: 320px; overflow-y: auto; }
+.loop-verbose-error { color: var(--semi-color-danger); font-size: 13px; padding: 6px 0; }

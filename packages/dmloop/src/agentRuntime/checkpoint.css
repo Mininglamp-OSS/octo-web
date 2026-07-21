@@ -1,0 +1,20 @@
+/* @octo/loop — checkpoint timeline */
+.loop-ckpt-timeline { display: flex; flex-direction: column; }
+.loop-ckpt-loading, .loop-ckpt-empty {
+  display: flex; align-items: center; gap: 6px; color: var(--semi-color-text-2); font-size: 12px; padding: 8px 0;
+}
+.loop-ckpt-node { display: flex; align-items: center; gap: 10px; padding: 8px 0; position: relative; }
+.loop-ckpt-rail { position: relative; width: 20px; display: flex; justify-content: center; }
+.loop-ckpt-rail::before {
+  content: ""; position: absolute; top: -8px; bottom: -8px; width: 1px; background: var(--semi-color-border); left: 50%;
+}
+.loop-ckpt-dot { color: var(--semi-color-primary); background: var(--semi-color-bg-0); z-index: 1; }
+.loop-ckpt-body { flex: 1; min-width: 0; }
+.loop-ckpt-label { font-size: 13px; color: var(--semi-color-text-0); }
+.loop-ckpt-meta { display: flex; gap: 10px; font-size: 11px; color: var(--semi-color-text-2); }
+.loop-ckpt-btn {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: 12px; border-radius: 4px;
+  border: 1px solid var(--semi-color-border); background: var(--semi-color-bg-0); color: var(--semi-color-text-1); padding: 4px 8px;
+}
+.loop-ckpt-btn.danger { border-color: var(--semi-color-danger); color: var(--semi-color-danger); }
+.loop-ckpt-confirm { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--semi-color-text-1); }

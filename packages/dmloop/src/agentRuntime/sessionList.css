@@ -1,0 +1,17 @@
+/* @octo/loop — session list */
+.loop-session-list { display: flex; flex-direction: column; padding: 6px; gap: 2px; }
+.loop-session-loading, .loop-session-empty {
+  display: flex; align-items: center; gap: 6px; padding: 12px; color: var(--semi-color-text-2); font-size: 12px;
+}
+.loop-session-item {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; cursor: pointer;
+  border: none; background: transparent; padding: 7px 8px; border-radius: 5px; font-size: 13px; color: var(--semi-color-text-1);
+}
+.loop-session-item:hover { background: var(--semi-color-fill-0); }
+.loop-session-item.active { background: var(--semi-color-primary-light-default); color: var(--semi-color-primary); }
+.loop-session-ic { flex: none; }
+.loop-session-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loop-session-running { font-size: 10px; color: var(--semi-color-info); background: var(--semi-color-info-light-default); padding: 1px 6px; border-radius: 8px; }
+
+.loop-spin { animation: loop-spin 0.9s linear infinite; }
+@keyframes loop-spin { to { transform: rotate(360deg); } }

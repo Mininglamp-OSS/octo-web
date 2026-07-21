@@ -1,0 +1,35 @@
+/* @octo/loop — rich diff view */
+.loop-diff-root { display: flex; flex-direction: column; gap: 12px; }
+.loop-diff-empty { color: var(--semi-color-text-2); font-size: 13px; }
+.loop-diff-toolbar { display: inline-flex; gap: 2px; background: var(--semi-color-fill-0); border-radius: 6px; padding: 2px; align-self: flex-start; }
+.loop-diff-modebtn {
+  display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent;
+  color: var(--semi-color-text-2); font-size: 12px; padding: 4px 10px; border-radius: 4px; cursor: pointer;
+}
+.loop-diff-modebtn.active { background: var(--semi-color-bg-0); color: var(--semi-color-text-0); }
+
+.loop-diff-file { border: 1px solid var(--semi-color-border); border-radius: 6px; overflow: hidden; }
+.loop-diff-file-header {
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--semi-color-fill-0);
+  font-size: 12px; font-family: var(--code-font, monospace); border-bottom: 1px solid var(--semi-color-border);
+}
+.loop-diff-path { flex: 1; color: var(--semi-color-text-0); overflow: hidden; text-overflow: ellipsis; }
+.loop-diff-add { color: var(--semi-color-success, #52c41a); }
+.loop-diff-del { color: var(--semi-color-danger); }
+.loop-diff-ic.add { color: var(--semi-color-success, #52c41a); }
+.loop-diff-ic.del { color: var(--semi-color-danger); }
+.loop-diff-ic.mod { color: var(--semi-color-info); }
+
+.loop-diff-table { width: 100%; border-collapse: collapse; font-family: var(--code-font, monospace); font-size: 12px; line-height: 1.5; }
+.loop-diff-hunk-header td { background: var(--semi-color-fill-1, #f0f0f0); color: var(--semi-color-text-2); padding: 2px 10px; font-size: 11px; }
+.loop-diff-ln { width: 44px; text-align: right; padding: 0 8px; color: var(--semi-color-text-2); user-select: none; vertical-align: top; white-space: nowrap; }
+.loop-diff-code { padding: 0 8px; white-space: pre-wrap; word-break: break-word; vertical-align: top; }
+.loop-diff-code.insert { background: rgba(82, 196, 26, 0.12); }
+.loop-diff-code.delete { background: rgba(255, 77, 79, 0.12); }
+.loop-diff-code.empty { background: var(--semi-color-fill-0); }
+.loop-diff-sign { display: inline-block; width: 10px; color: var(--semi-color-text-2); }
+.loop-diff-word-ins { background: rgba(82, 196, 26, 0.35); border-radius: 2px; }
+.loop-diff-word-del { background: rgba(255, 77, 79, 0.35); border-radius: 2px; }
+
+.loop-diff-notice { padding: 6px 10px; font-size: 12px; color: var(--semi-color-text-2); }
+.loop-diff-notice.warn { background: var(--semi-color-warning-light-default, #fff7e6); color: var(--semi-color-warning, #d48806); }
