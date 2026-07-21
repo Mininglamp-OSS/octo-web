@@ -16,55 +16,54 @@ function resolveSafeDownloadUrl(value: unknown) {
       return url.toString();
     }
   } catch {
-    // Invalid updater responses use the caller-provided fallback URL.
+    // Invalid updater responses are treated as load failures.
   }
   return undefined;
 }
 
-export async function fetchMobileDownloadUrl(
-  updaterPath: string,
-  fallbackUrl: string
-) {
-  try {
-    const result = await apiFetchJson<{ url?: unknown }>(
-      resolveMobileUpdaterUrl(updaterPath)
-    );
-    return resolveSafeDownloadUrl(result?.url) ?? fallbackUrl;
-  } catch {
-    return fallbackUrl;
-  }
+export async function fetchMobileDownloadUrl(updaterPath: string) {
+  const result = await apiFetchJson<{ url?: unknown }>(
+    resolveMobileUpdaterUrl(updaterPath)
+  );
+  const downloadUrl = resolveSafeDownloadUrl(result?.url);
+  if (!downloadUrl) throw new Error("Updater returned an invalid download URL");
+  return downloadUrl;
 }
 
-export function useMobileDownloadUrl(updaterPath: string, fallbackUrl: string) {
-  const [downloadUrl, setDownloadUrl] = React.useState(fallbackUrl);
-  const requestRef = React.useRef<Promise<string>>();
+type MobileDownloadUrlState =
+  | { status: "loading"; downloadUrl?: undefined }
+  | { status: "ready"; downloadUrl: string }
+  | { status: "error"; downloadUrl?: undefined };
 
-  const resolveDownloadUrl = React.useCallback(() => {
-    if (!requestRef.current) {
-      requestRef.current = fetchMobileDownloadUrl(updaterPath, fallbackUrl);
-    }
-    return requestRef.current;
-  }, [fallbackUrl, updaterPath]);
+export function useMobileDownloadUrl(updaterPath: string) {
+  const [state, setState] = React.useState<MobileDownloadUrlState>({
+    status: "loading",
+  });
+  const requestIdRef = React.useRef(0);
+
+  const load = React.useCallback(() => {
+    const requestId = ++requestIdRef.current;
+    setState({ status: "loading" });
+    void fetchMobileDownloadUrl(updaterPath).then(
+      (downloadUrl) => {
+        if (requestId === requestIdRef.current) {
+          setState({ status: "ready", downloadUrl });
+        }
+      },
+      () => {
+        if (requestId === requestIdRef.current) {
+          setState({ status: "error" });
+        }
+      }
+    );
+  }, [updaterPath]);
 
   React.useEffect(() => {
-    let active = true;
-    void resolveDownloadUrl().then((url) => {
-      if (active) setDownloadUrl(url);
-    });
+    load();
     return () => {
-      active = false;
+      requestIdRef.current += 1;
     };
-  }, [resolveDownloadUrl]);
+  }, [load]);
 
-  return { downloadUrl, resolveDownloadUrl };
-}
-
-export function startMobileDownload(url: string) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "";
-  link.style.display = "none";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  return { ...state, retry: load };
 }

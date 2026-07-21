@@ -9,6 +9,11 @@ const { apiFetchJsonMock } = vi.hoisted(() => ({
   apiFetchJsonMock: vi.fn(),
 }));
 
+type MockWKButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: string;
+  size?: string;
+};
+
 vi.mock("@octo/base", () => ({
   apiFetchJson: apiFetchJsonMock,
   WKApp: {
@@ -16,9 +21,16 @@ vi.mock("@octo/base", () => ({
       config: { apiURL: "/api/v1/" },
     },
   },
+  WKButton: ({ children, ...props }: MockWKButtonProps) =>
+    React.createElement("button", props, children),
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
+  Spin: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) =>
+    React.createElement("span", {
+      "data-spin": "true",
+      "aria-label": ariaLabel,
+    }),
   Popover: ({
     children,
     position,
@@ -65,7 +77,6 @@ vi.mock("qrcode.react", () => ({
 import {
   IOSDownloadButton,
   IOSDownloadPopoverContent,
-  IOS_DOWNLOAD_URL,
   IOS_UPDATER_PATH,
 } from "../IOSDownloadButton";
 
@@ -98,8 +109,7 @@ describe("IOSDownloadButton", () => {
     vi.useRealTimers();
   });
 
-  it("keeps the public TestFlight URL as the updater fallback", () => {
-    expect(IOS_DOWNLOAD_URL).toBe("https://testflight.apple.com/join/uPrdCcy3");
+  it("uses the iOS updater endpoint", () => {
     expect(IOS_UPDATER_PATH).toBe("common/updater/ios/1.0.0");
   });
 
@@ -161,13 +171,16 @@ describe("IOSDownloadButton", () => {
     expect(popover?.getAttribute("data-visible")).toBe("false");
   });
 
-  it("renders the fallback TestFlight URL during server rendering", () => {
+  it("renders a loading state without a stale TestFlight QR code", () => {
     const html = renderToStaticMarkup(
       React.createElement(IOSDownloadPopoverContent)
     );
 
     expect(html).toContain('role="dialog"');
-    expect(html).toContain(`data-qr-value="${IOS_DOWNLOAD_URL}"`);
+    expect(html).toContain('data-spin="true"');
+    expect(html).toContain('aria-label="正在获取下载地址"');
+    expect(html).not.toContain("data-qr-value");
+    expect(html).not.toContain("testflight.apple.com");
     expect(html).toContain("wk-login-mobile-popover-qr");
     expect(html).not.toContain("wk-login-ios-popover-qr");
     expect(html).toContain("TestFlight 安装二维码");
@@ -197,6 +210,26 @@ describe("IOSDownloadButton", () => {
     expect(
       container.querySelector("[data-qr-value]")?.getAttribute("data-qr-value")
     ).toBe(updaterUrl);
+  });
+
+  it("shows an error without a stale QR code when the updater fails", async () => {
+    apiFetchJsonMock.mockRejectedValue(new Error("network error"));
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    mountedContainers.push(container);
+    act(() => {
+      ReactDOM.render(
+        React.createElement(IOSDownloadPopoverContent),
+        container
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector("[data-qr-value]")).toBeNull();
+    expect(container.textContent).toContain("下载地址获取失败");
+    expect(container.textContent).toContain("重试");
   });
 
   it("does not render the removed direct TestFlight action", () => {

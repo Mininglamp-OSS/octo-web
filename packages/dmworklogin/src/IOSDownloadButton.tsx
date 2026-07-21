@@ -1,11 +1,11 @@
 import React from "react";
-import { Popover } from "@douyinfe/semi-ui";
+import { Popover, Spin } from "@douyinfe/semi-ui";
+import { WKButton } from "@octo/base";
 import { QRCodeSVG } from "qrcode.react";
 import { loginT as t } from "./i18n";
 import { useMobileDownloadUrl } from "./mobileDownloadUpdater";
 import "./MobileDownloadPopover.css";
 
-export const IOS_DOWNLOAD_URL = "https://testflight.apple.com/join/uPrdCcy3";
 export const IOS_UPDATER_PATH = "common/updater/ios/1.0.0";
 
 type PopoverHoverProps = Pick<
@@ -16,10 +16,7 @@ type PopoverHoverProps = Pick<
 export const IOSDownloadPopoverContent: React.FC<PopoverHoverProps> = (
   hoverProps
 ) => {
-  const { downloadUrl } = useMobileDownloadUrl(
-    IOS_UPDATER_PATH,
-    IOS_DOWNLOAD_URL
-  );
+  const { status, downloadUrl, retry } = useMobileDownloadUrl(IOS_UPDATER_PATH);
 
   return (
     <div
@@ -30,10 +27,22 @@ export const IOSDownloadPopoverContent: React.FC<PopoverHoverProps> = (
     >
       <div
         className="wk-login-mobile-popover-qr"
+        data-status={status}
         role="img"
         aria-label={t("download.iosQrLabel")}
       >
-        <QRCodeSVG value={downloadUrl} size={104} />
+        {status === "loading" && (
+          <Spin aria-label={t("download.loadingAddress")} size="large" />
+        )}
+        {status === "error" && (
+          <div className="wk-login-mobile-download-state" role="alert">
+            <span>{t("download.addressLoadFailed")}</span>
+            <WKButton type="button" variant="ghost" size="sm" onClick={retry}>
+              {t("download.retry")}
+            </WKButton>
+          </div>
+        )}
+        {status === "ready" && <QRCodeSVG value={downloadUrl} size={104} />}
       </div>
       <strong className="wk-login-mobile-download-popover-title">
         {t("download.iosQrTitle")}

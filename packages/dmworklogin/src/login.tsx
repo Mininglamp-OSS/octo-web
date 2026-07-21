@@ -293,7 +293,7 @@ const LegacyPasswordSection: React.FC<{
     )
 }
 
-// iOS 下载二维码通过 updater 接口获取，失败时回退公开 TestFlight URL。
+// iOS 下载二维码通过 updater 接口获取；加载失败时不展示过期二维码。
 // 实现见 ./IOSDownloadButton.tsx（抽成独立模块便于单测）。
 
 // Known safe error messages from the server that can be shown to users
