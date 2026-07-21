@@ -187,7 +187,9 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
             )}
           </div>
           <div className="skill-market-card__meta-row">
-            <span className="skill-market-card__name">{skill.name}</span>
+            <span className="skill-market-card__name" title={skill.name}>
+              {skill.name}
+            </span>
             {showOwner && (
               <>
                 {!isBotCreator && <span className="skill-market-card__meta-separator">·</span>}

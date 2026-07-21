@@ -57,7 +57,6 @@
   },
   "sort": {
     "ariaLabel": "Skill sort",
-    "label": "Sort:",
     "comprehensive": "Recommended",
     "latest": "Latest",
     "views": "Views",
