@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { getWKApp, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { BoardSession } from '../board/BoardSession.tsx'
+import { HtmlDocView } from '../html/HtmlDocView.tsx'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { OpenNewPageIcon } from '../editor/DocMoreMenu.tsx'
 import { terminalForCreateError } from '../collab/useCollabEditor.ts'
-import { getDoc, type DocMeta } from './docsApi.ts'
+import { getDoc, recordDocView, type DocMeta } from './docsApi.ts'
 import { parseDocumentName } from '../documentName/index.ts'
 import { DEFAULT_DOC_FOLDER } from '../config.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
@@ -23,7 +24,7 @@ import './DocPreviewPane.css'
  * The host (dmworkbase ChatContentPage) mounts this via the `chatDocPreviewPane` endpoint and owns
  * the panel shell (the reused `wk-thread-panel` right-side slot). This component adds a slim top bar
  * with the two sidebar affordances above the reused editor, in EVERY state (loading / terminal /
- * sheet / board / document):
+ * sheet / board / html / document):
  *   - 展开为整页 (onExpandFullPage): the host opens the standalone `/d/:docId?sp=` route in a new tab.
  *   - 关闭 (onClose): the host closes the sidebar slot.
  * The bar is host-owned (not injected into EditorShell's header), so close stays reachable even when
@@ -83,6 +84,23 @@ export function DocPreviewPane({ docId, space, onClose, onExpandFullPage }: DocP
       cancelled = true
     }
   }, [docId, space])
+
+  // Log the "最近查看" view ingest once the doc is READY (parity with StandaloneDocPage and the
+  // in-shell DocsHome.commitOpen entry — WS-17 review P1-2). Guarded by docId via a ref so React
+  // re-renders and strict-mode double-invocation record at most once per opened doc. Fire-and-forget:
+  // recordDocView swallows every failure, so a failed / not-yet-deployed ingest never affects open.
+  //
+  // Unlike the standalone page, we pass NO explicit viewer space: inside the live chat shell the
+  // global request interceptor already carries the viewer's real `currentSpaceId` as X-Space-Id, so
+  // the view is recorded under the viewer's own space (the XIN-1237 write/read contract) without any
+  // seeding. Forcing the doc's `?sp=` space here would record under a space the viewer may not be in.
+  const recordedDocRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (phase.status !== 'ready' || !docId) return
+    if (recordedDocRef.current === docId) return
+    recordedDocRef.current = docId
+    void recordDocView(docId)
+  }, [phase.status, docId])
 
   // Address the room from the preflight's canonical documentName when available (so a doc in a
   // non-default folder / a whiteboard key resolves correctly), else fall back to the link's space
@@ -157,6 +175,22 @@ export function DocPreviewPane({ docId, space, onClose, onExpandFullPage }: DocP
 
   const meta = phase.meta
   const editorDocId = meta.docId || docId
+
+  // Read-only HTML doc ('html'): its content lives in octo-doc (not the yjs collab store), so it must
+  // render via HtmlDocView, mirroring StandaloneDocPage / DocsHome.buildRightPane. The chat click
+  // interceptor is docType-agnostic, so without this branch an html doc opened in the sidebar would
+  // fall through to the collab EditorShell — which has no yjs data for it and reports "not found"
+  // (WS-17 review P1-1). Pass the octo-doc slug so it addresses the published doc.
+  if (meta.docType === 'html') {
+    return withBar(
+      <HtmlDocView
+        key={editorDocId}
+        docId={editorDocId}
+        slug={meta.octoDocSlug}
+        space={addressing.space}
+      />,
+    )
+  }
 
   if (meta.docType === 'board') {
     const boardId = addressing.board || editorDocId
