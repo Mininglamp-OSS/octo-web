@@ -16,7 +16,7 @@ import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
 import { getTopicTemplatesConfig, getTopicTemplates } from "../api/summaryApi";
-import { getOriginChannelType } from "../utils/channelType";
+import { getOriginChannelType, chatTypeToOriginChannelType } from "../utils/channelType";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
 import MemberSelectorModal from "../components/MemberSelectorModal";
@@ -38,7 +38,7 @@ import type {
     SummaryListItem,
     CreateAgentSummaryParams,
 } from "../types/summary";
-import { SummaryMode, SourceType } from "../types/summary";
+import { SummaryMode } from "../types/summary";
 import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced } from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
 
@@ -436,9 +436,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 // 不传 source_name：让后端按 source_id 现查 IM 库最新群名（带类型后缀）。
                 // 避免把创建那一刻的群名冻结进定时配置，从而群改名后定时仍显示旧名。
                 params.sources = selectedChats.map((c) => ({
-                    source_type: c.chat_type === "group" ? SourceType.GROUP_CHAT
-                               : c.chat_type === "thread" ? SourceType.THREAD
-                               : SourceType.DIRECT_MESSAGE,
+                    source_type: chatTypeToOriginChannelType(c.chat_type),
                     source_id: c.chat_id,
                 }));
             }
@@ -709,20 +707,22 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
         this.setState({ savingSummary: true });
         try {
-            // origin_channel_id / origin_channel_type 不再由前端传入 —— 后端会从
-            // session 的 tool_calls 反查 agent 实际读过的第一个 channel_id 作为
-            // origin(见 handler/agent_summary.go)。整页入口 currentChannel 一定
-            // 是 undefined,弹窗入口也不再依赖 channel prop,统一走后端反查。
+            // origin_channel_id / origin_channel_type：整页入口没有 channel prop，
+            // 但用户可能在「选择聊天」里选了 chat。若选了，就把第一个 selectedChat
+            // 作为 origin 明确传给后端（#930），其余进 sources；用户没选（例如纯
+            // refine，只依赖 referenced_task）则不传，回退后端从 session tool_calls
+            // 反查（见 handler/agent_summary.go resolveOriginChannelFromSession）。
             const params: CreateAgentSummaryParams = {
                 session_id: sessionId,
                 title,
             };
 
             if (selectedChats.length > 0) {
+                const origin = selectedChats[0];
+                params.origin_channel_id = origin.chat_id;
+                params.origin_channel_type = chatTypeToOriginChannelType(origin.chat_type);
                 params.sources = selectedChats.map((c) => ({
-                    source_type: c.chat_type === "group" ? SourceType.GROUP_CHAT
-                               : c.chat_type === "thread" ? SourceType.THREAD
-                               : SourceType.DIRECT_MESSAGE,
+                    source_type: chatTypeToOriginChannelType(c.chat_type),
                     source_id: c.chat_id,
                 }));
             }

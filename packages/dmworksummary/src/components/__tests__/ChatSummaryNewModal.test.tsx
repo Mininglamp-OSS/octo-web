@@ -72,11 +72,14 @@ vi.mock('../../utils/channelConvert', () => ({
 
 vi.mock('../../utils/channelType', () => ({
     getSourceType: () => 1,
+    getOriginChannelType: (ch: any) => (ch.channelType === 2 ? 1 : ch.channelType === 5 ? 2 : 3),
+    chatTypeToOriginChannelType: (t: string) => (t === 'group' ? 1 : t === 'thread' ? 2 : 3),
 }));
 
 vi.mock('../../api/summaryApi', () => ({
     getTopicTemplatesConfig: vi.fn().mockResolvedValue({ templates: [], custom_template_limit: 30 }),
     createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
+    createAgentSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
     agentChat: vi.fn(),
     getAgentChatHistory: vi.fn().mockResolvedValue({ session_id: '', messages: [] }),
 }));
@@ -688,5 +691,39 @@ describe('ChatSummaryNewModal agent SSE session_id sync', () => {
         const lastMessage = instance.state.messages[instance.state.messages.length - 1];
         expect(lastMessage.role).toBe('assistant');
         expect(lastMessage.content).toBe('Server response');
+    });
+});
+
+describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('fills origin_channel_id + type from the channel prop (group → 1)', async () => {
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={vi.fn()}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-1' });
+        });
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        expect(summaryApi.createAgentSummary).toHaveBeenCalledWith(
+            expect.objectContaining({ origin_channel_id: 'ch1', origin_channel_type: 1 }),
+        );
     });
 });

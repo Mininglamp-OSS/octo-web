@@ -5,8 +5,8 @@ import { WKApp, I18nContext } from '@octo/base';
 import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
 import type { ReplaceMode, SelectionRange } from '@octo/base/src/Components/VoiceInputButton';
 import type { TopicTemplate, ChatCandidate, ScheduleConfig, CreateAgentSummaryParams, ChatMessage } from '../types/summary';
-import { SourceType, SummaryMode } from '../types/summary';
-import { getSourceType, getOriginChannelType } from '../utils/channelType';
+import { SummaryMode } from '../types/summary';
+import { getSourceType, getOriginChannelType, chatTypeToOriginChannelType } from '../utils/channelType';
 import { channelToChatCandidate } from '../utils/channelConvert';
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from '../utils/templateResolver';
 
@@ -391,11 +391,7 @@ export default class ChatSummaryNewModal extends Component<
                 // 不传 source_name：让后端按 source_id 现查 IM 库最新群名（带类型后缀），
                 // 与下方 fallback 分支一致，避免把群名冻结进配置。
                 ? selectedChats.map((c) => ({
-                    source_type: (c.chat_type === 'group'
-                        ? SourceType.GROUP_CHAT
-                        : c.chat_type === 'thread'
-                        ? SourceType.THREAD
-                        : SourceType.DIRECT_MESSAGE),
+                    source_type: chatTypeToOriginChannelType(c.chat_type),
                     source_id: c.chat_id,
                 }))
                 : [{
@@ -611,24 +607,25 @@ export default class ChatSummaryNewModal extends Component<
 
         this.setState({ savingSummary: true });
         try {
-            // sources 保留原逻辑:若用户在别处显式选过 chats,把它们透传成 sources;
-            // 否则不传,后端会自己从 tool_calls 反推 origin,sources 留空由后续版本
-            // 的 deliverable_context 快照补齐。
+            // sources：若用户在别处显式选过 chats,把它们透传成 sources;否则不传。
             const sources = selectedChats.length > 0
                 ? selectedChats.map((c) => ({
-                    source_type: (c.chat_type === 'group'
-                        ? SourceType.GROUP_CHAT
-                        : c.chat_type === 'thread'
-                        ? SourceType.THREAD
-                        : SourceType.DIRECT_MESSAGE),
+                    source_type: chatTypeToOriginChannelType(c.chat_type),
                     source_id: c.chat_id,
                 }))
                 : undefined;
 
+            // origin_channel_id / origin_channel_type：本入口是从群/子区右上角触发,
+            // channel prop 天然就是用户心里的 origin —— 直接明确传给后端(#930,入口即
+            // 语义),不再依赖后端从 tool_calls 反查。映射与传统路径 (getOriginChannelType)
+            // 完全一致。
+            const { channel } = this.props;
             const res = await summaryApi.createAgentSummary({
                 session_id: sessionId,
                 title,
                 sources,
+                origin_channel_id: channel.channelID,
+                origin_channel_type: getOriginChannelType(channel),
             });
 
             Toast.success(t('summary.create.agentSummaryCreated'));
