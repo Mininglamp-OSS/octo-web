@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest"
-import { createMessageReactionSyncController } from "../syncController"
+import {
+  createMessageReactionSyncController,
+  messageReactionCommandSeq,
+} from "../syncController"
 
 const channel = { channelID: "group-1", channelType: 2 }
 
@@ -8,6 +11,37 @@ function message(messageID: string, reactions: unknown[] = []) {
 }
 
 describe("message reaction realtime sync controller", () => {
+  it("accepts only syncMessageReaction for the active channel with a positive seq", () => {
+    expect(
+      messageReactionCommandSeq(
+        "syncMessageReaction",
+        { channel_id: "group-1", channel_type: 2, seq: 42 },
+        channel,
+      ),
+    ).toBe(42)
+    expect(
+      messageReactionCommandSeq(
+        "syncMessageReaction",
+        { channel_id: "other", channel_type: 2, seq: 42 },
+        channel,
+      ),
+    ).toBeUndefined()
+    expect(
+      messageReactionCommandSeq(
+        "messageReaction",
+        { channel_id: "group-1", channel_type: 2, seq: 42 },
+        channel,
+      ),
+    ).toBeUndefined()
+    expect(
+      messageReactionCommandSeq(
+        "syncMessageReaction",
+        { channel_id: "group-1", channel_type: 2, seq: 0 },
+        channel,
+      ),
+    ).toBeUndefined()
+  })
+
   it("syncs from the highest inline seq and applies message-scoped records", async () => {
     const messages = [
       message("123", [
