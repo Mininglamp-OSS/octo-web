@@ -172,83 +172,53 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         if (activeType !== 'item') return
         const d = active.data.current
         if (!isDragData(d) || d.type !== 'item') return
-        const channelID = d.channelID
-        const channelType = d.channelType
 
-        // DM 跨分组移动：复用 followDM(peer_uid, category_id) 覆盖式更新（与右键菜单同实现）。
-        // 失败时让 onUnfollow reload 兜底回到原位。
-        const moveDmToCategory = async (peerUid: string, targetCatId: string) => {
-            try {
-                await FollowService.followDM({ peer_uid: peerUid, category_id: targetCatId })
-                onUnfollow?.()
-            } catch (err) {
-                console.error('[ConversationListGrouped] failed to move DM to category', err)
-                onUnfollow?.()
-            }
-        }
-
-        // 分支 1：item → item，落在另一个会话上
+        // 分支 1：item → item，落在另一个会话上。
+        // 拖拽不再跨 category：只在同分组内重新排序，落到其它分组的会话上直接忽略。
+        // 换 category 请走右键菜单「移到分组」，不由拖拽手势触发。
         if (overType === 'item') {
             const sourceCatId = itemToCategory.get(String(active.id))
             const targetCatId = itemToCategory.get(overId)
             if (!sourceCatId || !targetCatId) return
 
-            if (sourceCatId === targetCatId) {
-                // 同分组内手动排序：调 /v2/follow/sort，items 顺序由数组下标决定。
-                // 子区跟随父群在视觉上一起移动 → 提交时把每个群的已关注子区紧跟其后，
-                // 否则后端不更新子区的 follow_sort，旧值会让子区在 sidebar 里漂离父群。
-                const items = categoryItems.get(sourceCatId) || []
-                const oldIndex = items.findIndex(c => `item::${c.channel.channelType}::${c.channel.channelID}` === String(active.id))
-                const newIndex = items.findIndex(c => `item::${c.channel.channelType}::${c.channel.channelID}` === overId)
-                if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-                    const newOrder = arrayMove(items, oldIndex, newIndex)
-                    const sortItems: { target_type: number; target_id: string }[] = []
-                    for (const c of newOrder) {
-                        sortItems.push({
-                            target_type: c.channel.channelType,
-                            target_id: c.channel.channelID,
-                        })
-                        // 群下面紧跟其已关注子区。followedChildThreadsByParent 已合并
-                        // IM 缓存（按 followedKeys 过滤）+ sidebar 自带的 sidebar-only
-                        // 关注子区（通过 parent_channel_id 反挂），保证拖父群时所有
-                        // 已关注的子区都进 sort payload，不会漏掉新关注但 IM 没缓存的。
-                        if (c.channel.channelType === ChannelTypeGroup) {
-                            const childThreads = followedChildThreadsByParent.get(c.channel.channelID) || []
-                            for (const t of childThreads) {
-                                sortItems.push({
-                                    target_type: ChannelTypeCommunityTopic,
-                                    target_id: t.channel.channelID,
-                                })
-                            }
+            // 拖拽不再跨 category：源与目标不在同一分组时直接返回，不做任何移动。
+            if (sourceCatId !== targetCatId) return
+
+            // 同分组内手动排序：调 /v2/follow/sort，items 顺序由数组下标决定。
+            // 子区跟随父群在视觉上一起移动 → 提交时把每个群的已关注子区紧跟其后，
+            // 否则后端不更新子区的 follow_sort，旧值会让子区在 sidebar 里漂离父群。
+            const items = categoryItems.get(sourceCatId) || []
+            const oldIndex = items.findIndex(c => `item::${c.channel.channelType}::${c.channel.channelID}` === String(active.id))
+            const newIndex = items.findIndex(c => `item::${c.channel.channelType}::${c.channel.channelID}` === overId)
+            if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+                const newOrder = arrayMove(items, oldIndex, newIndex)
+                const sortItems: { target_type: number; target_id: string }[] = []
+                for (const c of newOrder) {
+                    sortItems.push({
+                        target_type: c.channel.channelType,
+                        target_id: c.channel.channelID,
+                    })
+                    // 群下面紧跟其已关注子区。followedChildThreadsByParent 已合并
+                    // IM 缓存（按 followedKeys 过滤）+ sidebar 自带的 sidebar-only
+                    // 关注子区（通过 parent_channel_id 反挂），保证拖父群时所有
+                    // 已关注的子区都进 sort payload，不会漏掉新关注但 IM 没缓存的。
+                    if (c.channel.channelType === ChannelTypeGroup) {
+                        const childThreads = followedChildThreadsByParent.get(c.channel.channelID) || []
+                        for (const t of childThreads) {
+                            sortItems.push({
+                                target_type: ChannelTypeCommunityTopic,
+                                target_id: t.channel.channelID,
+                            })
                         }
                     }
-                    onSortFollowItems?.(sortItems)
                 }
-            } else if (!isVirtualCategory(targetCatId)) {
-                // 跨分组移动
-                if (channelType === ChannelTypeGroup) {
-                    onMoveGroupToCategory(channelID, targetCatId)
-                } else if (channelType === ChannelTypePerson) {
-                    moveDmToCategory(channelID, targetCatId)
-                }
+                onSortFollowItems?.(sortItems)
             }
             return
         }
 
-        // 分支 2：item → 分组 header / drop area（群 + DM 跨分组移动；子区不支持）
-        if (channelType === ChannelTypeCommunityTopic) return
-        let targetCatId: string | undefined
-        if (overId.startsWith('drop::cat::')) {
-            targetCatId = overId.replace('drop::cat::', '')
-        } else if (overId.startsWith('cat::')) {
-            targetCatId = overId.replace('cat::', '')
-        }
-        if (!targetCatId || isVirtualCategory(targetCatId)) return
-        if (channelType === ChannelTypeGroup) {
-            onMoveGroupToCategory(channelID, targetCatId)
-        } else if (channelType === ChannelTypePerson) {
-            moveDmToCategory(channelID, targetCatId)
-        }
+        // 分支 2：item → 分组 header / drop area。
+        // 拖拽不再跨 category：忽略落到分组 header/drop 区域的跨分组移动，换分组请走右键菜单。
     }
     // ──────────────────────────────────────────────────────────────────────────
 
