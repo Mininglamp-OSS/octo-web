@@ -25,7 +25,9 @@ function read(wsId: string): RecencyMap {
   if (!s || !wsId) return {};
   try {
     const parsed = JSON.parse(s.getItem(storageKey(wsId)) ?? "null");
-    return parsed && typeof parsed === "object" ? (parsed as RecencyMap) : {};
+    // typeof [] === "object": reject arrays so a corrupted slot degrades to {} instead of
+    // silently writing string keys onto an array (which JSON.stringify then drops).
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as RecencyMap) : {};
   } catch {
     return {};
   }
@@ -74,5 +76,17 @@ export function sortByRecency<T extends { type: string; id: string; label: strin
     const rb = recency[key(b.type, b.id)] ?? 0;
     if (ra !== rb) return rb - ra;
     return a.label.localeCompare(b.label);
+  });
+}
+
+// Keep at most `perType` items of each type, preserving input order. Used in search
+// mode so a flood of one type (e.g. members) can't crowd every expert/team out of a
+// single global cap — every matching type stays reachable.
+export function capPerType<T extends { type: string }>(items: T[], perType: number): T[] {
+  const count: Record<string, number> = {};
+  return items.filter((it) => {
+    const n = (count[it.type] ?? 0) + 1;
+    count[it.type] = n;
+    return n <= perType;
   });
 }

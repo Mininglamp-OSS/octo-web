@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, beforeAll } from "vitest";
-import { sortByRecency, recordMentionUsage, getRecencyMap } from "../mentionRecency";
+import { sortByRecency, recordMentionUsage, getRecencyMap, capPerType } from "../mentionRecency";
 
 // jsdom's localStorage is unreliable under Node here; inject a minimal in-memory one.
 beforeAll(() => {
@@ -37,6 +37,30 @@ describe("sortByRecency", () => {
     const copy = [...items];
     sortByRecency(items, {});
     expect(items).toEqual(copy);
+  });
+});
+
+describe("capPerType", () => {
+  const mk = (type: string, n: number) =>
+    Array.from({ length: n }, (_, i) => ({ type, id: `${type}${i}` }));
+
+  it("keeps at most N of each type so no type is crowded out", () => {
+    // the search-truncation bug scenario: 25 members ahead of a few experts/teams.
+    const items = [...mk("member", 25), ...mk("agent", 5), ...mk("squad", 3)];
+    const out = capPerType(items, 10);
+    const count = (t: string) => out.filter((i) => i.type === t).length;
+    expect(count("member")).toBe(10); // capped
+    expect(count("agent")).toBe(5); // all present — not excluded by 25 members
+    expect(count("squad")).toBe(3); // all present
+  });
+
+  it("preserves input (recency) order", () => {
+    const items = [
+      { type: "a", id: "1" },
+      { type: "b", id: "2" },
+      { type: "a", id: "3" },
+    ];
+    expect(capPerType(items, 10).map((i) => i.id)).toEqual(["1", "2", "3"]);
   });
 });
 

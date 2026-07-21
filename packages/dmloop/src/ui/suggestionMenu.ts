@@ -316,7 +316,9 @@ export function createMentionMenu(
         el.appendChild(hint);
       }
     }
-    selectedBtn?.scrollIntoView({ block: "nearest" });
+    // Only scroll once the popup is anchored (position() set an inline top); otherwise
+    // scrollIntoView on a body-mounted absolute element could nudge the whole page.
+    if (el.style.top) selectedBtn?.scrollIntoView({ block: "nearest" });
   }
 
   // Arrow nav just moves the highlight class — no DOM rebuild (paint() only
@@ -329,7 +331,7 @@ export function createMentionMenu(
     selectedKey = curNav[next]!.key;
     const btn = rowByKey.get(selectedKey);
     btn?.classList.add("is-selected");
-    btn?.scrollIntoView({ block: "nearest" });
+    if (el?.style.top) btn?.scrollIntoView({ block: "nearest" });
   }
 
   function position(rect: DOMRect | null | undefined) {

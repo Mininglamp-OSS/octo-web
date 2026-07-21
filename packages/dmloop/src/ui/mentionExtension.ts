@@ -6,12 +6,12 @@ import { searchIssues, listIssues } from "../api/issueApi";
 import { agentStatusMap } from "../api/agentApi";
 import { currentWorkspaceId } from "../api/http";
 import { ISSUE_STATUS_HEX } from "./meta";
-import { getRecencyMap, recordMentionUsage, sortByRecency } from "./mentionRecency";
+import { getRecencyMap, recordMentionUsage, sortByRecency, capPerType } from "./mentionRecency";
 import { createMentionMenu, type LoopMentionItem, type MentionMenuLabels } from "./suggestionMenu";
 
 // Browse (empty @) shows a few per type; experts/expert-teams reveal all via
 // "show more" (small sets), members/tasks fall back to search (large sets).
-const MAX_SEARCH = 20; // flat actor list when a query is typed
+const MAX_SEARCH_PER_TYPE = 10; // per actor type when a query is typed — no type crowded out by another's volume
 const MAX_ISSUE_BROWSE = 51; // recent tasks on empty @ (menu shows up to 50 + a "search" hint past that)
 const MAX_ISSUE_SEARCH = 20; // task matches when a query is typed
 
@@ -156,7 +156,7 @@ export function buildLoopMention(getCandidates: () => AssigneeCandidate[], label
           recency,
         );
         const users: LoopMentionItem[] = q
-          ? ranked.slice(0, MAX_SEARCH).map((u) => ({ ...u, group: "search" as const }))
+          ? capPerType(ranked, MAX_SEARCH_PER_TYPE).map((u) => ({ ...u, group: "search" as const }))
           : ranked;
         // Debounce the per-keystroke issue search (empty "@" fires once, no wait). If the
         // query is superseded mid-flight the promise never resolves, so tiptap never renders
