@@ -720,6 +720,15 @@ export default class ConversationList extends Component<
     // 不再套 .wk-conversationlist-item-thread（避免缩进 + 树形连接线视觉嵌套）。
     const avatarChannel = isThread && parentChannel ? parentChannel : conversationWrap.channel;
     const isDM = avatarChannel.channelType === ChannelTypePerson;
+    // 1v1 未读高优先级：与群聊「@我」共用同一深红视觉信号（注意力分级——「有人在等我响应」），
+    // 触发条件在 1v1 退化为「未读 > 0」。三个前提对齐 Android / iOS：
+    //  1）unread 已是 Space 过滤后的口径（见 Model.unread：Person 频道用 spaceUnread、
+    //     系统 Bot 跨 Space 清零），跨 Space 污染不会误点亮；
+    //  2）排除免打扰 1v1（effectiveMute）——不是「有人在等回复」；
+    //  3）语义与群聊 mention 区分，用独立文案 [未读]/[unread]，不复用 [@我]/[@me]。
+    // 群聊 mention（hasMention）优先，命中时不再叠加 1v1 标记。
+    const is1v1Priority =
+      isDM && !hasMention && !effectiveMute && totalUnread > 0;
     const unreadNudgeClass =
       locatingUnreadKey === conversationWrap.channel.getChannelKey()
         ? locatingUnreadPulse % 2 === 0
@@ -859,11 +868,16 @@ export default class ConversationList extends Component<
                   ? this._getTypingUI(conversationWrap)
                   : this.lastContent(conversationWrap)}
               </div>
-              {(hasMention || totalUnread > 0) && (
+              {(hasMention || is1v1Priority || totalUnread > 0) && (
                 <span className="wk-conversationlist-item-indicators">
                   {hasMention && (
                     <span className="wk-mention" aria-hidden="true">
                       {t("base.conversationList.mentionMarker")}
+                    </span>
+                  )}
+                  {is1v1Priority && (
+                    <span className="wk-mention" aria-hidden="true">
+                      {t("base.conversationList.unreadPriorityMarker")}
                     </span>
                   )}
                   {totalUnread > 0 && (

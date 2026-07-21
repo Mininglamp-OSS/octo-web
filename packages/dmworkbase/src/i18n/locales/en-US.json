@@ -35,6 +35,7 @@
   "conversationList.externalGroup": "External group",
   "conversationList.justNow": "Just now",
   "conversationList.mentionMarker": "@me",
+  "conversationList.unreadPriorityMarker": "unread",
   "conversationList.minutesAgoShort": "{{count}}m",
   "conversationList.toggleThreads": "Expand or collapse threads",
   "conversationList.typing": "typing",

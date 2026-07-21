@@ -292,6 +292,71 @@ describe("ConversationList unread indicators", () => {
     ).toBe("5");
   });
 
+  it("renders the 1v1 unread-priority marker for an unread DM without mention", () => {
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[makeConversation({ unread: 2 })] as any}
+        />,
+        container
+      );
+    });
+
+    const indicators = container.querySelector(
+      ".wk-conversationlist-item-indicators"
+    );
+    // 1v1 未读→独立的 unreadPriorityMarker（非 @我）
+    expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
+      "base.conversationList.unreadPriorityMarker"
+    );
+    expect(indicators?.querySelector(".wk-conv-unread-num")?.textContent).toBe(
+      "2"
+    );
+  });
+
+  it("suppresses the 1v1 priority marker when the DM is muted", () => {
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[makeConversation({ unread: 4, mute: true })] as any}
+        />,
+        container
+      );
+    });
+
+    const indicators = container.querySelector(
+      ".wk-conversationlist-item-indicators"
+    );
+    // 免打扰 1v1：不点亮深红标记，但仍显示静音未读数
+    expect(indicators?.querySelector(".wk-mention")).toBeNull();
+    expect(
+      indicators?.querySelector(".wk-conv-unread-num--muted")?.textContent
+    ).toBe("4");
+  });
+
+  it("prefers the group mention marker over the 1v1 marker when both would apply", () => {
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={
+            [makeConversation({ unread: 1, mention: true })] as any
+          }
+        />,
+        container
+      );
+    });
+
+    const indicators = container.querySelector(
+      ".wk-conversationlist-item-indicators"
+    );
+    const markers = indicators?.querySelectorAll(".wk-mention");
+    // 只有一个标记，且是群聊 @我（hasMention 优先，不叠加 1v1）
+    expect(markers?.length).toBe(1);
+    expect(markers?.[0]?.textContent).toBe(
+      "base.conversationList.mentionMarker"
+    );
+  });
+
   it("does not render indicators when there is no unread count or mention", () => {
     act(() => {
       ReactDOM.render(
