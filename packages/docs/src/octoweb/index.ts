@@ -104,10 +104,19 @@ export function onNavMenuActivated(menuId: string, cb: () => void): () => void {
   return () => bus.off('wk:nav-menu-activated', handler)
 }
 
-/** Page size for space-member fetches — mirrors the host useMemberList pattern (default 50). */
+/** Page size for a single member page (getSpaceMembers default). */
 const SPACE_MEMBERS_PAGE_SIZE = 50
-/** Cap total pages so an unexpectedly huge space can't loop unbounded (1000 members). */
+/** Safety cap on page count so a pathological space can't loop unbounded. */
 const SPACE_MEMBERS_MAX_PAGES = 20
+/**
+ * Full-roster page size. `fetchAllSpaceMembers` pulls the WHOLE space in as few requests as
+ * possible — matching the Contacts page's one-shot `getMembers(spaceId, 1, 10000)`
+ * (dmworkcontacts Contacts/index.tsx `loadAllData`). The host honors up to 10000 per request
+ * (backend caps there), so a typical space (5760 members) comes back in ONE request. This is
+ * what lets the member picker filter the FULL roster client-side; the old 50×20=1000 page cap
+ * silently dropped every member past 1000 in a large space (the 5760-member picker bug).
+ */
+const SPACE_MEMBERS_FULL_PAGE_SIZE = 10000
 
 /** Minimal view of the host SpaceService the docs seam touches (uid + name + avatar/robot). */
 interface HostSpaceMember {
@@ -163,19 +172,21 @@ export async function getSpaceMembers(
 }
 
 /**
- * Fetch ALL members of a space, looping pages until exhausted (page size 50), mirroring the
- * host useMemberList "loop to fetch all pages" pattern. Bounded by SPACE_MEMBERS_MAX_PAGES so
- * a very large space can't loop forever. Returns `{ uid, name }` pairs.
+ * Fetch ALL members of a space and return `{ uid, name }` pairs. Pulls the full roster in as few
+ * requests as possible (one big page of SPACE_MEMBERS_FULL_PAGE_SIZE, same as the Contacts page's
+ * getMembers(spaceId, 1, 10000)); the loop only guards the rare space larger than one page. This
+ * replaces the old 50×20=1000-member page cap, which silently truncated large spaces so the member
+ * picker could not surface anyone past 1000 (the 5760-member-space bug).
  */
 export async function fetchAllSpaceMembers(spaceId: string): Promise<SpaceMemberLite[]> {
   if (!spaceId) return []
   const all: SpaceMemberLite[] = []
   let page = 1
   while (page <= SPACE_MEMBERS_MAX_PAGES) {
-    const batch = await getSpaceMembers(spaceId, page, SPACE_MEMBERS_PAGE_SIZE)
+    const batch = await getSpaceMembers(spaceId, page, SPACE_MEMBERS_FULL_PAGE_SIZE)
     if (!batch || batch.length === 0) break
     all.push(...batch)
-    if (batch.length < SPACE_MEMBERS_PAGE_SIZE) break // last page
+    if (batch.length < SPACE_MEMBERS_FULL_PAGE_SIZE) break // last page
     page++
   }
   return all
