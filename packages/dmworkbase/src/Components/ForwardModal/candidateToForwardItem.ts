@@ -3,6 +3,7 @@ import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import { parseThreadChannelId } from "../../Service/Thread"
 import { chatTypeToChannelType } from "./chatTypeToChannelType"
 import type { ForwardItem } from "./ForwardModal"
+import { getImChannelInfo } from "../../im-runtime/channelRuntime"
 
 /** searchChatCandidates 后端返回的单条候选（只取本模块用到的字段）。 */
 export interface SearchChatCandidate {
@@ -28,7 +29,7 @@ export interface SearchChatCandidate {
 export function candidateToForwardItem(
   candidate: SearchChatCandidate,
   getCachedChannelInfo: (channel: Channel) => ChannelInfo | undefined = (ch) =>
-    WKSDK.shared().channelManager.getChannelInfo(ch),
+    getImChannelInfo(WKSDK.shared(), ch),
 ): ForwardItem {
   const chType = chatTypeToChannelType(candidate.chat_type)
   const ch = new Channel(candidate.chat_id, chType)

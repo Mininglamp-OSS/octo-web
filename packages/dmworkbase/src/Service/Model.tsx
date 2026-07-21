@@ -15,6 +15,7 @@ import {
     mentionUidStateFromRobot,
     type MentionUidState,
 } from "../Utils/mentionRender"
+import { getImChannelInfo, getImChannelSubscribers } from "../im-runtime/channelRuntime"
 
 export class ConversationWrap {
     conversation: Conversation
@@ -280,7 +281,7 @@ export class MessageWrap {
 
 
     public get from(): ChannelInfo | undefined {
-        return WKSDK.shared().channelManager.getChannelInfo(new Channel(this.fromUID, ChannelTypePerson))
+        return getImChannelInfo(WKSDK.shared(), new Channel(this.fromUID, ChannelTypePerson))
     }
 
     public get channel() {
@@ -614,7 +615,7 @@ export class MessageWrap {
         const state = new Map<string, MentionUidState>()
         const uidSet = new Set(uids)
         try {
-            const subscribers = WKSDK.shared().channelManager.getSubscribes(this.channel) || []
+            const subscribers = getImChannelSubscribers(WKSDK.shared(), this.channel)
             for (const sub of subscribers as any[]) {
                 if (sub?.uid && uidSet.has(sub.uid)) {
                     const uidState = mentionUidStateFromRobot(sub.orgData?.robot)
@@ -631,7 +632,7 @@ export class MessageWrap {
 
     private getChannelInfoMentionUidState(uid: string): MentionUidState {
         try {
-            const info = WKSDK.shared().channelManager.getChannelInfo(new Channel(uid, ChannelTypePerson))
+            const info = getImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson))
             if (!info) return "unknown"
             return mentionUidStateFromRobot(info.orgData?.robot)
         } catch {

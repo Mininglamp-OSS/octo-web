@@ -1,4 +1,9 @@
 import { useState, useEffect } from 'react';
+import {
+    addImChannelInfoListener,
+    fetchImChannelInfo,
+    getImChannelInfo,
+} from '@octo/base';
 import WKSDK, { Channel } from 'wukongimjssdk';
 import type { ChannelInfo } from 'wukongimjssdk';
 
@@ -19,7 +24,8 @@ export function useChannelName(
 ): string {
     const [name, setName] = useState<string>(() => {
         if (!channelId || !channelType) return '';
-        const info = WKSDK.shared().channelManager.getChannelInfo(
+        const info = getImChannelInfo(
+            WKSDK.shared(),
             new Channel(channelId, channelType),
         );
         return info?.title || '';
@@ -33,7 +39,8 @@ export function useChannelName(
         let aborted = false;
 
         const channel = new Channel(channelId, channelType);
-        const cached = WKSDK.shared().channelManager.getChannelInfo(channel);
+        const sdk = WKSDK.shared();
+        const cached = getImChannelInfo(sdk, channel);
         if (cached?.title) {
             setName(cached.title);
         }
@@ -49,11 +56,11 @@ export function useChannelName(
             }
         };
 
-        WKSDK.shared().channelManager.addListener(listener);
+        const unsubscribe = addImChannelInfoListener(sdk, listener);
 
         // 缓存未命中时触发异步 fetch
         if (!cached?.title) {
-            WKSDK.shared().channelManager.fetchChannelInfo(channel).catch(() => {
+            fetchImChannelInfo(sdk, channel).catch(() => {
                 // fetch 失败不 fallback 到 channelId; 调用方视觉上 "#{xxx...}" 不友好,
                 // 保持空串让上层决定显示 "未知群聊" 或隐藏整块
             });
@@ -61,7 +68,7 @@ export function useChannelName(
 
         return () => {
             aborted = true;
-            WKSDK.shared().channelManager.removeListener(listener);
+            unsubscribe();
         };
     }, [channelId, channelType]);
 

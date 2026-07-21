@@ -9,6 +9,7 @@ import { isRealnameVerified } from "../../Utils/displayName";
 import { resolveRealnameVerifyUrl } from "./realnameVerifyUrl";
 import { t } from "../../i18n";
 import UserService from "../../Service/UserService";
+import { addImChannelInfoListener } from "../../im-runtime/channelRuntime";
 
 /**
  * 「实验性功能」入口在 MeInfo 默认隐藏 —— 通过连击「OCTO 号」行 5 次解锁
@@ -64,6 +65,7 @@ const LAB_MODE_STORAGE_KEY = "lab_mode_enabled";
 export class MeInfoVM extends ProviderListener {
 
     channelInfoListener!:ChannelInfoListener
+    unsubscribeChannelInfoListener?: () => void
     /** 本页加载时主动拉取的自身 profile（含 realname_verified / real_name） */
     selfChannelInfo?: ChannelInfo
 
@@ -91,7 +93,7 @@ export class MeInfoVM extends ProviderListener {
             this.selfChannelInfo = channelInfo
             this.notifyListener()
         }
-        WKSDK.shared().channelManager.addListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this.channelInfoListener)
 
         // pull-from-idp endpoint 已废弃(dmworkim 侧),本页打开时仅做两件事:
         //   1. 同步清掉 ?verified=1 query(回跳兜底,避免二次进入重复触发)
@@ -118,7 +120,8 @@ export class MeInfoVM extends ProviderListener {
     }
 
     didUnMount(): void {
-        WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
     }
 
     /**

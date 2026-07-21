@@ -2,6 +2,7 @@ import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
 import { GroupRole } from "./Const";
 import { ThreadStatus } from "./Thread";
 import WKApp from "../App";
+import { getImChannelSubscribers } from "../im-runtime/channelRuntime";
 
 /**
  * 当前登录用户在指定群是否为群主 / 管理员 —— 子区所有权限判定的共同底座（#451 review）。
@@ -11,7 +12,7 @@ import WKApp from "../App";
  */
 function isGroupOwnerOrManager(groupNo: string): boolean {
   const groupChannel = new Channel(groupNo, ChannelTypeGroup);
-  const subscribers = WKSDK.shared().channelManager.getSubscribes(groupChannel);
+  const subscribers = getImChannelSubscribers(WKSDK.shared(), groupChannel);
   const me = subscribers?.find((s) => s.uid === WKApp.loginInfo.uid);
   return me?.role === GroupRole.owner || me?.role === GroupRole.manager;
 }

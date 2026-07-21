@@ -22,6 +22,7 @@ import {
 } from "./userInfoRouter";
 import { I18nContext } from "../../i18n";
 import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
+import { getImChannelSubscribers, syncImChannelSubscribers } from "../../im-runtime/channelRuntime";
 import "./index.css";
 
 /**
@@ -50,11 +51,8 @@ export function createDefaultExternalViewerGate(): ExternalViewerGate {
     isExternal: (uid, fromChannel, channelInfo) => {
       // 1) Group subscriber orgData (primary source, matches UserInfoVM step 1).
       if (fromChannel && fromChannel.channelType !== ChannelTypePerson) {
-        const subscribers =
-          (WKSDK.shared().channelManager.getSubscribes(fromChannel) as
-            | { uid?: string; orgData?: ChannelInfoOrgDataLike }[]
-            | null
-            | undefined) ?? [];
+        const subscribers = getImChannelSubscribers(WKSDK.shared(), fromChannel) as
+          { uid?: string; orgData?: ChannelInfoOrgDataLike }[];
         const sub = subscribers.find((s) => s && s.uid === uid);
         const org = sub?.orgData;
         if (org) {
@@ -280,15 +278,11 @@ export default class WKBase
         continue;
       }
       try {
-        await Promise.resolve(WKSDK.shared().channelManager.syncSubscribes(ch));
+        await syncImChannelSubscribers(WKSDK.shared(), ch);
       } catch {
         // best-effort: fall back to whatever is already cached
       }
-      const subs =
-        (WKSDK.shared().channelManager.getSubscribes(ch) as
-          | { uid?: string }[]
-          | null
-          | undefined) ?? [];
+      const subs = getImChannelSubscribers(WKSDK.shared(), ch) as { uid?: string }[];
       for (const s of subs) {
         if (s?.uid) uids.add(s.uid);
       }

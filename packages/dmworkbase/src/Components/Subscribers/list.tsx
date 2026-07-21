@@ -18,6 +18,11 @@ import { isRealnameVerified } from "../../Utils/displayName";
 import { OnlineStatusBadge } from "../ConversationList";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import { I18nContext } from "../../i18n";
+import {
+  addImChannelInfoListener,
+  fetchImChannelInfo,
+  getImChannelInfo,
+} from "../../im-runtime/channelRuntime";
 
 export interface SubscriberListProps {
   channel: Channel;
@@ -43,6 +48,7 @@ export class SubscriberList extends Component<
   declare context: React.ContextType<typeof I18nContext>;
 
   private channelInfoListener!: ChannelInfoListener;
+  private unsubscribeChannelInfoListener?: () => void;
   // 当前已预取过 channelInfo 的 uid 集合，避免重复发请求
   private prefetchedUids = new Set<string>();
 
@@ -64,16 +70,21 @@ export class SubscriberList extends Component<
         this.setState({});
       }
     };
-    WKSDK.shared().channelManager.addListener(this.channelInfoListener);
+    this.unsubscribeChannelInfoListener = addImChannelInfoListener(
+      WKSDK.shared(),
+      this.channelInfoListener
+    );
   }
 
   componentWillUnmount() {
-    WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
+    this.unsubscribeChannelInfoListener?.();
+    this.unsubscribeChannelInfoListener = undefined;
     this.prefetchedUids.clear();
   }
 
   needShowOnlineStatus(uid: string): boolean {
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+    const channelInfo = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(uid, ChannelTypePerson)
     );
     if (!channelInfo) return false;
@@ -83,7 +94,8 @@ export class SubscriberList extends Component<
   }
 
   getOnlineTip(uid: string): string | undefined {
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+    const channelInfo = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(uid, ChannelTypePerson)
     );
     if (!channelInfo || channelInfo.online) return undefined;
@@ -136,7 +148,8 @@ export class SubscriberList extends Component<
   // 获取显示名称
   getShowName = (subscriber: Subscriber) => {
     // 优先显示个人备注
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+    const channelInfo = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(subscriber.uid, ChannelTypePerson)
     );
     if (
@@ -219,8 +232,8 @@ export class SubscriberList extends Component<
       if (this.prefetchedUids.has(item.uid)) continue;
       this.prefetchedUids.add(item.uid);
       const ch = new Channel(item.uid, ChannelTypePerson);
-      if (!WKSDK.shared().channelManager.getChannelInfo(ch)) {
-        WKSDK.shared().channelManager.fetchChannelInfo(ch);
+      if (!getImChannelInfo(WKSDK.shared(), ch)) {
+        void fetchImChannelInfo(WKSDK.shared(), ch);
       }
     }
   };

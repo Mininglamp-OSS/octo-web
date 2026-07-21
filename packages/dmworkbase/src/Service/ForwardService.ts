@@ -45,6 +45,7 @@ import { isConversationDisbanded } from "../Utils/groupDisband";
 import { wrapSendContentForInjection } from "../Utils/sendContentProxy";
 import { applyMsgLevelExternalFieldsWithFallback } from "./Convert";
 import { ChannelTypePerson } from "wukongimjssdk";
+import { getImChannelInfo } from "../im-runtime/channelRuntime";
 
 export type ForwardFailureReason = "disbanded" | "send-error";
 
@@ -135,7 +136,7 @@ function readMention(content: MessageContent): { humans: boolean; ais: boolean }
 
 function buildSetting(channel: Channel): Setting {
     const setting = new Setting();
-    const info = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const info = getImChannelInfo(WKSDK.shared(), channel);
     if (info?.orgData?.receipt === 1) {
         setting.receiptEnabled = true;
     }

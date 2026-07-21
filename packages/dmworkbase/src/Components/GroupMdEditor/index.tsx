@@ -9,6 +9,13 @@ import { I18nContext } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
 import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton";
+import {
+  fetchImChannelInfo,
+  getImChannelInfo,
+  notifyImChannelInfoListeners,
+  patchImChannelInfoOrgData,
+  setImChannelInfoCache,
+} from "../../im-runtime/channelRuntime";
 import { withMdFlags } from "./mdFlagCache";
 import "./index.css";
 
@@ -113,22 +120,22 @@ export class GroupMdEditor extends Component<
   private applyMdFlagToCache = (configured: boolean, version: number) => {
     const { channel } = this.props;
     try {
-      const channelManager = WKSDK.shared().channelManager;
-      const channelInfo = channelManager.getChannelInfo(channel);
+      const sdk = WKSDK.shared();
+      const channelInfo = getImChannelInfo(sdk, channel);
       // 缓存未命中（罕见：设置面板通常已 fetch 过）：无本地权威可原地写回，
       // 退回 SDK 拉取兜底，仍以后端为准。
       if (!channelInfo) {
-        void channelManager.fetchChannelInfo(channel);
+        void fetchImChannelInfo(sdk, channel);
         return;
       }
-      channelInfo.orgData = withMdFlags(
+      patchImChannelInfoOrgData(channelInfo, withMdFlags(
         (channelInfo.orgData as Record<string, unknown>) || {},
         this.isThreadMd(),
         configured,
         version
-      );
-      channelManager.setChannleInfoForCache(channelInfo);
-      channelManager.notifyListeners(channelInfo);
+      ));
+      setImChannelInfoCache(sdk, channelInfo);
+      notifyImChannelInfoListeners(sdk, channelInfo);
     } catch {
       // 缓存写回失败不影响本次保存/删除结果：面板下次进入会重新拉取。
     }

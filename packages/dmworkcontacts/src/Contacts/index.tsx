@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base"
+import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
@@ -214,6 +214,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     private filterScrollTops: Record<ContactFilterMode, number> = { all: 0, bots: 0, humans: 0 }
     // 已预取过 channelInfo（含在线态）的 uid 集合，跨 filter/滚动去重，避免重复请求
     private prefetchedUids = new Set<string>()
+    private unsubscribeChannelInfoListener?: () => void
     private visibilityHandler!: () => void
     // 组件是否仍挂载：refreshTrackedOnlineStatus 是异步的，回包后 setState 前需确认未卸载
     private mounted = false
@@ -264,7 +265,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             }
         }
         WKApp.mittBus.on('space-changed', this.spaceChangedHandler)
-        WKSDK.shared().channelManager.addListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this.channelInfoListener)
 
         // 页面重新可见时对已追踪的 AI 在线态做一次自愈重拉：正常情况下在线态靠
         // WKSDK 的 onlineStatus WS 回调实时重渲，但推送若因断连/节流被延迟或丢失，
@@ -301,7 +302,8 @@ export default class ContactsList extends Component<any, ContactsState> {
     componentWillUnmount() {
         this.mounted = false
         ContactsListManager.shared.setRefreshList = undefined
-        WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
         WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
         if (typeof document !== 'undefined' && this.visibilityHandler) {
             document.removeEventListener('visibilitychange', this.visibilityHandler)
@@ -320,8 +322,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         if (uids.length === 0) return
         await Promise.all(
             uids.map((uid) =>
-                WKSDK.shared().channelManager
-                    .fetchChannelInfo(new Channel(uid, ChannelTypePerson))
+                fetchImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson))
                     .catch(() => undefined)
             )
         )
@@ -373,8 +374,8 @@ export default class ContactsList extends Component<any, ContactsState> {
             if (this.prefetchedUids.has(uid)) continue
             this.prefetchedUids.add(uid)
             const ch = new Channel(uid, ChannelTypePerson)
-            if (!WKSDK.shared().channelManager.getChannelInfo(ch)) {
-                WKSDK.shared().channelManager.fetchChannelInfo(ch)
+            if (!getImChannelInfo(WKSDK.shared(), ch)) {
+                void fetchImChannelInfo(WKSDK.shared(), ch)
             }
         }
     }
@@ -389,7 +390,8 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     // 复用会话列表/群成员列表同一份在线态判定与文案，渲染在线绿点。
     private renderOnlineBadge(uid: string): React.ReactNode {
-        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+        const channelInfo = getImChannelInfo(
+            WKSDK.shared(),
             new Channel(normalizeOnlineUid(uid), ChannelTypePerson)
         )
         if (!needShowOnlineStatus(channelInfo)) return null

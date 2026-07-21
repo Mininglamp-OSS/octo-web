@@ -8,6 +8,7 @@ import BotDetailModal from "../BotDetailModal";
 import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from "wukongimjssdk";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { debounce } from "../../Utils/rateLimit";
+import { addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
 import "./tab-contacts.css"
 
 interface TabContactsProps {
@@ -32,6 +33,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
     // 懒加载重构：使用 debounce 合批 forceUpdate，避免视口内多个 uid 集中返回
     // 时触发 N 次重渲；并用 fetchedUids 记录已发起过的 uid，避免重复请求。
     private _channelInfoListener!: ChannelInfoListener
+    private unsubscribeChannelInfoListener?: () => void
     private _forceUpdateDebounced = debounce(() => this.forceUpdate(), 150)
     private fetchedUids = new Set<string>()
     // Sticky friends：files tab 切换时父层会把 friends 置为 undefined 触发
@@ -45,13 +47,12 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
                 this._forceUpdateDebounced()
             }
         }
-        WKSDK.shared().channelManager.addListener(this._channelInfoListener)
+        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this._channelInfoListener)
     }
 
     componentWillUnmount() {
-        if (this._channelInfoListener) {
-            WKSDK.shared().channelManager.removeListener(this._channelInfoListener)
-        }
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
         this._forceUpdateDebounced.cancel()
     }
 
@@ -69,9 +70,9 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
         if (!(missingHome && missingLegacy)) return
         if (this.fetchedUids.has(friend.channel_id)) return
         const ch = new Channel(friend.channel_id, ChannelTypePerson)
-        if (WKSDK.shared().channelManager.getChannelInfo(ch)) return
+        if (getImChannelInfo(WKSDK.shared(), ch)) return
         this.fetchedUids.add(friend.channel_id)
-        WKSDK.shared().channelManager.fetchChannelInfo(ch)
+        void fetchImChannelInfo(WKSDK.shared(), ch)
     }
 
     /**
@@ -97,7 +98,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
             isExternalLegacy === undefined || isExternalLegacy === null
         if (missingHome && missingLegacy && friend?.channel_id) {
             const ch = new Channel(friend.channel_id, ChannelTypePerson)
-            const ci = WKSDK.shared().channelManager.getChannelInfo(ch)
+            const ci = getImChannelInfo(WKSDK.shared(), ch)
             const ciOrg = ci?.orgData
             if (ciOrg) {
                 homeId = ciOrg.home_space_id as string | undefined

@@ -5,6 +5,13 @@ import WKSDK, {
 } from "wukongimjssdk";
 import { ChannelTypeCommunityTopic } from "../Service/Const";
 import { parseThreadChannelId } from "../Service/Thread";
+import {
+  fetchImChannelInfo,
+  getImChannelInfo,
+  notifyImChannelInfoListeners,
+  patchImChannelInfoOrgData,
+  setImChannelInfoCache,
+} from "../im-runtime/channelRuntime";
 
 /**
  * 群聊状态枚举，与后端 group.GroupStatus 对齐：
@@ -35,7 +42,7 @@ export function isChannelDisbanded(channel?: Channel | null): boolean {
   if (!channel || channel.channelType !== ChannelTypeGroup) {
     return false;
   }
-  const info = WKSDK.shared().channelManager.getChannelInfo(channel);
+  const info = getImChannelInfo(WKSDK.shared(), channel);
   return isGroupDisbanded(info);
 }
 
@@ -80,22 +87,20 @@ export function isConversationDisbanded(channel?: Channel | null): boolean {
  */
 export function syncGroupDisbandState(channel: Channel): void {
   if (!channel?.channelID) return;
-  const channelManager = WKSDK.shared().channelManager;
+  const sdk = WKSDK.shared();
   // 非群频道（个人 / 子区等）：解散态只挂在群频道上，这里无直写语义，
   // 退回常规 fetchChannelInfo，保持 channelUpdate 对这些频道的刷新行为不变。
   if (channel.channelType !== ChannelTypeGroup) {
-    channelManager.fetchChannelInfo(channel);
+    void fetchImChannelInfo(sdk, channel);
     return;
   }
-  const channelInfo = channelManager.getChannelInfo(channel);
+  const channelInfo = getImChannelInfo(sdk, channel);
   if (channelInfo) {
-    channelInfo.orgData = channelInfo.orgData || {};
-    channelInfo.orgData.status = GroupStatusDisband;
-    channelManager.setChannleInfoForCache(channelInfo);
-    channelManager.notifyListeners(channelInfo);
+    patchImChannelInfoOrgData(channelInfo, { status: GroupStatusDisband });
+    setImChannelInfoCache(sdk, channelInfo);
+    notifyImChannelInfoListeners(sdk, channelInfo);
     return;
   }
   // 群频道无 live 缓存：交给 SDK 异步拉取兜底（此分支不存在可被旧请求覆盖的本地态）。
-  channelManager.fetchChannelInfo(channel);
+  void fetchImChannelInfo(sdk, channel);
 }
-

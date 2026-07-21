@@ -12,7 +12,7 @@ import {
   Toast,
 } from "@douyinfe/semi-ui";
 import { BasicTreeNodeData } from "@douyinfe/semi-foundation/lib/cjs/tree/foundation";
-import { WKApp, ThemeMode, WKViewQueueHeader, WKModal, I18nContext, t, GroupAvatarPreview, GroupAvatarEditModal } from "@octo/base";
+import { WKApp, ThemeMode, WKViewQueueHeader, WKModal, I18nContext, t, GroupAvatarPreview, GroupAvatarEditModal, getImChannelInfo, getImChannelSubscribers, syncImChannelSubscribers } from "@octo/base";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import "./index.css";
@@ -346,15 +346,15 @@ export class OrganizationalGroupNew extends Component<
         subscribers.push(sub)
       } else {
         // 群聊
-        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel); // 获取频道信息
+        const channelInfo = getImChannelInfo(WKSDK.shared(), channel); // 获取频道信息
         if (channelInfo?.orgData?.group_type === SuperGroup) {
           subscribers = await WKApp.dataSource.channelDataSource.subscribers(channel, {
             limit: 5000,
             page: 1
           })
         } else {
-          await WKSDK.shared().channelManager.syncSubscribes(channel); // 同步订阅者
-          subscribers = WKSDK.shared().channelManager.getSubscribes(channel); // 获取订阅者
+          await syncImChannelSubscribers(WKSDK.shared(), channel); // 同步订阅者
+          subscribers = getImChannelSubscribers(WKSDK.shared(), channel); // 获取订阅者
         }
       }
 

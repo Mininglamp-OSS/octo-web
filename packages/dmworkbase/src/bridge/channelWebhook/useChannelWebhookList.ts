@@ -3,6 +3,7 @@ import { Channel, WKSDK } from "wukongimjssdk";
 import WKApp from "../../App";
 import { IncomingWebhook, IncomingWebhookService } from "../../Service/IncomingWebhook";
 import { subscriberDisplayName, SubscriberLike } from "../../Utils/displayName";
+import { getImChannelSubscribers } from "../../im-runtime/channelRuntime";
 
 export interface UseChannelWebhookListOptions {
     channel: Channel;
@@ -66,11 +67,10 @@ export function useChannelWebhookList({
         const wanted = new Set(items.map((item) => item.creator_uid));
         const names = new Map<string, string>();
         try {
-            const subscribers = WKSDK.shared().channelManager.getSubscribes(channel) as
-                | Array<({ uid?: string } & SubscriberLike)>
-                | null
-                | undefined;
-            for (const subscriber of subscribers || []) {
+            const subscribers = getImChannelSubscribers(WKSDK.shared(), channel) as Array<
+                { uid?: string } & SubscriberLike
+            >;
+            for (const subscriber of subscribers) {
                 if (!subscriber?.uid || !wanted.has(subscriber.uid) || names.has(subscriber.uid)) continue;
                 const name = subscriberDisplayName(subscriber);
                 if (name) names.set(subscriber.uid, name);

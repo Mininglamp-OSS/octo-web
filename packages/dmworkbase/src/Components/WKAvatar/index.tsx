@@ -3,14 +3,15 @@ import React from "react";
 import { Component, CSSProperties } from "react";
 import classNames from "classnames";
 import WKApp from "../../App";
+import { getImChannelInfo } from "../../im-runtime/channelRuntime";
 import "./index.css"
 
 /**
  * Check if a user is a bot by looking up channelInfo.
- * Centralizes the repeated WKSDK.shared().channelManager.getChannelInfo(...) pattern.
+ * Centralizes the repeated channelInfo lookup pattern.
  */
 export function isBot(uid: string): boolean {
-    const info = WKSDK.shared().channelManager.getChannelInfo(new Channel(uid, ChannelTypePerson))
+    const info = getImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson))
     return info?.orgData?.robot === 1
 }
 
@@ -180,7 +181,7 @@ export default class WKAvatar extends Component<WKAvatarProps, WKAvatarState> {
         if (!channel) return ""
         if (channel.channelType === ChannelTypeGroup) return "wk-avatar-group"
         if (channel.channelType === ChannelTypePerson) {
-            const info = WKSDK.shared().channelManager.getChannelInfo(channel)
+            const info = getImChannelInfo(WKSDK.shared(), channel)
             if (info?.orgData?.robot === 1) return "wk-avatar-ai"
         }
         return ""

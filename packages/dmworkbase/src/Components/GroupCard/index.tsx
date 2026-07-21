@@ -4,6 +4,7 @@ import WKModal from "../WKModal";
 import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";
 import { I18nContext } from "../../i18n";
+import { fetchImChannelInfo } from "../../im-runtime/channelRuntime";
 import "./index.css";
 
 interface GroupCardProps {
@@ -47,7 +48,8 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
 
         this.setState({ loading: true });
         try {
-            const channelInfo = await WKSDK.shared().channelManager.fetchChannelInfo(
+            const channelInfo = await fetchImChannelInfo(
+                WKSDK.shared(),
                 new Channel(groupNo, ChannelTypeGroup)
             );
             this.setState({

@@ -1,4 +1,4 @@
-import { ChannelTypeCommunityTopic, parseThreadChannelId } from '@octo/base';
+import { ChannelTypeCommunityTopic, getImChannelInfo, parseThreadChannelId } from '@octo/base';
 import { ChannelTypeGroup, ChannelTypePerson } from 'wukongimjssdk';
 import WKSDK from 'wukongimjssdk';
 import { Channel } from 'wukongimjssdk';
@@ -9,7 +9,7 @@ export function channelToChatCandidate(channel: {
     channelType: number;
 }): ChatCandidate {
     const ch = new Channel(channel.channelID, channel.channelType);
-    const info = WKSDK.shared().channelManager.getChannelInfo(ch);
+    const info = getImChannelInfo(WKSDK.shared(), ch);
 
     let chatType: ChatCandidate['chat_type'];
     if (

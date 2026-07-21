@@ -12,6 +12,7 @@ import RoutePage from "../RoutePage";
 import ConversationContext from "../Conversation/context";
 import { ChannelTypeCustomerService } from "../../Service/Const";
 import { I18nContext } from "../../i18n";
+import { getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 export interface ChannelSettingProps {
     onClose?: () => void
@@ -49,7 +50,7 @@ export default class ChannelSetting extends Component<ChannelSettingProps> {
 
            let  memberCount = vm.subscribers.length
 
-            const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
+            const channelInfo = getImChannelInfo(WKSDK.shared(), channel)
             if(channelInfo?.orgData?.member_count) {
                 memberCount = channelInfo.orgData.member_count
             }

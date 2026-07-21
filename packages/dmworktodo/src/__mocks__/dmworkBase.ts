@@ -20,6 +20,17 @@ export const buildAcceptLanguage = () => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7';
 
 export const isSafeUrl = (url: string) => /^https?:\/\//.test(url);
 
+export const getImChannelInfo = (sdk: any, channel: any) =>
+  sdk.channelManager.getChannelInfo(channel);
+
+export const fetchImChannelInfo = (sdk: any, channel: any) =>
+  sdk.channelManager.fetchChannelInfo(channel);
+
+export const addImChannelInfoListener = (sdk: any, listener: any) => {
+  sdk.channelManager.addListener(listener);
+  return () => sdk.channelManager.removeListener(listener);
+};
+
 // Thread enum / type re-exports — production code imports these from
 // '@octo/base' (re-exported via dmworkbase/src/index.tsx). The vitest
 // alias points '@octo/base' at this mock file, so we re-export the

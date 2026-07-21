@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('@octo/base', () => ({
     ChannelTypeCommunityTopic: 5,
+    getImChannelInfo: (sdk: any, channel: any) =>
+        sdk.channelManager.getChannelInfo(channel),
     parseThreadChannelId: (channelId: string) => {
         const parts = channelId.split('____');
         if (parts.length !== 2) return null;

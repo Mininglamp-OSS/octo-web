@@ -1,4 +1,5 @@
 import WKSDK, { Channel, ChannelTypePerson } from "wukongimjssdk";
+import { fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 /**
  * Production routing helper for "view user profile" entry (GH#1112, PR#1113).
@@ -202,9 +203,9 @@ export function createUserInfoRouter(
 ): UserInfoRouter {
     const channelManager: ChannelManagerLike = {
         getChannelInfo: (channel) =>
-            WKSDK.shared().channelManager.getChannelInfo(channel) as ChannelInfoLike | undefined,
+            getImChannelInfo(WKSDK.shared(), channel) as ChannelInfoLike | undefined,
         fetchChannelInfo: (channel) =>
-            WKSDK.shared().channelManager.fetchChannelInfo(channel) as Promise<ChannelInfoLike | undefined>,
+            fetchImChannelInfo(WKSDK.shared(), channel) as Promise<ChannelInfoLike | undefined>,
     };
     return new UserInfoRouter(channelManager, dispatch, externalGate);
 }

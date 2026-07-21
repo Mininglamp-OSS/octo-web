@@ -6,6 +6,7 @@ import "./tab-file.css"
 import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from "wukongimjssdk";
 import { debounce } from "../../Utils/rateLimit";
 import VisibilityTrigger from "../VisibilityTrigger";
+import { addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 interface TabFileProps {
     keyword?: string;
@@ -19,6 +20,7 @@ export default class TabFile extends Component<TabFileProps> {
     // 懒加载：仅视口内的文件才拉发送者 channelInfo。debounce 合批 forceUpdate，
     // fetchedUids 防止同 uid 重复请求。
     private _channelInfoListener!: ChannelInfoListener
+    private unsubscribeChannelInfoListener?: () => void
     private _forceUpdateDebounced = debounce(() => this.forceUpdate(), 150)
     private fetchedUids = new Set<string>()
 
@@ -28,22 +30,21 @@ export default class TabFile extends Component<TabFileProps> {
                 this._forceUpdateDebounced()
             }
         }
-        WKSDK.shared().channelManager.addListener(this._channelInfoListener)
+        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this._channelInfoListener)
     }
 
     componentWillUnmount() {
-        if (this._channelInfoListener) {
-            WKSDK.shared().channelManager.removeListener(this._channelInfoListener)
-        }
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
         this._forceUpdateDebounced.cancel()
     }
 
     private requestSenderChannelInfoIfNeeded = (fromUid: string) => {
         if (!fromUid || this.fetchedUids.has(fromUid)) return
         const senderChannel = new Channel(fromUid, ChannelTypePerson)
-        if (WKSDK.shared().channelManager.getChannelInfo(senderChannel)) return
+        if (getImChannelInfo(WKSDK.shared(), senderChannel)) return
         this.fetchedUids.add(fromUid)
-        WKSDK.shared().channelManager.fetchChannelInfo(senderChannel)
+        void fetchImChannelInfo(WKSDK.shared(), senderChannel)
     }
 
     // Sticky files：父层 tab 切换中途会把 files 置为 undefined，保留上次非空
@@ -69,7 +70,7 @@ export default class TabFile extends Component<TabFileProps> {
                 files?.map((item: any) => {
                     let sender;
                     const senderChannel = new Channel(item.from_uid, ChannelTypePerson)
-                    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(senderChannel)
+                    const channelInfo = getImChannelInfo(WKSDK.shared(), senderChannel)
                     if (channelInfo) {
                         sender = channelInfo.title
                     }

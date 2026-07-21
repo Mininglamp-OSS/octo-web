@@ -1,5 +1,11 @@
 import { Channel, WKSDK } from "wukongimjssdk";
 import WKApp from "../App";
+import {
+  getImChannelInfo,
+  notifyImChannelInfoListeners,
+  patchImChannelInfoOrgData,
+  setImChannelInfoCache,
+} from "../im-runtime/channelRuntime";
 import { ChannelTypeCommunityTopic } from "./Const";
 import { ThreadStatus } from "./Thread";
 
@@ -42,16 +48,17 @@ export function syncThreadArchiveState(
       : threadChannel;
   if (!channel.channelID) return;
 
-  const channelManager = WKSDK.shared().channelManager;
+  const sdk = WKSDK.shared();
   // 权威写回：在既有 channelInfo 上原地更新 thread.status，避免被归档前发起、
   // 在途的旧 fetchChannelInfo（携 Active）覆盖。没有 live channelInfo 时不伪造
   // 缓存（会丢 title/logo 等），交由下面的 sidebar-reload 兜底。
-  const channelInfo = channelManager.getChannelInfo(channel);
+  const channelInfo = getImChannelInfo(sdk, channel);
   if (channelInfo) {
-    const orgData = (channelInfo.orgData = channelInfo.orgData || {});
-    orgData.thread = { ...(orgData.thread || {}), status };
-    channelManager.setChannleInfoForCache(channelInfo);
-    channelManager.notifyListeners(channelInfo);
+    patchImChannelInfoOrgData(channelInfo, {
+      thread: { ...(channelInfo.orgData?.thread || {}), status },
+    });
+    setImChannelInfoCache(sdk, channelInfo);
+    notifyImChannelInfoListeners(sdk, channelInfo);
   }
 
   // sidebar-reload 是 sidebar-only 关注子区的唯一兜底，无论有无 live channelInfo

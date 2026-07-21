@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
-import { WKApp, Menus, ChannelTypeCommunityTopic, i18n, t as translate, useI18n } from "@octo/base";
+import { WKApp, Menus, ChannelTypeCommunityTopic, i18n, t as translate, useI18n, getImChannelInfo } from "@octo/base";
 import type { IModule, ConversationContext } from "@octo/base";
 import { ChannelTypeGroup } from "wukongimjssdk";
 import WKSDK from "wukongimjssdk";
@@ -209,7 +209,8 @@ export default class MatterModule implements IModule {
             const raw = effectiveContent.conversationDigest ?? "";
             const { title: parsedTitle } = parseMentionText(raw);
             const prefillTitle = parsedTitle.slice(0, 200);
-            const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+            const channelInfo = getImChannelInfo(
+              WKSDK.shared(),
               message.channel,
             );
             WKApp.mittBus.emit("wk:open-create-matter-modal", {
@@ -312,7 +313,7 @@ export default class MatterModule implements IModule {
 function ChatToolbarTodoButton({ ctx }: { ctx: ConversationContext }) {
   const { t } = useI18n();
   const channel = ctx.channel();
-  const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+  const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
 
   const handleOpen = () => {
     const inputCtx = ctx.messageInputContext();

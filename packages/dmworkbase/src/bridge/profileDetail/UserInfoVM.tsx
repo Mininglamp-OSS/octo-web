@@ -17,6 +17,12 @@ import UserService from "../../Service/UserService";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { isRealnameVerified, displayName as resolveDisplayName } from "../../Utils/displayName";
 import { parseThreadChannelId } from "../../Service/Thread";
+import {
+  addImSubscriberChangeListener,
+  fetchImChannelInfo,
+  getImChannelInfo,
+  getImChannelSubscribers,
+} from "../../im-runtime/channelRuntime";
 
 export class UserInfoRouteData {
   uid!: string;
@@ -36,6 +42,7 @@ export class UserInfoVM extends ProviderListener {
   channelInfo?: ChannelInfo;
   vercode?: string;
   subscriberChangeListener?: SubscriberChangeListener;
+  unsubscribeSubscriberChangeListener?: () => void;
   editingRemark = false;
   remarkDraft = "";
   savingRemark = false;
@@ -64,11 +71,12 @@ export class UserInfoVM extends ProviderListener {
       this.subscriberChangeListener = () => {
         this.reloadSubscribers();
       };
-      WKSDK.shared().channelManager.addSubscriberChangeListener(
+      this.unsubscribeSubscriberChangeListener = addImSubscriberChangeListener(
+        WKSDK.shared(),
         this.subscriberChangeListener
       );
 
-      // WKSDK.shared().channelManager.syncSubscribes(this.channel)
+      // Subscriber sync is still delegated to the existing channel lifecycle.
     }
 
     this.reloadFromChannelInfo();
@@ -78,11 +86,8 @@ export class UserInfoVM extends ProviderListener {
 
   didUnMount(): void {
     this.mounted = false;
-    if (this.subscriberChangeListener) {
-      WKSDK.shared().channelManager.removeSubscriberChangeListener(
-        this.subscriberChangeListener
-      );
-    }
+    this.unsubscribeSubscriberChangeListener?.();
+    this.unsubscribeSubscriberChangeListener = undefined;
   }
 
   getRemark() {
@@ -125,9 +130,7 @@ export class UserInfoVM extends ProviderListener {
       this.editingRemark = false;
       this.remarkDraft = "";
       this.notifyListener();
-      Promise.resolve(
-        WKSDK.shared().channelManager.fetchChannelInfo(new Channel(requestedUid, ChannelTypePerson))
-      ).catch((error: unknown) => {
+      fetchImChannelInfo(WKSDK.shared(), new Channel(requestedUid, ChannelTypePerson)).catch((error: unknown) => {
         console.warn("[UserInfo] refresh channel after remark failed:", error);
       });
       Promise.resolve(this.reloadChannelInfo()).catch((error: unknown) => {
@@ -186,7 +189,7 @@ export class UserInfoVM extends ProviderListener {
     };
 
     if (sourceChannel) {
-      applySubscribers(WKSDK.shared().channelManager.getSubscribes(sourceChannel), {
+      applySubscribers(getImChannelSubscribers(WKSDK.shared(), sourceChannel), {
         replaceUser: true,
         replaceMe: true,
       });
@@ -197,7 +200,7 @@ export class UserInfoVM extends ProviderListener {
         memberChannel.channelID !== sourceChannel.channelID ||
         memberChannel.channelType !== sourceChannel.channelType)
     ) {
-      applySubscribers(WKSDK.shared().channelManager.getSubscribes(memberChannel), {
+      applySubscribers(getImChannelSubscribers(WKSDK.shared(), memberChannel), {
         replaceMe: true,
       });
     }
@@ -374,7 +377,8 @@ export class UserInfoVM extends ProviderListener {
   }
   reloadFromChannelInfo() {
     if (this.fromChannel) {
-      this.fromChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+      this.fromChannelInfo = getImChannelInfo(
+        WKSDK.shared(),
         this.fromChannel
       );
       this.notifyListener();

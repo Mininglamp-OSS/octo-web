@@ -154,6 +154,7 @@ import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { TypingManager } from "./Service/TypingManager";
 import { syncClientMsgDeviceId } from "./im-runtime/clientMsgDevice";
+import { getImChannelInfo } from "./im-runtime/channelRuntime";
 import {
   ImConnectAddressManager,
   registerImConnectAddressProvider,
@@ -1032,7 +1033,7 @@ export default class WKApp extends ProviderListener {
       return "";
     }
     let avatarTag = this.getChannelAvatarTag(channel);
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
     // 群已解散（企业微信式只读态）：用默认灰色头像替代群 logo，视觉上"群已遣散"。
     // 放在 logo 判断之前，确保即便缓存里残留旧 logo 也会被覆盖（A 数据 + B 皮肤）。
     if (

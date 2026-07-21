@@ -8,6 +8,7 @@ import { ChannelQRCodeVM } from "./vm";
 import { Button, Spin, Toast } from "@douyinfe/semi-ui";
 import { copyToClipboard } from "../../Utils/clipboard";
 import { I18nContext } from "../../i18n";
+import { getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 export interface ChannelQRCodeProps {
     channel: Channel
@@ -29,7 +30,7 @@ export default class ChannelQRCode extends Component<ChannelQRCodeProps> {
     render() {
         const { channel } = this.props
         const { t } = this.context
-        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
+        const channelInfo = getImChannelInfo(WKSDK.shared(), channel)
         return <Provider create={() => {
             return new ChannelQRCodeVM(channel)
         }} render={(vm: ChannelQRCodeVM) => {

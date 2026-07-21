@@ -17,6 +17,7 @@ import {
   type ChatKind,
 } from "../ChatSelector/tabFilter"
 import type { ForwardFinished, ForwardGrantRole } from "./grant"
+import { addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime"
 
 // 复合 key：${channelType}::${channelID}，防跨类型 id 碰撞。channelType 取值
 // (个人=1 / 群=2 / 子区=5) 恰与 SidebarTargetType(DM/CHANNEL/THREAD) 一致，
@@ -61,7 +62,7 @@ function conversationWrapToForwardItem(wrap: ConversationWrap, parentChannelID?:
   // hasThreads: 判断该群聊下是否有子区（子区会出现在 conversations 里，其 orgData.parentGroupNo 指向父群）
   const hasThreads = !isThread && WKSDK.shared().conversationManager.conversations?.some(
     (c) => c.channel.channelType === ChannelTypeCommunityTopic
-      && (WKSDK.shared().channelManager.getChannelInfo(c.channel)?.orgData?.parentGroupNo === wrap.channel.channelID)
+      && (getImChannelInfo(WKSDK.shared(), c.channel)?.orgData?.parentGroupNo === wrap.channel.channelID)
   )
   return {
     channelID: wrap.channel.channelID,
@@ -203,9 +204,9 @@ export function useForwardModal(
     if (fetchedRef.current.has(item.channelID)) return
     const ch = channelMapRef.current.get(item.channelID)
       ?? new Channel(item.channelID, item.channelType)
-    if (WKSDK.shared().channelManager.getChannelInfo(ch)) return
+    if (getImChannelInfo(WKSDK.shared(), ch)) return
     fetchedRef.current.add(item.channelID)
-    WKSDK.shared().channelManager.fetchChannelInfo(ch)
+    void fetchImChannelInfo(WKSDK.shared(), ch)
   }, [])
 
   const rebuildConvItems = useCallback(() => {
@@ -383,7 +384,7 @@ export function useForwardModal(
     const channelListener: ChannelInfoListener = (_channelInfo: ChannelInfo) => {
       rebuildDebounced()
     }
-    WKSDK.shared().channelManager.addListener(channelListener)
+    const unsubscribeChannelListener = addImChannelInfoListener(WKSDK.shared(), channelListener)
 
     // 切 Space 后 conversationManager.conversations 会被先清空再回填,
     // 如果 modal 在回填前打开,初次 load() 会读到空 cache（缺最近会话/子区）。
@@ -396,7 +397,7 @@ export function useForwardModal(
     load()
 
     return () => {
-      WKSDK.shared().channelManager.removeListener(channelListener)
+      unsubscribeChannelListener()
       WKApp.mittBus.off('conversation-list-refreshed', onConversationListRefreshed)
       rebuildDebounced.cancel()
     }

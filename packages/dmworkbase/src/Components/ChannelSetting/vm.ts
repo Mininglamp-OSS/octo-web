@@ -9,6 +9,13 @@ import { Row, Section } from "../../Service/Section";
 import { ListItemSwitch, ListItemSwitchContext } from "../ListItem";
 import { Toast } from "@douyinfe/semi-ui";
 import {
+    addImChannelInfoListener,
+    addImSubscriberChangeListener,
+    fetchImChannelInfo,
+    getImChannelInfo,
+    getImChannelSubscribers,
+} from "../../im-runtime/channelRuntime";
+import {
     OboGrant,
     OboScope,
     hasAnyActiveGrant,
@@ -25,6 +32,8 @@ export class ChannelSettingVM extends ProviderListener {
     subscribersTop: Subscriber[] = [] // 显示的成员
     subscriberChangeListener?: SubscriberChangeListener
     channelInfoListener!:ChannelInfoListener
+    unsubscribeSubscriberChangeListener?: () => void
+    unsubscribeChannelInfoListener?: () => void
     subscriberOfMe?: Subscriber
     routeData:ChannelSettingRouteData = new ChannelSettingRouteData()
 
@@ -297,7 +306,8 @@ export class ChannelSettingVM extends ProviderListener {
     }
 
     didMount(): void {
-        WKSDK.shared().channelManager.fetchChannelInfo(this.channel)
+        const sdk = WKSDK.shared()
+        void fetchImChannelInfo(sdk, this.channel)
 
         this.reloadSubscribers()
 
@@ -305,9 +315,9 @@ export class ChannelSettingVM extends ProviderListener {
             this.subscriberChangeListener = () => {
                 this.reloadSubscribers()
             }
-            WKSDK.shared().channelManager.addSubscriberChangeListener(this.subscriberChangeListener)
+            this.unsubscribeSubscriberChangeListener = addImSubscriberChangeListener(sdk, this.subscriberChangeListener)
 
-            // WKSDK.shared().channelManager.syncSubscribes(this.channel)
+            // Subscriber sync is still delegated to the existing channel lifecycle.
 
         }
         this.channelInfoListener = (channelInfo:ChannelInfo) => {
@@ -316,7 +326,7 @@ export class ChannelSettingVM extends ProviderListener {
                 return
             }
         }
-        WKSDK.shared().channelManager.addListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener = addImChannelInfoListener(sdk, this.channelInfoListener)
 
         this.reloadChannelInfo()
 
@@ -341,16 +351,16 @@ export class ChannelSettingVM extends ProviderListener {
         // 标记销毁，让所有进行中的异步分支（refreshActiveGrantCache /
         // refreshOboScope）resolve 后 early-return，不再去 notifyListener。
         this._disposed = true
-        if(this.subscriberChangeListener) {
-            WKSDK.shared().channelManager.removeSubscriberChangeListener(this.subscriberChangeListener)
-        }
-        WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
+        this.unsubscribeSubscriberChangeListener?.()
+        this.unsubscribeSubscriberChangeListener = undefined
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
     }
 
 
     reloadSubscribers() {
         if(this.channel.channelType !== ChannelTypePerson) {
-            this.subscribers = WKSDK.shared().channelManager.getSubscribes(this.channel)
+            this.subscribers = getImChannelSubscribers(WKSDK.shared(), this.channel)
             if(this.subscribers && this.subscribers.length>0) {
                 for (const subscriber of this.subscribers) {
                     subscriber.channel = this.channel
@@ -369,7 +379,7 @@ export class ChannelSettingVM extends ProviderListener {
     }
 
     reloadChannelInfo() {
-        this.channelInfo = WKSDK.shared().channelManager.getChannelInfo(this.channel)
+        this.channelInfo = getImChannelInfo(WKSDK.shared(), this.channel)
         this.routeData.channelInfo = this.channelInfo
 
         if(this.channelInfo && this.channel.channelType === ChannelTypePerson) {

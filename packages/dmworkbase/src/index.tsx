@@ -21,6 +21,7 @@ export * from './Service/DataSource/DataSource'
 export * from './Service/IncomingWebhook'
 export * from './Service/ForwardService'
 export * from './Service/forwardResultToast'
+export * from './im-runtime/channelRuntime'
 export * from './Components/WKLayout'
 
 export * from './Components/Conversation/context'

@@ -17,6 +17,7 @@ import BotDetailVM, {
     stripBotDetailDisplayName,
 } from "../../bridge/profileDetail/BotDetailVM";
 import BotDetailView from "../../ui/profileDetail/BotDetailView";
+import { fetchImChannelInfo } from "../../im-runtime/channelRuntime";
 import "./index.css";
 
 interface BotDetailModalProps {
@@ -42,15 +43,17 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
             getLoginUid: () => WKApp.loginInfo.uid,
             getToken: () => WKApp.loginInfo.token || "",
             getSpaceId: () => WKApp.shared.currentSpaceId,
-            fetchChannelInfo: (uid) => WKSDK.shared().channelManager.fetchChannelInfo(
+            fetchChannelInfo: (uid) => fetchImChannelInfo(
+                WKSDK.shared(),
                 new Channel(uid, ChannelTypePerson)
             ),
-            refreshChannelInfo: (uid) => WKSDK.shared().channelManager.fetchChannelInfo(
+            refreshChannelInfo: (uid) => fetchImChannelInfo(
+                WKSDK.shared(),
                 new Channel(uid, ChannelTypePerson)
             ),
             onAvatarChanged: (uid) => {
                 WKApp.shared.changeChannelAvatarTag(new Channel(uid, ChannelTypePerson));
-                WKSDK.shared().channelManager.fetchChannelInfo(new Channel(uid, ChannelTypePerson));
+                void fetchImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson));
                 this.forceUpdate();
             },
         });

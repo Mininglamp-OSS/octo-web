@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo, useReducer } from 'react';
-import { WKApp, isSafeUrl, resolveExternalForViewer } from '@octo/base';
+import { WKApp, isSafeUrl, resolveExternalForViewer, addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from '@octo/base';
 import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from 'wukongimjssdk';
 import type { MatterAssignee } from '../../bridge/types';
 import { useUserName } from '../../hooks/useUserName';
@@ -113,10 +113,7 @@ export default function AssigneeEditor({ matterId, assignees, onChanged }: Assig
         bumpTick();
       }
     };
-    WKSDK.shared().channelManager.addListener(listener);
-    return () => {
-      WKSDK.shared().channelManager.removeListener(listener);
-    };
+    return addImChannelInfoListener(WKSDK.shared(), listener);
   }, []);
 
   // Close dropdown on outside click
@@ -156,7 +153,7 @@ export default function AssigneeEditor({ matterId, assignees, onChanged }: Assig
         let sourceSpaceName = '';
         try {
           const ch = new Channel(c.uid, ChannelTypePerson);
-          const ci = WKSDK.shared().channelManager.getChannelInfo(ch);
+          const ci = getImChannelInfo(WKSDK.shared(), ch);
           const org = ci?.orgData;
           if (org) {
             const ext = resolveExternalForViewer({
@@ -209,7 +206,7 @@ export default function AssigneeEditor({ matterId, assignees, onChanged }: Assig
     const missing: Channel[] = [];
     for (const c of candidates) {
       const ch = new Channel(c.uid, ChannelTypePerson);
-      const ci = WKSDK.shared().channelManager.getChannelInfo(ch);
+      const ci = getImChannelInfo(WKSDK.shared(), ch);
       if (!ci?.orgData) missing.push(ch);
     }
     if (missing.length === 0) return;
@@ -218,8 +215,7 @@ export default function AssigneeEditor({ matterId, assignees, onChanged }: Assig
     const abortController = new AbortController();
     Promise.all(
       missing.map((ch): Promise<FetchOutcome> =>
-        WKSDK.shared()
-          .channelManager.fetchChannelInfo(ch)
+        fetchImChannelInfo(WKSDK.shared(), ch)
           .then((): FetchOutcome => ({ ok: true }))
           .catch((reason: unknown): FetchOutcome => ({ ok: false, reason }))
       )

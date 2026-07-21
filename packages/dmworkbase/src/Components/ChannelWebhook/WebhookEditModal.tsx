@@ -10,6 +10,11 @@ import { useI18n } from "../../i18n";
 import { extractErrorMsg } from "../../Service/APIClient";
 import { subscriberDisplayName } from "../../Utils/displayName";
 import {
+    getImChannelInfo,
+    getImChannelSubscribers,
+    syncImChannelSubscribers,
+} from "../../im-runtime/channelRuntime";
+import {
     buildWebhookUpsertReq,
     IncomingWebhook,
     IncomingWebhookCreateResp,
@@ -69,7 +74,8 @@ type GroupSubscriber = {
 function isBotMember(uid: string, sub: GroupSubscriber): boolean {
     if (isFlagOn(sub.orgData?.robot)) return true;
     try {
-        const info = WKSDK.shared().channelManager.getChannelInfo(
+        const info = getImChannelInfo(
+            WKSDK.shared(),
             new Channel(uid, ChannelTypePerson)
         ) as { orgData?: { robot?: unknown } } | null | undefined;
         return isFlagOn(info?.orgData?.robot);
@@ -85,12 +91,9 @@ function isBotMember(uid: string, sub: GroupSubscriber): boolean {
  * 兜底；同步读缓存，调用方在 syncSubscribes 完成后再读一次以刷新。
  */
 function readGroupMemberOptions(channel: Channel): MentionMemberOption[] {
-    let subs: GroupSubscriber[] | null | undefined;
+    let subs: GroupSubscriber[];
     try {
-        subs = WKSDK.shared().channelManager.getSubscribes(channel) as
-            | GroupSubscriber[]
-            | null
-            | undefined;
+        subs = getImChannelSubscribers(WKSDK.shared(), channel) as GroupSubscriber[];
     } catch {
         return [];
     }
@@ -163,7 +166,7 @@ export default function WebhookEditModal({
     // 成员可能未同步：拉一次后刷新候选，挂载即触发，channel 变更重拉。
     useEffect(() => {
         let alive = true;
-        Promise.resolve(WKSDK.shared().channelManager.syncSubscribes(channel))
+        syncImChannelSubscribers(WKSDK.shared(), channel)
             .then(() => {
                 if (alive) setMemberOptions(readGroupMemberOptions(channel));
             })

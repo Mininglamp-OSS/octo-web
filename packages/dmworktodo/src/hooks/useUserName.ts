@@ -1,4 +1,9 @@
 import { useState, useEffect } from 'react';
+import {
+  addImChannelInfoListener,
+  fetchImChannelInfo,
+  getImChannelInfo,
+} from '@octo/base';
 import WKSDK, { Channel, ChannelTypePerson } from 'wukongimjssdk';
 import type { ChannelInfo } from 'wukongimjssdk';
 
@@ -9,7 +14,7 @@ import type { ChannelInfo } from 'wukongimjssdk';
  */
 export function useUserName(uid: string): string {
   const [name, setName] = useState<string>(() => {
-    const info = WKSDK.shared().channelManager.getChannelInfo(new Channel(uid, ChannelTypePerson));
+    const info = getImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson));
     return info?.title || '';
   });
 
@@ -18,7 +23,8 @@ export function useUserName(uid: string): string {
     let aborted = false;
 
     const channel = new Channel(uid, ChannelTypePerson);
-    const cached = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const sdk = WKSDK.shared();
+    const cached = getImChannelInfo(sdk, channel);
     if (cached?.title) {
       setName(cached.title);
       return;
@@ -35,15 +41,15 @@ export function useUserName(uid: string): string {
       }
     };
 
-    WKSDK.shared().channelManager.addListener(listener);
+    const unsubscribe = addImChannelInfoListener(sdk, listener);
     // Trigger async fetch; on failure set fallback name
-    WKSDK.shared().channelManager.fetchChannelInfo(channel).catch(() => {
+    fetchImChannelInfo(sdk, channel).catch(() => {
       if (!aborted) setName((prev) => prev || uid);
     });
 
     return () => {
       aborted = true;
-      WKSDK.shared().channelManager.removeListener(listener);
+      unsubscribe();
     };
   }, [uid]);
 
@@ -59,7 +65,7 @@ export function useUserNames(uids: string[]): Map<string, string> {
   const [nameMap, setNameMap] = useState<Map<string, string>>(() => {
     const m = new Map<string, string>();
     for (const uid of uids) {
-      const info = WKSDK.shared().channelManager.getChannelInfo(new Channel(uid, ChannelTypePerson));
+      const info = getImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson));
       m.set(uid, info?.title || '');
     }
     return m;
@@ -70,12 +76,13 @@ export function useUserNames(uids: string[]): Map<string, string> {
     let aborted = false;
 
     const channels = uids.map((uid) => new Channel(uid, ChannelTypePerson));
+    const sdk = WKSDK.shared();
 
     // Initial resolve from cache
     const m = new Map<string, string>();
     const toFetch: Channel[] = [];
     for (let i = 0; i < uids.length; i++) {
-      const info = WKSDK.shared().channelManager.getChannelInfo(channels[i]);
+      const info = getImChannelInfo(sdk, channels[i]);
       if (info?.title) {
         m.set(uids[i], info.title);
       } else {
@@ -98,7 +105,7 @@ export function useUserNames(uids: string[]): Map<string, string> {
       }
     };
 
-    WKSDK.shared().channelManager.addListener(listener);
+    const unsubscribe = addImChannelInfoListener(sdk, listener);
 
     // Fetch uncached in batches of 5 to avoid flooding the IM SDK
     const BATCH_SIZE = 5;
@@ -108,7 +115,7 @@ export function useUserNames(uids: string[]): Map<string, string> {
         const batch = toFetch.slice(i, i + BATCH_SIZE);
         await Promise.all(
           batch.map((ch) =>
-            WKSDK.shared().channelManager.fetchChannelInfo(ch).catch(() => {
+            fetchImChannelInfo(sdk, ch).catch(() => {
               if (aborted) return;
               setNameMap((prev) => {
                 const next = new Map(prev);
@@ -125,7 +132,7 @@ export function useUserNames(uids: string[]): Map<string, string> {
 
     return () => {
       aborted = true;
-      WKSDK.shared().channelManager.removeListener(listener);
+      unsubscribe();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uids.join('\0')]);
