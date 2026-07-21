@@ -151,10 +151,6 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
     // 分组板:走 /issues/grouped(按负责人)。
     if (view === "grouped") {
-      if (scope === "involves" && !myMemberId) {
-        if (my === seq.current) { setGroups([]); setLoading(false); }
-        return;
-      }
       // 「与我相关」(仅「我的回路」页)= 指派给我 ∪ 我创建 ∪ 间接关联的并集扇出;需当前成员
       // 后端 id,未解析出则清空并等待(不回退成无 scope 全量)。myMemberId 在依赖里,解析后自动重取。
       if (scope === "involves") {
@@ -164,6 +160,15 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
         }
         listMyGroupedIssues(myMemberId, { ...common, limit: 100 })
           .then((gs) => { if (my === seq.current) setGroups(gs); })
+          .catch(onErr)
+          .finally(() => { if (my === seq.current) setLoading(false); });
+        return;
+      }
+      // 有关键词 → 走全文搜索端点,结果按负责人分组展示。
+      const gkw = f.keyword.trim();
+      if (gkw && !isMyLoop) {
+        searchIssues(gkw, { limit: 50 })
+          .then(({ issues }) => { if (my === seq.current) setGroups(groupIssuesByAssignee(issues)); })
           .catch(onErr)
           .finally(() => { if (my === seq.current) setLoading(false); });
         return;
@@ -203,8 +208,8 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       .finally(() => { if (my === seq.current) setLoading(false); });
   }, [f, view, page, scope, myMemberId, noAssigneeActive]);
 
-  // 注意:useEffect 直接传 reload 会将 effect 的 cleanup 参数当作 silent 传入;
-  // 改为箭头函数包裹,确保 reactive 首次加载仍走全屏 spinner(silent=false)。
+  // 注意:useEffect 直接传 reload 时,React 不会向 effect 回调传入任何参数;
+  // 箭头函数包裹与 useEffect(reload,[reload]) 行为完全一致,仅保留以明确 silent=false 语义。
   useEffect(() => { reload(); }, [reload]);
 
   // 运行中快照:视图/筛选无关(工作区级),故不进 reload 的依赖 —— 不随筛选/翻页/切视图白拉。
