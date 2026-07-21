@@ -9,9 +9,6 @@ vi.mock('@octo/base', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('../__mocks__/dmworkBase');
     return { ...actual };
 });
-vi.mock('@octo/base/src/App', () => ({
-    default: { loginInfo: { uid: 'test-uid' } },
-}));
 
 // Popconfirm 暴露 content，便于断言不同分支下的删除确认文案。
 vi.mock('@douyinfe/semi-ui', () => ({
