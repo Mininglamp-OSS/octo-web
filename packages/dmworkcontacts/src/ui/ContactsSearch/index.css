@@ -1,0 +1,63 @@
+.wk-contacts-search {
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  flex-shrink: 0;
+}
+
+.wk-contacts-search-input {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  background: var(--wk-bg-elevated);
+  border: 1.5px solid transparent;
+  border-radius: var(--wk-r-md);
+  transition: border-color var(--wk-dur-fast);
+}
+
+.wk-contacts-search-input:focus-within {
+  border-color: var(--wk-brand-primary);
+}
+.wk-contacts-search-icon {
+  flex-shrink: 0;
+  color: var(--wk-text-tertiary);
+}
+.wk-contacts-search-input input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-primary);
+  min-width: 0;
+}
+.wk-contacts-search-input input::placeholder {
+  color: var(--wk-text-tertiary);
+}
+.wk-contacts-search-clear {
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xl);
+  line-height: 1;
+  padding: 0 var(--wk-sp-1);
+}
+.wk-contacts-search-clear:hover {
+  color: var(--wk-text-secondary);
+}
+.wk-contacts-search-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--wk-sp-1) 0;
+}
+.wk-contacts-search-section {
+  margin-bottom: var(--wk-sp-2);
+}
+.wk-contacts-search-section-title {
+  padding: var(--wk-sp-1) var(--wk-sp-4);
+  font-size: var(--wk-text-size-xs);
+  font-weight: 600;
+  color: var(--wk-text-tertiary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}

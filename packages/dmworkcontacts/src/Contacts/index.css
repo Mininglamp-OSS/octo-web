@@ -65,129 +65,57 @@
 }
 
 /* ============================================================
-   搜索框
-   ============================================================ */
-.wk-contacts-search {
-    padding: var(--wk-sp-2) var(--wk-sp-3);
-    flex-shrink: 0;
-}
-
-.wk-contacts-search-input {
-    display: flex;
-    align-items: center;
-    gap: var(--wk-sp-2);
-    padding: var(--wk-sp-2) var(--wk-sp-3);
-    background: var(--wk-bg-elevated);
-    border: 1.5px solid transparent;
-    border-radius: var(--wk-r-md);
-    transition: border-color var(--wk-dur-fast);
-}
-
-.wk-contacts-search-input:focus-within {
-    border-color: var(--wk-brand-primary);
-}
-
-.wk-contacts-search-icon {
-    flex-shrink: 0;
-    color: var(--wk-text-tertiary);
-}
-
-.wk-contacts-search-input input {
-    flex: 1;
-    border: none;
-    outline: none;
-    background: transparent;
-    font-size: 12px;
-    color: var(--wk-text-primary);
-    min-width: 0;
-}
-
-.wk-contacts-search-input input::placeholder {
-    color: var(--wk-text-tertiary);
-}
-
-.wk-contacts-search-clear {
-    flex-shrink: 0;
-    cursor: pointer;
-    color: var(--wk-text-tertiary);
-    font-size: 16px;
-    line-height: 1;
-    padding: 0 2px;
-}
-
-.wk-contacts-search-clear:hover {
-    color: var(--wk-text-secondary);
-}
-
-/* ============================================================
-   搜索结果
-   ============================================================ */
-.wk-contacts-search-results {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: var(--wk-sp-1) 0;
-}
-
-.wk-contacts-search-section {
-    margin-bottom: var(--wk-sp-2);
-}
-
-.wk-contacts-search-section-title {
-    padding: var(--wk-sp-1) var(--wk-sp-4);
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--wk-text-tertiary);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-}
-
-/* ============================================================
    筛选标签
    ============================================================ */
 .wk-contacts-filters {
     display: flex;
-    gap: 6px;
+    gap: var(--wk-sp-2);
     padding: var(--wk-sp-1) var(--wk-sp-4) var(--wk-sp-2);
 }
 
 .wk-contacts-chip {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 5px 12px;
+    gap: var(--wk-sp-1);
+    min-height: var(--wk-sp-6);
+    padding: 0 var(--wk-sp-3);
+    box-sizing: border-box;
     border-radius: var(--wk-r-full);
     border: 1px solid var(--wk-border-default);
-    background: transparent;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--semi-color-text-2);
+    background: var(--wk-bg-surface);
+    font-size: var(--wk-text-size-sm);
+    font-weight: 400;
+    color: var(--wk-text-secondary);
     cursor: pointer;
-    transition: all var(--wk-dur) var(--wk-ease);
+    transition:
+        background var(--wk-dur-fast) var(--wk-ease),
+        border-color var(--wk-dur-fast) var(--wk-ease),
+        color var(--wk-dur-fast) var(--wk-ease);
     user-select: none;
     line-height: 1;
 }
 
 .wk-contacts-chip:hover {
-    background: var(--semi-color-fill-0);
-    border-color: var(--semi-color-fill-0);
+    background: var(--wk-bg-elevated);
+    border-color: var(--wk-border-strong);
+    color: var(--wk-text-primary);
 }
 
 .wk-contacts-chip.active {
-    background: color-mix(in srgb, var(--wk-brand-primary) 8%, transparent);
-    border-color: color-mix(in srgb, var(--wk-brand-primary) 20%, transparent);
-    color: var(--wk-text-accent);
+    background: color-mix(in srgb, var(--wk-bg-active) 45%, var(--wk-bg-surface));
+    border-color: var(--wk-border-strong);
+    color: var(--wk-text-primary);
     font-weight: 600;
 }
 
 .wk-contacts-chip-count {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--semi-color-text-3);
+    font-size: var(--wk-text-size-sm);
+    font-weight: inherit;
+    color: var(--wk-text-tertiary);
 }
 
 .wk-contacts-chip.active .wk-contacts-chip-count {
-    color: var(--wk-brand-primary);
+    color: var(--wk-text-primary);
 }
 
 /* ============================================================
@@ -202,68 +130,6 @@
     font-weight: 500;
     background: var(--wk-bg-active, #E2E3EA);
     color: var(--wk-text-secondary, #5C6070);
-}
-
-/* ============================================================
-   手风琴分组
-   ============================================================ */
-.wk-contacts-accordion {
-    margin-bottom: var(--wk-sp-1);
-    flex-shrink: 0;
-}
-
-.wk-contacts-accordion--expanded {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-}
-
-.wk-contacts-accordion-header {
-    display: flex;
-    align-items: center;
-    height: 36px;
-    padding: 0 var(--wk-sp-3);
-    cursor: pointer;
-    user-select: none;
-    border-radius: var(--wk-r-sm);
-    margin: 0 var(--wk-sp-2);
-    transition: background var(--wk-dur-fast) var(--wk-ease);
-}
-
-.wk-contacts-accordion-header:hover {
-    background: var(--wk-bg-hover);
-}
-
-.wk-contacts-accordion-arrow {
-    display: inline-flex;
-    align-items: center;
-    color: var(--wk-text-tertiary);
-    margin-right: var(--wk-sp-2);
-    flex-shrink: 0;
-}
-
-.wk-contacts-accordion-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    margin-right: var(--wk-sp-2);
-    color: var(--wk-text-secondary);
-    flex-shrink: 0;
-}
-
-.wk-contacts-accordion-label {
-    flex: 1;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--wk-text-secondary);
-    letter-spacing: 0.01em;
-}
-
-.wk-contacts-accordion-count {
-    font-size: 12px;
-    color: var(--wk-text-tertiary);
-    font-weight: 400;
 }
 
 .wk-contacts-accordion-body {

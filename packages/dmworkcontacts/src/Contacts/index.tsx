@@ -6,7 +6,7 @@ import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
 import { Toast, Tooltip } from "@douyinfe/semi-ui";
-import { ChevronRight, ChevronDown, Users, Bot, UsersRound, Search as SearchIcon } from "lucide-react";
+import { ChevronRight, Users, Bot, UsersRound } from "lucide-react";
 
 import { Channel, ChannelTypePerson, ChannelTypeGroup, WKSDK, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
 import { ContactsListManager } from "../Service/ContactsListManager";
@@ -21,6 +21,10 @@ import { debounce } from "@octo/base/src/Utils/rateLimit";
 import { OnlineStatusBadge, needShowOnlineStatus, getOnlineTip } from "@octo/base/src/Components/ConversationList";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { shouldShowOnlineStatus, selectOnlineStatusUids } from "./onlineStatusGate";
+import ContactsSearch from "../ui/ContactsSearch";
+import { ContactsDirectory, ContactsDirectorySection } from "../ui/ContactsDirectory";
+import type { ContactsDirectorySectionKey } from "../ui/ContactsDirectory/types";
+import { searchContacts } from "../bridge/contactsSearch/searchContacts";
 
 function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
     const [visible, setVisible] = useState(false)
@@ -534,23 +538,12 @@ export default class ContactsList extends Component<any, ContactsState> {
             return
         }
 
-        const { spaceMembers, spaceBots, myGroups } = this.state
-        const myUID = WKApp.loginInfo.uid || ""
-        const kw = keyword.toLowerCase()
-
-        const memberUids = new Set(spaceMembers.map(m => m.uid))
-        const memberResults = spaceMembers
-            .filter(m => m.uid !== myUID)
-            .filter(m => m.name.replace(/\*\*/g, '').toLowerCase().includes(kw))
-        // spaceBots 中不在 members 里的 AI 也参与搜索
-        const extraBotResults = (spaceBots || [])
-            .filter((b: any) => b.uid !== myUID && !memberUids.has(b.uid))
-            .filter((b: any) => (b.name || '').toLowerCase().includes(kw))
-            .map((b: any) => ({ ...b, robot: 1 }))
-        const contacts = [...memberResults, ...extraBotResults]
-
-        const groups = (myGroups || [])
-            .filter((g: any) => g.name && g.name.toLowerCase().includes(kw))
+        const { contacts, groups } = searchContacts(keyword, {
+            spaceMembers: this.state.spaceMembers,
+            spaceBots: this.state.spaceBots,
+            myGroups: this.state.myGroups,
+            currentUid: WKApp.loginInfo.uid || "",
+        })
 
         this.setState({
             isSearching: true,
@@ -568,7 +561,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         this.setState({ keyword: '', isSearching: false, searchContacts: [], searchGroups: [] })
     }
 
-    private toggleSection = (section: 'groups' | 'myBots' | 'allContacts') => {
+    private toggleSection = (section: ContactsDirectorySectionKey) => {
         const willExpand = this.state.expandedSection !== section
         this.setState({
             expandedSection: willExpand ? section : null,
@@ -630,43 +623,25 @@ export default class ContactsList extends Component<any, ContactsState> {
         )
     }
 
-    renderSearchBox() {
-        return (
-            <div className="wk-contacts-search">
-                <div className="wk-contacts-search-input">
-                    <SearchIcon size={14} className="wk-contacts-search-icon" />
-                    <input
-                        type="text"
-                        placeholder={t("contacts.search.placeholder")}
-                        value={this.state.keyword || ''}
-                        onChange={(e) => this.handleSearchChange(e.target.value)}
-                    />
-                    {this.state.keyword && (
-                        <span className="wk-contacts-search-clear" onClick={this.handleClearSearch}>&times;</span>
-                    )}
-                </div>
-            </div>
-        )
-    }
-
-    renderSearchResults() {
+    renderSearch() {
         const { searchContacts, searchGroups } = this.state
-
-        if (searchContacts.length === 0 && searchGroups.length === 0) {
-            return (
-                <div className="wk-contacts-empty">
-                    <SearchIcon size={28} className="wk-contacts-empty-icon" />
-                    <div className="wk-contacts-empty-text">{t("contacts.search.noResults")}</div>
-                </div>
-            )
-        }
-
         return (
-            <div className="wk-contacts-search-results">
-                {searchContacts.length > 0 && (
-                    <div className="wk-contacts-search-section">
-                        <div className="wk-contacts-search-section-title">{t("contacts.section.contacts")}</div>
-                        {searchContacts.map((m: any) => (
+            <ContactsSearch
+                copy={{
+                    placeholder: t("contacts.search.placeholder"),
+                    emptyText: t("contacts.search.noResults"),
+                    contactsTitle: t("contacts.section.contacts"),
+                    groupsTitle: t("contacts.section.groups"),
+                }}
+                state={{
+                    keyword: this.state.keyword || '',
+                    isSearching: this.state.isSearching,
+                    hasResults: searchContacts.length > 0 || searchGroups.length > 0,
+                }}
+                onKeywordChange={this.handleSearchChange}
+                onClear={this.handleClearSearch}
+                results={{
+                    contacts: searchContacts.length > 0 ? searchContacts.map((m: any) => (
                             <div key={m.uid} className="wk-contacts-section-item" onClick={() => {
                                 this.handleContactClick(m.uid, m.robot === 1)
                             }}>
@@ -678,13 +653,8 @@ export default class ContactsList extends Component<any, ContactsState> {
                                     {m.robot === 1 && <AiBadge />}
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                )}
-                {searchGroups.length > 0 && (
-                    <div className="wk-contacts-search-section">
-                        <div className="wk-contacts-search-section-title">{t("contacts.section.groups")}</div>
-                        {searchGroups.map((g: any) => (
+                        )) : undefined,
+                    groups: searchGroups.length > 0 ? searchGroups.map((g: any) => (
                             <div key={g.group_no} className="wk-contacts-section-item" onClick={() => {
                                 this.handleGroupClick(g.group_no, g.name, g.member_count)
                             }}>
@@ -695,10 +665,9 @@ export default class ContactsList extends Component<any, ContactsState> {
                                     <span className="wk-contacts-group-tag">{t("contacts.tag.group")}</span>
                                 </OverflowTooltip>
                             </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+                        )) : undefined,
+                }}
+            />
         )
     }
 
@@ -731,27 +700,13 @@ export default class ContactsList extends Component<any, ContactsState> {
         )
     }
 
-    renderAccordionHeader(section: 'groups' | 'myBots' | 'allContacts', icon: React.ReactNode, label: string, count: number) {
-        const isExpanded = this.state.expandedSection === section
-        return (
-            <div className="wk-contacts-accordion-header" onClick={() => this.toggleSection(section)}>
-                <span className="wk-contacts-accordion-arrow">{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
-                <span className="wk-contacts-accordion-icon">{icon}</span>
-                <span className="wk-contacts-accordion-label">{label}</span>
-                {count > 0 && <span className="wk-contacts-accordion-count">({count})</span>}
-            </div>
-        )
-    }
-
     renderGroupsSection() {
         const { expandedSection, myGroups } = this.state
         const isExpanded = expandedSection === 'groups'
         const groups = myGroups || []
 
         return (
-            <div className={classnames("wk-contacts-accordion", isExpanded && "wk-contacts-accordion--expanded")}>
-                {this.renderAccordionHeader('groups', <UsersRound size={16} />, t("contacts.section.groups"), groups.length)}
-                {isExpanded && (
+            <ContactsDirectorySection sectionKey="groups" expanded={isExpanded} icon={<UsersRound size={16} />} label={t("contacts.section.groups")} count={groups.length} onToggle={this.toggleSection}>
                     <div className="wk-contacts-accordion-body">
                         {groups.length === 0 ? (
                             <div className="wk-contacts-empty">
@@ -771,8 +726,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             </div>
                         ))}
                     </div>
-                )}
-            </div>
+            </ContactsDirectorySection>
         )
     }
 
@@ -782,9 +736,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         const bots = myBots || []
 
         return (
-            <div className={classnames("wk-contacts-accordion", isExpanded && "wk-contacts-accordion--expanded")}>
-                {this.renderAccordionHeader('myBots', <Bot size={16} />, t("contacts.section.addedAi"), bots.length)}
-                {isExpanded && (
+            <ContactsDirectorySection sectionKey="myBots" expanded={isExpanded} icon={<Bot size={16} />} label={t("contacts.section.addedAi")} count={bots.length} onToggle={this.toggleSection}>
                     <div className="wk-contacts-accordion-body">
                         {bots.length === 0 ? (
                             <div className="wk-contacts-empty">
@@ -806,8 +758,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             </div>
                         ))}
                     </div>
-                )}
-            </div>
+            </ContactsDirectorySection>
         )
     }
 
@@ -817,9 +768,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         const totalCount = this.flatItems.length
 
         return (
-            <div className={classnames("wk-contacts-accordion", isExpanded && "wk-contacts-accordion--expanded")}>
-                {this.renderAccordionHeader('allContacts', <Users size={16} />, t("contacts.section.allContacts"), totalCount)}
-                {isExpanded && (
+            <ContactsDirectorySection sectionKey="allContacts" expanded={isExpanded} icon={<Users size={16} />} label={t("contacts.section.allContacts")} count={totalCount} onToggle={this.toggleSection}>
                     <>
                         {this.renderFilterChips()}
                         {totalCount === 0 ? (
@@ -829,8 +778,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             </div>
                         ) : this.renderContactListWithLetters()}
                     </>
-                )}
-            </div>
+            </ContactsDirectorySection>
         )
     }
 
@@ -910,16 +858,14 @@ export default class ContactsList extends Component<any, ContactsState> {
                 <div className="wk-contacts">
                     <div className="wk-contacts-content">
                         {this.renderBotFatherBanner()}
-                        {this.renderSearchBox()}
+                        {this.renderSearch()}
 
-                        {isSearching ? (
-                            this.renderSearchResults()
-                        ) : (
-                            <>
+                        {!isSearching && (
+                            <ContactsDirectory>
                                 {this.renderGroupsSection()}
                                 {this.renderMyBotsSection()}
                                 {this.renderAllContactsSection()}
-                            </>
+                            </ContactsDirectory>
                         )}
                     </div>
 
