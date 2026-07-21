@@ -47,6 +47,7 @@ import {
   restoreOctoRichTextClipboardToEditor,
 } from "./richTextPaste";
 import { handleSecretPaste } from "./secretPasteDetect";
+import { shouldEnableMultiLine } from "./multiLine";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -589,17 +590,25 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         setSlashActiveIndex(0);
       }
 
-      // 检测是否多行（检查是否有换行符或多个段落，或有附件节点，或文本较长）
+      // 组字期跳过 setIsMultiLine：外层 flex row→column 会打断 IME。
+      // compositionend 后 ProseMirror 会自然重发 onUpdate（composing=false），届时收尾。
+      if (editor.view.composing) {
+        return;
+      }
       const json = editor.getJSON();
       const paragraphs = json.content || [];
       const hasMultipleParagraphs = paragraphs.length > 1;
       const hasNewline = text.includes("\n");
-      // 检查编辑器内是否有附件节点
       const hasAttachments = extractAttachmentsFromEditor(editor).length > 0;
-      // 文本较长时也需要垂直排列（阈值：超过 50 个字符）
-      const isLongText = text.length > 50;
-      setIsMultiLine(
-        hasMultipleParagraphs || hasNewline || hasAttachments || isLongText
+      setIsMultiLine((previous: boolean) =>
+        shouldEnableMultiLine({
+          text,
+          hasMultipleParagraphs,
+          hasNewline,
+          hasAttachments,
+          composing: false,
+          previous,
+        })
       );
     },
   });
@@ -779,7 +788,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     if (topAttachments.length > 0) {
       setIsMultiLine(true);
     } else if (editor) {
-      // 当顶部附件区清空后，检查编辑器内是否仍需要多行模式
+      // 顶部附件区清空后重算：走同一 helper，避免与 onUpdate 判定双写。
+      // 附件清空是非组字动作，但 editor.view.composing 仍读一次以保底一致。
       const text = editor.getText();
       const json = editor.getJSON();
       const paragraphs = json.content || [];
@@ -787,13 +797,16 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       const hasNewline = text.includes("\n");
       const hasEditorAttachments =
         extractAttachmentsFromEditor(editor).length > 0;
-      // 文本较长时也需要垂直排列（阈值：超过 50 个字符）
-      const isLongText = text.length > 50;
-      setIsMultiLine(
-        hasMultipleParagraphs ||
-          hasNewline ||
-          hasEditorAttachments ||
-          isLongText
+      const composing = editor.view.composing;
+      setIsMultiLine((previous: boolean) =>
+        shouldEnableMultiLine({
+          text,
+          hasMultipleParagraphs,
+          hasNewline,
+          hasAttachments: hasEditorAttachments,
+          composing,
+          previous,
+        })
       );
     }
   }, [topAttachments.length, editor]);
