@@ -1,11 +1,12 @@
 import React from "react";
-import { Popover } from "@douyinfe/semi-ui";
+import { Popover, Spin } from "@douyinfe/semi-ui";
+import { WKButton } from "@octo/base";
 import { QRCodeSVG } from "qrcode.react";
 import { loginT as t } from "./i18n";
+import { useMobileDownloadUrl } from "./mobileDownloadUpdater";
 import "./MobileDownloadPopover.css";
 
-// TestFlight 是公开固定 URL，不需要走 updater 接口
-export const IOS_DOWNLOAD_URL = "https://testflight.apple.com/join/uPrdCcy3";
+export const IOS_UPDATER_PATH = "common/updater/ios/1.0.0";
 
 type PopoverHoverProps = Pick<
   React.HTMLAttributes<HTMLDivElement>,
@@ -14,35 +15,44 @@ type PopoverHoverProps = Pick<
 
 export const IOSDownloadPopoverContent: React.FC<PopoverHoverProps> = (
   hoverProps
-) => (
-  <div
-    className="wk-login-mobile-download-popover"
-    role="dialog"
-    aria-label={t("download.iosQrTitle")}
-    {...hoverProps}
-  >
-    <div
-      className="wk-login-mobile-popover-qr"
-      role="img"
-      aria-label={t("download.iosQrLabel")}
-    >
-      <QRCodeSVG value={IOS_DOWNLOAD_URL} size={104} />
-    </div>
-    <strong className="wk-login-mobile-download-popover-title">
-      {t("download.iosQrTitle")}
-    </strong>
-    <a
-      className="wk-login-mobile-download-direct-link"
-      href={IOS_DOWNLOAD_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      {t("download.iosDirectDownload")}
-    </a>
-  </div>
-);
+) => {
+  const { status, downloadUrl, retry } = useMobileDownloadUrl(IOS_UPDATER_PATH);
 
-// iOS 安装入口：按钮只控制二维码浮窗，TestFlight 地址仅用于生成二维码
+  return (
+    <div
+      className="wk-login-mobile-download-popover"
+      role="dialog"
+      aria-label={t("download.iosQrTitle")}
+      {...hoverProps}
+    >
+      <div
+        className="wk-login-mobile-popover-qr"
+        data-status={status}
+        role={status === "ready" ? "img" : undefined}
+        aria-label={status === "ready" ? t("download.iosQrLabel") : undefined}
+        aria-busy={status === "loading" ? true : undefined}
+      >
+        {status === "loading" && (
+          <Spin aria-label={t("download.loadingAddress")} size="large" />
+        )}
+        {status === "error" && (
+          <div className="wk-login-mobile-download-state" role="alert">
+            <span>{t("download.addressLoadFailed")}</span>
+            <WKButton type="button" variant="ghost" size="sm" onClick={retry}>
+              {t("download.retry")}
+            </WKButton>
+          </div>
+        )}
+        {status === "ready" && <QRCodeSVG value={downloadUrl} size={104} />}
+      </div>
+      <strong className="wk-login-mobile-download-popover-title">
+        {t("download.iosQrTitle")}
+      </strong>
+    </div>
+  );
+};
+
+// iOS 安装入口：按钮只控制二维码浮窗，安装地址由 updater 接口提供
 export const IOSDownloadButton: React.FC = () => {
   const [hoverVisible, setHoverVisible] = React.useState(false);
   const [clickPinned, setClickPinned] = React.useState(false);

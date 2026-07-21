@@ -34,10 +34,25 @@
   background: var(--wk-color-white);
 }
 
-.wk-login-mobile-popover-qr svg {
+.wk-login-mobile-popover-qr[data-status="loading"],
+.wk-login-mobile-popover-qr[data-status="error"] {
+  background: var(--wk-bg-surface);
+}
+
+.wk-login-mobile-popover-qr > svg {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.wk-login-mobile-download-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-leading-normal);
 }
 
 .wk-login-mobile-download-popover-title {
@@ -74,6 +89,13 @@
 .wk-login-mobile-download-direct-link:focus-visible {
   outline: 2px solid var(--wk-border-glow);
   outline-offset: 2px;
+}
+
+.wk-login-mobile-download-direct-link[aria-disabled="true"] {
+  border-color: var(--wk-border-default);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-disabled);
+  cursor: not-allowed;
 }
 
 .wk-login-android-popover-manual-download {

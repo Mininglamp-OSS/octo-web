@@ -13,7 +13,7 @@ const meta: Meta<typeof IOSDownloadButton> = {
     docs: {
       description: {
         component:
-          "登录页 iOS 二维码入口。悬停或点击入口只展示动态生成的 TestFlight 二维码，触发按钮本身不执行跳转。",
+          "登录页 iOS 二维码入口。悬停或点击入口只展示由 updater 接口地址生成的二维码，触发按钮本身不执行跳转。",
       },
     },
   },

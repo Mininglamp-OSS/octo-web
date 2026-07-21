@@ -77,6 +77,7 @@
     "or": "or"
   },
   "download": {
+    "addressLoadFailed": "Could not load download link",
     "android": "Android",
     "androidDirectDownload": "Download APK directly",
     "androidHoverHint": "Hover or click to view the Android download QR code",
@@ -84,10 +85,11 @@
     "githubManualDownload": "Or download manually from GitHub",
     "openGithubReleases": "Open GitHub Releases",
     "ios": "iOS",
-    "iosDirectDownload": "Open TestFlight",
     "iosHoverHint": "Hover or click to view the iOS installation QR code",
     "iosQrLabel": "TestFlight installation QR code",
-    "iosQrTitle": "Scan to download"
+    "iosQrTitle": "Scan to download",
+    "loadingAddress": "Loading download link",
+    "retry": "Retry"
   },
   "form": {
     "code": "Code",
