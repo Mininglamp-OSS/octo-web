@@ -152,7 +152,7 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     // 分组板:走 /issues/grouped(按负责人)。
     if (view === "grouped") {
       if (scope === "involves" && !myMemberId) {
-        if (my === seq.current) { setGroups([]); if (!silent) setLoading(false); }
+        if (my === seq.current) { setGroups([]); setLoading(false); }
         return;
       }
       // 「与我相关」(仅「我的回路」页)= 指派给我 ∪ 我创建 ∪ 间接关联的并集扇出;需当前成员
@@ -172,7 +172,7 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       listGroupedIssues({ ...common, assignee_types: scopeToAssigneeTypes(scope), limit: 100 })
         .then((gs) => { if (my === seq.current) setGroups(gs); })
         .catch(onErr)
-        .finally(() => { if (my === seq.current && !silent) setLoading(false); });
+        .finally(() => { if (my === seq.current) setLoading(false); });
       return;
     }
 
@@ -200,7 +200,7 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
         setTotal(total);
       })
       .catch(onErr)
-      .finally(() => { if (my === seq.current && !silent) setLoading(false); });
+      .finally(() => { if (my === seq.current) setLoading(false); });
   }, [f, view, page, scope, myMemberId, noAssigneeActive]);
 
   // 注意:useEffect 直接传 reload 会将 effect 的 cleanup 参数当作 silent 传入;
