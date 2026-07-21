@@ -3,6 +3,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const pickerState = vi.hoisted(() => ({ props: undefined as any }));
+const i18nState = vi.hoisted(() => ({
+  t: vi.fn((key: string) => `translated:${key}`),
+}));
 
 // 轻量 stub 掉重依赖，聚焦 overlay 的命令式生命周期（容器/监听/焦点/定位）。
 // picker / 完整面板都 stub 成简单节点，避免拉入 EmojiPanel(tgs-player) 等重依赖。
@@ -16,7 +19,7 @@ vi.mock("../index", () => ({
 vi.mock("../../../../Components/EmojiToolbar", () => ({
   EmojiPanel: () => null,
 }));
-vi.mock("../../../../i18n", () => ({ t: (k: string) => k }));
+vi.mock("../../../../i18n", () => ({ t: i18nState.t }));
 
 import {
   reactionPickerOverlay,
@@ -37,6 +40,7 @@ const options = (overrides: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   pickerState.props = undefined;
+  i18nState.t.mockClear();
 });
 
 afterEach(() => {
@@ -125,5 +129,22 @@ describe("ReactionPickerOverlay lifecycle", () => {
     expect(pickerState.props.selectedKeys).toEqual(["👍", "[收到]"]);
     pickerState.props.onSelect({ key: "thumb", char: "👍" });
     expect(onSelect).toHaveBeenCalledWith("👍");
+  });
+
+  it("localizes quick-pick names used by tooltips and aria labels", () => {
+    reactionPickerOverlay.open(options());
+
+    expect(pickerState.props.tokens[0]).toEqual(
+      expect.objectContaining({
+        key: "[使命必达]",
+        name: "translated:base.reaction.emoji.mission",
+      })
+    );
+    expect(pickerState.props.frequentlyUsed[0]).toEqual(
+      expect.objectContaining({
+        key: "👍",
+        name: "translated:base.reaction.emoji.thumbsUp",
+      })
+    );
   });
 });

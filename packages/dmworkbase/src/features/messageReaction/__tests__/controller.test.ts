@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createMessageReactionController,
   getReactionErrorKey,
+  isMessageReactionChannelSupported,
 } from "../controller";
 
 function deferred<T>() {
@@ -23,6 +24,14 @@ function target(reactions: any[] = []) {
 }
 
 describe("message reaction controller", () => {
+  it("allows only channel types supported by the deployed server contract", () => {
+    expect(isMessageReactionChannelSupported(1)).toBe(true);
+    expect(isMessageReactionChannelSupported(2)).toBe(true);
+    expect(isMessageReactionChannelSupported(5)).toBe(true);
+    expect(isMessageReactionChannelSupported(3)).toBe(false);
+    expect(isMessageReactionChannelSupported(6)).toBe(false);
+  });
+
   it("applies an optimistic add then reconciles with the authoritative response", async () => {
     const request = deferred<{
       messageId: string;

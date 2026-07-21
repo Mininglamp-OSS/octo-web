@@ -230,6 +230,28 @@ describe("message reaction realtime sync controller", () => {
     expect(notify).toHaveBeenCalledTimes(1);
   });
 
+  it("notifies after applying an earlier batch when a later batch fails", async () => {
+    const messages = [message("123")];
+    const sync = vi
+      .fn()
+      .mockResolvedValueOnce([syncedReaction(41, { uid: "u1" })])
+      .mockRejectedValueOnce(new Error("sync failed"));
+    const notify = vi.fn();
+    const controller = createMessageReactionSyncController({
+      channel,
+      getMessages: () => messages,
+      sync,
+      notify,
+    });
+
+    await expect(controller.request(43)).rejects.toThrow("sync failed");
+
+    expect(messages[0].octoReactions).toEqual([
+      expect.objectContaining({ uid: "u1", seq: 41 }),
+    ]);
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
   it("drains a newer command that arrives while an earlier sync is in flight", async () => {
     const firstBatch = deferred<SyncedMessageReaction[]>();
     const messages = [message("123")];
