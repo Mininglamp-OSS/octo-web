@@ -28,8 +28,9 @@ export const IOSDownloadPopoverContent: React.FC<PopoverHoverProps> = (
       <div
         className="wk-login-mobile-popover-qr"
         data-status={status}
-        role="img"
-        aria-label={t("download.iosQrLabel")}
+        role={status === "ready" ? "img" : undefined}
+        aria-label={status === "ready" ? t("download.iosQrLabel") : undefined}
+        aria-busy={status === "loading" ? true : undefined}
       >
         {status === "loading" && (
           <Spin aria-label={t("download.loadingAddress")} size="large" />

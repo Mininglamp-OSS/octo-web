@@ -49,8 +49,11 @@ export const AndroidDownloadPopoverContent: React.FC<PopoverHoverProps> = (
       <div
         className="wk-login-mobile-popover-qr"
         data-status={status}
-        role="img"
-        aria-label={t("download.androidQrTitle")}
+        role={status === "ready" ? "img" : undefined}
+        aria-label={
+          status === "ready" ? t("download.androidQrTitle") : undefined
+        }
+        aria-busy={status === "loading" ? true : undefined}
       >
         {status === "loading" && (
           <Spin aria-label={t("download.loadingAddress")} size="large" />

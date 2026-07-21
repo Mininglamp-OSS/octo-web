@@ -225,8 +225,9 @@ describe("AndroidDownloadButton", () => {
       React.createElement(AndroidDownloadPopoverContent)
     );
 
-    expect(html).toContain('role="img"');
     expect(html).toContain("wk-login-mobile-popover-qr");
+    expect(html).not.toContain('role="img"');
+    expect(html).toContain('aria-busy="true"');
     expect(html).toContain('data-spin="true"');
     expect(html).toContain('aria-label="正在获取下载地址"');
     expect(html).not.toContain("data-qr-value");
@@ -267,6 +268,11 @@ describe("AndroidDownloadButton", () => {
     expect(
       container.querySelector("[data-qr-value]")?.getAttribute("data-qr-value")
     ).toBe(updaterUrl);
+    expect(
+      container
+        .querySelector(".wk-login-mobile-popover-qr")
+        ?.getAttribute("role")
+    ).toBe("img");
     expect(
       container.querySelector<HTMLAnchorElement>(
         ".wk-login-mobile-download-direct-link"
@@ -309,12 +315,14 @@ describe("AndroidDownloadButton", () => {
         ?.getAttribute("aria-disabled")
     ).toBe("true");
 
+    const retryButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "重试"
+    );
+    expect(retryButton?.tagName).toBe("BUTTON");
+    expect(retryButton?.closest('[role="img"]')).toBeNull();
+
     act(() => {
-      Simulate.click(
-        Array.from(container.querySelectorAll("button")).find(
-          (button) => button.textContent === "重试"
-        ) as Element
-      );
+      Simulate.click(retryButton as Element);
     });
     await act(async () => {
       await Promise.resolve();

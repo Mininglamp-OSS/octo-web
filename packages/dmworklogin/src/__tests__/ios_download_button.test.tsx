@@ -179,11 +179,12 @@ describe("IOSDownloadButton", () => {
     expect(html).toContain('role="dialog"');
     expect(html).toContain('data-spin="true"');
     expect(html).toContain('aria-label="正在获取下载地址"');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).not.toContain('role="img"');
     expect(html).not.toContain("data-qr-value");
     expect(html).not.toContain("testflight.apple.com");
     expect(html).toContain("wk-login-mobile-popover-qr");
     expect(html).not.toContain("wk-login-ios-popover-qr");
-    expect(html).toContain("TestFlight 安装二维码");
     expect(html).toContain(">扫码下载</strong>");
     expect(html).not.toContain("手机扫码安装");
   });
@@ -210,6 +211,11 @@ describe("IOSDownloadButton", () => {
     expect(
       container.querySelector("[data-qr-value]")?.getAttribute("data-qr-value")
     ).toBe(updaterUrl);
+    expect(
+      container
+        .querySelector(".wk-login-mobile-popover-qr")
+        ?.getAttribute("role")
+    ).toBe("img");
   });
 
   it("shows an error without a stale QR code when the updater fails", async () => {
@@ -229,7 +235,11 @@ describe("IOSDownloadButton", () => {
 
     expect(container.querySelector("[data-qr-value]")).toBeNull();
     expect(container.textContent).toContain("下载地址获取失败");
-    expect(container.textContent).toContain("重试");
+    const retryButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "重试"
+    );
+    expect(retryButton?.tagName).toBe("BUTTON");
+    expect(retryButton?.closest('[role="img"]')).toBeNull();
   });
 
   it("does not render the removed direct TestFlight action", () => {
