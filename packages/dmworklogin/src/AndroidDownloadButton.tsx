@@ -1,12 +1,13 @@
 import React from "react";
 import { IconGithubLogo } from "@douyinfe/semi-icons";
 import { Popover } from "@douyinfe/semi-ui";
-import { WKButton } from "@octo/base";
+import { apiFetchJson, WKApp, WKButton } from "@octo/base";
 import { QRCodeSVG } from "qrcode.react";
 import { loginT as t } from "./i18n";
 import "./MobileDownloadPopover.css";
 
 export const ANDROID_APK_PATH = "/download/dmwork.apk";
+export const ANDROID_UPDATER_PATH = "common/updater/android/1.0";
 export const ANDROID_RELEASES_URL =
   "https://github.com/Mininglamp-OSS/octo-android/releases/latest";
 
@@ -15,6 +16,48 @@ export function resolveAndroidApkUrl(
 ) {
   if (!origin) return ANDROID_APK_PATH;
   return new URL(ANDROID_APK_PATH, `${origin.replace(/\/$/, "")}/`).toString();
+}
+
+export function resolveAndroidUpdaterUrl(
+  apiUrl = WKApp.apiClient.config.apiURL
+) {
+  return `${apiUrl.replace(/\/?$/, "/")}${ANDROID_UPDATER_PATH}`;
+}
+
+function resolveSafeDownloadUrl(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.toString();
+    }
+  } catch {
+    // Invalid updater responses fall back to the legacy same-origin APK path.
+  }
+  return undefined;
+}
+
+function startBrowserDownload(url: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+export async function downloadLatestAndroidApk() {
+  let downloadUrl = resolveAndroidApkUrl();
+  try {
+    const result = await apiFetchJson<{ url?: unknown }>(
+      resolveAndroidUpdaterUrl()
+    );
+    downloadUrl = resolveSafeDownloadUrl(result?.url) ?? downloadUrl;
+  } catch {
+    // Keep the legacy same-origin APK path available when the updater fails.
+  }
+  startBrowserDownload(downloadUrl);
 }
 
 export function openAndroidReleases() {
@@ -55,6 +98,10 @@ export const AndroidDownloadPopoverContent: React.FC<PopoverHoverProps> = (
       className="wk-login-mobile-download-direct-link"
       href={resolveAndroidApkUrl()}
       download
+      onClick={(event) => {
+        event.preventDefault();
+        void downloadLatestAndroidApk();
+      }}
     >
       {t("download.androidDirectDownload")}
     </a>

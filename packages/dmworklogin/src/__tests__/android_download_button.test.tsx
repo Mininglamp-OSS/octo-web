@@ -5,6 +5,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act, Simulate } from "react-dom/test-utils";
 import { i18n } from "@octo/base/src/i18n/instance";
 
+const { apiFetchJsonMock } = vi.hoisted(() => ({
+  apiFetchJsonMock: vi.fn(),
+}));
+
 vi.mock("@douyinfe/semi-ui", () => ({
   Popover: ({
     children,
@@ -65,6 +69,12 @@ type MockWKButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 vi.mock("@octo/base", () => ({
+  apiFetchJson: apiFetchJsonMock,
+  WKApp: {
+    apiClient: {
+      config: { apiURL: "/api/v1/" },
+    },
+  },
   WKButton: ({ children, icon, iconOnly, ...props }: MockWKButtonProps) =>
     React.createElement(
       "button",
@@ -81,10 +91,12 @@ vi.mock("@octo/base", () => ({
 import {
   ANDROID_APK_PATH,
   ANDROID_RELEASES_URL,
+  ANDROID_UPDATER_PATH,
   AndroidDownloadButton,
   AndroidDownloadPopoverContent,
   openAndroidReleases,
   resolveAndroidApkUrl,
+  resolveAndroidUpdaterUrl,
 } from "../AndroidDownloadButton";
 
 const mountedContainers: HTMLDivElement[] = [];
@@ -103,6 +115,7 @@ describe("AndroidDownloadButton", () => {
   beforeEach(() => {
     i18n.setLocale("zh-CN", { persist: false });
     vi.restoreAllMocks();
+    apiFetchJsonMock.mockReset();
     vi.useFakeTimers();
   });
 
@@ -126,6 +139,16 @@ describe("AndroidDownloadButton", () => {
     expect(ANDROID_APK_PATH).toBe("/download/dmwork.apk");
     expect(resolveAndroidApkUrl("https://octo.example.com")).toBe(
       "https://octo.example.com/download/dmwork.apk"
+    );
+  });
+
+  it("resolves the Android updater endpoint against the configured API URL", () => {
+    expect(ANDROID_UPDATER_PATH).toBe("common/updater/android/1.0");
+    expect(resolveAndroidUpdaterUrl("/api/v1/")).toBe(
+      "/api/v1/common/updater/android/1.0"
+    );
+    expect(resolveAndroidUpdaterUrl("https://api.example.com/v1")).toBe(
+      "https://api.example.com/v1/common/updater/android/1.0"
     );
   });
 
@@ -240,6 +263,75 @@ describe("AndroidDownloadButton", () => {
     );
     expect(directDownload?.hasAttribute("download")).toBe(true);
     expect(directDownload?.textContent).toBe("直接下载 APK");
+  });
+
+  it("downloads the updater-provided APK URL when the direct action is clicked", async () => {
+    const updaterUrl = "https://cdn.example.com/releases/octo-latest.apk";
+    apiFetchJsonMock.mockResolvedValue({ url: updaterUrl });
+    let clickedHref = "";
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      function (this: HTMLAnchorElement) {
+        clickedHref = this.href;
+      }
+    );
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    mountedContainers.push(container);
+    act(() => {
+      ReactDOM.render(
+        React.createElement(AndroidDownloadPopoverContent),
+        container
+      );
+    });
+
+    act(() => {
+      Simulate.click(
+        container.querySelector(
+          ".wk-login-mobile-download-direct-link"
+        ) as Element
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(apiFetchJsonMock).toHaveBeenCalledWith(
+      "/api/v1/common/updater/android/1.0"
+    );
+    expect(clickedHref).toBe(updaterUrl);
+  });
+
+  it("falls back to the same-origin APK when the updater request fails", async () => {
+    apiFetchJsonMock.mockRejectedValue(new Error("network error"));
+    let clickedHref = "";
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      function (this: HTMLAnchorElement) {
+        clickedHref = this.href;
+      }
+    );
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    mountedContainers.push(container);
+    act(() => {
+      ReactDOM.render(
+        React.createElement(AndroidDownloadPopoverContent),
+        container
+      );
+    });
+
+    act(() => {
+      Simulate.click(
+        container.querySelector(
+          ".wk-login-mobile-download-direct-link"
+        ) as Element
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(clickedHref).toBe(`${window.location.origin}${ANDROID_APK_PATH}`);
   });
 
   it("opens GitHub Releases safely in a new tab", () => {
