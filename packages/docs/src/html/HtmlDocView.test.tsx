@@ -862,3 +862,101 @@ describe('HtmlDocView — creator/created head sourced from docs-backend (OCT-19
   })
 })
 
+describe('HtmlDocView — Members panel gate (author OR admin)', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  // Serves an octo-doc HTML body with an optional __ODOC_CAP__ authorship marker. Mirrors
+  // serveDoc from the "header parity" suite; kept local so this suite owns its fetch stub.
+  function serveDoc(opts?: { isAuthor?: boolean }) {
+    const cap =
+      opts?.isAuthor === undefined
+        ? ''
+        : `<script>window.__ODOC_CAP__ = {isAuthor: ${opts.isAuthor ? 'true' : 'false'}};</script>`
+    return stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
+      return htmlResponse(`${cap}<p>body</p>`)
+    })
+  }
+
+  // Docs-backend responder that pins the current viewer's role for the /docs/d1 hop. role=null
+  // (undefined) mirrors "still loading / no doc_meta"; role='admin'|'writer'|'reader' pins a
+  // resolved role. ownerId is decoupled from viewer uid so isAuthor is driven purely by __ODOC_CAP__.
+  function mockRole(role: 'admin' | 'writer' | 'reader' | null) {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return {
+          data: { docId: 'd1', ownerId: 'u_owner', ...(role ? { role } : {}) },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+  }
+
+  beforeEach(() => {
+    ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
+    wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    setWKApp(wk)
+  })
+  afterEach(() => {
+    delete (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
+    setWKApp(undefined as never)
+  })
+
+  it('opens the panel for the author even when role is still null (fail-soft short-circuit)', async () => {
+    // isAuthor=true short-circuits before role is inspected, so a never-resolving getDoc must not
+    // block the panel from opening. Guards the "role=null" branch of decision #2.
+    wk.apiClient.responder = () => new Promise(() => {})
+    serveDoc({ isAuthor: true })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    fireEvent.click(screen.getByTitle('docs.toolbar.members'))
+    expect(container.querySelector('.octo-modal-overlay .octo-modal')).toBeTruthy()
+    expect(container.querySelector('.octo-member-panel')).toBeTruthy()
+  })
+
+  it('opens the panel for a non-author admin (docs-backend role gate)', async () => {
+    mockRole('admin')
+    serveDoc({ isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    // Button must render only after role resolves — wait for it rather than snapshotting.
+    const btn = await waitFor(() => screen.getByTitle('docs.toolbar.members'))
+    fireEvent.click(btn)
+    expect(container.querySelector('.octo-modal-overlay .octo-modal')).toBeTruthy()
+    expect(container.querySelector('.octo-member-panel')).toBeTruthy()
+  })
+
+  it('hides the panel entry for a non-author reader', async () => {
+    mockRole('reader')
+    serveDoc({ isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    // Even after the role settles, the button must not appear (reader has no manage capability
+    // on either backend authority).
+    expect(screen.queryByTitle('docs.toolbar.members')).toBeNull()
+    expect(container.querySelector('.octo-modal-overlay')).toBeNull()
+  })
+
+  it('hides the panel entry for a non-author writer', async () => {
+    mockRole('writer')
+    serveDoc({ isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    expect(screen.queryByTitle('docs.toolbar.members')).toBeNull()
+  })
+
+  it('hides the panel entry when role is still null and the viewer is not the author (fail-soft)', async () => {
+    // Never-resolving getDoc keeps role=null; a non-author must NOT get the button on loading state
+    // (decision #2 fail-soft: `role != null && canManage(role)` short-circuits to false).
+    wk.apiClient.responder = () => new Promise(() => {})
+    serveDoc({ isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    expect(screen.queryByTitle('docs.toolbar.members')).toBeNull()
+    expect(container.querySelector('.octo-modal-overlay')).toBeNull()
+  })
+})

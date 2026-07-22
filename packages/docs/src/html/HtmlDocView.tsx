@@ -22,7 +22,7 @@ import { getDoc, getUserName } from '../pages/docsApi.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
 import { avatarUrlForUid } from './htmlAvatar.ts'
-import type { Role } from '../auth/roles.ts'
+import { canManage, type Role } from '../auth/roles.ts'
 import { buildDocLink } from '../forward/link.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
@@ -386,9 +386,11 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
   // Creator display: resolved name → short uid → placeholder. Never blank, never crashes.
   const headerCreator = creatorName || (ownerId ? ownerId.slice(0, 8) : '—')
   const creatorAvatarUrl = avatarUrlForUid(ownerId)
-  // Author-only affordances (member management, delete) gate on the backend flag, never on uid math.
+  // Members panel opens for the doc author (author gate on octo-doc /grants) OR any docs-backend
+  // admin (docs-backend Share/Invites/Access-Requests). role=null → short-circuits to isAuthor,
+  // so a still-loading role fails soft (no premature open for a demoted admin).
   const creatorUid = ownerId
-  const canManage = isAuthor
+  const canOpenPanel = isAuthor || (role != null && canManage(role))
   // Browser-openable address for forwarding this doc to chat. Build the PATH-style standalone
   // link (/d/<docId>?sp=<space>) like every other kind (buildDocLink), NOT window.location.href:
   // the in-shell address is the legacy /docs?doc= query form, whose docId is wiped by the host's
@@ -571,10 +573,10 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
               ⤴ {t('docs.forward.entry')}
             </button>
           )}
-          {/* Members button is author-only: a reader has no member-management capability, so
-              the entry is hidden entirely (parity with EditorShell's `{manage && …}` gate) rather
-              than rendered as a click-to-empty no-op. */}
-          {canManage && (
+          {/* Members panel entry: hidden entirely for viewers who can neither manage member grants
+              (author) nor manage docs-backend Share/Invites/Access-Requests (admin), matching the
+              two backend authorities that the panel writes against. */}
+          {canOpenPanel && (
             <button
               type="button"
               className={membersOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
@@ -608,7 +610,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
                 : []),
             ]}
             dangerItem={
-              canManage
+              canOpenPanel
                 ? {
                     key: 'delete',
                     label: t('docs.doc.deleteEntry'),
@@ -639,7 +641,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
       {/* Members open in a centered modal dialog (overlay + click-outside to close), matching the
           rich-doc member modal (EditorShell #A4) so HTML docs share the same floating-panel shape.
           Only the panel CONTENT differs (HtmlMemberPanel → octo-doc grants), never the shell. */}
-      {membersOpen && canManage && (
+      {membersOpen && canOpenPanel && (
         <div className="octo-modal-overlay" role="presentation" onMouseDown={() => setMembersOpen(false)}>
           <div
             className="octo-modal"
@@ -652,7 +654,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
               slug={effectiveSlug}
               space={space}
               creatorUid={creatorUid}
-              canManage={canManage}
+              canManage={canOpenPanel}
               onClose={() => setMembersOpen(false)}
               docId={docId}
               role={role}
