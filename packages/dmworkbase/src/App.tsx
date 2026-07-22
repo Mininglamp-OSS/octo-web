@@ -82,6 +82,12 @@ export type MittEvents = {
   'wk:loop-issues-dispatched': void;
   'wk:loop-issues-refresh': void;
   /**
+   * issue 字段/状态发生变更时触发，IssuePage 订阅后静默重取看板数据。
+   * 本地变更（IssueDetailPage patch 成功）立即 emit；后端 WS 推送就绪后
+   * 由 WS 桥接层 emit，前端无需额外改动。
+   */
+  'wk:loop-issue-changed': undefined;
+  /**
    * 打开「密钥 / Secrets」管理面板（YUJ-3539）。由聊天反向跳转（bot 消息里的
    * 「去添加密钥」按钮）或输入框防手滑提示触发；payload 可携带预填名字 / 明文，
    * 接收方 NavSecretsSettingsItem 据此打开面板并预填新增弹窗（绝不自动发送/保存）。

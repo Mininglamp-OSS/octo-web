@@ -115,13 +115,15 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     listLabels().then(setLabels).catch(() => {});
   }, []);
 
-  const reload = useCallback(() => {
+  const reload = useCallback((silent = false) => {
     const my = ++seq.current;
-    setLoading(true);
+    if (!silent) setLoading(true);
     // 请求失败(网络/权限/500):清空结果集 + 提示。不保留旧行——否则旧数据会残留在新筛选态下,
     // 且列表勾选态仍指向陈旧行,可能被批量删改误作用。seq 守卫:仅最新一次在途请求可清。
+    // silent 轮询失败静默处理:保留当前已有数据,不清空、不弹 toast —— 后台瞬时错误不应打扰用户。
     const onErr = () => {
       if (my !== seq.current) return;
+      if (silent) return; // 后台轮询失败:保留旧数据,不清空,不提示
       setIssues([]); setGroups([]); setTotal(0);
       Toast.error(t("loop.toast.loadFailed"));
     };
@@ -151,25 +153,25 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
     // 分组板:走 /issues/grouped(按负责人)。
     if (view === "grouped") {
-      const gkw = f.keyword.trim();
-      // 关键词(仅主看板,非「我的回路」)→ 全文搜索平铺结果,前端按负责人分组呈现。搜索端点
-      // 独立语义(不吃 scope/其它筛选,上限 50),故与常规分组拉取分道;「我的回路」隐藏关键词、不入此路。
-      if (gkw && !isMyLoop) {
-        searchIssues(gkw, { limit: 50 })
-          .then(({ issues }) => { if (my === seq.current) setGroups(groupIssuesByAssignee(issues)); })
-          .catch(onErr)
-          .finally(() => { if (my === seq.current) setLoading(false); });
-        return;
-      }
       // 「与我相关」(仅「我的回路」页)= 指派给我 ∪ 我创建 ∪ 间接关联的并集扇出;需当前成员
       // 后端 id,未解析出则清空并等待(不回退成无 scope 全量)。myMemberId 在依赖里,解析后自动重取。
       if (scope === "involves") {
         if (!myMemberId) {
-          if (my === seq.current) { setGroups([]); setLoading(false); }
+          // silent 轮询时 myMemberId 暂未解析:不清空已有分组,仅清 loading,等解析完成后自动重取。
+          if (my === seq.current) { if (!silent) setGroups([]); setLoading(false); }
           return;
         }
         listMyGroupedIssues(myMemberId, { ...common, limit: 100 })
           .then((gs) => { if (my === seq.current) setGroups(gs); })
+          .catch(onErr)
+          .finally(() => { if (my === seq.current) setLoading(false); });
+        return;
+      }
+      // 有关键词 → 走全文搜索端点,结果按负责人分组展示。
+      const gkw = f.keyword.trim();
+      if (gkw && !isMyLoop) {
+        searchIssues(gkw, { limit: 50 })
+          .then(({ issues }) => { if (my === seq.current) setGroups(groupIssuesByAssignee(issues)); })
           .catch(onErr)
           .finally(() => { if (my === seq.current) setLoading(false); });
         return;
@@ -209,7 +211,9 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       .finally(() => { if (my === seq.current) setLoading(false); });
   }, [f, view, page, scope, myMemberId, noAssigneeActive]);
 
-  useEffect(reload, [reload]);
+  // 注意:useEffect 直接传 reload 时,React 不会向 effect 回调传入任何参数;
+  // 箭头函数包裹与 useEffect(reload,[reload]) 行为完全一致,仅保留以明确 silent=false 语义。
+  useEffect(() => { reload(); }, [reload]);
 
   // 运行中快照:视图/筛选无关(工作区级),故不进 reload 的依赖 —— 不随筛选/翻页/切视图白拉。
   // seq 守卫:agent 任务独立起停,多次刷新在途时只让最新一次落地,防旧响应覆盖新。
@@ -226,6 +230,22 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     const timer = setInterval(refreshRunning, 15000);
     return () => clearInterval(timer);
   }, [refreshRunning]);
+
+  // 事件驱动刷新:订阅 `wk:loop-issue-changed`,后端 WS 推送 issue 变更时 emit 该事件,
+  // IssuePage 立即静默重取(不触发全屏 loading)。IssueDetailPage 本地 patch 成功后也 emit
+  // 同一事件,确保本地操作即时反映(无轮询延迟)。
+  useEffect(() => {
+    const onIssueChanged = () => reload(true);
+    WKApp.mittBus.on("wk:loop-issue-changed", onIssueChanged);
+    return () => WKApp.mittBus.off("wk:loop-issue-changed", onIssueChanged);
+  }, [reload]);
+
+  // 30s 兜底轮询:agent 异步产生/更新 issue、以及其他客户端的变更,在后端尚未接入 WS
+  // 推送前仍需轮询覆盖。事件驱动与轮询叠加:有 WS 推送时事件负责即时刷新,轮询作最终一致保障。
+  useEffect(() => {
+    const timer = setInterval(() => reload(true), 30000);
+    return () => clearInterval(timer);
+  }, [reload]);
 
   // 变更后刷新:既重取列表,又刷新运行中快照(指派/状态变更可能起/停 agent run)。
   const onMutated = useCallback(() => { reload(); refreshRunning(); }, [reload, refreshRunning]);
