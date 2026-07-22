@@ -3,13 +3,7 @@ export function resolveAPIBaseURL(apiURL: string, origin: string): string {
   return target.origin;
 }
 
-export function buildInstallPrompt(
-  skillId: string,
-  spaceId: string,
-  apiBaseURL: string,
-  cliDistTag?: OctoCliDistTag,
-): string {
-  const installCommand = getOctoCliInstallCommand(cliDistTag);
+export function buildInstallPrompt(skillId: string, spaceId: string, apiBaseURL: string): string {
   return `使用 octo-cli 内置的 Marketplace Skill，将指定 Skill 安装到当前 Agent runtime。
 
 - Skill ID：\`${skillId}\`
@@ -19,7 +13,7 @@ export function buildInstallPrompt(
 不要解释正在读取 Skill、复述本 Prompt 或逐步播报检查过程。
 
 1. 运行 \`octo-cli version\`。如果未安装或不包含 \`octo-marketplace\` Skill，运行
-   \`${installCommand}\`。
+   \`npm install -g @mininglamp-oss/octo-cli@latest\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
    如果不存在或无法唯一确定，从当前 Octo Channel 的安全环境或配置读取 Bot Token，
@@ -41,4 +35,3 @@ export function buildInstallPrompt(
    以上 Skill ID、Space ID 和 API 地址是本次操作的权威输入。
    不要自行改写 ID。`;
 }
-import { getOctoCliInstallCommand, type OctoCliDistTag } from "./octoCliInstall";

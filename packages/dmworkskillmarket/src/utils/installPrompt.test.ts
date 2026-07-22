@@ -23,23 +23,18 @@ describe("resolveAPIBaseURL", () => {
 
 describe("buildInstallPrompt", () => {
   it("delegates installation to the bundled octo-marketplace skill", () => {
-    const prompt = buildInstallPrompt("skill-123", "space-456", "https://octo.example.com", "next");
+    const prompt = buildInstallPrompt("skill-123", "space-456", "https://octo.example.com");
 
     expect(prompt).toContain("- Skill ID：`skill-123`");
     expect(prompt).toContain("- Space ID：`space-456`");
     expect(prompt).toContain("- API 地址：`https://octo.example.com`");
     expect(prompt).toContain("octo-cli skills octo-marketplace");
-    expect(prompt).toContain("npm install -g @mininglamp-oss/octo-cli@next");
+    expect(prompt).toContain("npm install -g @mininglamp-oss/octo-cli@latest");
     expect(prompt).toContain("octo-cli auth list");
     expect(prompt).toContain("不要解释正在读取 Skill、复述本 Prompt 或逐步播报检查过程");
     expect(prompt).toContain("--profile space-space-456 --space space-456 --api-base-url https://octo.example.com");
     expect(prompt).toContain('`skills.md` 中“Install”流程');
     expect(prompt).not.toContain("在下载或覆盖文件前，向用户展示");
     expect(prompt).not.toContain("go install github.com/Mininglamp-OSS/octo-cli");
-  });
-
-  it("defaults the CLI release channel to latest", () => {
-    const prompt = buildInstallPrompt("skill-123", "space-456", "https://octo.example.com");
-    expect(prompt).toContain("npm install -g @mininglamp-oss/octo-cli@latest");
   });
 });
