@@ -1,0 +1,54 @@
+/* In-chat sidebar document pane (WS-17). Fills the host's reused right-side panel slot; the
+   collaborative editor / sheet / board inside supplies its own scrolling, so this only owns the
+   column layout and the slim control bar used in the non-editor states. */
+
+.octo-doc-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--octo-bg, #fff);
+}
+
+/* Slim top bar carrying 展开为整页 + 关闭 across every state (loading / terminal / sheet / board /
+   document), so the close control is always reachable regardless of the inner editor's render state. */
+.octo-doc-sidebar-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: none;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--octo-border, #e5e6eb);
+}
+
+.octo-doc-sidebar-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.octo-doc-sidebar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.octo-doc-sidebar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--octo-text-secondary, #4e5969);
+  cursor: pointer;
+}
+
+.octo-doc-sidebar-btn:hover {
+  background: var(--octo-fill-hover, #f2f3f5);
+  color: var(--octo-text, #1d2129);
+}

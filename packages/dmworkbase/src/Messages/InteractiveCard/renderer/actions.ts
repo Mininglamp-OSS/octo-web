@@ -1,5 +1,6 @@
 import WKApp from "../../../App";
 import { isSafeUrl } from "../../../Utils/security";
+import { tryOpenDocLinkInSidebar } from "../../../Utils/docLinkNavigation";
 
 const SUMMARY_DETAIL_PATH_RE = /^\/s\/([A-Za-z0-9_-]+)\/?$/;
 
@@ -29,6 +30,12 @@ export function openUrl(url: string): void {
   if (summaryTaskNo && WKApp.openSummaryDetail) {
     // 卡片深链可能来自 https 生产域，本地调试是 http/端口；/s/<taskNo> 路径本身是内部详情信号。
     WKApp.openSummaryDetail(summaryTaskNo, summarySpace);
+    return;
+  }
+
+  // WS-17: 卡片里的文档链接 `/d/<docId>?sp=` 在聊天内点击时，走侧边栏内联打开（仅当聊天侧边栏宿主已挂载）；
+  // 其余情况回退到新标签打开整页，与总结 `/s/` 深链的处理对称。
+  if (tryOpenDocLinkInSidebar(url)) {
     return;
   }
 

@@ -511,6 +511,10 @@
     "linkCopied": "链接已复制",
     "openInNewPage": "在新页面打开"
   },
+  "sidebar": {
+    "expandFullPage": "展开为整页",
+    "close": "关闭"
+  },
   "moreMenu": {
     "createdPrefix": "创建于",
     "unknownCreator": "未知创建者"

@@ -407,6 +407,46 @@ export class EndpointCommon {
     );
   }
 
+  /**
+   * In-chat document sidebar pane (WS-17). The docs module registers the implementation (it may
+   * depend on @octo/base; base must not depend on it), and ChatContentPage invokes this to render the
+   * live document editor inside its reused right-side panel. Returns undefined when the docs module
+   * has not registered (endpoint absent) so the caller can no-op gracefully.
+   */
+  chatDocPreviewPane(opts: {
+    docId: string;
+    space?: string;
+    onClose: () => void;
+    onExpandFullPage: () => void;
+  }): JSX.Element | undefined {
+    return EndpointManager.shared.invoke(EndpointCategory.chatDocPreviewPane, opts);
+  }
+
+  /**
+   * Whether the docs module has registered the `chatDocPreviewPane` endpoint (WS-17). The in-chat
+   * `/d/<docId>` link interception gates on this so a host that mounts the chat but NOT the docs
+   * module (e.g. the extension side panel) never intercepts a doc link into an empty, uncloseable
+   * panel — it falls through to opening the standalone page instead.
+   */
+  hasChatDocPreviewPane(): boolean {
+    return !!EndpointManager.shared.get(EndpointCategory.chatDocPreviewPane)?.handler;
+  }
+
+  registerChatDocPreviewPane(
+    sid: string,
+    callback: (param: any) => JSX.Element | undefined
+  ) {
+    EndpointManager.shared.setMethod(
+      EndpointCategory.chatDocPreviewPane,
+      (param) => {
+        return callback(param);
+      },
+      {
+        category: EndpointCategory.chatDocPreviewPane,
+      }
+    );
+  }
+
   callOnLogin() {
     [...this._onLogins].forEach(fn => fn());
   }

@@ -511,6 +511,10 @@
     "linkCopied": "Link copied",
     "openInNewPage": "Open in new page"
   },
+  "sidebar": {
+    "expandFullPage": "Expand to full page",
+    "close": "Close"
+  },
   "moreMenu": {
     "createdPrefix": "Created on",
     "unknownCreator": "Unknown creator"
