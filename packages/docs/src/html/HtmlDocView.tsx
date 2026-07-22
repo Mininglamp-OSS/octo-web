@@ -396,6 +396,9 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
   // The panel itself derives canManageAuthorGrants from isAuthor alone; we intentionally stop
   // forwarding the legacy `canManage` prop so a merged authority can never leak the author-only
   // slots (Add member / Current Members) or trigger the author-only listGrants 403.
+  // The header ≡ Delete affordance is gated on isAuthor for the same reason — symmetric with the
+  // grants-side hiding, so a docs-backend admin who is not the author never sees a guaranteed-403
+  // affordance whose backend is octo-doc /v1/docs/{slug} (author-only).
   const creatorUid = ownerId
   const canManageBackend = role != null && canManage(role)
   const canOpenPanel = isAuthor || canManageBackend
@@ -569,9 +572,11 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
           >
             💬 {t('docs.toolbar.comments')}
           </button>
-          {/* Forward gated on canForward so it never renders as a dead no-op where the host lacks the
-              conversation-select surface (the standalone /d/ page). */}
-          {canForward && (
+          {/* Forward gated on canForward (no dead entry where the host lacks the conversation-select
+              surface, e.g. standalone /d/) AND on role (mirrors EditorShell.tsx role && canForward:
+              while role is unresolved — getDoc 404 fail-soft or still loading — the button hides
+              instead of rendering a silent no-op the doForward guard would swallow). */}
+          {role && canForward && (
             <button
               type="button"
               className="octo-tb-btn octo-doc-forward-btn"
@@ -618,7 +623,11 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
                 : []),
             ]}
             dangerItem={
-              canOpenPanel
+              // Delete is author-only, matching htmlDocAdmin.deleteDoc's octo-doc backend
+              // ("caller gates the UI entry"). Symmetric with the grants-side hiding of Add/Current
+              // members from an admin-not-author viewer (OCT-216) — two backend authorities kept
+              // independent so a docs-backend admin never sees a guaranteed-403 affordance.
+              isAuthor
                 ? {
                     key: 'delete',
                     label: t('docs.doc.deleteEntry'),

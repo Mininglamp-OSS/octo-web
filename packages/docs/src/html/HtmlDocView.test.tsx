@@ -728,15 +728,53 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(typeof wk.openDocForwardCalls[0].grantAccess).toBe('function')
   })
 
-  it('forward click is a no-op while docs-backend role is still loading (fail-soft, no premature canGrant=false send)', async () => {
-    // A never-resolving getDoc keeps role=null; startDocForward must not fire (mirrors EditorShell
+  it('does not render the Forward button while docs-backend role is still loading (no dead button, no stale canGrant snapshot)', async () => {
+    // A never-resolving getDoc keeps role=null. Previously the button rendered and the handler
+    // early-returned on `!role` — a silent dead button. The button gate now includes `role`, so
+    // the affordance is hidden entirely; startDocForward stays unfired (mirrors EditorShell
     // `if (!role) return`) so a demoted admin never gets a stale canGrant snapshot.
     wk.apiClient.responder = () => new Promise(() => {})
     serveDoc('<p>body</p>', { title: 'My Doc' })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
     await waitForFrame(container)
-    fireEvent.click(screen.getByTitle('docs.forward.entry'))
+    expect(screen.queryByTitle('docs.forward.entry')).toBeNull()
+    expect(container.querySelector('.octo-doc-forward-btn')).toBeNull()
     expect(wk.openDocForwardCalls).toHaveLength(0)
+  })
+
+  it('does not render the Forward button while role is unresolved (mirrors EditorShell role && canForward gate, no dead button)', async () => {
+    // role=null (getDoc 404 fail-soft) must hide the Forward button entirely, not render a silent
+    // no-op affordance. Mirrors EditorShell.tsx `{role && canForward && (` gate.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: {}, status: 404 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    // Let the 404 land so role definitively resolves to null (not merely still-loading).
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    expect(screen.queryByTitle('docs.forward.entry')).toBeNull()
+    expect(container.querySelector('.octo-doc-forward-btn')).toBeNull()
+  })
+
+  it('renders the Forward button once role resolves (reader suffices; the guard is role != null)', async () => {
+    // Guard against over-tightening: any resolved role must restore the button. reader is the
+    // weakest positive case — sharing-only forward (canGrant=false) still needs the entry.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'reader' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    await waitFor(() => expect(screen.queryByTitle('docs.forward.entry')).not.toBeNull())
+    expect(container.querySelector('.octo-doc-forward-btn')).toBeTruthy()
   })
 
   it('offers delete only to the author in the ≡ menu', async () => {
@@ -756,6 +794,31 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     await waitForFrame(container)
     fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
     expect(screen.getByText('docs.doc.deleteEntry')).toBeTruthy()
+  })
+
+  it('hides the delete affordance from an admin-not-author viewer (author-only, matches htmlDocAdmin.deleteDoc backend)', async () => {
+    // Delete is author-only both at the octo-doc backend (see htmlDocAdmin.ts header comment) and
+    // symmetrically at the UI gate. A docs-backend admin who is NOT the author must never see the
+    // Delete entry — otherwise clicking it hits the octo-doc 403 ("guaranteed-fail entry").
+    // Symmetric with OCT-216 grants-side hiding of Add member / Current Members from the same
+    // admin-not-author viewer.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'admin' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" />)
+    await waitForFrame(container)
+    // Wait for docs-backend role=admin to land so canManageBackend is true (canOpenPanel would
+    // therefore render the entry pre-fix); the assertion below then proves the gate is isAuthor,
+    // not canOpenPanel.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    expect(screen.queryByText('docs.doc.deleteEntry')).toBeNull()
+    // Neutral rows should still be there so we know the menu opened.
+    expect(screen.getByText('docs.standalone.openInNewPage')).toBeTruthy()
   })
 
   it('injects a <base> into the iframe srcdoc so CSS/relative assets resolve to the doc origin', async () => {
