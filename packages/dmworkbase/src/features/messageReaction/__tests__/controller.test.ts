@@ -32,6 +32,26 @@ describe("message reaction controller", () => {
     expect(isMessageReactionChannelSupported(6)).toBe(false);
   });
 
+  it("does not mutate local state or call the API when write is disabled", async () => {
+    const toggle = vi.fn();
+    const emitUpdated = vi.fn();
+    const dependencies = {
+      toggle,
+      currentUser: () => ({ uid: "me", name: "Me" }),
+      emitUpdated,
+      showError: vi.fn(),
+      canWrite: () => false,
+    };
+    const controller = createMessageReactionController(dependencies);
+    const message = target();
+
+    await controller.toggle(message, "👍");
+
+    expect(message.octoReactions).toEqual([]);
+    expect(toggle).not.toHaveBeenCalled();
+    expect(emitUpdated).not.toHaveBeenCalled();
+  });
+
   it("applies an optimistic add then reconciles with the authoritative response", async () => {
     const request = deferred<{
       messageId: string;
