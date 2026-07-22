@@ -22,6 +22,7 @@ function isBoundaryMessage(message: ContinuityMessage): boolean {
         || contentType === MessageContentTypeConst.historySplit
         || contentType === MessageContentTypeConst.typing
         || contentType === MessageContentTypeConst.screenshot
+        || contentType === MessageContentTypeConst.summaryNotify
         || !!message.revoke
 }
 
