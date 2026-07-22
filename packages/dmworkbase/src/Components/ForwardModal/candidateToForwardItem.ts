@@ -48,6 +48,7 @@ export function candidateToForwardItem(
     displayName: candidate.name || candidate.chat_id,
     isAI: false,
     isThread,
+    isPinned: cachedInfo?.top === true,
     parentChannelID,
     isExternal,
   }
