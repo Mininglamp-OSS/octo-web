@@ -17,6 +17,7 @@ import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/Voic
 import * as api from "../api/summaryApi";
 import { getTopicTemplatesConfig, getTopicTemplates } from "../api/summaryApi";
 import { chatTypeToOriginChannelType, getOriginChannelType } from "../utils/channelType";
+import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
 import MemberSelectorModal from "../components/MemberSelectorModal";
@@ -128,15 +129,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         selectedChats: (() => {
             const ch = this.props.channel;
             if (!ch) return [];
-            const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(ch.channelID, ch.channelType));
-            const chat_type = ch.channelID.includes("____") ? "thread" as const
-                            : ch.channelType === 2 ? "group" as const
-                            : "direct" as const;
-            return [{
-                chat_id: ch.channelID,
-                chat_type,
-                name: channelInfo?.title || ch.channelID,
-            }];
+            return [channelToChatCandidate(ch)];
         })(),
         selectedMembers: [],
         scheduleConfig: null,

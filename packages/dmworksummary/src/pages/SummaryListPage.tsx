@@ -284,6 +284,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
      * Uses a separate unfiltered query so badge is independent of list filter.
      */
     private emitBadgeUpdate(count?: number) {
+        // Panel mode (channelId set): attention_count is channel-scoped, must not
+        // overwrite the global nav badge. Only the full-page route owns the badge.
+        if (this.props.channelId) return;
         if (count != null) {
             WKApp.mittBus.emit("summary-badge-update" as any, { count });
             return;
@@ -312,34 +315,41 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         try {
             await api.deleteSummary(taskId);
             Toast.success(t("summary.list.deleteSuccess"));
-            // 刷新列表，拿到删除后的最新数据
-            const fresh = await this.fetchData();
-            if (fresh.items.length > 0) {
-                // 跳到最近的一个总结
-                const next = fresh.items[0];
-                this.setState({ activeTaskId: next.task_id, items: fresh.items, total: fresh.total }, () => {
-                    if (this.props.onViewDetail) {
-                        this.props.onViewDetail(next.task_id);
-                    } else {
-                        WKApp.routeRight.popToRoot();
-                        WKApp.routeRight.push(<SummaryDetailPage taskId={next.task_id} emitSelection />);
-                    }
-                });
+            // If we deleted the only item on a non-first page, go back to page 1
+            // before re-fetching, otherwise we'd see an empty page and misroute to create.
+            if (this.state.page > 1 && this.state.items.length <= 1) {
+                this.setState({ page: 1 }, () => this.handleDelete_refetch());
             } else {
-                // 没有总结了，回到列表/创建页
-                this.setState({ items: [], total: 0, activeTaskId: null }, () => {
-                    if (this.props.onCreateNew) {
-                        this.props.onCreateNew();
-                    } else {
-                        WKApp.routeRight.popToRoot();
-                        WKApp.routeRight.push(
-                            <SummaryCreatePage onCreated={() => this.loadData()} />
-                        );
-                    }
-                });
+                this.handleDelete_refetch();
             }
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.deleteFailed"));
+        }
+    };
+
+    handleDelete_refetch = async () => {
+        const fresh = await this.fetchData();
+        if (fresh.items.length > 0) {
+            const next = fresh.items[0];
+            this.setState({ activeTaskId: next.task_id, items: fresh.items, total: fresh.total }, () => {
+                if (this.props.onViewDetail) {
+                    this.props.onViewDetail(next.task_id);
+                } else {
+                    WKApp.routeRight.popToRoot();
+                    WKApp.routeRight.push(<SummaryDetailPage taskId={next.task_id} emitSelection />);
+                }
+            });
+        } else {
+            this.setState({ items: [], total: 0, activeTaskId: null }, () => {
+                if (this.props.onCreateNew) {
+                    this.props.onCreateNew();
+                } else {
+                    WKApp.routeRight.popToRoot();
+                    WKApp.routeRight.push(
+                        <SummaryCreatePage onCreated={() => this.loadData()} />
+                    );
+                }
+            });
         }
     };
 

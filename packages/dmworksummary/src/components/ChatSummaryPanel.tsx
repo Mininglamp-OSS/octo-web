@@ -217,7 +217,7 @@ export default class ChatSummaryPanel extends Component<
                             </button>
                         </div>
                         <div className="wk-summary-panel-detail-body">
-                            <SummaryDetailPage taskId={selectedTaskId} />
+                            <SummaryDetailPage taskId={selectedTaskId} onAfterMutate={() => this.setState({ view: 'list', selectedTaskId: null })} />
                         </div>
                     </div>
                 )}

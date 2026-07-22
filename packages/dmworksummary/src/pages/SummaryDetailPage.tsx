@@ -57,6 +57,8 @@ import type { MemberCandidate } from "../types/summary";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
+    /** Called after delete/leave in embedded mode so the panel can switch back to list. */
+    onAfterMutate?: () => void;
     /** Only the list-owned detail route emits list-highlight events. Embedded
      *  instances (ChatSummaryPanel, SummaryConfirmPage) must not pollute the
      *  list selection state. */
@@ -789,10 +791,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const requestTaskId = this.taskId;
         try {
             await api.leaveSummary(this.taskId);
-            // FE-1（切 task 竞态）：await 期间可能已切走，迟到响应不能在新 task 上弹提示/导航。
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.leaveSuccess"));
-            WKApp.routeRight.popToRoot();
+            if (this.props.onAfterMutate) {
+                this.props.onAfterMutate();
+            } else {
+                WKApp.routeRight.popToRoot();
+            }
             WKApp.mittBus.emit("summary-list-refresh-requested" as any);
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
@@ -807,7 +812,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             await api.deleteSummary(this.taskId);
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.list.deleteSuccess"));
-            WKApp.routeRight.popToRoot();
+            if (this.props.onAfterMutate) {
+                this.props.onAfterMutate();
+            } else {
+                WKApp.routeRight.popToRoot();
+            }
             WKApp.mittBus.emit("summary-list-refresh-requested" as any);
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
