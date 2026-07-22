@@ -253,15 +253,13 @@
   color: var(--wk-text-secondary);
 }
 
-/* 分类条 — 与 dmworkskillmarket 的 .skill-market-category-strip 保持一致：
-   无边框纯文字 tab，激活态换 accent 色 + 字重 500。计数数字保留，
-   MCP 一直有承载信息（Skills 那边是 display:none）。 */
+/* 分类条 — 与 dmworkskillmarket 的分类胶囊保持一致。 */
 .wk-mcp__pills {
   display: flex;
+  align-items: center;
   flex: 1 1 auto;
   flex-wrap: wrap;
-  row-gap: var(--wk-sp-1);
-  column-gap: clamp(var(--wk-sp-1), 0.6vw, var(--wk-sp-3));
+  gap: var(--wk-sp-2);
   min-width: 0;
 }
 
@@ -270,31 +268,42 @@
   align-items: center;
   gap: var(--wk-sp-1);
   flex: 0 0 auto;
-  height: 32px;
-  padding: 0 var(--wk-sp-1);
-  border: none;
-  border-radius: 0;
-  background: transparent;
+  height: 30px;
+  padding: 0 var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-surface);
   color: var(--wk-text-secondary);
-  font: 400 13px/1 var(--wk-font-sans);
+  font: 400 var(--wk-text-size-sm)/1 var(--wk-font-sans);
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--wk-dur-fast) var(--wk-ease);
+  transition: all var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-mcp__pill:hover,
 .wk-mcp__pill:focus-visible {
   outline: none;
+  background: var(--wk-bg-elevated, var(--wk-bg-surface));
+  border-color: var(--wk-border-strong, var(--wk-border-default));
   color: var(--wk-text-primary);
 }
 
 .wk-mcp__pill--active {
-  color: var(--wk-color-accent);
-  font-weight: 500;
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+  color: var(--wk-text-inverse);
+}
+
+.wk-mcp__pill--active:hover,
+.wk-mcp__pill--active:focus-visible {
+  background: var(--wk-brand-primary-hover, var(--wk-brand-primary));
+  border-color: var(--wk-brand-primary-hover, var(--wk-brand-primary));
+  color: var(--wk-text-inverse);
 }
 
 .wk-mcp__pill-count {
-  display: none;
+  font-size: var(--wk-text-size-xs);
+  opacity: 0.7;
 }
 .wk-mcp-card__reasons {
   display: flex;
