@@ -8,6 +8,7 @@ import AiBadge from "@octo/base/src/Components/AiBadge";
 import WKApp from "@octo/base/src/App";
 import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT } from "../constants/limits";
+import "./SummarySelectors.css";
 
 interface Props {
     visible: boolean;
@@ -254,31 +255,23 @@ export default class ChatSelectorModal extends Component<Props, State> {
             <div
                 key={item.chat_id}
                 onClick={() => !disabled && this.handleToggle(item)}
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: indent ? "6px 0" : "10px 0",
-                    paddingLeft: indent ? 32 : 0,
-                    borderBottom: "1px solid var(--semi-color-border)",
-                    cursor: disabled ? "not-allowed" : "pointer",
-                    opacity: disabled ? 0.5 : 1,
-                }}
+                className={`summary-selector-item${checked ? " summary-selector-item--selected" : ""}${indent ? " summary-selector-item--indented" : ""}${disabled ? " summary-selector-item--disabled" : ""}`}
             >
-                <Checkbox checked={checked} disabled={disabled} style={{ marginRight: 10 }} />
-                <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: indent ? 13 : 14, display: "flex", alignItems: "center" }}>
+                <Checkbox checked={checked} disabled={disabled} />
+                <div className="summary-selector-item-main">
+                    <div className="summary-selector-item-title">
                         {item.name}
                         {item.chat_type === "direct" && item.is_bot && (
-                            <span style={{ marginLeft: 4 }}><AiBadge size="small" /></span>
+                            <AiBadge size="small" />
                         )}
                         {item.is_archived && (
-                            <Tag size="small" color="grey" style={{ marginLeft: 6 }}>
+                            <Tag size="small" color="grey">
                                 {t("summary.chatSelector.archivedTag")}
                             </Tag>
                         )}
                     </div>
                     {item.member_count !== null && (
-                        <div style={{ fontSize: 12, color: "var(--semi-color-text-2)" }}>
+                        <div className="summary-selector-item-meta">
                             {t("summary.common.peopleCount", { values: { count: item.member_count } })}
                         </div>
                     )}
@@ -303,12 +296,12 @@ export default class ChatSelectorModal extends Component<Props, State> {
         const displayList = this.getDisplayList();
 
         const footer = (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-                <span style={{ fontSize: 13, color: "var(--semi-color-text-2)" }}>
+            <div className="summary-selector-footer">
+                <span className="summary-selector-footer-count">
                     {t("summary.common.selectedCount", { values: { count: localSelected.length, max: maxSelect } })}
                 </span>
-                <div>
-                    <Button onClick={onCancel} style={{ marginRight: 8 }}>{t("summary.common.cancel")}</Button>
+                <div className="summary-selector-footer-actions">
+                    <Button onClick={onCancel}>{t("summary.common.cancel")}</Button>
                     <Button theme="solid" onClick={this.handleConfirm}>{t("summary.common.confirm")}</Button>
                 </div>
             </div>
@@ -322,41 +315,44 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 footer={footer}
                 width={480}
                 bodyStyle={{ padding: "0 24px" }}
+                className="summary-selector-modal"
             >
-                <Input
-                    prefix={<IconSearch />}
-                    placeholder={t("summary.chatSelector.searchPlaceholder")}
-                    value={keyword}
-                    onChange={this.handleKeywordChange}
-                    showClear
-                    style={{ marginBottom: 12 }}
-                />
-                <Tabs activeKey={activeTab} onChange={this.handleTabChange} size="small">
-                    <TabPane tab={t("summary.chatSelector.followed")} itemKey="followed" />
-                    <TabPane tab={t("summary.chatSelector.recent")} itemKey="recent" />
-                    <TabPane tab={t("summary.chatSelector.allGroups")} itemKey="group" />
-                    <TabPane tab={t("summary.chatSelector.allDirects")} itemKey="direct" />
-                </Tabs>
-                <div style={{ display: "flex", alignItems: "center", padding: "8px 0", gap: 8 }}>
-                    <Switch
-                        checked={includeArchived}
-                        onChange={this.handleIncludeArchivedChange}
-                        size="small"
-                        aria-label={t("summary.chatSelector.includeArchived")}
+                <div className="summary-selector-modal-body">
+                    <Input
+                        prefix={<IconSearch />}
+                        placeholder={t("summary.chatSelector.searchPlaceholder")}
+                        value={keyword}
+                        onChange={this.handleKeywordChange}
+                        showClear
+                        className="summary-selector-search"
                     />
-                    <span style={{ fontSize: 13 }}>{t("summary.chatSelector.includeArchived")}</span>
-                    <span style={{ fontSize: 12, color: "var(--semi-color-text-2)" }}>
-                        {t("summary.chatSelector.includeArchivedHelper")}
-                    </span>
-                </div>
-                <div style={{ minHeight: 240, maxHeight: 360, overflowY: "auto" }}>
-                    {loading ? (
-                        <div style={{ textAlign: "center", paddingTop: 60 }}><Spin /></div>
-                    ) : displayList.length === 0 ? (
-                        <Empty description={t("summary.chatSelector.noData")} style={{ paddingTop: 40 }} />
-                    ) : (
-                        displayList.map((entry) => this.renderItem(entry))
-                    )}
+                    <Tabs activeKey={activeTab} onChange={this.handleTabChange} size="small">
+                        <TabPane tab={t("summary.chatSelector.followed")} itemKey="followed" />
+                        <TabPane tab={t("summary.chatSelector.recent")} itemKey="recent" />
+                        <TabPane tab={t("summary.chatSelector.allGroups")} itemKey="group" />
+                        <TabPane tab={t("summary.chatSelector.allDirects")} itemKey="direct" />
+                    </Tabs>
+                    <div className="summary-selector-archive-option">
+                        <Switch
+                            checked={includeArchived}
+                            onChange={this.handleIncludeArchivedChange}
+                            size="small"
+                            aria-label={t("summary.chatSelector.includeArchived")}
+                        />
+                        <span className="summary-selector-archive-label">{t("summary.chatSelector.includeArchived")}</span>
+                        <span className="summary-selector-archive-helper">
+                            {t("summary.chatSelector.includeArchivedHelper")}
+                        </span>
+                    </div>
+                    <div className="summary-selector-list">
+                        {loading ? (
+                            <div className="summary-selector-loading"><Spin /></div>
+                        ) : displayList.length === 0 ? (
+                            <Empty description={t("summary.chatSelector.noData")} className="summary-selector-empty" />
+                        ) : (
+                            displayList.map((entry) => this.renderItem(entry))
+                        )}
+                    </div>
                 </div>
             </Modal>
         );
