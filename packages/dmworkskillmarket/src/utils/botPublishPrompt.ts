@@ -1,11 +1,15 @@
+import { getOctoCliInstallCommand, type OctoCliDistTag } from "./octoCliInstall";
+
 export interface BotPublishPromptValues {
   spaceId?: string;
   apiBaseUrl?: string;
+  cliDistTag?: OctoCliDistTag;
 }
 
 export function getBotPublishPrompt(values: BotPublishPromptValues = {}): string {
   const spaceId = values.spaceId?.trim() || "<space-id>";
   const apiBaseUrl = values.apiBaseUrl?.trim() || "<api-base-url>";
+  const installCommand = getOctoCliInstallCommand(values.cliDistTag);
 
   return `使用 octo-cli 内置的 Marketplace Skill，将指定 Skill 上架到 OCTO Marketplace。
 
@@ -20,7 +24,7 @@ export function getBotPublishPrompt(values: BotPublishPromptValues = {}): string
 不要解释正在读取 Skill、复述本 Prompt 或逐步播报检查过程。用户提供前不要搜索磁盘或猜测路径。
 
 1. 运行 \`octo-cli version\`。如果未安装或不包含 \`octo-marketplace\` Skill，运行
-   \`npm install -g @mininglamp-oss/octo-cli@latest\`。
+   \`${installCommand}\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
    如果不存在或无法唯一确定，从当前 Octo Channel 的安全环境或配置读取 Bot Token，
