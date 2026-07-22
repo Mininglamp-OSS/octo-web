@@ -232,12 +232,19 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   }, [refreshRunning]);
 
   // 事件驱动刷新:订阅 `wk:loop-issue-changed`,后端 WS 推送 issue 变更时 emit 该事件,
-  // IssuePage 立即静默重取(不触发全屏 loading),替代原先的 30s 盲轮询。
-  // IssueDetailPage 本地 patch 成功后也 emit 同一事件,确保本地操作即时反映。
+  // IssuePage 立即静默重取(不触发全屏 loading)。IssueDetailPage 本地 patch 成功后也 emit
+  // 同一事件,确保本地操作即时反映(无轮询延迟)。
   useEffect(() => {
     const onIssueChanged = () => reload(true);
     WKApp.mittBus.on("wk:loop-issue-changed", onIssueChanged);
     return () => WKApp.mittBus.off("wk:loop-issue-changed", onIssueChanged);
+  }, [reload]);
+
+  // 30s 兜底轮询:agent 异步产生/更新 issue、以及其他客户端的变更,在后端尚未接入 WS
+  // 推送前仍需轮询覆盖。事件驱动与轮询叠加:有 WS 推送时事件负责即时刷新,轮询作最终一致保障。
+  useEffect(() => {
+    const timer = setInterval(() => reload(true), 30000);
+    return () => clearInterval(timer);
   }, [reload]);
 
   // 变更后刷新:既重取列表,又刷新运行中快照(指派/状态变更可能起/停 agent run)。
