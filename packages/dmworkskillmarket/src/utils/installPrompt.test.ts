@@ -34,6 +34,7 @@ describe("buildInstallPrompt", () => {
     expect(prompt).toContain("不要解释正在读取 Skill、复述本 Prompt 或逐步播报检查过程");
     expect(prompt).toContain("--profile space-space-456 --space space-456 --api-base-url https://octo.example.com");
     expect(prompt).toContain('`skills.md` 中“Install”流程');
-    expect(prompt).toContain("不要自行拼接 Marketplace 下载地址");
+    expect(prompt).not.toContain("在下载或覆盖文件前，向用户展示");
+    expect(prompt).not.toContain("go install github.com/Mininglamp-OSS/octo-cli");
   });
 });
