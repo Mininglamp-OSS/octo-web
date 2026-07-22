@@ -73,6 +73,7 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
         title={category.name}
       >
         <span className="skill-market-category-label">{category.name}</span>
+        <span className="skill-market-category-count">{category.skillCount}</span>
       </button>
     );
   }

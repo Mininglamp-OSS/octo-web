@@ -93,7 +93,7 @@ export class McpMarketModule implements IModule {
           <McpMarketIcon />,
           <McpMarketIcon active />
         );
-        // Point the right pane at the MCP market on click. Mirrors summary's
+        // Point the right pane at the MCP market on click.
         // onPress (apps/web/src/App/index.tsx:154) — Main/index.tsx's default
         // click handler is bypassed when onPress is defined, so we own both
         // the left popToRoot and the right replaceToRoot here.
@@ -106,7 +106,7 @@ export class McpMarketModule implements IModule {
           // Sync URL so refresh/copy-link/back button land on the same tab.
           // Main/index.tsx#onMenuClick already syncPath's to the menu's
           // `/mcp-market` before firing onPress, but the mounted pane is the
-          // more specific `/mcp-market/mcp` first tab — reflect that.
+          // more specific MCP landing route — reflect that.
           WKApp.route.syncPath("/mcp-market/mcp");
         };
         return m;

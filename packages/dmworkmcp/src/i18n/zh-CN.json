@@ -1,11 +1,11 @@
 {
   "menu": {
-    "title": "市场"
+    "title": "工具"
   },
   "sidebar": {
-    "header": "市场",
-    "mcp": "MCP 市场",
-    "skills": "Skills 市场"
+    "header": "工具",
+    "mcp": "MCP",
+    "skills": "Skills"
   },
   "common": {
     "loadFailed": "加载失败"
