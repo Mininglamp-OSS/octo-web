@@ -308,7 +308,7 @@ describe("SkillListPage", () => {
     });
   });
 
-  it("shows stats on cards and increments the visible view count when opening detail", async () => {
+  it("shows persisted stats without an optimistic view-count increment", async () => {
     render(<SkillListPage />);
 
     const card = await screen.findByRole("button", {
@@ -325,8 +325,8 @@ describe("SkillListPage", () => {
     fireEvent.click(card);
 
     await screen.findByText(skill.description);
-    expect(screen.getByLabelText(/浏览次数：3|Views: 3/)).toHaveTextContent(
-      "3"
+    expect(screen.getByLabelText(/浏览次数：2|Views: 2/)).toHaveTextContent(
+      "2"
     );
   });
 
