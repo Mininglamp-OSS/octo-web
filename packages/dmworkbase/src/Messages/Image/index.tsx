@@ -6,6 +6,7 @@ import MessageBase from "../Base"
 import { MessageCell } from "../MessageCell"
 import Lightbox from "yet-another-react-lightbox"
 import Download from "yet-another-react-lightbox/plugins/download"
+import Zoom from "yet-another-react-lightbox/plugins/zoom"
 import "yet-another-react-lightbox/styles.css"
 import { Toast } from "@douyinfe/semi-ui"
 import { downloadFile } from "../../Utils/download"
@@ -277,12 +278,13 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                             ? uiProps.images.map(img => ({ src: img.src, alt: '' }))
                             : [{ src: uiProps.singleImage?.src || '', alt: '' }]
                         }
-                        plugins={[Download]}
+                        plugins={[Download, Zoom]}
                         download={{ download: ({ slide }) => {
                             if (slide?.src) {
                                 downloadFile(slide.src, content.name || 'image.png')
                             }
                         }}}
+                        zoom={{ maxZoomPixelRatio: 4, zoomInMultiplier: 2, doubleTapDelay: 300, doubleClickDelay: 300 }}
                         carousel={{ finite: true }}
                         controller={{ closeOnBackdropClick: true }}
                         render={{
@@ -362,12 +364,13 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                 open={showPreview}
                 close={() => this.setState({ showPreview: false })}
                 slides={[{ src: imageURL, alt: '' }]}
-                plugins={[Download]}
+                plugins={[Download, Zoom]}
                 download={{ download: ({ slide }) => {
                     if (slide?.src) {
                         downloadFile(slide.src, content.name || 'image.png')
                     }
                 }}}
+                zoom={{ maxZoomPixelRatio: 4, zoomInMultiplier: 2, doubleTapDelay: 300, doubleClickDelay: 300 }}
                 carousel={{ finite: true }}
                 controller={{ closeOnBackdropClick: true }}
                 render={{
