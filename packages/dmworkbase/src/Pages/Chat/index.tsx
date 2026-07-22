@@ -76,6 +76,8 @@ import {
   fetchImChannelInfo,
   getImChannelInfo,
 } from "../../im-runtime/channelRuntime";
+import WebhookIssuePreviewPanel from "../../features/webhookMessagePreview/WebhookIssuePreviewPanel";
+import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
 
 // 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
@@ -277,6 +279,8 @@ export interface ChatContentPageState {
   channelSearchPreviewFile: FilePreviewInfo | null;
   /** 当前文件预览关闭后是否需要回到频道内搜索面板 */
   previewReturnChannelSearch: boolean;
+  /** 当前正在右侧预览的 Webhook Fleet 任务链接。 */
+  webhookIssuePreviewTarget: WebhookIssuePreviewTarget | null;
 }
 export class ChatContentPage extends Component<
   ChatContentPageProps,
@@ -315,8 +319,29 @@ export class ChatContentPage extends Component<
         isChannelSearchEnabled(props.channel),
       channelSearchPreviewFile: null,
       previewReturnChannelSearch: false,
+      webhookIssuePreviewTarget: null,
     };
   }
+
+  private _openWebhookPreview = (target: WebhookIssuePreviewTarget) => {
+    this._clearChannelSearchState();
+    this.setState({
+      webhookIssuePreviewTarget: target,
+      showChannelSetting: false,
+      showThreadPanel: false,
+      activeThread: null,
+      previewFile: null,
+      activePreviewMessageId: null,
+      previewReturnMatterId: null,
+      previewHadThreadShell: false,
+      showMatterPanel: false,
+      showMatterDetailPanel: false,
+      showSummaryPanel: false,
+      showChannelSearch: false,
+      channelSearchPreviewFile: null,
+      previewReturnChannelSearch: false,
+    });
+  };
 
   private _onFilePreview = (
     file: FilePreviewInfo,
@@ -378,6 +403,7 @@ export class ChatContentPage extends Component<
     const fromChannelSearch = !!options?.returnToChannelSearch;
     this.setState({
       previewFile: file,
+      webhookIssuePreviewTarget: null,
       showThreadPanel: true, // 确保面板打开
       showChannelSetting: false, // 关闭设置面板，避免布局冲突
       showChannelSearch: false,
@@ -490,6 +516,7 @@ export class ChatContentPage extends Component<
     this._clearChannelSearchState();
     this.setState({
       showChannelSearch: true,
+      webhookIssuePreviewTarget: null,
       channelSearchPreviewFile: null,
       showChannelSetting: false,
       showThreadPanel: false,
@@ -589,6 +616,7 @@ export class ChatContentPage extends Component<
           showChannelSearch: false,
           channelSearchPreviewFile: null,
           previewReturnChannelSearch: false,
+          webhookIssuePreviewTarget: null,
         });
       }
     };
@@ -632,6 +660,9 @@ export class ChatContentPage extends Component<
           channelSearchPreviewFile: opening
             ? null
             : prevState.channelSearchPreviewFile,
+          webhookIssuePreviewTarget: opening
+            ? null
+            : prevState.webhookIssuePreviewTarget,
         };
       });
     };
@@ -662,6 +693,7 @@ export class ChatContentPage extends Component<
           showSummaryPanel: false,
           showChannelSearch: false,
           channelSearchPreviewFile: null,
+          webhookIssuePreviewTarget: null,
         };
       });
     };
@@ -701,6 +733,9 @@ export class ChatContentPage extends Component<
           channelSearchPreviewFile: opening
             ? null
             : prevState.channelSearchPreviewFile,
+          webhookIssuePreviewTarget: opening
+            ? null
+            : prevState.webhookIssuePreviewTarget,
         };
       });
     };
@@ -731,6 +766,7 @@ export class ChatContentPage extends Component<
         showSummaryPanel: false,
         showChannelSearch: false,
         channelSearchPreviewFile: null,
+        webhookIssuePreviewTarget: null,
       });
       WKApp.shared.pendingThreadPanel = undefined;
     }
@@ -759,6 +795,7 @@ export class ChatContentPage extends Component<
         showChannelSearch: false,
         channelSearchPreviewFile: null,
         previewReturnChannelSearch: false,
+        webhookIssuePreviewTarget: null,
       });
     }
 
@@ -783,8 +820,14 @@ export class ChatContentPage extends Component<
 
     if (channelChanged) {
       this._clearChannelSearchState();
-      if (this.state.channelSearchPreviewFile) {
-        this.setState({ channelSearchPreviewFile: null });
+      if (
+        this.state.channelSearchPreviewFile ||
+        this.state.webhookIssuePreviewTarget
+      ) {
+        this.setState({
+          channelSearchPreviewFile: null,
+          webhookIssuePreviewTarget: null,
+        });
       }
     }
 
@@ -822,6 +865,7 @@ export class ChatContentPage extends Component<
           showSummaryPanel: false,
           showChannelSearch: false,
           channelSearchPreviewFile: null,
+          webhookIssuePreviewTarget: null,
         });
         return;
       }
@@ -850,6 +894,7 @@ export class ChatContentPage extends Component<
           showChannelSearch: false,
           channelSearchPreviewFile: null,
           previewReturnChannelSearch: false,
+          webhookIssuePreviewTarget: null,
         });
         return;
       }
@@ -1023,6 +1068,7 @@ export class ChatContentPage extends Component<
       summaryPanelView,
       showChannelSearch,
       channelSearchPreviewFile,
+      webhookIssuePreviewTarget,
     } = this.state;
     // 子区页面不显示讨论串按钮
     const isThreadChannel = channel.channelType === ChannelTypeCommunityTopic;
@@ -1041,7 +1087,8 @@ export class ChatContentPage extends Component<
             ? "wk-chat-threadpanel-open"
             : "",
           showMatterDetailPanel ? "wk-chat-matter-detail-panel-open" : "",
-          showSummaryPanel ? "wk-chat-summary-panel-open" : ""
+          showSummaryPanel ? "wk-chat-summary-panel-open" : "",
+          webhookIssuePreviewTarget ? "wk-chat-webhook-preview-open" : ""
         )}
       >
         <div
@@ -1211,6 +1258,7 @@ export class ChatContentPage extends Component<
                                 activeThread: null,
                                 previewFile: null, // 关闭文件预览（互斥）
                                 activePreviewMessageId: null,
+                                webhookIssuePreviewTarget: null,
                               };
                             });
                           }}
@@ -1228,6 +1276,7 @@ export class ChatContentPage extends Component<
                           showChannelSetting: !this.state.showChannelSetting,
                           showChannelSearch: false,
                           channelSearchPreviewFile: null,
+                          webhookIssuePreviewTarget: null,
                         });
                       }}
                     >
@@ -1280,6 +1329,7 @@ export class ChatContentPage extends Component<
                       channelSearchPreviewFile: null,
                       previewFile: null, // 关闭文件预览（互斥）
                       activePreviewMessageId: null,
+                      webhookIssuePreviewTarget: null,
                       activeThread: buildThreadStub(
                         threadInfo.shortId,
                         threadInfo.groupNo,
@@ -1289,6 +1339,7 @@ export class ChatContentPage extends Component<
                     });
                   }
                 }}
+                onOpenWebhookPreview={this._openWebhookPreview}
                 key={channel.getChannelKey()}
                 chatBg={
                   WKApp.config.themeMode === ThemeMode.dark
@@ -1489,6 +1540,15 @@ export class ChatContentPage extends Component<
               this.setState({ showSummaryPanel: false })
             )}
           </div>
+        )}
+
+        {webhookIssuePreviewTarget && (
+          <ErrorBoundary moduleName={t("base.message.webhookPreview.title")}>
+            <WebhookIssuePreviewPanel
+              target={webhookIssuePreviewTarget}
+              onClose={() => this.setState({ webhookIssuePreviewTarget: null })}
+            />
+          </ErrorBoundary>
         )}
       </div>
     );

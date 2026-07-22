@@ -163,10 +163,11 @@ export default defineConfig(({ mode }) => {
             : undefined,
         },
         // Loop (fleet) service API — 真实 multica-server/fleet 联调。
-        // dev fleet 在 127.0.0.1:8091 直接提供完整 /fleet/api/v1/... 路径（不 strip）。
+        // 默认复用主网关 origin，让只配置 VITE_API_URL 的本地 Web 也能读取
+        // `/fleet/api/v1/...`；需要直连本地 fleet 时再显式设置 VITE_FLEET_API_URL。
         // 必须放在下面通用 /fleet/api/ 规则之前（vite first-match）。
         "/fleet/api/v1": {
-          target: env.VITE_FLEET_API_URL || "http://127.0.0.1:8091",
+          target: env.VITE_FLEET_API_URL || apiOrigin,
           changeOrigin: true,
           secure: false,
         },

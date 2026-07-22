@@ -16,6 +16,7 @@ import { isMessageReactionEnabled } from "../../Service/featureFlags";
 import { getTextMessageUI } from "../../bridge/message/useTextMessageUI";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
+import { webhookPreviewClickHandler } from "../../bridge/message/webhookPreview";
 import "./index.css"
 
 /**
@@ -200,6 +201,10 @@ export class TextCell extends MessageCell {
                     isActive={context.isContextMenuOpen(message.message)}
                     onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
                     onSenderNameClick={() => context.showUser(message.fromUID)}
+                    onBodyClick={webhookPreviewClickHandler(
+                        message,
+                        context.openWebhookPreview?.bind(context)
+                    )}
                 >
                     <div>
                         {message?.content?.reply && (

@@ -23,6 +23,6 @@ export function uploadAttachment(
 // maps to the backend the same way it does for every other loop call — so this
 // relative path resolves to the attachment endpoint with auth headers attached.
 // Callers wrap the Blob in an object URL for <img>/<a> and revoke it when done.
-export function fetchAttachmentBlob(id: string): Promise<Blob> {
-  return httpGetBlob(`/attachments/${id}/download`);
+export function fetchAttachmentBlob(id: string, workspaceSlug?: string): Promise<Blob> {
+  return httpGetBlob(`/attachments/${id}/download`, workspaceSlug ? { workspaceSlug } : undefined);
 }

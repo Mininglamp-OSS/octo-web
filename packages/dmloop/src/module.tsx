@@ -11,6 +11,7 @@ import {
   visibleLoopCliAuthorizeSearch,
 } from "./cliAuthorizeSession";
 import { normalizeCurrentLoopIssueDeepLink } from "./issueDeepLink";
+import WebhookIssuePreview from "./features/webhookIssuePreview/WebhookIssuePreview";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 
@@ -46,6 +47,11 @@ export default class LoopModule implements IModule {
       "zh-CN": zhCN,
       "en-US": enUS,
     });
+
+    WKApp.endpoints.registerChatWebhookIssuePreview(
+      "loop.webhookIssuePreview",
+      (target) => <WebhookIssuePreview target={target} />
+    );
 
     // Capture issue deep-links before the host tries to activate a menu route.
     // Only `/loop` has a NavRail entry, so dynamic issue paths are normalized

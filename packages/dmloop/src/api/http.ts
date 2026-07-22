@@ -19,9 +19,15 @@ function readWorkspaceCtx(): { slug: string; id: string; name: string } {
   try {
     const p = JSON.parse(sessionStorage.getItem(WS_CTX_KEY) ?? "null");
     if (p && typeof p.slug === "string" && typeof p.id === "string") {
-      return { slug: p.slug, id: p.id, name: typeof p.name === "string" ? p.name : "" };
+      return {
+        slug: p.slug,
+        id: p.id,
+        name: typeof p.name === "string" ? p.name : "",
+      };
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return { slug: "", id: "", name: "" };
 }
 const _initCtx = readWorkspaceCtx();
@@ -38,21 +44,40 @@ export function currentWorkspaceId(): string {
 export function currentWorkspaceName(): string {
   return _workspaceName;
 }
-export function setWorkspaceContext(slug: string, id: string, name?: string): void {
+export function setWorkspaceContext(
+  slug: string,
+  id: string,
+  name?: string
+): void {
   _workspaceSlug = slug || "";
   _workspaceId = id || "";
   // name 可选：清空上下文(id 为空)时一并清；否则给了就更新、没给保留上次(避免误清面包屑名)。
-  _workspaceName = _workspaceId ? (name ?? _workspaceName) : "";
+  _workspaceName = _workspaceId ? name ?? _workspaceName : "";
   try {
-    if (_workspaceId) sessionStorage.setItem(WS_CTX_KEY, JSON.stringify({ slug: _workspaceSlug, id: _workspaceId, name: _workspaceName }));
+    if (_workspaceId)
+      sessionStorage.setItem(
+        WS_CTX_KEY,
+        JSON.stringify({
+          slug: _workspaceSlug,
+          id: _workspaceId,
+          name: _workspaceName,
+        })
+      );
     else sessionStorage.removeItem(WS_CTX_KEY);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 // 统一注入 x-workspace-slug + 鉴权 header。
 client.interceptors.request.use((config) => {
   config.headers = config.headers ?? {};
-  if (_workspaceSlug) config.headers["x-workspace-slug"] = _workspaceSlug;
+  // A panel preview can request a task from a workspace other than the Loop
+  // page's selected workspace. An explicit request header wins without
+  // mutating the module-global workspace context used by the full Loop page.
+  if (!config.headers["x-workspace-slug"] && _workspaceSlug) {
+    config.headers["x-workspace-slug"] = _workspaceSlug;
+  }
   // 后端对 loop 全域接口校验以下两个鉴权 header，复用 octo-web 其他模块
   // （dmworkbase APIClient）的取值来源：token 取自 WKApp.loginInfo.token，
   // space_id 取自 WKApp.shared.currentSpaceId。仅在非空时注入。
@@ -77,7 +102,15 @@ export class LoopApiError extends Error {
 
 function toApiError(err: unknown): LoopApiError {
   const e = err as {
-    response?: { status?: number; data?: { error?: string; message?: string; code?: string; reason?: string } };
+    response?: {
+      status?: number;
+      data?: {
+        error?: string;
+        message?: string;
+        code?: string;
+        reason?: string;
+      };
+    };
     message?: string;
   };
   const data = e?.response?.data;
@@ -102,9 +135,15 @@ function clean(params?: Record<string, unknown>): Record<string, string> {
 export async function httpGet<T>(
   path: string,
   params?: Record<string, unknown>,
+  scope?: { workspaceSlug?: string }
 ): Promise<T> {
   try {
-    const resp = await client.get<T>(path, { params: clean(params) });
+    const resp = await client.get<T>(path, {
+      params: clean(params),
+      headers: scope?.workspaceSlug
+        ? { "x-workspace-slug": scope.workspaceSlug }
+        : undefined,
+    });
     return resp.data;
   } catch (err) {
     throw toApiError(err);
@@ -119,9 +158,17 @@ export async function httpGet<T>(
 // different backend than the loop API, so a raw `download_url` src 404s. Going
 // through the client (which rewrites to the loop backend and injects auth) and
 // handing the caller a Blob to wrap in an object URL fixes both.
-export async function httpGetBlob(path: string): Promise<Blob> {
+export async function httpGetBlob(
+  path: string,
+  scope?: { workspaceSlug?: string }
+): Promise<Blob> {
   try {
-    const resp = await client.get(path, { responseType: "blob" });
+    const resp = await client.get(path, {
+      responseType: "blob",
+      headers: scope?.workspaceSlug
+        ? { "x-workspace-slug": scope.workspaceSlug }
+        : undefined,
+    });
     return resp.data as Blob;
   } catch (err) {
     throw toApiError(err);
@@ -157,7 +204,10 @@ export async function httpPatch<T>(path: string, body?: unknown): Promise<T> {
 
 export async function httpDelete<T>(path: string, body?: unknown): Promise<T> {
   try {
-    const resp = await client.delete<T>(path, body ? { data: body } : undefined);
+    const resp = await client.delete<T>(
+      path,
+      body ? { data: body } : undefined
+    );
     return resp.data;
   } catch (err) {
     throw toApiError(err);

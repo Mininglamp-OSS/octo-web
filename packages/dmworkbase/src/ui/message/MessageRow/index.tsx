@@ -75,6 +75,9 @@ export interface MessageRowProps {
   /** 行点击事件（多选模式整行可点） */
   onClick?: () => void
 
+  /** 消息正文点击事件，不覆盖头像、Header 与整行空白。 */
+  onBodyClick?: (event: React.MouseEvent) => void
+
   /** 右键菜单打开时保持 hover 高亮 */
   isActive?: boolean
 
@@ -124,6 +127,7 @@ export default function MessageRow({
   selectionMode = false,
   onContextMenu,
   onClick,
+  onBodyClick,
   isActive,
   onAvatarClick,
   onSenderNameClick,
@@ -247,7 +251,16 @@ export default function MessageRow({
         
         {/* 消息体 */}
         <div className="wk-msg-row-body">
-          {children}
+          {!isSelecting && onBodyClick ? (
+            <div
+              className="wk-msg-row-body-hitarea"
+              onClick={onBodyClick}
+            >
+              {children}
+            </div>
+          ) : (
+            children
+          )}
         </div>
       </div>
     </div>

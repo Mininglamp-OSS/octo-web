@@ -640,6 +640,18 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
   width: calc(100% - var(--wk-width-thread-panel));
 }
 
+.wk-chat-content-right.wk-chat-webhook-preview-open .wk-chat-content-chat {
+  width: calc(100% - var(--wk-width-resizable-right-panel));
+}
+
+.wk-chat-content-right.wk-chat-webhook-preview-open[
+    data-resizable-right-panel-layout="overlay"
+  ]
+  .wk-chat-content-chat {
+  visibility: hidden;
+  width: 0;
+}
+
 .wk-chat-conversation-list-loading {
   display: flex;
   width: 100%;

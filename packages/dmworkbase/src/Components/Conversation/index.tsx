@@ -105,6 +105,7 @@ import {
 } from "../../Service/UploadCredentials";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
+import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
@@ -381,6 +382,7 @@ export interface ConversationProps {
   initLocateMessageSeq?: number;
   onContext?: (ctx: ConversationContext) => void;
   onOpenThreadPanel?: (threadChannelId: string, threadName: string) => void;
+  onOpenWebhookPreview?: (target: WebhookIssuePreviewTarget) => void;
   onSelectionStateChange?: (state: {
     editOn: boolean;
     checkedCount: number;
@@ -453,6 +455,7 @@ export class Conversation
     threadChannelId: string,
     threadName: string
   ) => void;
+  private onOpenWebhookPreview?: (target: WebhookIssuePreviewTarget) => void;
 
   constructor(props: any) {
     super(props);
@@ -461,6 +464,7 @@ export class Conversation
       contextMenuMessageID: null as string | null,
     };
     this.onOpenThreadPanel = props.onOpenThreadPanel;
+    this.onOpenWebhookPreview = props.onOpenWebhookPreview;
     this._beforeUnloadHandler = () => {
       // Use sendBeacon for reliable delivery during page unload
       if (this.vm && this.vm.needSetUnread) {
@@ -564,6 +568,9 @@ export class Conversation
 
   openThreadPanel(threadChannelId: string, threadName: string): void {
     this.onOpenThreadPanel?.(threadChannelId, threadName);
+  }
+  openWebhookPreview(target: WebhookIssuePreviewTarget): void {
+    this.onOpenWebhookPreview?.(target);
   }
   getActivePreviewMessageId(): string | null {
     return this.props.activePreviewMessageId ?? null;

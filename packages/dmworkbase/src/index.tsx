@@ -94,6 +94,8 @@ export { default as ActionListItem } from "./Components/ActionListItem"
 export { default as SpaceMembers } from "./Components/SpaceMembers"
 export { default as SpaceSettings } from "./Components/SpaceSettings"
 export * from "./Service/SpaceService"
+export { default as UserService } from "./Service/UserService"
+export type { UserProfile } from "./Service/UserService"
 
 export type { JoinApprovalStatus } from "./EndpointCommon"
 export { toJoinApprovalStatus } from "./EndpointCommon"

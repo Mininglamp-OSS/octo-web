@@ -16,7 +16,7 @@ import { downloadAttachmentById, domSaveBlob } from "./downloadAttachment";
  * The object URL is revoked on unmount / id change (lifecycle in loadObjectUrl),
  * and inline-unsafe MIME types are refused before any URL is created.
  */
-export function useAuthedAttachmentUrl(id: string): { url: string | null; failed: boolean } {
+export function useAuthedAttachmentUrl(id: string, workspaceSlug?: string): { url: string | null; failed: boolean } {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -26,9 +26,9 @@ export function useAuthedAttachmentUrl(id: string): { url: string | null; failed
     return loadObjectUrl(
       id,
       { onLoad: setUrl, onError: () => setFailed(true) },
-      { fetchBlob: fetchAttachmentBlob, isInlineSafe: canPreviewInline },
+      { fetchBlob: (attachmentId) => fetchAttachmentBlob(attachmentId, workspaceSlug), isInlineSafe: canPreviewInline },
     );
-  }, [id]);
+  }, [id, workspaceSlug]);
 
   return { url, failed };
 }
@@ -42,9 +42,9 @@ export function useAuthedAttachmentUrl(id: string): { url: string | null; failed
  *
  * Returns true if the download was started, false if the fetch failed.
  */
-export function triggerAuthedDownload(id: string, filename: string): Promise<boolean> {
+export function triggerAuthedDownload(id: string, filename: string, workspaceSlug?: string): Promise<boolean> {
   return downloadAttachmentById(id, filename, {
-    fetchBlob: fetchAttachmentBlob,
+    fetchBlob: (attachmentId) => fetchAttachmentBlob(attachmentId, workspaceSlug),
     saveBlob: domSaveBlob,
   });
 }

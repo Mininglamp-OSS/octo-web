@@ -307,6 +307,16 @@
     "board": "看板",
     "detailsTitle": "详情"
   },
+  "preview": {
+    "openSource": "打开完整页面",
+    "retry": "重试",
+    "loading": "正在加载任务…",
+    "loadError": "任务加载失败或你无权查看",
+    "description": "描述",
+    "updatedAt": "更新时间",
+    "empty": "暂无内容",
+    "runOutput": "执行结果"
+  },
   "comment": {
     "reply": "回复",
     "deleteConfirm": "确定删除这条评论？",

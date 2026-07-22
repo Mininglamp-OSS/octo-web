@@ -307,6 +307,16 @@
     "board": "Board",
     "detailsTitle": "Details"
   },
+  "preview": {
+    "openSource": "Open full page",
+    "retry": "Retry",
+    "loading": "Loading task…",
+    "loadError": "The task could not be loaded or you do not have access",
+    "description": "Description",
+    "updatedAt": "Updated",
+    "empty": "No content",
+    "runOutput": "Run output"
+  },
   "comment": {
     "reply": "Reply",
     "deleteConfirm": "Delete this comment?",

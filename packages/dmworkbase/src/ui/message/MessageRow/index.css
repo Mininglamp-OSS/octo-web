@@ -182,6 +182,13 @@
   flex-direction: column;
 }
 
+.wk-msg-row-body-hitarea {
+  display: flex;
+  flex-direction: column;
+  width: fit-content;
+  max-width: 100%;
+}
+
 
 
 /* 多选模式：整行可点 */

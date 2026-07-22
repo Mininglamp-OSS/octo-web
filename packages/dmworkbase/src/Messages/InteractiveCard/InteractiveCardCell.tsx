@@ -3,6 +3,10 @@ import { type Action, type AdaptiveCard } from "adaptivecards";
 import { Toast } from "@douyinfe/semi-ui";
 import WKApp from "../../App";
 import { getMessageRow } from "../../bridge/message/useMessageRow";
+import {
+  parseWebhookIssuePreviewTarget,
+  webhookPreviewClickHandler,
+} from "../../bridge/message/webhookPreview";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import MessageRow from "../../ui/message/MessageRow";
@@ -247,7 +251,18 @@ export class InteractiveCardCell extends MessageCell {
   private handleCardAction(action: Action, card: AdaptiveCard) {
     const type = action.getJsonTypeName();
     if (type === "Action.OpenUrl") {
+      const { message, context } = this.props;
       const url = (action as unknown as { url?: unknown }).url;
+      if (classifyCardSender(message.fromUID) === "webhook") {
+        const target =
+          typeof url === "string"
+            ? parseWebhookIssuePreviewTarget(url)
+            : null;
+        if (target) {
+          context.openWebhookPreview?.(target);
+          return;
+        }
+      }
       if (typeof url === "string") openUrl(url);
       return;
     }
@@ -432,6 +447,10 @@ export class InteractiveCardCell extends MessageCell {
         isActive={context.isContextMenuOpen(message.message)}
         onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
         onSenderNameClick={() => context.showUser(message.fromUID)}
+        onBodyClick={webhookPreviewClickHandler(
+          message,
+          context.openWebhookPreview?.bind(context)
+        )}
       >
         <div
           className={

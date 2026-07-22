@@ -20,8 +20,8 @@ const transformLinkUri = (href: string) =>
  * also goes through the authed client — a native <a href> to the auth-only
  * endpoint would itself dead-link under octo-web.
  */
-function MarkdownAttachmentImage({ id, filename, alt }: { id: string; filename: string; alt: string }) {
-  const { url, failed } = useAuthedAttachmentUrl(id);
+function MarkdownAttachmentImage({ id, filename, alt, workspaceSlug }: { id: string; filename: string; alt: string; workspaceSlug?: string }) {
+  const { url, failed } = useAuthedAttachmentUrl(id, workspaceSlug);
   const [busy, setBusy] = useState(false);
 
   if (failed) {
@@ -32,7 +32,7 @@ function MarkdownAttachmentImage({ id, filename, alt }: { id: string; filename: 
       e.preventDefault();
       if (busy) return;
       setBusy(true);
-      await triggerAuthedDownload(id, filename);
+      await triggerAuthedDownload(id, filename, workspaceSlug);
       setBusy(false);
     };
     return (
@@ -48,7 +48,7 @@ function MarkdownAttachmentImage({ id, filename, alt }: { id: string; filename: 
 }
 
 /** Loop Markdown 渲染：标题/列表/代码块/行内代码/链接/表格/引用等美化展示。 */
-export default function LoopMarkdown({ content }: { content: string }) {
+export default function LoopMarkdown({ content, workspaceSlug }: { content: string; workspaceSlug?: string }) {
   return (
     <div className="loop-md">
       <ReactMarkdown
@@ -71,7 +71,7 @@ export default function LoopMarkdown({ content }: { content: string }) {
               // last path segment is "download"/"content" (or a query), never a
               // real filename, so fall back to a stable generic instead.
               const name = alt || "attachment";
-              return <MarkdownAttachmentImage id={id} filename={name} alt={alt ?? ""} />;
+              return <MarkdownAttachmentImage id={id} filename={name} alt={alt ?? ""} workspaceSlug={workspaceSlug} />;
             }
             return <img src={src} alt={alt} {...props} />;
           },

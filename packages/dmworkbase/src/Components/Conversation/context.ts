@@ -1,4 +1,5 @@
 import { Channel, Message, MessageContent } from "wukongimjssdk";
+import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
 import { MessageInputContext } from "../MessageInput";
 
 export default interface ConversationContext {
@@ -142,6 +143,9 @@ export default interface ConversationContext {
    * @param threadName 子区名称
    */
   openThreadPanel?(threadChannelId: string, threadName: string): void;
+
+  /** 在右侧打开 Webhook 消息中实际点击的 Fleet 任务。 */
+  openWebhookPreview?(target: WebhookIssuePreviewTarget): void;
 
   /**
    * 获取当前正在预览的文件消息 ID

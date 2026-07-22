@@ -379,6 +379,34 @@ export class EndpointCommon {
     );
   }
 
+  chatWebhookIssuePreview(target: {
+    workspaceSlug: string;
+    issueIdentifier: string;
+    sourceUrl: string;
+  }): JSX.Element | undefined {
+    return EndpointManager.shared.invoke(
+      EndpointCategory.chatWebhookIssuePreview,
+      target
+    );
+  }
+
+  registerChatWebhookIssuePreview(
+    sid: string,
+    callback: (target: {
+      workspaceSlug: string;
+      issueIdentifier: string;
+      sourceUrl: string;
+    }) => JSX.Element | undefined
+  ) {
+    EndpointManager.shared.setMethod(
+      EndpointCategory.chatWebhookIssuePreview,
+      callback,
+      {
+        category: EndpointCategory.chatWebhookIssuePreview,
+      }
+    );
+  }
+
   callOnLogin() {
     [...this._onLogins].forEach(fn => fn());
   }

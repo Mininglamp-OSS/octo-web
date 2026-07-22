@@ -1,0 +1,100 @@
+.wk-resizable-right-panel {
+  position: absolute;
+  z-index: 100;
+  inset-block: 0;
+  inset-inline-end: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-base);
+  border-inline-start: 1px solid var(--wk-border-default);
+  box-shadow: var(--wk-shadow-md);
+  container-type: inline-size;
+}
+
+.wk-resizable-right-panel__header {
+  display: flex;
+  flex: 0 0 var(--wk-height-chat-conversation-header);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
+  min-width: 0;
+  padding-inline: var(--wk-sp-4);
+  background: var(--wk-bg-surface);
+  border-bottom: 1px solid var(--wk-border-default);
+}
+
+.wk-resizable-right-panel__title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--wk-text-size-lg);
+  font-weight: var(--wk-font-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-resizable-right-panel__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-7);
+  height: var(--wk-sp-7);
+  padding: 0;
+  color: var(--wk-text-tertiary);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-resizable-right-panel__close:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.wk-resizable-right-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.wk-resizable-right-panel__splitter {
+  position: absolute;
+  z-index: 101;
+  inset-block: 0;
+  inset-inline-start: calc(var(--wk-sp-1-5) * -1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-3);
+  cursor: col-resize;
+}
+
+.wk-resizable-right-panel__splitter-line {
+  width: 0;
+  height: 100%;
+  background: var(--wk-brand-primary);
+  border-radius: var(--wk-r-full);
+  transition: width var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-resizable-right-panel__splitter:hover
+  .wk-resizable-right-panel__splitter-line,
+.wk-resizable-right-panel--dragging
+  .wk-resizable-right-panel__splitter-line {
+  width: var(--wk-sp-0-5);
+}
+
+.wk-resizable-right-panel__drag-overlay {
+  position: fixed;
+  z-index: 9999;
+  inset: 0;
+  cursor: col-resize;
+}
+
+.wk-resizable-right-panel--compact {
+  width: 100%;
+  border-inline-start: 0;
+}
