@@ -1,6 +1,6 @@
 # 由 e2e-kit sync 维护, 请勿手动改 kit_version / installed_optionals / template_checksums 字段
 kit_name: e2e-kit
-kit_version: 0.3.0
+kit_version: 0.4.0
 kit_source: https://codex.mlamp.cn/e2e/e2e-kit
 
 # 已装 optional 层 (由 --with-optional 追加, 追加不移除)
