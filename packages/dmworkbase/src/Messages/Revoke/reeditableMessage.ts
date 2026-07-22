@@ -16,6 +16,7 @@ import type { ImageContent } from "../Image";
 import {
   RichTextBlockType,
   RichTextFilePlaceholder,
+  RichTextImagePlaceholder,
 } from "../RichText/RichTextContent";
 import type { RichTextContent } from "../RichText/RichTextContent";
 
@@ -175,17 +176,22 @@ export async function remoteReeditFileToFile(input: {
 function getReeditableRichTextBlocks(message: MessageWrap): ReeditBlock[] {
   const richText = message.content as RichTextContent;
   const blocks: ReeditBlock[] = [];
+  const mention = readMessageMention(message.content);
+  let plainOffset = 0;
   for (const block of richText.content || []) {
-    if (block.type === RichTextBlockType.image && block.url) {
-      blocks.push({
-        type: "image",
-        url: block.url,
-        width: block.width,
-        height: block.height,
-        size: block.size,
-        name: block.name,
-        mime: block.mime,
-      });
+    if (block.type === RichTextBlockType.image) {
+      if (block.url) {
+        blocks.push({
+          type: "image",
+          url: block.url,
+          width: block.width,
+          height: block.height,
+          size: block.size,
+          name: block.name,
+          mime: block.mime,
+        });
+      }
+      plainOffset += RichTextImagePlaceholder.length;
       continue;
     }
     if (block.type === RichTextBlockType.file) {
@@ -193,17 +199,52 @@ function getReeditableRichTextBlocks(message: MessageWrap): ReeditBlock[] {
         ? `${RichTextFilePlaceholder} ${block.name}`
         : RichTextFilePlaceholder;
       blocks.push({ type: "content", content: textToInlineContent(label) });
+      plainOffset += label.length;
       continue;
     }
     const text = block.text || "";
     if (text.trim() !== "") {
       blocks.push({
         type: "content",
-        content: buildInlineContent(text, readMessageMention(message.content)),
+        content: buildInlineContent(
+          text,
+          rebaseMentionEntitiesForBlock(mention, plainOffset, text.length)
+        ),
       });
     }
+    plainOffset += text.length;
   }
   return blocks;
+}
+
+function rebaseMentionEntitiesForBlock(
+  mention: MessageMention | undefined,
+  blockOffset: number,
+  blockLength: number
+): MessageMention | undefined {
+  if (!mention?.entities?.length) return mention;
+  const blockEnd = blockOffset + blockLength;
+  return {
+    ...mention,
+    // Structured entities are authoritative. Do not fall back to assigning
+    // whole-message positional uids when this block has no matching entity.
+    uids: [],
+    entities: mention.entities
+      .filter(
+        (entity) =>
+          entity &&
+          typeof entity.uid === "string" &&
+          Number.isFinite(entity.offset) &&
+          Number.isFinite(entity.length) &&
+          entity.offset >= blockOffset &&
+          entity.length > 0 &&
+          entity.offset + entity.length <= blockEnd
+      )
+      .map((entity) => ({
+        ...entity,
+        offset: entity.offset - blockOffset,
+      })),
+  };
 }
 
 function getTextMessageInlineContent(

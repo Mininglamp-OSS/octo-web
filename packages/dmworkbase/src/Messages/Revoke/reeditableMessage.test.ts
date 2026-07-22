@@ -29,6 +29,8 @@ import { MENTION_UID_HUMANS } from "../../Utils/mentionRender";
 import {
   RichTextBlockType,
   RichTextContent,
+  RichTextFilePlaceholder,
+  RichTextImagePlaceholder,
 } from "../RichText/RichTextContent";
 import {
   canReeditRevokedMessage,
@@ -135,6 +137,105 @@ describe("revoked message re-editing", () => {
       },
       { type: "content", content: [{ type: "text", text: "after" }] },
     ]);
+  });
+
+  it("rebases rich-text mention entities after an image placeholder", () => {
+    const content = new RichTextContent();
+    content.content = [
+      {
+        type: RichTextBlockType.image,
+        url: "https://example.com/image.png",
+        width: 640,
+        height: 480,
+      },
+      { type: RichTextBlockType.text, text: "hi @Alice" },
+    ];
+    const mention = new Mention();
+    mention.uids = ["alice"];
+    (
+      mention as Mention & {
+        entities: Array<{ uid: string; offset: number; length: number }>;
+      }
+    ).entities = [
+      {
+        uid: "alice",
+        offset: RichTextImagePlaceholder.length + "hi ".length,
+        length: 6,
+      },
+    ];
+    content.mention = mention;
+
+    expect(getReeditableMessageBlocks(makeMessage(content))).toEqual([
+      {
+        type: "image",
+        url: "https://example.com/image.png",
+        width: 640,
+        height: 480,
+        size: undefined,
+        name: undefined,
+        mime: undefined,
+      },
+      {
+        type: "content",
+        content: [
+          { type: "text", text: "hi " },
+          { type: "mention", attrs: { id: "alice", label: "Alice" } },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps whole-message mention entities assigned to their text blocks", () => {
+    const content = new RichTextContent();
+    const firstText = "hey @Bob";
+    const fileLabel = `${RichTextFilePlaceholder} report.pdf`;
+    const secondText = "and @Carol";
+    content.content = [
+      { type: RichTextBlockType.text, text: firstText },
+      {
+        type: RichTextBlockType.image,
+        url: "https://example.com/image.png",
+        width: 640,
+        height: 480,
+      },
+      { type: RichTextBlockType.file, name: "report.pdf" },
+      { type: RichTextBlockType.text, text: secondText },
+    ];
+    const mention = new Mention();
+    mention.uids = ["bob", "carol"];
+    (
+      mention as Mention & {
+        entities: Array<{ uid: string; offset: number; length: number }>;
+      }
+    ).entities = [
+      { uid: "bob", offset: 4, length: 4 },
+      {
+        uid: "carol",
+        offset:
+          firstText.length +
+          RichTextImagePlaceholder.length +
+          fileLabel.length +
+          "and ".length,
+        length: 6,
+      },
+    ];
+    content.mention = mention;
+
+    const blocks = getReeditableMessageBlocks(makeMessage(content));
+    expect(blocks[0]).toEqual({
+      type: "content",
+      content: [
+        { type: "text", text: "hey " },
+        { type: "mention", attrs: { id: "bob", label: "Bob" } },
+      ],
+    });
+    expect(blocks[3]).toEqual({
+      type: "content",
+      content: [
+        { type: "text", text: "and " },
+        { type: "mention", attrs: { id: "carol", label: "Carol" } },
+      ],
+    });
   });
 
   it("continues restoring after a block fails and always completes", async () => {
