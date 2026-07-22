@@ -366,11 +366,14 @@ export function buildChannelGroupInfoSection(
             context,
             channelInfo?.orgData?.remark || "",
             (value: string) => {
-              return remarkChannelSetting({ channel, remark: value }).then(
-                () => {
+              return remarkChannelSetting({ channel, remark: value })
+                .then(() => {
                   data.refresh();
-                }
-              );
+                })
+                .catch((err) => {
+                  Toast.error(err?.msg);
+                  throw err;
+                });
             },
             t("base.module.channelSettings.remarkPlaceholder"),
             15,

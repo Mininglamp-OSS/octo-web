@@ -69,7 +69,8 @@ export function buildChannelPreferenceSection(
                 ctx.loading = false;
                 data.refresh();
               })
-              .catch(() => {
+              .catch((err) => {
+                Toast.error(err?.msg);
                 ctx.loading = false;
               });
           },
@@ -91,7 +92,8 @@ export function buildChannelPreferenceSection(
               ctx.loading = false;
               data.refresh();
             })
-            .catch(() => {
+            .catch((err) => {
+              Toast.error(err?.msg);
               ctx.loading = false;
             });
         },
@@ -113,7 +115,8 @@ export function buildChannelPreferenceSection(
                 ctx.loading = false;
                 data.refresh();
               })
-              .catch(() => {
+              .catch((err) => {
+                Toast.error(err?.msg);
                 ctx.loading = false;
               });
           },

@@ -2,7 +2,15 @@ import { Channel, ChannelInfo, Subscriber } from "wukongimjssdk";
 
 import WKApp from "../../App";
 import { GroupRole } from "../../Service/Const";
-import { ChannelSettingManager } from "../../Service/ChannelSetting";
+import { updateChannelSetting } from "../../Service/ChannelSettingService";
+import {
+  addGroupManagementManagers as addGroupManagementManagersApi,
+  disbandGroupManagement,
+  listGroupManagementSubscribers,
+  removeGroupManagementBotAdmin as removeGroupManagementBotAdminApi,
+  removeGroupManagementManagers,
+  setGroupManagementBotAdmin as setGroupManagementBotAdminApi,
+} from "../../Service/GroupManagementService";
 import {
   addCurrentImChannelInfoListener,
   fetchCurrentImChannelInfo,
@@ -40,10 +48,10 @@ function defaultRuntime(): GroupManagementActionRuntime {
       return addCurrentImChannelInfoListener(listener);
     },
     addManagers(channel, uids) {
-      return WKApp.dataSource.channelDataSource.managerAdd(channel, uids);
+      return addGroupManagementManagersApi(channel, uids);
     },
     disbandGroup(channel) {
-      return WKApp.dataSource.channelDataSource.groupDisband(channel);
+      return disbandGroupManagement(channel);
     },
     fetchChannelInfo(channel) {
       return fetchCurrentImChannelInfo(channel);
@@ -52,19 +60,23 @@ function defaultRuntime(): GroupManagementActionRuntime {
       return getCurrentImChannelInfo(channel);
     },
     listSubscribers(channel, params) {
-      return WKApp.dataSource.channelDataSource.subscribers(channel, params);
+      return listGroupManagementSubscribers({
+        channel,
+        request: params,
+        avatarUser: (uid) => WKApp.shared.avatarUser(uid),
+      });
     },
     removeBotAdmin(channel, uid) {
-      return WKApp.dataSource.channelDataSource.removeBotAdmin(channel, uid);
+      return removeGroupManagementBotAdminApi(channel, uid);
     },
     removeManagers(channel, uids) {
-      return WKApp.dataSource.channelDataSource.managerRemove(channel, uids);
+      return removeGroupManagementManagers(channel, uids);
     },
     setAllowNoMention(allow, channel) {
-      return ChannelSettingManager.shared.setAllowNoMention(allow, channel);
+      return updateChannelSetting({ allow_no_mention: allow ? 1 : 0 }, channel);
     },
     setBotAdmin(channel, uid) {
-      return WKApp.dataSource.channelDataSource.setBotAdmin(channel, uid);
+      return setGroupManagementBotAdminApi(channel, uid);
     },
     syncDisbandState(channel) {
       syncGroupDisbandState(channel);

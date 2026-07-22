@@ -366,9 +366,9 @@ export class GroupManagement extends Component<
         allowNoMentionSaving: false,
       });
     } catch (err: any) {
-      // 失败回滚到改前状态。Toast 已由底层设置动作弹出，
-      // 这里不再重复弹（避免双 Toast）。仅当本次仍是最新操作时才回滚 + 解锁，
+      // 失败回滚到改前状态。仅当本次仍是最新操作时才回滚 + 解锁，
       // 否则尊重更新的 toggle（它接管 saving 锁）。
+      Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
       if (this.unmounted) return;
       if (myOp !== this.opSeq) return;
       this.setState({ allowNoMention: prev, allowNoMentionSaving: false });

@@ -16,14 +16,6 @@ vi.mock("../../../App", () => ({
   },
 }));
 
-vi.mock("../../../Service/ChannelSetting", () => ({
-  ChannelSettingManager: {
-    shared: {
-      setAllowNoMention: vi.fn(),
-    },
-  },
-}));
-
 vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
   addCurrentImChannelInfoListener: vi.fn(),
   fetchCurrentImChannelInfo: vi.fn(),

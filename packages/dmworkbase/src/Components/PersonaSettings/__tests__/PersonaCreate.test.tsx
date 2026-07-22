@@ -53,6 +53,20 @@ vi.mock("../../../App", () => ({
     __esModule: true,
 }))
 
+vi.mock("../../../Service/APIClient", () => ({
+    extractErrorMsg: (err: any) =>
+        err && typeof err === "object" && typeof err.msg === "string" ? err.msg : "",
+    default: {
+        shared: {
+            get: hoisted.get,
+            post: hoisted.post,
+            delete: hoisted.del,
+            put: hoisted.put,
+        },
+    },
+    __esModule: true,
+}))
+
 vi.mock("@douyinfe/semi-ui", () => ({
     Toast: {
         error: hoisted.toastError,

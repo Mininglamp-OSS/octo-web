@@ -16,11 +16,16 @@ import {
     getCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
 import {
-    OboGrant,
-    OboScope,
     hasAnyActiveGrant,
     refreshActiveGrantCache,
 } from "../PersonaSettings/vm";
+import {
+    createOboScope,
+    deleteOboScope,
+    listOboGrants,
+    listOboGrantScopes,
+    type OboScope,
+} from "../../Service/OboService";
 import { t } from "../../i18n";
 
 
@@ -202,17 +207,17 @@ export class ChannelSettingVM extends ProviderListener {
         try {
             if (this._oboScope) {
                 // 已有 scope 记录：先 DELETE，再视情况决定是否 POST。
-                await WKApp.apiClient.delete(`obo/scopes/${this._oboScope.id}`)
+                await deleteOboScope(this._oboScope.id)
                 if (this._disposed) return
                 this._oboScope = null
                 if (enable !== this._activeGrantGlobalEnabled) {
                     // global 不能直接表达 enable → 还需 POST 一条 override。
-                    const created = await WKApp.apiClient.post(`obo/scopes`, {
+                    const created = await createOboScope({
                         grant_id: this._activeGrantId,
                         channel_id: this.channel.channelID,
                         channel_type: this.channel.channelType,
                         enabled: enable,
-                    }) as OboScope
+                    })
                     if (this._disposed) return
                     this._oboScope = created
                 }
@@ -222,12 +227,12 @@ export class ChannelSettingVM extends ProviderListener {
                 //   enable === global → 已经匹配（理论上 UI 不应允许点击；保险起见 no-op）。
                 //   enable !== global → POST 一条 override（关闭=排除/打开=单点启用）。
                 if (enable === this._activeGrantGlobalEnabled) return
-                const created = await WKApp.apiClient.post(`obo/scopes`, {
+                const created = await createOboScope({
                     grant_id: this._activeGrantId,
                     channel_id: this.channel.channelID,
                     channel_type: this.channel.channelType,
                     enabled: enable,
-                }) as OboScope
+                })
                 if (this._disposed) return
                 this._oboScope = created
             }
@@ -263,8 +268,7 @@ export class ChannelSettingVM extends ProviderListener {
      */
     private async refreshOboScope(): Promise<void> {
         try {
-            const grants = await WKApp.apiClient.get<OboGrant[]>(`obo/grants`)
-            const list: OboGrant[] = Array.isArray(grants) ? grants : ((grants as any)?.items ?? [])
+            const list = await listOboGrants()
             const active = list.find((g) => g.active)
             if (this._disposed) return
             if (!active) {
@@ -279,9 +283,8 @@ export class ChannelSettingVM extends ProviderListener {
             // Round-2 P1（YUJ-1193）：保留 global_enabled，否则 toggle 在 global=true /
             // 无 scope 场景会渲染成 OFF，与服务端实际行为相反。
             this._activeGrantGlobalEnabled = !!active.global_enabled
-            const scopes = await WKApp.apiClient.get<OboScope[]>(`obo/grants/${active.id}/scopes`)
+            const arr = await listOboGrantScopes(active.id)
             if (this._disposed) return
-            const arr: OboScope[] = Array.isArray(scopes) ? scopes : ((scopes as any)?.items ?? [])
             const match = arr.find((s) =>
                 s.channel_id === this.channel.channelID && s.channel_type === this.channel.channelType,
             )

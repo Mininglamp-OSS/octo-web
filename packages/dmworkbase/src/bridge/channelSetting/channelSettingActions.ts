@@ -1,7 +1,18 @@
 import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
 
 import WKApp from "../../App";
-import { ChannelSettingManager } from "../../Service/ChannelSetting";
+import {
+  addChannelSubscribers as addChannelSubscribersApi,
+  createChannel as createChannelApi,
+  exitChannel as exitChannelApi,
+  leaveThread as leaveThreadApi,
+  removeChannelSubscribers as removeChannelSubscribersApi,
+  transferChannelOwner,
+  updateChannelField as updateChannelFieldApi,
+  updateChannelSetting,
+  updateChannelSubscriberAttr,
+  updateThread as updateThreadApi,
+} from "../../Service/ChannelSettingService";
 import { EndpointID } from "../../Service/Const";
 import { ChannelField } from "../../Service/DataSource/DataSource";
 import {
@@ -51,13 +62,17 @@ export interface ChannelSettingActionRuntime {
 function defaultRuntime(): ChannelSettingActionRuntime {
   return {
     addSubscribers(channel, uids) {
-      return WKApp.dataSource.channelDataSource.addSubscribers(channel, uids);
+      return addChannelSubscribersApi(channel, uids).then(() =>
+        syncChannelSubscribersAfterMemberMutation(channel, "addSubscribers")
+      );
     },
     clearConversationMessages(conversation) {
       return WKApp.conversationProvider.clearConversationMessages(conversation);
     },
     createChannel(uids) {
-      return WKApp.dataSource.channelDataSource.createChannel(uids);
+      return createChannelApi(uids, {
+        spaceId: WKApp.shared.currentSpaceId,
+      });
     },
     deleteConversation(channel) {
       return WKApp.conversationProvider.deleteConversation(channel);
@@ -66,7 +81,7 @@ function defaultRuntime(): ChannelSettingActionRuntime {
       deleteCurrentImChannelInfo(channel);
     },
     exitChannel(channel) {
-      return WKApp.dataSource.channelDataSource.exitChannel(channel);
+      return exitChannelApi(channel);
     },
     fetchCurrentChannelInfo(channel) {
       return fetchCurrentImChannelInfo(channel);
@@ -81,10 +96,10 @@ function defaultRuntime(): ChannelSettingActionRuntime {
       WKApp.endpointManager.invoke(EndpointID.clearChannelMessages, channel);
     },
     leaveThread(shortId) {
-      return WKApp.apiClient.post(`threads/${shortId}/leave`);
+      return leaveThreadApi(shortId);
     },
     muteChannel(channel, mute) {
-      return ChannelSettingManager.shared.mute(mute, channel);
+      return updateChannelSetting({ mute: mute ? 1 : 0 }, channel);
     },
     removeLocalConversationAndCloseIfOpen(channel) {
       WKSDK.shared().conversationManager.removeConversation(channel);
@@ -96,13 +111,15 @@ function defaultRuntime(): ChannelSettingActionRuntime {
       WKApp.shared.notifyListener();
     },
     removeSubscribers(channel, uids) {
-      return WKApp.dataSource.channelDataSource.removeSubscribers(channel, uids);
+      return removeChannelSubscribersApi(channel, uids).then(() =>
+        syncChannelSubscribersAfterMemberMutation(channel, "removeSubscribers")
+      );
     },
     remarkChannel(channel, remark) {
-      return ChannelSettingManager.shared.remark(remark, channel);
+      return updateChannelSetting({ remark }, channel);
     },
     saveChannel(channel, save) {
-      return ChannelSettingManager.shared.save(save, channel);
+      return updateChannelSetting({ save: save ? 1 : 0 }, channel);
     },
     showConversation(channel) {
       WKApp.endpoints.showConversation(channel);
@@ -111,36 +128,32 @@ function defaultRuntime(): ChannelSettingActionRuntime {
       return syncCurrentImChannelSubscribers(channel);
     },
     topChannel(channel, top) {
-      return ChannelSettingManager.shared.top(top, channel);
+      return updateChannelSetting({ top: top ? 1 : 0 }, channel);
     },
     transferOwner(channel, uid) {
-      return WKApp.dataSource.channelDataSource.channelTransferOwner(
-        channel,
-        uid
-      );
+      return transferChannelOwner(channel, uid);
     },
     updateChannelField(channel, field, value) {
-      return WKApp.dataSource.channelDataSource.updateField(
-        channel,
-        field,
-        value
-      );
+      return updateChannelFieldApi(channel, field, value);
     },
     updateSubscriberAttr(channel, uid, attr) {
-      return WKApp.dataSource.channelDataSource.subscriberAttrUpdate(
-        channel,
-        uid,
-        attr
-      );
+      return updateChannelSubscriberAttr(channel, uid, attr);
     },
     updateThread(groupNo, shortId, data) {
-      return WKApp.dataSource.channelDataSource.threadUpdate(
-        groupNo,
-        shortId,
-        data
-      );
+      return updateThreadApi(groupNo, shortId, data);
     },
   };
+}
+
+async function syncChannelSubscribersAfterMemberMutation(
+  channel: Channel,
+  action: "addSubscribers" | "removeSubscribers"
+) {
+  try {
+    await syncCurrentImChannelSubscribers(channel);
+  } catch (err) {
+    console.warn(`[${action}] syncSubscribes failed`, err);
+  }
 }
 
 function runtimeOrDefault(runtime?: ChannelSettingActionRuntime) {
