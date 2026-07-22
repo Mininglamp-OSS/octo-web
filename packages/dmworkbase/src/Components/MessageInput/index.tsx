@@ -140,7 +140,7 @@ function extractOrderedBlocks(
     }
 
     if (node.type === "text") {
-      pendingTextParts.push(stripTrustMark(node.text || ""));
+      pendingTextParts.push(serializeEditorTextNodeForSend(node));
       return;
     }
     if (node.type === "mention") {
@@ -297,6 +297,7 @@ import {
 } from "../../Utils/mentionRender";
 import {
   parseSendMentionText,
+  serializeEditorTextNodeForSend,
   serializeMentionMarker,
   stripTrustMark,
   parseDraftToContent,
@@ -354,7 +355,9 @@ function extractMentionsFromEditor(editor: any, trusted = false): string {
 
   function traverse(node: any) {
     if (node.type === "text") {
-      result += stripTrustMark(node.text || "");
+      result += trusted
+        ? serializeEditorTextNodeForSend(node)
+        : stripTrustMark(node.text || "");
     } else if (node.type === "mention") {
       result += serializeMentionMarker(node.attrs.id, node.attrs.label, trusted);
     } else if (node.type === "hardBreak") {
