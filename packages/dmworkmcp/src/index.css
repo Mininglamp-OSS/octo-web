@@ -969,7 +969,20 @@
 
 .wk-mcp-form-footer__right {
   display: flex;
+  align-items: center;
   gap: var(--wk-sp-2);
+}
+
+/* Inline advisory shown next to the Submit button when the operator kept
+   a secret-shape key toggled OFF with a real value. Non-blocking; the
+   colour reads as a warning without stealing the button's affordance. */
+.wk-mcp-form-footer__warning {
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-color-warning, #d97706);
+  max-width: 24em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Detail-modal footer row for owner actions (edit/delete). */

@@ -181,7 +181,7 @@
     "headerAdd": "Add",
     "headerRemove": "Remove",
     "kvUserSuppliedToggle": "User fills locally",
-    "sharedSecretConfirm": "These keys look sensitive but their \"user fills locally\" toggle is OFF, so the values will be submitted verbatim: {{keys}}. Publish anyway?",
+    "sharedSecretWarning": "{{keys}} will be published in cleartext",
     "icon": "Icon",
     "iconEmpty": "Upload",
     "iconUpload": "Upload image",

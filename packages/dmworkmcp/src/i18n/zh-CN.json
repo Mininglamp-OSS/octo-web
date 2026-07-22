@@ -181,7 +181,7 @@
     "headerAdd": "添加",
     "headerRemove": "删除",
     "kvUserSuppliedToggle": "需要用户自行配置",
-    "sharedSecretConfirm": "以下 key 是敏感字段，但你没打开「需要用户自行配置」开关，值会以明文提交到市场：{{keys}}。确认发布？",
+    "sharedSecretWarning": "{{keys}} 将以明文公开发布",
     "icon": "图标",
     "iconEmpty": "点击上传",
     "iconUpload": "上传图片",

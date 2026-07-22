@@ -786,36 +786,12 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     // Collapse the structured editors down to the wire pair. Backend no
     // longer rejects secret-shaped shared values (rule 2 was removed);
     // non-owner blanking (§5.3) is the sole guard keeping author tokens
-    // out of consumer-facing responses.
+    // out of consumer-facing responses. The inline warning next to the
+    // Submit button (see sharedSecretLeaks below) is the frontend's
+    // advisory signal for the edge case where the operator explicitly
+    // published a secret-shape shared value; non-blocking on purpose.
     const envWire = entriesToWire(envEntries);
     const headersWire = entriesToWire(headersEntries);
-
-    // Front-line safety net for the (unusual) case where the operator
-    // manually flipped the toggle OFF on a secret-shape key AND typed a
-    // real value: they've signalled "this is a shared value". Backend
-    // will accept and store it (§5.1 rule 2 was removed); the record
-    // still round-trips fine to owner but non-owners see blanks. Warn
-    // and require an explicit OK so pasting a personal token by mistake
-    // doesn't silently ship. Keys already ON (toggle set to
-    // user_supplied) are safe by design — placeholder rendering + wire
-    // blanking both apply.
-    const suppliedH = new Set(headersWire.userSupplied);
-    const suppliedE = new Set(envWire.userSupplied);
-    const sharedSecretKeys: string[] = [];
-    for (const [k, v] of Object.entries(headersWire.values)) {
-      if (v && isSecretKey(k) && !suppliedH.has(k)) sharedSecretKeys.push(k);
-    }
-    for (const [k, v] of Object.entries(envWire.values)) {
-      if (v && isSecretKey(k) && !suppliedE.has(k)) sharedSecretKeys.push(k);
-    }
-    if (sharedSecretKeys.length > 0) {
-      const ok = window.confirm(
-        t("mcp.create.sharedSecretConfirm", {
-          values: { keys: sharedSecretKeys.join(", ") },
-        })
-      );
-      if (!ok) return;
-    }
 
     setSubmitting(true);
     // Upload icon FIRST so the URL can ride in the create/update body. The
@@ -936,6 +912,25 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       "tools",
       form.tools.map((tool, i) => (i === idx ? { ...tool, ...patch } : tool))
     );
+
+  // Derived warning list: secret-shape keys the operator kept toggled OFF
+  // (i.e. published as shared values) with a non-empty value. Rendered
+  // inline next to the Submit button so the operator sees the exposure
+  // before clicking, without a blocking modal. Non-blocking on purpose —
+  // the KvEditor auto-toggles ON when a secret-shape key is typed into a
+  // fresh row, so hitting this state requires an explicit override; the
+  // warning is here for the operator's own audit, not to gate publish.
+  const sharedSecretLeaks = useMemo(() => {
+    const leaks: string[] = [];
+    for (const e of [...headersEntries, ...envEntries]) {
+      const k = e.key.trim();
+      if (!k) continue;
+      if (e.userSupplied) continue;
+      if (!e.value) continue;
+      if (isSecretKey(k)) leaks.push(k);
+    }
+    return leaks;
+  }, [headersEntries, envEntries]);
 
   // ── Static options ─────────────────────────────────────────────────────
   const categoryOptions = useMemo(
@@ -1120,13 +1115,28 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                 {t("mcp.create.next")} →
               </WKButton>
             ) : (
-              <WKButton
-                variant="primary"
-                loading={submitting}
-                onClick={handleSubmit}
-              >
-                {isEdit ? t("mcp.edit.submit") : t("mcp.create.submit")}
-              </WKButton>
+              <>
+                {sharedSecretLeaks.length > 0 && (
+                  <span
+                    className="wk-mcp-form-footer__warning"
+                    title={t("mcp.create.sharedSecretWarning", {
+                      values: { keys: sharedSecretLeaks.join(", ") },
+                    })}
+                  >
+                    ⚠️{" "}
+                    {t("mcp.create.sharedSecretWarning", {
+                      values: { keys: sharedSecretLeaks.join(", ") },
+                    })}
+                  </span>
+                )}
+                <WKButton
+                  variant="primary"
+                  loading={submitting}
+                  onClick={handleSubmit}
+                >
+                  {isEdit ? t("mcp.edit.submit") : t("mcp.create.submit")}
+                </WKButton>
+              </>
             )}
           </div>
         </div>
