@@ -688,8 +688,7 @@ export class Conversation
             return;
           }
 
-          const fileContent = message.content as FileContent;
-          const fileUrl = resolveSafeFileUrl(fileContent);
+          const fileUrl = resolveSafeFileUrl(block);
           const file = fileUrl
             ? await remoteReeditFileToFile({ ...block, url: fileUrl })
             : null;

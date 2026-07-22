@@ -185,6 +185,29 @@ describe("revoked message re-editing", () => {
     ]);
   });
 
+  it("restores a rich-text file block from its own URL", () => {
+    const content = new RichTextContent();
+    content.content = [
+      {
+        type: RichTextBlockType.file,
+        url: "https://example.com/report.pdf",
+        name: "report.pdf",
+        size: 1024,
+        extension: "pdf",
+      },
+    ];
+
+    expect(getReeditableMessageBlocks(makeMessage(content))).toEqual([
+      {
+        type: "file",
+        url: "https://example.com/report.pdf",
+        name: "report.pdf",
+        size: 1024,
+        mime: "application/pdf",
+      },
+    ]);
+  });
+
   it("keeps whole-message mention entities assigned to their text blocks", () => {
     const content = new RichTextContent();
     const firstText = "hey @Bob";
@@ -228,6 +251,10 @@ describe("revoked message re-editing", () => {
         { type: "text", text: "hey " },
         { type: "mention", attrs: { id: "bob", label: "Bob" } },
       ],
+    });
+    expect(blocks[2]).toEqual({
+      type: "content",
+      content: [{ type: "text", text: fileLabel }],
     });
     expect(blocks[3]).toEqual({
       type: "content",

@@ -198,7 +198,19 @@ function getReeditableRichTextBlocks(message: MessageWrap): ReeditBlock[] {
       const label = block.name
         ? `${RichTextFilePlaceholder} ${block.name}`
         : RichTextFilePlaceholder;
-      blocks.push({ type: "content", content: textToInlineContent(label) });
+      if (block.url) {
+        blocks.push({
+          type: "file",
+          url: block.url,
+          name: block.name || "file",
+          size: block.size,
+          mime:
+            block.mime ||
+            (block.extension ? `application/${block.extension}` : undefined),
+        });
+      } else {
+        blocks.push({ type: "content", content: textToInlineContent(label) });
+      }
       plainOffset += label.length;
       continue;
     }
