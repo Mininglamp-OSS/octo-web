@@ -782,6 +782,7 @@ export default class ChatSummaryNewModal extends Component<
                                     onSaveAsSummary={this.handleSaveAsSummary}
                                     savingSummary={this.state.savingSummary}
                                     onNewSession={this.handleNewSession}
+                                    selectedChannels={selectedChats}
                                 />
                             </div>
                         ) : (

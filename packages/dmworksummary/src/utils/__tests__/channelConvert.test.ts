@@ -24,6 +24,9 @@ vi.mock('wukongimjssdk', () => {
                 channelManager: {
                     getChannelInfo: (ch: any) => {
                         if (ch.channelID === 'unknown-channel') return null;
+                        if (ch.channelID === 'group1____archived') {
+                            return { title: 'Archived thread', orgData: { member_count: 4, thread: { status: 2 } } };
+                        }
                         return { title: `Name of ${ch.channelID}`, orgData: { member_count: 10 } };
                     },
                 },
@@ -71,6 +74,11 @@ describe('channelToChatCandidate', () => {
     it('detects thread from channelID with ____ separator', () => {
         const result = channelToChatCandidate({ channelID: 'group1____thread1', channelType: 2 });
         expect(result.chat_type).toBe('thread');
+    });
+
+    it('preserves archived status from thread channel metadata', () => {
+        const result = channelToChatCandidate({ channelID: 'group1____archived', channelType: 5 });
+        expect(result.is_archived).toBe(true);
     });
 
     it('falls back to channelID when channelInfo is null', () => {

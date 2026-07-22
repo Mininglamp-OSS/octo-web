@@ -880,6 +880,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                             ? [this.state.referencedTask.task_id]
                                             : undefined
                                     }
+                                    selectedChannels={selectedChats}
                                     referenceHeader={this.renderReferenceHeader(translate)}
                                 />
                             </div>
