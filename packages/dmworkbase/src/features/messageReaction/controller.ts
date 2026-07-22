@@ -143,14 +143,15 @@ export function createMessageReactionController(
 
   const toggle = (
     message: MessageReactionTarget,
-    emoji: string
+    emoji: string,
+    requestChannel: MessageReactionTarget["channel"] = message.channel
   ): Promise<void> => {
     const user = dependencies.currentUser();
     if (!user || !message.messageID || !emoji) {
       return Promise.resolve();
     }
 
-    const pendingKey = `${message.channel.channelType}\u0000${message.channel.channelID}\u0000${message.messageID}\u0000${emoji}`;
+    const pendingKey = `${requestChannel.channelType}\u0000${requestChannel.channelID}\u0000${message.messageID}\u0000${emoji}`;
     const existingRequest = pending.get(pendingKey);
     if (existingRequest) return existingRequest;
 
@@ -171,8 +172,8 @@ export function createMessageReactionController(
     const request = dependencies
       .toggle({
         messageId: message.messageID,
-        channelId: message.channel.channelID,
-        channelType: message.channel.channelType,
+        channelId: requestChannel.channelID,
+        channelType: requestChannel.channelType,
         emoji,
       })
       .then((result) => {

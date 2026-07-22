@@ -918,7 +918,7 @@ export default class BaseModule implements IModule {
 
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.reaction",
-      (message) => {
+      (message, context) => {
         if (
           !isMessageReactionEnabled() ||
           !isMessageReactionChannelSupported(message.channel.channelType)
@@ -936,7 +936,11 @@ export default class BaseModule implements IModule {
               messageId: message.messageID,
               selectedKeys: messageReactionController.selectedKeys(message),
               onSelect: (emoji) => {
-                void messageReactionController.toggle(message, emoji);
+                void messageReactionController.toggle(
+                  message,
+                  emoji,
+                  context.channel()
+                );
               },
             });
           },

@@ -16,6 +16,7 @@ import { messageReactionController } from "./runtime";
 
 export interface ReactionSlotProps {
   message: MessageReactionTarget;
+  channel: MessageReactionTarget["channel"];
 }
 
 function nameSeparator(locale: string): string {
@@ -38,7 +39,7 @@ function formatUserSummary(
   });
 }
 
-export default function ReactionSlot({ message }: ReactionSlotProps) {
+export default function ReactionSlot({ message, channel }: ReactionSlotProps) {
   const { t, locale } = useI18n();
   const [, forceTick] = useState(0);
   const messageId = message.messageID;
@@ -72,7 +73,11 @@ export default function ReactionSlot({ message }: ReactionSlotProps) {
       hasMine: group.hasMine,
       title: group.users.map((user) => user.name).join(nameSeparator(locale)),
       onClick: () => {
-        void messageReactionController.toggle(message, group.reactionKey);
+        void messageReactionController.toggle(
+          message,
+          group.reactionKey,
+          channel
+        );
       },
       reactionType: group.reactionType,
       reactionKey: group.reactionKey,
@@ -86,7 +91,7 @@ export default function ReactionSlot({ message }: ReactionSlotProps) {
       messageId,
       selectedKeys: messageReactionController.selectedKeys(message),
       onSelect: (emoji) => {
-        void messageReactionController.toggle(message, emoji);
+        void messageReactionController.toggle(message, emoji, channel);
       },
     });
   };

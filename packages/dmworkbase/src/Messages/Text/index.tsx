@@ -225,6 +225,7 @@ export class TextCell extends MessageCell {
                             message.messageID && (
                             <ReactionSlot
                                 message={message.message}
+                                channel={context.channel()}
                             />
                         )}
                     </div>
