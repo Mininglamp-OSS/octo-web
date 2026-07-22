@@ -4,6 +4,11 @@ import {
   loadGroupCreateCandidates,
   submitGroupCreateAction,
 } from "./groupCreateRuntime";
+import {
+  buildGroupCreateSearchIndex,
+  createEmptyGroupCreateSearchIndex,
+  filterGroupCreateCandidates,
+} from "./groupCreateSearch";
 import type {
   GroupCreateCandidateContact,
   GroupCreateChannelInput,
@@ -34,17 +39,6 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "";
 }
 
-export function filterGroupCreateCandidates(
-  candidates: GroupCreateCandidateContact[],
-  keyword: string
-) {
-  const normalized = keyword.toLowerCase();
-  if (!normalized) return candidates;
-  return candidates.filter((candidate) =>
-    candidate.name.toLowerCase().includes(normalized)
-  );
-}
-
 export function useGroupCreate(options: UseGroupCreateOptions) {
   const [candidates, setCandidates] = useState<GroupCreateCandidateContact[]>(
     []
@@ -62,6 +56,7 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
   const [isAvatarEditorOpen, setAvatarEditorOpen] = useState(false);
   const [isSubmitting, setSubmitting] = useState(false);
   const loadSequence = useRef(0);
+  const searchIndex = useRef(createEmptyGroupCreateSearchIndex());
 
   useEffect(() => {
     if (!options.isOpen) {
@@ -82,6 +77,7 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
     void loadGroupCreateCandidates({ channel: options.channel }).then(
       (next) => {
         if (loadSequence.current === sequence) {
+          searchIndex.current = buildGroupCreateSearchIndex(next);
           setCandidates(next);
           setVisibleCandidates(next);
         }
@@ -111,13 +107,12 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
     [candidates]
   );
 
-  const changeKeyword = useCallback(
-    (value: string) => {
-      setKeyword(value);
-      setVisibleCandidates(filterGroupCreateCandidates(candidates, value));
-    },
-    [candidates]
-  );
+  const changeKeyword = useCallback((value: string) => {
+    setKeyword(value);
+    setVisibleCandidates(
+      filterGroupCreateCandidates(searchIndex.current, value)
+    );
+  }, []);
 
   const submit = useCallback(async () => {
     const name = groupName.trim();

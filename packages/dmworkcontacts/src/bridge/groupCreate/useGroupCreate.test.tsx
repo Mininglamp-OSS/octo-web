@@ -5,7 +5,7 @@ import ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { filterGroupCreateCandidates, useGroupCreate } from "./useGroupCreate";
+import { useGroupCreate } from "./useGroupCreate";
 
 const loadCandidates = vi.fn();
 const submitAction = vi.fn();
@@ -37,6 +37,7 @@ beforeEach(() => {
   submitAction.mockReset();
   loadCandidates.mockResolvedValue([
     { uid: "alice", name: "Alice" },
+    { uid: "weijiaoying", name: "魏娇莹" },
     { uid: "bot", name: "Octo Bot", robot: true },
   ]);
   submitAction.mockResolvedValue(undefined);
@@ -76,13 +77,14 @@ async function flushLoad() {
 }
 
 describe("useGroupCreate", () => {
-  it("filters candidates without changing the candidate order", () => {
-    const candidates = [
-      { uid: "alice", name: "Alice" },
-      { uid: "bob", name: "Bob" },
-    ];
-    expect(filterGroupCreateCandidates(candidates, "LI")).toEqual([
-      candidates[0],
+  it("filters loaded candidates by full pinyin", async () => {
+    const result = renderGroupCreateHook(createOptions());
+
+    await flushLoad();
+    act(() => result.current.setKeyword("weijiao"));
+
+    expect(result.current.candidates.map((item) => item.uid)).toEqual([
+      "weijiaoying",
     ]);
   });
 
@@ -91,7 +93,7 @@ describe("useGroupCreate", () => {
     const result = renderGroupCreateHook(options);
 
     await flushLoad();
-    expect(result.current.candidates).toHaveLength(2);
+    expect(result.current.candidates).toHaveLength(3);
     await act(async () => result.current.submit());
     expect(options.notice.onNameRequired).toHaveBeenCalledTimes(1);
     expect(options.notice.onMembersRequired).not.toHaveBeenCalled();
@@ -107,7 +109,7 @@ describe("useGroupCreate", () => {
     const result = renderGroupCreateHook(options);
 
     await flushLoad();
-    expect(result.current.candidates).toHaveLength(2);
+    expect(result.current.candidates).toHaveLength(3);
     act(() => {
       result.current.setGroupName(" Project Octo ");
       result.current.toggleMember("alice");
@@ -136,7 +138,7 @@ describe("useGroupCreate", () => {
     const result = renderGroupCreateHook(options);
 
     await flushLoad();
-    expect(result.current.candidates).toHaveLength(2);
+    expect(result.current.candidates).toHaveLength(3);
     act(() => result.current.toggleMember("bot"));
     await act(async () => result.current.submit());
 
