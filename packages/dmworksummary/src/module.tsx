@@ -5,9 +5,12 @@ import { i18n, I18nProvider, WKApp, Menus, t as translate } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
 import SummaryCreatePage from "./pages/SummaryCreatePage";
 import SummaryDetailPage from "./pages/SummaryDetailPage";
+import SummaryShareDetailPage from "./pages/SummaryShareDetailPage";
+import SummarySharePreviewFeature from "./features/summaryShare/SummarySharePreviewFeature";
 import SummaryConfirmPage from "./pages/SummaryConfirmPage";
 import ScheduleListPage from "./pages/ScheduleListPage";
-import { getChatCandidates, listSummaries } from "./api/summaryApi";
+import { getChatCandidates, getSummaryShare, listSummaries } from "./api/summaryApi";
+import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/summaryShare/navigation";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
 import { isSupportedChannelType } from "./utils/channelType";
 import ChatSummaryStarButton from "./components/ChatSummaryStarButton";
@@ -18,6 +21,7 @@ import zhCN from "./i18n/zh-CN.json";
 import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
+const openingSummaryShares = new Set<string>();
 let _attentionRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let _attentionFocusHandler: (() => void) | null = null;
 let _attentionRefreshRequestHandler: (() => void) | null = null;
@@ -95,13 +99,61 @@ export class SummaryModule implements IModule {
             "en-US": enUS,
         });
 
-        WKApp.openSummaryDetail = (taskId: number | string, spaceId?: string) => {
+        WKApp.openSummaryDetail = (taskId: number | string, spaceId, originChannel) => {
             // 卡片深链带的空间可能≠当前空间，路由前先切目标空间，与浏览器路由 applyStandaloneSummarySpaceFromQuery 对称。
             if (spaceId) WKApp.shared.currentSpaceId = spaceId;
             WKApp.switchToMenuById?.("summary");
             WKApp.routeLeft.popToRoot();
             WKApp.routeRight.replaceToRoot(
-                <SummaryDetailPage taskId={taskId} />
+                <SummaryDetailPage taskId={taskId} originChannel={originChannel} emitSelection />
+            );
+        };
+
+        WKApp.openSummarySharePreview = (shareId, spaceId, originChannel) => {
+            if (spaceId) WKApp.shared.currentSpaceId = spaceId;
+            const close = () => WKApp.shared.baseContext.hideGlobalModal();
+            WKApp.shared.baseContext.showGlobalModal({
+                width: "800px",
+                closable: false,
+                footer: null,
+                onCancel: close,
+                body: <SummarySharePreviewFeature
+                    shareId={shareId}
+                    onClose={close}
+                    onOpenDetail={() => {
+                        close();
+                        WKApp.openSummaryShareDetail?.(shareId, spaceId, originChannel);
+                    }}
+                />,
+            });
+        };
+
+        WKApp.openSummaryShareDetail = async (shareId, spaceId, originChannel) => {
+            if (openingSummaryShares.has(shareId)) return;
+            openingSummaryShares.add(shareId);
+            if (spaceId) WKApp.shared.currentSpaceId = spaceId;
+            try {
+                const share = await getSummaryShare(shareId);
+                if (shouldOpenOriginalSummary(share) && WKApp.openSummaryDetail) {
+                    WKApp.openSummaryDetail(
+                        getOriginalSummaryTaskId(share),
+                        share.snapshot.space_id || spaceId,
+                        originChannel,
+                    );
+                    return;
+                }
+            } catch {
+                // Fall through to the shared page, which owns unavailable/error rendering.
+            } finally {
+                openingSummaryShares.delete(shareId);
+            }
+
+            const query = spaceId ? `?sp=${encodeURIComponent(spaceId)}` : "";
+            window.history.pushState({}, "", `/s/share/${encodeURIComponent(shareId)}${query}`);
+            WKApp.switchToMenuById?.("summary");
+            WKApp.routeLeft.popToRoot();
+            WKApp.routeRight.replaceToRoot(
+                <SummaryShareDetailPage shareId={shareId} originChannel={originChannel} />
             );
         };
 
@@ -125,6 +177,10 @@ export class SummaryModule implements IModule {
 
         WKApp.route.register("/summary/detail", (param: any) => {
             return <SummaryDetailPage taskId={param?.taskId} />;
+        });
+
+        WKApp.route.register("/summary/share", (param: any) => {
+            return <SummaryShareDetailPage shareId={param?.shareId} />;
         });
 
         WKApp.route.register("/summary/confirm", (param: any) => {

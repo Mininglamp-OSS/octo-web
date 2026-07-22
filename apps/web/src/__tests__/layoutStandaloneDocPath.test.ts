@@ -128,3 +128,29 @@ describe('Layout — standalone /s/:taskNo summary clean cold-load path', () => 
     expect(layout).toMatch(/removeSidFromPath\(standaloneReturn\)/)
   })
 })
+
+describe('Layout — standalone /s/share/:shareId clean cold-load path', () => {
+  let layout: string
+
+  beforeAll(() => {
+    layout = fs.readFileSync(path.join(__dirname, '../Layout/index.tsx'), 'utf-8')
+  })
+
+  it('uses a strict share-id route and renders only after session recovery', () => {
+    expect(layout).toMatch(/STANDALONE_SUMMARY_SHARE_PATH\s*=\s*\/\^\\\/s\\\/share\\\/\(\[A-Za-z0-9_-\]\+\)/)
+    const branchIdx = layout.indexOf('Read-only shared summary deep-link')
+    const parseIdx = layout.indexOf('parseStandaloneSummaryShareId(window.location.pathname)', branchIdx)
+    const recoverIdx = layout.indexOf('recoverOctoSessionFromStorage(true)', parseIdx)
+    const renderIdx = layout.indexOf('<SummaryShareDetailPage', parseIdx)
+    expect(branchIdx).toBeGreaterThan(0)
+    expect(parseIdx).toBeGreaterThan(branchIdx)
+    expect(recoverIdx).toBeGreaterThan(parseIdx)
+    expect(renderIdx).toBeGreaterThan(recoverIdx)
+  })
+
+  it('stashes the exact anonymous target for the normal post-login return flow', () => {
+    const branchIdx = layout.indexOf('Read-only shared summary deep-link')
+    const stashIdx = layout.indexOf('persistStandaloneReturn()', branchIdx)
+    expect(stashIdx).toBeGreaterThan(branchIdx)
+  })
+})

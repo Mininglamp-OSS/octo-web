@@ -8,14 +8,13 @@ import {
     Modal,
     Popconfirm,
 } from "@douyinfe/semi-ui";
-import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete } from "@douyinfe/semi-icons";
+import { IconArrowLeft, IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete } from "@douyinfe/semi-icons";
 import { ChevronDown } from "lucide-react";
-import { Channel, MessageText } from "wukongimjssdk";
-import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base";
+import { Channel } from "wukongimjssdk";
+import { I18nContext, t, ForwardService, interpretForwardResult, SummaryCardContent } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
-import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
@@ -55,6 +54,8 @@ import type { MemberCandidate } from "../types/summary";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
+    /** 仅从聊天分享卡片进入时存在，用于返回卡片所在会话。 */
+    originChannel?: { channelId: string; channelType: number };
     /** Only the list-owned detail route emits list-highlight events. Embedded
      *  instances (ChatSummaryPanel, SummaryConfirmPage) must not pollute the
      *  list selection state. */
@@ -97,6 +98,7 @@ interface SummaryDetailPageState {
     addingMember: boolean;
     showMatterPicker: boolean;
     forwardingToMatter: boolean;
+    forwardingToChat: boolean;
     showRegenerateModal: boolean;
     regenerateMode: RegenerateMode;
     regenerateTopic: string;
@@ -126,7 +128,6 @@ interface SummaryDetailPageState {
     teamStreamError: string | null;
 }
 
-const INTER_MESSAGE_DELAY_MS = 200;
 const PERSONAL_RESULT_POLL_INTERVAL_MS = 1500;
 const WORKFLOW_COMPLETE_REVEAL_DELAY_MS = 650;
 
@@ -192,6 +193,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         addingMember: false,
         showMatterPicker: false,
         forwardingToMatter: false,
+        forwardingToChat: false,
         showRegenerateModal: false,
         regenerateMode: "refine",
         regenerateTopic: "",
@@ -1949,34 +1951,68 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 传统 workflow 优先走 detail.result;agent workflow 走 personalResult。
         // 两者的 content 语义都是"给用户看的最终交付文本",转发到聊天的姿势一致。
         const sourceContent = detail?.result?.content ?? personalResult?.content ?? '';
-        if (!sourceContent.trim()) return;
+        if (!detail || !sourceContent.trim() || this.state.forwardingToChat) return;
         WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
-            const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
-            const chunks = splitSummaryText(cleanContent);
+            if (channels.length === 0) return;
+            this.setState({ forwardingToChat: true });
+            let createdGrants: Array<{ share_id: string }> = [];
+            const revokeGrants = (grants: Array<{ share_id: string }>) => {
+                void Promise.all(grants.map(async (grant) => {
+                    try {
+                        await api.revokeSummaryShare(grant.share_id);
+                    } catch {
+                        // Best effort only: cleanup must not mask the send result.
+                    }
+                }));
+            };
+            try {
+                const idempotencyKey = typeof crypto !== "undefined" && crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : `summary-share-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                const share = await api.createSummaryShares(
+                    detail.task_no || detail.task_id,
+                    idempotencyKey,
+                    channels.map((channel) => ({ channel_id: channel.channelID, channel_type: channel.channelType })),
+                );
+                createdGrants = share.grants;
+                const grants = new Map(share.grants.map((grant) => [`${grant.channel_type}:${grant.channel_id}`, grant]));
+                const result = await ForwardService.send(
+                    channels,
+                    (channel) => {
+                        const grant = grants.get(`${channel.channelType}:${channel.channelID}`);
+                        if (!grant) throw new Error("missing summary share grant");
+                        const card = new SummaryCardContent();
+                        card.schemaVersion = 2;
+                        card.taskId = share.snapshot.task_id;
+                        card.taskNo = share.snapshot.task_no;
+                        card.shareId = grant.share_id;
+                        card.title = share.snapshot.title;
+                        card.sourceName = share.snapshot.source_name;
+                        card.sourceCount = share.snapshot.source_count;
+                        card.participantCount = share.snapshot.participant_count;
+                        card.totalMsgCount = share.snapshot.message_count;
+                        card.preview = share.snapshot.preview;
+                        card.timeRangeStart = share.snapshot.time_range_start;
+                        card.timeRangeEnd = share.snapshot.time_range_end;
+                        card.summaryMode = share.snapshot.summary_mode;
+                        card.spaceId = share.snapshot.space_id;
+                        return card;
+                    },
+                    { channelMode: "serial", spaceId: WKApp.shared.currentSpaceId },
+                );
 
-            // 长文分块 → 同 channel 内 serial 保序 + interMessageDelayMs 节流；
-            // 跨 channel 也走 serial（保持与原实现一致的顺序体验）。
-            // 原先手写的 space_id monkey-patch 由 ForwardService 内部
-            // wrapSendContentForInjection + opts.spaceId 代替。
-            const result = await ForwardService.send(
-                channels,
-                () => chunks.map((c) => new MessageText(c)),
-                {
-                    channelMode: "serial",
-                    messageMode: "serial",
-                    interMessageDelayMs: INTER_MESSAGE_DELAY_MS,
-                    spaceId: WKApp.shared.currentSpaceId,
-                },
-            );
+                const failedChannelIDs = new Set(result.failures.map((failure) => failure.channelID));
+                revokeGrants(share.grants.filter((grant) => failedChannelIDs.has(grant.channel_id)));
 
-            // 分母保持 channels 数（scope='targets'），不改动用户可见的 Toast 语义。
-            const state = interpretForwardResult(result, "targets");
-            if (state.kind === "all-failed") {
+                const state = interpretForwardResult(result, "targets");
+                if (state.kind === "all-failed") Toast.error(t("summary.detail.forwardFailed"));
+                else if (state.kind === "partial") Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: state.failed, total: state.total } }));
+                else Toast.success(t("summary.detail.forwarded"));
+            } catch {
+                revokeGrants(createdGrants);
                 Toast.error(t("summary.detail.forwardFailed"));
-            } else if (state.kind === "partial") {
-                Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: state.failed, total: state.total } }));
-            } else {
-                Toast.success(t("summary.detail.forwarded"));
+            } finally {
+                this.setState({ forwardingToChat: false });
             }
         }, t("summary.detail.forwardToChat"));
     };
@@ -3257,6 +3293,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div className="summary-detail-header">
                 <div className="summary-detail-header-inner">
+                    {this.props.originChannel ? (
+                        <Button
+                            className="summary-detail-back-to-chat"
+                            size="small"
+                            theme="borderless"
+                            type="tertiary"
+                            icon={<IconArrowLeft />}
+                            onClick={() => {
+                                const { originChannel } = this.props;
+                                if (!originChannel) return;
+                                WKApp.endpoints.showConversation(
+                                    new Channel(originChannel.channelId, originChannel.channelType),
+                                );
+                            }}
+                        >
+                            {t("summary.share.backToChat")}
+                        </Button>
+                    ) : null}
                     <div className="summary-detail-header-title-wrap">
                         <OverflowTooltip as="h2" className="summary-detail-title" title={displayTitle}>
                             {displayTitle}
@@ -3292,8 +3346,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     type="tertiary"
                                     icon={<IconSend />}
                                     onClick={this.handleForwardToChat}
-                                    loading={waitingForFallback && this.state.personalLoading}
-                                    disabled={waitingForFallback}
+                                    loading={(waitingForFallback && this.state.personalLoading) || this.state.forwardingToChat}
+                                    disabled={waitingForFallback || this.state.forwardingToChat}
                                 >
                                     {t("summary.detail.forwardToChat")}
                                 </Button>

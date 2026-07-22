@@ -239,6 +239,42 @@ export interface SummaryDetail {
     };
 }
 
+export interface SummaryShareSnapshot {
+    id: number;
+    task_id: number;
+    task_no: string;
+    space_id: string;
+    title: string;
+    source_name: string;
+    source_count: number;
+    participant_count: number;
+    message_count: number;
+    time_range_start: string;
+    time_range_end: string;
+    summary_mode: number;
+    result_version: number;
+    preview: string;
+    content: string;
+    created_at: string;
+}
+
+export interface SummaryShareGrant {
+    share_id: string;
+    channel_id: string;
+    channel_type: number;
+}
+
+export interface CreateSummarySharesResponse {
+    snapshot: SummaryShareSnapshot;
+    grants: SummaryShareGrant[];
+}
+
+export interface GetSummaryShareResponse {
+    share_id: string;
+    source_accessible: boolean;
+    snapshot: SummaryShareSnapshot;
+}
+
 /** 创建请求 */
 export interface CreateSummaryParams {
     topic: string;

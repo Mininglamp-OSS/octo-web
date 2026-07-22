@@ -555,6 +555,20 @@
         "empty": "No available matters",
         "loadMore": "Load more..."
     },
+    "share": {
+        "backToChat": "Back to chat",
+        "defaultTitle": "Smart summary",
+        "fullTitle": "Full summary",
+        "close": "Close",
+        "loading": "Loading summary…",
+        "unavailable": "This share is unavailable, expired, or you do not have access",
+        "retry": "Retry",
+        "viewDetails": "View summary details",
+        "source": "From “{{source}}”",
+        "metaLabel": "Summary scope",
+        "participantCount": "{{count}} participants",
+        "messageCount": "{{count}} messages"
+    },
     "splitMessage": {
         "signature": "---\n_by Octo AI Summary_"
     },

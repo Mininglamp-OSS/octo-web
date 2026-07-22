@@ -126,6 +126,20 @@ import {
   getImChannelInfo,
   getImChannelSubscribers,
 } from "../../im-runtime/channelRuntime";
+import {
+  SummaryCardContent,
+  SummaryCardForwardBlockedError,
+} from "../../Messages/SummaryCard/SummaryCardContent";
+
+function forwardBlockedMessageKey(error: unknown): string | null {
+  if (error instanceof InteractiveCardForwardBlockedError) {
+    return "base.conversation.forward.interactiveCardBlocked";
+  }
+  if (error instanceof SummaryCardForwardBlockedError) {
+    return "base.conversation.forward.cardBlocked";
+  }
+  return null;
+}
 
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
@@ -153,6 +167,9 @@ function getEffectiveContent(message: Message): MessageContent {
         trustedForwardSource
       );
     }
+  }
+  if (content instanceof SummaryCardContent && content.shareId) {
+    throw new SummaryCardForwardBlockedError();
   }
   return content;
 }
@@ -553,11 +570,8 @@ export class Conversation
         this.showForwardResult(result, "targets");
       } catch (e) {
         console.error("[forward] build content failed", e);
-        Toast.error(
-          e instanceof InteractiveCardForwardBlockedError
-            ? t("base.conversation.forward.interactiveCardBlocked")
-            : t("base.conversation.forward.allFailed"),
-        );
+        const blockedMessageKey = forwardBlockedMessageKey(e);
+        Toast.error(t(blockedMessageKey ?? "base.conversation.forward.allFailed"));
       }
     });
   }
@@ -2619,13 +2633,8 @@ export class Conversation
                             this.showForwardResult(result, "messages");
                           } catch (e) {
                             console.error("[forward] build content failed", e);
-                            Toast.error(
-                              e instanceof InteractiveCardForwardBlockedError
-                                ? t(
-                                    "base.conversation.forward.interactiveCardBlocked"
-                                  )
-                                : t("base.conversation.forward.allFailed"),
-                            );
+                            const blockedMessageKey = forwardBlockedMessageKey(e);
+                            Toast.error(t(blockedMessageKey ?? "base.conversation.forward.allFailed"));
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();
@@ -2658,13 +2667,8 @@ export class Conversation
                               "[merge-forward] build content failed",
                               e,
                             );
-                            Toast.error(
-                              e instanceof InteractiveCardForwardBlockedError
-                                ? t(
-                                    "base.conversation.forward.interactiveCardBlocked"
-                                  )
-                                : t("base.conversation.forward.allFailed"),
-                            );
+                            const blockedMessageKey = forwardBlockedMessageKey(e);
+                            Toast.error(t(blockedMessageKey ?? "base.conversation.forward.allFailed"));
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();

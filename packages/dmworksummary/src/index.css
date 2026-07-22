@@ -451,6 +451,10 @@
     flex-wrap: wrap;
 }
 
+.summary-detail-back-to-chat {
+    flex: 0 0 auto;
+}
+
 .summary-detail-header-title-wrap {
     display: flex;
     flex-direction: column;

@@ -555,6 +555,20 @@
         "empty": "暂无可用事项",
         "loadMore": "加载更多..."
     },
+    "share": {
+        "backToChat": "返回群聊",
+        "defaultTitle": "智能总结",
+        "fullTitle": "总结全文",
+        "close": "关闭",
+        "loading": "正在加载总结…",
+        "unavailable": "该分享不存在、已失效或你无权查看",
+        "retry": "重试",
+        "viewDetails": "查看总结详情",
+        "source": "来自「{{source}}」",
+        "metaLabel": "总结范围",
+        "participantCount": "{{count}} 人",
+        "messageCount": "{{count}} 条消息"
+    },
     "splitMessage": {
         "signature": "---\n_by Octo 智能总结_"
     },
