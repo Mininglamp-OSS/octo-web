@@ -205,7 +205,15 @@ export interface EditorTextNode {
 }
 
 function escapeMarkdownLinkLabel(text: string): string {
-  return text.replace(/([\\\[\]`*_~])/g, "\\$1");
+  // Encode `&` first so literal character-reference-looking text remains
+  // literal. A colon is encoded as a CommonMark character reference rather
+  // than backslash-escaped: the renderer still shows `:`, while the send-side
+  // `@[uid:label]` regex cannot synthesize a mention when an `@` text node is
+  // immediately followed by this link node (octo-web#971 review blocker).
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/:/g, "&#58;")
+    .replace(/([\\\[\]`*_~|<>])/g, "\\$1");
 }
 
 /**
