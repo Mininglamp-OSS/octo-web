@@ -52,6 +52,9 @@ interface McpServerCfg {
   headers?: unknown;
   transport?: unknown;
   type?: unknown;
+  /** Alternative transport-field name seen in some vendor exports (e.g. the
+   *  mixreach-style config). Handled identically to `transport` / `type`. */
+  protocol_type?: unknown;
 }
 
 /** Look-alike token placeholder detector — `<YOUR_TOKEN>` / `${API_KEY}` /
@@ -100,8 +103,13 @@ function inferTransport(cfg: McpServerCfg): McpTransport | undefined {
       ? cfg.transport
       : typeof cfg.type === "string"
       ? cfg.type
+      : typeof cfg.protocol_type === "string"
+      ? cfg.protocol_type
       : "";
-  const t = raw.toLowerCase();
+  // Normalize separators before comparing so `streamable_http`,
+  // `streamable-http`, `streamablehttp` and `http` all resolve to the same
+  // canonical value.
+  const t = raw.toLowerCase().replace(/_/g, "-");
   if (t === "stdio") return "stdio";
   if (t === "sse") return "sse";
   if (t === "http" || t === "streamable-http" || t === "streamablehttp") {
@@ -169,6 +177,10 @@ function extractServerFields(
  *      - The map KEY becomes both `slug` (authoritative) and `name` (unless
  *        the entry itself has a `.name`)
  *   2. Flat server.json-ish:     `{ "name": "...", "command": "...", ... }`
+ *   3. Single-key wrapper:       `{ "<key>": { url|command|... } }`
+ *      Some vendor exports (e.g. mixreach) omit the `mcpServers` wrapper.
+ *      Treated as Format A with just this one entry. First entry wins if
+ *      multiple, same as Format A.
  *
  * Never throws. Returns `{ error }` on any structural failure.
  */
@@ -256,9 +268,44 @@ export function parseImportJSON(raw: string): ParseImportResult {
     return { fields, warnings };
   }
 
+  // Format C: single-key wrapper — `{ "<slug>": { url|command|... } }`.
+  // Same treatment as Format A minus the outer `mcpServers` key. Vendor
+  // exports that follow this shape (mixreach at least) also alias transport
+  // via `protocol_type`, which inferTransport already handles.
+  const serverEntries = Object.entries(obj).filter(([, v]) =>
+    isServerLikeValue(v)
+  );
+  if (serverEntries.length > 0) {
+    if (serverEntries.length > 1) {
+      warnings.push("mcp.create.import.warning.multipleServers");
+    }
+    const [key, cfgRaw] = serverEntries[0];
+    const fields = extractServerFields(cfgRaw as McpServerCfg, warnings);
+    fields.slug = slugifyServerName(key);
+    if (!fields.name) fields.name = key;
+    return { fields, warnings };
+  }
+
   return {
     fields: {},
     warnings: [],
     error: "mcp.create.import.error.unknownFormat",
   };
+}
+
+/** True when `v` looks like a nested server config. Format C detection is
+ *  intentionally strict: it must carry at least ONE connection field
+ *  (`url` or `command`) — a transport-only hint like `{type: "module"}`
+ *  should NOT match, or arbitrary nested JSON like a package.json snippet
+ *  gets false-positive'd as an MCP config. Transport hints alone are
+ *  ambiguous (the `type` / `transport` / `protocol_type` names collide
+ *  with plenty of unrelated shapes), so we require a real connection
+ *  target alongside. */
+function isServerLikeValue(v: unknown): boolean {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  const hasConnection =
+    (typeof o.url === "string" && o.url.trim() !== "") ||
+    (typeof o.command === "string" && o.command.trim() !== "");
+  return hasConnection;
 }

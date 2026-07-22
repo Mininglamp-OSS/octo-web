@@ -66,6 +66,7 @@ package-lock.json
 **/rawdata.txt
 .kiro/handoff-*.md
 .claude/
+.codex/
 .zed/
 .ftre/memory/
 .vscode/settings.json

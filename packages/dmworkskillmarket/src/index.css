@@ -74,7 +74,7 @@
   justify-content: space-between;
   gap: var(--wk-sp-4);
   min-height: 64px;
-  padding: var(--wk-sp-3) var(--wk-sp-4);
+  padding: var(--wk-sp-3) var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-subtle);
 }
 
@@ -218,7 +218,7 @@
   justify-content: flex-start;
   gap: var(--wk-sp-2);
   flex-wrap: wrap;
-  padding: var(--wk-sp-3) var(--wk-sp-4);
+  padding: var(--wk-sp-3) var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-subtle);
 }
 
@@ -607,7 +607,7 @@
   min-height: 0;
   flex: 1;
   overflow: auto;
-  padding: var(--wk-sp-4) var(--wk-sp-5);
+  padding: var(--wk-sp-4) var(--wk-sp-6);
 }
 
 .skill-market-result-summary {
