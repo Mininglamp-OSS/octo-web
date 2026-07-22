@@ -1,6 +1,5 @@
 import React from "react";
 import { Component, ReactNode } from "react";
-import WKSDK, { Channel, ChannelTypeGroup, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 
 import {
   Button,
@@ -12,13 +11,15 @@ import {
   Toast,
 } from "@douyinfe/semi-ui";
 import { BasicTreeNodeData } from "@douyinfe/semi-foundation/lib/cjs/tree/foundation";
-import { WKApp, ThemeMode, WKViewQueueHeader, WKModal, I18nContext, t, GroupAvatarPreview, GroupAvatarEditModal, getImChannelInfo, getImChannelSubscribers, syncImChannelSubscribers } from "@octo/base";
+import { WKApp, ThemeMode, WKViewQueueHeader, WKModal, I18nContext, t, GroupAvatarPreview, GroupAvatarEditModal } from "@octo/base";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import "./index.css";
-import { SuperGroup } from "@octo/base/src/Utils/const";
 import { GROUP_NAME_MAX_LENGTH } from "@octo/base/src/Service/nameLimits";
-import { buildPrivateChatGroupMemberUids } from "./memberUids";
+import {
+  loadGroupCreateCandidates,
+  submitGroupCreateAction,
+} from "../../bridge/groupCreate/groupCreateRuntime";
 
 export enum OrganizationalGroupNewAction {
   createGroup, // 创建群聊
@@ -332,80 +333,9 @@ export class OrganizationalGroupNew extends Component<
   }
 
   async getFriendData() {
-
-    let subscribers = new Array<Subscriber>();
-
-    // 群聊
-    if (this.props.channel.channelID.trim() !== "") {
-      const channel = new Channel(this.props.channel.channelID, this.props.channel.channelType)
-
-      // 个人聊天，对方不可选
-      if (this.props.channel.channelType === ChannelTypePerson) {
-        const sub = new Subscriber()
-        sub.uid = this.props.channel.channelID
-        subscribers.push(sub)
-      } else {
-        // 群聊
-        const channelInfo = getImChannelInfo(WKSDK.shared(), channel); // 获取频道信息
-        if (channelInfo?.orgData?.group_type === SuperGroup) {
-          subscribers = await WKApp.dataSource.channelDataSource.subscribers(channel, {
-            limit: 5000,
-            page: 1
-          })
-        } else {
-          await syncImChannelSubscribers(WKSDK.shared(), channel); // 同步订阅者
-          subscribers = getImChannelSubscribers(WKSDK.shared(), channel); // 获取订阅者
-        }
-      }
-
-    }
-
-    let subscriberUids = new Array<string>()
-    if (subscribers) {
-      subscriberUids = subscribers.map((item) => {
-        return item.uid;
-      })
-    }
-
-    // 系统账号不可被拉入群聊
-    const systemUids = ["botfather", "fileHelper"];
-    const setFriendData: any[] = [];
-
-    // Space 模式：从 Space 成员列表获取可选联系人
-    const spaceId = WKApp.shared.currentSpaceId;
-    if (spaceId) {
-      try {
-        const { SpaceService } = await import("@octo/base/src/Service/SpaceService");
-        // 翻页拉取空间全部成员：getMembers 单次 limit 上限 10000，超大空间只请求一页会把第
-        // 10000 名之后的成员静默丢弃。10000/页循环到取尽，最多 20 页兜底（20 万）。同一
-        // getMembers 接口、page/limit 传参不变，不碰后端、不影响移动端。
-        const members: any[] = [];
-        for (let page = 1; page <= 20; page++) {
-          const batch = await SpaceService.shared.getMembers(spaceId, page, 10000);
-          if (!batch || batch.length === 0) break;
-          members.push(...batch);
-          if (batch.length < 10000) break; // 最后一页
-        }
-        members.forEach((m: any) => {
-          if (!subscriberUids.includes(m.uid) && !systemUids.includes(m.uid) && m.uid !== WKApp.loginInfo.uid) {
-            setFriendData.push({ name: m.name, uid: m.uid, avatar: m.avatar, robot: m.robot === 1 });
-          }
-        });
-      } catch {
-        // fallback to contacts list
-        WKApp.dataSource.contactsList.forEach((item) => {
-          if (!subscriberUids.includes(item.uid) && !systemUids.includes(item.uid)) {
-            setFriendData.push({ name: item.name, uid: item.uid, avatar: WKApp.shared.avatarUser(item.uid), robot: item.robot });
-          }
-        });
-      }
-    } else {
-      WKApp.dataSource.contactsList.forEach((item) => {
-        if (!subscriberUids.includes(item.uid) && !systemUids.includes(item.uid)) {
-          setFriendData.push({ name: item.name, uid: item.uid, avatar: WKApp.shared.avatarUser(item.uid), robot: item.robot });
-        }
-      });
-    }
+    const setFriendData = await loadGroupCreateCandidates({
+      channel: this.props.channel,
+    });
     this.setState({
       friendData: [...setFriendData],
       friendSearchData: [...setFriendData],
@@ -501,22 +431,19 @@ export class OrganizationalGroupNew extends Component<
     // 创建群
     if (isCreate) {
       try {
-        const result = await WKApp.dataSource.channelDataSource.createChannel(
-          [...getOptPersonnelData],
-          {
+        await submitGroupCreateAction({
+          action: "createGroup",
+          channel: this.props.channel,
+          selectedUids: [...getOptPersonnelData],
+          createOptions: {
             categoryId: this.props.defaultCategoryId,
             name,
             // 仅在用户显式设置时下发；缺省由服务端渲染默认双人图标。
             avatarText: this.state.avatarText || undefined,
             avatarColor: this.state.avatarColorIndex,
-          }
-        )
-        if (result?.group_no) {
-          WKApp.endpoints.showConversation(
-            new Channel(result.group_no, ChannelTypeGroup),
-            this.props.keepSidebarTab ? { fromSidebarList: true } : undefined,
-          )
-        }
+          },
+          keepSidebarTab: this.props.keepSidebarTab,
+        });
         this.props.onSuccess?.()
       } catch (error: any) {
         Toast.error(error.msg);
@@ -526,26 +453,11 @@ export class OrganizationalGroupNew extends Component<
     // 添加联系人
     if (this.props.action === OrganizationalGroupNewAction.AddMember) {
       try {
-        if (channel.channelType === ChannelTypePerson) {
-          const memberUids = buildPrivateChatGroupMemberUids(
-            WKApp.loginInfo.uid,
-            channel.channelID,
-            getOptPersonnelData
-          );
-          const result = await WKApp.dataSource.channelDataSource.createChannel(
-            memberUids
-          );
-          if (result?.group_no) {
-            WKApp.endpoints.showConversation(
-              new Channel(result.group_no, ChannelTypeGroup)
-            );
-          }
-        } else {
-          await WKApp.dataSource.channelDataSource.addSubscribers(
-            channel,
-            getOptPersonnelData
-          );
-        }
+        await submitGroupCreateAction({
+          action: "addMember",
+          channel,
+          selectedUids: getOptPersonnelData,
+        });
       } catch (error: any) {
         Toast.error(error.msg);
         return

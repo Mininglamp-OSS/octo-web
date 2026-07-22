@@ -148,6 +148,12 @@ import {
   setImChannelSubscribersCache,
   syncImChannelSubscribers,
 } from "./im-runtime/channelRuntime";
+import {
+  deleteCurrentImChannelInfo,
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+  syncCurrentImChannelSubscribers,
+} from "./im-runtime/currentChannelRuntime";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
 function fallbackCopy(text: string) {
@@ -1897,11 +1903,8 @@ export default class BaseModule implements IModule {
                                 )
                               );
                               context.pop();
-                              void syncImChannelSubscribers(
-                                WKSDK.shared(),
-                                channel
-                              );
-                              void fetchImChannelInfo(WKSDK.shared(), channel);
+                              void syncCurrentImChannelSubscribers(channel);
+                              void fetchCurrentImChannelInfo(channel);
                               data.refresh();
                             } catch (err: any) {
                               Toast.error(
@@ -2408,8 +2411,8 @@ export default class BaseModule implements IModule {
                       return; // 失败时 inputEditPush 正常关闭，不刷新缓存
                     }
                     // 清除缓存后重新拉取，拿到新数据再刷新 UI
-                    deleteImChannelInfo(WKSDK.shared(), channel);
-                    await fetchImChannelInfo(WKSDK.shared(), channel);
+                    deleteCurrentImChannelInfo(channel);
+                    await fetchCurrentImChannelInfo(channel);
                     data.refresh();
                   },
                   t("base.module.thread.name"),
@@ -2440,9 +2443,9 @@ export default class BaseModule implements IModule {
             threadInfo.groupNo,
             ChannelTypeGroup
           );
-          const groupInfo = getImChannelInfo(WKSDK.shared(), groupChannel);
+          const groupInfo = getCurrentImChannelInfo(groupChannel);
           if (!groupInfo) {
-            void fetchImChannelInfo(WKSDK.shared(), groupChannel);
+            void fetchCurrentImChannelInfo(groupChannel);
           }
           const groupName = groupInfo?.title || threadInfo.groupNo;
           rows.push(
