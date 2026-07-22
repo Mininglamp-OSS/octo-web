@@ -1,6 +1,7 @@
 import { Channel, Message, MessageContent } from "wukongimjssdk";
 import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
 import { MessageInputContext } from "../MessageInput";
+import { MessageWrap } from "../../Service/Model";
 
 export default interface ConversationContext {
   /**
@@ -41,6 +42,9 @@ export default interface ConversationContext {
    * @param message
    */
   revokeMessage(message: Message): Promise<void>;
+
+  /** Put a self-revoked message back into the composer for another send. */
+  reeditRevokedMessage(message: MessageWrap): Promise<void>;
 
   /**
    * 编辑消息

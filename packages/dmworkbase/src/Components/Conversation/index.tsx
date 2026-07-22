@@ -32,6 +32,12 @@ import { MessageWrap, Part, PartType } from "../../Service/Model";
 import WKApp from "../../App";
 import { RevokeCell } from "../../Messages/Revoke";
 import {
+  MAX_REEDIT_FILE_BYTES,
+  canReeditRevokedMessage,
+  getReeditableMessageBlocks,
+  remoteReeditFileToFile,
+} from "../../Messages/Revoke/reeditableMessage";
+import {
   MessageContentTypeConst,
   ChannelTypeCommunityTopic,
 } from "../../Service/Const";
@@ -85,6 +91,7 @@ import {
 } from "../../Messages/RichText/RichTextContent";
 import { formatMessageTimestamp } from "../../Utils/time";
 import { isSafeUrl } from "../../Utils/security";
+import { imageBlockToPasteFile } from "../MessageInput/richTextPaste";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -647,6 +654,55 @@ export class Conversation
       message.channel
     );
     return newMessage;
+  }
+
+  async reeditRevokedMessage(message: MessageWrap): Promise<void> {
+    if (!canReeditRevokedMessage(message, WKApp.loginInfo.uid)) return;
+    const input = this.messageInputContext();
+    if (!input) return;
+
+    for (const block of getReeditableMessageBlocks(message)) {
+      if (block.type === "content") {
+        input.insertContent(block.content);
+        continue;
+      }
+      if (block.type === "image") {
+        const file = await imageBlockToPasteFile(
+          block,
+          WKApp.dataSource.commonDataSource.getImageURL.bind(
+            WKApp.dataSource.commonDataSource
+          )
+        );
+        if (!file) {
+          input.insertContent([
+            { type: "text", text: RichTextImagePlaceholder },
+          ]);
+          Toast.error(t("base.revoke.reeditAttachmentFailed"));
+          continue;
+        }
+        await input.addAttachment([file], "paste");
+        continue;
+      }
+
+      const fileContent = message.content as FileContent;
+      const fileUrl = resolveSafeFileUrl(fileContent);
+      const file = fileUrl
+        ? await remoteReeditFileToFile({ ...block, url: fileUrl })
+        : null;
+      if (!file) {
+        Toast.error(
+          t("base.revoke.reeditFileFailed", {
+            values: {
+              name: block.name,
+              max: formatFileSize(MAX_REEDIT_FILE_BYTES),
+            },
+          })
+        );
+        continue;
+      }
+      await input.addAttachment([file], "upload");
+    }
+    input.focus();
   }
 
   /**
