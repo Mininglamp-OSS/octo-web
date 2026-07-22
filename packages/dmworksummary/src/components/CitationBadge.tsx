@@ -1,4 +1,4 @@
-import React, { useContext, useMemo } from 'react';
+import React, { useContext, useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { Popover } from '@douyinfe/semi-ui';
 import { i18n, useI18n } from '@octo/base';
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from 'wukongimjssdk';
@@ -7,15 +7,33 @@ import { ShowConversationOptions } from '@octo/base/src/EndpointCommon';
 import { ChannelTypeCommunityTopic } from '@octo/base/src/Service/Const';
 import CitationText, { CitationContext } from './CitationText';
 import { CitationItem, CitationContextMessage, TeamCitationItem, MemberStatus } from '../types/summary';
+import { formatGroupLabel } from './citationFormat';
+import './CitationBadge.css';
+
+/** Hover-preview delay (ms) tuned to match Perplexity/Kimi: long enough that
+ * casual mouse traversal does not fire, short enough to feel instant when the
+ * reader stops to look. */
+const HOVER_OPEN_DELAY_MS = 400;
+const HOVER_CLOSE_DELAY_MS = 200;
 
 interface CitationBadgeProps {
     index: number;
+    /**
+     * Display index rendered inside the [n] label. When omitted, falls back
+     * to `index`. Callers pass a re-numbered value (starting at 1 in reading
+     * order) so users don't see raw pool positions like [37]. The internal
+     * `index` still keys into the citations array — see remarkCitation in
+     * CitationText for the mapping construction.
+     */
+    displayIndex?: number;
     citations: CitationItem[];
     badgeKey: string;
 }
 
 interface CitationGroupBadgeProps {
     indices: number[];
+    /** Display indices, one per original index (same length as `indices`). */
+    displayIndices?: number[];
     citations: CitationItem[];
     badgeKey: string;
 }
@@ -33,37 +51,6 @@ function resolveChannelType(channelType?: number) {
     if (channelType === 5) return ChannelTypeCommunityTopic;
     return ChannelTypeGroup;
 }
-
-const badgeStyle: React.CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    background: 'rgba(22, 119, 255, 0.13)',
-    color: '#1677ff',
-    borderRadius: 4,
-    padding: '0 4px',
-    fontSize: 11,
-    cursor: 'pointer',
-    marginLeft: 2,
-    lineHeight: '16px',
-    verticalAlign: 'super',
-};
-
-const contextMsgStyle: React.CSSProperties = {
-    padding: '4px 8px',
-    fontSize: 12,
-    color: '#999',
-    fontStyle: 'italic',
-    lineHeight: 1.5,
-    wordBreak: 'break-word',
-};
-
-const citedMsgStyle: React.CSSProperties = {
-    padding: '4px 8px',
-    borderLeft: '3px solid #1677ff',
-    fontSize: 13,
-    lineHeight: 1.5,
-    wordBreak: 'break-word',
-};
 
 interface MergedMessage {
     sender: string;
@@ -121,12 +108,12 @@ function ContextMessages({ messages }: { messages?: CitationContextMessage[] }) 
     return (
         <>
             {messages.map((msg, i) => (
-                <div key={i} style={contextMsgStyle}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                        <span style={{ fontSize: 12, fontWeight: 500 }}>{msg.sender}</span>
-                        <span style={{ fontSize: 11, color: '#bbb' }}>{formatTime(msg.sent_at)}</span>
+                <div key={i} className="citation-context-msg">
+                    <div className="citation-msg-header">
+                        <span className="citation-msg-sender--context">{msg.sender}</span>
+                        <span className="citation-msg-time--context">{formatTime(msg.sent_at)}</span>
                     </div>
-                    <div>{msg.content}</div>
+                    <div className="citation-msg-body--context">{msg.content}</div>
                 </div>
             ))}
         </>
@@ -137,9 +124,9 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
     const { t } = useI18n();
     if (!citation.channel_id || !citation.message_seq || citation.channel_type == null) return null;
     return (
-        <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #f0f0f0', textAlign: 'right' }}>
+        <div className="citation-jumplink">
             <span
-                style={{ color: '#1677ff', fontSize: 12, cursor: 'pointer' }}
+                className="citation-jumplink-btn"
                 onClick={(e) => {
                     e.stopPropagation();
                     closeKey(badgeKey);
@@ -161,55 +148,129 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
     );
 }
 
-const CitationBadge: React.FC<CitationBadgeProps> = ({ index, citations, badgeKey }) => {
+/**
+ * Custom hook: delayed hover with an "always visible when pinned" override.
+ *
+ * Click pins the popover (survives mouseleave), click again unpins. Hover
+ * shows a temporary preview that fades on mouseleave. Combines both modes into
+ * a single `visible` boolean the caller passes to Semi Popover in `custom`
+ * trigger mode.
+ */
+function useHoverPin(pinned: boolean) {
+    const [hovering, setHovering] = useState(false);
+    const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const clearTimers = useCallback(() => {
+        if (openTimer.current) { clearTimeout(openTimer.current); openTimer.current = null; }
+        if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+    }, []);
+
+    const onMouseEnter = useCallback(() => {
+        if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+        if (hovering || pinned) return;
+        openTimer.current = setTimeout(() => setHovering(true), HOVER_OPEN_DELAY_MS);
+    }, [hovering, pinned]);
+
+    const onMouseLeave = useCallback(() => {
+        if (openTimer.current) { clearTimeout(openTimer.current); openTimer.current = null; }
+        if (pinned) return;
+        closeTimer.current = setTimeout(() => setHovering(false), HOVER_CLOSE_DELAY_MS);
+    }, [pinned]);
+
+    useEffect(() => () => clearTimers(), [clearTimers]);
+
+    // When pinned externally, drop the hover state so it doesn't fight the pin.
+    useEffect(() => {
+        if (pinned && hovering) setHovering(false);
+    }, [pinned, hovering]);
+
+    const visible = pinned || hovering;
+    return { visible, onMouseEnter, onMouseLeave };
+}
+
+const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, citations, badgeKey }) => {
     const { t } = useI18n();
     const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
     const citation = citations.find(c => c.index === index);
+    const shownIndex = displayIndex ?? index;
+
+    const pinned = activeKey === badgeKey;
+    const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
 
     if (!citation) {
-        return <sup style={badgeStyle}>[{index}]</sup>;
+        return <sup className="citation-badge">[{shownIndex}]</sup>;
     }
 
-    const isVisible = activeKey === badgeKey;
+    // Hover preview: compact 3-line card, no jump button. Pinned view: full
+    // context (context_before + main + context_after + jump link).
+    const previewContent = !pinned ? (
+        <div className="citation-mini-preview">
+            <div className="citation-cited-msg">
+                <div className="citation-msg-header">
+                    <span className="citation-msg-sender">{citation.sender}</span>
+                    <span className="citation-msg-time">{formatTime(citation.sent_at)}</span>
+                </div>
+                {citation.source && (
+                    <div className="citation-msg-source">
+                        {t("summary.citation.source", { values: { source: citation.source } })}
+                    </div>
+                )}
+                <div className="citation-msg-body">{citation.content}</div>
+            </div>
+        </div>
+    ) : (
+        <div className="citation-popover">
+            <ContextMessages messages={citation.context_before} />
+            <div className="citation-cited-msg">
+                <div className="citation-msg-header">
+                    <span className="citation-msg-sender">{citation.sender}</span>
+                    <span className="citation-msg-time">{formatTime(citation.sent_at)}</span>
+                </div>
+                {citation.source && (
+                    <div className="citation-msg-source">
+                        {t("summary.citation.source", { values: { source: citation.source } })}
+                    </div>
+                )}
+                <div className="citation-msg-body">{citation.content}</div>
+            </div>
+            <ContextMessages messages={citation.context_after} />
+            <JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />
+        </div>
+    );
 
     return (
         <Popover
             trigger="custom"
-            visible={isVisible}
+            visible={visible}
             position="top"
             showArrow
             onClickOutSide={() => closeKey(badgeKey)}
-            content={
-                <div style={{ maxWidth: 340, padding: '8px 4px', maxHeight: 400, overflowY: 'auto' }}>
-                    <ContextMessages messages={citation.context_before} />
-                    <div style={citedMsgStyle}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                            <span style={{ fontWeight: 600, fontSize: 13 }}>{citation.sender}</span>
-                            <span style={{ fontSize: 12, color: '#999' }}>{formatTime(citation.sent_at)}</span>
-                        </div>
-                        {citation.source && (
-                            <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>
-                                {t("summary.citation.source", { values: { source: citation.source } })}
-                            </div>
-                        )}
-                        <div style={{ fontSize: 13, lineHeight: 1.5 }}>{citation.content}</div>
-                    </div>
-                    <ContextMessages messages={citation.context_after} />
-                    <JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />
-                </div>
-            }
+            content={previewContent}
         >
-            <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[{index}]</sup>
+            <sup
+                className="citation-badge"
+                tabIndex={0}
+                onMouseEnter={onMouseEnter}
+                onMouseLeave={onMouseLeave}
+                onClick={() => onBadgeClick(badgeKey)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onBadgeClick(badgeKey); }
+                    if (e.key === 'Escape' && pinned) { e.preventDefault(); closeKey(badgeKey); }
+                }}
+            >[{shownIndex}]</sup>
         </Popover>
     );
 };
 
-export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices, citations, badgeKey }) => {
+export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices, displayIndices, citations, badgeKey }) => {
     const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
 
-    const first = indices[0];
-    const last = indices[indices.length - 1];
-    const label = `${first}-${last}`;
+    // Label uses the display indices (post-renumbering) so what the user sees
+    // matches the [n] tokens in the body. Original `indices` still key the
+    // citation lookup below.
+    const shownList = displayIndices && displayIndices.length === indices.length ? displayIndices : indices;
+    const label = formatGroupLabel(shownList);
 
     const indicesKey = indices.join(',');
     const groupCitations = useMemo(
@@ -218,36 +279,64 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
     );
     const mergedMessages = useMemo(() => mergeGroupMessages(groupCitations), [groupCitations]);
 
+    const pinned = activeKey === badgeKey;
+    const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
+
     if (groupCitations.length === 0) {
-        return <sup style={badgeStyle}>[{label}]</sup>;
+        return <sup className="citation-badge">[{label}]</sup>;
     }
 
-    const isVisible = activeKey === badgeKey;
     const firstCitation = groupCitations[0];
+
+    // Hover preview: show first up-to-3 cited messages (compact, no context),
+    // no jump link. Pinned view: full merged timeline + jump link.
+    const previewContent = !pinned ? (
+        <div className="citation-mini-preview">
+            {groupCitations.slice(0, 3).map((c, i) => (
+                <div key={c.message_seq ?? i} className="citation-cited-msg">
+                    <div className="citation-msg-header">
+                        <span className="citation-msg-sender">{c.sender}</span>
+                        <span className="citation-msg-time">{formatTime(c.sent_at)}</span>
+                    </div>
+                    <div className="citation-msg-body">{c.content}</div>
+                </div>
+            ))}
+        </div>
+    ) : (
+        <div className="citation-popover citation-popover--wide">
+            {mergedMessages.map((msg, i) => (
+                <div key={msg.message_seq ?? i} className={msg.cited ? 'citation-cited-msg' : 'citation-context-msg'}>
+                    <div className="citation-msg-header">
+                        <span className={msg.cited ? 'citation-msg-sender' : 'citation-msg-sender--context'}>{msg.sender}</span>
+                        <span className={msg.cited ? 'citation-msg-time' : 'citation-msg-time--context'}>{formatTime(msg.sent_at)}</span>
+                    </div>
+                    <div className={msg.cited ? 'citation-msg-body' : 'citation-msg-body--context'}>{msg.content}</div>
+                </div>
+            ))}
+            <JumpLink citation={firstCitation} badgeKey={badgeKey} closeKey={closeKey} />
+        </div>
+    );
 
     return (
         <Popover
             trigger="custom"
-            visible={isVisible}
+            visible={visible}
             position="top"
             showArrow
             onClickOutSide={() => closeKey(badgeKey)}
-            content={
-                <div style={{ maxWidth: 360, padding: '8px 4px', maxHeight: 400, overflowY: 'auto' }}>
-                    {mergedMessages.map((msg, i) => (
-                        <div key={msg.message_seq ?? i} style={msg.cited ? citedMsgStyle : contextMsgStyle}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                                <span style={{ fontWeight: msg.cited ? 600 : 500, fontSize: msg.cited ? 13 : 12 }}>{msg.sender}</span>
-                                <span style={{ fontSize: 11, color: msg.cited ? '#999' : '#bbb' }}>{formatTime(msg.sent_at)}</span>
-                            </div>
-                            <div style={{ fontSize: msg.cited ? 13 : 12, lineHeight: 1.5 }}>{msg.content}</div>
-                        </div>
-                    ))}
-                    <JumpLink citation={firstCitation} badgeKey={badgeKey} closeKey={closeKey} />
-                </div>
-            }
+            content={previewContent}
         >
-            <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[{label}]</sup>
+            <sup
+                className="citation-badge"
+                tabIndex={0}
+                onMouseEnter={onMouseEnter}
+                onMouseLeave={onMouseLeave}
+                onClick={() => onBadgeClick(badgeKey)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onBadgeClick(badgeKey); }
+                    if (e.key === 'Escape' && pinned) { e.preventDefault(); closeKey(badgeKey); }
+                }}
+            >[{label}]</sup>
         </Popover>
     );
 };
@@ -264,14 +353,6 @@ interface TeamCitationBadgeProps {
     /** 历史版本详情不应使用当前成员列表展开个人报告。 */
     disableMemberPreview?: boolean;
 }
-
-const memberRowStyle: React.CSSProperties = {
-    padding: '4px 8px',
-    borderLeft: '3px solid #1677ff',
-    fontSize: 13,
-    lineHeight: 1.5,
-    wordBreak: 'break-word',
-};
 
 // TeamCitationBadge renders a clickable [Pn] reference (V5/§6.2). A team
 // citation points to a PERSON (participant). On click we match that person in
@@ -292,7 +373,7 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({
     const citation = teamCitations.find(c => c.index === index);
 
     if (!citation) {
-        return <sup style={badgeStyle}>[P{index}]</sup>;
+        return <sup className="citation-badge">[P{index}]</sup>;
     }
 
     // 优先用 user_id 在 members 里匹配同一成员（§6.2/Q4）。
@@ -311,9 +392,9 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({
             showArrow
             onClickOutSide={() => closeKey(badgeKey)}
             content={
-                <div style={{ maxWidth: 360, padding: '8px 4px', maxHeight: 400, overflowY: 'auto' }}>
-                    <div style={memberRowStyle}>
-                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: memberContent ? 4 : 0 }}>
+                <div className="citation-popover citation-popover--wide">
+                    <div className="citation-cited-msg">
+                        <div className="citation-msg-sender" style={{ marginBottom: memberContent ? 4 : 0 }}>
                             {t("summary.citation.member", { values: { name: citation.user_name } })}
                         </div>
                         {!disableMemberPreview && memberContent ? (
@@ -326,13 +407,13 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({
                             // OCT-15 / upstream #495：纵深防御。正常流程里 declined 成员不会被
                             // 后端写进 team_citations（GLM 评审结论），但若数据漂移让 popover
                             // 拿到一个 declined 的 [Pn]，不再误显示「等待提交」。
-                            // 复用已有 i18n key summary.confirmPage.declined（“已拒绝参与” /
-                            // “Participation declined”），不新增翻译。
-                            <div style={{ fontSize: 12, color: '#999' }}>
+                            // 复用已有 i18n key summary.confirmPage.declined（"已拒绝参与" /
+                            // "Participation declined"），不新增翻译。
+                            <div className="citation-msg-source">
                                 {t("summary.confirmPage.declined")}
                             </div>
                         ) : !disableMemberPreview ? (
-                            <div style={{ fontSize: 12, color: '#999' }}>
+                            <div className="citation-msg-source">
                                 {t("summary.detail.waitingSubmit", { values: { name: citation.user_name } })}
                             </div>
                         ) : null}
@@ -340,7 +421,7 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({
                 </div>
             }
         >
-            <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[P{index}]</sup>
+            <sup className="citation-badge" onClick={() => onBadgeClick(badgeKey)}>[P{index}]</sup>
         </Popover>
     );
 };
