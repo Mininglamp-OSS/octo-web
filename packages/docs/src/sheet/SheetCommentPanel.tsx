@@ -115,7 +115,7 @@ function CommentBody({
   return (
     <div className="octo-comment-body">
       <div className="octo-comment-head">
-        <span className="octo-uid">{names?.get(comment.authorUid) || comment.authorUid}</span>
+        <span className="octo-uid">{comment.authorName || names?.get(comment.authorUid) || comment.authorUid}</span>
         <span className="octo-comment-time" title={formatAbsolute(comment.createdAt)}>
           {formatRelative(comment.createdAt)}
         </span>

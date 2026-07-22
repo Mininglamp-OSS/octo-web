@@ -15,6 +15,15 @@ export interface Comment {
   docId: string
   parentId: number | null
   authorUid: string
+  /**
+   * Display name resolved server-side from the user directory (backend PR: author
+   * name enrichment). A real name for authors the space-member map misses (e.g. a
+   * doc-shared / non-active / stale-cache member), so the UI must prefer this. It
+   * is `null` when the directory could not resolve a name (e.g. bots, which have
+   * none there) — the render then falls through to the member map (bot backfill)
+   * and finally the uid. Absent on responses from an older backend.
+   */
+  authorName?: string | null
   body: string
   /** base64-encoded Yjs RelativePosition; null on replies / orphaned roots. */
   anchorStart: string | null
@@ -23,6 +32,8 @@ export interface Comment {
   anchorText: string
   resolved: boolean
   resolvedBy: string | null
+  /** Display name of the resolver, resolved server-side; falls back to the uid / absent on older backends. */
+  resolvedByName?: string | null
   resolvedAt: string | null
   createdAt: string
   updatedAt: string
