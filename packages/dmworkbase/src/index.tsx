@@ -22,6 +22,7 @@ export * from './Service/IncomingWebhook'
 export * from './Service/ForwardService'
 export * from './Service/forwardResultToast'
 export * from './im-runtime/channelRuntime'
+export * from './im-runtime/currentChannelRuntime'
 export * from './Components/WKLayout'
 
 export * from './Components/Conversation/context'

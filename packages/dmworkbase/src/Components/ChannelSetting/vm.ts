@@ -1,5 +1,5 @@
 import { ChannelInfoListener, SubscriberChangeListener } from "wukongimjssdk";
-import { Channel, ChannelInfo, ChannelTypePerson, WKSDK, Subscriber } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import { GroupRole, SubscriberStatus } from "../../Service/Const";
 import RouteContext from "../../Service/Context";
 import WKApp from "../../App";
@@ -9,12 +9,12 @@ import { Row, Section } from "../../Service/Section";
 import { ListItemSwitch, ListItemSwitchContext } from "../ListItem";
 import { Toast } from "@douyinfe/semi-ui";
 import {
-    addImChannelInfoListener,
-    addImSubscriberChangeListener,
-    fetchImChannelInfo,
-    getImChannelInfo,
-    getImChannelSubscribers,
-} from "../../im-runtime/channelRuntime";
+    addCurrentImChannelInfoListener,
+    addCurrentImSubscriberChangeListener,
+    fetchCurrentImChannelInfo,
+    getCurrentImChannelInfo,
+    getCurrentImChannelSubscribers,
+} from "../../im-runtime/currentChannelRuntime";
 import {
     OboGrant,
     OboScope,
@@ -306,8 +306,7 @@ export class ChannelSettingVM extends ProviderListener {
     }
 
     didMount(): void {
-        const sdk = WKSDK.shared()
-        void fetchImChannelInfo(sdk, this.channel)
+        void fetchCurrentImChannelInfo(this.channel)
 
         this.reloadSubscribers()
 
@@ -315,7 +314,7 @@ export class ChannelSettingVM extends ProviderListener {
             this.subscriberChangeListener = () => {
                 this.reloadSubscribers()
             }
-            this.unsubscribeSubscriberChangeListener = addImSubscriberChangeListener(sdk, this.subscriberChangeListener)
+            this.unsubscribeSubscriberChangeListener = addCurrentImSubscriberChangeListener(this.subscriberChangeListener)
 
             // Subscriber sync is still delegated to the existing channel lifecycle.
 
@@ -326,7 +325,7 @@ export class ChannelSettingVM extends ProviderListener {
                 return
             }
         }
-        this.unsubscribeChannelInfoListener = addImChannelInfoListener(sdk, this.channelInfoListener)
+        this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(this.channelInfoListener)
 
         this.reloadChannelInfo()
 
@@ -360,7 +359,7 @@ export class ChannelSettingVM extends ProviderListener {
 
     reloadSubscribers() {
         if(this.channel.channelType !== ChannelTypePerson) {
-            this.subscribers = getImChannelSubscribers(WKSDK.shared(), this.channel)
+            this.subscribers = getCurrentImChannelSubscribers(this.channel)
             if(this.subscribers && this.subscribers.length>0) {
                 for (const subscriber of this.subscribers) {
                     subscriber.channel = this.channel
@@ -379,7 +378,7 @@ export class ChannelSettingVM extends ProviderListener {
     }
 
     reloadChannelInfo() {
-        this.channelInfo = getImChannelInfo(WKSDK.shared(), this.channel)
+        this.channelInfo = getCurrentImChannelInfo(this.channel)
         this.routeData.channelInfo = this.channelInfo
 
         if(this.channelInfo && this.channel.channelType === ChannelTypePerson) {

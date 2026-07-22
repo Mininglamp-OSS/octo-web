@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import { Button, Spin, Switch, Tag, Toast } from "@douyinfe/semi-ui";
-import { Channel, ChannelInfo, Subscriber, WKSDK } from "wukongimjssdk";
+import { Channel, ChannelInfo, Subscriber } from "wukongimjssdk";
 import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
 import { SubscriberList } from "../Subscribers/list";
@@ -11,10 +11,10 @@ import { syncGroupDisbandState } from "../../Utils/groupDisband";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import {
-  addImChannelInfoListener,
-  fetchImChannelInfo,
-  getImChannelInfo,
-} from "../../im-runtime/channelRuntime";
+  addCurrentImChannelInfoListener,
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime";
 import {
   readAllowNoMention as parseAllowNoMention,
   shouldApplyFetchResult,
@@ -70,7 +70,7 @@ export class GroupManagement extends Component<
 
   // 从 SDK 频道缓存读「允许免@」开关当前值；缺省（老后端无字段）回退 true（允许），零回归。
   readAllowNoMention = (): boolean => {
-    const info = getImChannelInfo(WKSDK.shared(), this.props.channel);
+    const info = getCurrentImChannelInfo(this.props.channel);
     return parseAllowNoMention(info?.orgData);
   };
 
@@ -94,8 +94,7 @@ export class GroupManagement extends Component<
       if (!shouldListenerApply(this.inflightFetch, this.state.allowNoMentionSaving)) return;
       this.setState({ allowNoMention: this.readAllowNoMention() });
     };
-    this.unsubscribeChannelInfoListener = addImChannelInfoListener(
-      WKSDK.shared(),
+    this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(
       this.channelInfoListener
     );
 
@@ -108,7 +107,7 @@ export class GroupManagement extends Component<
   private refreshAllowNoMention = () => {
     const myOp = ++this.opSeq;
     this.inflightFetch++;
-    void fetchImChannelInfo(WKSDK.shared(), this.props.channel)
+    void fetchCurrentImChannelInfo(this.props.channel)
       .then(() => {
         if (this.unmounted) return;
         // 已被更新的操作超越，或正处于一次 toggle 保存中 → 丢弃这次回写。
@@ -356,7 +355,7 @@ export class GroupManagement extends Component<
     try {
       await ChannelSettingManager.shared.setAllowNoMention(next, channel);
       // 回读 server 真实值（refresh 后弹回的根因已在 server 端修复）。
-      await fetchImChannelInfo(WKSDK.shared(), channel);
+      await fetchCurrentImChannelInfo(channel);
       if (this.unmounted) return;
       // 期间又有更新的 toggle 发起 → 那次操作接管 state（含 saving 锁），本次静默退出。
       if (myOp !== this.opSeq) return;
