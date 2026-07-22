@@ -25,6 +25,7 @@
 }
 
 .wk-interactive-card > .wk-interactive-card-sdk,
+.wk-interactive-card > .wk-interactive-card-forge,
 .wk-interactive-card > .wk-interactive-card-plain {
   width: 100%;
 }

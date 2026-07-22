@@ -5,6 +5,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  createCardHostConfig,
   enhanceRenderedOctoCard,
   renderOctoCard,
 } from "../sdk/renderOctoCard";
@@ -50,6 +51,17 @@ function mountTarget(): HTMLDivElement {
 }
 
 describe("renderOctoCard", () => {
+  it("Forge 使用制品 HostConfig，legacy 仍使用宿主 HostConfig", () => {
+    const target = mountTarget();
+    target.style.setProperty("--wk-text-primary", "rgb(1, 2, 3)");
+    const legacy = createCardHostConfig(target, "legacy");
+    const forge = createCardHostConfig(target, "octo-chat/v1");
+    expect(legacy.fontSizes.extraLarge).toBe(20);
+    expect(forge.fontSizes.extraLarge).toBe(18);
+    expect(forge.actions.actionAlignment).toBe(2);
+    target.remove();
+  });
+
   it("渲染 octo/v2 子集：markdown 正文 + input/select + 按钮", () => {
     const target = mountTarget();
     renderOctoCard({ card: V2, target, onAction: () => {} });
