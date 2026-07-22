@@ -77,6 +77,46 @@ describe("message reaction controller", () => {
     expect(toggle).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the active DM peer channel instead of the incoming message channel", async () => {
+    const toggle = vi.fn().mockResolvedValue({
+      messageId: "2078746778093391872",
+      channelId: "27kuzrpjvy8f32d9f72_bot",
+      channelType: 1,
+      emoji: "🌹",
+      seq: 43,
+      isDeleted: 0,
+    });
+    const controller = createMessageReactionController({
+      toggle,
+      currentUser: () => ({
+        uid: "8e5efc4fbc884d36b0919b780526b53f",
+        name: "Me",
+      }),
+      emitUpdated: vi.fn(),
+      showError: vi.fn(),
+    });
+    const message = {
+      messageID: "2078746778093391872",
+      channel: {
+        channelID: "8e5efc4fbc884d36b0919b780526b53f",
+        channelType: 1,
+      },
+      octoReactions: [],
+    };
+
+    await controller.toggle(message, "🌹", {
+      channelID: "27kuzrpjvy8f32d9f72_bot",
+      channelType: 1,
+    });
+
+    expect(toggle).toHaveBeenCalledWith({
+      messageId: "2078746778093391872",
+      channelId: "27kuzrpjvy8f32d9f72_bot",
+      channelType: 1,
+      emoji: "🌹",
+    });
+  });
+
   it("rolls back only the current user's emoji and preserves concurrent records", async () => {
     const request = deferred<never>();
     const showError = vi.fn();
