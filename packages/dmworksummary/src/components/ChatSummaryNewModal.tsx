@@ -588,12 +588,11 @@ export default class ChatSummaryNewModal extends Component<
 
     /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。
      *
-     * origin_channel_id / origin_channel_type 不再由前端传入 —— agent 对话入口在
-     * e5a8eee 起就特意隐藏了"选择聊天/参与者/定时更新"三个控件,前端此时既没有
-     * currentChannel 也没有让用户手选来源的地方。后端 handler 会按 session_id 从
-     * agent_message 的 tool_calls 记录反查 agent 实际读过的第一个 channel_id
-     * 作为 origin(见 agent_summary.go inferOriginChannelFromToolCalls),这样
-     * 用户完全无感,来源和 agent 实际引用的数据严格一致。
+     * origin_channel_id / origin_channel_type：本入口是从群/子区右上角触发,channel
+     * prop 天然就是用户心里的 origin —— 直接明确传给后端(#930,入口即语义),不再依赖
+     * 后端从 tool_calls 反查。若前端没传(如整页入口),后端仍会按 session_id 从
+     * agent_message 的 tool_calls 反查作为 fallback(见 agent_summary.go
+     * resolveOriginChannelFromSession)。
      */
     handleSaveAsSummary = async (title: string): Promise<boolean> => {
         const { sessionId, selectedChats } = this.state;
@@ -630,9 +629,9 @@ export default class ChatSummaryNewModal extends Component<
 
             Toast.success(t('summary.create.agentSummaryCreated'));
 
-            // dispatch 刷新事件。agent 保存路径下前端已不再持有具体 channel
-            // (origin 由后端从 tool_calls 反查),下游刷新监听按 taskId 走即可,
-            // channelId 传空串以保持事件字段结构不变、避免 undefined 引用崩溃。
+            // dispatch 刷新事件。下游刷新监听按 taskId 走即可;channelId 传空串以
+            // 保持事件字段结构不变、避免 undefined 引用崩溃(origin 已在上面的
+            // createAgentSummary 请求里显式传给后端,与此刷新事件无关)。
             window.dispatchEvent(
                 new CustomEvent('chat-summary-created', {
                     detail: { taskId: res.task_id, channelId: '' },
