@@ -15,9 +15,16 @@ import { uploadImage, AttachmentRejectedError } from '../attachments/api.ts'
 /** Client-side guard before bothering the backend; the backend stays the final
  * authority and may still reject with a 400 (handled in uploadAndInsertImage). */
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024 // 10 MB
+export const IMAGE_FILE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/bmp,image/svg+xml,.svg'
+
+export function imageMime(file: File): string {
+  const type = file.type.trim().toLowerCase()
+  if (type) return type
+  return /\.svg$/i.test(file.name) ? 'image/svg+xml' : ''
+}
 
 export function isUploadableImage(file: File): boolean {
-  return file.type.startsWith('image/') && file.size > 0 && file.size <= MAX_IMAGE_BYTES
+  return imageMime(file).startsWith('image/') && file.size > 0 && file.size <= MAX_IMAGE_BYTES
 }
 
 /** Collect image files out of a paste/drop payload. Prefers `files`; falls back to
@@ -26,7 +33,7 @@ export function collectImageFiles(dt: DataTransfer | null): File[] {
   if (!dt) return []
   const out: File[] = []
   for (const f of Array.from(dt.files ?? [])) {
-    if (f.type.startsWith('image/')) out.push(f)
+    if (imageMime(f).startsWith('image/')) out.push(f)
   }
   if (out.length === 0 && dt.items) {
     for (const item of Array.from(dt.items)) {
@@ -81,7 +88,7 @@ export async function uploadAndInsertImage(
   }
   if (!isUploadableImage(file)) {
     notifyImageError(
-      file.type.startsWith('image/')
+      imageMime(file).startsWith('image/')
         ? 'That image is too large (max 10 MB).'
         : 'Only image files can be uploaded.',
     )
@@ -129,7 +136,7 @@ export function pickImageFile(): Promise<File | null> {
     }
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/*'
+    input.accept = IMAGE_FILE_ACCEPT
     input.style.display = 'none'
     document.body.appendChild(input)
     let settled = false

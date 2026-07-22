@@ -147,6 +147,26 @@ export interface UploadedImage {
  * from attachId at render time). Never emits base64 (constraint §2).
  */
 export async function uploadImage(docId: string, file: File): Promise<UploadedImage> {
+  const declaredType = file.type.trim().toLowerCase()
+  // Some platforms leave SVG's File.type empty; use the extension only in that
+  // case. Never let a misleading .svg name override a non-SVG declared MIME.
+  const isSvg = declaredType === 'image/svg+xml' || (!declaredType && /\.svg$/i.test(file.name))
+  if (isSvg) {
+    const { data } = await apiClient().post<{
+      attachId: string
+      url: string | null
+    }>(
+      `/docs/${docId}/attachments/svg`,
+      file,
+      {
+        headers: {
+          'Content-Type': 'image/svg+xml',
+          'X-File-Name': encodeURIComponent(file.name || 'image.svg'),
+        },
+      },
+    )
+    return { attachId: data.attachId, src: data.url }
+  }
   const presign = await presignUpload(docId, {
     fileName: file.name || 'image',
     mime: file.type,
