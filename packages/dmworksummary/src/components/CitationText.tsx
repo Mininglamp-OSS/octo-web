@@ -52,18 +52,18 @@ const citationSchema = {
     },
 };
 
-/**
- * @deprecated Use buildDisplayIndexMap from './citationFormat' — this local
- * wrapper stays only so external callers don't break. Will be removed once
- * SummaryVersionHistory etc. update their imports.
- */
-export { buildDisplayIndexMap };
-
-function remarkCitation(citations: CitationItem[], displayIndexMap: Map<number, number>) {
+function remarkCitation(citations: CitationItem[]) {
     const getChannelId = (idx: number) => citations.find(c => c.index === idx)?.channel_id;
-    const resolveDisplay = (raw: number) => displayIndexMap.get(raw) ?? raw;
 
     return (tree: any) => {
+        // Build the reading-order display map from the visible text nodes only
+        // (visit 'text' never enters code / inlineCode), in document order — so
+        // numbering matches exactly what renders as a badge below (#1003 P1).
+        const textSegments: string[] = [];
+        visit(tree, 'text', (node: any) => { textSegments.push(node.value); });
+        const displayIndexMap = buildDisplayIndexMap(textSegments);
+        const resolveDisplay = (raw: number) => displayIndexMap.get(raw) ?? raw;
+
         let occurrence = 0;
         visit(tree, 'text', (node: any, index: number | undefined, parent: any) => {
             if (!parent || index === undefined) return;
@@ -281,9 +281,10 @@ const CitationText: React.FC<CitationTextProps> = ({
     const hasTeamCitations = teamCitations && teamCitations.length > 0;
     // Build display-index map from the raw source (reading-order rank starting
     // at 1) so users don't see raw pool positions like [37]. Data is unchanged
-    // — only the label the badge renders differs from the internal index.
-    const displayIndexMap = hasCitations ? buildDisplayIndexMap(normalized) : new Map<number, number>();
-    const citationPlugin = () => remarkCitation(citations, displayIndexMap);
+    // — only the label the badge renders differs from the internal index. The
+    // reading-order map is built inside remarkCitation from the AST text nodes
+    // (so code-span `[n]` never pollutes numbering — #1003 P1).
+    const citationPlugin = () => remarkCitation(citations);
     const remarkPlugins: any[] = [remarkGfm, remarkBreaks];
     if (hasCitations) remarkPlugins.push(citationPlugin);
     if (hasTeamCitations) remarkPlugins.push(remarkTeamCitation);

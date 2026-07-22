@@ -60,7 +60,7 @@
 .citation-context-msg {
     padding: var(--wk-sp-1) var(--wk-sp-2);
     font-size: var(--wk-text-size-sm);
-    color: var(--wk-text-muted, rgba(28, 28, 35, 0.55));
+    color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.55));
     font-style: italic;
     line-height: 1.5;
     word-break: break-word;
@@ -84,17 +84,17 @@
 
 .citation-msg-time {
     font-size: var(--wk-text-size-sm);
-    color: var(--wk-text-muted, rgba(28, 28, 35, 0.55));
+    color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.55));
 }
 
 .citation-msg-time--context {
     font-size: var(--wk-text-size-xs);
-    color: var(--wk-text-muted, rgba(28, 28, 35, 0.45));
+    color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.45));
 }
 
 .citation-msg-source {
     font-size: var(--wk-text-size-sm);
-    color: var(--wk-text-muted, rgba(28, 28, 35, 0.55));
+    color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.55));
     margin-bottom: var(--wk-sp-1);
 }
 

@@ -20,7 +20,17 @@ export function formatGroupLabel(indices: number[]): string {
     if (indices.length <= RANGE_THRESHOLD) {
         return indices.join(',');
     }
-    return `${indices[0]}-${indices[indices.length - 1]}`;
+    // Range form is only meaningful when the display indices are contiguous and
+    // strictly ascending. After reading-order renumbering a group's display
+    // indices can be reordered/gapped (e.g. [4,1,2,3] -> "4-3" backwards, or
+    // [1,3,4,5] -> "1-5" implying a [2] that isn't in the group), so fall back
+    // to the explicit comma list in those cases (#1003 review P2).
+    const contiguousAscending = indices.every(
+        (v, i) => i === 0 || v === indices[i - 1] + 1,
+    );
+    return contiguousAscending
+        ? `${indices[0]}-${indices[indices.length - 1]}`
+        : indices.join(',');
 }
 
 /**
@@ -28,23 +38,30 @@ export function formatGroupLabel(indices: number[]): string {
  * 37) to display index (reading-order rank starting at 1). The same raw index
  * appearing multiple times reuses the same display value.
  *
- * Pre-scans the raw markdown source in reading order once (before the remark
- * plugin runs) because the tree visitor sees text nodes out of document order.
+ * Input is the list of visible markdown text-node values in document order (as
+ * produced by a `unist-util-visit(tree, 'text', …)` pass). Deriving numbering
+ * from text nodes — rather than a pre-scan of the raw source — means `[n]`
+ * tokens inside fenced / inline code are naturally excluded, so the numbering
+ * matches exactly what remarkCitation renders as a badge. (#1003 review P1: a
+ * raw-string pre-scan over-counted `[digit]` inside code and shifted the first
+ * rendered badge to [2]/[3] instead of [1].)
+ *
  * The `[n](url)` markdown-link form and `[Pn]` team-citation form are both
- * excluded so display numbering matches what the badge layer will actually
- * render.
+ * excluded, matching remarkCitation's regex.
  */
-export function buildDisplayIndexMap(source: string): Map<number, number> {
+export function buildDisplayIndexMap(textSegments: string[]): Map<number, number> {
     const map = new Map<number, number>();
     let next = 1;
-    // Match [n] but NOT [n](url) — same rule as remarkCitation's regex so this
-    // scan aligns exactly with what will later render as a badge. [Pn] tokens
-    // start with a letter so \d+ never touches them.
-    const regex = /\[(\d+)\](?!\()/g;
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(source)) !== null) {
-        const raw = parseInt(m[1], 10);
-        if (!map.has(raw)) map.set(raw, next++);
+    for (const seg of textSegments) {
+        // Match [n] but NOT [n](url) — same rule as remarkCitation. [Pn] tokens
+        // start with a letter so \d+ never touches them. Fresh regex per segment
+        // to avoid /g lastIndex carryover.
+        const regex = /\[(\d+)\](?!\()/g;
+        let m: RegExpExecArray | null;
+        while ((m = regex.exec(seg)) !== null) {
+            const raw = parseInt(m[1], 10);
+            if (!map.has(raw)) map.set(raw, next++);
+        }
     }
     return map;
 }
