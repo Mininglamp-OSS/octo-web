@@ -968,6 +968,12 @@ export default class WKApp extends ProviderListener {
   }
 
   connectIM() {
+    // e2e: mock-im-runtime 已 short-circuit connect → Connected (fake-provider install 时做),
+    // 这里跳过真实 sdk.connect() 免真去建 WebSocket / 覆盖 mock 的 connect status.
+    // dev / prod 完全走 tree-shake 分支, 无副作用.
+    if (import.meta.env.VITE_E2E_MOCK_IM === "1") {
+      return;
+    }
     connectImClient({
       sdk: WKSDK.shared(),
       loginInfo: WKApp.loginInfo,

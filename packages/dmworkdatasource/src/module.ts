@@ -24,6 +24,13 @@ export default class DataSourceModule implements IModule {
         WKApp.dataSource.channelDataSource = new ChannelDataSource()
         WKApp.dataSource.commonDataSource = new CommonDataSource()
 
+        // e2e: 有 mock-im-runtime 顶掉 provider callbacks 时, 不注册真实 IM callbacks,
+        // 否则 fake provider install 后再被真实 callback 覆盖回去 → SDK 又去发 HTTP.
+        // dev / prod 完全走 tree-shake 分支, 无副作用.
+        if (import.meta.env.VITE_E2E_MOCK_IM === "1") {
+            return
+        }
+
         this.setChannelInfoCallback() // 频道信息
         this.setSyncSubscribersCallback() // 订阅者同步
         this.setMessageUploadTaskCallback() // 消息上传任务

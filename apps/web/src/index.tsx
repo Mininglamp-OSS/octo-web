@@ -106,8 +106,29 @@ async function enableMocksIfE2E(): Promise<void> {
   }
 }
 
+// e2e mock: 仅在 VITE_E2E_MOCK_IM=1 时挂 fake IM provider 钩子, 让 spec 里
+// installMockImRuntime(page, seed) 能生效. DataSourceModule.init() 和
+// App.connectIM 已用同一 flag 跳过真实 IM callback / connect.
+// dev / prod 完全走 tree-shake 分支, 无副作用.
+async function enableMockImIfE2E(): Promise<void> {
+  if (import.meta.env.VITE_E2E_MOCK_IM !== "1") return;
+  try {
+    const mod = await import("../e2e-kit/_kit/mock-im-runtime/fake-provider");
+    const wksdk = await import("wukongimjssdk");
+    (window as unknown as {
+      __installMockImRuntime__: (s: unknown) => void;
+      WKSDK: typeof wksdk.WKSDK;
+    }).__installMockImRuntime__ = mod.installFakeProvider as unknown as (s: unknown) => void;
+    // 暴露 WKSDK 让 spec / fixture 直接调 shared().connectManager.notifyConnectStatusListeners 等
+    (window as unknown as { WKSDK: typeof wksdk.WKSDK }).WKSDK = wksdk.WKSDK;
+  } catch (e) {
+    console.warn("[e2e] mock-im-runtime disabled:", e);
+  }
+}
+
 async function main(): Promise<void> {
   await enableMocksIfE2E();
+  await enableMockImIfE2E();
   WKApp.shared.startup(); // app启动
 
   const container = document.getElementById("root")!;

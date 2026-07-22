@@ -30,6 +30,7 @@ const AUTH_KEYS_SUFFIXED = {
 
 const SPACE_STORAGE_KEY = "currentSpaceId";
 const LOCALE_STORAGE_KEY = "octo:locale";
+const ONBOARDING_STORAGE_KEY = "octo:onboarding:seen";
 const MOCK_SPACE_ID = "e2e-space-001";
 const MOCK_LOCALE = "zh-CN";
 
@@ -57,6 +58,14 @@ export const test = base.extend<Fixtures>({
         (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(key, value);
       },
       { key: LOCALE_STORAGE_KEY, value: MOCK_LOCALE },
+    );
+
+    // 预置 onboarding=seen 跳过首屏 intro 动画 (WebGL <Strands> headless chrome 会 crash).
+    await page.addInitScript(
+      ({ key, value }: { key: string; value: string }) => {
+        (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(key, value);
+      },
+      { key: ONBOARDING_STORAGE_KEY, value: "seen" },
     );
 
     if (target === "local") {
@@ -88,6 +97,47 @@ export const test = base.extend<Fixtures>({
         },
       );
 
+      // 每次页面加载都自动装 empty seed. 用 addInitScript 是因为 SPA 路由切页
+      // (goto /chat) 会 full reload, window scope 的 seed 被清; fixture 装的
+      // 那次只在 goto('/') 生效, 后续 spec goto 别的 URL 会掉线.
+      //
+      // 逻辑: 等 __installMockImRuntime__ hook 挂上 (index.tsx 里 await import 挂),
+      // 然后调一次 install 装 empty seed. spec 里 case-specific handler / seed
+      // 通过再 installMockImRuntime(page, {...}) 覆盖.
+      await page.addInitScript(
+        ({ currentUid, spaceId }: { currentUid: string; spaceId: string }) => {
+          type W = { __installMockImRuntime__?: (s: unknown) => void };
+          const emptySeed = {
+            currentUid,
+            spaceId,
+            users: [],
+            groups: [],
+            conversations: [],
+            messages: [],
+            subscribers: [],
+          };
+          // 轮询等 hook 挂上, 挂上就调 install. 挂不上说明 VITE_E2E_MOCK_IM=0, 静默 no-op.
+          let tries = 0;
+          const timer = setInterval(() => {
+            tries += 1;
+            const w = globalThis as unknown as W;
+            if (typeof w.__installMockImRuntime__ === "function") {
+              try {
+                w.__installMockImRuntime__(emptySeed);
+              } catch (e) {
+                // eslint-disable-next-line no-console
+                console.warn("[fixture] mock-im install failed:", e);
+              }
+              clearInterval(timer);
+            } else if (tries > 200) {
+              // 20s 都没挂上, 放弃 (mock-im 未开)
+              clearInterval(timer);
+            }
+          }, 100);
+        },
+        { currentUid: AUTH_KEYS_SUFFIXED.uid, spaceId: MOCK_SPACE_ID },
+      );
+
       await page.goto(`/?sid=${E2E_SID}`);
 
       // MSW 启动就绪信号 (仅在 VITE_E2E_MOCK=1 场景, index.tsx 会设 __MSW_READY__).
@@ -97,6 +147,26 @@ export const test = base.extend<Fixtures>({
         undefined,
         { timeout: 15_000 }
       );
+
+      // 等 fake provider install 完成 (addInitScript 的轮询已跑一次)
+      await page.waitForFunction(
+        () => !!(globalThis as unknown as { __mockImSeed__?: unknown }).__mockImSeed__,
+        undefined,
+        { timeout: 10_000 }
+      );
+
+      // fake-provider install 时 queueMicrotask 内 notify 一次连接状态,
+      // 但组件挂 listener 早晚不定 (react 首屏未必挂了 listener 就错过通知).
+      // 这里再 notify 一次, 保证 ConnectionStatus 等组件收到 Connected 事件更新 UI.
+      await page.evaluate(() => {
+        type W = { WKSDK?: { shared: () => { connectManager: { notifyConnectStatusListeners: (r: number) => void } } } };
+        const w = globalThis as unknown as W;
+        try {
+          w.WKSDK?.shared().connectManager.notifyConnectStatusListeners(0);
+        } catch {
+          /* WKSDK 未暴露 or 已 disposed, 无所谓 */
+        }
+      });
     } else {
       await page.goto("/");
     }
