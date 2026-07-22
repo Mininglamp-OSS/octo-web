@@ -6,7 +6,7 @@ import React from "react"
 import ReactDOM from "react-dom"
 import { act } from "react-dom/test-utils"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import ContextMenus, { ContextMenusContext } from "../index"
+import ContextMenus, { ContextMenusContext, ContextMenusData } from "../index"
 
 let container: HTMLDivElement
 let originalRequestAnimationFrame: typeof requestAnimationFrame | undefined
@@ -153,5 +153,40 @@ describe("ContextMenus native contextmenu suppression", () => {
 
         const unguardedEvent = dispatchContextMenu(document.body)
         expect(unguardedEvent.defaultPrevented).toBe(false)
+    })
+})
+
+describe("ContextMenus rounded hover boundaries", () => {
+    it("keeps the first and last menu items selectable around separators at every level", () => {
+        act(() => {
+            ReactDOM.render(
+                <ContextMenus
+                    onContext={() => undefined}
+                    menus={[
+                        { separator: true } as ContextMenusData,
+                        {
+                            title: "Move to",
+                            children: [
+                                { separator: true } as ContextMenusData,
+                                { title: "First group" },
+                                { title: "Last group" },
+                                { separator: true } as ContextMenusData,
+                            ],
+                        },
+                        { title: "Delete" },
+                        { separator: true } as ContextMenusData,
+                    ]}
+                />,
+                container
+            )
+        })
+
+        const rootList = container.querySelector(".wk-contextmenus > ul")!
+        const submenu = container.querySelector(".wk-ctx-submenu")!
+
+        expect(rootList.querySelector(":scope > li:first-of-type")?.textContent).toContain("Move to")
+        expect(rootList.querySelector(":scope > li:last-of-type")?.textContent).toBe("Delete")
+        expect(submenu.querySelector(":scope > li:first-of-type")?.textContent).toBe("First group")
+        expect(submenu.querySelector(":scope > li:last-of-type")?.textContent).toBe("Last group")
     })
 })
