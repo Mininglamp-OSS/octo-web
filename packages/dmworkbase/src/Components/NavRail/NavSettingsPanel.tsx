@@ -6,6 +6,7 @@ import { Toast, Spin, Button, Progress } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import NavVoiceSettingsItem from "./NavVoiceSettingsItem";
 import NavSecretsSettingsItem from "./NavSecretsSettingsItem";
+import ChangelogMarkdown from "./ChangelogMarkdown";
 import { i18n, t } from "../../i18n";
 import { apiFetchJson } from "../../Service/apiFetch";
 
@@ -208,21 +209,11 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                             <Spin size="large" />
                         </div>
                     ) : this.state.changelog ? (
-                        <div style={{ overflow: 'auto', maxHeight: 400, padding: '8px 0' }}>
-                            <div style={{ fontSize: 13, color: 'rgba(28,28,35,0.4)', marginBottom: 12 }}>
+                        <div className="wk-navrail__changelog-content">
+                            <div className="wk-navrail__changelog-meta">
                                 {t("base.common.version")} {this.state.changelog.version || t("base.common.unknown")} · {this.state.changelog.pub_date ? i18n.format.date(this.state.changelog.pub_date) : ''}
                             </div>
-                            <pre style={{
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                                fontSize: 14,
-                                lineHeight: 1.7,
-                                margin: 0,
-                                fontFamily: "'PingFang SC', sans-serif",
-                                color: 'rgba(28,28,35,0.9)',
-                            }}>
-                                {this.state.changelog.notes}
-                            </pre>
+                            <ChangelogMarkdown content={this.state.changelog.notes} />
                         </div>
                     ) : (
                         <div style={{ textAlign: 'center', padding: '32px', color: 'rgba(28,28,35,0.4)' }}>
@@ -252,7 +243,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                                     <ul>
                                         <li>{t("base.navRail.settingsPanel.currentVersion")}: {WKApp.config.appVersion}&nbsp;&nbsp;{t("base.navRail.settingsPanel.targetVersion")}: {lastVersionInfo.appVersion}</li>
                                         <li>{t("base.navRail.settingsPanel.updateContent")}</li>
-                                        <li><pre>{lastVersionInfo.updateDesc}</pre></li>
+                                        <li><ChangelogMarkdown content={lastVersionInfo.updateDesc} /></li>
                                     </ul>
                                 </div>
                             </div>
