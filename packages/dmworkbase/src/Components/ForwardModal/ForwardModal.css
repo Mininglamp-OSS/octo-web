@@ -118,13 +118,50 @@
   padding-left: 36px;
 }
 
+.wk-fm-item--flat {
+  height: 36px;
+  padding-left: 8px;
+}
+
+.wk-fm-item-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.wk-fm-item-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .wk-fm-item-name {
   flex: 1;
+  min-width: 0;
   font-size: 14px;
   color: #1C1C23;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wk-fm-item-meta {
+  flex-shrink: 0;
+  max-width: 70px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: rgba(28, 28, 35, 0.38);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.wk-fm-item-meta-separator {
+  color: rgba(28, 28, 35, 0.22);
 }
 
 /* ── 右列：已选列表 ── */

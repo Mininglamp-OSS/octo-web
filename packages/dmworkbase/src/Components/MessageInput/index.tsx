@@ -6,7 +6,7 @@ import React, {
   useMemo,
 } from "react";
 import { X } from "lucide-react";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import TiptapMention from "@tiptap/extension-mention";
@@ -326,10 +326,15 @@ function formatMentionTextV2(text: string): {
 
 export interface MessageInputContext {
   insertText: (text: string) => void;
+  /** Insert structured Tiptap inline content at the current composer end. */
+  insertContent: (content: JSONContent | JSONContent[]) => void;
   /** Restore draft content (replaces editor content, parses @[uid:label] to mention nodes) */
   restoreDraft: (text: string) => void;
   addMention: (uid: string, name: string) => void;
-  addAttachment: (files: File[], source?: "paste" | "upload") => void;
+  addAttachment: (
+    files: File[],
+    source?: "paste" | "upload"
+  ) => void | Promise<void>;
   getAttachmentFiles: () => File[];
   text: () => string | undefined;
   focus: () => void;
@@ -509,6 +514,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         horizontalRule: false,
         codeBlock: false,
         strike: false,
+        // StarterKit 3.x 内置 Link 扩展的 linkifyjs 会把 xxx.md / README.md
+        // 识别为 .md 顶级域名并补成超链接（issue #870）。输入框只保留纯文本，
+        // 链接由消息渲染层的 markdown 解析生成。
+        link: false,
       }),
       Placeholder.configure({
         placeholder,
@@ -860,6 +869,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     if (props.onContext) {
       props.onContext({
         insertText,
+        insertContent: (content) => {
+          editor?.chain().focus("end").insertContent(content).run();
+        },
         restoreDraft,
         addMention,
         addAttachment,

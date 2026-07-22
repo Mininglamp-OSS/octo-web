@@ -10,13 +10,14 @@ function content(qs: McpQuickStart, key: "prompt" | "json"): string {
 }
 
 describe("buildQuickStartTabs — JSON snippet", () => {
-  it("stdio: no `type` field, includes env when present", () => {
+  it("stdio: no `type` field, shared env passes through, user-supplied env renders placeholder", () => {
     const qs: McpQuickStart = {
       transport: "stdio",
       serverName: "github",
       command: "npx",
       args: ["-y", "@modelcontextprotocol/server-github"],
       env: { FOO: "bar", GITHUB_TOKEN: "" },
+      envUserSupplied: ["GITHUB_TOKEN"],
     };
     const json = JSON.parse(content(qs, "json"));
     const server = json.mcpServers.github;
@@ -24,6 +25,18 @@ describe("buildQuickStartTabs — JSON snippet", () => {
     expect(server.command).toBe("npx");
     expect(server.args).toEqual(["-y", "@modelcontextprotocol/server-github"]);
     expect(server.env).toEqual({ FOO: "bar", GITHUB_TOKEN: TOKEN_PLACEHOLDER });
+  });
+
+  it("stdio: shared env value is published verbatim (no forced masking)", () => {
+    const qs: McpQuickStart = {
+      transport: "stdio",
+      serverName: "svc",
+      command: "npx",
+      env: { API_KEY: "shared-service-account" },
+    };
+    const server = JSON.parse(content(qs, "json")).mcpServers.svc;
+    // No headersUserSupplied / envUserSupplied entry → value is trusted-shared.
+    expect(server.env).toEqual({ API_KEY: "shared-service-account" });
   });
 
   it("stdio: omits env when backend returned nothing", () => {
@@ -47,21 +60,20 @@ describe("buildQuickStartTabs — JSON snippet", () => {
     expect("env" in server).toBe(false);
   });
 
-  it("streamable-http: type=streamable_http, merges bearer + user headers, masks secret keys", () => {
+  it("streamable-http: type=streamable_http, shared header value passes through, user-supplied renders placeholder", () => {
     const qs: McpQuickStart = {
       transport: "streamable-http",
       serverName: "github",
       url: "https://mcp.example.com/github",
-      authType: "bearer",
-      headers: { "X-Trace": "web", "X-API-Key": "" },
+      headers: { "X-Trace": "web", Authorization: "" },
+      headersUserSupplied: ["Authorization"],
     };
     const server = JSON.parse(content(qs, "json")).mcpServers.github;
     expect(server.type).toBe("streamable_http");
     expect(server.url).toBe("https://mcp.example.com/github");
     expect(server.headers).toEqual({
       "X-Trace": "web",
-      "X-API-Key": TOKEN_PLACEHOLDER,
-      Authorization: `Bearer ${TOKEN_PLACEHOLDER}`,
+      Authorization: TOKEN_PLACEHOLDER,
     });
   });
 
@@ -75,12 +87,11 @@ describe("buildQuickStartTabs — JSON snippet", () => {
     expect(server.type).toBe("sse");
   });
 
-  it("remote: omits headers when there are none and no bearer", () => {
+  it("remote: omits headers when there are none", () => {
     const qs: McpQuickStart = {
       transport: "streamable-http",
       serverName: "foo",
       url: "https://x",
-      authType: "none",
     };
     const server = JSON.parse(content(qs, "json")).mcpServers.foo;
     expect("headers" in server).toBe(false);
@@ -91,7 +102,6 @@ describe("buildQuickStartTabs — JSON snippet", () => {
       transport: "streamable-http",
       serverName: "获取天气 MCP",
       url: "https://x",
-      authType: "none",
     };
     const keys = Object.keys(JSON.parse(content(qs, "json")).mcpServers);
     // Chinese chars are dropped; only the ASCII token survives.
@@ -103,7 +113,6 @@ describe("buildQuickStartTabs — JSON snippet", () => {
       transport: "streamable-http",
       serverName: "获取天气",
       url: "https://x",
-      authType: "none",
     };
     const keys = Object.keys(JSON.parse(content(qs, "json")).mcpServers);
     expect(keys).toEqual(["mcp-server"]);
@@ -115,7 +124,6 @@ describe("buildQuickStartTabs — JSON snippet", () => {
       serverName: "获取天气 MCP",
       slug: "weather",
       url: "https://x",
-      authType: "none",
     };
     const keys = Object.keys(JSON.parse(content(qs, "json")).mcpServers);
     expect(keys).toEqual(["weather"]);
@@ -127,7 +135,6 @@ describe("buildQuickStartTabs — JSON snippet", () => {
       serverName: "获取天气 MCP",
       slug: "My Weather_服务 MCP",
       url: "https://x",
-      authType: "none",
     };
     const keys = Object.keys(JSON.parse(content(qs, "json")).mcpServers);
     expect(keys).toEqual(["my-weather-mcp"]);
@@ -139,7 +146,6 @@ describe("buildQuickStartTabs — JSON snippet", () => {
       serverName: "获取天气 MCP",
       slug: "服务器",
       url: "https://x",
-      authType: "none",
     };
     const keys = Object.keys(JSON.parse(content(qs, "json")).mcpServers);
     expect(keys).toEqual(["mcp-server"]);
@@ -147,13 +153,14 @@ describe("buildQuickStartTabs — JSON snippet", () => {
 });
 
 describe("buildQuickStartTabs — prompt", () => {
-  it("stdio: renders non-secret env as-is, secret env as placeholder", () => {
+  it("stdio: renders shared env as-is, user-supplied env as placeholder", () => {
     const qs: McpQuickStart = {
       transport: "stdio",
       serverName: "github",
       command: "npx",
       args: ["-y", "@x/y"],
       env: { FOO: "bar", GITHUB_TOKEN: "" },
+      envUserSupplied: ["GITHUB_TOKEN"],
     };
     const prompt = content(qs, "prompt");
     expect(prompt).toContain("FOO=bar");
@@ -170,29 +177,26 @@ describe("buildQuickStartTabs — prompt", () => {
     expect(content(qs, "prompt")).not.toContain("环境变量");
   });
 
-  it("remote: renders bearer + user headers, masks secret KEYs", () => {
+  it("remote: renders shared header verbatim, user-supplied header as placeholder", () => {
     const qs: McpQuickStart = {
       transport: "streamable-http",
       serverName: "foo",
       url: "https://x",
-      authType: "bearer",
-      headers: { "X-Trace": "web", "X-API-Key": "" },
+      headers: { "X-Trace": "web", Authorization: "" },
+      headersUserSupplied: ["Authorization"],
     };
     const prompt = content(qs, "prompt");
     expect(prompt).toContain("X-Trace: web");
-    expect(prompt).toContain(`X-API-Key: ${TOKEN_PLACEHOLDER}`);
-    expect(prompt).toContain(`Bearer ${TOKEN_PLACEHOLDER}`);
+    expect(prompt).toContain(`Authorization: ${TOKEN_PLACEHOLDER}`);
   });
 
-  it("remote: skips 请求头 line when no headers and no bearer", () => {
+  it("remote: skips 请求头 line when no headers", () => {
     const qs: McpQuickStart = {
       transport: "streamable-http",
       serverName: "foo",
       url: "https://x",
-      authType: "none",
     };
     const prompt = content(qs, "prompt");
     expect(prompt).not.toContain("请求头");
-    expect(prompt).not.toContain("鉴权");
   });
 });

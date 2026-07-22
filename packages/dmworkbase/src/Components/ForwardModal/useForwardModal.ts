@@ -43,6 +43,13 @@ const FORWARD_ITEM_ACCESSORS: ChatSelectorAccessors<ForwardItem> = {
   getGroupKeyFromId: (parentId) => `${ChannelTypeGroup}::${parentId}`,
 }
 
+const PINNED_CONVERSATION_SCORE_BOOST = 1_000_000_000_000
+
+interface RecentSortMeta {
+  timestamp: number
+  isPinned: boolean
+}
+
 function channelInfoToForwardItem(channelInfo: ChannelInfo): ForwardItem {
   return {
     channelID: channelInfo.channel.channelID,
@@ -50,6 +57,7 @@ function channelInfoToForwardItem(channelInfo: ChannelInfo): ForwardItem {
     displayName: channelInfo.orgData.displayName || channelInfo.channel.channelID,
     isAI: channelInfo.orgData?.robot === 1,
     isThread: channelInfo.channel.channelType === ChannelTypeCommunityTopic,
+    isPinned: channelInfo.top === true,
     isExternal:
       channelInfo.channel.channelType === ChannelTypeGroup &&
       channelInfo.orgData?.is_external_group === 1,
@@ -70,6 +78,7 @@ function conversationWrapToForwardItem(wrap: ConversationWrap, parentChannelID?:
     displayName: channelInfo?.orgData.displayName || wrap.channel.channelID,
     isAI: channelInfo?.orgData?.robot === 1,
     isThread,
+    isPinned: channelInfo?.top === true,
     hasThreads: hasThreads ?? false,
     parentChannelID,
     isExternal:
@@ -82,8 +91,8 @@ function sortConversations(wraps: ConversationWrap[]): ConversationWrap[] {
   return [...wraps].sort((a, b) => {
     let aScore = a.timestamp
     let bScore = b.timestamp
-    if (a.channelInfo?.top) aScore += 1_000_000
-    if (b.channelInfo?.top) bScore += 1_000_000
+    if (a.channelInfo?.top) aScore += PINNED_CONVERSATION_SCORE_BOOST
+    if (b.channelInfo?.top) bScore += PINNED_CONVERSATION_SCORE_BOOST
     return bScore - aScore
   })
 }
@@ -139,14 +148,13 @@ export function useForwardModal(
   const [inputValue, setInputValueState] = useState("")
   const [keyword, setKeyword] = useState("")
   const [loading, setLoading] = useState(true)
-  // 四 Tab：关注 / 最近 / 全部群聊 / 全部私聊（对齐智能纪要选择器）。默认「最近」，
-  // 因转发本地数据源以最近会话为主，落地即有内容，避免默认「关注」空集。
+  // 四 Tab：关注 / 最近 / 全部群聊 / 全部私聊（对齐智能纪要选择器）。默认「最近」。
   const [activeTab, setActiveTab] = useState<ChatSelectorTab>("recent")
   // 关注集合（复合 key）：来自 SidebarService follow 同步，供「关注」Tab 过滤。
   const [followedKeys, setFollowedKeys] = useState<Set<string>>(new Set())
-  // 最近集合（复合 key）：由本地最近会话（wrapsRef）派生，供「最近」Tab 过滤。
-  // 方案 (b) 下「最近」直接等价于最近会话，不依赖后端 recent 同步。
+  // 最近集合与排序（复合 key）：来自 SidebarService recent 同步，供「最近」Tab 过滤与排序。
   const [recentKeys, setRecentKeys] = useState<Set<string>>(new Set())
+  const [recentSortMeta, setRecentSortMeta] = useState<Map<string, RecentSortMeta>>(new Map())
   // 授权区状态：开关默认关闭（不勾选，需用户主动打开才走授权），角色默认 reader。
   // 仅在传入 grantOptions 时生效。
   const grantActive = !!grantOptions
@@ -216,11 +224,8 @@ export function useForwardModal(
     const spaceId = WKApp.shared.currentSpaceId
     // 已并入的群 ID（recents 群 + extraGroups 群），用于去重与子区挂回。
     const seenGroupIDs = new Set<string>()
-    // 最近集合：最近会话即「最近」Tab 的作用域，用复合 key 记录（含群/子区/私聊）。
-    const recentKeySet = new Set<string>()
     for (const wrap of wrapsRef.current) {
       channelMapRef.current.set(wrap.channel.channelID, wrap.channel)
-      recentKeySet.add(`${wrap.channel.channelType}::${wrap.channel.channelID}`)
       if (wrap.channel.channelType === ChannelTypeCommunityTopic) {
         threadWraps.push(wrap)
       } else {
@@ -323,7 +328,6 @@ export function useForwardModal(
     }
 
     setConversationItems(items)
-    setRecentKeys(recentKeySet)
   }, [])
 
   useEffect(() => {
@@ -403,30 +407,45 @@ export function useForwardModal(
     }
   }, [rebuildConvItems])
 
-  // 关注集合同步：与智能纪要选择器一致，走 SidebarService follow 同步。
+  // 关注/最近集合同步：与智能纪要选择器一致，走 SidebarService follow/recent 同步。
   // 数据源采用方案 (b)：转发列表主体仍复用本地会话 + group/my + 好友装配
-  // （保证零权限回归、无新后端依赖），仅「关注」Tab 需要额外的关注集合，故
-  // 这里只拉 follow（不拉 recent —— 转发「最近」直接映射本地最近会话/群列表）。
+  // （保证零权限回归），「关注」/「最近」Tab 只用 sidebar 返回的权威集合作用域。
   // deviceId 为空时后端 validateSidebarRequest 必拒，跳过注定失败的请求，
-  // 关注集合退化为空集（关注 Tab 显示空态）。
+  // 关注/最近集合退化为空集。
   useEffect(() => {
     const deviceUuid = WKApp.shared.deviceId || ""
     if (deviceUuid === "") {
       setFollowedKeys(new Set())
+      setRecentKeys(new Set())
+      setRecentSortMeta(new Map())
       return
     }
     let cancelled = false
-    SidebarService.sync({ tab: "follow", device_uuid: deviceUuid })
-      .then((resp) => {
+    Promise.all([
+      SidebarService.sync({ tab: "follow", device_uuid: deviceUuid }).catch(() => null),
+      SidebarService.sync({ tab: "recent", device_uuid: deviceUuid }).catch(() => null),
+    ])
+      .then(([followResp, recentResp]) => {
         if (cancelled) return
-        const keys = new Set<string>()
-        for (const item of resp?.items ?? []) {
-          if (item.is_followed) keys.add(`${item.target_type}::${item.target_id}`)
+        const followed = new Set<string>()
+        for (const item of followResp?.items ?? []) {
+          if (item.is_followed) followed.add(`${item.target_type}::${item.target_id}`)
         }
-        setFollowedKeys(keys)
-      })
-      .catch(() => {
-        if (!cancelled) setFollowedKeys(new Set())
+
+        const recent = new Set<string>()
+        const sortMeta = new Map<string, RecentSortMeta>()
+        for (const item of recentResp?.items ?? []) {
+          const key = `${item.target_type}::${item.target_id}`
+          recent.add(key)
+          sortMeta.set(key, {
+            timestamp: item.timestamp ?? 0,
+            isPinned: item.is_pinned === true,
+          })
+        }
+
+        setFollowedKeys(followed)
+        setRecentKeys(recent)
+        setRecentSortMeta(sortMeta)
       })
     return () => {
       cancelled = true
@@ -476,13 +495,23 @@ export function useForwardModal(
   // 四 Tab 作用域 + 关键字过滤（方案 A：命中子区带出父群；命中父群不展开子区）。
   // 复用共享的 filterChatSelectorItems，保证与智能纪要选择器同一套过滤语义。
   // 注意：搜索时（keyword 非空）以搜索结果 uniqueSearchGroups 补充 allItems，
-  // 这些后端候选未必落在 followed/recent 本地集合内，但「关注/最近」Tab 仍按
+  // 这些后端候选未必落在 followed/recent 集合内，但「关注/最近」Tab 仍按
   // 集合过滤（搜后端全库群不应污染关注/最近作用域），与纪要行为一致。
-  const filtered = filterChatSelectorItems(
+  const filteredBase = filterChatSelectorItems(
     allItems,
     { activeTab, keyword, followedKeys, recentKeys },
     FORWARD_ITEM_ACCESSORS,
   )
+  const filtered = activeTab === "recent"
+    ? [...filteredBase].sort((a, b) => {
+      const aMeta = recentSortMeta.get(forwardItemKey(a))
+      const bMeta = recentSortMeta.get(forwardItemKey(b))
+      const aPinned = aMeta?.isPinned === true || a.isPinned === true
+      const bPinned = bMeta?.isPinned === true || b.isPinned === true
+      if (aPinned !== bPinned) return aPinned ? -1 : 1
+      return (bMeta?.timestamp ?? 0) - (aMeta?.timestamp ?? 0)
+    })
+    : filteredBase
 
   const toggleSelect = useCallback((item: ForwardItem) => {
     setSelectedIDs((prev: string[]) =>

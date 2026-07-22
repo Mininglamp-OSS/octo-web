@@ -3,6 +3,7 @@ import { Setting } from "wukongimjssdk";
 import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply } from "wukongimjssdk";
 import { displayName as resolveDisplayName } from "../Utils/displayName";
 import { getImChannelInfo, getImChannelSubscribers } from "../im-runtime/channelRuntime";
+import { normalizeMessageReactions } from "./MessageReactionService";
 
 
 /**
@@ -301,6 +302,7 @@ export class Convert {
         message.content = messageContent
 
         message.isDeleted = msgMap["is_deleted"] === 1
+        message.octoReactions = normalizeMessageReactions(msgMap["reactions"])
 
         // 外部群成员消息来源字段（dmwork-web#1069）：
         // /message/channel/sync 和 conversation/sync 响应在 msg-level 携带

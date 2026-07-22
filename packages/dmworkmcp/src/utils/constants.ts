@@ -3,10 +3,13 @@
 // (octo-marketplace/docs/api/mcp-v1.md §0). Do not localize or reformat these.
 
 /**
- * Placeholder value the frontend submits for token-like env / header fields the
- * user left blank. The backend (mcp-v1.md §5) treats this sentinel and the empty
- * string as equivalent, so a blank secret never trips `secret_leaked`. The value
- * is fixed ASCII so it never varies with locale.
+ * Legacy placeholder value the frontend used to submit for a header/env key
+ * whose value each consumer must fill locally (`*_user_supplied` arrays in
+ * mcp-v1.md §5). Since the §5.1 relaxation, user-supplied values are stored
+ * verbatim for the owner and blanked to non-owners at read time — the frontend
+ * no longer needs to substitute the sentinel on submit. The constant is kept
+ * because `entriesFromWire` still normalizes it back to "" when reading a
+ * legacy record that persisted the sentinel literal.
  *
  * Contract source: mcp-v1.md §0 — must match the backend literal exactly.
  */
@@ -19,16 +22,18 @@ export const SECRET_PLACEHOLDER_SENTINEL = "__OCTO_SECRET_PLACEHOLDER__";
 export const CATEGORY_KEY_ALL = "all";
 
 /**
- * Keys whose values are treated as secrets by the backend (mcp-v1.md §5.1).
- * A non-empty, non-sentinel value under one of these keys is rejected with
- * `err.marketplace.mcp.secret_leaked`. The frontend uses the same pattern to
- * decide when to substitute the sentinel on submit, so a blank token never
- * reaches the wire as a real value and never causes a whole-request 400.
+ * Keys the frontend treats as token-shaped. Used to seed the smart default
+ * ON for the KvEditor "user fills locally" toggle when a JSON import
+ * introduces a fresh key row — so pasting a Claude Desktop config with an
+ * `Authorization` header doesn't accidentally publish a shared blank value.
  *
- * Kept identical to the backend regex in mcp-v1.md §5.1.
+ * The backend used to run the SAME pattern for a public-secret guardrail
+ * (`public_secret_disallowed`), but that rule was removed in the §5.1
+ * relaxation — this pattern is now frontend-only. A narrower pattern just
+ * degrades the smart-default; nothing else fails.
  */
 export const SECRET_KEY_PATTERN =
-  /^(authorization|token|.*token|.*key|.*secret|password|pwd|api[-_]?key)$/i;
+  /^(authorization|.*authorization|token|.*token|.*key|.*secret|password|.*password|pwd|.*pwd|passwd|pass|passphrase|api[-_]?key|pat|cookie|.*cookie|credential|credentials|.*credential|auth|.*auth|bearer|.*bearer|session|.*session|sessionid|jwt|.*jwt|dsn|.*dsn|connection[-_]?string|.*connection[-_]?string|access|.*access)$/i;
 
 /** True when `key` names a token-like field per {@link SECRET_KEY_PATTERN}. */
 export function isSecretKey(key: string): boolean {
@@ -57,25 +62,4 @@ export function slugifyServerName(name: string): string {
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
   return slug || DEFAULT_SERVER_SLUG;
-}
-
-/**
- * Replace blank / already-sentinel secret values with the sentinel so the
- * backend accepts them, while leaving a user-typed real value untouched (the
- * backend will then reject it with `secret_leaked`, surfacing the mistake).
- * Non-secret keys pass through verbatim.
- */
-export function applySecretSentinel(
-  record: Record<string, string> | undefined
-): Record<string, string> | undefined {
-  if (!record) return record;
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(record)) {
-    if (isSecretKey(key) && !value.trim()) {
-      out[key] = SECRET_PLACEHOLDER_SENTINEL;
-    } else {
-      out[key] = value;
-    }
-  }
-  return out;
 }

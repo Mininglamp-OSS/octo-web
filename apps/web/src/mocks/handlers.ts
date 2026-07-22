@@ -3,5 +3,6 @@
 // 桥接层: handler 本体放在 apps/web/e2e-kit/msw-handlers/ (kit 约定的接入方目录),
 // 本文件 re-export 供 apps/web/src/mocks/browser.ts 消费.
 import { loopEmptyHandlers } from "../../e2e-kit/msw-handlers/loop-empty";
+import { chatBaselineHandlers } from "../../e2e-kit/msw-handlers/chat-baseline";
 
-export const handlers = [...loopEmptyHandlers];
+export const handlers = [...loopEmptyHandlers, ...chatBaselineHandlers];

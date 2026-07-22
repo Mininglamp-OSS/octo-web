@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { WKModal, WKButton, t } from "@octo/base";
 import { Toast, Spin } from "@douyinfe/semi-ui";
+import { IconWrenchStroked } from "@douyinfe/semi-icons";
 import { deleteMcp, fetchMcpDetail } from "../api/mcpService";
 import { buildQuickStartTabs, TOKEN_PLACEHOLDER } from "../api/quickStartTemplates";
 import type { McpDetail, McpQuickStart } from "../types/mcp";
@@ -251,23 +252,38 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
                   </span>
                 ))}
               </div>
-              <div className="wk-mcp-detail__toolcount">
-                {detail.creatorName ? `@${detail.creatorName} · ` : ""}
-                {t("mcp.card.toolCount", {
-                  values: { count: detail.toolCount },
-                })}
-                {/* Source chip lives at the tail of the meta line so the
-                    familiar `@owner · N tools` prefix stays put. The chip
-                    hides itself for human/legacy rows. */}
-                <SourceBadge item={detail} />
-              </div>
-              {/* Slogan / 简介 — same one-line pitch shown on the card. The
-                  detail modal is the natural place to read it in full, so
-                  no clamp here; long slogans wrap freely. Kept below the
-                  meta line so `@owner · N tools` stays the top-most anchor. */}
+              {(detail.creatorName || detail.createdByType === "bot") && (
+                <div className="wk-mcp-detail__meta-line">
+                  {detail.creatorName && (
+                    <span className="wk-mcp-detail__owner">
+                      @{detail.creatorName}
+                    </span>
+                  )}
+                  {/* Bot 徽章跟着 @owner 放在同一行；human/legacy 情况下
+                      SourceBadge 自己会返回 null。 */}
+                  <SourceBadge item={detail} />
+                </div>
+              )}
+              {/* Slogan / 简介 — 详情页空间够，不 clamp。 */}
               {detail.slogan && (
                 <div className="wk-mcp-detail__slogan">{detail.slogan}</div>
               )}
+              {/* 工具数量下沉到简介之下，图标 + 数字，与卡片 footer 及
+                  dmworkskillmarket 的 .skill-market-card__stat 一致。 */}
+              <div className="wk-mcp-detail__stats">
+                <span
+                  className="wk-mcp-card__stat"
+                  title={t("mcp.card.toolCount", {
+                    values: { count: detail.toolCount },
+                  })}
+                  aria-label={t("mcp.card.toolCount", {
+                    values: { count: detail.toolCount },
+                  })}
+                >
+                  <IconWrenchStroked size="small" />
+                  {detail.toolCount}
+                </span>
+              </div>
             </div>
           </div>
 

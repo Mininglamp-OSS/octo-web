@@ -28,7 +28,7 @@
   justify-content: space-between;
   gap: var(--wk-sp-4);
   min-height: 64px;
-  padding: var(--wk-sp-3) var(--wk-sp-4);
+  padding: var(--wk-sp-3) var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-subtle);
 }
 
@@ -86,11 +86,6 @@
   padding: var(--wk-sp-6);
 }
 
-.wk-mcp__inner {
-  max-width: 1360px;
-  margin: 0 auto;
-}
-
 /* ── Notice banner ───────────────────────────────────────────────────────── */
 .wk-mcp__notice {
   display: flex;
@@ -116,10 +111,10 @@
 
 /* ── Toolbar (category pills) ────────────────────────────────────────────
    Sits below the topbar as its own row — mirrors dmworkskillmarket's
-   `.skill-market-toolbar`. Hidden on the "mine" tab, same as skillmarket. */
+   `.skill-market-toolbar`. Same layout for both tabs. */
 .wk-mcp__toolbar {
   flex: none;
-  padding: var(--wk-sp-3) var(--wk-sp-4);
+  padding: var(--wk-sp-3) var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-subtle);
   display: flex;
   align-items: center;
@@ -127,17 +122,9 @@
   flex-wrap: wrap;
 }
 
-.wk-mcp__toolbar--mine {
-  display: flex;
-  align-items: center;
-  gap: var(--wk-sp-3);
-  justify-content: space-between;
-  flex-wrap: wrap;
-}
-
-/* Source segmented control (issue #894). Sits to the right of the category
-   pills so it reads as an orthogonal refinement. Neutral pill style shared
-   with the category pills, only smaller. */
+/* 来源分段控件（issue #894）。现在落位在结果摘要行的右侧，与
+   dmworkskillmarket 的 sort 位置对齐；由父级 result-summary 的
+   justify-content: space-between 自动推到右边。 */
 .wk-mcp__source-filter {
   display: inline-flex;
   align-items: center;
@@ -145,7 +132,6 @@
   padding: 3px;
   border-radius: var(--wk-r-full);
   background: var(--wk-bg-elevated);
-  margin-left: auto;
 }
 
 .wk-mcp__source-btn {
@@ -173,66 +159,142 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-.wk-mcp__mine-count {
+/* 结果摘要行 — 与 dmworkskillmarket 的 .skill-market-result-summary
+   视觉一致：位于卡片网格上方，展示总数（可扩展为排序等）。 */
+.wk-mcp__result-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+  flex-wrap: wrap;
+  min-height: 36px;
+  margin-bottom: var(--wk-sp-3);
   color: var(--wk-text-tertiary);
-  font-size: var(--wk-text-size-sm);
-  white-space: nowrap;
+  font: 500 13px/1.4 var(--wk-font-sans);
+}
+
+.wk-mcp__result-summary-total {
+  flex: 0 0 auto;
+  color: var(--wk-text-secondary);
 }
 
 .wk-mcp__search {
-  width: 240px;
+  min-width: 0;
+  width: 360px;
   max-width: 100%;
 }
 
-.wk-mcp__pills {
+.wk-mcp__search-control {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--wk-sp-2);
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-base);
+  color: var(--wk-text-tertiary);
+  transition: border-color var(--wk-dur-fast) var(--wk-ease),
+    box-shadow var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp__search-control:focus-within {
+  border-color: var(--wk-color-accent);
+  background: var(--wk-bg-surface);
+  box-shadow: 0 0 0 var(--wk-sp-1) var(--wk-accent-tint-12);
+}
+
+.wk-mcp__search-control > .semi-icon {
+  flex: 0 0 auto;
+  margin-left: var(--wk-sp-3);
+  font-size: 16px;
+}
+
+.wk-mcp__search-control > input {
+  min-width: 0;
+  width: 100%;
+  height: 38px;
+  padding: 0 var(--wk-sp-2);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--wk-text-primary);
+  font: 500 13px/1 var(--wk-font-sans);
+}
+
+.wk-mcp__search-control > input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.wk-mcp__search-control > input::placeholder {
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp__search-clear {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-right: var(--wk-sp-1);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-tertiary);
+  cursor: pointer;
+}
+
+.wk-mcp__search-clear:hover,
+.wk-mcp__search-clear:focus-visible {
+  outline: none;
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-secondary);
+}
+
+/* 分类条 — 与 dmworkskillmarket 的 .skill-market-category-strip 保持一致：
+   无边框纯文字 tab，激活态换 accent 色 + 字重 500。计数数字保留，
+   MCP 一直有承载信息（Skills 那边是 display:none）。 */
+.wk-mcp__pills {
+  display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
+  row-gap: var(--wk-sp-1);
+  column-gap: clamp(var(--wk-sp-1), 0.6vw, var(--wk-sp-3));
+  min-width: 0;
 }
 
 .wk-mcp__pill {
   display: inline-flex;
   align-items: center;
   gap: var(--wk-sp-1);
-  height: 30px;
-  padding: 0 var(--wk-sp-3);
-  border: 1px solid var(--wk-border-default);
-  border-radius: var(--wk-r-full);
-  background: var(--wk-bg-surface);
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 var(--wk-sp-1);
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: var(--wk-text-secondary);
-  font-size: var(--wk-text-size-sm);
+  font: 400 13px/1 var(--wk-font-sans);
   cursor: pointer;
-  transition: all 0.15s ease;
   white-space: nowrap;
+  transition: color var(--wk-dur-fast) var(--wk-ease);
 }
 
-/* 未选中 chip 的 hover：显式给出浅色底 + 主文本色，
-   不再只依赖基础态背景被继承——避免任何祖先/全局 button:hover
-   规则把底色改成深色、或 token 缺失时坍缩成黑底黑字（本次 bug）。 */
-.wk-mcp__pill:hover {
-  background: var(--wk-bg-elevated, var(--wk-bg-surface));
-  border-color: var(--wk-border-strong, var(--wk-border-default));
+.wk-mcp__pill:hover,
+.wk-mcp__pill:focus-visible {
+  outline: none;
   color: var(--wk-text-primary);
 }
 
 .wk-mcp__pill--active {
-  background: var(--wk-brand-primary);
-  border-color: var(--wk-brand-primary);
-  color: var(--wk-text-inverse);
-}
-
-/* 选中态的 hover 单独定义，保持品牌黑底 + 反色文字，
-   优先级高于通用 :hover，避免选中 chip 悬停时被改成浅色。 */
-.wk-mcp__pill--active:hover {
-  background: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  border-color: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  color: var(--wk-text-inverse);
+  color: var(--wk-color-accent);
+  font-weight: 500;
 }
 
 .wk-mcp__pill-count {
-  font-size: var(--wk-text-size-xs);
-  opacity: 0.7;
+  display: none;
 }
 .wk-mcp-card__reasons {
   display: flex;
@@ -272,16 +334,19 @@
   display: flex;
   flex-direction: column;
   padding: var(--wk-sp-4);
-  border: 1px solid var(--wk-border-default);
+  border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
-  background: var(--wk-bg-surface);
+  background: var(--wk-bg-base);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   cursor: pointer;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  transition: border-color var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease),
+    box-shadow var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-mcp-card:hover {
-  border-color: var(--wk-border-strong, var(--wk-border-default));
-  box-shadow: var(--wk-shadow-md);
+  border-color: var(--wk-border-strong);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .wk-mcp-card__header {
@@ -481,6 +546,21 @@
   color: var(--wk-text-tertiary);
 }
 
+/* 与 dmworkskillmarket 的 .skill-market-card__stat 视觉一致：
+   小图标 + 数字紧凑排列，图标弱化到 muted 色。 */
+.wk-mcp-card__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.wk-mcp-card__stat .semi-icon {
+  flex: 0 0 auto;
+  color: var(--wk-icon-muted);
+}
+
 /* ── Empty / loading ─────────────────────────────────────────────────────── */
 .wk-mcp__state {
   display: flex;
@@ -522,10 +602,32 @@
   min-width: 0;
 }
 
-.wk-mcp-detail__toolcount {
+/* meta 行：@owner + Bot 徽章。工具数量已下沉到 slogan 之下的 stats 行。 */
+.wk-mcp-detail__meta-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
   font-size: var(--wk-text-size-sm);
   color: var(--wk-text-tertiary);
   margin-top: var(--wk-sp-1);
+}
+
+/* @creator 段 — 与 dmworkskillmarket 的 .skill-market-card__owner 视觉一致：
+   accent 色 + 600 字重，把发布者从灰色 meta 行里挑出来。 */
+.wk-mcp-detail__owner {
+  color: var(--wk-color-accent);
+  font-weight: 600;
+}
+
+/* 工具数量图标行：跟卡片 footer 和 Skills 的 stats 视觉语言一致。
+   排在 slogan 下方，作为详情头部的收尾。 */
+.wk-mcp-detail__stats {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  margin-top: var(--wk-sp-2);
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-mcp-detail__desc {
@@ -1186,6 +1288,7 @@
 .wk-mcp-import-panel__actions {
   display: flex;
   justify-content: flex-end;
+  gap: var(--wk-sp-2);
 }
 
 /* ── Advanced expandable panel (env / headers) ──────────────────────────── */
@@ -1225,6 +1328,43 @@
   flex-direction: column;
   gap: var(--wk-sp-3);
   margin-top: var(--wk-sp-3);
+}
+
+/* ── KV editor (Headers / Env structured rows) ─────────────────────────── */
+.wk-mcp-kv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+}
+.wk-mcp-kv__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+}
+.wk-mcp-kv__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto auto;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
+.wk-mcp-kv__key,
+.wk-mcp-kv__value {
+  min-width: 0;
+}
+.wk-mcp-kv__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.wk-mcp-kv__toggle-label {
+  user-select: none;
+}
+.wk-mcp-kv__add {
+  align-self: flex-start;
 }
 
 /* ── Dynamic row list (usage examples / notes) ──────────────────────────── */

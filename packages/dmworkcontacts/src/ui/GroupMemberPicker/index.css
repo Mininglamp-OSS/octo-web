@@ -1,0 +1,22 @@
+@import "../../Organizational/GroupNew/index.css";
+
+.group-member-remove-icon {
+  display: flex;
+  width: var(--wk-sp-6);
+  height: var(--wk-sp-6);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-icon-muted);
+  cursor: pointer;
+}
+
+.group-member-remove-icon svg {
+  width: var(--wk-sp-3);
+  height: var(--wk-sp-3);
+}
+
+.group-member-remove-icon:hover {
+  color: var(--wk-icon-hover);
+  background-color: var(--semi-color-fill-1);
+}

@@ -1,5 +1,5 @@
 import React, { useCallback } from "react"
-import { Channel, ChannelTypeGroup } from "wukongimjssdk"
+import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
 import { X } from "lucide-react"
 import { IconSearchStroked } from "@douyinfe/semi-icons"
 import { Tag, Tabs, TabPane } from "@douyinfe/semi-ui"
@@ -8,6 +8,7 @@ import AiBadge from "../AiBadge"
 import WKAvatar from "../WKAvatar"
 import VisibilityTrigger from "../VisibilityTrigger"
 import { useI18n } from "../../i18n"
+import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import type { ChatSelectorTab } from "../ChatSelector/tabFilter"
 import type { ForwardGrantConfig } from "./grant"
 import "./ForwardModal.css"
@@ -20,6 +21,7 @@ export interface ForwardItem {
   isAI?: boolean
   hasThreads?: boolean
   isThread?: boolean
+  isPinned?: boolean
   parentChannelID?: string
   /** 外部群（is_external_group === 1）；仅 ChannelTypeGroup 有意义 */
   isExternal?: boolean
@@ -94,15 +96,29 @@ function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
 interface ItemRowProps {
   item: ForwardItem
   selected: boolean
+  flat: boolean
+  showMeta: boolean
   onToggle: (item: ForwardItem) => void
 }
 
-function ItemRow({ item, selected, onToggle }: ItemRowProps) {
+function getKindLabel(item: ForwardItem, t: ReturnType<typeof useI18n>["t"]): string {
+  if (item.isThread || item.channelType === ChannelTypeCommunityTopic) {
+    return t("base.forwardModal.kindThread")
+  }
+  if (item.channelType === ChannelTypePerson) {
+    return t("base.forwardModal.kindDirect")
+  }
+  return t("base.forwardModal.kindGroup")
+}
+
+function ItemRow({ item, selected, flat, showMeta, onToggle }: ItemRowProps) {
   const { t } = useI18n()
   const channel = new Channel(item.channelID, item.channelType)
+  const kindLabel = showMeta ? getKindLabel(item, t) : ""
+  const isExternalGroup = item.channelType === ChannelTypeGroup && item.isExternal
   return (
     <div
-      className={`wk-fm-item${item.parentChannelID ? " wk-fm-item--child" : ""}${selected ? " wk-fm-item--selected" : ""}`}
+      className={`wk-fm-item${!flat && item.parentChannelID ? " wk-fm-item--child" : ""}${flat ? " wk-fm-item--flat" : ""}${selected ? " wk-fm-item--selected" : ""}`}
       onClick={() => onToggle(item)}
     >
       <Checkbox
@@ -112,8 +128,24 @@ function ItemRow({ item, selected, onToggle }: ItemRowProps) {
       <div className="wk-fm-avatar-wrap">
         <WKAvatar channel={channel} lazy />
       </div>
-      <span className="wk-fm-item-name">{item.displayName}</span>
-      {item.channelType === ChannelTypeGroup && item.isExternal && (
+      <div className="wk-fm-item-main">
+        <div className="wk-fm-item-title-row">
+          <span className="wk-fm-item-name">{item.displayName}</span>
+          {showMeta && item.isAI && <AiBadge size="small" />}
+        </div>
+      </div>
+      {showMeta && (
+        <div className="wk-fm-item-meta">
+          <span>{kindLabel}</span>
+          {isExternalGroup && (
+            <>
+              <span className="wk-fm-item-meta-separator">·</span>
+              <span>{t("base.forwardModal.external")}</span>
+            </>
+          )}
+        </div>
+      )}
+      {!showMeta && isExternalGroup && (
         <Tag
           size="small"
           color="purple"
@@ -122,7 +154,7 @@ function ItemRow({ item, selected, onToggle }: ItemRowProps) {
           {t("base.forwardModal.external")}
         </Tag>
       )}
-      {item.isAI && <AiBadge />}
+      {!showMeta && item.isAI && <AiBadge />}
     </div>
   )
 }
@@ -182,6 +214,7 @@ export function ForwardModal({
   const sourceForSelected = allItems ?? items
   const selectedItems = sourceForSelected.filter((i) => selectedSet.has(i.channelID))
   const modalTitle = title ?? t("base.forwardModal.title")
+  const recentFlatList = activeTab === "recent"
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -239,6 +272,8 @@ export function ForwardModal({
                   <ItemRow
                     item={item}
                     selected={selectedSet.has(item.channelID)}
+                    flat={recentFlatList}
+                    showMeta={recentFlatList}
                     onToggle={onToggleSelect}
                   />
                 )

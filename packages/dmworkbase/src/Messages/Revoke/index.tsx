@@ -11,6 +11,7 @@ import {
     fetchImChannelInfo,
     getImChannelInfo,
 } from "../../im-runtime/channelRuntime"
+import { canReeditRevokedMessage } from "./reeditableMessage"
 
 
 export class RevokeCell extends MessageCell {
@@ -72,8 +73,21 @@ export class RevokeCell extends MessageCell {
     }
 
     render() {
-        const { message } = this.props
+        const { message, context } = this.props
         this.context.locale
-        return <div className="wk-message-system">{RevokeCell.tip(message)}</div>
+        const canReedit = canReeditRevokedMessage(message, WKApp.loginInfo.uid)
+        return <div className="wk-message-system wk-message-revoke">
+            <span>{RevokeCell.tip(message)}</span>
+            {canReedit ? <button
+                type="button"
+                className="wk-message-revoke-reedit"
+                onClick={(event) => {
+                    event.stopPropagation()
+                    void context.reeditRevokedMessage(message)
+                }}
+            >
+                {t("base.revoke.reedit")}
+            </button> : null}
+        </div>
     }
 }

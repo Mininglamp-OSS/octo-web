@@ -67,14 +67,6 @@
     {
       "path": "packages/dmworksummary/src/utils/channelType.ts",
       "reason": "Error message template with interpolation placeholder; already covered by runtime error handling with proper i18n."
-    },
-    {
-      "path": "packages/dmworkbase/src/ui/message/MessageReactionPicker/data.ts",
-      "reason": "DEMO placeholder emoji dataset behind the message-reaction feature flag (default OFF, DEV-only). key/char are message-protocol tokens; the branded custom-emoji names ([使命必达] etc.) are fixed product token names. In production this file is replaced by Service/EmojiService, which supplies localized names/tooltips via the common/emojis manifest, so the labels here are not shipped UI copy."
-    },
-    {
-      "path": "packages/dmworkbase/src/ui/message/MessageReactionSummary/mockStore.ts",
-      "reason": "DEMO-ONLY mock reaction data (sample user names) behind the message-reaction feature flag; deleted once the server reaction contract lands. Not shipped UI copy."
     }
   ]
 }

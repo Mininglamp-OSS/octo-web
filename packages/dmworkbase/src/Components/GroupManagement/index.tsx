@@ -1,26 +1,29 @@
 import React, { Component } from "react";
 import { Button, Spin, Switch, Tag, Toast } from "@douyinfe/semi-ui";
-import { Channel, ChannelInfo, Subscriber } from "wukongimjssdk";
-import WKApp from "../../App";
+import { Channel, Subscriber } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";
 import { SubscriberList } from "../Subscribers/list";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { GroupRole } from "../../Service/Const";
-import { ChannelSettingManager } from "../../Service/ChannelSetting";
-import { syncGroupDisbandState } from "../../Utils/groupDisband";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import {
-  addCurrentImChannelInfoListener,
-  fetchCurrentImChannelInfo,
-  getCurrentImChannelInfo,
-} from "../../im-runtime/currentChannelRuntime";
+  addGroupManagementBotAdmins,
+  addGroupManagementManagers,
+  disbandGroupManagementGroup,
+  loadGroupManagementMembers,
+  readGroupManagementAllowNoMention,
+  refreshGroupManagementChannelInfo,
+  removeGroupManagementBotAdmin,
+  removeGroupManagementManager,
+  setGroupManagementAllowNoMention,
+  subscribeGroupManagementChannelInfo,
+  syncGroupManagementDisbandState,
+} from "../../bridge/channelSetting/groupManagementActions";
 import {
-  readAllowNoMention as parseAllowNoMention,
   shouldApplyFetchResult,
   shouldListenerApply,
-} from "./allowNoMention";
-import { submitBotAdmins } from "./botAdmins";
+} from "../../bridge/channelSetting/groupManagementAllowNoMention";
 import "./index.css";
 
 export interface GroupManagementProps {
@@ -47,7 +50,6 @@ export class GroupManagement extends Component<
 
   // unmount 守卫：异步 fetch / listener resolve 时若组件已卸载，不再 setState。
   private unmounted = false;
-  private channelInfoListener?: (channelInfo: ChannelInfo) => void;
   private unsubscribeChannelInfoListener?: () => void;
   // 请求版本号：每次「权威读/写」自增。较早发起的 fetch resolve 后比对此值，
   // 若已被更新的 toggle/fetch 超越则丢弃其回写，杜绝 stale fetch 覆盖新状态。
@@ -70,8 +72,9 @@ export class GroupManagement extends Component<
 
   // 从 SDK 频道缓存读「允许免@」开关当前值；缺省（老后端无字段）回退 true（允许），零回归。
   readAllowNoMention = (): boolean => {
-    const info = getCurrentImChannelInfo(this.props.channel);
-    return parseAllowNoMention(info?.orgData);
+    return readGroupManagementAllowNoMention({
+      channel: this.props.channel,
+    });
   };
 
   componentDidMount() {
@@ -88,15 +91,21 @@ export class GroupManagement extends Component<
     //     对应 fetch 的 .then（带 opSeq 守卫）决定是否生效；
     //   - 仅当无在途 fetch（即外部来源的频道更新，如他人改了设置）listener 才
     //     回写，且 saving 锁期间以乐观值为准不被覆盖。
-    this.channelInfoListener = (channelInfo: ChannelInfo) => {
-      if (this.unmounted) return;
-      if (!channelInfo.channel.isEqual(this.props.channel)) return;
-      if (!shouldListenerApply(this.inflightFetch, this.state.allowNoMentionSaving)) return;
-      this.setState({ allowNoMention: this.readAllowNoMention() });
-    };
-    this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(
-      this.channelInfoListener
-    );
+    this.unsubscribeChannelInfoListener = subscribeGroupManagementChannelInfo({
+      channel: this.props.channel,
+      onChange: () => {
+        if (this.unmounted) return;
+        if (
+          !shouldListenerApply(
+            this.inflightFetch,
+            this.state.allowNoMentionSaving
+          )
+        ) {
+          return;
+        }
+        this.setState({ allowNoMention: this.readAllowNoMention() });
+      },
+    });
 
     this.refreshAllowNoMention();
   }
@@ -107,11 +116,21 @@ export class GroupManagement extends Component<
   private refreshAllowNoMention = () => {
     const myOp = ++this.opSeq;
     this.inflightFetch++;
-    void fetchCurrentImChannelInfo(this.props.channel)
+    void refreshGroupManagementChannelInfo({
+      channel: this.props.channel,
+    })
       .then(() => {
         if (this.unmounted) return;
         // 已被更新的操作超越，或正处于一次 toggle 保存中 → 丢弃这次回写。
-        if (!shouldApplyFetchResult(myOp, this.opSeq, this.state.allowNoMentionSaving)) return;
+        if (
+          !shouldApplyFetchResult(
+            myOp,
+            this.opSeq,
+            this.state.allowNoMentionSaving
+          )
+        ) {
+          return;
+        }
         this.setState({ allowNoMention: this.readAllowNoMention() });
       })
       .catch(() => {
@@ -126,34 +145,14 @@ export class GroupManagement extends Component<
     this.unmounted = true;
     this.unsubscribeChannelInfoListener?.();
     this.unsubscribeChannelInfoListener = undefined;
-    this.channelInfoListener = undefined;
   }
 
   loadMembers = async () => {
     const { channel } = this.props;
-    const pageSize = 50;
-    const managers: Subscriber[] = [];
-    const botAdmins: Subscriber[] = [];
-
     try {
-      let page = 1;
-      let hasMore = true;
-      while (hasMore) {
-        const members = await WKApp.dataSource.channelDataSource.subscribers(
-          channel,
-          { limit: pageSize, page }
-        );
-        for (const m of members) {
-          if (m.role === GroupRole.owner || m.role === GroupRole.manager) {
-            managers.push(m);
-          }
-          if (m.orgData?.robot === 1 && m.orgData?.bot_admin === 1) {
-            botAdmins.push(m);
-          }
-        }
-        hasMore = members.length >= pageSize;
-        page++;
-      }
+      const { managers, botAdmins } = await loadGroupManagementMembers({
+        channel,
+      });
       this.setState({ managers, botAdmins, loading: false });
     } catch (err: any) {
       Toast.error(err?.msg || t("base.groupManagement.loadFailed"));
@@ -172,9 +171,10 @@ export class GroupManagement extends Component<
       cancelText: t("base.common.cancel"),
       onOk: async () => {
         try {
-          await WKApp.dataSource.channelDataSource.managerRemove(channel, [
-            subscriber.uid,
-          ]);
+          await removeGroupManagementManager({
+            channel,
+            uid: subscriber.uid,
+          });
           Toast.success(t("base.groupManagement.removed"));
           this.loadMembers();
         } catch (err: any) {
@@ -195,10 +195,10 @@ export class GroupManagement extends Component<
       cancelText: t("base.common.cancel"),
       onOk: async () => {
         try {
-          await WKApp.dataSource.channelDataSource.removeBotAdmin(
+          await removeGroupManagementBotAdmin({
             channel,
-            subscriber.uid
-          );
+            uid: subscriber.uid,
+          });
           Toast.success(t("base.groupManagement.removed"));
           this.loadMembers();
         } catch (err: any) {
@@ -235,10 +235,10 @@ export class GroupManagement extends Component<
             return;
           }
           try {
-            await WKApp.dataSource.channelDataSource.managerAdd(
+            await addGroupManagementManagers({
               channel,
-              selectedItems.map((s) => s.uid)
-            );
+              uids: selectedItems.map((s) => s.uid),
+            });
             Toast.success(t("base.groupManagement.added"));
             context.pop();
             this.loadMembers();
@@ -279,9 +279,10 @@ export class GroupManagement extends Component<
           // 后端无批量端点，对每个选中 bot 各发一次 PUT；先快照选中 uid，
           // 避免提交期间 onSelect 回调改写 selectedItems 造成竞态。
           const uids = selectedItems.map((item) => item.uid);
-          const { succeeded, failed } = await submitBotAdmins(uids, (uid) =>
-            WKApp.dataSource.channelDataSource.setBotAdmin(channel, uid)
-          );
+          const { succeeded, failed } = await addGroupManagementBotAdmins({
+            channel,
+            uids,
+          });
           if (succeeded.length > 0) {
             // 只要有成功的就刷新列表并关闭对话框。
             context.pop();
@@ -319,7 +320,7 @@ export class GroupManagement extends Component<
       okType: "danger",
       onOk: async () => {
         try {
-          await WKApp.dataSource.channelDataSource.groupDisband(channel);
+          await disbandGroupManagementGroup({ channel });
         } catch (err: any) {
           // 解散接口本身失败：提示并停留在面板，不改本地态、不关面板。
           Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
@@ -330,10 +331,10 @@ export class GroupManagement extends Component<
           Toast.success(t("base.groupManagement.disbandSuccess"));
           // 本地权威写回解散态并触发刷新——不绕异步 fetchChannelInfo：后者对同
           // channelKey 在途请求去重，解散前发起的旧请求（携 status=Normal）resolve
-          // 会把本地态覆盖回正常，UI 不置灰。syncGroupDisbandState 直接改缓存 +
+          // 会把本地态覆盖回正常，UI 不置灰。本地同步动作直接改缓存 +
           // notifyListeners，对操作者本人即时置灰；服务端 channelUpdate CMD 回来再
           // 刷一次也幂等无害。
-          syncGroupDisbandState(channel);
+          syncGroupManagementDisbandState({ channel });
         } finally {
           // 与刷新解耦：即使上面同步抛错，也要关闭群管理面板回到会话，
           // 不把用户卡在面板里（会话会随 channelInfo.status 翻转为只读态）。
@@ -353,9 +354,10 @@ export class GroupManagement extends Component<
     this.setState({ allowNoMention: next, allowNoMentionSaving: true });
     this.inflightFetch++;
     try {
-      await ChannelSettingManager.shared.setAllowNoMention(next, channel);
-      // 回读 server 真实值（refresh 后弹回的根因已在 server 端修复）。
-      await fetchCurrentImChannelInfo(channel);
+      await setGroupManagementAllowNoMention({
+        allow: next,
+        channel,
+      });
       if (this.unmounted) return;
       // 期间又有更新的 toggle 发起 → 那次操作接管 state（含 saving 锁），本次静默退出。
       if (myOp !== this.opSeq) return;
@@ -364,7 +366,7 @@ export class GroupManagement extends Component<
         allowNoMentionSaving: false,
       });
     } catch (err: any) {
-      // 失败回滚到改前状态。Toast 已由 ChannelSettingManager._onSetting 弹出，
+      // 失败回滚到改前状态。Toast 已由底层设置动作弹出，
       // 这里不再重复弹（避免双 Toast）。仅当本次仍是最新操作时才回滚 + 解锁，
       // 否则尊重更新的 toggle（它接管 saving 锁）。
       if (this.unmounted) return;

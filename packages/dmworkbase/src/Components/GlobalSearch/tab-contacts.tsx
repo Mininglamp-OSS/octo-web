@@ -15,6 +15,8 @@ interface TabContactsProps {
     keyword?: string;
     friends?: any[];
     onClick?: (item: any) => void;
+    // #989: bot 名片"发送消息"跳转会话后，外层搜索弹窗需要一起关掉
+    hideModal?: () => void;
 }
 
 interface TabContactsState {
@@ -146,6 +148,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
                 onChat={(channel) => {
                     WKApp.endpoints.showConversation(channel);
                     this.setState({ botDetailVisible: false });
+                    this.props.hideModal?.();
                 }}
             />
         </div>
