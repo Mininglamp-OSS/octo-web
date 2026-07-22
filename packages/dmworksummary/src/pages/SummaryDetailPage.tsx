@@ -17,6 +17,10 @@ import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/ba
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
+import RouteContext, { RouteContextConfig } from "@octo/base/src/Service/Context";
+import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
+import RoutePage from "@octo/base/src/Components/RoutePage";
+import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -52,8 +56,6 @@ import MatterPickerModal from "../components/MatterPickerModal";
 import * as matterBridge from "../api/matterBridge";
 import SummaryEditor from "../components/SummaryEditor";
 import SummaryVersionHistory from "../components/SummaryVersionHistory";
-import MemberSelectorModal from "../components/MemberSelectorModal";
-import type { MemberCandidate } from "../types/summary";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
@@ -95,10 +97,6 @@ interface SummaryDetailPageState {
     editingTeamSummary: boolean;
     /** OCT-21：提交前编辑「我自己的个人报告」草稿中（行内编辑器接管「我（未提交）」行）。 */
     editingMyDraft: boolean;
-    /** need7：成员选择器弹窗显隐。 */
-    showAddMember: boolean;
-    /** need7：添加成员提交中。 */
-    addingMember: boolean;
     showMatterPicker: boolean;
     forwardingToMatter: boolean;
     showRegenerateModal: boolean;
@@ -192,9 +190,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         editingPersonalReport: false,
         editingTeamSummary: false,
         editingMyDraft: false,
-        showAddMember: false,
-        addingMember: false,
         showMatterPicker: false,
+        forwardingToMatter: false,
         forwardingToMatter: false,
         showRegenerateModal: false,
         regenerateMode: "refine",
@@ -3047,29 +3044,53 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     // need7：creator 添加新成员。选定后调 POST /members，成功 loadDetail 刷新（新成员 Pending）。
     handleOpenAddMember = () => {
-        this.setState({ showAddMember: true });
-    };
-    handleAddMemberConfirm = async (selected: MemberCandidate[]) => {
         if (this.taskId == null) return;
-        const userIds = selected.map((m) => m.user_id).filter(Boolean);
-        if (userIds.length === 0) {
-            this.setState({ showAddMember: false });
-            return;
-        }
-        this.setState({ addingMember: true });
-        try {
-            await api.addMembers(this.taskId, userIds);
-            Toast.success(t("summary.detail.addMemberSuccess"));
-            this.setState({ showAddMember: false, addingMember: false });
-            // 新成员以「待确认」出现在成员状态列表，重拉详情。
-            this.loadDetail();
-        } catch (err: any) {
-            this.setState({ addingMember: false });
-            Toast.error(err.message || t("summary.detail.addMemberFailed"));
-        }
-    };
-    handleAddMemberCancel = () => {
-        this.setState({ showAddMember: false });
+        const detail = this.state.detail;
+        if (!detail) return;
+        // 推断频道：origin_channel_id + origin_channel_type
+        const channelId = detail.origin_channel_id;
+        const channelType = detail.origin_channel_type === 1 ? 2 : detail.origin_channel_type === 3 ? 1 : 2;
+        const channel = channelId ? new WkChannel(channelId, channelType) : new WkChannel(this.taskId.toString(), 2);
+        const excluded = (detail.participants || []).map((p) => p.user_id);
+        let selectedItems: any[] = [];
+        WKApp.routeRight.push(
+            <RoutePage
+                title={t("summary.detail.addMember")}
+                onClose={() => WKApp.routeRight.pop()}
+                render={(context: any) => (
+                    <>
+                        <SubscriberList
+                            channel={channel}
+                            canSelect
+                            humansOnly
+                            disableSelectList={excluded}
+                            onSelect={(items) => { selectedItems = items; }}
+                        />
+                        <div style={{ padding: "12px 16px", borderTop: "1px solid var(--semi-color-border)" }}>
+                            <Button
+                                theme="solid"
+                                block
+                                loading={this.state.addingMember}
+                                onClick={async () => {
+                                    const userIds = selectedItems.map((s: any) => s.uid).filter(Boolean);
+                                    if (userIds.length === 0) return;
+                                    try {
+                                        await api.addMembers(this.taskId!, userIds);
+                                        Toast.success(t("summary.detail.addMemberSuccess"));
+                                        WKApp.routeRight.pop();
+                                        this.loadDetail();
+                                    } catch (err: any) {
+                                        Toast.error(err.message || t("summary.detail.addMemberFailed"));
+                                    }
+                                }}
+                            >
+                                {t("summary.common.confirm")}
+                            </Button>
+                        </div>
+                    </>
+                )}
+            />
+        );
     };
 
     renderScheduleButton() {
@@ -3579,15 +3600,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     onSelect={this.handleMatterSelected}
                     onCancel={() => this.setState({ showMatterPicker: false })}
                 />
-                {/* need7：复用创建任务时的成员选择器，creator 添加新成员。 */}
-                <MemberSelectorModal
-                    visible={this.state.showAddMember}
-                    selected={[]}
-                    excludedUserIds={(this.state.detail?.participants || []).map((p) => p.user_id)}
-                    confirmLoading={this.state.addingMember}
-                    onConfirm={this.handleAddMemberConfirm}
-                    onCancel={this.handleAddMemberCancel}
-                />
+                {/* need7：添加成员复用 SubscriberList 路由页面，见 handleOpenAddMember */}
                 {this.renderVersionDetailModal()}
                 <Modal
                     title={t("summary.detail.adjustSummaryTitle")}

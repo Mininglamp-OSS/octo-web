@@ -20,10 +20,12 @@ import { chatTypeToOriginChannelType, getOriginChannelType } from "../utils/chan
 import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
-import MemberSelectorModal from "../components/MemberSelectorModal";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import TemplateCard from "../components/TemplateCard";
 import AgentChatPanel from "../components/AgentChatPanel";
+import RouteContext, { RouteContextConfig } from "@octo/base/src/Service/Context";
+import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
+import RoutePage from "@octo/base/src/Components/RoutePage";
 import SummaryReferencePicker from "../components/SummaryReferencePicker";
 import SummaryPreviewModal from "../components/SummaryPreviewModal";
 import SummaryReferenceSidePanel from "../components/SummaryReferenceSidePanel";
@@ -622,6 +624,51 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
     };
 
+    handleOpenMemberSelector = () => {
+        const { selectedChats, selectedMembers } = this.state;
+        // 从已选聊天推断频道
+        const chat = selectedChats[0];
+        if (!chat) return;
+        // 根据 chat_id 推断 channelType：含 "____" 是子区(type=5)，否则群聊(type=2)
+        const channelType = chat.chat_id.includes("____") ? 5 : 2;
+        const channel = new Channel(chat.chat_id, channelType);
+        const excluded = selectedMembers.map((m) => m.user_id);
+        let selectedItems: any[] = [];
+        WKApp.routeRight.push(
+            <RoutePage
+                title={t("summary.create.selectMembers")}
+                onClose={() => WKApp.routeRight.pop()}
+                render={(context: any) => (
+                    <>
+                        <SubscriberList
+                            channel={channel}
+                            canSelect
+                            humansOnly
+                            disableSelectList={excluded}
+                            onSelect={(items) => { selectedItems = items; }}
+                        />
+                        <div style={{ padding: "12px 16px", borderTop: "1px solid var(--semi-color-border)" }}>
+                            <Button
+                                theme="solid"
+                                block
+                                onClick={() => {
+                                    const members: MemberCandidate[] = selectedItems.map((s: any) => ({
+                                        user_id: s.uid,
+                                        name: s.name || s.uid,
+                                    }));
+                                    this.setState({ selectedMembers: members });
+                                    WKApp.routeRight.pop();
+                                }}
+                            >
+                                {t("summary.common.confirm")}
+                            </Button>
+                        </div>
+                    </>
+                )}
+            />
+        );
+    };
+
     /**
      * 进入 agent 模式：读 localStorage 拿 session_id → 拉历史回显。
      * 无历史（新会话）则照旧空白开场；session_id 仍惰性生成于首次发送。
@@ -1097,7 +1144,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     theme="borderless"
                                     icon={<IconUserGroup />}
                                     size="small"
-                                    onClick={() => this.setState({ showMemberSelector: true })}
+                                    onClick={this.handleOpenMemberSelector}
                                     style={{ color: selectedMembers.length > 0 ? "var(--semi-color-primary)" : undefined }}
                                 >
                                     {selectedMembers.length > 0
@@ -1217,12 +1264,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     maxSelect={MAX_CHAT_SELECT}
                     onConfirm={(chats) => this.setState({ selectedChats: chats, showChatSelector: false })}
                     onCancel={() => this.setState({ showChatSelector: false })}
-                />
-                <MemberSelectorModal
-                    visible={showMemberSelector}
-                    selected={selectedMembers}
-                    onConfirm={(members) => this.setState({ selectedMembers: members, showMemberSelector: false })}
-                    onCancel={() => this.setState({ showMemberSelector: false })}
                 />
                 <ScheduleConfigModal
                     visible={showScheduleConfig}

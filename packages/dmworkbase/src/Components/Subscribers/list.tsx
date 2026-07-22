@@ -30,8 +30,9 @@ export interface SubscriberListProps {
   singleSelect?: boolean; // 选择模式下是否只允许单选
   disableSelectList?: string[]; // 禁选列表
   onSelect?: (items: Subscriber[]) => void;
-
   filter?: (subscriber: Subscriber) => boolean; // 过滤函数
+  /** 只显示真实人类成员，排除 AI/bot。基于 isBot(uid) 判断。 */
+  humansOnly?: boolean;
 }
 
 export interface SubscriberListState {
@@ -254,7 +255,9 @@ export class SubscriberList extends Component<
       <>
       <Provider
         create={() => {
-          const vm = new SubscriberListVM(this.props.channel, this.props.filter);
+          const vm = new SubscriberListVM(this.props.channel, this.props.humansOnly
+            ? (s: Subscriber) => !isBot(s.uid)
+            : this.props.filter);
           // 在数据加载完成的回调中触发预取，避免在 render 内产生副作用
           vm.onSubscribersLoaded = (subscribers) => {
             this.prefetchSubscribersChannelInfo(subscribers);
