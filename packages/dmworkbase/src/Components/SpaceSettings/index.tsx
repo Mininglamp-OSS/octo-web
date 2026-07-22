@@ -1,7 +1,7 @@
 import React, { Component } from "react";
-import { Input, Toast, Button } from "@douyinfe/semi-ui";
+import { Input, Toast, Button, Select } from "@douyinfe/semi-ui";
 import { IconCopy, IconLink } from "@douyinfe/semi-icons";
-import { Space, SpaceService } from "../../Service/SpaceService";
+import { Space, SpaceService, InviteDuration } from "../../Service/SpaceService";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton";
@@ -19,6 +19,8 @@ interface SpaceSettingsState {
     description: string;
     saving: boolean;
     inviteCode: string;
+    inviteExpire: string | undefined;
+    inviteDuration: InviteDuration;
     inviteLoading: boolean;
 }
 
@@ -60,6 +62,8 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
             description: props.space.description || "",
             saving: false,
             inviteCode: "",
+            inviteExpire: undefined,
+            inviteDuration: 0,
             inviteLoading: false,
         };
     }
@@ -127,8 +131,15 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
     handleInvite = async () => {
         this.setState({ inviteLoading: true });
         try {
-            const resp = await SpaceService.shared.createInvite(this.props.space.space_id);
-            this.setState({ inviteCode: resp.invite_code, inviteLoading: false });
+            const resp = await SpaceService.shared.createInvite(
+                this.props.space.space_id,
+                this.state.inviteDuration,
+            );
+            this.setState({
+                inviteCode: resp.invite_code,
+                inviteExpire: resp.expire,
+                inviteLoading: false,
+            });
         } catch {
             Toast.error(t("base.spaceSettings.inviteGenerateFailed"));
             this.setState({ inviteLoading: false });
@@ -221,15 +232,27 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
                         <div className="wk-spacesettings-section">
                             <label className="wk-spacesettings-label">{t("base.spaceSettings.inviteMembers")}</label>
                             {!this.state.inviteCode ? (
-                                <button
-                                    className="wk-spacesettings-btn wk-spacesettings-btn-primary"
-                                    onClick={this.handleInvite}
-                                    disabled={this.state.inviteLoading}
-                                >
-                                    {this.state.inviteLoading
-                                        ? t("base.spaceSettings.generating")
-                                        : t("base.spaceSettings.generateInviteLink")}
-                                </button>
+                                <div className="wk-spacesettings-invite-form">
+                                    <Select
+                                        value={this.state.inviteDuration}
+                                        onChange={(v) => this.setState({ inviteDuration: v as InviteDuration })}
+                                        style={{ width: "100%", marginBottom: 8 }}
+                                    >
+                                        <Select.Option value={0}>{t("base.spaceSettings.inviteDuration.permanent")}</Select.Option>
+                                        <Select.Option value={86400}>{t("base.spaceSettings.inviteDuration.1day")}</Select.Option>
+                                        <Select.Option value={604800}>{t("base.spaceSettings.inviteDuration.7days")}</Select.Option>
+                                        <Select.Option value={2592000}>{t("base.spaceSettings.inviteDuration.30days")}</Select.Option>
+                                    </Select>
+                                    <button
+                                        className="wk-spacesettings-btn wk-spacesettings-btn-primary"
+                                        onClick={this.handleInvite}
+                                        disabled={this.state.inviteLoading}
+                                    >
+                                        {this.state.inviteLoading
+                                            ? t("base.spaceSettings.generating")
+                                            : t("base.spaceSettings.generateInviteLink")}
+                                    </button>
+                                </div>
                             ) : (
                                 <div className="wk-spacesettings-invite-result">
                                     <div className="wk-spacesettings-invite-row">
@@ -241,6 +264,11 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
                                         <button className="wk-spacesettings-copy-btn wk-spacesettings-copy-link" onClick={this.copyInviteLink}>
                                             {t("base.spaceSettings.copyInviteLink")}
                                         </button>
+                                    </div>
+                                    <div className="wk-spacesettings-invite-expire">
+                                        {this.state.inviteExpire
+                                            ? t("base.spaceSettings.inviteExpireAt", { values: { expire: new Date(this.state.inviteExpire).toLocaleString() } })
+                                            : t("base.spaceSettings.inviteNeverExpires")}
                                     </div>
                                 </div>
                             )}

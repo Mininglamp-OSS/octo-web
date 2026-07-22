@@ -254,7 +254,12 @@ export interface SpaceCreateResp {
 export interface InviteResp {
     invite_code: string
     invite_url: string
+    /** ISO-8601 过期时间；后端返回空字符串或缺省时表示永久有效 */
+    expire?: string
 }
+
+/** duration=0 → 永久有效；其余值为秒数（如 86400=1天，604800=7天，2592000=30天）*/
+export type InviteDuration = 0 | 86400 | 604800 | 2592000
 
 export class SpaceService {
     static shared = new SpaceService()
@@ -291,8 +296,8 @@ export class SpaceService {
         return acc
     }
 
-    async createInvite(spaceId: string): Promise<InviteResp> {
-        return WKApp.apiClient.post(`space/${spaceId}/invite`, {})
+    async createInvite(spaceId: string, duration: InviteDuration = 0): Promise<InviteResp> {
+        return WKApp.apiClient.post(`space/${spaceId}/invite`, { duration })
     }
 
     async getInviteInfo(inviteCode: string): Promise<{
