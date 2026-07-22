@@ -81,8 +81,12 @@ import { VideoCell, VideoContent } from "./Messages/Video";
 import { TypingCell } from "./Messages/Typing";
 import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
 import { buildAddStickerMenu } from "./Messages/LottieSticker/collectMenu";
-import { isMessageReactionEnabled } from "./Service/featureFlags";
-import { reactionPickerOverlay, enablePointerTracking } from "./ui/message/MessageReactionPicker/ReactionPickerOverlay";
+import { canWriteMessageReaction } from "./Service/featureFlags";
+import {
+  disablePointerTracking,
+  enablePointerTracking,
+  reactionPickerOverlay,
+} from "./ui/message/MessageReactionPicker/ReactionPickerOverlay";
 import { messageReactionController } from "./features/messageReaction/runtime";
 import { isMessageReactionChannelSupported } from "./features/messageReaction/controller";
 import { LocationCell, LocationContent } from "./Messages/Location";
@@ -920,7 +924,7 @@ export default class BaseModule implements IModule {
       "contextmenus.reaction",
       (message, context) => {
         if (
-          !isMessageReactionEnabled() ||
+          !canWriteMessageReaction() ||
           !isMessageReactionChannelSupported(message.channel.channelType)
         ) {
           return null;
@@ -949,10 +953,18 @@ export default class BaseModule implements IModule {
       1200
     );
 
-    // 仅在 feature flag 打开时安装指针追踪；关闭时保持运行时 no-op。
-    if (isMessageReactionEnabled()) {
-      enablePointerTracking();
-    }
+    // appconfig 可在运行时切换 write：开放时启用右键定位，收紧时立刻拆除监听并
+    // 关闭已打开的 picker。BaseModule 与应用同生命周期，因此只需注册一次。
+    const syncReactionPointerTracking = () => {
+      if (canWriteMessageReaction()) {
+        enablePointerTracking();
+        return;
+      }
+      disablePointerTracking();
+      reactionPickerOverlay.close();
+    };
+    syncReactionPointerTracking();
+    WKApp.remoteConfig.addConfigChangeListener(syncReactionPointerTracking);
 
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.forward",

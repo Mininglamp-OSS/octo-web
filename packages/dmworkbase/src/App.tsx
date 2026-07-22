@@ -241,6 +241,21 @@ export {
 } from "./Service/StickerUploadConfig";
 export type { StickerUploadLimits } from "./Service/StickerUploadConfig";
 
+import {
+  DEFAULT_MESSAGE_REACTION_CAPABILITY,
+  messageReactionCapabilityEqual,
+  parseMessageReactionCapability,
+  type MessageReactionCapability,
+} from "./Service/MessageReactionConfig";
+export {
+  DEFAULT_MESSAGE_REACTION_CAPABILITY,
+  messageReactionCapabilityEqual,
+  parseMessageReactionCapability,
+} from "./Service/MessageReactionConfig";
+export type {
+  MessageReactionCapability,
+} from "./Service/MessageReactionConfig";
+
 export class WKRemoteConfig {
   revokeSecond: number = 2 * 60; // 撤回时间
   threadOn: boolean = false; // 子区功能开关，默认关闭
@@ -254,6 +269,13 @@ export class WKRemoteConfig {
    * 校验仍由后端负责，前端不能据此推断用户是否具备上传能力。
    */
   stickerCustomEnabled: boolean = false;
+  /**
+   * 消息 Reaction 的展示/写入能力。字段缺失时按服务端契约降级为只读；write
+   * 仅控制客户端入口和请求前守卫，不替代服务端写接口的权限校验。
+   */
+  messageReaction: MessageReactionCapability = {
+    ...DEFAULT_MESSAGE_REACTION_CAPABILITY,
+  };
   /**
    * 自定义贴纸上传的操作端可调上限（最大体积 KB / 最长边 px / 允许的扩展名），后端
    * 字段 sticker_upload_limits，与 SystemSettings.StickerUpload{MaxSizeKB,
@@ -394,6 +416,7 @@ export class WKRemoteConfig {
       const previousDisableUserCreateSpace = this.disableUserCreateSpace;
       const previousMessagesSearchOn = this.messagesSearchOn;
       const previousStickerCustomEnabled = this.stickerCustomEnabled;
+      const previousMessageReaction = this.messageReaction;
       const previousStickerUploadLimits = this.stickerUploadLimits;
       const previousDocsOn = this.docsOn;
       const previousDmloopOn = this.dmloopOn;
@@ -408,6 +431,9 @@ export class WKRemoteConfig {
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
       );
+      this.messageReaction = parseMessageReactionCapability(
+        result["message_reaction"]
+      );
       this.stickerUploadLimits = parseStickerUploadLimits(
         result["sticker_upload_limits"]
       );
@@ -421,6 +447,10 @@ export class WKRemoteConfig {
         previousDisableUserCreateSpace !== this.disableUserCreateSpace ||
         previousMessagesSearchOn !== this.messagesSearchOn ||
         previousStickerCustomEnabled !== this.stickerCustomEnabled ||
+        !messageReactionCapabilityEqual(
+          previousMessageReaction,
+          this.messageReaction
+        ) ||
         !stickerUploadLimitsEqual(
           previousStickerUploadLimits,
           this.stickerUploadLimits

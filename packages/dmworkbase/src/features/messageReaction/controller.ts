@@ -41,6 +41,7 @@ export interface MessageReactionControllerDependencies {
   currentUser: () => CurrentReactionUser | undefined;
   emitUpdated: (messageId: string) => void;
   showError: (key: string) => void;
+  canWrite: () => boolean;
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -146,6 +147,9 @@ export function createMessageReactionController(
     emoji: string,
     requestChannel: MessageReactionTarget["channel"] = message.channel
   ): Promise<void> => {
+    if (!dependencies.canWrite()) {
+      return Promise.resolve();
+    }
     const user = dependencies.currentUser();
     if (!user || !message.messageID || !emoji) {
       return Promise.resolve();

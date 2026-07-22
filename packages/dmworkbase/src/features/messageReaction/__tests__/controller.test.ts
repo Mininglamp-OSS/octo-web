@@ -68,6 +68,7 @@ describe("message reaction controller", () => {
       currentUser: () => ({ uid: "me", name: "Me" }),
       emitUpdated,
       showError: vi.fn(),
+      canWrite: () => true,
     });
     const message = target();
 
@@ -114,6 +115,7 @@ describe("message reaction controller", () => {
       }),
       emitUpdated: vi.fn(),
       showError: vi.fn(),
+      canWrite: () => true,
     });
     const message = {
       messageID: "2078746778093391872",
@@ -145,6 +147,7 @@ describe("message reaction controller", () => {
       currentUser: () => ({ uid: "me", name: "Me" }),
       emitUpdated: vi.fn(),
       showError,
+      canWrite: () => true,
     });
     const message = target([
       {
@@ -186,6 +189,7 @@ describe("message reaction controller", () => {
       currentUser: () => ({ uid: "me", name: "Me" }),
       emitUpdated: vi.fn(),
       showError: vi.fn(),
+      canWrite: () => true,
     });
     const message = target();
 

@@ -3,6 +3,7 @@ import { Toast } from "@douyinfe/semi-ui";
 import WKApp from "../../App";
 import { t } from "../../i18n";
 import MessageReactionService from "../../Service/MessageReactionService";
+import { canWriteMessageReaction } from "../../Service/featureFlags";
 import {
   createMessageReactionController,
   MESSAGE_REACTION_UPDATED_EVENT,
@@ -24,4 +25,5 @@ export const messageReactionController = createMessageReactionController({
   showError: (key) => {
     Toast.error(t(key));
   },
+  canWrite: canWriteMessageReaction,
 });

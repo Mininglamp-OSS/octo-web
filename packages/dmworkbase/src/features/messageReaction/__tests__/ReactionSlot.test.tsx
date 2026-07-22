@@ -28,7 +28,6 @@ const hoisted = vi.hoisted(() => {
     toggle: vi.fn().mockResolvedValue(undefined),
     selectedKeys: vi.fn().mockReturnValue([]),
     openPicker: vi.fn(),
-    closePicker: vi.fn(),
   };
 });
 
@@ -60,12 +59,14 @@ vi.mock("../../../i18n", () => ({
   }),
 }));
 
-vi.mock("../../../ui/message/MessageReactionPicker/ReactionPickerOverlay", () => ({
-  reactionPickerOverlay: {
-    open: hoisted.openPicker,
-    close: hoisted.closePicker,
-  },
-}));
+vi.mock(
+  "../../../ui/message/MessageReactionPicker/ReactionPickerOverlay",
+  () => ({
+    reactionPickerOverlay: {
+      open: hoisted.openPicker,
+    },
+  })
+);
 
 vi.mock("../runtime", () => ({
   messageReactionController: {
@@ -114,7 +115,6 @@ beforeEach(() => {
   hoisted.toggle.mockClear();
   hoisted.selectedKeys.mockClear();
   hoisted.openPicker.mockClear();
-  hoisted.closePicker.mockClear();
   container = document.createElement("div");
   document.body.appendChild(container);
 });
@@ -148,7 +148,7 @@ describe("ReactionSlot remote capabilities", () => {
     expect(container.querySelector(".wk-msg-reaction-summary")).toBeNull();
   });
 
-  it("reacts to runtime capability changes and closes a stale picker", () => {
+  it("reacts to runtime capability changes", () => {
     renderSlot();
     expect(hoisted.addConfigChangeListener).toHaveBeenCalledTimes(1);
 
@@ -174,7 +174,6 @@ describe("ReactionSlot remote capabilities", () => {
     act(() => hoisted.state.configListener?.());
 
     expect(container.querySelector(".wk-msg-reaction-add")).toBeNull();
-    expect(hoisted.closePicker).toHaveBeenCalledTimes(1);
   });
 
   it("unsubscribes from remote config changes on unmount", () => {

@@ -27,7 +27,7 @@ import { getPulldownRestoredScrollTop, getRestoredAnchorScrollTop } from "./hist
 import { applyMsgLevelExternalFieldsWithFallback } from "../../Service/Convert";
 import { wrapSendContentForInjection } from "../../Utils/sendContentProxy";
 import { isMessageSelectable } from "../../Service/messageSelection";
-import { isMessageReactionEnabled } from "../../Service/featureFlags";
+import { canReadMessageReaction } from "../../Service/featureFlags";
 import MessageReactionService from "../../Service/MessageReactionService";
 import {
     createMessageReactionSyncController,
@@ -938,7 +938,7 @@ export default class ConversationVM extends ProviderListener {
                     })
                 }
 
-            } else if (isMessageReactionEnabled()) {
+            } else if (canReadMessageReaction()) {
                 const seq = messageReactionCommandSeq(cmdContent.cmd, param, this.channel)
                 if (seq !== undefined) {
                     void this.reactionSyncController.request(seq).catch((err) => {

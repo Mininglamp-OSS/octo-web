@@ -40,9 +40,8 @@ export interface ReactionPickerOpenOptions {
 type LastPointerOpenOptions = Omit<ReactionPickerOpenOptions, "x" | "y">;
 
 // 记录最后一次指针位置，供右键菜单项 onClick（拿不到 event）定位 picker。
-// 关键：监听不在模块加载时安装（否则 flag 关的生产会话也会永久挂上全局 capture
-// 监听，违背「flag OFF = 运行时 no-op」的承诺）。改为由 enablePointerTracking()
-// 在 feature flag 打开时显式、幂等安装，disablePointerTracking() 拆除。
+// 关键：监听不在模块加载时安装。BaseModule 根据 appconfig 的 write 能力显式切换，
+// 动态收紧时通过 disablePointerTracking() 拆除，避免只读会话保留全局 capture 监听。
 const lastPointer = { x: 0, y: 0 };
 let pointerTrackingOn = false;
 
@@ -51,7 +50,7 @@ function trackPointer(e: MouseEvent): void {
   lastPointer.y = e.clientY;
 }
 
-/** feature flag 打开时安装指针追踪（幂等）。flag 关时永不调用 → 零全局副作用。 */
+/** write 能力打开时安装指针追踪（幂等）。 */
 export function enablePointerTracking(): void {
   if (pointerTrackingOn || typeof document === "undefined") return;
   document.addEventListener("contextmenu", trackPointer, true);

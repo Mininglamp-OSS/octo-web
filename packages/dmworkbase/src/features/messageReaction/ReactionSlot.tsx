@@ -9,6 +9,10 @@ import MessageReactionSummary, {
 import { aggregateReactions } from "../../ui/message/MessageReactionSummary/aggregate";
 import type { MessageReactionUser } from "../../Service/MessageReactionService";
 import {
+  canReadMessageReaction,
+  canWriteMessageReaction,
+} from "../../Service/featureFlags";
+import {
   MESSAGE_REACTION_UPDATED_EVENT,
   type MessageReactionTarget,
 } from "./controller";
@@ -55,6 +59,16 @@ export default function ReactionSlot({ message, channel }: ReactionSlotProps) {
     };
   }, [messageId]);
 
+  useEffect(() => {
+    return WKApp.remoteConfig.addConfigChangeListener(() => {
+      forceTick((value: number) => value + 1);
+    });
+  }, []);
+
+  const canRead = canReadMessageReaction();
+  const canWrite = canWriteMessageReaction();
+  if (!canRead) return null;
+
   const currentUid = WKApp.loginInfo.uid;
   const groups = aggregateReactions(message.octoReactions, currentUid);
   const chips: MessageReactionChip[] = groups.map((group) => {
@@ -72,19 +86,23 @@ export default function ReactionSlot({ message, channel }: ReactionSlotProps) {
       text: formatUserSummary(group.users, locale, t),
       hasMine: group.hasMine,
       title: group.users.map((user) => user.name).join(nameSeparator(locale)),
-      onClick: () => {
-        void messageReactionController.toggle(
-          message,
-          group.reactionKey,
-          channel
-        );
-      },
+      onClick: canWrite
+        ? () => {
+            void messageReactionController.toggle(
+              message,
+              group.reactionKey,
+              channel
+            );
+          }
+        : undefined,
+      disabled: !canWrite,
       reactionType: group.reactionType,
       reactionKey: group.reactionKey,
     };
   });
 
   const openPicker = (x: number, y: number) => {
+    if (!canWriteMessageReaction()) return;
     reactionPickerOverlay.open({
       x,
       y,
@@ -100,7 +118,11 @@ export default function ReactionSlot({ message, channel }: ReactionSlotProps) {
     <MessageReactionSummary
       chips={chips}
       addLabel={t("base.module.contextMenus.react")}
-      onAdd={(event) => openPicker(event.clientX, event.clientY)}
+      onAdd={
+        canWrite
+          ? (event) => openPicker(event.clientX, event.clientY)
+          : undefined
+      }
     />
   );
 }
