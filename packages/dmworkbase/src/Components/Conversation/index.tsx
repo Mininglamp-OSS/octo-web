@@ -36,6 +36,7 @@ import {
   canReeditRevokedMessage,
   getReeditableMessageBlocks,
   remoteReeditFileToFile,
+  restoreReeditableMessageBlocks,
 } from "../../Messages/Revoke/reeditableMessage";
 import {
   MessageContentTypeConst,
@@ -661,48 +662,60 @@ export class Conversation
     const input = this.messageInputContext();
     if (!input) return;
 
-    for (const block of getReeditableMessageBlocks(message)) {
-      if (block.type === "content") {
-        input.insertContent(block.content);
-        continue;
-      }
-      if (block.type === "image") {
-        const file = await imageBlockToPasteFile(
-          block,
-          WKApp.dataSource.commonDataSource.getImageURL.bind(
-            WKApp.dataSource.commonDataSource
-          )
-        );
-        if (!file) {
-          input.insertContent([
-            { type: "text", text: RichTextImagePlaceholder },
-          ]);
-          Toast.error(t("base.revoke.reeditAttachmentFailed"));
-          continue;
-        }
-        await input.addAttachment([file], "paste");
-        continue;
-      }
+    await restoreReeditableMessageBlocks(
+      getReeditableMessageBlocks(message),
+      {
+        restoreBlock: async (block) => {
+          if (block.type === "content") {
+            input.insertContent(block.content);
+            return;
+          }
+          if (block.type === "image") {
+            const file = await imageBlockToPasteFile(
+              block,
+              WKApp.dataSource.commonDataSource.getImageURL.bind(
+                WKApp.dataSource.commonDataSource
+              )
+            );
+            if (!file) {
+              input.insertContent([
+                { type: "text", text: RichTextImagePlaceholder },
+              ]);
+              Toast.error(t("base.revoke.reeditAttachmentFailed"));
+              return;
+            }
+            await input.addAttachment([file], "paste");
+            return;
+          }
 
-      const fileContent = message.content as FileContent;
-      const fileUrl = resolveSafeFileUrl(fileContent);
-      const file = fileUrl
-        ? await remoteReeditFileToFile({ ...block, url: fileUrl })
-        : null;
-      if (!file) {
-        Toast.error(
-          t("base.revoke.reeditFileFailed", {
-            values: {
-              name: block.name,
-              max: formatFileSize(MAX_REEDIT_FILE_BYTES),
-            },
-          })
-        );
-        continue;
+          const fileContent = message.content as FileContent;
+          const fileUrl = resolveSafeFileUrl(fileContent);
+          const file = fileUrl
+            ? await remoteReeditFileToFile({ ...block, url: fileUrl })
+            : null;
+          if (!file) {
+            Toast.error(
+              t("base.revoke.reeditFileFailed", {
+                values: {
+                  name: block.name,
+                  max: formatFileSize(MAX_REEDIT_FILE_BYTES),
+                },
+              })
+            );
+            return;
+          }
+          await input.addAttachment([file], "upload");
+        },
+        onBlockError: (block, error) => {
+          console.error(
+            `[revoke] failed to restore ${block.type} block`,
+            error
+          );
+          Toast.error(t("base.revoke.reeditBlockFailed"));
+        },
+        onComplete: () => input.focus(),
       }
-      await input.addAttachment([file], "upload");
-    }
-    input.focus();
+    );
   }
 
   /**

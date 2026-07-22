@@ -33,6 +33,8 @@ import {
 import {
   canReeditRevokedMessage,
   getReeditableMessageBlocks,
+  type ReeditBlock,
+  restoreReeditableMessageBlocks,
 } from "./reeditableMessage";
 
 function makeMessage(content: MessageText | RichTextContent): MessageWrap {
@@ -133,5 +135,48 @@ describe("revoked message re-editing", () => {
       },
       { type: "content", content: [{ type: "text", text: "after" }] },
     ]);
+  });
+
+  it("continues restoring after a block fails and always completes", async () => {
+    const blocks: ReeditBlock[] = [
+      {
+        type: "content",
+        content: [{ type: "text", text: "before" }],
+      },
+      { type: "image", url: "https://example.com/image.png" },
+      {
+        type: "content",
+        content: [{ type: "text", text: "after" }],
+      },
+    ];
+    const events: string[] = [];
+    const onBlockError = vi.fn((block: ReeditBlock) => {
+      events.push(`error:${block.type}`);
+    });
+    const onComplete = vi.fn(() => {
+      events.push("complete");
+    });
+
+    await restoreReeditableMessageBlocks(blocks, {
+      restoreBlock: async (block) => {
+        events.push(`restore:${block.type}`);
+        if (block.type === "image") throw new Error("attachment rejected");
+      },
+      onBlockError,
+      onComplete,
+    });
+
+    expect(events).toEqual([
+      "restore:content",
+      "restore:image",
+      "error:image",
+      "restore:content",
+      "complete",
+    ]);
+    expect(onBlockError).toHaveBeenCalledWith(
+      blocks[1],
+      expect.objectContaining({ message: "attachment rejected" })
+    );
+    expect(onComplete).toHaveBeenCalledOnce();
   });
 });

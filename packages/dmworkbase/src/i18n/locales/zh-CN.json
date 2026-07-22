@@ -1068,6 +1068,7 @@
   "revoke.revokedMessage": "{{name}}撤回了一条消息",
   "revoke.reedit": "重新编辑",
   "revoke.reeditAttachmentFailed": "附件恢复失败，已用占位文本代替",
+  "revoke.reeditBlockFailed": "部分内容恢复失败，已继续恢复其余内容",
   "revoke.reeditFileFailed": "文件「{{name}}」恢复失败，可能已失效或超过 {{max}}",
   "revoke.you": "你",
   "video.digest": "[小视频]",

@@ -38,6 +38,12 @@ export type ReeditBlock =
       mime?: string;
     };
 
+interface ReeditBlockRestoreHandlers {
+  restoreBlock(block: ReeditBlock): void | Promise<void>;
+  onBlockError(block: ReeditBlock, error: unknown): void;
+  onComplete(): void;
+}
+
 interface MentionEntity {
   uid: string;
   offset: number;
@@ -53,6 +59,23 @@ interface MessageMention {
 }
 
 export const MAX_REEDIT_FILE_BYTES = 100 * 1024 * 1024;
+
+export async function restoreReeditableMessageBlocks(
+  blocks: ReeditBlock[],
+  handlers: ReeditBlockRestoreHandlers
+): Promise<void> {
+  try {
+    for (const block of blocks) {
+      try {
+        await handlers.restoreBlock(block);
+      } catch (error) {
+        handlers.onBlockError(block, error);
+      }
+    }
+  } finally {
+    handlers.onComplete();
+  }
+}
 
 export function canReeditRevokedMessage(
   message: MessageWrap,
