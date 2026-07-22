@@ -347,6 +347,7 @@ export class ChatContentPage extends Component<
       showChannelSearch: false,
       channelSearchPreviewFile: null,
       previewReturnChannelSearch: false,
+      previewDoc: null, // WS-17: 打开 webhook 预览时关掉文档侧边栏，保持右侧面板互斥
     });
   };
 
@@ -452,6 +453,7 @@ export class ChatContentPage extends Component<
       showMatterPanel: false,
       showMatterDetailPanel: false,
       showSummaryPanel: false,
+      webhookIssuePreviewTarget: null,
     });
   };
 
@@ -968,7 +970,8 @@ export class ChatContentPage extends Component<
         this.state.showMatterDetailPanel ||
         this.state.showSummaryPanel ||
         this.state.showChannelSearch ||
-        this.state.showChannelSetting)
+        this.state.showChannelSetting ||
+        this.state.webhookIssuePreviewTarget)
     ) {
       this.setState({ previewDoc: null });
     }
@@ -1626,6 +1629,7 @@ export class ChatContentPage extends Component<
           !showSummaryPanel &&
           !showChannelSearch &&
           !showChannelSetting &&
+          !webhookIssuePreviewTarget &&
           this._renderDocPreviewPanel(previewDoc)}
       </div>
     );

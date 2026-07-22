@@ -86,21 +86,26 @@ export function DocPreviewPane({ docId, space, onClose, onExpandFullPage }: DocP
   }, [docId, space])
 
   // Log the "最近查看" view ingest once the doc is READY (parity with StandaloneDocPage and the
-  // in-shell DocsHome.commitOpen entry — WS-17 review P1-2). Guarded by docId via a ref so React
-  // re-renders and strict-mode double-invocation record at most once per opened doc. Fire-and-forget:
-  // recordDocView swallows every failure, so a failed / not-yet-deployed ingest never affects open.
+  // in-shell DocsHome.commitOpen entry — WS-17 review P1-2). Gate on the RESOLVED meta id, not just
+  // phase.status: in the sidebar this pane instance is reused across doc switches (no per-doc remount),
+  // so on an A→B switch `phase` can still hold A's `ready` meta while `docId` is already B. Keying on
+  // `phase.meta.docId === docId` (DocMeta.docId is the id the backend echoed for the preflight we ran)
+  // ensures we only record once B's OWN preflight succeeds — never recording B before it resolves, and
+  // never recording a doc that then turns out forbidden / not-found. Ref-deduped so re-renders and
+  // strict-mode double-invocation record at most once per doc.
   //
-  // Unlike the standalone page, we pass NO explicit viewer space: inside the live chat shell the
-  // global request interceptor already carries the viewer's real `currentSpaceId` as X-Space-Id, so
-  // the view is recorded under the viewer's own space (the XIN-1237 write/read contract) without any
-  // seeding. Forcing the doc's `?sp=` space here would record under a space the viewer may not be in.
+  // We pass NO explicit viewer space: inside the live chat shell the global request interceptor already
+  // carries the viewer's real `currentSpaceId` as X-Space-Id, so the view records under the viewer's own
+  // space (the XIN-1237 write/read contract) without seeding. Forcing the doc's `?sp=` space here would
+  // record under a space the viewer may not be in.
   const recordedDocRef = useRef<string | null>(null)
+  const readyDocId = phase.status === 'ready' ? phase.meta.docId : undefined
   useEffect(() => {
-    if (phase.status !== 'ready' || !docId) return
+    if (!docId || readyDocId !== docId) return
     if (recordedDocRef.current === docId) return
     recordedDocRef.current = docId
     void recordDocView(docId)
-  }, [phase.status, docId])
+  }, [readyDocId, docId])
 
   // Address the room from the preflight's canonical documentName when available (so a doc in a
   // non-default folder / a whiteboard key resolves correctly), else fall back to the link's space
