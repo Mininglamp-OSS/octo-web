@@ -231,12 +231,13 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     return () => clearInterval(timer);
   }, [refreshRunning]);
 
-  // 任务状态自动刷新:无 WS 推送时看板/分组/列表均需定期重取,否则只有切走再切回才能更新。
-  // 30s 轮询覆盖绝大多数 agent 执行周期;seq 守卫已防并发乱序,轮询与手动操作安全并存。
+  // 事件驱动刷新:订阅 `wk:loop-issue-changed`,后端 WS 推送 issue 变更时 emit 该事件,
+  // IssuePage 立即静默重取(不触发全屏 loading),替代原先的 30s 盲轮询。
+  // IssueDetailPage 本地 patch 成功后也 emit 同一事件,确保本地操作即时反映。
   useEffect(() => {
-    // 后台轮询静默刷新(silent=true):不触发全屏 loading,原地更新数据,用户无感知。
-    const timer = setInterval(() => reload(true), 30000);
-    return () => clearInterval(timer);
+    const onIssueChanged = () => reload(true);
+    WKApp.mittBus.on("wk:loop-issue-changed", onIssueChanged);
+    return () => WKApp.mittBus.off("wk:loop-issue-changed", onIssueChanged);
   }, [reload]);
 
   // 变更后刷新:既重取列表,又刷新运行中快照(指派/状态变更可能起/停 agent run)。

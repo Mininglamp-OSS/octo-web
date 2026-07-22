@@ -362,6 +362,8 @@ export default function IssueDetailPage({ issueId, onChanged, onClose }: IssueDe
         attachments: updated.attachments ?? issue.attachments,
       });
       Toast.success(t("loop.toast.saved"));
+      // 本地 patch 成功后通知 IssuePage 立即刷新(事件驱动,无轮询延迟)。
+      WKApp.mittBus.emit("wk:loop-issue-changed", undefined);
       onChanged?.();
     } catch (e) {
       // 后端可能拒绝(如父 issue 环检测、非法日期):给出反馈,避免静默失败。
