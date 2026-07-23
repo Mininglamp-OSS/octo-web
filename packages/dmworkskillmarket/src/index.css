@@ -1421,26 +1421,23 @@
 
 .skill-market-detail__tags {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
 }
 
 .skill-market-detail__tags span {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 168px;
-  overflow: hidden;
+  flex: 0 0 auto;
+  max-width: 100%;
   padding: 3px 8px;
   border-radius: var(--wk-r-full);
   background: var(--wk-accent-tint-06, rgba(127, 59, 245, 0.06));
   color: var(--wk-color-accent);
   font-size: 12px;
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .skill-market-detail__tag-tooltip {

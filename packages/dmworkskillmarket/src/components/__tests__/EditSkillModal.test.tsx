@@ -180,7 +180,7 @@ describe("EditSkillModal", () => {
     expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
   });
 
-  it("blocks saving a legacy tag longer than 24 characters", () => {
+  it("blocks saving a legacy tag longer than 10 characters", () => {
     const overflowTag = "overflow-testing-with-extremely-long-english-tag-content-for-ui-card";
     render(
       <EditSkillModal
@@ -192,7 +192,7 @@ describe("EditSkillModal", () => {
     );
 
     expect(screen.getByTitle(overflowTag)).toHaveClass("skill-market-tag-input__text");
-    expect(screen.getByText(/单个标签最多 24 个字符|skillMarket\.form\.tagLengthLimit/)).toBeInTheDocument();
+    expect(screen.getByText(/单个标签最多 10 个字符|skillMarket\.form\.tagLengthLimit/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
   });
 

@@ -36,7 +36,7 @@ const busyMessage = /确定离开？Skill 包正在上传\/解析中，离开后
 const keepUploading = /继续上传|skillMarket\.confirm\.keepUploading/;
 const leaveButton = /确认离开|skillMarket\.confirm\.leave/;
 const tagLimit = /最多添加 10 个标签|skillMarket\.form\.tagLimit/;
-const tagLengthLimit = /单个标签最多 24 个字符|skillMarket\.form\.tagLengthLimit/;
+const tagLengthLimit = /单个标签最多 10 个字符|skillMarket\.form\.tagLengthLimit/;
 const tagInvalidChars = /标签仅支持文字、数字、空格和 - _ \. \/ # \+|skillMarket\.form\.tagInvalidChars/;
 
 function zipFile(name = "skill-pack.zip", size = 1024 * 1024) {

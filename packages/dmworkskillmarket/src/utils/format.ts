@@ -69,7 +69,7 @@ export function tagsFromInput(value: string): string[] {
 }
 
 export const MAX_SKILL_TAGS = 10;
-export const MAX_SKILL_TAG_LENGTH = 24;
+export const MAX_SKILL_TAG_LENGTH = 10;
 
 const SKILL_TAG_PATTERN = /^[\p{L}\p{N} _./#+-]+$/u;
 
