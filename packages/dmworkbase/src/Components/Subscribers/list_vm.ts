@@ -49,7 +49,10 @@ export class SubscriberListVM extends ProviderListener {
     if (this.localSearch && keyword.trim()) {
       this._requestVersion++;
       this.hasMore = false;
-      this.subscribers = this.localSearch(keyword);
+      const localResults = this.localSearch(keyword);
+      this.subscribers = this.filter
+        ? localResults.filter(this.filter)
+        : localResults;
       this.notifyListener();
       this.onSubscribersLoaded?.(this.subscribers);
       return;
