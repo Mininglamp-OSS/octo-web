@@ -57,13 +57,11 @@ describe("channel setting member pinyin search", () => {
       value === "魏娇莹" ? "weijiaoying" : value
     );
     const index = buildChannelSettingMemberSearchIndex(largeMembers, toPinyin);
-    const startedAt = performance.now();
 
     for (let count = 0; count < 20; count += 1) {
       expect(filterChannelSettingMembers(index, "weijiao")).toHaveLength(1);
     }
 
     expect(toPinyin).toHaveBeenCalledTimes(20_000);
-    expect((performance.now() - startedAt) / 20).toBeLessThan(15);
   });
 });

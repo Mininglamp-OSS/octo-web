@@ -46,6 +46,21 @@ describe("SubscriberListVM local search", () => {
     expect(subscribersRequest).not.toHaveBeenCalled();
   });
 
+  it("applies the existing subscriber filter to local search results", () => {
+    const blocked = { uid: "bot", name: "Bot" } as Subscriber;
+    const localSearch = vi.fn(() => [...localResult, blocked]);
+    const vm = new SubscriberListVM(
+      channel,
+      (subscriber) => subscriber.uid !== blocked.uid,
+      localSearch
+    );
+    (vm as any)._isMounted = true;
+
+    vm.search("weijiao");
+
+    expect(vm.subscribers).toEqual(localResult);
+  });
+
   it("falls back to the existing server request for an empty keyword", async () => {
     subscribersRequest.mockResolvedValue(localResult);
     const vm = new SubscriberListVM(channel, undefined, vi.fn());
