@@ -164,6 +164,38 @@ describe("EditSkillModal", () => {
     expect(api.updateSkill).not.toHaveBeenCalled();
   });
 
+  it("safely renders legacy overflow tags and blocks saving until they are valid", () => {
+    const overflowTag = "overflow-testing-with-extremely-long-english-tag-content-for-ui-card";
+    render(
+      <EditSkillModal
+        skill={{ ...skill, tags: ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", overflowTag] }}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTitle(overflowTag)).toHaveClass("skill-market-tag-input__text");
+    expect(screen.getByText(/最多添加 10 个标签|skillMarket\.form\.tagLimit/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
+  });
+
+  it("blocks saving a legacy tag longer than 24 characters", () => {
+    const overflowTag = "overflow-testing-with-extremely-long-english-tag-content-for-ui-card";
+    render(
+      <EditSkillModal
+        skill={{ ...skill, tags: [overflowTag] }}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTitle(overflowTag)).toHaveClass("skill-market-tag-input__text");
+    expect(screen.getByText(/单个标签最多 24 个字符|skillMarket\.form\.tagLengthLimit/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
+  });
+
   it("suggests current-space tags while editing and saves the selected tag", async () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 

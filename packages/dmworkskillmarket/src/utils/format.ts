@@ -68,7 +68,7 @@ export function tagsFromInput(value: string): string[] {
     .slice(0, MAX_SKILL_TAGS);
 }
 
-export const MAX_SKILL_TAGS = 5;
+export const MAX_SKILL_TAGS = 10;
 export const MAX_SKILL_TAG_LENGTH = 24;
 
 const SKILL_TAG_PATTERN = /^[\p{L}\p{N} _./#+-]+$/u;
@@ -85,6 +85,17 @@ export function validateSkillTag(value: string): string | null {
   }
   if (!SKILL_TAG_PATTERN.test(tag)) {
     return t("skillMarket.form.tagInvalidChars");
+  }
+  return null;
+}
+
+export function validateSkillTags(tags: string[]): string | null {
+  if (tags.length > MAX_SKILL_TAGS) {
+    return t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } });
+  }
+  for (const tag of tags) {
+    const error = validateSkillTag(tag);
+    if (error) return error;
   }
   return null;
 }

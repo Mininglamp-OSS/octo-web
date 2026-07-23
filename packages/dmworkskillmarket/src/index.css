@@ -720,12 +720,13 @@
 
 .skill-market-card__title-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--wk-sp-2);
   min-width: 0;
 }
 
 .skill-market-card__title-row h3 {
+  display: -webkit-box;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -734,8 +735,8 @@
   font-size: 16px;
   font-weight: 700;
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .skill-market-card__version {
@@ -2249,12 +2250,25 @@
   gap: 4px;
   height: 26px;
   max-width: 140px;
+  min-width: 0;
+  overflow: hidden;
   padding: 0 var(--wk-sp-2);
   border: 0;
   border-radius: var(--wk-r-full);
   background: var(--wk-accent-tint-08);
   color: var(--wk-color-accent);
   font: 500 12px/1 var(--wk-font-sans);
+}
+
+.skill-market-tag-input__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-market-tag-input button svg {
+  flex: 0 0 auto;
 }
 
 .skill-market-tag-input input {

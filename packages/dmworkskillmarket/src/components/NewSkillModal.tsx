@@ -3,7 +3,7 @@ import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } fr
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, NewSkillForm } from "../types/skill";
 import { createSkill, getSkillTags, initUpload, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
-import { MAX_SKILL_TAGS, validateSkillTag } from "../utils/format";
+import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 
@@ -96,7 +96,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     return null;
   }
 
-  const tagSubmitError = tagError ?? getTagDraftError();
+  const tagSubmitError = tagError ?? validateSkillTags(tags) ?? getTagDraftError();
   const canCreate = Boolean(
     parseTaskId &&
     name.trim() &&
@@ -553,7 +553,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
                 <div className="skill-market-tag-input">
                   {tags.map((tag) => (
                     <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
-                      {tag}
+                      <span className="skill-market-tag-input__text" title={tag}>{tag}</span>
                       <XCircle size={12} />
                     </button>
                   ))}
@@ -596,12 +596,12 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
                     aria-label={t("skillMarket.form.tags")}
                     aria-autocomplete="list"
                     aria-expanded={tagSuggestOpen}
-                    aria-describedby={(tagError || tags.length >= MAX_SKILL_TAGS) ? "skill-market-tag-hint" : undefined}
+                    aria-describedby={(tagSubmitError || tags.length >= MAX_SKILL_TAGS) ? "skill-market-tag-hint" : undefined}
                   />
                 </div>
-                {(tagError || tags.length >= MAX_SKILL_TAGS) && (
-                  <small id="skill-market-tag-hint" className={tagError ? "skill-market-tag-hint is-error" : "skill-market-tag-hint"}>
-                    {tagError ?? t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } })}
+                {(tagSubmitError || tags.length >= MAX_SKILL_TAGS) && (
+                  <small id="skill-market-tag-hint" className={tagSubmitError ? "skill-market-tag-hint is-error" : "skill-market-tag-hint"}>
+                    {tagSubmitError ?? t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } })}
                   </small>
                 )}
                 {tagSuggestOpen && tagSuggestions.length > 0 && (

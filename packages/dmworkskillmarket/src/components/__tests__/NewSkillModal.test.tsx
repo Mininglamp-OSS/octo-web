@@ -35,7 +35,7 @@ const uploadProgress = /上传进度|skillMarket\.upload\.uploadProgress/;
 const busyMessage = /确定离开？Skill 包正在上传\/解析中，离开后当前进度将丢失，需要重新上传。|skillMarket\.confirm\.busyMessage/;
 const keepUploading = /继续上传|skillMarket\.confirm\.keepUploading/;
 const leaveButton = /确认离开|skillMarket\.confirm\.leave/;
-const tagLimit = /最多添加 5 个标签|skillMarket\.form\.tagLimit/;
+const tagLimit = /最多添加 10 个标签|skillMarket\.form\.tagLimit/;
 const tagLengthLimit = /单个标签最多 24 个字符|skillMarket\.form\.tagLengthLimit/;
 const tagInvalidChars = /标签仅支持文字、数字、空格和 - _ \. \/ # \+|skillMarket\.form\.tagInvalidChars/;
 
@@ -204,13 +204,13 @@ describe("NewSkillModal", () => {
     ).toBe(true);
   });
 
-  it("shows a tag limit hint when five tags are already selected", async () => {
+  it("shows a tag limit hint when ten tags are already selected", async () => {
     vi.mocked(api.pollParse).mockResolvedValue({
       status: "success",
       result: {
         name: "skill-pack",
         description: "skill-pack 提供可复用的自动化工作流。",
-        tags: ["one", "two", "three", "four", "five"],
+        tags: ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"],
         version: "1.0.0",
         readmeContent: "# skill-pack",
         fileName: "skill-pack.zip",
