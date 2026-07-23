@@ -155,6 +155,7 @@
     "creator": "Creator",
     "project": "Project",
     "label": "Label",
+    "tag": "Tag",
     "dateRange": "Date range",
     "noProject": "Incl. no project",
     "noAssignee": "Incl. no assignee"
@@ -464,7 +465,24 @@
   "label": {
     "add": "Add labels",
     "newPlaceholder": "New label",
-    "create": "Create label"
+    "create": "Create label",
+    "manage": "Manage labels...",
+    "manageTitle": "Workspace labels",
+    "selectPlaceholder": "Select tags",
+    "color": "Label color",
+    "empty": "No labels yet",
+    "edit": "Edit label",
+    "delete": "Delete label",
+    "remove": "Remove label {{name}}",
+    "deleteConfirm": "Delete this label?",
+    "deleteConfirmDesc": "The label will be removed from every task that uses it. This cannot be undone.",
+    "created": "Label created",
+    "updated": "Label updated",
+    "deleted": "Label deleted",
+    "createFailed": "Failed to create label",
+    "updateFailed": "Failed to update label",
+    "deleteFailed": "Failed to delete label",
+    "attachPartialFailed": "Task created, but {{count}} label(s) failed to attach"
   },
   "subscribe": {
     "label": "Subscribers",
