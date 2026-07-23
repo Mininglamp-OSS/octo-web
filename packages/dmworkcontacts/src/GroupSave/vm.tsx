@@ -1,5 +1,5 @@
-import { WKApp, ProviderListener, addImChannelInfoListener } from "@octo/base";
-import { ChannelInfo,WKSDK } from "wukongimjssdk";
+import { WKApp, ProviderListener, addCurrentImChannelInfoListener } from "@octo/base";
+import { ChannelInfo } from "wukongimjssdk";
 import { ChannelInfoListener } from "wukongimjssdk";
 export class GroupSaveVM extends ProviderListener {
     groups:ChannelInfo[] = []
@@ -21,7 +21,7 @@ export class GroupSaveVM extends ProviderListener {
           }
        }
 
-       this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this.channelInfoListener)
+       this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(this.channelInfoListener)
     }
 
     didUnMount(): void {
