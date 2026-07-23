@@ -3,7 +3,6 @@ import {
     Button,
     Dropdown,
     Spin,
-    Pagination,
     Toast,
     Banner,
     Tooltip,
@@ -39,6 +38,8 @@ interface SummaryListPageState {
     page: number;
     pageSize: number;
     loading: boolean;
+    loadingMore: boolean;
+    hasMore: boolean;
     error: string | null;
     statusFilter: TaskStatusType | undefined;
     keyword: string;
@@ -64,6 +65,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         page: 1,
         pageSize: this.props?.channelId ? 50 : 20,
         loading: false,
+        loadingMore: false,
+        hasMore: true,
         error: null,
         statusFilter: undefined,
         keyword: "",
@@ -182,11 +185,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     }
 
     async loadData() {
-        this.setState({ loading: true, error: null });
+        this.setState({ loading: true, error: null, page: 1, hasMore: true });
         try {
-            const { page, pageSize, statusFilter, keyword } = this.state;
+            const { pageSize, statusFilter, keyword } = this.state;
             const params: ListSummariesParams = {
-                page,
+                page: 1,
                 page_size: pageSize,
                 status: statusFilter,
                 keyword: keyword || undefined,
@@ -194,7 +197,12 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             };
             const resp = await api.listSummaries(params);
             this.attentionCount = resp.attention_count ?? 0;
-            this.setState({ items: resp.items, total: resp.total, loading: false }, () => {
+            this.setState({
+                items: resp.items,
+                total: resp.total,
+                loading: false,
+                hasMore: resp.items.length < resp.total,
+            }, () => {
                 this.maybeStartBatchPoll();
                 this.emitBadgeUpdate(resp.attention_count);
             });
@@ -203,9 +211,38 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }
     }
 
-    handlePageChange = (page: number) => {
-        this.setState({ page }, () => this.loadData());
+    handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const el = e.currentTarget;
+        const { scrollTop, scrollHeight, clientHeight } = el;
+        if (scrollHeight - scrollTop - clientHeight < 100) {
+            this.loadMore();
+        }
     };
+
+    async loadMore() {
+        if (this.state.loadingMore || !this.state.hasMore || this.state.loading) return;
+        this.setState({ loadingMore: true });
+        try {
+            const nextPage = this.state.page + 1;
+            const { pageSize, statusFilter, keyword } = this.state;
+            const params: ListSummariesParams = {
+                page: nextPage,
+                page_size: pageSize,
+                status: statusFilter,
+                keyword: keyword || undefined,
+                origin_channel_id: this.props.channelId || undefined,
+            };
+            const resp = await api.listSummaries(params);
+            this.setState(prev => ({
+                items: [...prev.items, ...resp.items],
+                page: nextPage,
+                loadingMore: false,
+                hasMore: prev.items.length + resp.items.length < resp.total,
+            }), () => this.maybeStartBatchPoll());
+        } catch {
+            this.setState({ loadingMore: false });
+        }
+    }
 
     private maybeStartBatchPoll() {
         const activeIds = this.state.items
@@ -395,7 +432,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     };
 
     render() {
-        const { items, total, page, pageSize, loading, error, statusFilter, keyword, activeTaskId } = this.state;
+        const { items, total, pageSize, loading, loadingMore, hasMore, error, statusFilter, keyword, activeTaskId } = this.state;
         const { channelId, onClose } = this.props;
         const { locale, t: translate } = this.context;
         const statusOptions = getStatusOptions();
@@ -517,31 +554,29 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 )}
 
                 {!loading && items.length > 0 && (
-                    <>
-                        <div className="summary-list-content">
-                            {items.map((item) => (
-                                <SummaryCard
-                                    key={item.task_id}
-                                    task={item}
-                                    active={item.task_id === activeTaskId}
-                                    onClick={this.handleCardClick}
-                                    onDelete={this.handleDelete}
-                                    onRespond={this.handleRespond}
-                                    onLeave={this.handleLeave}
-                                />
-                            ))}
-                        </div>
-                        {!isPanel && total > pageSize && (
-                            <div className="summary-list-pagination">
-                                <Pagination
-                                    currentPage={page}
-                                    pageSize={pageSize}
-                                    total={total}
-                                    onPageChange={this.handlePageChange}
-                                />
+                    <div className="summary-list-content" onScroll={this.handleScroll}>
+                        {items.map((item) => (
+                            <SummaryCard
+                                key={item.task_id}
+                                task={item}
+                                active={item.task_id === activeTaskId}
+                                onClick={this.handleCardClick}
+                                onDelete={this.handleDelete}
+                                onRespond={this.handleRespond}
+                                onLeave={this.handleLeave}
+                            />
+                        ))}
+                        {loadingMore && (
+                            <div className="summary-list-loading-more">
+                                <Spin />
                             </div>
                         )}
-                    </>
+                        {!hasMore && items.length > pageSize && (
+                            <div className="summary-list-no-more">
+                                {translate("summary.list.noMore")}
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
         );

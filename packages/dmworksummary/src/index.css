@@ -39,6 +39,20 @@
     gap: 8px;
 }
 
+.summary-list-loading-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 0;
+}
+
+.summary-list-no-more {
+    text-align: center;
+    padding: 12px 0;
+    font-size: 12px;
+    color: rgba(28, 28, 35, 0.4);
+}
+
 /* 面板模式：去掉 max-width 居中，收紧 padding，占满父容器宽度 */
 .summary-list-page--panel {
     max-width: none;

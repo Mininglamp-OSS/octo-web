@@ -157,6 +157,7 @@
         "searchPlaceholder": "搜索总结...",
         "deleteSuccess": "删除成功",
         "networkError": "网络连接异常，请检查网络后重试",
+        "noMore": "没有更多了",
         "emptyTitle": "暂无总结记录",
         "emptyDesc": "快速生成群聊或个人工作总结，让 AI 帮你梳理重要信息",
         "createFirst": "创建第一份总结",

@@ -157,6 +157,7 @@
         "searchPlaceholder": "Search summaries...",
         "deleteSuccess": "Deleted",
         "networkError": "Network connection error. Check your connection and retry.",
+        "noMore": "No more",
         "emptyTitle": "No summaries yet",
         "emptyDesc": "Generate group or personal work summaries quickly, and let AI organize key information for you.",
         "createFirst": "Create first summary",
