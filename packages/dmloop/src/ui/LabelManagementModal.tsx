@@ -40,12 +40,12 @@ export default function LabelManagementModal({
   const [localAttachedIds, setLocalAttachedIds] = useState<string[]>([]);
   const attached = new Set(localAttachedIds);
 
-  const reload = async () => {
+  const reload = async (notify = false) => {
     setLoading(true);
     try {
       const rows = await listLabels();
       setLabels(rows);
-      onChanged?.(rows);
+      if (notify) onChanged?.(rows);
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.loadFailed"));
     } finally {
@@ -74,7 +74,7 @@ export default function LabelManagementModal({
       await createLabel(trimmed, color);
       setName("");
       setColor(DEFAULT_LABEL_COLOR);
-      await reload();
+      await reload(true);
       Toast.success(t("loop.label.created"));
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.label.createFailed"));
@@ -98,7 +98,7 @@ export default function LabelManagementModal({
         color: editingColor,
       });
       setEditingId(null);
-      await reload();
+      await reload(true);
       Toast.success(t("loop.label.updated"));
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.label.updateFailed"));
@@ -113,7 +113,7 @@ export default function LabelManagementModal({
     try {
       await deleteLabel(label.id);
       if (editingId === label.id) setEditingId(null);
-      await reload();
+      await reload(true);
       Toast.success(t("loop.label.deleted"));
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.label.deleteFailed"));

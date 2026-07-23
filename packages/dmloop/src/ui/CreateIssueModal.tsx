@@ -349,7 +349,7 @@ export default function CreateIssueModal({
               style={{ flex: 1 }}
             >
               {labels.map((label) => (
-                <Select.Option key={label.id} value={label.id}>
+                <Select.Option key={label.id} value={label.id} label={label.name}>
                   <LabelChips labels={[label]} />
                 </Select.Option>
               ))}

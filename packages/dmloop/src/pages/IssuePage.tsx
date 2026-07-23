@@ -430,7 +430,7 @@ export default function IssuePage({
     </Select.Option>
   ));
   const labelOpts = labels.map((l) => (
-    <Select.Option key={l.id} value={l.id}>
+    <Select.Option key={l.id} value={l.id} label={l.name}>
       <LabelChips labels={[l]} />
     </Select.Option>
   ));
