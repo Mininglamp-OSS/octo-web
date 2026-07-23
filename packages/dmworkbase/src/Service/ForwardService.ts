@@ -51,6 +51,9 @@ export type ForwardFailureReason = "disbanded" | "send-error";
 
 export interface ForwardFailure {
     channelID: string;
+    /** 目标频道类型。与 channelID 一起构成复合键，供调用方精确匹配失败目标
+     * （同一 channelID 可能同时存在 DM 与群，仅凭 channelID 会误判）。 */
+    channelType?: number;
     /** 多 content 场景（同一 channel 多条消息）标识具体是第几条；单 content 场景省略。 */
     messageIndex?: number;
     reason: ForwardFailureReason;
@@ -201,6 +204,7 @@ export class ForwardService {
             for (let i = 0; i < plan.contents.length; i++) {
                 result.failures.push({
                     channelID: plan.channel.channelID,
+                    channelType: plan.channel.channelType,
                     messageIndex: multi ? i : undefined,
                     reason: "disbanded",
                 });
@@ -225,6 +229,7 @@ export class ForwardService {
             for (let i = 0; i < contents.length; i++) {
                 result.failures.push({
                     channelID: channel.channelID,
+                    channelType: channel.channelType,
                     messageIndex: multi ? i : undefined,
                     reason: "send-error",
                     error,
