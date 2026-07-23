@@ -384,7 +384,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     render() {
         const { visible, onCancel, mode } = this.props;
-        const { keyword, activeTab, loading, localSelected, includeArchived } = this.state;
+        const { keyword, activeTab, loading, localSelected, localSelectedMembers, includeArchived } = this.state;
         const { t } = this.context;
         const displayList = this.getDisplayList();
 
