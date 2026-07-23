@@ -2,11 +2,12 @@
 
 ## 当前状态
 
-- MR 门禁 (`e2e.yml`) 只跑 `@p0`, 不涉及视觉
-- Nightly (`e2e-nightly.yml`) `--grep-invert "@visual"`, 也跳过视觉
-- **repo 里没有 baseline PNG, 也没有任何 `@visual` case**
+- MR 门禁 (`e2e.yml`) 跑 `@p0|@visual`, 业务 fail block，visual-only fail 由后处理 allow 并提示更新 baseline
+- Nightly (`e2e-nightly.yml`) 跑 `@p[0-9]|@visual`, 不再排除视觉 case
+- repo 里已有少量独立 `@visual` case, 但还没有 baseline PNG
+- 初次 bootstrap 和后续 per-PR update 都通过 `workflow_dispatch` 手动触发
 
-只要不打 `@visual`, 一切照常. 想开视觉基线时按下面走.
+baseline PNG 合入前，PR gate 可以先暴露 visual diff 但不因 visual-only fail 阻断；nightly 跑全量用于尽早发现视觉漂移。
 
 ## 三个决策点
 
@@ -20,6 +21,8 @@
 
 **提交进 repo** (`apps/web/e2e-kit/screenshots/**/*.png`), 不走 artifact / LFS.
 
+但 `apps/web/e2e-kit/screenshots/` 仍保留在 `.gitignore`，防止开发者本地跑 `--update-snapshots` 后误提交。bootstrap/update workflow 用 `git add -f apps/web/e2e-kit/screenshots/` 显式加入 baseline PNG。
+
 理由: 视觉基线是"视觉真相的一部分", reviewer 在 PR diff 里能看到"这次 UI 改动导致 baseline 变了什么" 才有意义. artifact 藏起来就废了.
 
 代价: 仓库变大, PNG 二进制 diff 噪声. 后期真变大再引入 LFS.
@@ -28,15 +31,16 @@
 
 **bootstrap + per-PR 组合**:
 
-**Bootstrap (一次性)**: `e2e-baseline-bootstrap.yml`, `workflow_dispatch` 触发. 在 CI runner 跑 `--update-snapshots --grep "@visual"`, 生成初始 baseline commit 到 `chore/e2e-baseline-init` 分支, 开 PR 让维护者 review 后 merge. 一次搞定, 之后不用.
+**Bootstrap (一次性)**: `.github/workflows/e2e-baseline-bootstrap.yml`, `workflow_dispatch` 触发. 在 CI runner 跑 `--update-snapshots --grep "@visual"`, 再跑一次 `@visual` verify, 生成初始 baseline commit 到 `chore/e2e-baseline-init` 分支, 开 PR 让维护者 review 后 merge. 一次搞定, 之后不用.
 
-**Per-PR update**: `e2e-baseline-update.yml`, `workflow_dispatch` 带 `pr_number` 输入. 维护者在 PR 页 Actions tab 手动触发:
+**Per-PR update**: `.github/workflows/e2e-baseline-update.yml`, `workflow_dispatch` 带 `pr_number` 输入. 维护者在 Actions tab 手动触发:
 
-1. checkout 指定 PR 的 head branch
-2. `build:e2e` → `preview:e2e`
-3. `playwright test --grep "@visual" --update-snapshots`
-4. **业务失败 gate**: 检查同 pipeline 里 `@p0` 是否有 business fail, 有就拒 push (避免 baseline commit 洗白业务 fail)
-5. commit baseline diff, push 回 PR source branch (带 `[skip ci]`)
+1. checkout 指定 PR 的 head branch（仅支持同仓库分支 PR, fork PR 不回写 baseline）
+2. `build:e2e` → `playwright test --grep "@p0"`
+3. **业务失败 gate**: `@p0` 必须真执行且通过 (`tests >= EXPECTED_P0`, `skipped=0`, 无 proxy error), 有业务失败就拒 push
+4. `playwright test --grep "@visual" --update-snapshots`
+5. 再跑一次 `@visual` verify, 无 proxy error 后 commit baseline diff
+6. push 回 PR source branch (带 `[skip ci]`)
 
 reviewer 在同一 PR 看到 UI + baseline 两组 diff.
 
@@ -47,10 +51,11 @@ reviewer 在同一 PR 看到 UI + baseline 两组 diff.
 
 ## 打开视觉 case 的顺序
 
-1. 先加 `@visual` case (用 `page.screenshot()` + `expect(page).toHaveScreenshot(...)`)
-2. 加 `.github/workflows/e2e-baseline-bootstrap.yml`, 手动跑一次, review + merge baseline PR
-3. 加 `.github/workflows/e2e-baseline-update.yml`, 之后 UI 改动 PR 里维护者手动触发
-4. 打开 MR gate 的视觉判定: `e2e.yml` 的 grep 从 `"@p0"` 改成 `"@p0|@visual"`, junit 后处理已经会区分 business vs visual fail
+1. 已加少量独立 `@visual` case (例如 `@C1v`, `@C3v`), 不打 `@p0`
+2. MR gate 已跑 `@p0|@visual`；visual-only fail 不阻断，但会在日志里提示需要更新 baseline
+3. Nightly 已跑 `@p[0-9]|@visual`，不再排除视觉 case
+4. 手动触发 `.github/workflows/e2e-baseline-bootstrap.yml`, review + merge baseline PR
+5. 后续 UI 改动 PR 需要刷新视觉真相时, 手动触发 `.github/workflows/e2e-baseline-update.yml` 并传 `pr_number`
 
 case 文件里加 `@visual` 就够, junit 后处理逻辑不用改.
 
