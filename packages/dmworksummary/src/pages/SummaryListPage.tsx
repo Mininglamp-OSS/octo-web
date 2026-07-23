@@ -429,6 +429,13 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
         }
+    };
+
+    handleRegenerate = (taskId: number) => {
+        this.handleCardClick(taskId);
+        setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("summary-detail-regenerate", { detail: { taskId } }));
+        }, 300);
     };;
 
     handleCreate = () => {
@@ -576,6 +583,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 onRespond={this.handleRespond}
                                 onLeave={this.handleLeave}
                                 onRetry={this.handleRetry}
+                                onRegenerate={this.handleRegenerate}
                             />
                         ))}
                         {loadingMore && (
