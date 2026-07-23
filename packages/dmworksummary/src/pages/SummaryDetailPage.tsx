@@ -2200,17 +2200,36 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         if (!detail) return null;
         return (
-            <div className="summary-detail-failed">
-                <div className="summary-detail-failed-icon">⚠️</div>
-                <h3>{t("summary.detail.failedTitle")}</h3>
-                {detail.error_message && (
-                    <div className="summary-detail-failed-reason">
-                        {detail.error_message}
+            <div className="summary-detail-personal">
+                <div className="summary-detail-meta">
+                    <div className="summary-detail-meta-time">
+                        {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
-                )}
-                <div className="summary-detail-failed-meta">
-                    <div>{t("summary.detail.taskNo", { values: { taskNo: detail.task_no } })}</div>
-                    <div>{t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}</div>
+                    {detail.sources && detail.sources.length > 0 && (
+                        <div className="summary-detail-source-chips">
+                            {detail.sources.map((src, i) => (
+                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                    {src.source_name || src.source_id}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <hr className="summary-detail-meta-divider" />
+                <div className="summary-detail-failed">
+                    <div className="summary-detail-failed-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F54A45" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                            <line x1="12" y1="9" x2="12" y2="13" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                    </div>
+                    <h3>{t("summary.detail.failedTitle")}</h3>
+                    {detail.error_message && (
+                        <div className="summary-detail-failed-reason">
+                            {detail.error_message}
+                        </div>
+                    )}
                 </div>
             </div>
         );
