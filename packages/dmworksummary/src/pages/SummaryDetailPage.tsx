@@ -2465,7 +2465,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-content-box">
                         <SummaryEditor
                             taskId={this.state.detail?.task_id || 0}
-                            baseResultId={personalResult.result_id || 0}
+                            baseResultId={this.state.detail?.result_id || 0}
                             initialContent={personalResult.content || ""}
                             onSave={this.handleEditSave}
                             onCancel={this.handleEditCancel}
