@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { CitationItem, MemberStatus, TeamCitationItem } from "../../types/summary";
 import CitationText from "../../components/CitationText";
 import "./index.css";
@@ -40,13 +40,42 @@ interface Props {
 
 export default function SummaryMarkdownReader({ content, citations = [], teamCitations = [], members = [], hidePlainCitations = false, showOutline = true, outlineLabel }: Props) {
     const outline = useMemo(() => extractSummaryOutline(content), [content]);
-    return <div className="summary-markdown-reader">
+    const rootRef = useRef<HTMLDivElement>(null);
+    const [activeId, setActiveId] = useState(outline[0]?.id || "");
+
+    useEffect(() => {
+        setActiveId(outline[0]?.id || "");
+        const root = rootRef.current;
+        const scrollContainer = root?.closest(".summary-detail-content-scroll");
+        if (!root || !scrollContainer || outline.length === 0) return;
+        const updateActive = () => {
+            const containerTop = scrollContainer.getBoundingClientRect().top;
+            const activationLine = containerTop + 120;
+            let current = outline[0].id;
+            for (const item of outline) {
+                const heading = root.querySelector<HTMLElement>(`#${CSS.escape(item.id)}`);
+                if (heading && heading.getBoundingClientRect().top <= activationLine) current = item.id;
+            }
+            setActiveId(current);
+        };
+        scrollContainer.addEventListener("scroll", updateActive, { passive: true });
+        updateActive();
+        return () => scrollContainer.removeEventListener("scroll", updateActive);
+    }, [outline]);
+
+    const goToHeading = (event: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+        event.preventDefault();
+        rootRef.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        setActiveId(id);
+    };
+
+    return <div className="summary-markdown-reader" ref={rootRef}>
         <article className="summary-markdown-reader__content">
             <CitationText content={content} citations={citations} teamCitations={teamCitations} members={members} hidePlainCitations={hidePlainCitations} headingIds={outline.map(item => item.id)} />
         </article>
         {showOutline && outline.length > 0 ? <nav className="summary-markdown-reader__outline" aria-label={outlineLabel}>
             <div className="summary-markdown-reader__outline-title">{outlineLabel}</div>
-            {outline.map((item, index) => <a key={item.id} className={`summary-markdown-reader__outline-link summary-markdown-reader__outline-link--h${item.level}`} href={`#${item.id}`}>
+            {outline.map((item, index) => <a key={item.id} className={`summary-markdown-reader__outline-link summary-markdown-reader__outline-link--h${item.level}`} href={`#${item.id}`} aria-current={activeId === item.id ? "location" : undefined} onClick={(event) => goToHeading(event, item.id)}>
                 <span className="summary-markdown-reader__outline-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
                 <span>{item.text}</span>
             </a>)}
