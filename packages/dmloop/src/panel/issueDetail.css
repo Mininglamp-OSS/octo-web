@@ -514,12 +514,12 @@
   flex-direction: row;
   align-items: flex-start;
   justify-content: flex-start;
-  gap: 10px;
+  gap: var(--wk-sp-2, 8px);
 }
 .loop-idp__prop-k {
   flex: 0 0 72px;
   width: 72px;
-  padding-top: 4px;
+  padding-top: var(--wk-sp-1, 4px);
   font-size: 12px;
   color: var(--semi-color-text-2, #8a8f99);
   white-space: nowrap;
@@ -591,7 +591,7 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  padding: 2px 0;
+  padding: var(--wk-sp-0-5, 2px) 0;
   text-align: left;
 }
 
@@ -609,7 +609,7 @@
 }
 
 .loop-idp__prop-labels {
-  padding-top: 2px;
+  padding-top: var(--wk-sp-0-5, 2px);
 }
 
 /* 执行日志：折叠开关 + run 列表 */

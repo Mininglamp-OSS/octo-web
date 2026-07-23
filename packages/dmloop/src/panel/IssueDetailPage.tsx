@@ -1337,7 +1337,7 @@ export default function IssueDetailPage({ issueId, onChanged, onClose, snapshot,
         }}
       />}
 
-      {/* 编辑属性弹窗：标签 / 父回路 / 开始/截止日期 / 阶段（侧栏保持只读，编辑走 ⋯ → 此弹窗） */}
+      {/* 编辑属性弹窗：父回路 / 开始/截止日期 / 阶段（标签直接在属性栏点击管理） */}
       {!readOnly && <Modal
         className="loop-modal"
         title={t("loop.menu.editProps")}
@@ -1347,10 +1347,6 @@ export default function IssueDetailPage({ issueId, onChanged, onClose, snapshot,
         width={460}
       >
         <div className="loop-fields">
-          <div className="loop-fields__row">
-            <div className="loop-fields__label">{t("loop.field.labels")}</div>
-            <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
-          </div>
           <div className="loop-fields__row">
             <div className="loop-fields__label">{t("loop.field.parent")}</div>
             <Select
