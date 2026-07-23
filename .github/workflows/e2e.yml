@@ -89,7 +89,9 @@ jobs:
           TOTAL_FAIL=$(echo "$FAILED_NAMES" | grep -c . || true)
           # visual vs business split 依赖 playwright junit reporter 把 test title (含 @tag) 写进 <testcase name=...>.
           # 若未来 reporter 改成不带 tag, 此 grep 将退化 (全部误判 business), 需同步改判定.
-          VISUAL_FAIL=$(echo "$FAILED_NAMES" | grep -c "@visual" || true)
+          # VISUAL_FAIL 只算 "带 @visual 且 不带 @p0" 的 fail — @p0 case 即使也带 @visual,
+          # 一挂就必须 block (@p0 是硬阻断契约). 交叉 tag 走 BUSINESS 分支.
+          VISUAL_FAIL=$(echo "$FAILED_NAMES" | grep "@visual" | grep -vc "@p0" || true)
           BUSINESS_FAIL=$((TOTAL_FAIL - VISUAL_FAIL))
           TOTAL_TESTS=$(grep -oE 'tests="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
           echo ""
@@ -106,17 +108,32 @@ jobs:
           fi
           echo "═════════════════════════════════════════════════════════════"
 
+          # 判定顺序 (fail-closed, PW_EXIT 检查在 visual allow 之前避免掩盖 crash):
+          #  1. tests=0 → webServer / playwright 挂了根本没跑, block
+          #  2. tests < EXPECTED_P0 → 有 case 静默掉了 @p0 tag / grep 漂了, block
+          #  3. 有业务 fail (含 @p0+@visual 交叉 case) → block
+          #  4. PW_EXIT!=0 但 junit 无 business fail → playwright 本身 crash/OOM/timeout, block
+          #  5. 仅视觉 fail (无 @p0 交叉) 且 playwright 干净退出 → allow
+          #  6. 全绿 → success
+          EXPECTED_P0=29
           if [[ "$TOTAL_TESTS" -eq 0 ]]; then
             echo "❌ tests=0 (playwright 没跑起 test, 通常是 preview server timeout), block PR"
+            exit 1
+          elif [[ "$TOTAL_TESTS" -lt "$EXPECTED_P0" ]]; then
+            echo "❌ tests=$TOTAL_TESTS < EXPECTED_P0=$EXPECTED_P0 (有 case 掉了 @p0 tag 或 grep 漂了), block PR"
+            echo "   若确认减 case, 请同步下调 EXPECTED_P0."
             exit 1
           elif [[ "$BUSINESS_FAIL" -gt 0 ]]; then
             echo "❌ 有 $BUSINESS_FAIL 个业务 case fail → block PR"
             exit 1
-          elif [[ "$VISUAL_FAIL" -gt 0 ]]; then
-            echo "⚠️  仅 $VISUAL_FAIL 个视觉 case fail → allow PR (需手动更新 baseline)"
+          elif [[ "$PW_EXIT" -ne 0 && "$VISUAL_FAIL" -eq 0 ]]; then
+            echo "❌ playwright exit=$PW_EXIT 但 junit 无 fail 条目 (crash/OOM/timeout), block PR"
+            exit 1
+          elif [[ "$VISUAL_FAIL" -gt 0 && "$PW_EXIT" -ne 0 ]]; then
+            echo "⚠️  仅 $VISUAL_FAIL 个视觉 case fail, playwright 非 0 退出符合预期 → allow PR (需手动更新 baseline)"
             exit 0
           elif [[ "$PW_EXIT" -ne 0 ]]; then
-            echo "❌ playwright exit=$PW_EXIT 但 junit 无 fail 条目, block PR"
+            echo "❌ playwright exit=$PW_EXIT 但无 visual fail 也无 business fail (异常), block PR"
             exit 1
           else
             echo "✅ all pass"
