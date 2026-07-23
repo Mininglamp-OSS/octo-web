@@ -1,17 +1,16 @@
+import { Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
     Button,
     Toast,
     Typography,
     Tag,
-    Avatar,
+    Tooltip,
     Modal,
-    Dropdown,
-    SplitButtonGroup,
 } from "@douyinfe/semi-ui";
-import { IconPlus, IconClock, IconUserGroup, IconChevronDown } from "@douyinfe/semi-icons";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
+import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
@@ -113,6 +112,7 @@ interface SummaryCreatePageState {
     editingTemplateLabel: string;
     editingTemplateDescription: string;
     savingTemplate: boolean;
+    visibleChipCount: number;
 }
 
 export default class SummaryCreatePage extends Component<SummaryCreatePageProps, SummaryCreatePageState> {
@@ -153,6 +153,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         editingTemplateLabel: "",
         editingTemplateDescription: "",
         savingTemplate: false,
+        visibleChipCount: 999,
     };
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
@@ -167,8 +168,92 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     // 拉历史的竞态守卫：每次新的 hydrate 自增，异步返回时比对，丢弃过期请求。
     private historyLoadToken = 0;
 
+    private chipsContainerRef = createRef<HTMLDivElement>();
+    private selectChatRef = createRef<HTMLDivElement>();
+    private chipResizeObserver: ResizeObserver | null = null;
+
+    private updateSelectChatWidth = () => {
+        const selectChat = this.selectChatRef.current;
+        if (!selectChat) return;
+        const actions = selectChat.parentElement;
+        if (!actions) return;
+        const startBtn = actions.querySelector('.summary-workbench-start-btn');
+        const actionsWidth = actions.clientWidth;
+        const btnWidth = startBtn ? (startBtn as HTMLElement).offsetWidth : 0;
+        const gap = 24;
+        const width = actionsWidth - btnWidth - gap;
+        selectChat.style.width = width + 'px';
+        selectChat.style.flex = 'none';
+        selectChat.style.maxWidth = width + 'px';
+    };
+
+    private updateVisibleChipCount = () => {
+        this.updateSelectChatWidth();
+        const container = this.chipsContainerRef.current;
+        if (!container) return;
+        const chips = container.querySelectorAll('.summary-workbench-chat-chip');
+        if (chips.length === 0) return;
+
+        // 临时显示所有芯片来测量真实宽度
+        chips.forEach(c => c.classList.remove('summary-workbench-chat-chip--hidden'));
+
+        const containerWidth = container.clientWidth;
+        // 预留 overflow 指示器空间（约 50px）
+        const overflowReserve = 50;
+        const maxWidth = containerWidth - overflowReserve;
+
+        let visible = 0;
+        let totalWidth = 0;
+        for (let i = 0; i < chips.length; i++) {
+            const chipWidth = chips[i].getBoundingClientRect().width + 8;
+            if (totalWidth + chipWidth > maxWidth) break;
+            totalWidth += chipWidth;
+            visible++;
+        }
+
+        // 没有溢出时不预留空间
+        if (visible >= chips.length) {
+            // 全部能放下，不隐藏
+            this.setState({ visibleChipCount: 999 });
+            return;
+        }
+
+        // 有溢出：检查加上 overflow 指示器后能否多放一个
+        const overflowWidth = 37; // "...+N" 约 37px
+        // 重新计算，不预留 overflow 空间，看能放多少
+        let visible2 = 0;
+        let totalWidth2 = 0;
+        for (let i = 0; i < chips.length; i++) {
+            const chipWidth = chips[i].getBoundingClientRect().width + 8;
+            const remaining = containerWidth - overflowWidth - totalWidth2;
+            if (chipWidth > remaining) break;
+            totalWidth2 += chipWidth;
+            visible2++;
+        }
+
+        // 先恢复隐藏状态
+        chips.forEach((c, i) => {
+            if (i >= visible2) {
+                c.classList.add('summary-workbench-chat-chip--hidden');
+            }
+        });
+
+        this.setState({ visibleChipCount: visible2 });
+    };
+
     componentDidMount() {
         void this.loadTemplates();
+        // select-chat 宽度计算 + 芯片溢出检测
+        this.updateSelectChatWidth();
+        this.updateVisibleChipCount();
+        const observeEl = this.selectChatRef.current?.parentElement;
+        if (observeEl) {
+            this.chipResizeObserver = new ResizeObserver(() => {
+                this.updateSelectChatWidth();
+                this.updateVisibleChipCount();
+            });
+            this.chipResizeObserver.observe(observeEl);
+        }
         // 从详情页「继续优化」打开时:自动切 agent 模式 + 预填引用。
         // 见 CHAT-REFERENCE-BASED-DESIGN-v1 决策 1B(详情页显眼按钮入口)。
         if (this.props.derivedFromTask) {
@@ -193,6 +278,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 task_id: this.props.derivedFromTask.task_id,
                 title: this.props.derivedFromTask.title ?? '',
             });
+        }
+    }
+
+    componentWillUnmount() {
+        this.chipResizeObserver?.disconnect();
+    }
+
+    componentDidUpdate(prevProps: SummaryCreatePageProps, prevState: SummaryCreatePageState) {
+        if (prevState.selectedChats !== this.state.selectedChats) {
+            this.updateSelectChatWidth();
+            this.setState({ visibleChipCount: 999 }, () => this.updateVisibleChipCount());
         }
     }
 
@@ -393,6 +489,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     autoResizeTextarea = () => {
         const el = this.textareaRef.current;
         if (!el) return;
+        // 整页模式：input-wrap 有固定 420px 高度，textarea height:100% 填满即可。
+        // 面板模式：input-wrap 无固定高度，需要按内容自动撑开。
+        if (!this.props.embedded) return;
         el.style.height = "auto";
         el.style.height = `${el.scrollHeight}px`;
     };
@@ -516,7 +615,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 this.props.onSubmit?.(result.task_id);
             } else {
                 WKApp.routeRight.popToRoot();
-                WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+                WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} emitSelection />);
             }
             this.props.onCreated?.();
         } catch (err: any) {
@@ -626,14 +725,21 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     handleOpenMemberSelector = () => {
         const { selectedChats, selectedMembers } = this.state;
+        console.log('[MemberSelector] selectedChats:', JSON.stringify(selectedChats));
+        console.log('[MemberSelector] selectedMembers:', JSON.stringify(selectedMembers));
         // 从已选聊天推断频道
         const chat = selectedChats[0];
-        if (!chat) return;
+        if (!chat) {
+            console.log('[MemberSelector] no chat selected, returning early');
+            return;
+        }
         // 根据 chat_id 推断 channelType：含 "____" 是子区(type=5)，否则群聊(type=2)
         const channelType = chat.chat_id.includes("____") ? 5 : 2;
         const channel = new Channel(chat.chat_id, channelType);
+        console.log('[MemberSelector] channel:', JSON.stringify({ channelID: channel.channelID, channelType: channel.channelType }));
         const excluded = selectedMembers.map((m) => m.user_id);
         let selectedItems: any[] = [];
+        console.log('[MemberSelector] calling WKApp.routeRight.push...');
         WKApp.routeRight.push(
             <RoutePage
                 title={t("summary.create.selectMembers")}
@@ -853,7 +959,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 this.props.onSubmit?.(result.task_id);
             } else {
                 WKApp.routeRight.popToRoot();
-                WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+                WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} emitSelection />);
             }
             this.props.onCreated?.();
             return true;
@@ -912,26 +1018,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             <div className={`summary-workbench${this.props.embedded ? " summary-workbench--panel" : ""}`}>
                 {/* Header */}
                 <div className="summary-workbench-header">
-                    <div className="summary-workbench-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 8V4H8" />
-                            <rect width="16" height="12" x="4" y="8" rx="2" />
-                            <path d="M2 14h2" />
-                            <path d="M20 14h2" />
-                            <path d="M15 13v2" />
-                            <path d="M9 13v2" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div className="summary-workbench-title">{translate("summary.create.title")}</div>
-                        <div className="summary-workbench-desc">
-                            {translate("summary.create.desc")}
-                        </div>
-                    </div>
+                    <span className="summary-workbench-header-emoji">🚀</span>
+                    <span className="summary-workbench-title">{translate("summary.create.title")}</span>
                 </div>
 
-                {/* Main input */}
-                <div className="summary-workbench-input-area">
+                {/* Content card */}
+                <div className="summary-workbench-card">
                     {mode === 'agent' ? (
                         // Agent 交互式问答：面板自带输入框，隐藏顶部大 textarea + 4 模板卡片。
                         // SidePanel 打开时: 加 --with-side class → flex 左右分栏
@@ -998,7 +1090,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         </div>
                     ) : (
                         <>
-                    <div style={{ position: "relative" }}>
+                    <div className="summary-workbench-input-wrap">
                         <textarea
                             ref={this.textareaRef}
                             className="summary-workbench-textarea"
@@ -1011,29 +1103,26 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 this.autoResizeTextarea();
                             }}
                             onFocus={this.handleInputFocus}
-                            placeholder={mode === 'agent'
-                                ? translate("summary.create.agentTopicPlaceholder")
-                                : translate("summary.create.topicPlaceholder")}
+                            placeholder={translate("summary.create.topicPlaceholder")}
                             rows={3}
                             maxLength={appliedTemplateLabel ? undefined : SUMMARY_INPUT_MAX_LENGTH}
                         />
-                        <VoiceInputButton
-                            inputRef={this.textareaRef}
-                            onTranscribed={this.handleVoiceTranscribed}
-                            getCurrentText={() => this.state.topic}
-                            showModeMenu
-                            size="sm"
-                            className="wk-vib--textarea-corner"
-                        />
-                    </div>
-                    <div className="summary-workbench-char-count">
-                        {topic.length}/{SUMMARY_INPUT_MAX_LENGTH}
-                    </div>
-                    {topic.length >= SUMMARY_INPUT_MAX_LENGTH && (
-                        <div style={{ color: "var(--semi-color-warning)", fontSize: 12, marginTop: 4, padding: "0 16px 8px" }}>
-                            {translate("summary.common.charLimitReached", { values: { count: SUMMARY_INPUT_MAX_LENGTH } })}
+                        <div className="summary-workbench-char-count">
+                            <span>{topic.length}/{SUMMARY_INPUT_MAX_LENGTH}</span>
+                            <VoiceInputButton
+                                inputRef={this.textareaRef}
+                                onTranscribed={this.handleVoiceTranscribed}
+                                getCurrentText={() => this.state.topic}
+                                showModeMenu
+                                size="sm"
+                            />
                         </div>
-                    )}
+                        {topic.length >= SUMMARY_INPUT_MAX_LENGTH && (
+                            <div className="summary-workbench-char-limit-warn">
+                                {translate("summary.common.charLimitReached", { values: { count: SUMMARY_INPUT_MAX_LENGTH } })}
+                            </div>
+                        )}
+                    </div>
                     {topic.trim() && appliedTemplateLabel && (
                         <div className="summary-template-applied-bar">
                             <span className="summary-template-applied-text">
@@ -1049,12 +1138,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         </div>
                     )}
 
-                    {/* Templates (nested inside the input panel, like the modal) */}
+                    {/* Templates */}
                     {!topic.trim() && (
-                        <>
-                            <div className="summary-template-section-header summary-workbench-templates-heading">
-                                <div className="summary-workbench-templates-label">{translate("summary.create.templatesTitle")}</div>
-                            </div>
+                        <div className="summary-workbench-templates-section">
+                            <div className="summary-workbench-templates-label">{translate("summary.create.templatesTitle")}</div>
                             <div className="summary-workbench-templates">
                                 {builtinTemplates.map((tpl) => (
                                     <TemplateCard
@@ -1074,7 +1161,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <Button
                                         theme="borderless"
                                         size="small"
-                                        icon={<IconPlus />}
+                                        icon={<Plus size={14} />}
                                         disabled={!canCreateCustomTemplate}
                                         onClick={this.handleCustomTemplateCreate}
                                     >
@@ -1116,140 +1203,95 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     </button>
                                 )}
                             </div>
-                        </>
+                        </div>
                     )}
+
+                    {/* Divider */}
+                    <div className="summary-workbench-divider" />
                         </>
                     )}
 
                     {/* Action bar */}
                     <div className="summary-workbench-actions">
-                        <div className="summary-workbench-actions-left">
-                            {mode !== 'agent' && (
-                                <>
-                                {/* 选择聊天 */}
-                                <Button
-                                    theme="borderless"
-                                    icon={<IconPlus />}
-                                    size="small"
+                        <div className="summary-workbench-select-chat" ref={this.selectChatRef}>
+                            <div className="summary-workbench-select-chat-header">
+                                <span className="summary-workbench-select-chat-title">
+                                    {translate("summary.create.selectChat")}
+                                    <i className="summary-workbench-required-asterisk">*</i>
+                                </span>
+                                <span className="summary-workbench-select-chat-hint">
+                                    （{translate("summary.create.archivedNotice")}）
+                                </span>
+                            </div>
+                            {selectedChats.length > 0 ? (
+                                <div className="summary-workbench-chat-row">
+                                    <div className="summary-workbench-chat-chips" ref={this.chipsContainerRef}>
+                                        {selectedChats.map((c, idx) => (
+                                            <div
+                                                key={c.chat_id}
+                                                className={`summary-workbench-chat-chip${idx >= this.state.visibleChipCount ? " summary-workbench-chat-chip--hidden" : ""}`}
+                                            >
+                                                <WKAvatar
+                                                    channel={new Channel(c.chat_id, c.chat_type === 'thread' ? 5 : c.chat_type === 'group' ? 2 : 1)}
+                                                    style={{ width: 16, height: 16, borderRadius: "50%" }}
+                                                />
+                                                <span className="summary-workbench-chat-chip-name">{c.name}</span>
+                                                <button
+                                                    type="button"
+                                                    className="summary-workbench-chat-chip-close"
+                                                    onClick={() => this.setState({
+                                                        selectedChats: selectedChats.filter((x) => x.chat_id !== c.chat_id)
+                                                    })}
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {selectedChats.length > this.state.visibleChipCount && (
+                                            <Tooltip
+                                                content={selectedChats.map((c) => c.name).join("、")}
+                                                position="top"
+                                            >
+                                                <span className="summary-workbench-chat-chip-overflow">
+                                                    ...+{selectedChats.length - this.state.visibleChipCount}
+                                                </span>
+                                            </Tooltip>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="summary-workbench-add-chat"
+                                        onClick={() => this.setState({ showChatSelector: true })}
+                                    >
+                                        <Plus size={16} />
+                                        <span>{translate("summary.common.add")}</span>
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="summary-workbench-add-chat"
                                     onClick={() => this.setState({ showChatSelector: true })}
-                                    style={{ color: selectedChats.length > 0 ? "var(--semi-color-primary)" : undefined }}
                                 >
-                                    {selectedChats.length > 0
-                                        ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
-                                        : translate("summary.create.selectChat")}
-                                </Button>
-                                {/* 选择参与者：多人协作入口。打开 MemberSelectorModal 选 participants，
-                                    与「选择聊天 / 定时」并列在创建页操作栏，确保多人入口在 UI 上可达。 */}
-                                <Button
-                                    theme="borderless"
-                                    icon={<IconUserGroup />}
-                                    size="small"
-                                    onClick={this.handleOpenMemberSelector}
-                                    style={{ color: selectedMembers.length > 0 ? "var(--semi-color-primary)" : undefined }}
-                                >
-                                    {selectedMembers.length > 0
-                                        ? translate("summary.create.selectedMembers", { values: { count: selectedMembers.length } })
-                                        : translate("summary.create.selectMembers")}
-                                </Button>
-                                <Button
-                                    theme="borderless"
-                                    icon={<IconClock />}
-                                    size="small"
-                                    onClick={() => this.setState({ showScheduleConfig: true })}
-                                    style={{ color: scheduleConfig ? "var(--semi-color-primary)" : undefined }}
-                                >
-                                    {scheduleConfig
-                                        ? this.getScheduleLabel(scheduleConfig)
-                                        : translate("summary.schedule.config.title")}
-                                </Button>
-                                </>
+                                    <Plus size={16} />
+                                    <span>{translate("summary.common.add")}</span>
+                                </button>
                             )}
-                            <span className="summary-workbench-archived-notice" style={{ marginLeft: 8, fontSize: 12, color: "var(--semi-color-text-2)" }}>
-                                {translate("summary.create.archivedNotice")}
-                            </span>
                         </div>
-
-                        <SplitButtonGroup className="chat-summary-modal-split">
-                            {/* agent 模式下输入走面板底部输入框，隐藏主「开始」按钮；normal 保持不变。 */}
-                            {mode !== 'agent' && (
-                                <Button
-                                    theme="solid"
-                                    size="default"
-                                    loading={submitting || agentSubmitting}
-                                    disabled={!this.canSubmit() || submitting || agentSubmitting}
-                                    onClick={this.handlePrimaryClick}
-                                >
-                                    {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
-                                </Button>
-                            )}
-                            <Dropdown
-                                trigger="click"
-                                position="bottomRight"
-                                render={(
-                                    <Dropdown.Menu>
-                                        <Dropdown.Item
-                                            active={mode !== 'agent'}
-                                            onClick={() => this.handleSelectMode('normal')}
-                                        >
-                                            {translate("summary.create.start")}
-                                        </Dropdown.Item>
-                                        <Dropdown.Item
-                                            active={mode === 'agent'}
-                                            onClick={() => this.handleSelectMode('agent')}
-                                        >
-                                            {translate("summary.create.agentStart")}
-                                        </Dropdown.Item>
-                                    </Dropdown.Menu>
-                                )}
+                        {mode !== 'agent' && (
+                            <Button
+                                theme="solid"
+                                className="summary-workbench-start-btn"
+                                loading={submitting}
+                                disabled={!this.canSubmit() || submitting}
+                                onClick={this.handlePrimaryClick}
                             >
-                                <Button
-                                    theme="solid"
-                                    size="default"
-                                    disabled={submitting || agentSubmitting}
-                                    icon={<IconChevronDown />}
-                                    aria-label={translate("summary.create.switchMode")}
-                                />
-                            </Dropdown>
-                        </SplitButtonGroup>
+                                <Sparkles size={16} />
+                                {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                            </Button>
+                        )}
                     </div>
-
-                    {/* Selected chats stay inside the same workbench card as the selector. */}
-                    {selectedChats.length > 0 && (
-                        <div className="summary-workbench-selected-chats">
-                            {selectedChats.map((c) => (
-                                <Tag
-                                    key={c.chat_id}
-                                    closable
-                                    onClose={() => this.setState({
-                                        selectedChats: selectedChats.filter((x) => x.chat_id !== c.chat_id)
-                                    })}
-                                    style={{ marginRight: 6, marginBottom: 4 }}
-                                >
-                                    {c.name}
-                                </Tag>
-                            ))}
-                        </div>
-                    )}
                 </div>
-
-                {/* Selected members summary */}
-                {selectedMembers.length > 0 && (
-                    <div className="summary-workbench-selected-members">
-                        {selectedMembers.map((m) => (
-                            <Avatar
-                                key={m.user_id}
-                                size="extra-small"
-                                style={{ marginRight: 4, background: "var(--semi-color-primary)", cursor: "pointer" }}
-                                title={m.name}
-                                onClick={() => this.setState({
-                                    selectedMembers: selectedMembers.filter((x) => x.user_id !== m.user_id)
-                                })}
-                            >
-                                {m.name.slice(0, 1)}
-                            </Avatar>
-                        ))}
-                    </div>
-                )}
 
                 {error && (
                     <Text type="danger" style={{ display: "block", marginTop: 8 }}>

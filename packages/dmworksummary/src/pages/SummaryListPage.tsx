@@ -1,16 +1,15 @@
 import React, { Component } from "react";
 import {
     Button,
-    Input,
-    Select,
+    Dropdown,
     Spin,
     Pagination,
     Toast,
     Banner,
     Tooltip,
 } from "@douyinfe/semi-ui";
-import { IconSearch, IconPlus, IconRefresh } from "@douyinfe/semi-icons";
-import { X } from "lucide-react";
+import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
+import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp } from "@octo/base";
 import * as api from "../api/summaryApi";
 import type {
@@ -438,34 +437,37 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 </div>
 
                 <div className="summary-list-toolbar">
-                    <Input
-                        className="summary-list-search"
-                        prefix={<IconSearch />}
-                        placeholder={translate("summary.list.searchPlaceholder")}
-                        value={keyword}
-                        onChange={this.handleKeywordChange}
-                        showClear
-                    />
-                    <div className="summary-list-actions">
-                        <Select
-                            className="summary-list-status-filter"
-                            key={locale}
-                            value={statusFilter ?? ""}
-                            onChange={this.handleStatusChange}
-                        >
-                            {statusOptions.map((opt) => (
-                                <Select.Option key={String(opt.value)} value={opt.value}>
-                                    {opt.label}
-                                </Select.Option>
-                            ))}
-                        </Select>
-                        <Button
-                            className="summary-list-refresh"
-                            icon={<IconRefresh />}
-                            theme="borderless"
-                            onClick={() => this.loadData()}
+                    <div className="summary-list-search-wrap">
+                        <IconSearch className="summary-list-search-icon" />
+                        <input
+                            className="summary-list-search-input"
+                            placeholder={translate("summary.list.searchPlaceholder")}
+                            value={keyword}
+                            onChange={(e) => this.handleKeywordChange(e.target.value)}
                         />
                     </div>
+                    <Dropdown
+                        trigger="click"
+                        position="bottomLeft"
+                        render={
+                            <Dropdown.Menu>
+                                {statusOptions.map((opt) => (
+                                    <Dropdown.Item
+                                        key={String(opt.value)}
+                                        active={statusFilter === opt.value}
+                                        onClick={() => this.handleStatusChange(opt.value)}
+                                    >
+                                        {opt.label}
+                                    </Dropdown.Item>
+                                ))}
+                            </Dropdown.Menu>
+                        }
+                    >
+                        <div className="summary-list-status-trigger">
+                            <span>{statusOptions.find((o) => o.value === (statusFilter ?? ""))?.label ?? statusOptions[0]?.label}</span>
+                            <ChevronDown size={14} />
+                        </div>
+                    </Dropdown>
                 </div>
 
                 {error && (
