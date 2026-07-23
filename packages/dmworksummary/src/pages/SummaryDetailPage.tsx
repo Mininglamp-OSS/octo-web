@@ -3756,17 +3756,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </button>
                     </div>
                     <div className="summary-regenerate-content">
-                        <textarea
-                            ref={this.regenerateTopicRef}
-                            className="summary-regenerate-textarea"
-                            rows={3}
-                            maxLength={1000}
-                            placeholder="请输入"
-                            value={this.state.regenerateTopic}
-                            onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
-                        />
-                        <div className="summary-regenerate-char-count">
-                            {this.state.regenerateTopic.length}/1000
+                        <div className="summary-regenerate-textarea-wrap">
+                            <textarea
+                                ref={this.regenerateTopicRef}
+                                className="summary-regenerate-textarea"
+                                rows={3}
+                                maxLength={1000}
+                                placeholder="请输入"
+                                value={this.state.regenerateTopic}
+                                onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
+                            />
+                            <span className="summary-regenerate-char-count">
+                                {this.state.regenerateTopic.length}/1000
+                            </span>
                         </div>
                     </div>
                     <div className="summary-confirm-footer">

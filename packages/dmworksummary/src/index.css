@@ -622,6 +622,11 @@
     position: relative;
 }
 
+.summary-regenerate-textarea-wrap {
+    position: relative;
+    width: 100%;
+}
+
 .summary-regenerate-textarea {
     width: 100%;
     height: 75px;
