@@ -1,4 +1,4 @@
-import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 
 import WKApp from "../../App";
 import {
@@ -14,12 +14,15 @@ import {
   updateThread as updateThreadApi,
 } from "../../Service/ChannelSettingService";
 import { EndpointID } from "../../Service/Const";
-import { ChannelField } from "../../Service/DataSource/DataSource";
 import {
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
   syncCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
+import {
+  findCurrentImConversation,
+  removeCurrentImConversation,
+} from "../../im-runtime/currentConversationRuntime";
 
 export interface ChannelSettingActionRuntime {
   addSubscribers(channel: Channel, uids: string[]): Promise<void>;
@@ -44,7 +47,7 @@ export interface ChannelSettingActionRuntime {
   transferOwner(channel: Channel, uid: string): Promise<void>;
   updateChannelField(
     channel: Channel,
-    field: ChannelField,
+    field: string,
     value: string
   ): Promise<void>;
   updateSubscriberAttr(
@@ -87,7 +90,7 @@ function defaultRuntime(): ChannelSettingActionRuntime {
       return fetchCurrentImChannelInfo(channel);
     },
     findConversation(channel) {
-      return WKSDK.shared().conversationManager.findConversation(channel);
+      return findCurrentImConversation(channel);
     },
     getLoginUid() {
       return WKApp.loginInfo.uid;
@@ -102,7 +105,7 @@ function defaultRuntime(): ChannelSettingActionRuntime {
       return updateChannelSetting({ mute: mute ? 1 : 0 }, channel);
     },
     removeLocalConversationAndCloseIfOpen(channel) {
-      WKSDK.shared().conversationManager.removeConversation(channel);
+      removeCurrentImConversation(channel);
       const isOpen = WKApp.shared.openChannel?.isEqual(channel);
       if (isOpen) {
         WKApp.shared.openChannel = undefined;
@@ -201,7 +204,7 @@ export async function removeChannelSettingSubscribers(params: {
 
 export async function updateChannelSettingField(params: {
   channel: Channel;
-  field: ChannelField;
+  field: string;
   value: string;
   runtime?: ChannelSettingActionRuntime;
 }) {

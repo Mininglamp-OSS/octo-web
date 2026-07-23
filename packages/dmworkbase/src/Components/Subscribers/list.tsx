@@ -5,7 +5,13 @@ import React from "react";
 import { IconSearchStroked } from "@douyinfe/semi-icons";
 import "./list.css";
 import WKApp from "../../App";
-import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson, Subscriber } from "wukongimjssdk";
+import {
+  Channel,
+  ChannelInfo,
+  ChannelInfoListener,
+  ChannelTypePerson,
+  Subscriber,
+} from "wukongimjssdk";
 import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import BotDetailModal from "../BotDetailModal";
@@ -19,10 +25,10 @@ import { OnlineStatusBadge } from "../ConversationList";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import { I18nContext } from "../../i18n";
 import {
-  addImChannelInfoListener,
-  fetchImChannelInfo,
-  getImChannelInfo,
-} from "../../im-runtime/channelRuntime";
+  addCurrentImChannelInfoListener,
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime";
 
 export interface SubscriberListProps {
   channel: Channel;
@@ -70,8 +76,7 @@ export class SubscriberList extends Component<
         this.setState({});
       }
     };
-    this.unsubscribeChannelInfoListener = addImChannelInfoListener(
-      WKSDK.shared(),
+    this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(
       this.channelInfoListener
     );
   }
@@ -83,8 +88,7 @@ export class SubscriberList extends Component<
   }
 
   needShowOnlineStatus(uid: string): boolean {
-    const channelInfo = getImChannelInfo(
-      WKSDK.shared(),
+    const channelInfo = getCurrentImChannelInfo(
       new Channel(uid, ChannelTypePerson)
     );
     if (!channelInfo) return false;
@@ -94,8 +98,7 @@ export class SubscriberList extends Component<
   }
 
   getOnlineTip(uid: string): string | undefined {
-    const channelInfo = getImChannelInfo(
-      WKSDK.shared(),
+    const channelInfo = getCurrentImChannelInfo(
       new Channel(uid, ChannelTypePerson)
     );
     if (!channelInfo || channelInfo.online) return undefined;
@@ -148,13 +151,11 @@ export class SubscriberList extends Component<
   // 获取显示名称
   getShowName = (subscriber: Subscriber) => {
     // 优先显示个人备注
-    const channelInfo = getImChannelInfo(
-      WKSDK.shared(),
+    const channelInfo = getCurrentImChannelInfo(
       new Channel(subscriber.uid, ChannelTypePerson)
     );
     if (
-      channelInfo &&
-      channelInfo.orgData.remark &&
+      channelInfo?.orgData?.remark &&
       channelInfo.orgData.remark.trim() !== ""
     ) {
       return channelInfo.orgData.remark;
@@ -232,8 +233,8 @@ export class SubscriberList extends Component<
       if (this.prefetchedUids.has(item.uid)) continue;
       this.prefetchedUids.add(item.uid);
       const ch = new Channel(item.uid, ChannelTypePerson);
-      if (!getImChannelInfo(WKSDK.shared(), ch)) {
-        void fetchImChannelInfo(WKSDK.shared(), ch);
+      if (!getCurrentImChannelInfo(ch)) {
+        void fetchCurrentImChannelInfo(ch);
       }
     }
   };

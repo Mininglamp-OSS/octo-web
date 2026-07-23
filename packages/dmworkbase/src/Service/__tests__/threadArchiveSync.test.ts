@@ -19,6 +19,15 @@ vi.mock("wukongimjssdk", () => {
   }
   return {
     Channel,
+    default: {
+      shared: () => ({
+        channelManager: {
+          getChannelInfo: hoisted.getChannelInfo,
+          setChannleInfoForCache: hoisted.setChannleInfoForCache,
+          notifyListeners: hoisted.notifyListeners,
+        },
+      }),
+    },
     WKSDK: {
       shared: () => ({
         channelManager: {

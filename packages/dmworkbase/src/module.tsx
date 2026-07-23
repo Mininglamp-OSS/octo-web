@@ -1,7 +1,6 @@
 import {
   Channel,
   ChannelTypePerson,
-  WKSDK,
   Message,
   MessageContentType,
   ConversationAction,
@@ -124,17 +123,32 @@ import { SummaryCardCell } from "./Messages/SummaryCard";
 import { parseThreadChannelId } from "./Service/Thread";
 import { canShowRevokeMenu } from "./Service/revokePermission";
 import {
-  addImChannelInfoListener,
-  deleteImChannelInfo,
-  fetchImChannelInfo,
-  getImChannelInfo,
-  getImChannelSubscriberOfMe,
-  getImChannelSubscribers,
-  notifyImChannelInfoListeners,
-  notifyImSubscriberChangeListeners,
-  setImChannelSubscribersCache,
-  syncImChannelSubscribers,
-} from "./im-runtime/channelRuntime";
+  addCurrentImChannelInfoListener,
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+  getCurrentImChannelSubscriberOfMe,
+  getCurrentImChannelSubscribers,
+  notifyCurrentImChannelInfoListeners,
+  notifyCurrentImSubscriberChangeListeners,
+  setCurrentImChannelSubscribersCache,
+  syncCurrentImChannelSubscribers,
+} from "./im-runtime/currentChannelRuntime";
+import {
+  addCurrentImCommandListener,
+  addCurrentImMessageListener,
+} from "./im-runtime/currentChatRuntime";
+import {
+  findCurrentImConversation,
+  notifyCurrentImConversationListeners,
+  removeCurrentImConversation,
+  syncCurrentImConversationExtra,
+} from "./im-runtime/currentConversationRuntime";
+import {
+  isCurrentImSystemMessage,
+  registerCurrentImMessageContent,
+} from "./im-runtime/currentMessageContentRuntime";
+import { syncCurrentImReminders } from "./im-runtime/currentReminderRuntime";
+import { addCurrentImTaskListener } from "./im-runtime/currentTaskRuntime";
 import {
   buildChannelDangerSection,
   buildChannelPreferenceSection,
@@ -167,18 +181,14 @@ function fallbackCopy(text: string) {
 const pendingRevokeRoleFetches = new Set<string>();
 
 function findSubscriber(channel: Channel, uid: string): Subscriber | undefined {
-  const subscribers = getImChannelSubscribers(
-    WKSDK.shared(),
-    channel
-  ) as Subscriber[];
+  const subscribers = getCurrentImChannelSubscribers(channel) as Subscriber[];
   return subscribers.find(
     (subscriber) => subscriber && subscriber.uid === uid
   );
 }
 
 function mergeSubscriberIntoCache(channel: Channel, subscriber: Subscriber) {
-  const sdk = WKSDK.shared();
-  const cached = getImChannelSubscribers(sdk, channel) as Subscriber[];
+  const cached = getCurrentImChannelSubscribers(channel) as Subscriber[];
   const nextSubscribers = [...cached];
   const index = nextSubscribers.findIndex(
     (item) => item.uid === subscriber.uid
@@ -194,8 +204,8 @@ function mergeSubscriberIntoCache(channel: Channel, subscriber: Subscriber) {
     nextSubscribers.push(subscriber);
   }
 
-  setImChannelSubscribersCache(sdk, channel, nextSubscribers);
-  notifyImSubscriberChangeListeners(sdk, channel);
+  setCurrentImChannelSubscribersCache(channel, nextSubscribers);
+  notifyCurrentImSubscriberChangeListeners(channel);
 }
 
 function warmRevokeTargetRole(channel: Channel, uid: string) {
@@ -320,68 +330,68 @@ export default class BaseModule implements IModule {
       }
     );
 
-    WKSDK.shared().register(MessageContentType.image, () => new ImageContent()); // 图片
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(MessageContentType.image, () => new ImageContent()); // 图片
+    registerCurrentImMessageContent(
       MessageContentTypeConst.file,
       () => new FileContent()
     ); // 文件
 
-    WKSDK.shared().register(MessageContentTypeConst.card, () => new Card()); // 名片
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(MessageContentTypeConst.card, () => new Card()); // 名片
+    registerCurrentImMessageContent(
       MessageContentTypeConst.interactiveCard,
       () => new InteractiveCardContent()
     ); // 互动卡片（Adaptive Cards octo/v1）
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.gif,
       () => new GifContent()
     ); // gif动图
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.voice,
       () => new VoiceContent()
     ); // 语音正文
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.smallVideo,
       () => new VideoContent()
     ); // 视频正文
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.historySplit,
       () => new HistorySplitContent()
     ); // 历史分割线
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.location,
       () => new LocationContent()
     ); // 定位
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.lottieSticker,
       () => new LottieSticker()
     ); // 动图
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.lottieEmojiSticker,
       () => new LottieSticker()
     ); // 动图
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.mergeForward,
       () => new MergeforwardContent()
     ); // 合并转发
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.screenshot,
       () => new ScreenshotContent()
     );
     // 加入组织
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.joinOrganization,
       () => new JoinOrganizationContent()
     );
     // 子区创建通知
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.threadCreated,
       () => new ThreadCreatedContent()
     );
     // 智能总结卡片
-    WKSDK.shared().register(15, () => new SummaryCardContent());
+    registerCurrentImMessageContent(15, () => new SummaryCardContent());
 
     // 富文本（图文混排）
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.richText,
       () => new RichTextContent()
     );
@@ -396,7 +406,7 @@ export default class BaseModule implements IModule {
 
     // 不支持的消息
     for (const unsupportMessageType of unsupportMessageTypes) {
-      WKSDK.shared().register(
+      registerCurrentImMessageContent(
         unsupportMessageType,
         () => new UnsupportContent()
       );
@@ -408,7 +418,7 @@ export default class BaseModule implements IModule {
       );
     }
 
-    WKSDK.shared().chatManager.addCMDListener((message: Message) => {
+    addCurrentImCommandListener((message: Message) => {
       const cmdContent = message.content as CMDContent;
       const param = cmdContent.param;
 
@@ -418,8 +428,7 @@ export default class BaseModule implements IModule {
         // 不能盲目调用 syncGroupDisbandState（会把正常群标记为已解散）。
         // 操作者本人的解散走 GroupManagement.handleDisband → syncGroupDisbandState
         // （本地直写规避 SDK 去重竞态），远程端依赖服务端推送的 channelUpdate 事件。
-        void fetchImChannelInfo(
-          WKSDK.shared(),
+        void fetchCurrentImChannelInfo(
           new Channel(param.channel_id, param.channel_type)
         );
       } else if (cmdContent.cmd === "typing") {
@@ -437,22 +446,20 @@ export default class BaseModule implements IModule {
           new Channel(param.group_no, ChannelTypeGroup)
         );
         // 通过触发channelInfoListener来更新UI
-        void fetchImChannelInfo(
-          WKSDK.shared(),
+        void fetchCurrentImChannelInfo(
           new Channel(param.group_no, ChannelTypeGroup)
         );
       } else if (cmdContent.cmd === "unreadClear") {
         // 清除最近会话未读数量
         const channel = new Channel(param.channel_id, param.channel_type);
-        const conversation =
-          WKSDK.shared().conversationManager.findConversation(channel);
+        const conversation = findCurrentImConversation(channel);
         let unread = 0;
         if (param.unread > 0) {
           unread = param.unread;
         }
         if (conversation) {
           conversation.unread = unread;
-          WKSDK.shared().conversationManager.notifyConversationListeners(
+          notifyCurrentImConversationListeners(
             conversation,
             ConversationAction.update
           );
@@ -460,7 +467,7 @@ export default class BaseModule implements IModule {
       } else if (cmdContent.cmd === "conversationDeleted") {
         // 最近会话删除
         const channel = new Channel(param.channel_id, param.channel_type);
-        WKSDK.shared().conversationManager.removeConversation(channel);
+        removeCurrentImConversation(channel);
       } else if (cmdContent.cmd === "friendRequest") {
         // 好友申请
         // Space 隔离：不属于当前 Space 的好友申请不显示、不播提示音
@@ -486,8 +493,7 @@ export default class BaseModule implements IModule {
           return;
         }
         if (param.from_uid) {
-          void fetchImChannelInfo(
-            WKSDK.shared(),
+          void fetchCurrentImChannelInfo(
             new Channel(param.from_uid, ChannelTypePerson)
           );
         }
@@ -516,34 +522,32 @@ export default class BaseModule implements IModule {
           cmdContent.param.group_no,
           ChannelTypeGroup
         );
-        void syncImChannelSubscribers(WKSDK.shared(), channel);
+        void syncCurrentImChannelSubscribers(channel);
       } else if (cmdContent.cmd === "onlineStatus") {
         // 好友在线状态改变
         const channel = new Channel(cmdContent.param.uid, ChannelTypePerson);
         const online = param.online === 1;
-        const onlineChannelInfo =
-          getImChannelInfo(WKSDK.shared(), channel);
+        const onlineChannelInfo = getCurrentImChannelInfo(channel);
         if (onlineChannelInfo) {
           onlineChannelInfo.online = online;
           if (!online) {
             onlineChannelInfo.lastOffline = new Date().getTime() / 1000;
           }
-          notifyImChannelInfoListeners(WKSDK.shared(), onlineChannelInfo);
+          notifyCurrentImChannelInfoListeners(onlineChannelInfo);
         } else {
-          void fetchImChannelInfo(WKSDK.shared(), channel);
+          void fetchCurrentImChannelInfo(channel);
         }
       } else if (cmdContent.cmd === "syncConversationExtra") {
         // 同步最近会话扩展
-        WKSDK.shared().conversationManager.syncExtra();
+        syncCurrentImConversationExtra();
       } else if (cmdContent.cmd === "syncReminders") {
         // 同步提醒项
-        WKSDK.shared().reminderManager.sync();
+        syncCurrentImReminders();
       } else if (cmdContent.cmd === "messageRevoke") {
         // 消息撤回
         const channel = message.channel;
         const messageID = param.message_id;
-        let conversation =
-          WKSDK.shared().conversationManager.findConversation(channel);
+        let conversation = findCurrentImConversation(channel);
         if (
           conversation &&
           conversation.lastMessage &&
@@ -551,7 +555,7 @@ export default class BaseModule implements IModule {
         ) {
           conversation.lastMessage.remoteExtra.revoke = true;
           conversation.lastMessage.remoteExtra.revoker = message.fromUID;
-          WKSDK.shared().conversationManager.notifyConversationListeners(
+          notifyCurrentImConversationListeners(
             conversation,
             ConversationAction.update
           );
@@ -565,7 +569,7 @@ export default class BaseModule implements IModule {
       }
     });
 
-    WKSDK.shared().chatManager.addMessageListener((message: Message) => {
+    addCurrentImMessageListener((message: Message) => {
       if (TypingManager.shared.hasTyping(message.channel)) {
         TypingManager.shared.removeTyping(message.channel);
       }
@@ -573,19 +577,18 @@ export default class BaseModule implements IModule {
         case MessageContentTypeConst.channelUpdate:
           // 同 CMD channelUpdate：通用事件，无法区分是否解散，fetch 最新态。
           // 操作者本人的解散走 GroupManagement.handleDisband → syncGroupDisbandState。
-          void fetchImChannelInfo(WKSDK.shared(), message.channel);
+          void fetchCurrentImChannelInfo(message.channel);
           break;
         case MessageContentTypeConst.addMembers:
         case MessageContentTypeConst.removeMembers:
-          void syncImChannelSubscribers(WKSDK.shared(), message.channel);
+          void syncCurrentImChannelSubscribers(message.channel);
           break;
       }
 
       if (this.allowNotify(message)) {
         let from = "";
         if (message.channel.channelType === ChannelTypeGroup) {
-          const fromChannelInfo = getImChannelInfo(
-            WKSDK.shared(),
+          const fromChannelInfo = getCurrentImChannelInfo(
             new Channel(message.fromUID, ChannelTypePerson)
           );
           if (fromChannelInfo) {
@@ -600,7 +603,7 @@ export default class BaseModule implements IModule {
       }
     });
 
-    addImChannelInfoListener(WKSDK.shared(), (channelInfo: ChannelInfo) => {
+    addCurrentImChannelInfoListener((channelInfo: ChannelInfo) => {
       if (channelInfo.channel.channelType === ChannelTypePerson) {
         if (WKApp.loginInfo.uid === channelInfo.channel.channelID) {
           WKApp.loginInfo.name = channelInfo.title;
@@ -626,7 +629,7 @@ export default class BaseModule implements IModule {
 
     // 全局订阅 taskManager：上传失败时把 sendQueue 里对应消息标为 Fail 并触发 UI 刷新
     // 放在 module.init() 里保证只注册一次，避免多 ConversationVM 实例重复处理
-    WKSDK.shared().taskManager.addListener((task: Task) => {
+    addCurrentImTaskListener((task: Task) => {
       if (task.status !== TaskStatus.fail && task.status !== TaskStatus.cancel)
         return;
 
@@ -694,7 +697,7 @@ export default class BaseModule implements IModule {
       // 用户关闭了通知
       return false;
     }
-    if (WKSDK.shared().isSystemMessage(message.contentType)) {
+    if (isCurrentImSystemMessage(message.contentType)) {
       // 系统消息不发通知
       return false;
     }
@@ -717,10 +720,7 @@ export default class BaseModule implements IModule {
     }
 
     // 已屏蔽（免打扰）的 channel 不播提示音、不发通知
-    const channelInfo = getImChannelInfo(
-      WKSDK.shared(),
-      message.channel
-    );
+    const channelInfo = getCurrentImChannelInfo(message.channel);
     if (channelInfo?.mute) {
       return false;
     }
@@ -729,8 +729,7 @@ export default class BaseModule implements IModule {
       | string
       | undefined;
     if (parentGroupNo) {
-      const parentChannelInfo = getImChannelInfo(
-        WKSDK.shared(),
+      const parentChannelInfo = getCurrentImChannelInfo(
         new Channel(parentGroupNo, ChannelTypeGroup)
       );
       if (parentChannelInfo?.mute) {
@@ -1007,8 +1006,7 @@ export default class BaseModule implements IModule {
         // Bot 创建者可撤回自己创建的 Bot 发送的消息（与群管理员同等待遇，
         // 不受 message.send 和 24h 时间窗口限制，与后端行为一致）
         let isBotOwner = false;
-        const fromChannelInfo = getImChannelInfo(
-          WKSDK.shared(),
+        const fromChannelInfo = getCurrentImChannelInfo(
           new Channel(message.fromUID, ChannelTypePerson)
         );
         if (fromChannelInfo?.orgData?.robot === 1) {
@@ -1034,7 +1032,7 @@ export default class BaseModule implements IModule {
 
         if (isGroup || isThread) {
           // 获取当前用户在群/子区父群中的角色
-          const sub = getImChannelSubscriberOfMe(WKSDK.shared(), roleChannel);
+          const sub = getCurrentImChannelSubscriberOfMe(roleChannel);
           myRole = sub?.role;
 
           // 管理员撤回别人消息时必须确认发送者不是群主/管理员；角色未知时默认隐藏。
@@ -1080,7 +1078,7 @@ export default class BaseModule implements IModule {
           return null;
         }
         // 系统消息不显示
-        if (WKSDK.shared().isSystemMessage(message.contentType)) {
+        if (isCurrentImSystemMessage(message.contentType)) {
           return null;
         }
         // 群已解散则隐藏「创建子区」——解散后全员只读，不得新建子区。
@@ -1235,16 +1233,13 @@ export default class BaseModule implements IModule {
               membershipOrgData?.invite_uid,
               ChannelTypePerson
             );
-            const inviteChannelInfo = getImChannelInfo(
-              WKSDK.shared(),
-              inviterChannel
-            );
+            const inviteChannelInfo = getCurrentImChannelInfo(inviterChannel);
             if (inviteChannelInfo) {
               joinDesc += t("base.module.userInfo.invitedBy", {
                 values: { name: inviteChannelInfo.title },
               });
             } else {
-              void fetchImChannelInfo(WKSDK.shared(), inviterChannel);
+              void fetchCurrentImChannelInfo(inviterChannel);
             }
           } else {
             joinDesc += t("base.module.userInfo.joinedGroup");
@@ -1321,25 +1316,21 @@ export default class BaseModule implements IModule {
                             data.uid,
                             ChannelTypePerson
                           );
-                          const conversation =
-                            WKSDK.shared().conversationManager.findConversation(
-                              channel
-                            );
+                          const conversation = findCurrentImConversation(
+                            channel
+                          );
                           if (conversation) {
                             WKApp.conversationProvider.clearConversationMessages(
                               conversation
                             );
                           }
-                          WKSDK.shared().conversationManager.removeConversation(
-                            channel
-                          );
+                          removeCurrentImConversation(channel);
                           WKApp.endpointManager.invoke(
                             EndpointID.clearChannelMessages,
                             channel
                           );
 
-                          void fetchImChannelInfo(
-                            WKSDK.shared(),
+                          void fetchCurrentImChannelInfo(
                             new Channel(data.uid, ChannelTypePerson)
                           );
                         })

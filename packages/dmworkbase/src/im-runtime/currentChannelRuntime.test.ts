@@ -5,7 +5,12 @@ import {
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
+  getCurrentImChannelSubscriberOfMe,
   getCurrentImChannelSubscribers,
+  notifyCurrentImChannelInfoListeners,
+  notifyCurrentImSubscriberChangeListeners,
+  setCurrentImChannelInfoCache,
+  setCurrentImChannelSubscribersCache,
   syncCurrentImChannelSubscribers,
 } from "./currentChannelRuntime";
 
@@ -17,9 +22,14 @@ const hoisted = vi.hoisted(() => {
       fetchChannelInfo: vi.fn(),
       getChannelInfo: vi.fn(),
       getSubscribes: vi.fn(),
+      getSubscribeOfMe: vi.fn(),
+      notifyListeners: vi.fn(),
+      setChannleInfoForCache: vi.fn(),
+      subscribeCacheMap: new Map(),
       addSubscriberChangeListener: vi.fn(),
       removeListener: vi.fn(),
       removeSubscriberChangeListener: vi.fn(),
+      notifySubscribeChangeListeners: vi.fn(),
       syncSubscribes: vi.fn(),
     },
   };
@@ -43,9 +53,14 @@ describe("currentChannelRuntime", () => {
     hoisted.sdk.channelManager.fetchChannelInfo.mockReset();
     hoisted.sdk.channelManager.getChannelInfo.mockReset();
     hoisted.sdk.channelManager.getSubscribes.mockReset();
+    hoisted.sdk.channelManager.getSubscribeOfMe.mockReset();
+    hoisted.sdk.channelManager.notifyListeners.mockReset();
+    hoisted.sdk.channelManager.setChannleInfoForCache.mockReset();
+    hoisted.sdk.channelManager.subscribeCacheMap.clear();
     hoisted.sdk.channelManager.addSubscriberChangeListener.mockReset();
     hoisted.sdk.channelManager.removeListener.mockReset();
     hoisted.sdk.channelManager.removeSubscriberChangeListener.mockReset();
+    hoisted.sdk.channelManager.notifySubscribeChangeListeners.mockReset();
     hoisted.sdk.channelManager.syncSubscribes.mockReset();
   });
 
@@ -84,6 +99,34 @@ describe("currentChannelRuntime", () => {
     );
   });
 
+  it("writes channel info to the current SDK runtime cache", () => {
+    const channelInfo = {
+      channel: { channelID: "g1", channelType: 2 },
+      title: "Group",
+    };
+
+    setCurrentImChannelInfoCache(channelInfo);
+
+    expect(hoisted.shared).toHaveBeenCalledTimes(1);
+    expect(
+      hoisted.sdk.channelManager.setChannleInfoForCache
+    ).toHaveBeenCalledWith(channelInfo);
+  });
+
+  it("notifies channel info listeners through the current SDK runtime", () => {
+    const channelInfo = {
+      channel: { channelID: "g1", channelType: 2 },
+      title: "Group",
+    };
+
+    notifyCurrentImChannelInfoListeners(channelInfo);
+
+    expect(hoisted.shared).toHaveBeenCalledTimes(1);
+    expect(hoisted.sdk.channelManager.notifyListeners).toHaveBeenCalledWith(
+      channelInfo
+    );
+  });
+
   it("reads subscribers from the current SDK runtime", () => {
     const channel = { channelID: "g1", channelType: 2 };
     const subscribers = [{ uid: "u1" }];
@@ -93,6 +136,36 @@ describe("currentChannelRuntime", () => {
     expect(hoisted.shared).toHaveBeenCalledTimes(1);
     expect(hoisted.sdk.channelManager.getSubscribes).toHaveBeenCalledWith(
       channel
+    );
+  });
+
+  it("reads the current user's subscriber from the current SDK runtime", () => {
+    const channel = { channelID: "g1", channelType: 2 };
+    const subscriber = { uid: "me", role: 1 };
+    hoisted.sdk.channelManager.getSubscribeOfMe.mockReturnValueOnce(
+      subscriber
+    );
+
+    expect(getCurrentImChannelSubscriberOfMe(channel)).toBe(subscriber);
+    expect(hoisted.shared).toHaveBeenCalledTimes(1);
+    expect(hoisted.sdk.channelManager.getSubscribeOfMe).toHaveBeenCalledWith(
+      channel
+    );
+  });
+
+  it("writes subscribers to the current SDK runtime cache", () => {
+    const channel = {
+      channelID: "g1",
+      channelType: 2,
+      getChannelKey: () => "2@g1",
+    };
+    const subscribers = [{ uid: "u1" }];
+
+    setCurrentImChannelSubscribersCache(channel, subscribers);
+
+    expect(hoisted.shared).toHaveBeenCalledTimes(1);
+    expect(hoisted.sdk.channelManager.subscribeCacheMap.get("2@g1")).toBe(
+      subscribers
     );
   });
 
@@ -136,5 +209,16 @@ describe("currentChannelRuntime", () => {
     expect(
       hoisted.sdk.channelManager.removeSubscriberChangeListener
     ).toHaveBeenCalledWith(listener);
+  });
+
+  it("notifies subscriber change listeners through the current SDK runtime", () => {
+    const channel = { channelID: "g1", channelType: 2 };
+
+    notifyCurrentImSubscriberChangeListeners(channel);
+
+    expect(hoisted.shared).toHaveBeenCalledTimes(1);
+    expect(
+      hoisted.sdk.channelManager.notifySubscribeChangeListeners
+    ).toHaveBeenCalledWith(channel);
   });
 });
