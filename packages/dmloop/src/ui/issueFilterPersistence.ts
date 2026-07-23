@@ -84,10 +84,11 @@ export function defaultIssueFilters(): IssueFilters {
 
 export function issueFilterStorageKey(
   workspaceSlug: string,
-  viewKey?: string
+  viewKey?: string,
+  workspaceId?: string
 ): string | null {
-  if (!workspaceSlug || !viewKey) return null;
-  return `loop.issue.filters:${viewKey}:${workspaceSlug}`;
+  if (!workspaceSlug || !viewKey || !workspaceId) return null;
+  return `loop.issue.filters:${viewKey}:workspace:${workspaceId}`;
 }
 
 export function readIssueFilterState(

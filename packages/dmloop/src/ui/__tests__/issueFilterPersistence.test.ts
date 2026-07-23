@@ -29,16 +29,41 @@ class MemoryStorage implements IssueFilterReader, IssueFilterWriter {
 
 describe("issue filter persistence", () => {
   it("uses a workspace-scoped key", () => {
-    expect(issueFilterStorageKey("alpha", "loop.view.issue")).toBe(
-      "loop.issue.filters:loop.view.issue:alpha"
+    expect(issueFilterStorageKey("alpha", "loop.view.issue", "ws-1")).toBe(
+      "loop.issue.filters:loop.view.issue:workspace:ws-1"
     );
-    expect(issueFilterStorageKey("", "loop.view.issue")).toBeNull();
+    expect(issueFilterStorageKey("", "loop.view.issue", "ws-1")).toBeNull();
+    expect(issueFilterStorageKey("alpha", "loop.view.issue")).toBeNull();
     expect(issueFilterStorageKey("alpha")).toBeNull();
+  });
+
+  it("does not collide when two spaces contain workspaces with the same slug", () => {
+    const storage = new MemoryStorage();
+    const spaceAKey = issueFilterStorageKey("shared-slug", "loop.view.issue", "ws-space-a");
+    const spaceBKey = issueFilterStorageKey("shared-slug", "loop.view.issue", "ws-space-b");
+
+    expect(spaceAKey).not.toBe(spaceBKey);
+
+    writeIssueFilterState(
+      storage,
+      spaceAKey,
+      { scope: "all", filters: { ...defaultIssueFilters(), keyword: "space-a" } },
+      false
+    );
+    writeIssueFilterState(
+      storage,
+      spaceBKey,
+      { scope: "all", filters: { ...defaultIssueFilters(), keyword: "space-b" } },
+      false
+    );
+
+    expect(readIssueFilterState(storage, spaceAKey, "all", false).filters.keyword).toBe("space-a");
+    expect(readIssueFilterState(storage, spaceBKey, "all", false).filters.keyword).toBe("space-b");
   });
 
   it("round-trips valid filters and scope", () => {
     const storage = new MemoryStorage();
-    const key = issueFilterStorageKey("alpha", "loop.view.issue");
+    const key = issueFilterStorageKey("alpha", "loop.view.issue", "ws-1");
     writeIssueFilterState(
       storage,
       key,
@@ -75,7 +100,7 @@ describe("issue filter persistence", () => {
 
   it("round-trips a same-day date range", () => {
     const storage = new MemoryStorage();
-    const key = issueFilterStorageKey("alpha", "loop.view.issue");
+    const key = issueFilterStorageKey("alpha", "loop.view.issue", "ws-1");
     const sameDay = new Date("2026-07-01T00:00:00.000Z");
 
     writeIssueFilterState(

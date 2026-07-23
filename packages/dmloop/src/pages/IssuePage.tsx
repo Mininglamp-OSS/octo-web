@@ -12,7 +12,7 @@ import {
 import LoopButton from "../ui/LoopButton";
 import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, SlidersHorizontal, Filter } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import { currentWorkspaceSlug } from "../api/http";
+import { currentWorkspaceId, currentWorkspaceSlug } from "../api/http";
 import type {
   Issue,
   IssueGroup,
@@ -80,7 +80,8 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   // 看板/列表无对应查询会退化成显示全工作区 → 该页锁死分组、不给切视图。
   const isMyLoop = defaultScope === "involves";
   const workspaceSlug = currentWorkspaceSlug();
-  const filterStorageKey = issueFilterStorageKey(workspaceSlug, viewKey);
+  const workspaceId = currentWorkspaceId();
+  const filterStorageKey = issueFilterStorageKey(workspaceSlug, viewKey, workspaceId);
   const [initialFilterState] = useState(() =>
     readIssueFilterState(
       localStorage,
