@@ -15,13 +15,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1, 4px);
-  /* 随内容自适应，[300px, 480px] 区间：短卡（提示/欢迎/单行状态）不再被定宽
-     撑成右侧大片留白的空面板；富内容卡（表格等）仍可长到 480px。300px 下限
-     对齐名片(300px)，避免卡过窄导致表格/长值被挤到截断。对齐 File / 名片
-     「盒子随内容」的既有消息语言。 */
-  width: fit-content;
-  min-width: min(300px, 100%);
-  max-width: min(480px, 100%);
+  /* 默认采用 standard(480px) 规格，避免卡片内容更新后因操作数量变化而跳宽；
+     宿主空间不足时收缩到 100%，由卡片内部的 auto/stretch/wrap 继续响应式布局。 */
+  width: min(480px, 100%);
+  min-width: 0;
 }
 
 .wk-interactive-card > .wk-interactive-card-sdk,
