@@ -89,17 +89,21 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
   const displayName = skill.displayName || skill.name;
   const creatorName = skill.creatorName || skill.ownerName;
   // Catalog responses intentionally omit owner_id. Compare the stable names as
-  // a fallback so Bot attribution still renders on public list responses.
+  // a fallback only when both stable IDs are not available. Equal IDs must win
+  // over stale or independently formatted display names.
+  const hasComparableIds = Boolean(skill.creatorId && skill.ownerId);
   const hasSeparateCreator = Boolean(
     creatorName && skill.ownerName && (
-      (skill.creatorId && skill.ownerId && skill.creatorId !== skill.ownerId) ||
-      creatorName !== skill.ownerName
+      hasComparableIds
+        ? skill.creatorId !== skill.ownerId
+        : creatorName !== skill.ownerName
     ),
   );
+  const singlePublisherName = creatorName || skill.ownerName;
   const ownerLabel = hasSeparateCreator
     ? `${creatorName} · ${skill.ownerName}`
-    : skill.ownerName;
-  const showOwner = Boolean(creatorName || skill.ownerName);
+    : singlePublisherName;
+  const showOwner = Boolean(singlePublisherName);
   const ariaLabel = showOwner ? `${skill.name} ${ownerLabel}` : skill.name;
   const rawViewCount = skill.viewCount ?? 0;
   const rawDownloadCount = skill.downloadCount ?? 0;
@@ -208,7 +212,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
                 ) : (
                   <>
                     <UserRound className="skill-market-card__owner-user-icon" size={13} aria-hidden="true" />
-                    <span className="skill-market-card__owner-name">{skill.ownerName}</span>
+                    <span className="skill-market-card__owner-name">{singlePublisherName}</span>
                   </>
                 )}
               </span>

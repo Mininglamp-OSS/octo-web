@@ -122,6 +122,44 @@ describe("SkillCard", () => {
     expect(screen.getByText("Developer")).toBeInTheDocument();
   });
 
+  it("treats equal stable IDs as one publisher even when names differ", () => {
+    render(
+      <SkillCard
+        skill={{
+          ...skill,
+          ownerId: "developer",
+          ownerName: "Developer",
+          creatorId: "developer",
+          creatorName: "Developer Renamed",
+        }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "ci-helper Developer Renamed" })).toBeInTheDocument();
+    expect(screen.queryByText("Developer")).not.toBeInTheDocument();
+  });
+
+  it("keeps creator attribution when owner metadata is empty", () => {
+    render(
+      <SkillCard
+        skill={{
+          ...skill,
+          ownerId: "",
+          ownerName: "",
+          creatorId: "publisher",
+          creatorName: "Publisher",
+        }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Publisher")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper Publisher" })).toBeInTheDocument();
+  });
+
   it("supports keyboard open and exposed owner actions without opening the card", () => {
     const onOpen = vi.fn();
     const onEdit = vi.fn();
