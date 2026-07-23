@@ -86,12 +86,12 @@
 
 /* 详情页内容区域 - 使用更宽敞的布局 */
 .summary-detail-content-inner {
-    max-width: 920px;
+    max-width: 984px;
     margin: 0 auto;
     padding: 24px 32px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 24px;
 }
 
 /* 详情页内容区域第一个元素的顶部间距调整 */
@@ -737,10 +737,10 @@
 
 .summary-detail-title {
     margin: 0;
-    font-size: 17px;
+    font-size: 24px;
     font-weight: 600;
-    color: var(--semi-color-text-0);
-    line-height: 1.4;
+    color: #1C1C23;
+    line-height: 36px;
 }
 
 .summary-detail-header-actions {
@@ -885,11 +885,14 @@
 /* Result */
 .summary-detail-result {
     margin-bottom: 0;
-    background: var(--semi-color-bg-0);
-    border: 1px solid var(--semi-color-border);
-    border-radius: 8px;
-    padding: 16px;
+    background: rgba(28, 28, 35, 0.03);
+    border: none;
+    border-radius: 12px;
+    padding: 24px;
     box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
 }
 
 .summary-detail-result-header {
@@ -913,6 +916,52 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+/* Meta info (creation time + source chips) */
+.summary-detail-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.summary-detail-meta-time {
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 20px;
+    color: rgba(28, 31, 35, 0.6);
+    text-align: center;
+}
+
+.summary-detail-source-chips {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+}
+
+.summary-detail-source-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    height: 24px;
+    background: rgba(28, 31, 35, 0.06);
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 16px;
+    color: rgba(28, 28, 35, 0.6);
+    white-space: nowrap;
+}
+
+/* Divider between meta and content */
+.summary-detail-meta-divider {
+    height: 1px;
+    background: rgba(28, 28, 35, 0.15);
+    border: none;
+    margin: 0;
 }
 
 .summary-detail-result-content {
@@ -957,12 +1006,15 @@
 .summary-detail-personal,
 .summary-detail-team,
 .summary-detail-members {
-    background: var(--semi-color-bg-0);
-    border: 1px solid var(--semi-color-border);
-    border-radius: 8px;
-    padding: 16px;
+    background: rgba(28, 28, 35, 0.03);
+    border: none;
+    border-radius: 12px;
+    padding: 24px;
     box-shadow: none;
     margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
 }
 
 .summary-detail-section-header {
@@ -1017,9 +1069,9 @@
 }
 
 .summary-detail-content-box {
-    line-height: 1.7;
+    line-height: 22px;
     font-size: 14px;
-    color: var(--semi-color-text-0);
+    color: #1C1F23;
 }
 
 .summary-detail-personal h3,
@@ -1316,37 +1368,40 @@
 }
 
 .summary-content-markdown {
-    line-height: 1.7;
+    line-height: 22px;
     font-size: 14px;
-    color: var(--semi-color-text-0);
+    color: #1C1F23;
 }
 
 .summary-content-markdown h1 {
     font-size: 20px;
     margin: 20px 0 14px;
-    font-weight: 600;
-    color: var(--semi-color-text-0);
-    border-bottom: 2px solid var(--semi-color-border);
-    padding-bottom: 6px;
+    font-weight: 500;
+    line-height: 26px;
+    color: #1C1F23;
+    border-bottom: none;
+    padding-bottom: 0;
 }
 
 .summary-content-markdown h2 {
-    font-size: 18px;
+    font-size: 16px;
     margin: 18px 0 10px;
-    font-weight: 600;
-    color: var(--semi-color-text-0);
+    font-weight: 500;
+    line-height: 24px;
+    color: #1C1F23;
 }
 
 .summary-content-markdown h3 {
     font-size: 16px;
     margin: 16px 0 8px;
     font-weight: 600;
-    color: var(--semi-color-text-0);
+    line-height: 24px;
+    color: #1C1F23;
 }
 
 .summary-content-markdown p {
     margin: 10px 0;
-    line-height: 1.7;
+    line-height: 22px;
 }
 
 .summary-content-markdown ul,
@@ -1357,7 +1412,9 @@
 
 .summary-content-markdown li {
     margin: 6px 0;
-    line-height: 1.6;
+    line-height: 22px;
+    font-size: 14px;
+    color: #1C1F23;
 }
 
 .summary-content-markdown blockquote {
@@ -1450,7 +1507,7 @@
 }
 
 .citation-badge:hover {
-    background: var(--semi-color-primary-light-active) !important;
+    background: rgba(127, 59, 245, 0.15) !important;
 }
 
 /* ========== Progress Indicator ========== */

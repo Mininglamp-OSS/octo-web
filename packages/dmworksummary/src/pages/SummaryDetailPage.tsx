@@ -2357,6 +2357,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (!detail || !detail.result) return null;
         return (
             <div className="summary-detail-result">
+                {/* Meta info: creation time + source chips */}
+                <div className="summary-detail-meta">
+                    <div className="summary-detail-meta-time">
+                        {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
+                    </div>
+                    {detail.sources && detail.sources.length > 0 && (
+                        <div className="summary-detail-source-chips">
+                            {detail.sources.map((src, i) => (
+                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                    {src.source_name || src.source_id}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <hr className="summary-detail-meta-divider" />
                 <div className="summary-detail-result-header">
                     <h3>{t("summary.detail.contentTitle")}</h3>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2417,6 +2433,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (personalResult.content?.trim() && !this.canRevealPersonalContent()) return null;
         return (
             <div className="summary-detail-personal">
+                {/* Meta info: creation time + source chips */}
+                {detail && (
+                    <div className="summary-detail-meta">
+                        <div className="summary-detail-meta-time">
+                            {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
+                        </div>
+                        {detail.sources && detail.sources.length > 0 && (
+                            <div className="summary-detail-source-chips">
+                                {detail.sources.map((src, i) => (
+                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                        {src.source_name || src.source_id}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+                <hr className="summary-detail-meta-divider" />
                 <div className="summary-detail-section-header">
                     <button
                         type="button"
@@ -2575,6 +2609,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
         return (
             <div className="summary-detail-team">
+                {/* Meta info: creation time + source chips */}
+                <div className="summary-detail-meta">
+                    <div className="summary-detail-meta-time">
+                        {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
+                    </div>
+                    {detail.sources && detail.sources.length > 0 && (
+                        <div className="summary-detail-source-chips">
+                            {detail.sources.map((src, i) => (
+                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                    {src.source_name || src.source_id}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <hr className="summary-detail-meta-divider" />
                 <div className="summary-detail-section-header">
                     <span>{t("summary.detail.teamSummary")}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

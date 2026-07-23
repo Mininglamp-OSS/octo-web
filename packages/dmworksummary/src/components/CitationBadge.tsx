@@ -37,15 +37,16 @@ function resolveChannelType(channelType?: number) {
 const badgeStyle: React.CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
-    background: 'rgba(22, 119, 255, 0.13)',
-    color: '#1677ff',
-    borderRadius: 4,
-    padding: '0 4px',
-    fontSize: 11,
+    background: 'rgba(127, 59, 245, 0.08)',
+    color: '#7F3BF5',
+    borderRadius: 99,
+    padding: '2px 6px',
+    fontSize: 12,
+    fontWeight: 500,
     cursor: 'pointer',
     marginLeft: 2,
-    lineHeight: '16px',
-    verticalAlign: 'super',
+    lineHeight: '18px',
+    verticalAlign: 'baseline',
 };
 
 const contextMsgStyle: React.CSSProperties = {
