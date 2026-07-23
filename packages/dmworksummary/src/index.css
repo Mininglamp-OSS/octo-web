@@ -128,7 +128,7 @@
 .summary-detail-content-inner {
     max-width: 984px;
     margin: 0 auto;
-    padding: 24px 32px;
+    padding: 80px 80px 24px 80px;
     display: flex;
     flex-direction: column;
     gap: 16px;
