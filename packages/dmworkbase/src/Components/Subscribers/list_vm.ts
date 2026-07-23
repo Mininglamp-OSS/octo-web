@@ -12,6 +12,7 @@ export class SubscriberListVM extends ProviderListener {
   keyword: string = "";
   filter?: (subscriber: Subscriber) => boolean;
   private localSearch?: (keyword: string) => Subscriber[];
+  private localSearchComplete: boolean;
   /** 每次 subscribers 数据加载完成后调用，用于触发预取等副作用 */
   onSubscribersLoaded?: (subscribers: Subscriber[]) => void;
   private _isMounted: boolean = false;
@@ -20,12 +21,14 @@ export class SubscriberListVM extends ProviderListener {
   constructor(
     channel: Channel,
     filter?: (subscriber: Subscriber) => boolean,
-    localSearch?: (keyword: string) => Subscriber[]
+    localSearch?: (keyword: string) => Subscriber[],
+    localSearchComplete: boolean = true
   ) {
     super();
     this.channel = channel;
     this.filter = filter;
     this.localSearch = localSearch;
+    this.localSearchComplete = localSearchComplete;
   }
 
   didMount(): void {
@@ -47,7 +50,7 @@ export class SubscriberListVM extends ProviderListener {
     this.subscribers = [];
     this.keyword = keyword;
     if (this.localSearch && keyword.trim()) {
-      this._requestVersion++;
+      const requestVersion = ++this._requestVersion;
       this.hasMore = false;
       const localResults = this.localSearch(keyword);
       this.subscribers = this.filter
@@ -55,12 +58,17 @@ export class SubscriberListVM extends ProviderListener {
         : localResults;
       this.notifyListener();
       this.onSubscribersLoaded?.(this.subscribers);
+      if (this.localSearchComplete) return;
+      this.requestSubscribers(requestVersion, this.subscribers);
       return;
     }
     this.requestSubscribers();
   }
 
-  requestSubscribers = async (requestVersion = ++this._requestVersion) => {
+  requestSubscribers = async (
+    requestVersion = ++this._requestVersion,
+    initialSubscribers: Subscriber[] = []
+  ) => {
     const subscribers = await WKApp.dataSource.channelDataSource.subscribers(
       this.channel,
       {
@@ -76,9 +84,9 @@ export class SubscriberListVM extends ProviderListener {
         ? subscribers.filter(this.filter)
         : subscribers;
       if (this.currPage === 1) {
-        this.subscribers = filtered;
+        this.subscribers = this.mergeSubscribers(initialSubscribers, filtered);
       } else {
-        this.subscribers = this.subscribers.concat(filtered);
+        this.subscribers = this.mergeSubscribers(this.subscribers, filtered);
       }
     }
     this.notifyListener();
@@ -92,6 +100,20 @@ export class SubscriberListVM extends ProviderListener {
       await this.requestSubscribers(requestVersion);
     }
   };
+
+  private mergeSubscribers(
+    current: Subscriber[],
+    incoming: Subscriber[]
+  ): Subscriber[] {
+    const seen = new Set(current.map((subscriber) => subscriber.uid));
+    return current.concat(
+      incoming.filter((subscriber) => {
+        if (seen.has(subscriber.uid)) return false;
+        seen.add(subscriber.uid);
+        return true;
+      })
+    );
+  }
 
   delyRequestSubscribers = () => {
     // 延迟执行,这样动画切换的时候就不会显的卡顿
