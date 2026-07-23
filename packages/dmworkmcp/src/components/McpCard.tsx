@@ -1,31 +1,42 @@
 import React from "react";
 import { Tooltip } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
+import { Bot, UserRound } from "lucide-react";
 import type { McpListItem } from "../types/mcp";
 import { t } from "@octo/base";
 import { IconGlyph } from "../utils/icon";
+import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 
 interface McpCardProps {
   item: McpListItem;
   onClick: (item: McpListItem) => void;
-  keyword?: string;
 }
 
-export function Highlight({ text, keyword = "" }: { text: string; keyword?: string }) {
-  const index = text.toLowerCase().indexOf(keyword.trim().toLowerCase());
-  if (!keyword.trim() || index < 0) return <>{text}</>;
-  return <>{text.slice(0, index)}<mark>{text.slice(index, index + keyword.trim().length)}</mark>{text.slice(index + keyword.trim().length)}</>;
-}
-
+/** Parse a backend `match_reasons` entry into an i18n key + optional value.
+ *  Wire shape is `"<type>:<value>"` where `<type>` is one of the fixed set
+ *  below; unknown types fall through to `other` so the card still renders a
+ *  labelled chip rather than blowing up. */
 export function parseMatchReason(reason: string): { key: string; value?: string } {
   const colon = reason.indexOf(":");
   const type = colon < 0 ? reason : reason.slice(0, colon);
   const value = colon < 0 ? undefined : reason.slice(colon + 1);
-  const keys: Record<string, string> = { name: "name", description: "description", category: "category", usage_example: "usage", tool: "tool", tag: "tag", creator: "creator" };
+  const keys: Record<string, string> = {
+    name: "name",
+    description: "description",
+    category: "category",
+    usage_example: "usage",
+    tool: "tool",
+    tag: "tag",
+    creator: "creator",
+  };
   return { key: `mcp.card.matchReason.${keys[type] ?? "other"}`, value };
 }
 
-export function MatchReasons({ reasons, keyword = "" }: { reasons: string[]; keyword?: string }) {
+/** Renders the "为什么命中" chips under the card tags. Only reveals fields
+ *  the card itself doesn't already show (tool / usage_example / creator) —
+ *  matches on name / description / tag are visible in the card body and
+ *  don't need their own chip. */
+export function MatchReasons({ reasons }: { reasons: string[] }) {
   const revealing = reasons.filter((reason) => {
     const type = reason.split(":", 1)[0];
     return type === "tool" || type === "usage_example" || type === "creator";
@@ -35,11 +46,10 @@ export function MatchReasons({ reasons, keyword = "" }: { reasons: string[]; key
     <div className="wk-mcp-card__reasons">
       {revealing.map((reason) => {
         const parsed = parseMatchReason(reason);
-        const value = parsed.value || keyword;
         return (
           <span className="wk-mcp-card__reason" key={reason}>
             <span className="wk-mcp-card__reason-label">{t(parsed.key)}</span>
-            {value ? <Highlight text={value} keyword={keyword} /> : null}
+            {parsed.value ? <span>{parsed.value}</span> : null}
           </span>
         );
       })}
@@ -47,15 +57,41 @@ export function MatchReasons({ reasons, keyword = "" }: { reasons: string[]; key
   );
 }
 
-/** How many tags the card renders before collapsing the rest into a `+N`
- *  chip. Product decision: 3 keeps the tag row on a single line for typical
- *  cases while still surfacing the most-relevant tags on a real record. */
 const CARD_TAG_LIMIT = 3;
 
+/** Compute what the card's meta-row shows for the "who published this" slot.
+ *  Mirrors dmworkskillmarket's owner rendering:
+ *   - bot rows: bot icon + bot 名 · human icon + human 名（两段用中点分隔）
+ *   - human rows / legacy rows with only creatorName: human icon + human 名
+ *   - `import` rows and rows with no attribution at all: return null so the
+ *     meta-row folds — imports don't come from a marketplace user and must
+ *     not be labelled with a human/bot chip. */
+export function resolveOwner(item: McpListItem): { botName?: string; humanName?: string } | null {
+  if (item.createdByType === "bot") {
+    const botName = item.createdByBotName || t("mcp.source.bot");
+    return {
+      botName,
+      humanName: item.creatorName || undefined,
+    };
+  }
+  if (item.createdByType === "import") {
+    return null;
+  }
+  if (item.creatorName) {
+    return { humanName: item.creatorName };
+  }
+  return null;
+}
+
 /** A single MCP server card in the list grid. */
-const McpCard: React.FC<McpCardProps> = ({ item, onClick, keyword }) => {
+const McpCard: React.FC<McpCardProps> = ({ item, onClick }) => {
   const visibleTags = item.tags.slice(0, CARD_TAG_LIMIT);
   const overflowTags = item.tags.slice(CARD_TAG_LIMIT);
+  const owner = resolveOwner(item);
+  // `.trim()` gates the fallback avatar so a whitespace-only icon string
+  // (paste artifact, backend quirk) doesn't slip past the truthiness check
+  // and render an empty box via IconGlyph.
+  const hasIcon = !!item.icon?.trim();
   return (
     <div
       className="wk-mcp-card"
@@ -69,126 +105,89 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, keyword }) => {
         }
       }}
     >
-      <div className="wk-mcp-card__header">
+      <div className="wk-mcp-card__top">
         <div className="wk-mcp-card__icon">
-          <IconGlyph icon={item.icon} className="wk-mcp-card__icon-img" alt={item.name} />
-        </div>
-        <div className="wk-mcp-card__heading">
-          <div className="wk-mcp-card__name">
-            {/* Wrap the highlighted text in its own span so the ellipsis
-                clamp only applies to the name — not the source chip that
-                sits alongside it. `title` on the wrapper is the plain
-                browser tooltip (fine here: users deliberately hover for
-                a long name, and clicking still opens the detail modal
-                with the full name in the header). */}
-            <span className="wk-mcp-card__name-text" title={item.name}>
-              <Highlight text={item.name} keyword={keyword} />
+          {hasIcon ? (
+            <IconGlyph icon={item.icon} className="wk-mcp-card__icon-img" alt={item.name} />
+          ) : (
+            <span
+              className="wk-mcp-card__icon-default"
+              style={{ background: getMcpAvatarColor(item.id) }}
+            >
+              {getMcpAvatarText(item.name)}
             </span>
-            {/* Cards get an icon-only chip — real estate is tight and the
-                name of the bot rarely helps disambiguation in a grid. Hover
-                exposes the full "由 X 的 Bot 创建" tooltip. */}
-            <SourceBadge item={item} variant="icon-only" />
+          )}
+        </div>
+        <div className="wk-mcp-card__header">
+          <div className="wk-mcp-card__title-row">
+            <h3 className="wk-mcp-card__name" title={item.name}>
+              {item.name}
+            </h3>
           </div>
-          <div className="wk-mcp-card__tags">
-            {visibleTags.map((tag) => (
-              <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
-                <Highlight text={tag} keyword={keyword} />
-              </span>
-            ))}
-            {overflowTags.length > 0 && (
-              /* +N chip: hover reveals the truncated tags via Semi Tooltip
-                 as a mini pill cloud — matches the visual language of the
-                 card's own tags so it reads as "the rest of the tag row".
-                 100 ms delay so the reveal feels near-instant. Click still
-                 bubbles up to the card's onClick — no separate detail path
-                 for the +N. */
-              <Tooltip
-                content={
-                  <div className="wk-mcp-tag-overflow">
-                    {overflowTags.map((tag) => (
-                      <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                }
-                className="wk-mcp-tooltip-light"
-                mouseEnterDelay={100}
-                position="top"
-              >
-                <span className="wk-mcp-tag wk-mcp-tag--more" aria-label={overflowTags.join(", ")}>
-                  +{overflowTags.length}
+          {owner && (
+            <div className="wk-mcp-card__meta-row">
+              {owner.botName && (
+                <span className="wk-mcp-card__owner" title={owner.botName}>
+                  <Bot className="wk-mcp-card__owner-bot-icon" size={13} aria-hidden="true" />
+                  <span className="wk-mcp-card__owner-name">{owner.botName}</span>
                 </span>
-              </Tooltip>
-            )}
-          </div>
+              )}
+              {owner.botName && owner.humanName && (
+                <span className="wk-mcp-card__meta-separator">·</span>
+              )}
+              {owner.humanName && (
+                <span className="wk-mcp-card__owner" title={owner.humanName}>
+                  <UserRound className="wk-mcp-card__owner-user-icon" size={13} aria-hidden="true" />
+                  <span className="wk-mcp-card__owner-name">{owner.humanName}</span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
-      <div className="wk-mcp-card__slogan"><Highlight text={item.slogan} keyword={keyword} /></div>
-      {item.matchReasons?.length ? <MatchReasons reasons={item.matchReasons} keyword={keyword} /> : null}
+      <div className="wk-mcp-card__slogan">{item.slogan}</div>
+      <div className="wk-mcp-card__tags">
+        {visibleTags.map((tag) => (
+          <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
+            {tag}
+          </span>
+        ))}
+        {overflowTags.length > 0 && (
+          <Tooltip
+            content={
+              <div className="wk-mcp-tag-overflow">
+                {overflowTags.map((tag) => (
+                  <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            }
+            className="wk-mcp-tooltip-light"
+            mouseEnterDelay={100}
+            position="top"
+          >
+            <span className="wk-mcp-tag wk-mcp-tag--more" aria-label={overflowTags.join(", ")}>
+              +{overflowTags.length}
+            </span>
+          </Tooltip>
+        )}
+      </div>
+      {item.matchReasons?.length ? <MatchReasons reasons={item.matchReasons} /> : null}
       <div className="wk-mcp-card__footer">
-        <span
-          className="wk-mcp-card__stat"
-          title={t("mcp.card.toolCount", { values: { count: item.toolCount } })}
-          aria-label={t("mcp.card.toolCount", { values: { count: item.toolCount } })}
-        >
-          <IconWrenchStroked size="small" />
-          {item.toolCount}
-        </span>
+        <div className="wk-mcp-card__stats">
+          <span
+            className="wk-mcp-card__stat"
+            title={t("mcp.card.toolCount", { values: { count: item.toolCount } })}
+            aria-label={t("mcp.card.toolCount", { values: { count: item.toolCount } })}
+          >
+            <IconWrenchStroked size="small" />
+            {item.toolCount}
+          </span>
+        </div>
       </div>
     </div>
   );
 };
-
-/**
- * Small "created by whom" chip for bot-authored MCPs (issue #894). Two shapes:
- *   - `icon-only` (card grid): just the 🤖 glyph; hover for the full tooltip
- *     naming the bot and its owner. Keeps the list compact.
- *   - `labeled` (detail modal): 🤖 + bot name, so the source is legible
- *     without a hover — the detail page has the room.
- * Human/import/legacy rows never render a chip either way.
- */
-export function SourceBadge({
-  item,
-  variant = "labeled",
-}: {
-  item: McpListItem;
-  variant?: "icon-only" | "labeled";
-}) {
-  if (item.createdByType !== "bot") return null;
-  const botName = item.createdByBotName || t("mcp.source.bot");
-  const ownerHint = item.creatorName
-    ? t("mcp.source.botTooltip", { values: { owner: item.creatorName } })
-    : "";
-  // Same tooltip shape for both variants — the labeled chip clips long bot
-  // names with an ellipsis, so hover MUST reveal the full name (plus owner)
-  // no matter which variant the caller picks.
-  const tooltip = ownerHint ? `${botName} · ${ownerHint}` : botName;
-  const chip = (
-    <span
-      className={
-        variant === "icon-only"
-          ? "wk-mcp-tag wk-mcp-source wk-mcp-source--bot wk-mcp-source--icon"
-          : "wk-mcp-tag wk-mcp-source wk-mcp-source--bot"
-      }
-      aria-label={tooltip}
-    >
-      <span className="wk-mcp-source__icon" aria-hidden="true">🤖</span>
-      {variant === "labeled" && (
-        <span className="wk-mcp-source__label">{botName}</span>
-      )}
-    </span>
-  );
-  // Semi UI Tooltip — near-instant reveal (100 ms) instead of the browser's
-  // sluggish 500-2000ms native title. Stopping propagation on the trigger
-  // wrapper is unnecessary: the tooltip layer sits above but the click
-  // bubble path still reaches the card, so clicking the chip still opens
-  // the detail like any other card area.
-  return (
-    <Tooltip content={tooltip} mouseEnterDelay={100} position="top">
-      {chip}
-    </Tooltip>
-  );
-}
 
 export default McpCard;

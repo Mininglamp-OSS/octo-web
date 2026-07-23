@@ -15,6 +15,11 @@ import {
   slugifyServerName,
 } from "../utils/constants";
 import { parseImportJSON } from "../utils/importJson";
+import {
+  MAX_MCP_TAGS,
+  validateMcpTag,
+  validateMcpTags,
+} from "../utils/mcpTagValidation";
 import type {
   CreateMcpParams,
   McpDetail,
@@ -393,7 +398,11 @@ function Segments<T extends string>({
   );
 }
 
-/** Chip-based tag input — Enter/comma add, Backspace on empty removes last. */
+/** Chip-based tag input — Enter/comma add, Backspace on empty removes last.
+ *  Also enforces MAX_MCP_TAGS + per-tag length/charset (mirrors dmworkskillmarket
+ *  after PR #1026). Invalid tags are rejected inline with a Toast so the user
+ *  gets immediate feedback; the outer submit path re-validates as a defense
+ *  against legacy oversized rows loaded into the edit form. */
 function TagsInput({
   value,
   onChange,
@@ -406,14 +415,43 @@ function TagsInput({
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const commit = (raw: string) => {
+  const commitOne = (raw: string, existing: string[]): string[] | null => {
     const trimmed = raw.trim().replace(/,+$/, "");
-    if (!trimmed) return;
-    if (value.includes(trimmed)) {
+    if (!trimmed) return null;
+    if (existing.includes(trimmed)) return null;
+    if (existing.length >= MAX_MCP_TAGS) {
+      Toast.warning(t("mcp.form.tagLimit", { values: { count: MAX_MCP_TAGS } }));
+      return null;
+    }
+    const tagError = validateMcpTag(trimmed);
+    if (tagError) {
+      Toast.warning(tagError);
+      return null;
+    }
+    return [...existing, trimmed];
+  };
+
+  /** Accepts either a single tag or a comma-separated batch (from paste).
+   *  Splits on commas, validates each segment, and drops the whole batch's
+   *  draft only after processing so a mid-batch validation error still
+   *  clears the input (matches the keyboard-comma UX). */
+  const commit = (raw: string) => {
+    const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length === 0) {
       setDraft("");
       return;
     }
-    onChange([...value, trimmed]);
+    let next = value;
+    for (const part of parts) {
+      const result = commitOne(part, next);
+      if (result === null) {
+        // Batch aborted on the first invalid segment; keep whatever we already
+        // appended (parity with per-keystroke behavior).
+        break;
+      }
+      next = result;
+    }
+    if (next !== value) onChange(next);
     setDraft("");
   };
 
@@ -423,7 +461,7 @@ function TagsInput({
     <div className="wk-mcp-tags" onClick={() => inputRef.current?.focus()}>
       {value.map((tag, i) => (
         <span className="wk-mcp-tags__chip" key={`${tag}-${i}`}>
-          {tag}
+          <span className="wk-mcp-tags__chip-text" title={tag}>{tag}</span>
           <button
             type="button"
             className="wk-mcp-tags__chip-remove"
@@ -772,6 +810,12 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   };
 
   const handleSubmit = async () => {
+    const tagError = validateMcpTags(form.tags);
+    if (tagError) {
+      Toast.warning(tagError);
+      setStep(0);
+      return;
+    }
     const err = firstValidationError();
     if (err) {
       Toast.warning(

@@ -39,6 +39,149 @@
   gap: var(--wk-sp-2);
 }
 
+/* Publish 按钮 + Bot/手动 下拉 —— 与 dmworkskillmarket 的
+   .skill-market-publish-menu 一致。 */
+.wk-mcp-publish-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.wk-mcp-publish-menu__panel {
+  position: absolute;
+  z-index: var(--wk-z-dropdown);
+  top: calc(100% + var(--wk-sp-2));
+  right: 0;
+  display: grid;
+  gap: var(--wk-sp-1);
+  width: 220px;
+  padding: var(--wk-sp-1);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  box-shadow: var(--wk-shadow-md);
+}
+
+.wk-mcp-publish-menu__panel button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--wk-sp-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--wk-sp-2);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wk-mcp-publish-menu__panel button:hover,
+.wk-mcp-publish-menu__panel button:focus-visible {
+  outline: none;
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-publish-menu__panel button > svg {
+  color: var(--wk-icon-default);
+}
+
+.wk-mcp-publish-menu__panel span,
+.wk-mcp-publish-menu__panel strong,
+.wk-mcp-publish-menu__panel small {
+  display: block;
+  min-width: 0;
+}
+
+.wk-mcp-publish-menu__panel strong {
+  overflow: hidden;
+  color: var(--wk-text-strong);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-mcp-publish-menu__panel small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Bot 上架 modal — mirrors dmworkskillmarket's .skill-market-prompt-modal.
+   头部 icon + 标题/副标题，body 灰底代码框，footer 复制按钮。 */
+.wk-mcp-prompt-modal__header {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-prompt-modal__header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--wk-text-strong);
+}
+
+.wk-mcp-prompt-modal__header p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-prompt-modal__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-accent-tint-06, rgba(127, 59, 245, 0.06));
+  color: var(--wk-color-accent);
+}
+
+.wk-mcp-prompt-modal__body {
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  font-size: 13px;
+  line-height: 1.7;
+  max-height: 55vh;
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.wk-mcp-prompt-modal__body::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide the outer modal-body scrollbar too — the inner code area handles its
+   own scroll via max-height + overflow. Keeps the modal chrome flat. */
+.wk-mcp-prompt-modal .wk-modal-body {
+  scrollbar-width: none;
+}
+
+.wk-mcp-prompt-modal .wk-modal-body::-webkit-scrollbar {
+  display: none;
+}
+
+.wk-mcp-prompt-modal__pre {
+  margin: 0;
+  color: var(--wk-text-primary);
+  font: 13px/1.7 var(--wk-font-sans);
+  white-space: pre-wrap;
+}
+
 /* Underline-style tabs — matches skill-market-tabs. Active tab uses
    --wk-text-accent with a 2px underline pseudo-element. */
 .wk-mcp__tabs {
@@ -120,43 +263,6 @@
   align-items: center;
   gap: var(--wk-sp-3);
   flex-wrap: wrap;
-}
-
-/* 来源分段控件（issue #894）。现在落位在结果摘要行的右侧，与
-   dmworkskillmarket 的 sort 位置对齐；由父级 result-summary 的
-   justify-content: space-between 自动推到右边。 */
-.wk-mcp__source-filter {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px;
-  border-radius: var(--wk-r-full);
-  background: var(--wk-bg-elevated);
-}
-
-.wk-mcp__source-btn {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 var(--wk-sp-3);
-  border: none;
-  border-radius: var(--wk-r-full);
-  background: transparent;
-  color: var(--wk-text-secondary);
-  font-size: var(--wk-text-size-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.wk-mcp__source-btn:hover {
-  color: var(--wk-text-primary);
-}
-
-.wk-mcp__source-btn--active {
-  background: var(--wk-bg-surface);
-  color: var(--wk-text-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 /* 结果摘要行 — 与 dmworkskillmarket 的 .skill-market-result-summary
@@ -305,11 +411,16 @@
   font-size: var(--wk-text-size-xs);
   opacity: 0.7;
 }
+
+/* Match-reasons chips — rendered between the card body and the footer to
+   explain WHY a search hit landed on this row when the matched field
+   (tool / usage_example / creator) isn't already visible on the card.
+   Uses a dashed accent border to distinguish from regular tags. */
 .wk-mcp-card__reasons {
   display: flex;
   flex-wrap: wrap;
   gap: var(--wk-sp-1);
-  margin-bottom: var(--wk-sp-3);
+  margin-top: var(--wk-sp-2);
 }
 
 .wk-mcp-card__reason {
@@ -330,8 +441,6 @@
   color: var(--wk-text-tertiary);
 }
 
-.wk-mcp-card mark, .wk-mcp-tag mark { background: #f59e0b; color: #fff; font-weight: var(--wk-font-semibold); padding: 0 3px; border-radius: 3px; }
-
 /* ── Card grid ───────────────────────────────────────────────────────────── */
 .wk-mcp__grid {
   display: grid;
@@ -342,7 +451,9 @@
 .wk-mcp-card {
   display: flex;
   flex-direction: column;
-  padding: var(--wk-sp-4);
+  min-width: 0;
+  min-height: 184px;
+  padding: var(--wk-sp-3);
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-base);
@@ -353,120 +464,154 @@
     box-shadow var(--wk-dur-fast) var(--wk-ease);
 }
 
-.wk-mcp-card:hover {
+.wk-mcp-card:hover,
+.wk-mcp-card:focus-visible {
+  outline: none;
   border-color: var(--wk-border-strong);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-.wk-mcp-card__header {
+/* Row 1: icon + header column. Matches `.skill-market-card__top`. */
+.wk-mcp-card__top {
   display: flex;
   align-items: flex-start;
-  gap: var(--wk-sp-3);
-  margin-bottom: var(--wk-sp-3);
+  gap: var(--wk-sp-2);
 }
 
 .wk-mcp-card__icon {
-  flex: none;
-  width: 40px;
-  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-elevated);
+  color: var(--wk-icon-default);
+  font-size: 24px;
+  overflow: hidden;
 }
 
-.wk-mcp-card__heading {
+/* Empty-icon fallback — 与 dmworkskillmarket 的 .skill-market-card__icon-default
+   一致：hash 出的实心底色 + 首两字母，白字 15px/600。 */
+.wk-mcp-card__icon-default {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+}
+
+.wk-mcp-card__header {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
   flex: 1;
+  min-width: 0;
+  min-height: 48px;
+}
+
+.wk-mcp-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-2);
   min-width: 0;
 }
 
 .wk-mcp-card__name {
-  font-size: var(--wk-text-size-lg);
-  font-weight: var(--wk-font-semibold);
-  color: var(--wk-text-primary);
-  margin-bottom: var(--wk-sp-1);
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: var(--wk-text-strong);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.wk-mcp-card__meta-row {
   display: flex;
   align-items: center;
-  gap: var(--wk-sp-1);
-  /* Ellipsis-clip the name so a runaway MCP name doesn't wrap and blow the
-     card height out. min-width:0 lets the text span shrink inside its
-     flex parent (the .wk-mcp-card__heading), which is a required
-     incantation for flex ellipsis to work. */
+  gap: 5px;
   min-width: 0;
-}
-
-.wk-mcp-card__name-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-/* Provenance badge (issue #894). Rendered next to the MCP name for bot-
-   authored rows only; human/legacy rows show no chip. Reuses `.wk-mcp-tag`
-   as the base primitive (size / padding / radius / typography) and only
-   layers on the bot-specific colour and the icon-shape variant, so any
-   design-token nudge to the tag chip lands here for free. Cursor is
-   intentionally unset — the badge has no click handler; on the card it
-   inherits the parent card's pointer, and clicking still opens the detail
-   as usual. */
-.wk-mcp-source {
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.wk-mcp-source__icon {
-  font-size: var(--wk-text-size-xs);
-  line-height: 1;
-}
-
-.wk-mcp-source__label {
-  max-width: 96px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.wk-mcp-source--bot {
-  /* Slightly bluer surface than plain tags to distinguish "meta" from "tag". */
-  background: rgba(56, 132, 255, 0.10);
-  color: rgba(56, 132, 255, 0.95);
-}
-
-/* Icon-only variant used in the card grid — square-ish chip, no label,
-   tooltip on hover carries the full "bot name · owner" context. */
-.wk-mcp-source--icon {
-  width: 22px;
-  padding: 0;
-  justify-content: center;
-}
-
-.wk-mcp-source--icon .wk-mcp-source__icon {
+  color: var(--wk-text-tertiary);
   font-size: 13px;
+  line-height: 1.35;
+}
+
+/* @creator / bot 名 — 与 dmworkskillmarket 的 .skill-market-card__owner 一致：
+   accent 色 + 600 字重，把发布者从灰色 meta 行里挑出来。 */
+.wk-mcp-card__owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wk-color-accent);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-mcp-card__owner-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-mcp-card__owner-bot-icon,
+.wk-mcp-card__owner-user-icon {
+  flex: 0 0 auto;
+}
+
+.wk-mcp-card__meta-separator {
+  flex: 0 0 auto;
+  color: var(--wk-text-quaternary, var(--wk-text-tertiary));
 }
 
 .wk-mcp-card__tags {
   display: flex;
-  gap: var(--wk-sp-1);
+  gap: 6px;
+  min-height: 24px;
+  margin-top: var(--wk-sp-3);
+  overflow: hidden;
+  align-items: center;
+  white-space: nowrap;
   flex-wrap: wrap;
 }
 
 .wk-mcp-tag {
   display: inline-flex;
   align-items: center;
-  height: 18px;
-  padding: 0 var(--wk-sp-1-5);
-  border-radius: var(--wk-r-sm);
+  flex: 0 1 auto;
+  max-width: 108px;
+  min-width: 0;
+  padding: 3px 8px;
+  border-radius: var(--wk-r-full);
   background: var(--wk-bg-elevated);
   color: var(--wk-text-tertiary);
-  font-size: var(--wk-text-size-xs);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wk-mcp-tag--accent {
-  background: var(--wk-ai-glow);
-  color: var(--wk-text-accent);
+  background: var(--wk-accent-tint-06, rgba(127, 59, 245, 0.06));
+  color: var(--wk-color-accent);
 }
 
 /* Detail modal slogan — same voice as the card slogan but no line clamp,
@@ -534,10 +679,11 @@
 }
 
 .wk-mcp-card__slogan {
-  font-size: var(--wk-text-size-base);
+  min-height: 42px;
+  margin: var(--wk-sp-3) 0 0;
+  font-size: 13px;
   color: var(--wk-text-secondary);
-  line-height: 1.5;
-  margin-bottom: var(--wk-sp-3);
+  line-height: 1.55;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -547,12 +693,23 @@
 .wk-mcp-card__footer {
   display: flex;
   align-items: center;
+  gap: var(--wk-sp-2);
   justify-content: space-between;
   margin-top: auto;
   padding-top: var(--wk-sp-3);
   border-top: 1px solid var(--wk-border-subtle);
   font-size: var(--wk-text-size-sm);
   color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-card__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  min-width: 0;
+  color: var(--wk-text-secondary);
+  font-size: 12px;
+  line-height: 1;
 }
 
 /* 与 dmworkskillmarket 的 .skill-market-card__stat 视觉一致：
@@ -587,15 +744,20 @@
 }
 
 /* ═══ Detail modal ═════════════════════════════════════════════════════════ */
-.wk-mcp-detail__meta {
+/* ═══ Detail modal ═════════════════════════════════════════════════════════ */
+
+/* Detail modal custom header — 与 dmworkskillmarket 的
+   .skill-market-detail-header 对齐：图标 + 标题行（h2 + 分类 chip）+
+   meta 行（作者 · 更新时间）。 */
+.wk-mcp-detail-header {
   display: flex;
   align-items: flex-start;
   gap: var(--wk-sp-3);
-  margin-bottom: var(--wk-sp-5);
+  padding: var(--wk-sp-4) var(--wk-sp-5) var(--wk-sp-3);
 }
 
-.wk-mcp-detail__icon {
-  flex: none;
+.wk-mcp-detail-header__icon {
+  flex: 0 0 48px;
   width: 48px;
   height: 48px;
   display: flex;
@@ -604,26 +766,73 @@
   font-size: 26px;
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-elevated);
+  overflow: hidden;
 }
 
-.wk-mcp-detail__meta-main {
+.wk-mcp-detail-header__main {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wk-mcp-detail-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
   min-width: 0;
 }
 
-/* meta 行：@owner + Bot 徽章。工具数量已下沉到 slogan 之下的 stats 行。 */
-.wk-mcp-detail__meta-line {
+.wk-mcp-detail-header__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--wk-text-strong);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-mcp-detail-header__badge {
   display: inline-flex;
   align-items: center;
-  gap: var(--wk-sp-1);
-  font-size: var(--wk-text-size-sm);
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.wk-mcp-detail-header__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
   color: var(--wk-text-tertiary);
-  margin-top: var(--wk-sp-1);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.wk-mcp-detail-header__updated {
+  flex: 0 0 auto;
+  color: var(--wk-text-tertiary);
 }
 
 /* @creator 段 — 与 dmworkskillmarket 的 .skill-market-card__owner 视觉一致：
    accent 色 + 600 字重，把发布者从灰色 meta 行里挑出来。 */
 .wk-mcp-detail__owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--wk-color-accent);
   font-weight: 600;
 }
@@ -634,16 +843,19 @@
   display: flex;
   align-items: center;
   gap: var(--wk-sp-3);
-  margin-top: var(--wk-sp-2);
+  margin-top: var(--wk-sp-3);
   font-size: var(--wk-text-size-sm);
   color: var(--wk-text-tertiary);
 }
 
-.wk-mcp-detail__desc {
-  font-size: var(--wk-text-size-base);
-  color: var(--wk-text-secondary);
-  line-height: 1.6;
-  margin-bottom: var(--wk-sp-5);
+/* 详情页尾部的 tags — 与 dmworkskillmarket 的详情弹窗一致，放在
+   slogan + stats 后面，作为标签兜底展示。 */
+.wk-mcp-detail__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--wk-sp-3);
+  margin-bottom: var(--wk-sp-3);
 }
 
 .wk-mcp-section {
@@ -1199,6 +1411,9 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  max-width: 140px;
+  min-width: 0;
+  overflow: hidden;
   height: 22px;
   padding: 0 var(--wk-sp-2);
   border-radius: var(--wk-r-full);
@@ -1207,7 +1422,15 @@
   font-size: var(--wk-text-size-xs);
 }
 
+.wk-mcp-tags__chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wk-mcp-tags__chip-remove {
+  flex: 0 0 auto;
   background: none;
   border: none;
   padding: 0;

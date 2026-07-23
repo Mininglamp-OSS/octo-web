@@ -40,7 +40,7 @@
   },
   "list": {
     "desc": "Browse and connect MCP servers to extend your agent's tools.",
-    "create": "New MCP",
+    "create": "Publish MCP",
     "searchPlaceholder": "Search MCPs, tools, tags, or capabilities",
     "searchClear": "Clear",
     "errorTitle": "Failed to load MCPs",
@@ -60,20 +60,43 @@
     "mode": {
       "all": "All",
       "mine": "Mine"
-    },
-    "source": {
-      "filterLabel": "Filter by source",
-      "all": "All sources"
     }
   },
+  "publishMenu": {
+    "botTitle": "Publish via Bot",
+    "botHint": "Copy the prompt for an Agent",
+    "manualTitle": "Manual",
+    "manualHint": "Fill in the form to create an MCP"
+  },
+  "botPublish": {
+    "title": "Publish via Bot",
+    "hint": "Copy the prompt to an Agent and let it publish for you",
+    "copyBtn": "Copy prompt",
+    "copied": "Copied",
+    "copyFailed": "Copy failed. Select the text manually.",
+    "copyUnavailable": "Automatic copy is not available here. Select the text manually."
+  },
+  "form": {
+    "tagLimit": "At most {{count}} tags",
+    "tagLengthLimit": "A tag can have at most {{count}} characters",
+    "tagInvalidChars": "Tags can only contain letters, digits, spaces, and - _ . / # +"
+  },
   "card": {
-    "hitTool": "Matched tool",
-    "hitTag": "Matched tag",
-    "matchReason": { "name": "Matched name", "description": "Matched summary", "tool": "Matched tool", "tag": "Matched tag", "category": "Matched category", "usage": "Matched usage example", "creator": "Matched publisher", "other": "Matched content" },
+    "matchReason": {
+      "name": "Matched name",
+      "description": "Matched summary",
+      "tool": "Matched tool",
+      "tag": "Matched tag",
+      "category": "Matched category",
+      "usage": "Matched usage example",
+      "creator": "Matched publisher",
+      "other": "Matched content"
+    },
     "toolCount": "Tools: {{count}}"
   },
   "detail": {
     "title": "MCP Details",
+    "updatedAt": "Updated {{time}}",
     "quickAccess": "Quick access",
     "qsTab": {
       "prompt": "Prompt",
@@ -251,5 +274,11 @@
     "submit": "Submit",
     "success": "Created",
     "failed": "Create failed"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}} hours ago",
+    "daysAgo": "{{count}} days ago"
   }
 }

@@ -1,13 +1,15 @@
 import React, { Component } from "react";
 import { Spin, Toast } from "@douyinfe/semi-ui";
-import { IconSearch, IconPlus, IconClose } from "@douyinfe/semi-icons";
+import { IconSearch, IconClose } from "@douyinfe/semi-icons";
+import { Bot, ChevronDown, Upload } from "lucide-react";
 import { I18nContext, t, WKApp, WKButton } from "@octo/base";
 import { fetchMcpList, fetchMcpMine } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
-import type { McpCategory, McpCreatedByType, McpDetail, McpListItem } from "../types/mcp";
+import type { McpCategory, McpDetail, McpListItem } from "../types/mcp";
 import McpCard from "../components/McpCard";
 import McpDetailModal from "../components/McpDetailModal";
 import McpCreateModal from "../components/McpCreateModal";
+import McpBotPublishModal from "../components/McpBotPublishModal";
 import "../index.css";
 import { parseMcpListQuery, serializeMcpListQuery } from "./mcpListQuery";
 
@@ -19,18 +21,6 @@ const PAGE_SIZE = 20;
 /** Fire the next page when the user scrolls within this many px of bottom. */
 const SCROLL_THRESHOLD_PX = 200;
 
-/** Source (来源) segmented control options. Module-level const so the array
- *  is stable across renders — otherwise every parent update re-allocates it
- *  and defeats any downstream memoisation on the pills. */
-const SOURCE_FILTER_OPTIONS: ReadonlyArray<{
-  value: McpCreatedByType | undefined;
-  labelKey: string;
-}> = [
-  { value: undefined, labelKey: "mcp.list.source.all" },
-  { value: "human", labelKey: "mcp.source.human" },
-  { value: "bot", labelKey: "mcp.source.bot" },
-];
-
 interface McpMarketListPageState {
   items: McpListItem[];
   categories: McpCategory[];
@@ -39,13 +29,16 @@ interface McpMarketListPageState {
   error: string | null;
   keyword: string;
   categoriesSelected: string[];
-  /** Provenance filter (issue #894). Single-select; undefined = 全部来源. */
-  createdByType?: McpCreatedByType;
   mode: ListMode;
   offset: number;
   total: number;
   detailId: string | null;
   createVisible: boolean;
+  /** Dropdown-menu open state for the "上架 MCP" button. Mirrors Skill's
+   *  `publishMenuOpen`. */
+  publishMenuOpen: boolean;
+  /** Bot 上架 modal open state. */
+  botPublishVisible: boolean;
   /** When set, the create/edit modal opens in EDIT mode prefilled from this
    *  detail. Cleared on modal close. Distinct from `createVisible` — this
    *  drives the "editing" branch of the shared modal component. */
@@ -71,14 +64,17 @@ export default class McpMarketListPage extends Component<
     error: null,
     keyword: "",
     categoriesSelected: [],
-    createdByType: undefined,
     mode: "all",
     offset: 0,
     total: 0,
     detailId: null,
     createVisible: false,
+    publishMenuOpen: false,
+    botPublishVisible: false,
     editingDetail: null,
   };
+
+  private publishMenuRef = React.createRef<HTMLDivElement>();
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
   private requestVersion = 0;
@@ -90,11 +86,47 @@ export default class McpMarketListPage extends Component<
     WKApp.mittBus.on("space-changed", this.handleSpaceChanged_);
   }
 
+  componentDidUpdate(_prevProps: {}, prevState: McpMarketListPageState) {
+    // Only own the two global listeners while the publish dropdown is open —
+    // mirrors dmworkskillmarket's SkillListPage. Attaching in componentDidMount
+    // unconditionally forces every card click / scroll on the page to trip
+    // through a no-op guard for the 99% of the session where the menu is
+    // closed.
+    if (prevState.publishMenuOpen !== this.state.publishMenuOpen) {
+      if (this.state.publishMenuOpen) {
+        document.addEventListener("pointerdown", this.handleGlobalPointerDown_);
+        document.addEventListener("keydown", this.handleGlobalKeyDown_);
+      } else {
+        document.removeEventListener("pointerdown", this.handleGlobalPointerDown_);
+        document.removeEventListener("keydown", this.handleGlobalKeyDown_);
+      }
+    }
+  }
+
   componentWillUnmount() {
     WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated_);
     WKApp.mittBus.off("space-changed", this.handleSpaceChanged_);
+    // Idempotent — safe if the menu was closed at unmount.
+    document.removeEventListener("pointerdown", this.handleGlobalPointerDown_);
+    document.removeEventListener("keydown", this.handleGlobalKeyDown_);
     if (this.searchTimer) clearTimeout(this.searchTimer);
   }
+
+  /** Close the publish dropdown on outside click. Attached only while
+   *  publishMenuOpen (see componentDidUpdate). */
+  private handleGlobalPointerDown_ = (e: PointerEvent) => {
+    if (!this.publishMenuRef.current?.contains(e.target as Node)) {
+      this.setState({ publishMenuOpen: false });
+    }
+  };
+
+  /** Close the publish dropdown on Escape. Attached only while
+   *  publishMenuOpen (see componentDidUpdate). */
+  private handleGlobalKeyDown_ = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      this.setState({ publishMenuOpen: false });
+    }
+  };
 
   private handleSpaceChanged_ = () => this.loadData();
 
@@ -114,7 +146,6 @@ export default class McpMarketListPage extends Component<
       const resp = await fetcher({
         keyword: this.state.keyword,
         categories: this.state.categoriesSelected,
-        createdByType: this.state.createdByType,
         limit: PAGE_SIZE,
         offset: 0,
       });
@@ -151,22 +182,19 @@ export default class McpMarketListPage extends Component<
     const requestVersion = this.requestVersion;
     const requestKeyword = this.state.keyword;
     const requestCategories = this.state.categoriesSelected.join(",");
-    const requestCreatedBy = this.state.createdByType ?? "";
     this.setState({ loadingMore: true });
     try {
       const fetcher = this.state.mode === "mine" ? fetchMcpMine : fetchMcpList;
       const resp = await fetcher({
         keyword: this.state.keyword,
         categories: this.state.categoriesSelected,
-        createdByType: this.state.createdByType,
         limit: PAGE_SIZE,
         offset,
       });
       if (
         requestVersion !== this.requestVersion ||
         requestKeyword !== this.state.keyword ||
-        requestCategories !== this.state.categoriesSelected.join(",") ||
-        requestCreatedBy !== (this.state.createdByType ?? "")
+        requestCategories !== this.state.categoriesSelected.join(",")
       ) {
         return;
       }
@@ -200,7 +228,7 @@ export default class McpMarketListPage extends Component<
 
   private handleMode = (mode: ListMode) => {
     if (mode === this.state.mode) return;
-    this.setState({ mode, categoriesSelected: [], createdByType: undefined }, () => this.loadData());
+    this.setState({ mode, categoriesSelected: [] }, () => this.loadData());
   };
 
   /** Patch a single row after a successful edit — keeps scroll position
@@ -265,13 +293,6 @@ export default class McpMarketListPage extends Component<
     }), () => this.loadData());
   };
 
-  /** Toggle the "来源" segmented filter (issue #894). value === undefined
-   *  means the 全部 pill. */
-  private handleCreatedBy = (value: McpCreatedByType | undefined) => {
-    if (value === this.state.createdByType) return;
-    this.setState({ createdByType: value }, () => this.loadData());
-  };
-
   render() {
     const {
       items,
@@ -281,7 +302,6 @@ export default class McpMarketListPage extends Component<
       error,
       keyword,
       categoriesSelected,
-      createdByType,
       mode,
       total,
       detailId,
@@ -335,13 +355,50 @@ export default class McpMarketListPage extends Component<
                 )}
               </div>
             </div>
-            <WKButton
-              variant="primary"
-              icon={<IconPlus />}
-              onClick={() => this.setState({ createVisible: true })}
-            >
-              {t("mcp.list.create")}
-            </WKButton>
+            <div className="wk-mcp-publish-menu" ref={this.publishMenuRef}>
+              <WKButton
+                variant="primary"
+                icon={<Upload size={15} />}
+                onClick={() =>
+                  this.setState((prev) => ({ publishMenuOpen: !prev.publishMenuOpen }))
+                }
+                aria-haspopup="menu"
+                aria-expanded={this.state.publishMenuOpen}
+              >
+                {t("mcp.list.create")}
+                <ChevronDown size={14} />
+              </WKButton>
+              {this.state.publishMenuOpen && (
+                <div className="wk-mcp-publish-menu__panel" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() =>
+                      this.setState({ publishMenuOpen: false, botPublishVisible: true })
+                    }
+                  >
+                    <Bot size={16} />
+                    <span>
+                      <strong>{t("mcp.publishMenu.botTitle")}</strong>
+                      <small>{t("mcp.publishMenu.botHint")}</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() =>
+                      this.setState({ publishMenuOpen: false, createVisible: true })
+                    }
+                  >
+                    <Upload size={16} />
+                    <span>
+                      <strong>{t("mcp.publishMenu.manualTitle")}</strong>
+                      <small>{t("mcp.publishMenu.manualHint")}</small>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -390,35 +447,6 @@ export default class McpMarketListPage extends Component<
                   >
                     {t("mcp.list.total", { values: { count: total } })}
                   </span>
-                  {/* 来源筛选 — 单选分段控件，放在结果摘要的右侧，跟
-                      dmworkskillmarket 的 sort 位置一致。「全部来源」= 清除筛选。
-                      即使当前结果为空也保留，方便用户放宽筛选。 */}
-                  <div
-                    className="wk-mcp__source-filter"
-                    role="group"
-                    aria-label={t("mcp.list.source.filterLabel")}
-                  >
-                    {SOURCE_FILTER_OPTIONS.map(({ value, labelKey }) => {
-                      const active =
-                        value === undefined
-                          ? createdByType === undefined
-                          : createdByType === value;
-                      return (
-                        <button
-                          key={value ?? "all"}
-                          type="button"
-                          className={
-                            active
-                              ? "wk-mcp__source-btn wk-mcp__source-btn--active"
-                              : "wk-mcp__source-btn"
-                          }
-                          onClick={() => this.handleCreatedBy(value)}
-                        >
-                          {t(labelKey)}
-                        </button>
-                      );
-                    })}
-                  </div>
                 </div>
                 {items.length === 0 ? (
                   <div className="wk-mcp__state">{t("mcp.list.empty")}</div>
@@ -429,7 +457,6 @@ export default class McpMarketListPage extends Component<
                         <McpCard
                           key={item.id}
                           item={item}
-                          keyword={keyword}
                           onClick={(it) => this.setState({ detailId: it.id })}
                         />
                       ))}
@@ -468,6 +495,10 @@ export default class McpMarketListPage extends Component<
             this.setState({ createVisible: false, editingDetail: null })
           }
           onSaved={this.handleSaved}
+        />
+        <McpBotPublishModal
+          visible={this.state.botPublishVisible}
+          onClose={() => this.setState({ botPublishVisible: false })}
         />
       </div>
     );
