@@ -150,13 +150,17 @@ function MessageAvatar({ name }: { name: string }) {
     );
 }
 
-function MessageHeader({ sender, sentAt }: { sender: string; sentAt: string }) {
+function MessageHeader({ sender, sentAt, gap = 4 }: { sender: string; sentAt: string; gap?: number }) {
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: 0.5 }}>
-            <MessageAvatar name={sender} />
-            <span style={{ fontSize: 14, fontWeight: 500, lineHeight: '20px', color: '#1C1C23' }}>{sender}</span>
-            <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)' }}>{formatTime(sentAt)}</span>
-            <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>：</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <MessageAvatar name={sender} />
+                <span style={{ fontSize: 14, fontWeight: 500, lineHeight: '20px', color: '#1C1C23' }}>{sender}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap }}>
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)' }}>{formatTime(sentAt)}</span>
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>：</span>
+            </div>
         </div>
     );
 }
@@ -166,7 +170,7 @@ function ContextMessages({ messages }: { messages?: CitationContextMessage[] }) 
     return (
         <>
             {messages.map((msg, i) => (
-                <div key={i} style={contextMsgStyle}>
+                <div key={i} style={{ ...contextMsgStyle, opacity: 0.5 }}>
                     <MessageHeader sender={msg.sender} sentAt={msg.sent_at} />
                     <div style={{ paddingLeft: 24, color: '#1C1C23', fontSize: 14, fontWeight: 400, lineHeight: '20px' }}>
                         {msg.content}
@@ -182,6 +186,10 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
     if (!citation.channel_id || !citation.message_seq || citation.channel_type == null) return null;
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+            <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="rgba(28, 28, 35, 0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+            </svg>
             <span style={{ fontSize: 12, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)', cursor: 'pointer' }}
                 onClick={(e) => {
                     e.stopPropagation();
@@ -236,14 +244,7 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, citations, badgeKe
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         <ContextMessages messages={citation.context_before} />
                         <div style={citedMsgStyle}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <MessageAvatar name={citation.sender} />
-                                    <span style={{ fontSize: 14, fontWeight: 500, lineHeight: '20px', color: '#1C1C23' }}>{citation.sender}</span>
-                                    <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)' }}>{formatTime(citation.sent_at)}</span>
-                                    <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>：</span>
-                                </div>
-                            </div>
+                            <MessageHeader sender={citation.sender} sentAt={citation.sent_at} />
                             <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
                                 {citation.content}
                             </div>
@@ -297,7 +298,7 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                     <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         {mergedMessages.map((msg, i) => (
-                            <div key={msg.message_seq ?? i} style={msg.cited ? citedMsgStyle : contextMsgStyle}>
+                            <div key={msg.message_seq ?? i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
                                 <MessageHeader sender={msg.sender} sentAt={msg.sent_at} />
                                 <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
                                     {msg.content}
