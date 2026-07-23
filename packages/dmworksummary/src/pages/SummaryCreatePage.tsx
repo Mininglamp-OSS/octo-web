@@ -880,6 +880,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                             ? [this.state.referencedTask.task_id]
                                             : undefined
                                     }
+                                    selectedChannels={selectedChats}
                                     referenceHeader={this.renderReferenceHeader(translate)}
                                 />
                             </div>
@@ -1040,22 +1041,25 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     {/* Action bar */}
                     <div className="summary-workbench-actions">
                         <div className="summary-workbench-actions-left">
+                            {/* 「选择聊天」两种模式都需要:normal 用来 pick 目标聊天做总结;agent
+                                模式下用户也可能想在开始对话前先明确指定聊天(尤其归档子区依赖前端
+                                selected_channel_ids 桥接才能访问)。所以移出 mode !== 'agent' gate。
+                                参与者 / 定时是传统 workflow 特有的产品能力,保持仅 normal 显示。 */}
+                            <Button
+                                theme="borderless"
+                                icon={<IconPlus />}
+                                size="small"
+                                onClick={() => this.setState({ showChatSelector: true })}
+                                style={{ color: selectedChats.length > 0 ? "var(--semi-color-primary)" : undefined }}
+                            >
+                                {selectedChats.length > 0
+                                    ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
+                                    : translate("summary.create.selectChat")}
+                            </Button>
                             {mode !== 'agent' && (
                                 <>
-                                {/* 选择聊天 */}
-                                <Button
-                                    theme="borderless"
-                                    icon={<IconPlus />}
-                                    size="small"
-                                    onClick={() => this.setState({ showChatSelector: true })}
-                                    style={{ color: selectedChats.length > 0 ? "var(--semi-color-primary)" : undefined }}
-                                >
-                                    {selectedChats.length > 0
-                                        ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
-                                        : translate("summary.create.selectChat")}
-                                </Button>
-                                {/* 选择参与者：多人协作入口。打开 MemberSelectorModal 选 participants，
-                                    与「选择聊天 / 定时」并列在创建页操作栏，确保多人入口在 UI 上可达。 */}
+                                {/* 选择参与者:多人协作入口。打开 MemberSelectorModal 选 participants,
+                                    与「选择聊天 / 定时」并列在创建页操作栏,确保多人入口在 UI 上可达。 */}
                                 <Button
                                     theme="borderless"
                                     icon={<IconUserGroup />}
