@@ -11,7 +11,6 @@ import * as api from "../api/summaryApi";
 import WKApp from "@octo/base/src/App";
 import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT } from "../constants/limits";
-import "./SummarySelectors.css";
 
 interface MemberCandidate {
     uid: string;
@@ -486,11 +485,11 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                 {loading ? (
                                     <div className="chat-selector-loading"><Spin /></div>
                                 ) : mode === "members" ? (
-                                    this.getDisplayList().map((entry) => this.renderMemberItem(entry))
-                                ) : this.getDisplayList().length === 0 ? (
+                                    displayList.map((entry) => this.renderMemberItem(entry))
+                                ) : displayList.length === 0 ? (
                                     <Empty description={t("summary.chatSelector.noData")} />
                                 ) : (
-                                    this.getDisplayList().map((entry) => this.renderItem(entry))
+                                    displayList.map((entry) => this.renderItem(entry))
                                 )}
                             </div>
                         </div>
