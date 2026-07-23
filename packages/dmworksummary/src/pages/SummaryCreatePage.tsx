@@ -175,6 +175,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     private updateSelectChatWidth = () => {
         const selectChat = this.selectChatRef.current;
         if (!selectChat) return;
+        // 面板模式：actions 是竖向堆叠，不需要 JS 计算宽度
+        if (this.props.embedded) {
+            selectChat.style.width = '';
+            selectChat.style.flex = '';
+            selectChat.style.maxWidth = '';
+            return;
+        }
         const actions = selectChat.parentElement;
         if (!actions) return;
         const startBtn = actions.querySelector('.summary-workbench-start-btn');
