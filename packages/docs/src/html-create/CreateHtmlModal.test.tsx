@@ -73,36 +73,36 @@ describe('CreateHtmlModal', () => {
     wk.apiClient.responder = () => new Promise(() => {})
     setWKApp(wk)
     render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    expect(screen.getByText('list.htmlCreate.botLoading')).toBeTruthy()
+    expect(screen.getByText('docs.list.htmlCreate.botLoading')).toBeTruthy()
   })
 
   it('shows an error + retry when the bot load fails, and retry refetches', async () => {
     const wk = mountBots('error')
     render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('list.htmlCreate.botError')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.botError')).toBeTruthy())
     // Flip the responder to success, then retry.
     wk.apiClient.responder = (_m, url) =>
       url.startsWith('/robot/owned_bots')
         ? { data: [{ uid: 'bot1', name: 'Recovered' }], status: 200 }
         : { data: {}, status: 200 }
-    fireEvent.click(screen.getByText('list.htmlCreate.retry'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.retry'))
     await waitFor(() => expect(screen.getByText('Recovered')).toBeTruthy())
   })
 
   it('shows the empty state and disables submit when the user owns no bot', async () => {
     mountBots([])
     render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('list.htmlCreate.botEmpty')).toBeTruthy())
-    const submit = screen.getByText('list.htmlCreate.submit') as HTMLButtonElement
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.botEmpty')).toBeTruthy())
+    const submit = screen.getByText('docs.list.htmlCreate.submit') as HTMLButtonElement
     expect(submit.disabled).toBe(true)
   })
 
   it('disables submit until a description is entered (bot is preselected)', async () => {
     render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    const submit = screen.getByText('list.htmlCreate.submit') as HTMLButtonElement
+    const submit = screen.getByText('docs.list.htmlCreate.submit') as HTMLButtonElement
     expect(submit.disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText('list.htmlCreate.descLabel'), {
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: 'A landing page' },
     })
     expect(submit.disabled).toBe(false)
@@ -111,20 +111,20 @@ describe('CreateHtmlModal', () => {
   it('disables submit for a whitespace-only description', async () => {
     render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('list.htmlCreate.descLabel'), {
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: '   \n  ' },
     })
-    expect((screen.getByText('list.htmlCreate.submit') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByText('docs.list.htmlCreate.submit') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('blocks submit and flags an error when the description exceeds 8000 chars', async () => {
     render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('list.htmlCreate.descLabel'), {
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: 'x'.repeat(8001) },
     })
-    expect(screen.getByText('list.htmlCreate.descTooLong')).toBeTruthy()
-    expect((screen.getByText('list.htmlCreate.submit') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText('docs.list.htmlCreate.descTooLong')).toBeTruthy()
+    expect((screen.getByText('docs.list.htmlCreate.submit') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('hands the selected bot + description + staged files to onSubmit and never uploads', async () => {
@@ -137,7 +137,7 @@ describe('CreateHtmlModal', () => {
     await waitFor(() => expect(screen.getByText('Scribe')).toBeTruthy())
     // Choose the second bot.
     fireEvent.click(screen.getByDisplayValue('bot2'))
-    fireEvent.change(screen.getByLabelText('list.htmlCreate.descLabel'), {
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: 'My page' },
     })
     // Stage two files via the hidden file input.
@@ -145,7 +145,7 @@ describe('CreateHtmlModal', () => {
     const f2 = new File(['b'], 'b.pdf', { type: 'application/pdf' })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(input, { target: { files: [f1, f2] } })
-    fireEvent.click(screen.getByText('list.htmlCreate.submit'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
 
     expect(onSubmit).toHaveBeenCalledTimes(1)
     const draft = onSubmit.mock.calls[0][0]
@@ -168,7 +168,7 @@ describe('CreateHtmlModal', () => {
     fireEvent.change(input, { target: { files: [f1, f2] } })
     expect(screen.getByText('drop.png')).toBeTruthy()
     // Remove the second file.
-    const removeBtns = screen.getAllByLabelText('list.htmlCreate.removeFile')
+    const removeBtns = screen.getAllByLabelText('docs.list.htmlCreate.removeFile')
     fireEvent.click(removeBtns[1])
     expect(screen.queryByText('drop.png')).toBeNull()
     expect(screen.getByText('keep.png')).toBeTruthy()
@@ -197,7 +197,7 @@ describe('CreateHtmlModal', () => {
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
-    fireEvent.click(screen.getByText('list.htmlCreate.cancel'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.cancel'))
     expect(onClose).toHaveBeenCalledTimes(2)
   })
 })

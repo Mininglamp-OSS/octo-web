@@ -153,7 +153,7 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
       >
         <header className="octo-html-create-header">
           <h3 id={titleId} className="octo-html-create-title">
-            {t('list.htmlCreate.title')}
+            {t('docs.list.htmlCreate.title')}
           </h3>
         </header>
 
@@ -167,7 +167,7 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
           {/* Description */}
           <div className="octo-html-create-field">
             <label className="octo-html-create-label" htmlFor={descId}>
-              {t('list.htmlCreate.descLabel')}
+              {t('docs.list.htmlCreate.descLabel')}
             </label>
             <textarea
               id={descId}
@@ -175,7 +175,7 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
               value={description}
               maxLength={HTML_DESCRIPTION_MAX + 1}
               rows={5}
-              placeholder={t('list.htmlCreate.descPlaceholder')}
+              placeholder={t('docs.list.htmlCreate.descPlaceholder')}
               aria-describedby={tooLong ? descErrId : undefined}
               aria-invalid={tooLong || undefined}
               onChange={(e) => setDescription(e.target.value)}
@@ -185,32 +185,32 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
             </div>
             {tooLong && (
               <p id={descErrId} className="octo-html-create-error" role="alert">
-                {t('list.htmlCreate.descTooLong')}
+                {t('docs.list.htmlCreate.descTooLong')}
               </p>
             )}
           </div>
 
           {/* Bot selection */}
           <div className="octo-html-create-field">
-            <span className="octo-html-create-label">{t('list.htmlCreate.botLabel')}</span>
+            <span className="octo-html-create-label">{t('docs.list.htmlCreate.botLabel')}</span>
             {bots.kind === 'loading' && (
-              <p className="octo-html-create-hint">{t('list.htmlCreate.botLoading')}</p>
+              <p className="octo-html-create-hint">{t('docs.list.htmlCreate.botLoading')}</p>
             )}
             {bots.kind === 'error' && (
               <div className="octo-html-create-inline-error" role="alert">
-                <span>{t('list.htmlCreate.botError')}</span>
+                <span>{t('docs.list.htmlCreate.botError')}</span>
                 <button
                   type="button"
                   className="octo-tb-btn"
                   onClick={() => setReloadKey((n) => n + 1)}
                 >
-                  {t('list.htmlCreate.retry')}
+                  {t('docs.list.htmlCreate.retry')}
                 </button>
               </div>
             )}
             {ready && !hasBots && (
               <p className="octo-html-create-hint" role="note">
-                {t('list.htmlCreate.botEmpty')}
+                {t('docs.list.htmlCreate.botEmpty')}
               </p>
             )}
             {hasBots && (
@@ -240,13 +240,13 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
 
           {/* Reference files (staged only) */}
           <div className="octo-html-create-field">
-            <span className="octo-html-create-label">{t('list.htmlCreate.filesLabel')}</span>
+            <span className="octo-html-create-label">{t('docs.list.htmlCreate.filesLabel')}</span>
             <button
               type="button"
               className="octo-tb-btn"
               onClick={() => fileInputRef.current?.click()}
             >
-              {t('list.htmlCreate.addFiles')}
+              {t('docs.list.htmlCreate.addFiles')}
             </button>
             <input
               ref={fileInputRef}
@@ -264,7 +264,7 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
                     <button
                       type="button"
                       className="octo-html-create-file-remove"
-                      aria-label={t('list.htmlCreate.removeFile')}
+                      aria-label={t('docs.list.htmlCreate.removeFile')}
                       onClick={() => removeFile(i)}
                     >
                       <CloseIcon />
@@ -277,14 +277,14 @@ export function CreateHtmlModal({ open, spaceId, onClose, onSubmit }: CreateHtml
 
           <footer className="octo-html-create-footer">
             <button type="button" className="octo-tb-btn" onClick={onClose}>
-              {t('list.htmlCreate.cancel')}
+              {t('docs.list.htmlCreate.cancel')}
             </button>
             <button
               type="submit"
               className="octo-tb-btn octo-html-create-submit"
               disabled={!canSubmit}
             >
-              {t('list.htmlCreate.submit')}
+              {t('docs.list.htmlCreate.submit')}
             </button>
           </footer>
         </form>

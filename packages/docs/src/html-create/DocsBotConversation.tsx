@@ -80,11 +80,11 @@ export function DocsBotConversation({
   // generation/publish progress is expressed by the bot's own messages, never faked here (§5.8).
   const statusText =
     composeState === 'failed'
-      ? failReason || t('list.htmlCreate.stateFailed')
+      ? failReason || t('docs.list.htmlCreate.stateFailed')
       : composeState === 'sent'
-        ? t('list.htmlCreate.stateSent', { values: { name: draft.botName } })
+        ? t('docs.list.htmlCreate.stateSent', { values: { name: draft.botName } })
         : composeState === 'prepared'
-          ? t('list.htmlCreate.statePrepared')
+          ? t('docs.list.htmlCreate.statePrepared')
           : null
 
   return (
@@ -95,12 +95,12 @@ export function DocsBotConversation({
         </span>
         <span className="octo-docs-bot-chat-heading">
           <span className="octo-docs-bot-chat-name">{draft.botName}</span>
-          <span className="octo-docs-bot-chat-context">{t('list.htmlCreate.chatContext')}</span>
+          <span className="octo-docs-bot-chat-context">{t('docs.list.htmlCreate.chatContext')}</span>
         </span>
         <button
           type="button"
           className="octo-docs-bot-chat-close"
-          aria-label={t('list.htmlCreate.close')}
+          aria-label={t('docs.list.htmlCreate.close')}
           onClick={onClose}
         >
           <CloseIcon />

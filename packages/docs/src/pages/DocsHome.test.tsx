@@ -2047,10 +2047,10 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     fireEvent.click(screen.getByText('docs.list.newHtml'))
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
 
-    fireEvent.change(screen.getByLabelText('list.htmlCreate.descLabel'), {
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: 'A launch page' },
     })
-    fireEvent.click(screen.getByText('list.htmlCreate.submit'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
 
     // The bot chat element was pushed into the host right pane.
     await waitFor(() => {
@@ -2080,10 +2080,10 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
     fireEvent.click(screen.getByText('docs.list.newHtml'))
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('list.htmlCreate.descLabel'), {
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: 'Landing' },
     })
-    fireEvent.click(screen.getByText('list.htmlCreate.submit'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
 
     let requestId: string | undefined
     await waitFor(() => {
@@ -2122,10 +2122,10 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
     fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
     fireEvent.click(screen.getByText('docs.list.newHtml'))
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('list.htmlCreate.descLabel'), {
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: 'Landing' },
     })
-    fireEvent.click(screen.getByText('list.htmlCreate.submit'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.submit'))
     await waitFor(() => {
       const last = replaceToRoot.mock.calls.at(-1)?.[0] as
         | { props?: { draft?: { botUid?: string } } }

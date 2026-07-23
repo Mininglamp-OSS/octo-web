@@ -83,7 +83,7 @@ describe('DocsBotConversation', () => {
   it('shows the bot name and the "create HTML with bot" context in the header', () => {
     render(<DocsBotConversation draft={draft()} onClose={() => {}} />)
     expect(screen.getByText('Publisher')).toBeTruthy()
-    expect(screen.getByText('list.htmlCreate.chatContext')).toBeTruthy()
+    expect(screen.getByText('docs.list.htmlCreate.chatContext')).toBeTruthy()
   })
 
   it('reflects prepared / sent / failed compose states (does not fake bot progress)', () => {
@@ -101,7 +101,7 @@ describe('DocsBotConversation', () => {
   it('close button returns to docs (calls onClose) without deleting the DM', () => {
     const onClose = vi.fn()
     render(<DocsBotConversation draft={draft()} onClose={onClose} />)
-    fireEvent.click(screen.getByLabelText('list.htmlCreate.close'))
+    fireEvent.click(screen.getByLabelText('docs.list.htmlCreate.close'))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
