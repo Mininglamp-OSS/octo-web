@@ -1270,8 +1270,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             {/* 选择参与者 */}
                             <div className="summary-workbench-chat-row">
                                 {selectedMembers.length > 0 && (
-                                    <div className="summary-workbench-chat-chips" style={{ flex: '0 1 auto' }}>
-                                        {selectedMembers.map((m) => (
+                                    <div className="summary-workbench-chat-chips" style={{ maxHeight: '24px', overflow: 'hidden', flex: '1 1 0', minWidth: 0 }}>
+                                        {selectedMembers.slice(0, 10).map((m) => (
                                             <div key={m.user_id} className="summary-workbench-chat-chip">
                                                 <WKAvatar
                                                     channel={new Channel(m.user_id, 1)}
@@ -1289,6 +1289,16 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                                 </button>
                                             </div>
                                         ))}
+                                        {selectedMembers.length > 10 && (
+                                            <Tooltip
+                                                content={selectedMembers.map((m) => m.name).join("、")}
+                                                position="top"
+                                            >
+                                                <span className="summary-workbench-chat-chip-overflow">
+                                                    ...+{selectedMembers.length - 10}
+                                                </span>
+                                            </Tooltip>
+                                        )}
                                     </div>
                                 )}
                                 <button
