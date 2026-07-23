@@ -593,12 +593,15 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     setWKApp(undefined as never)
   })
 
-  it('renders exactly one viewer avatar and no Synced/Connecting connection text', async () => {
+  it('renders exactly one viewer avatar using the current viewer name initial', async () => {
+    wk.spaceMembers.push({ uid: 'u_viewer', name: '王留超' })
     serveDoc('<p>body</p>')
-    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const { container } = render(<HtmlDocView docId="d1" space="sp_viewer_name" />)
     await waitForFrame(container)
     const presence = screen.getByTestId('html-doc-presence')
     expect(presence.querySelectorAll('.octo-avatar')).toHaveLength(1)
+    await waitFor(() => expect(presence.querySelector('.octo-avatar')?.textContent).toBe('王'))
+    expect(presence.querySelector('.octo-avatar')?.getAttribute('title')).toBe('王留超')
     expect(container.textContent).not.toContain('Synced')
     expect(container.textContent).not.toContain('Connecting')
   })
@@ -647,6 +650,24 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     // Clicking the overlay backdrop closes the modal (parity with EditorShell #A4).
     fireEvent.mouseDown(container.querySelector('.octo-modal-overlay') as HTMLElement)
     expect(container.querySelector('.octo-modal-overlay')).toBeNull()
+  })
+
+  it('shows the pending access-request count on the HTML Members button', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'admin' }, status: 200 }
+      }
+      if (method === 'get' && url === '/docs/d1/access-requests?status=pending') {
+        return { data: { items: [{ requestId: 'r1', uid: 'u1' }, { requestId: 'r2', uid: 'u2' }] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: true })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+
+    const membersButton = screen.getByTitle('docs.toolbar.members')
+    await waitFor(() => expect(membersButton.querySelector('.octo-access-badge')?.textContent).toBe('2'))
   })
 
   it('admin-not-author viewer never sees author-only slots and never lists octo-doc grants (OCT-216 regression)', async () => {

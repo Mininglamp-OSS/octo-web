@@ -7,7 +7,7 @@ import { useMemberNames } from '../members/useMemberNames.ts'
 import { listGrants, addGrant, removeGrant, type HtmlGrant } from './htmlGrantsApi.ts'
 import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
-import { useAccessRequests } from '../access-request/useAccessRequests.ts'
+import { useAccessRequests, type UseAccessRequestsResult } from '../access-request/useAccessRequests.ts'
 import { PendingRequests } from '../access-request/PendingRequests.tsx'
 
 // Member panel for HTML docs. Two backends live behind one modal:
@@ -34,6 +34,7 @@ export function HtmlMemberPanel({
   docId,
   role,
   isAuthor,
+  accessRequests: sharedAccessRequests,
 }: {
   slug: string
   /** Space id for the member picker roster. */
@@ -54,6 +55,7 @@ export function HtmlMemberPanel({
   /** octo-doc author flag from HtmlDocView (parseOdocCap). Same authority as the legacy
    *  canManage prop; passing both is redundant but harmless. */
   isAuthor: boolean
+  accessRequests?: UseAccessRequestsResult
 }) {
   // uid → display name for member rows (falls back to uid until the roster resolves).
   const names = useMemberNames(space ?? '')
@@ -88,7 +90,8 @@ export function HtmlMemberPanel({
 
   // Access-request hook: enabled only when the backend says we can manage; a non-admin never hits
   // the pending endpoint (it would 403).
-  const accessRequests = useAccessRequests(docId, canManageBackend)
+  const localAccessRequests = useAccessRequests(docId, sharedAccessRequests ? false : canManageBackend)
+  const accessRequests = sharedAccessRequests ?? localAccessRequests
 
   // reader is the only grantable role today; MemberPicker returns a Role but we
   // pin it to reader before calling the backend.

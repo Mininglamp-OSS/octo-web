@@ -23,6 +23,7 @@ import { useMemberNames } from '../members/useMemberNames.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
 import { avatarUrlForUid } from './htmlAvatar.ts'
 import { canManage, type Role } from '../auth/roles.ts'
+import { useAccessRequests } from '../access-request/useAccessRequests.ts'
 import { buildDocLink } from '../forward/link.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
@@ -357,6 +358,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
   // standalone surface (creatorNicknameOnly) SKIPS the member map entirely and forces nickname-
   // only so a link holder never sees the creator's verified real_name (XIN-392 P2-1).
   const names = useMemberNames(space)
+  const viewerName = names.get(getCurrentUid())
   const [creatorName, setCreatorName] = useState<string | undefined>(undefined)
   useEffect(() => {
     setCreatorName(undefined)
@@ -402,6 +404,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
   const creatorUid = ownerId
   const canManageBackend = role != null && canManage(role)
   const canOpenPanel = isAuthor || canManageBackend
+  const pendingAccess = useAccessRequests(docId, canManageBackend)
   // Browser-openable address for forwarding this doc to chat. Build the PATH-style standalone
   // link (/d/<docId>?sp=<space>) like every other kind (buildDocLink), NOT window.location.href:
   // the in-shell address is the legacy /docs?doc= query form, whose docId is wiped by the host's
@@ -562,7 +565,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
           {headerTitle}
         </div>
         <div className="octo-doc-header-right">
-          <HtmlPresenceBar />
+          <HtmlPresenceBar displayName={viewerName} />
           <button
             type="button"
             className={commentsOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
@@ -598,6 +601,11 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
               onClick={() => setMembersOpen((v) => !v)}
             >
               {t('docs.toolbar.members')}
+              {pendingAccess.count > 0 && (
+                <span className="octo-access-badge" aria-label={t('docs.forward.pendingTitle')}>
+                  {pendingAccess.count}
+                </span>
+              )}
             </button>
           )}
           <DocMoreMenu
@@ -678,6 +686,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
               docId={docId}
               role={role}
               isAuthor={isAuthor}
+              accessRequests={pendingAccess}
             />
           </div>
         </div>
