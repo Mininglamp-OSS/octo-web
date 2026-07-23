@@ -1345,9 +1345,24 @@
 }
 
 .skill-market-detail-header__owner {
-  max-width: 96px;
+  max-width: min(260px, 42%);
   color: var(--wk-color-accent) !important;
   font-weight: 600;
+}
+
+.skill-market-detail-header__owner > svg {
+  flex: 0 0 auto;
+}
+
+.skill-market-detail-header__owner > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.skill-market-detail-header__owner .skill-market-detail-header__publisher-separator {
+  flex: 0 0 auto;
+  overflow: visible;
 }
 
 .skill-market-detail-header__updated {
