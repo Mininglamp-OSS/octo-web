@@ -24,6 +24,7 @@ vi.mock("../http", () => ({
 import {
   ensureDirectory,
   invalidateDirectory,
+  listAssigneeCandidateState,
   listAssigneeCandidates,
   listProjectOptions,
 } from "../directory";
@@ -40,19 +41,30 @@ describe("directory", () => {
     vi.mocked(httpGet).mockReset();
   });
 
-  it("keeps display fallback data but rejects authoritative candidates when a candidate source fails", async () => {
+  it("keeps partial candidates but marks them non-authoritative when a candidate source fails", async () => {
     vi.mocked(httpGet).mockImplementation((path: string) => {
-      if (path === "/workspaces/ws-1/members") return Promise.reject(new Error("members failed"));
-      if (path === "/agents") return Promise.resolve([{ id: "a1", name: "Agent" }]);
+      if (path === "/workspaces/ws-1/members") return Promise.resolve([{ user_id: "m1", name: "Member" }]);
+      if (path === "/agents") return Promise.reject(new Error("agents failed"));
       if (path === "/squads") return Promise.resolve([{ id: "s1", name: "Squad" }]);
       if (path === "/projects") return Promise.resolve({ projects: [{ id: "p1", title: "Project" }] });
       return Promise.reject(new Error(`unexpected ${path}`));
     });
 
     const dir = await ensureDirectory();
-    expect(dir.agentName.get("a1")).toBe("Agent");
+    expect(dir.memberName.get("m1")).toBe("Member");
+    expect(dir.squadName.get("s1")).toBe("Squad");
     expect(dir.projectName.get("p1")).toBe("Project");
-    await expect(listAssigneeCandidates()).rejects.toThrow("Assignee directory failed");
+    await expect(listAssigneeCandidates()).resolves.toEqual([
+      { id: "m1", type: "member", name: "Member", octo_uid: null },
+      { id: "s1", type: "squad", name: "Squad" },
+    ]);
+    await expect(listAssigneeCandidateState()).resolves.toEqual({
+      candidates: [
+        { id: "m1", type: "member", name: "Member", octo_uid: null },
+        { id: "s1", type: "squad", name: "Squad" },
+      ],
+      succeeded: false,
+    });
     await expect(listProjectOptions()).resolves.toEqual([{ id: "p1", title: "Project" }]);
 
     const persisted = {
@@ -64,7 +76,7 @@ describe("directory", () => {
     const reconciled = reconcileIssueFilters(
       persisted,
       issueFilterOptionIds({
-        candidates: [],
+        candidates: (await listAssigneeCandidateState()).candidates,
         candidatesLoaded: true,
         candidatesSucceeded: false,
         projects: await listProjectOptions(),

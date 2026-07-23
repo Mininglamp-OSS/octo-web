@@ -178,8 +178,18 @@ export function projectNameOf(
 
 export async function listAssigneeCandidates(): Promise<AssigneeCandidate[]> {
   const dir = await ensureDirectory();
-  if (!dir.candidatesSucceeded) throw new Error("Assignee directory failed");
   return dir.candidates;
+}
+
+export async function listAssigneeCandidateState(): Promise<{
+  candidates: AssigneeCandidate[];
+  succeeded: boolean;
+}> {
+  const dir = await ensureDirectory();
+  return {
+    candidates: dir.candidates,
+    succeeded: dir.candidatesSucceeded,
+  };
 }
 
 // 项目筛选下拉的选项，复用已缓存的 directory（不额外请求 /projects），与

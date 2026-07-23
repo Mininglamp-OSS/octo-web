@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AssigneeCandidate } from "../api/types";
-import { listAssigneeCandidates } from "../api/issueApi";
+import { listAssigneeCandidateState } from "../api/issueApi";
 
 export interface AssigneeCandidateState {
   candidates: AssigneeCandidate[];
@@ -21,8 +21,8 @@ export function useAssigneeCandidateState(enabled = true): AssigneeCandidateStat
       return () => { alive = false; };
     }
     setState((prev) => ({ candidates: prev.candidates, loaded: false, succeeded: false }));
-    listAssigneeCandidates()
-      .then((candidates) => { if (alive) setState({ candidates, loaded: true, succeeded: true }); })
+    listAssigneeCandidateState()
+      .then(({ candidates, succeeded }) => { if (alive) setState({ candidates, loaded: true, succeeded }); })
       .catch(() => {
         if (alive) {
           setState((prev) => ({

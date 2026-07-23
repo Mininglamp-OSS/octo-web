@@ -14,7 +14,13 @@ import type {
   CommentTriggerAgent,
 } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
-import { ensureDirectory, actorName, actorAvatar, listAssigneeCandidates as dirCandidates } from "./directory";
+import {
+  ensureDirectory,
+  actorName,
+  actorAvatar,
+  listAssigneeCandidates as dirCandidates,
+  listAssigneeCandidateState as dirCandidateState,
+} from "./directory";
 import { arrayFilterQuery } from "./issueFilterQuery";
 
 // enrich 的同步核心:调用方已拿到 directory 时复用,避免每组重复 ensureDirectory。
@@ -249,4 +255,11 @@ export function updateComment(commentId: string, content: string): Promise<Issue
 /* ---------- 指派候选 ---------- */
 export function listAssigneeCandidates(): Promise<AssigneeCandidate[]> {
   return dirCandidates();
+}
+
+export function listAssigneeCandidateState(): Promise<{
+  candidates: AssigneeCandidate[];
+  succeeded: boolean;
+}> {
+  return dirCandidateState();
 }
