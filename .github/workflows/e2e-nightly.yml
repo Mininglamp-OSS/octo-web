@@ -68,10 +68,13 @@ jobs:
         # 组合语义: grep AND grep-invert (playwright 官方支持)
         shell: bash
         run: |
+          E2E_LOG="e2e-kit/playwright-report/e2e-nightly.log"
+          mkdir -p "$(dirname "$E2E_LOG")"
+
           set +e
           pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts \
-            --grep "@p[0-9]" --grep-invert "@visual"
-          PW_EXIT=$?
+            --grep "@p[0-9]" --grep-invert "@visual" 2>&1 | tee "$E2E_LOG"
+          PW_EXIT=${PIPESTATUS[0]}
           set -e
 
           JUNIT="e2e-kit/playwright-report/junit.xml"
@@ -80,6 +83,7 @@ jobs:
             exit 1
           fi
           TOTAL_TESTS=$(grep -oE 'tests="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          PROXY_ERRORS=$(grep -c "http proxy error:" "$E2E_LOG" || true)
           # nightly 也加 tests=0 guard: 防 grep drift 让 nightly 静默"全绿"
           EXPECTED_P0=29
           if [[ "$TOTAL_TESTS" -eq 0 ]]; then
@@ -87,6 +91,10 @@ jobs:
             exit 1
           elif [[ "$TOTAL_TESTS" -lt "$EXPECTED_P0" ]]; then
             echo "❌ nightly tests=$TOTAL_TESTS < EXPECTED_P0=$EXPECTED_P0 (有 case 掉 @p tag), fail"
+            exit 1
+          elif [[ "$PROXY_ERRORS" -gt 0 ]]; then
+            echo "❌ nightly 出现 $PROXY_ERRORS 条 Vite proxy error, 说明 mock 覆盖漏网, fail"
+            grep "http proxy error:" "$E2E_LOG" | sed -E 's/.*http proxy error: //g' | sort | uniq -c
             exit 1
           fi
           echo "✅ nightly ran $TOTAL_TESTS tests (playwright exit=$PW_EXIT)"

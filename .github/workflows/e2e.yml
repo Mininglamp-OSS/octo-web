@@ -71,9 +71,12 @@ jobs:
         working-directory: apps/web
         shell: bash
         run: |
+          E2E_LOG="e2e-kit/playwright-report/e2e-p0.log"
+          mkdir -p "$(dirname "$E2E_LOG")"
+
           set +e
-          pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts --grep "@p0"
-          PW_EXIT=$?
+          pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts --grep "@p0" 2>&1 | tee "$E2E_LOG"
+          PW_EXIT=${PIPESTATUS[0]}
           set -e
 
           JUNIT="e2e-kit/playwright-report/junit.xml"
@@ -94,6 +97,7 @@ jobs:
           VISUAL_FAIL=$(echo "$FAILED_NAMES" | grep "@visual" | grep -vc "@p0" || true)
           BUSINESS_FAIL=$((TOTAL_FAIL - VISUAL_FAIL))
           TOTAL_TESTS=$(grep -oE 'tests="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          PROXY_ERRORS=$(grep -c "http proxy error:" "$E2E_LOG" || true)
           echo ""
           echo "═════════════════════════════════════════════════════════════"
           echo "📊 e2e @p0 summary (playwright exit=$PW_EXIT):"
@@ -101,6 +105,7 @@ jobs:
           echo "   total fail:    $TOTAL_FAIL"
           echo "   business fail: $BUSINESS_FAIL"
           echo "   visual fail:   $VISUAL_FAIL"
+          echo "   proxy errors:  $PROXY_ERRORS"
           if [[ "$TOTAL_FAIL" -gt 0 ]]; then
             echo ""
             echo "   fail case names:"
@@ -111,10 +116,11 @@ jobs:
           # 判定顺序 (fail-closed, PW_EXIT 检查在 visual allow 之前避免掩盖 crash):
           #  1. tests=0 → webServer / playwright 挂了根本没跑, block
           #  2. tests < EXPECTED_P0 → 有 case 静默掉了 @p0 tag / grep 漂了, block
-          #  3. 有业务 fail (含 @p0+@visual 交叉 case) → block
-          #  4. PW_EXIT!=0 但 junit 无 business fail → playwright 本身 crash/OOM/timeout, block
-          #  5. 仅视觉 fail (无 @p0 交叉) 且 playwright 干净退出 → allow
-          #  6. 全绿 → success
+          #  3. Vite proxy error → MSW 漏 mock, case 虽过也是假绿, block
+          #  4. 有业务 fail (含 @p0+@visual 交叉 case) → block
+          #  5. PW_EXIT!=0 但 junit 无 business fail → playwright 本身 crash/OOM/timeout, block
+          #  6. 仅视觉 fail (无 @p0 交叉) 且 playwright 干净退出 → allow
+          #  7. 全绿 → success
           EXPECTED_P0=29
           if [[ "$TOTAL_TESTS" -eq 0 ]]; then
             echo "❌ tests=0 (playwright 没跑起 test, 通常是 preview server timeout), block PR"
@@ -122,6 +128,10 @@ jobs:
           elif [[ "$TOTAL_TESTS" -lt "$EXPECTED_P0" ]]; then
             echo "❌ tests=$TOTAL_TESTS < EXPECTED_P0=$EXPECTED_P0 (有 case 掉了 @p0 tag 或 grep 漂了), block PR"
             echo "   若确认减 case, 请同步下调 EXPECTED_P0."
+            exit 1
+          elif [[ "$PROXY_ERRORS" -gt 0 ]]; then
+            echo "❌ e2e 出现 $PROXY_ERRORS 条 Vite proxy error, 说明 mock 覆盖漏网, block PR"
+            grep "http proxy error:" "$E2E_LOG" | sed -E 's/.*http proxy error: //g' | sort | uniq -c
             exit 1
           elif [[ "$BUSINESS_FAIL" -gt 0 ]]; then
             echo "❌ 有 $BUSINESS_FAIL 个业务 case fail → block PR"

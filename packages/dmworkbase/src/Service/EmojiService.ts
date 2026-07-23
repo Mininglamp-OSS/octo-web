@@ -281,6 +281,9 @@ export class DefaultEmojiService implements EmojiService {
     // 启动时拉取 manifest（fire-and-forget）。成功则刷新清单并落地缓存；失败保持兜底，
     // 保证首屏与降级。token 仍是 [xxx]，不变。
     async load(): Promise<void> {
+        if (import.meta.env.VITE_E2E_MOCK === "1") {
+            return
+        }
         try {
             const manifest = (await APIClient.shared.get("common/emojis")) as EmojiManifest
             // 只要 list 是数组就应用(允许服务端下发空列表 = 清空自定义表情);非数组/缺失则保留兜底。
