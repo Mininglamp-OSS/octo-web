@@ -1271,7 +1271,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                         onClick={() => this.setState({ showChatSelector: true })}
                                     >
                                         <Plus size={16} />
-                                        <span>{translate("summary.common.add")}</span>
+                                        <span>{translate("summary.create.selectChat")}</span>
                                     </button>
                                 </div>
                             ) : (
@@ -1281,9 +1281,18 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     onClick={() => this.setState({ showChatSelector: true })}
                                 >
                                     <Plus size={16} />
-                                    <span>{translate("summary.common.add")}</span>
+                                    <span>{translate("summary.create.selectChat")}</span>
                                 </button>
                             )}
+                            {/* 选择参与者 */}
+                            <button
+                                type="button"
+                                className="summary-workbench-add-chat"
+                                onClick={this.handleOpenMemberSelector}
+                            >
+                                <Plus size={16} />
+                                <span>{translate("summary.create.selectMembers")}</span>
+                            </button>
                         </div>
                         {mode !== 'agent' && (
                             <Button
