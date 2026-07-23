@@ -146,6 +146,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                     <Dropdown
                         trigger="click"
                         position="bottomRight"
+                        renderInPortal
                         visible={menuVisible}
                         onVisibleChange={setMenuVisible}
                         render={
