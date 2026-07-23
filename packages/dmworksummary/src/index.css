@@ -651,7 +651,7 @@
 .summary-regenerate-char-count {
     position: absolute;
     right: 12px;
-    bottom: 4px;
+    bottom: 6px;
     font-size: 12px;
     color: rgba(28, 28, 35, 0.4);
     font-family: Inter, sans-serif;
