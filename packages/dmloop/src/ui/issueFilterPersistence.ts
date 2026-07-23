@@ -263,7 +263,7 @@ function normalizeDateRange(value: unknown): Date[] | undefined {
   if (!Array.isArray(value) || value.length !== 2) return undefined;
   const start = toValidDate(value[0]);
   const end = toValidDate(value[1]);
-  if (!start || !end || start.getTime() >= end.getTime()) return undefined;
+  if (!start || !end || start.getTime() > end.getTime()) return undefined;
   return [start, end];
 }
 

@@ -73,6 +73,31 @@ describe("issue filter persistence", () => {
     ]);
   });
 
+  it("round-trips a same-day date range", () => {
+    const storage = new MemoryStorage();
+    const key = issueFilterStorageKey("alpha", "loop.view.issue");
+    const sameDay = new Date("2026-07-01T00:00:00.000Z");
+
+    writeIssueFilterState(
+      storage,
+      key,
+      {
+        scope: "all",
+        filters: {
+          ...defaultIssueFilters(),
+          dateRange: [sameDay, sameDay],
+        },
+      },
+      false
+    );
+
+    const restored = readIssueFilterState(storage, key, "all", false);
+    expect(restored.filters.dateRange?.map((d) => d.toISOString())).toEqual([
+      "2026-07-01T00:00:00.000Z",
+      "2026-07-01T00:00:00.000Z",
+    ]);
+  });
+
   it("falls back on malformed or invalid storage data", () => {
     const storage = new MemoryStorage();
     const key = "filters";
