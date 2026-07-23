@@ -2451,13 +2451,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 )}
                 <hr className="summary-detail-meta-divider" />
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
-                    {personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
+                {personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
                         <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
                             {t("summary.detail.submitToAll")}
                         </Button>
-                    )}
-                </div>
+                    </div>
+                )}
                 {this.renderPersonalVersionHistory()}
                 {personalResult.content && (
                     <div className="summary-detail-content-box">
