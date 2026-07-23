@@ -1212,7 +1212,7 @@
     resize: none !important;
     font-family: inherit;
     color: var(--semi-color-text-0);
-    background-color: var(--semi-color-fill-0);
+    background-color: #fff;
     outline: none;
     box-sizing: border-box;
     overflow-y: auto !important;

@@ -230,6 +230,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private streamAbortController: AbortController | null = null;
     private streamingTaskId: number | null = null;
     private streamClosedTaskId: number | null = null;
+    private editorSaveFn: (() => void) | null = null;
     private teamStreamAbortController: AbortController | null = null;
     private teamStreamingTaskId: number | null = null;
     private teamStreamClosedTaskId: number | null = null;
@@ -2468,6 +2469,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             initialContent={personalResult.content || ""}
                             onSave={this.handleEditSave}
                             onCancel={this.handleEditCancel}
+                            exposeSave={(fn) => { this.editorSaveFn = fn; }}
                         />
                     </div>
                 ) : personalResult.content && (
@@ -2596,6 +2598,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             initialContent={detail.result.content || ""}
                             onSave={this.handleEditTeamSave}
                             onCancel={this.handleEditTeamCancel}
+                            exposeSave={(fn) => { this.editorSaveFn = fn; }}
                         />
                     </div>
                 </div>
@@ -3640,7 +3643,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             type="button"
                             className="summary-detail-footer-btn summary-detail-footer-btn--save"
                             onClick={() => {
-                                if (this.state.editingTeamSummary) {
+                                if (this.editorSaveFn) {
+                                    this.editorSaveFn();
+                                } else if (this.state.editingTeamSummary) {
                                     this.handleEditTeamSave();
                                 } else {
                                     this.handleEditSave();

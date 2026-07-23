@@ -11,16 +11,8 @@ interface SummaryEditorProps {
     initialContent: string;
     onSave: () => void;
     onCancel: () => void;
-    /**
-     * 编辑目标：
-     *  - "team"（默认）：编辑团队/个人总结结果，走 PUT /summaries/:id/edit（editSummary）。
-     *  - "personal"（need3/6）：编辑「自己的个人报告」，走 PUT /summaries/:id/personal-edit
-     *    （personalEditSummary），成功后后端自动触发团队重算。
-     *  - "personal_draft"（OCT-21）：提交前编辑「自己的个人报告」草稿，走
-     *    PUT /summaries/:id/personal-draft（personalDraftSummary）。**不**触发团队
-     *    重算、**不**写 edited_at。仅当 worker_status===2 && submitted_at IS NULL 时允许。
-     */
     mode?: "team" | "personal" | "personal_draft";
+    exposeSave?: (fn: () => void) => void;
 }
 
 interface SummaryEditorState {
@@ -42,6 +34,9 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
     componentDidMount() {
         window.addEventListener("beforeunload", this.handleBeforeUnload);
         this.adjustHeight();
+        if (this.props.exposeSave) {
+            this.props.exposeSave(this.handleSave);
+        }
     }
 
     componentWillUnmount() {
