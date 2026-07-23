@@ -85,4 +85,116 @@ describe("SubscriberListVM local search", () => {
 
     expect(vm.subscribers).toEqual(localResult);
   });
+
+  it("merges server results when the local member cache is incomplete", async () => {
+    const remoteResult = {
+      uid: "member-after-first-page",
+      name: "魏娇莹",
+    } as Subscriber;
+    subscribersRequest.mockResolvedValue([remoteResult]);
+    const vm = new SubscriberListVM(channel, undefined, () => [], false);
+    (vm as any)._isMounted = true;
+
+    vm.search("weijiao");
+    await vi.waitFor(() => expect(vm.subscribers).toEqual([remoteResult]));
+
+    expect(subscribersRequest).toHaveBeenCalledWith(channel, {
+      page: 1,
+      limit: vm.limit,
+      keyword: "weijiao",
+    });
+  });
+
+  it("deduplicates matching members returned by local and server search", async () => {
+    subscribersRequest.mockResolvedValue(localResult);
+    const vm = new SubscriberListVM(
+      channel,
+      undefined,
+      () => localResult,
+      false
+    );
+    (vm as any)._isMounted = true;
+
+    vm.search("weijiao");
+    await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledOnce());
+
+    expect(vm.subscribers).toEqual(localResult);
+  });
+
+  it("applies the existing subscriber filter to merged server results", async () => {
+    const blocked = { uid: "bot", name: "Bot" } as Subscriber;
+    subscribersRequest.mockResolvedValue([...localResult, blocked]);
+    const vm = new SubscriberListVM(
+      channel,
+      (subscriber) => subscriber.uid !== blocked.uid,
+      () => [],
+      false
+    );
+    (vm as any)._isMounted = true;
+
+    vm.search("weijiao");
+    await vi.waitFor(() => expect(vm.subscribers).toEqual(localResult));
+  });
+
+  it("does not let an older partial-cache search overwrite a newer search", async () => {
+    const firstRequest = deferred<Subscriber[]>();
+    const secondResult = [{ uid: "second", name: "Second" }] as Subscriber[];
+    subscribersRequest
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockResolvedValueOnce(secondResult);
+    const vm = new SubscriberListVM(
+      channel,
+      undefined,
+      (keyword) =>
+        keyword === "second"
+          ? ([{ uid: "second-local", name: "Second Local" }] as Subscriber[])
+          : [],
+      false
+    );
+    (vm as any)._isMounted = true;
+
+    vm.search("first");
+    vm.search("second");
+    await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledTimes(2));
+    firstRequest.resolve([{ uid: "stale", name: "Stale" }] as Subscriber[]);
+    await firstRequest.promise;
+    await vi.waitFor(() =>
+      expect(vm.subscribers.map((subscriber) => subscriber.uid)).toEqual([
+        "second-local",
+        "second",
+      ])
+    );
+  });
+
+  it("keeps server pagination after merging partial-cache search results", async () => {
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      uid: `remote-${index}`,
+      name: `Remote ${index}`,
+    })) as Subscriber[];
+    const secondPage = [
+      { uid: "remote-50", name: "Remote 50" },
+    ] as Subscriber[];
+    subscribersRequest
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage);
+    const vm = new SubscriberListVM(
+      channel,
+      undefined,
+      () => localResult,
+      false
+    );
+    (vm as any)._isMounted = true;
+
+    vm.search("wei");
+    await vi.waitFor(() => expect(vm.hasMore).toBe(true));
+    await vm.loadMoreSubscribersIfNeed();
+
+    expect(subscribersRequest).toHaveBeenLastCalledWith(channel, {
+      page: 2,
+      limit: vm.limit,
+      keyword: "wei",
+    });
+    expect(vm.subscribers).toHaveLength(52);
+    expect(vm.hasMore).toBe(false);
+  });
 });

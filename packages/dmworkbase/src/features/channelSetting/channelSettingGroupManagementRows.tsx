@@ -23,6 +23,7 @@ import { I18nText, t } from "../../i18n";
 import { ChannelSettingInfoRow } from "../../ui/ChannelSettingRows";
 import { ChannelSettingInputEditPush } from "./types";
 import { createChannelSettingMemberSearch } from "./channelSettingMemberSearch";
+import { SuperGroup } from "../../Utils/const";
 
 interface BuildGroupManagementRowsOptions {
   context: RouteContext<ChannelSettingRouteData>;
@@ -56,6 +57,10 @@ function buildTransferOwnerRow(
           <SubscriberList
             channel={channel}
             localSearch={localSearch}
+            localSearchComplete={
+              data.channelInfo?.orgData?.group_type !== undefined &&
+              data.channelInfo.orgData.group_type !== SuperGroup
+            }
             canSelect
             singleSelect
             disableSelectList={[WKApp.loginInfo.uid || ""]}

@@ -41,6 +41,8 @@ export interface SubscriberListProps {
   humansOnly?: boolean;
   /** 可选的本地搜索实现；未提供时保持原有服务端搜索。 */
   localSearch?: (keyword: string) => Subscriber[];
+  /** 本地成员索引是否完整；不完整时会继续请求并合并服务端搜索结果。 */
+  localSearchComplete?: boolean;
 }
 
 export interface SubscriberListState {
@@ -280,7 +282,8 @@ export class SubscriberList extends Component<
               this.props.humansOnly
                 ? (subscriber: Subscriber) => !isBot(subscriber.uid)
                 : this.props.filter,
-              this.props.localSearch
+              this.props.localSearch,
+              this.props.localSearchComplete
             );
             // 在数据加载完成的回调中触发预取，避免在 render 内产生副作用
             vm.onSubscribersLoaded = (subscribers) => {
