@@ -3520,20 +3520,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         {!this.isMultiCollab() && (
                                             <>
                                                 {this.shouldShowProcessingCard() && !this.personalReady && this.renderProcessing()}
-                                                {this.state.isEditing && this.state.personalResult && detail.result_id ? (
-                                                    <div className="summary-detail-personal">
-                                                        <h3>{t("summary.detail.mySummaryPlain")}</h3>
-                                                        <SummaryEditor
-                                                            taskId={detail.task_id}
-                                                            baseResultId={detail.result_id}
-                                                            initialContent={this.state.personalResult.content || ""}
-                                                            onSave={this.handleEditSave}
-                                                            onCancel={this.handleEditCancel}
-                                                        />
-                                                    </div>
-                                                ) : (
-                                                    this.renderPersonalSummary()
-                                                )}
+                                                {this.renderPersonalSummary()}
                                             </>
                                         )}
                                         {/* 回归修复：多人协作页给「我自己」补回「提交给全部」轻量入口。
