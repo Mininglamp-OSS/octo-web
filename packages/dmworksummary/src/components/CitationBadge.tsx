@@ -161,17 +161,16 @@ function MessageAvatar({ name, uid }: { name: string; uid?: string }) {
     );
 }
 
-function MessageHeader({ sender, sentAt, uid }: { sender: string; sentAt: string; uid?: string }) {
+function MessageHeader({ sender, sentAt, uid, jumpLink }: { sender: string; sentAt: string; uid?: string; jumpLink?: React.ReactNode }) {
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <MessageAvatar name={sender} uid={uid} />
                 <span style={{ fontSize: 14, fontWeight: 500, lineHeight: '20px', color: '#1C1C23' }}>{sender}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)', fontFamily: 'Inter, sans-serif', letterSpacing: '-0.01em' }}>{formatTime(sentAt)}</span>
                 <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>：</span>
             </div>
+            {jumpLink}
         </div>
     );
 }
@@ -255,8 +254,12 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, citations, badgeKe
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         <ContextMessages messages={citation.context_before} />
                         <div style={citedMsgStyle}>
-                            <MessageHeader sender={citation.sender} sentAt={citation.sent_at} uid={citation.sender_uid} />
-                            <JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />
+                            <MessageHeader
+                                sender={citation.sender}
+                                sentAt={citation.sent_at}
+                                uid={citation.sender_uid}
+                                jumpLink={<JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />}
+                            />
                             <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
                                 {citation.content}
                             </div>
@@ -312,10 +315,12 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                             const cit = groupCitations.find(c => c.index === msg.citation_index);
                             return (
                                 <div key={msg.message_seq ?? i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
-                                    <MessageHeader sender={msg.sender} sentAt={msg.sent_at} uid={msg.sender_uid} />
-                                    {msg.cited && cit && (
-                                        <JumpLink citation={cit} badgeKey={badgeKey} closeKey={closeKey} />
-                                    )}
+                                    <MessageHeader
+                                        sender={msg.sender}
+                                        sentAt={msg.sent_at}
+                                        uid={msg.sender_uid}
+                                        jumpLink={msg.cited && cit ? <JumpLink citation={cit} badgeKey={badgeKey} closeKey={closeKey} /> : undefined}
+                                    />
                                     <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
                                         {msg.content}
                                     </div>
