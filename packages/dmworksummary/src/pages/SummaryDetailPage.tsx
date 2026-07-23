@@ -2451,39 +2451,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 )}
                 <hr className="summary-detail-meta-divider" />
-                <div className="summary-detail-section-header">
-                    <button
-                        type="button"
-                        className="summary-detail-section-toggle"
-                        onClick={this.togglePersonalExpanded}
-                    >
-                        <ChevronDown size={14} className={`summary-detail-chevron${personalExpanded ? " summary-detail-chevron--expanded" : ""}`} />
-                        <span>{t("summary.detail.mySummary")}</span>
-                    </button>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {/* #158/#161 fast-follow：agent 总结不支持 edit —— 后端 PUT /edit
-                            走的是 SummaryResult 表更新，但 agent 保存路径只写
-                            personal_result 表（agent_summary.go 里 creatorPR 是唯一
-                            deliverable，不建 summary_result 行）。用户点击编辑保存后
-                            会 404 "总结结果不存在"。前端直接不渲染。
-                            如果未来后端为 agent 建 SummaryResult 行，只需删除下面
-                            这行 trigger_type 判断即可。 */}
-                        {personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
-                            <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
-                                {t("summary.detail.submitToAll")}
-                            </Button>
-                        )}
-                    </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                    {personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
+                        <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
+                            {t("summary.detail.submitToAll")}
+                        </Button>
+                    )}
                 </div>
-                {personalExpanded && (
-                    <>
-                        {this.renderPersonalVersionHistory()}
-                        {personalResult.content && (
-                            <div className="summary-detail-content-box">
-                                <CitationText content={personalResult.content} citations={personalResult.citations || []} />
-                            </div>
-                        )}
-                    </>
+                {this.renderPersonalVersionHistory()}
+                {personalResult.content && (
+                    <div className="summary-detail-content-box">
+                        <CitationText content={personalResult.content} citations={personalResult.citations || []} />
+                    </div>
                 )}
             </div>
         );
