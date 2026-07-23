@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   defaultIssueFilters,
+  type IssueFilterReader,
+  type IssueFilterWriter,
   issueFilterStorageKey,
   readIssueFilterState,
   reconcileIssueFilters,
   writeIssueFilterState,
 } from "../issueFilterPersistence";
 
-class MemoryStorage
-  implements Pick<Storage, "getItem" | "setItem" | "removeItem">
-{
+class MemoryStorage implements IssueFilterReader, IssueFilterWriter {
   private values = new Map<string, string>();
 
   getItem(key: string) {

@@ -32,6 +32,15 @@ export interface IssueFilterOptionIds {
   labelIds?: string[];
 }
 
+export interface IssueFilterReader {
+  getItem(key: string): string | null;
+}
+
+export interface IssueFilterWriter {
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
 const STATUSES: IssueStatus[] = [
   "backlog",
   "todo",
@@ -68,7 +77,7 @@ export function issueFilterStorageKey(
 }
 
 export function readIssueFilterState(
-  storage: Pick<Storage, "getItem">,
+  store: IssueFilterReader,
   key: string | null,
   fallbackScope: IssueScope,
   isMyLoop: boolean
@@ -76,7 +85,7 @@ export function readIssueFilterState(
   const fallback = { filters: defaultIssueFilters(), scope: fallbackScope };
   if (!key) return fallback;
   try {
-    const raw = storage.getItem(key);
+    const raw = store.getItem(key);
     if (!raw) return fallback;
     return normalizeState(JSON.parse(raw), fallbackScope, isMyLoop);
   } catch {
@@ -85,7 +94,7 @@ export function readIssueFilterState(
 }
 
 export function writeIssueFilterState(
-  storage: Pick<Storage, "setItem" | "removeItem">,
+  store: IssueFilterWriter,
   key: string | null,
   state: IssueFilterState,
   isMyLoop: boolean
@@ -94,10 +103,10 @@ export function writeIssueFilterState(
   const normalized = normalizeState(state, state.scope, isMyLoop);
   try {
     if (isDefaultState(normalized, isMyLoop)) {
-      storage.removeItem(key);
+      store.removeItem(key);
       return;
     }
-    storage.setItem(key, JSON.stringify(serializeState(normalized, isMyLoop)));
+    store.setItem(key, JSON.stringify(serializeState(normalized, isMyLoop)));
   } catch {
     /* ignore storage quota / privacy mode failures */
   }
