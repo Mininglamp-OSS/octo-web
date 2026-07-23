@@ -2468,16 +2468,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             会 404 "总结结果不存在"。前端直接不渲染。
                             如果未来后端为 agent 建 SummaryResult 行，只需删除下面
                             这行 trigger_type 判断即可。 */}
-                        {detail && detail.status === TaskStatus.COMPLETED && detail.permissions?.can_edit && !this.state.isEditing && detail.trigger_type !== TriggerType.AGENT && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                icon={<IconEdit />}
-                                onClick={this.handleStartEdit}
-                            >
-                                {t("summary.common.edit")}
-                            </Button>
-                        )}
                         {personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
                             <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
                                 {t("summary.detail.submitToAll")}
@@ -2640,17 +2630,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
                             </Tag>
                         </div>
-                        {/* need4：团队编辑按钮仅 creator（can_edit_team），非 creator 不渲染。 */}
-                        {canEditTeam && detail.status === TaskStatus.COMPLETED && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                icon={<IconEdit />}
-                                onClick={this.handleStartEditTeam}
-                            >
-                                {t("summary.detail.editTeamSummary")}
-                            </Button>
-                        )}
+                        {/* need4：团队编辑按钮移到 more dropdown，不再在卡片内独立渲染。 */}
                     </div>
                 </div>
                 {this.renderVersionHistory()}
@@ -3327,7 +3307,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     renderHeader() {
-        const { detail } = this.state;
+        const { detail, scheduleLoading } = this.state;
         const { t } = this.context;
         const myUid = WKApp.loginInfo.uid;
         const isCreator = detail?.creator_id != null && detail.creator_id === myUid;
@@ -3349,7 +3329,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const showCancel = !!detail && canCancel(detail.status);
         const showDelete = !!detail && isCreator;
         const showLeave = !!detail && isParticipant && !isCreator;
-        const hasMoreActions = showForwardToChat || showForwardToMatter || showRegenerate || showCancel || showDelete || showLeave;
+        const showEdit = !!detail && detail.status === TaskStatus.COMPLETED && !!detail.permissions?.can_edit && detail.trigger_type !== TriggerType.AGENT && !this.state.isEditing;
+        const canSchedule = !!detail?.permissions?.can_schedule && detail?.trigger_type !== TriggerType.AGENT && !this.state.isEditing && !this.state.editingTeamSummary;
+        const scheduleItem = this.state.scheduleItem;
+        const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
+        const showSchedule = canSchedule;
+        const hasMoreActions = showForwardToChat || showForwardToMatter || showRegenerate || showCancel || showDelete || showLeave || showEdit || showSchedule;
 
         return (
             <>
@@ -3370,13 +3355,29 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             {t("summary.detail.continueRefine")}
                         </Button>
                     )}
-                    {this.renderScheduleButton()}
                     {hasMoreActions && (
                         <Dropdown
                             trigger="click"
                             position="bottomRight"
                             render={
                                     <Dropdown.Menu>
+                                        {showEdit && (
+                                            <Dropdown.Item
+                                                icon={<IconEdit />}
+                                                onClick={this.handleStartEdit}
+                                            >
+                                                {t("summary.common.edit")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showSchedule && (
+                                            <Dropdown.Item
+                                                icon={<IconClock />}
+                                                onClick={this.openScheduleModal}
+                                                disabled={scheduleLoading}
+                                            >
+                                                {t(hasActiveSchedule ? "summary.detail.editSchedule" : "summary.detail.setSchedule")}
+                                            </Dropdown.Item>
+                                        )}
                                         {showForwardToChat && (
                                             <Dropdown.Item
                                                 icon={<IconSend />}
