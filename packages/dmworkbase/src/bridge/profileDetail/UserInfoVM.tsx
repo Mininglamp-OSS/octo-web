@@ -1,10 +1,9 @@
-import { ChannelInfoListener, SubscriberChangeListener } from "wukongimjssdk";
+import { SubscriberChangeListener } from "wukongimjssdk";
 import {
   Channel,
   ChannelTypeGroup,
   ChannelInfo,
   ChannelTypePerson,
-  WKSDK,
   Subscriber,
 } from "wukongimjssdk";
 import { Section } from "../../Service/Section";
@@ -18,11 +17,11 @@ import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { isRealnameVerified, displayName as resolveDisplayName } from "../../Utils/displayName";
 import { parseThreadChannelId } from "../../Service/Thread";
 import {
-  addImSubscriberChangeListener,
-  fetchImChannelInfo,
-  getImChannelInfo,
-  getImChannelSubscribers,
-} from "../../im-runtime/channelRuntime";
+  addCurrentImSubscriberChangeListener,
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+  getCurrentImChannelSubscribers,
+} from "../../im-runtime/currentChannelRuntime";
 
 export class UserInfoRouteData {
   uid!: string;
@@ -71,8 +70,7 @@ export class UserInfoVM extends ProviderListener {
       this.subscriberChangeListener = () => {
         this.reloadSubscribers();
       };
-      this.unsubscribeSubscriberChangeListener = addImSubscriberChangeListener(
-        WKSDK.shared(),
+      this.unsubscribeSubscriberChangeListener = addCurrentImSubscriberChangeListener(
         this.subscriberChangeListener
       );
 
@@ -130,7 +128,7 @@ export class UserInfoVM extends ProviderListener {
       this.editingRemark = false;
       this.remarkDraft = "";
       this.notifyListener();
-      fetchImChannelInfo(WKSDK.shared(), new Channel(requestedUid, ChannelTypePerson)).catch((error: unknown) => {
+      fetchCurrentImChannelInfo(new Channel(requestedUid, ChannelTypePerson)).catch((error: unknown) => {
         console.warn("[UserInfo] refresh channel after remark failed:", error);
       });
       Promise.resolve(this.reloadChannelInfo()).catch((error: unknown) => {
@@ -189,7 +187,7 @@ export class UserInfoVM extends ProviderListener {
     };
 
     if (sourceChannel) {
-      applySubscribers(getImChannelSubscribers(WKSDK.shared(), sourceChannel), {
+      applySubscribers(getCurrentImChannelSubscribers(sourceChannel), {
         replaceUser: true,
         replaceMe: true,
       });
@@ -200,7 +198,7 @@ export class UserInfoVM extends ProviderListener {
         memberChannel.channelID !== sourceChannel.channelID ||
         memberChannel.channelType !== sourceChannel.channelType)
     ) {
-      applySubscribers(getImChannelSubscribers(WKSDK.shared(), memberChannel), {
+      applySubscribers(getCurrentImChannelSubscribers(memberChannel), {
         replaceMe: true,
       });
     }
@@ -377,10 +375,7 @@ export class UserInfoVM extends ProviderListener {
   }
   reloadFromChannelInfo() {
     if (this.fromChannel) {
-      this.fromChannelInfo = getImChannelInfo(
-        WKSDK.shared(),
-        this.fromChannel
-      );
+      this.fromChannelInfo = getCurrentImChannelInfo(this.fromChannel);
       this.notifyListener();
     }
   }

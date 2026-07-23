@@ -1,5 +1,8 @@
-import WKSDK, { Channel, ChannelTypePerson } from "wukongimjssdk";
-import { fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
+import { Channel, ChannelTypePerson } from "wukongimjssdk";
+import {
+    fetchCurrentImChannelInfo,
+    getCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime";
 
 /**
  * Production routing helper for "view user profile" entry (GH#1112, PR#1113).
@@ -57,7 +60,8 @@ export interface ChannelManagerLike {
 
 /**
  * External-viewer decision surface. Abstracted out of the router so
- * unit tests can inject a deterministic answer without standing up WKSDK
+ * unit tests can inject a deterministic answer without standing up the current
+ * IM runtime
  * subscribers + WKApp.currentSpaceId. The default implementation wired in
  * createUserInfoRouter mirrors UserInfoVM.isExternalToViewer exactly:
  *
@@ -186,7 +190,7 @@ export class UserInfoRouter {
 }
 
 /**
- * Convenience factory bound to the global WKSDK singleton — used by WKBase so
+ * Convenience factory bound to the current IM runtime — used by WKBase so
  * callers don't need to know about the underlying channel manager.
  *
  * `externalGate` is optional and must be injected by the caller. It
@@ -203,9 +207,9 @@ export function createUserInfoRouter(
 ): UserInfoRouter {
     const channelManager: ChannelManagerLike = {
         getChannelInfo: (channel) =>
-            getImChannelInfo(WKSDK.shared(), channel) as ChannelInfoLike | undefined,
+            getCurrentImChannelInfo(channel) as ChannelInfoLike | undefined,
         fetchChannelInfo: (channel) =>
-            fetchImChannelInfo(WKSDK.shared(), channel) as Promise<ChannelInfoLike | undefined>,
+            fetchCurrentImChannelInfo(channel) as Promise<ChannelInfoLike | undefined>,
     };
     return new UserInfoRouter(channelManager, dispatch, externalGate);
 }
