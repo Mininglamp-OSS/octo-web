@@ -196,6 +196,12 @@
     margin-top: 10px;
 }
 
+.wk-route-content .wk-channelsetting-input-edit {
+    box-sizing: border-box;
+    width: calc(100% - (2 * var(--wk-sp-2)));
+    margin: 0 var(--wk-sp-2);
+}
+
 .wk-channelmanage {
     width: 100%;
     height: 100%;
