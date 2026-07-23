@@ -761,10 +761,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     handleOpenMemberSelector = () => {
-        const { selectedChats, selectedMembers } = this.state;
+        const { selectedChats } = this.state;
+        const { t } = this.context;
         const chat = selectedChats[0];
         if (!chat) {
-            Toast.info(translate("summary.create.selectChatFirst"));
+            Toast.info(t("summary.create.selectChatFirst"));
             return;
         }
         const channelType = chat.chat_id.includes("____") ? 5 : 2;
