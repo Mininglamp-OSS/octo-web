@@ -1,5 +1,7 @@
 import type {
+  AssigneeCandidate,
   IssueDateField,
+  IssueLabel,
   IssuePriority,
   IssueScope,
   IssueStatus,
@@ -30,6 +32,18 @@ export interface IssueFilterOptionIds {
   creatorIds?: string[];
   projectIds?: string[];
   labelIds?: string[];
+}
+
+export interface IssueFilterOptionSource {
+  candidates: AssigneeCandidate[];
+  candidatesLoaded: boolean;
+  candidatesSucceeded: boolean;
+  projects: Array<{ id: string }>;
+  projectsLoaded: boolean;
+  projectsSucceeded: boolean;
+  labels: Pick<IssueLabel, "id">[];
+  labelsLoaded: boolean;
+  labelsSucceeded: boolean;
 }
 
 export interface IssueFilterReader {
@@ -133,6 +147,29 @@ export function reconcileIssueFilters(
     next.noAssignee = false;
   }
   return filtersEqual(filters, next) ? filters : next;
+}
+
+export function issueFilterOptionIds(
+  source: IssueFilterOptionSource
+): IssueFilterOptionIds {
+  return {
+    assigneeIds:
+      source.candidatesLoaded && source.candidatesSucceeded
+        ? source.candidates.map((c) => c.id)
+        : undefined,
+    creatorIds:
+      source.candidatesLoaded && source.candidatesSucceeded
+        ? source.candidates.filter((c) => c.type === "member").map((c) => c.id)
+        : undefined,
+    projectIds:
+      source.projectsLoaded && source.projectsSucceeded
+        ? source.projects.map((p) => p.id)
+        : undefined,
+    labelIds:
+      source.labelsLoaded && source.labelsSucceeded
+        ? source.labels.map((l) => l.id)
+        : undefined,
+  };
 }
 
 export function filtersEqual(a: IssueFilters, b: IssueFilters): boolean {

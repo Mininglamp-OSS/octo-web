@@ -23,7 +23,15 @@ export function useAssigneeCandidateState(enabled = true): AssigneeCandidateStat
     setState((prev) => ({ candidates: prev.candidates, loaded: false, succeeded: false }));
     listAssigneeCandidates()
       .then((candidates) => { if (alive) setState({ candidates, loaded: true, succeeded: true }); })
-      .catch(() => { if (alive) setState({ candidates: [], loaded: true, succeeded: false }); });
+      .catch(() => {
+        if (alive) {
+          setState((prev) => ({
+            candidates: prev.candidates,
+            loaded: true,
+            succeeded: false,
+          }));
+        }
+      });
     return () => { alive = false; };
   }, [enabled]);
   return state;

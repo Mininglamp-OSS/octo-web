@@ -38,6 +38,7 @@ import { pushFleetIssueDeepLink, replaceLoopRootPath } from "../issueDeepLink";
 import { readView, writeView } from "../ui/viewMode";
 import {
   defaultIssueFilters,
+  issueFilterOptionIds,
   issueFilterStorageKey,
   readIssueFilterState,
   reconcileIssueFilters,
@@ -132,11 +133,11 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     setLabelsSucceeded(false);
     listProjectOptions()
       .then((rows) => { if (alive) { setProjects(rows); setProjectsSucceeded(true); } })
-      .catch(() => { if (alive) { setProjects([]); setProjectsSucceeded(false); } })
+      .catch(() => { if (alive) setProjectsSucceeded(false); })
       .finally(() => { if (alive) setProjectsLoaded(true); });
     listLabels()
       .then((rows) => { if (alive) { setLabels(rows); setLabelsSucceeded(true); } })
-      .catch(() => { if (alive) { setLabels([]); setLabelsSucceeded(false); } })
+      .catch(() => { if (alive) setLabelsSucceeded(false); })
       .finally(() => { if (alive) setLabelsLoaded(true); });
     return () => { alive = false; };
   }, []);
@@ -146,13 +147,23 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   }, [f, filterStorageKey, isMyLoop, scope]);
 
   useEffect(() => {
-    const optionIds = {
-      assigneeIds: candsLoaded && candsSucceeded ? cands.map((c) => c.id) : undefined,
-      creatorIds: candsLoaded && candsSucceeded ? cands.filter((c) => c.type === "member").map((c) => c.id) : undefined,
-      projectIds: projectsLoaded && projectsSucceeded ? projects.map((p) => p.id) : undefined,
-      labelIds: labelsLoaded && labelsSucceeded ? labels.map((l) => l.id) : undefined,
-    };
-    setF((prev) => reconcileIssueFilters(prev, optionIds, isMyLoop));
+    setF((prev) =>
+      reconcileIssueFilters(
+        prev,
+        issueFilterOptionIds({
+          candidates: cands,
+          candidatesLoaded: candsLoaded,
+          candidatesSucceeded: candsSucceeded,
+          projects,
+          projectsLoaded,
+          projectsSucceeded,
+          labels,
+          labelsLoaded,
+          labelsSucceeded,
+        }),
+        isMyLoop,
+      ),
+    );
   }, [cands, candsLoaded, candsSucceeded, isMyLoop, labels, labelsLoaded, labelsSucceeded, projects, projectsLoaded, projectsSucceeded]);
 
   const reload = useCallback(() => {

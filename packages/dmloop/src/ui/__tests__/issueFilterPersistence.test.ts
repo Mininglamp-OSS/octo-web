@@ -4,6 +4,7 @@ import {
   defaultIssueFilters,
   type IssueFilterReader,
   type IssueFilterWriter,
+  issueFilterOptionIds,
   issueFilterStorageKey,
   readIssueFilterState,
   reconcileIssueFilters,
@@ -162,6 +163,51 @@ describe("issue filter persistence", () => {
     };
 
     expect(reconcileIssueFilters(filters, {}, false)).toBe(filters);
+  });
+
+  it("does not turn completed failed option loads into empty authoritative lists", () => {
+    expect(
+      issueFilterOptionIds({
+        candidates: [],
+        candidatesLoaded: true,
+        candidatesSucceeded: false,
+        projects: [],
+        projectsLoaded: true,
+        projectsSucceeded: false,
+        labels: [],
+        labelsLoaded: true,
+        labelsSucceeded: false,
+      })
+    ).toEqual({
+      assigneeIds: undefined,
+      creatorIds: undefined,
+      projectIds: undefined,
+      labelIds: undefined,
+    });
+  });
+
+  it("builds authoritative option ids only after successful option loads", () => {
+    expect(
+      issueFilterOptionIds({
+        candidates: [
+          { id: "m1", type: "member", name: "M" },
+          { id: "a1", type: "agent", name: "A" },
+        ],
+        candidatesLoaded: true,
+        candidatesSucceeded: true,
+        projects: [{ id: "p1" }],
+        projectsLoaded: true,
+        projectsSucceeded: true,
+        labels: [{ id: "l1", name: "L", color: "#fff" }],
+        labelsLoaded: true,
+        labelsSucceeded: true,
+      })
+    ).toEqual({
+      assigneeIds: ["m1", "a1"],
+      creatorIds: ["m1"],
+      projectIds: ["p1"],
+      labelIds: ["l1"],
+    });
   });
 
   it("does not restore My Loop scope on the normal issue page", () => {
