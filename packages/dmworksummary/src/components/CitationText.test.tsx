@@ -73,18 +73,42 @@ function badgeByText(text: string) {
 }
 
 describe('CitationText — [n] vs [Pn] parsing', () => {
-    it('clicking a normal citation jumps directly with its displayed number', () => {
+    it('opens the cited message first and only jumps from the popover action', () => {
         const showConversation = vi.spyOn(WKApp.endpoints, 'showConversation');
         render(<CitationText content="结论 [37]" citations={[makeCitation({ index: 37 })]} />);
 
         fireEvent.click(badgeByText('[1]')!);
 
+        expect(showConversation).not.toHaveBeenCalled();
+        expect(screen.getByText('这是被引用的消息')).toBeTruthy();
+        expect(screen.getAllByText('[1]')).toHaveLength(2);
+
+        fireEvent.click(screen.getByText('跳转到原文 →'));
         expect(showConversation).toHaveBeenCalledTimes(1);
         expect(showConversation.mock.calls[0][1]).toMatchObject({
             initLocateMessageSeq: 100,
             initLocateCitationDisplayIndex: 1,
         });
         showConversation.mockRestore();
+    });
+
+    it('labels every cited message in a grouped citation popover', () => {
+        render(
+            <CitationText
+                content="结论 [37][52]"
+                citations={[
+                    makeCitation({ index: 37, message_seq: 100, content: '第一条' }),
+                    makeCitation({ index: 52, message_seq: 101, content: '第二条' }),
+                ]}
+            />,
+        );
+
+        fireEvent.click(badgeByText('[1,2]')!);
+
+        expect(screen.getByText('第一条')).toBeTruthy();
+        expect(screen.getByText('第二条')).toBeTruthy();
+        expect(screen.getAllByText('[1]')).toHaveLength(1);
+        expect(screen.getAllByText('[2]')).toHaveLength(1);
     });
 
     it('1) renders normal [n] and team [P1] side by side without crosstalk', () => {

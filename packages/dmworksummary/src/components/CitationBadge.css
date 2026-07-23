@@ -57,6 +57,20 @@
     word-break: break-word;
 }
 
+.citation-cited-msg--referenced {
+    position: relative;
+    padding-right: var(--wk-sp-8);
+}
+
+.citation-reference-index {
+    position: absolute;
+    top: var(--wk-sp-1);
+    right: var(--wk-sp-2);
+    color: var(--wk-brand-primary);
+    font-size: var(--wk-text-size-sm);
+    font-weight: 600;
+}
+
 .citation-context-msg {
     padding: var(--wk-sp-1) var(--wk-sp-2);
     font-size: var(--wk-text-size-sm);
