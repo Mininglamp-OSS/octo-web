@@ -401,8 +401,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .loop-label-editor__chips {
@@ -416,6 +418,20 @@
   display: inline-flex;
   align-items: center;
   border-radius: 6px;
+}
+
+.loop-label-chipbutton {
+  display: inline-flex;
+  justify-content: flex-end;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.loop-label-chipbutton .loop-label-chips {
+  justify-content: flex-end;
 }
 
 .loop-label-removable button {
@@ -541,6 +557,23 @@
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+}
+
+.loop-label-mgr__pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.loop-label-mgr__pick.is-active {
+  color: var(--semi-color-primary, #1c1c23);
 }
 
 .loop-label-mgr__actions {

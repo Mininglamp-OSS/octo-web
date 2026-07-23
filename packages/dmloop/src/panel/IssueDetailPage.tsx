@@ -72,6 +72,7 @@ import { listProjects } from "../api/projectApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
 import LabelEditor from "../ui/LabelEditor";
+import LabelChips from "../ui/LabelChips";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
@@ -1234,14 +1235,19 @@ export default function IssueDetailPage({ issueId, onChanged, onClose, snapshot,
                     </button>
                   </Dropdown>}
                 </div>
-                <div className="loop-idp__prop loop-idp__prop--inline">
+                <div className="loop-idp__prop loop-idp__prop--inline loop-idp__prop--labels">
                   <span className="loop-idp__prop-k">{t("loop.field.labels")}</span>
                   {readOnly ? (
-                    <span className="loop-idp__prop-v">
-                      {issue.labels?.length ? issue.labels.map((l) => l.name).join(", ") : "—"}
+                    <span className={`loop-idp__prop-v loop-idp__prop-labels${issue.labels?.length ? "" : " loop-idp__prop-v--muted"}`}>
+                      {issue.labels?.length ? <LabelChips labels={issue.labels} /> : t("loop.label.add")}
                     </span>
                   ) : (
-                    <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
+                    <LabelEditor
+                      issueId={issue.id}
+                      labels={issue.labels}
+                      className="loop-idp__label-editor"
+                      onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }}
+                    />
                   )}
                 </div>
               </div>

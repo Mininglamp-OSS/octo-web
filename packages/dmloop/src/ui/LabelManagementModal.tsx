@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { Button, Input, Modal, Popconfirm, Toast } from "@douyinfe/semi-ui";
-import { Edit3, Plus, Save, Trash2, X } from "lucide-react";
+import { Check, Edit3, Plus, Save, Trash2, X } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { IssueLabel } from "../api/types";
 import {
   createLabel,
   deleteLabel,
+  attachLabel,
+  detachLabel,
   listLabels,
   updateLabel,
 } from "../api/labelApi";
@@ -17,10 +19,14 @@ export default function LabelManagementModal({
   visible,
   onClose,
   onChanged,
+  issueId,
+  attachedLabelIds,
 }: {
   visible: boolean;
   onClose: () => void;
   onChanged?: (labels: IssueLabel[]) => void;
+  issueId?: string;
+  attachedLabelIds?: string[];
 }) {
   const { t } = useI18n();
   const [labels, setLabels] = useState<IssueLabel[]>([]);
@@ -31,6 +37,8 @@ export default function LabelManagementModal({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [editingColor, setEditingColor] = useState<string>(DEFAULT_LABEL_COLOR);
+  const [localAttachedIds, setLocalAttachedIds] = useState<string[]>([]);
+  const attached = new Set(localAttachedIds);
 
   const reload = async () => {
     setLoading(true);
@@ -50,8 +58,13 @@ export default function LabelManagementModal({
     setName("");
     setColor(DEFAULT_LABEL_COLOR);
     setEditingId(null);
+    setLocalAttachedIds(attachedLabelIds ?? []);
     reload();
   }, [visible]);
+
+  useEffect(() => {
+    if (visible) setLocalAttachedIds(attachedLabelIds ?? []);
+  }, [attachedLabelIds, visible]);
 
   const create = async () => {
     const trimmed = name.trim();
@@ -104,6 +117,25 @@ export default function LabelManagementModal({
       Toast.success(t("loop.label.deleted"));
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.label.deleteFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleIssueLabel = async (label: IssueLabel) => {
+    if (!issueId || busy) return;
+    setBusy(true);
+    try {
+      if (attached.has(label.id)) {
+        await detachLabel(issueId, label.id);
+        setLocalAttachedIds((ids) => ids.filter((id) => id !== label.id));
+      } else {
+        await attachLabel(issueId, label.id);
+        setLocalAttachedIds((ids) => [...ids, label.id]);
+      }
+      onChanged?.(labels);
+    } catch (e) {
+      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -171,7 +203,16 @@ export default function LabelManagementModal({
                       />
                     </div>
                   ) : (
-                    <LabelChips labels={[label]} />
+                    <button
+                      type="button"
+                      className={`loop-label-mgr__pick${
+                        attached.has(label.id) ? " is-active" : ""
+                      }`}
+                      onClick={() => toggleIssueLabel(label)}
+                    >
+                      <LabelChips labels={[label]} />
+                      {attached.has(label.id) && <Check size={14} />}
+                    </button>
                   )}
                   <div className="loop-label-mgr__actions">
                     {editing ? (
