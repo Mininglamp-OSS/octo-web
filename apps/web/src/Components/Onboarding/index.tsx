@@ -359,7 +359,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     const activeElement = document.activeElement;
 
     if (event.shiftKey) {
-      if (activeElement === firstElement || !dialog.contains(activeElement)) {
+      if (
+        activeElement === firstElement ||
+        activeElement === dialog ||
+        !dialog.contains(activeElement)
+      ) {
         event.preventDefault();
         focusElement(lastElement);
       }
@@ -400,6 +404,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       focusTimerRef.current = null;
       const dialog = dialogRef.current;
       if (!dialog) return;
+
+      if (showIntro) {
+        focusElement(dialog);
+        return;
+      }
 
       focusElement(getFocusableElements(dialog)[0] || dialog);
     }, 0);
