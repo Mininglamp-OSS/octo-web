@@ -35,8 +35,8 @@ import {
 } from "./sdk/renderOctoCard";
 import { classifyCardSender, fetchSenderChannelInfo } from "./senderTrust";
 import "./index.css";
-import "@mlt-org/octo-card-profile-octo-chat/theme.css";
-import "@mlt-org/octo-card-profile-octo-chat/styles.css";
+// import "@mlt-org/octo-card-profile-octo-chat/theme.css";
+// import "@mlt-org/octo-card-profile-octo-chat/styles.css";
 import { cardMountRootClass } from "./renderProfile";
 
 export { InteractiveCardContent } from "./InteractiveCardContent";
