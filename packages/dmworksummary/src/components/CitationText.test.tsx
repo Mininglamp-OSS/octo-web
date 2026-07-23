@@ -81,7 +81,7 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
 
         expect(showConversation).not.toHaveBeenCalled();
         expect(screen.getByText('这是被引用的消息')).toBeTruthy();
-        expect(screen.getAllByText('[1]')).toHaveLength(2);
+        expect(screen.getByText('引用 [1]')).toBeTruthy();
 
         fireEvent.click(screen.getByText('跳转到原文 →'));
         expect(showConversation).toHaveBeenCalledTimes(1);
@@ -107,8 +107,8 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
 
         expect(screen.getByText('第一条')).toBeTruthy();
         expect(screen.getByText('第二条')).toBeTruthy();
-        expect(screen.getAllByText('[1]')).toHaveLength(1);
-        expect(screen.getAllByText('[2]')).toHaveLength(1);
+        expect(screen.getByText('引用 [1]')).toBeTruthy();
+        expect(screen.getByText('引用 [2]')).toBeTruthy();
     });
 
     it('1) renders normal [n] and team [P1] side by side without crosstalk', () => {

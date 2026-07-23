@@ -548,6 +548,7 @@
         "empty": "No summary content"
     },
     "citation": {
+        "reference": "Citation [{{index}}]",
         "jumpToOriginal": "Open original →",
         "source": "Source: {{source}}",
         "member": "Member: {{name}}"

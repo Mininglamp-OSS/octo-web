@@ -548,6 +548,7 @@
         "empty": "暂无总结内容"
     },
     "citation": {
+        "reference": "引用 [{{index}}]",
         "jumpToOriginal": "跳转到原文 →",
         "source": "来源：{{source}}",
         "member": "成员：{{name}}"

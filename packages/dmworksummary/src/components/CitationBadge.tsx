@@ -191,9 +191,9 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
         <div className="citation-popover">
             <ContextMessages messages={citation.context_before} />
             <div className="citation-cited-msg citation-cited-msg--referenced">
-                <span className="citation-reference-index">[{shownIndex}]</span>
                 <div className="citation-msg-header">
                     <span className="citation-msg-sender">{citation.sender}</span>
+                    <span className="citation-reference-index">{t("summary.citation.reference", { values: { index: shownIndex } })}</span>
                     <span className="citation-msg-time">{formatTime(citation.sent_at)}</span>
                 </div>
                 {citation.source && <div className="citation-msg-source">{t("summary.citation.source", { values: { source: citation.source } })}</div>}
@@ -229,6 +229,7 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
 };
 
 export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices, displayIndices, citations, badgeKey }) => {
+    const { t } = useI18n();
     const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
 
     // Label uses the display indices (post-renumbering) so what the user sees
@@ -269,9 +270,9 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
         <div className="citation-popover citation-popover--wide">
             {mergedMessages.map((msg, i) => (
                 <div key={msg.message_seq ?? i} className={msg.cited ? 'citation-cited-msg citation-cited-msg--referenced' : 'citation-context-msg'}>
-                    {msg.cited && <span className="citation-reference-index">[{displayByRawIndex.get(msg.citation_index!) ?? msg.citation_index}]</span>}
                     <div className="citation-msg-header">
                         <span className={msg.cited ? 'citation-msg-sender' : 'citation-msg-sender--context'}>{msg.sender}</span>
+                        {msg.cited && <span className="citation-reference-index">{t("summary.citation.reference", { values: { index: displayByRawIndex.get(msg.citation_index!) ?? msg.citation_index } })}</span>}
                         <span className={msg.cited ? 'citation-msg-time' : 'citation-msg-time--context'}>{formatTime(msg.sent_at)}</span>
                     </div>
                     <div className={msg.cited ? 'citation-msg-body' : 'citation-msg-body--context'}>{msg.content}</div>
