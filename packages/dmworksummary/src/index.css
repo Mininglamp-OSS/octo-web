@@ -1,5 +1,17 @@
 /* ========== Layout ========== */
-.summary-list-page,
+/* ========== Layout ========== */
+.summary-list-page {
+    --wk-ring-primary: 0 0 0 2px var(--semi-color-primary-light-default);
+    max-width: 900px;
+    margin: 0 auto;
+    height: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    padding: 20px 16px;
+}
+
 .summary-create-page,
 .summary-confirm-page,
 .summary-schedule-page {
@@ -13,6 +25,18 @@
     position: relative;
     padding: 20px 16px;
     overflow-y: auto;
+}
+
+.summary-list-page {
+    overflow: hidden;
+}
+
+.summary-list-content {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 /* 面板模式：去掉 max-width 居中，收紧 padding，占满父容器宽度 */
