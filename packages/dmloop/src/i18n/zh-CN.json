@@ -155,6 +155,7 @@
     "creator": "创建者",
     "project": "项目",
     "label": "标签",
+    "tag": "标签",
     "dateRange": "时间范围",
     "noProject": "含无项目",
     "noAssignee": "含无负责人"
@@ -464,7 +465,24 @@
   "label": {
     "add": "添加标签",
     "newPlaceholder": "新标签名",
-    "create": "创建标签"
+    "create": "创建标签",
+    "manage": "管理标签...",
+    "manageTitle": "工作区标签",
+    "selectPlaceholder": "选择标签",
+    "color": "标签颜色",
+    "empty": "还没有标签",
+    "edit": "编辑标签",
+    "delete": "删除标签",
+    "remove": "移除标签 {{name}}",
+    "deleteConfirm": "删除这个标签？",
+    "deleteConfirmDesc": "该标签会从所有使用中的任务上移除。此操作无法撤销。",
+    "created": "标签已创建",
+    "updated": "标签已更新",
+    "deleted": "标签已删除",
+    "createFailed": "创建标签失败",
+    "updateFailed": "更新标签失败",
+    "deleteFailed": "删除标签失败",
+    "attachPartialFailed": "任务已创建，但有 {{count}} 个标签绑定失败"
   },
   "subscribe": {
     "label": "订阅者",

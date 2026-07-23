@@ -1234,6 +1234,16 @@ export default function IssueDetailPage({ issueId, onChanged, onClose, snapshot,
                     </button>
                   </Dropdown>}
                 </div>
+                <div className="loop-idp__prop loop-idp__prop--inline">
+                  <span className="loop-idp__prop-k">{t("loop.field.labels")}</span>
+                  {readOnly ? (
+                    <span className="loop-idp__prop-v">
+                      {issue.labels?.length ? issue.labels.map((l) => l.name).join(", ") : "—"}
+                    </span>
+                  ) : (
+                    <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
+                  )}
+                </div>
               </div>
             )}
           </section>
@@ -1331,10 +1341,6 @@ export default function IssueDetailPage({ issueId, onChanged, onClose, snapshot,
         width={460}
       >
         <div className="loop-fields">
-          <div className="loop-fields__row">
-            <div className="loop-fields__label">{t("loop.field.labels")}</div>
-            <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
-          </div>
           <div className="loop-fields__row">
             <div className="loop-fields__label">{t("loop.field.parent")}</div>
             <Select

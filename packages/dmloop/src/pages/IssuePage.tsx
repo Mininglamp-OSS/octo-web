@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Input,
   Spin,
@@ -10,7 +16,16 @@ import {
   Toast,
 } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
-import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, SlidersHorizontal, Filter } from "lucide-react";
+import {
+  Search,
+  Plus,
+  LayoutGrid,
+  List as ListIcon,
+  Users,
+  ClipboardList,
+  SlidersHorizontal,
+  Filter,
+} from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import { currentWorkspaceId, currentWorkspaceSlug } from "../api/http";
 import type {
@@ -23,7 +38,13 @@ import type {
   IssueLabel,
 } from "../api/types";
 import { ISSUE_DATE_FIELDS } from "../api/types";
-import { listIssues, searchIssues, listGroupedIssues, listMyGroupedIssues, getAgentTaskSnapshot } from "../api/issueApi";
+import {
+  listIssues,
+  searchIssues,
+  listGroupedIssues,
+  listMyGroupedIssues,
+  getAgentTaskSnapshot,
+} from "../api/issueApi";
 import { groupIssuesByAssignee } from "../api/issueGrouping";
 import { listProjectOptions } from "../api/directory";
 import { listLabels } from "../api/labelApi";
@@ -34,6 +55,7 @@ import IssueGroupBoard from "../panel/IssueGroupBoard";
 import IssueList from "../panel/IssueList";
 import IssueDetailPage from "../panel/IssueDetailPage";
 import CreateIssueModal from "../ui/CreateIssueModal";
+import LabelChips from "../ui/LabelChips";
 import { pushFleetIssueDeepLink, replaceLoopRootPath } from "../issueDeepLink";
 import { readView, writeView } from "../ui/viewMode";
 import {
@@ -50,7 +72,9 @@ type ViewMode = "board" | "grouped" | "list";
 
 // scope pill → assignee_types 过滤(看板/列表/分组统一走后端 assignee_types)。
 // all / involves 不按类型收窄(involves 走用户关系并集,见 reload)。
-function scopeToAssigneeTypes(scope: IssueScope): ("member" | "agent" | "squad")[] | undefined {
+function scopeToAssigneeTypes(
+  scope: IssueScope
+): ("member" | "agent" | "squad")[] | undefined {
   if (scope === "members") return ["member"];
   if (scope === "agents") return ["agent", "squad"];
   return undefined;
@@ -64,7 +88,10 @@ const PAGE_SIZE = 50;
 
 // 筛选/显示字段都挂在工具栏 Dropdown 面板(z-index 1060)里,其弹层默认取 Semi 基准 1030 →
 // 会被面板本体盖在下面(选项看不见也点不到)。统一抬到面板之上。
-const FIELD_POPUP = { dropdownClassName: "loop-fields__dropdown", zIndex: 2000 } as const;
+const FIELD_POPUP = {
+  dropdownClassName: "loop-fields__dropdown",
+  zIndex: 2000,
+} as const;
 
 // 「我的回路」复用本页：defaultView="grouped" + defaultScope="involves" 即只看与我相关。
 interface IssuePageProps {
@@ -74,7 +101,11 @@ interface IssuePageProps {
   viewKey?: string;
 }
 
-export default function IssuePage({ defaultScope, defaultView, viewKey }: IssuePageProps = {}) {
+export default function IssuePage({
+  defaultScope,
+  defaultView,
+  viewKey,
+}: IssuePageProps = {}) {
   const { t } = useI18n();
   // 「我的回路」= involves:只有分组视图能表达「指派/创建/关联」三路并集(listMyGroupedIssues 扇出),
   // 看板/列表无对应查询会退化成显示全工作区 → 该页锁死分组、不给切视图。
@@ -115,10 +146,14 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   // 复用订阅特性的身份解析——候选里 octo_uid===loginInfo.uid 的 member。未解析出则「与我相关」不可用。
   const myMemberId = useMemo(() => {
     const uid = WKApp.loginInfo.uid;
-    return uid ? cands.find((c) => c.type === "member" && c.octo_uid === uid)?.id : undefined;
+    return uid
+      ? cands.find((c) => c.type === "member" && c.octo_uid === uid)?.id
+      : undefined;
   }, [cands]);
   // 项目下拉复用 directory 已缓存的 /projects(避免重复请求);随 workspace 切换整页重挂而刷新。
-  const [projects, setProjects] = useState<Array<{ id: string; title: string }>>([]);
+  const [projects, setProjects] = useState<
+    Array<{ id: string; title: string }>
+  >([]);
   const [labels, setLabels] = useState<IssueLabel[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [labelsLoaded, setLabelsLoaded] = useState(false);
@@ -174,7 +209,9 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     // 且列表勾选态仍指向陈旧行,可能被批量删改误作用。seq 守卫:仅最新一次在途请求可清。
     const onErr = () => {
       if (my !== seq.current) return;
-      setIssues([]); setGroups([]); setTotal(0);
+      setIssues([]);
+      setGroups([]);
+      setTotal(0);
       Toast.error(t("loop.toast.loadFailed"));
     };
     // 时间范围:三参数须同时给且 start<end。onChange 已把 dateRange 归一为 undefined|[起,止]。
@@ -208,29 +245,48 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       // 独立语义(不吃 scope/其它筛选,上限 50),故与常规分组拉取分道;「我的回路」隐藏关键词、不入此路。
       if (gkw && !isMyLoop) {
         searchIssues(gkw, { limit: 50 })
-          .then(({ issues }) => { if (my === seq.current) setGroups(groupIssuesByAssignee(issues)); })
+          .then(({ issues }) => {
+            if (my === seq.current) setGroups(groupIssuesByAssignee(issues));
+          })
           .catch(onErr)
-          .finally(() => { if (my === seq.current) setLoading(false); });
+          .finally(() => {
+            if (my === seq.current) setLoading(false);
+          });
         return;
       }
       // 「与我相关」(仅「我的回路」页)= 指派给我 ∪ 我创建 ∪ 间接关联的并集扇出;需当前成员
       // 后端 id,未解析出则清空并等待(不回退成无 scope 全量)。myMemberId 在依赖里,解析后自动重取。
       if (scope === "involves") {
         if (!myMemberId) {
-          if (my === seq.current) { setGroups([]); setLoading(false); }
+          if (my === seq.current) {
+            setGroups([]);
+            setLoading(false);
+          }
           return;
         }
         listMyGroupedIssues(myMemberId, { ...common, limit: 100 })
-          .then((gs) => { if (my === seq.current) setGroups(gs); })
+          .then((gs) => {
+            if (my === seq.current) setGroups(gs);
+          })
           .catch(onErr)
-          .finally(() => { if (my === seq.current) setLoading(false); });
+          .finally(() => {
+            if (my === seq.current) setLoading(false);
+          });
         return;
       }
       // ponytail: 每组取后端上限 100；超量请用筛选。
-      listGroupedIssues({ ...common, assignee_types: scopeToAssigneeTypes(scope), limit: 100 })
-        .then((gs) => { if (my === seq.current) setGroups(gs); })
+      listGroupedIssues({
+        ...common,
+        assignee_types: scopeToAssigneeTypes(scope),
+        limit: 100,
+      })
+        .then((gs) => {
+          if (my === seq.current) setGroups(gs);
+        })
         .catch(onErr)
-        .finally(() => { if (my === seq.current) setLoading(false); });
+        .finally(() => {
+          if (my === seq.current) setLoading(false);
+        });
       return;
     }
 
@@ -238,7 +294,10 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     const kw = f.keyword.trim();
     // 有关键词 → 走全文搜索端点(独立语义:后端不吃其它筛选/排序、上限 50);否则常规筛选列表。
     const req = kw
-      ? searchIssues(kw, { limit: paged ? PAGE_SIZE : 50, offset: paged ? page * PAGE_SIZE : 0 })
+      ? searchIssues(kw, {
+          limit: paged ? PAGE_SIZE : 50,
+          offset: paged ? page * PAGE_SIZE : 0,
+        })
       : listIssues({
           ...common,
           assignee_types: scopeToAssigneeTypes(scope),
@@ -252,13 +311,18 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
         // 删除/改状态使匹配数下降时，当前 page 可能越界（offset≥total）→ 钳到最后一页并重取。
         if (paged) {
           const maxPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
-          if (page > maxPage) { setPage(maxPage); return; }
+          if (page > maxPage) {
+            setPage(maxPage);
+            return;
+          }
         }
         setIssues(issues);
         setTotal(total);
       })
       .catch(onErr)
-      .finally(() => { if (my === seq.current) setLoading(false); });
+      .finally(() => {
+        if (my === seq.current) setLoading(false);
+      });
   }, [f, view, page, scope, myMemberId, noAssigneeActive]);
 
   useEffect(reload, [reload]);
@@ -269,7 +333,16 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   const refreshRunning = useCallback(() => {
     const my = ++runSeq.current;
     getAgentTaskSnapshot()
-      .then((tasks) => { if (my === runSeq.current) setRunning(new Set(tasks.filter((tk) => isActiveRun(tk.status) && tk.issue_id).map((tk) => tk.issue_id))); })
+      .then((tasks) => {
+        if (my === runSeq.current)
+          setRunning(
+            new Set(
+              tasks
+                .filter((tk) => isActiveRun(tk.status) && tk.issue_id)
+                .map((tk) => tk.issue_id)
+            )
+          );
+      })
       .catch(() => {});
   }, []);
   // 挂载取一次 + 每 15s 轮询:无 WS 推送,agent 起停靠轮询让 running chip 最终收敛(而非只在本地 mutation 后)。
@@ -280,12 +353,17 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   }, [refreshRunning]);
 
   // 变更后刷新:既重取列表,又刷新运行中快照(指派/状态变更可能起/停 agent run)。
-  const onMutated = useCallback(() => { reload(); refreshRunning(); }, [reload, refreshRunning]);
+  const onMutated = useCallback(() => {
+    reload();
+    refreshRunning();
+  }, [reload, refreshRunning]);
   // 订阅 `wk:loop-issues-refresh` 重取列表:由 LoopPage 在「点击 loop 导航」与「新建回路成功」时补发,
   // 覆盖"已停在 issue tab(同 key 不重挂)"的场景。走 ref 读最新 onMutated:刷新须用当前筛选/视图,
   // 否则会用陈旧入参覆盖(reload 的 seq 守卫只防乱序)。
   const onMutatedRef = useRef(onMutated);
-  useEffect(() => { onMutatedRef.current = onMutated; }, [onMutated]);
+  useEffect(() => {
+    onMutatedRef.current = onMutated;
+  }, [onMutated]);
   useEffect(() => {
     const onRefresh = () => onMutatedRef.current();
     WKApp.mittBus.on("wk:loop-issues-refresh", onRefresh);
@@ -293,8 +371,16 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   }, []);
 
   // 改任一筛选/搜索都回到第一页，避免停在越界的 offset（此规则只此一处表达）。
-  const update = (p: Partial<Filters>) => { setF((prev) => ({ ...prev, ...p })); setPage(0); };
-  const switchView = (v: ViewMode) => { setView(v); setPage(0); if (viewKey) writeView(viewKey, v); setShowOpen(false); };
+  const update = (p: Partial<Filters>) => {
+    setF((prev) => ({ ...prev, ...p }));
+    setPage(0);
+  };
+  const switchView = (v: ViewMode) => {
+    setView(v);
+    setPage(0);
+    if (viewKey) writeView(viewKey, v);
+    setShowOpen(false);
+  };
 
   // 点击 Issue → 跳转独立详情页（push 到右主栏，返回可 pop）。
   // key=id:issueId 变化即整体重挂载 → 详情页所有异步状态从零开始,结构性杜绝跨 issue 陈旧写入
@@ -322,23 +408,35 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   // 新建回路 → 唤起统一建单弹窗(不再拉起独立 AI 页)。创建成功后刷新列表。
   const openNewLoop = () => setCreateOpen(true);
 
-  const isEmpty = view === "grouped" ? groups.every((g) => g.issues.length === 0) : total === 0;
+  const isEmpty =
+    view === "grouped"
+      ? groups.every((g) => g.issues.length === 0)
+      : total === 0;
 
   // 选项列表(多选共用,避免重复 map)。
   const statusOpts = ISSUE_STATUS_ORDER.map((s) => (
-    <Select.Option key={s} value={s}>{t(`loop.status.${s}`)}</Select.Option>
+    <Select.Option key={s} value={s}>
+      {t(`loop.status.${s}`)}
+    </Select.Option>
   ));
   const priorityOpts = PRIORITY_ORDER.map((p) => (
-    <Select.Option key={p} value={p}>{t(`loop.priority.${p}`)}</Select.Option>
+    <Select.Option key={p} value={p}>
+      {t(`loop.priority.${p}`)}
+    </Select.Option>
   ));
   const projectOpts = projects.map((p) => (
-    <Select.Option key={p.id} value={p.id}>{p.title}</Select.Option>
+    <Select.Option key={p.id} value={p.id}>
+      {p.title}
+    </Select.Option>
   ));
   const labelOpts = labels.map((l) => (
-    <Select.Option key={l.id} value={l.id}>{l.name}</Select.Option>
+    <Select.Option key={l.id} value={l.id}>
+      <LabelChips labels={[l]} />
+    </Select.Option>
   ));
 
-  const title = defaultScope === "involves" ? t("loop.nav.myloop") : t("loop.nav.issue");
+  const title =
+    defaultScope === "involves" ? t("loop.nav.myloop") : t("loop.nav.issue");
 
   // 关键词走全文搜索端点(独立语义,不吃其它筛选/排序)。搜索激活时禁用面板内其它筛选/scope,
   // 避免它们「看起来生效、实际被忽略」的误导。主看板三视图均支持;「我的回路」无关键词(搜索不吃 involves)。
@@ -355,8 +453,7 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
         (f.creatorIds.length ? 1 : 0) +
         (f.projectIds.length || f.noProject ? 1 : 0) +
         (f.labelIds.length ? 1 : 0) +
-        (f.dateRange ? 1 : 0)) +
-    (!isMyLoop && f.keyword.trim() ? 1 : 0);
+        (f.dateRange ? 1 : 0)) + (!isMyLoop && f.keyword.trim() ? 1 : 0);
 
   const clearFilters = () =>
     update({
@@ -369,11 +466,22 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     value: string[],
     onChange: (v: string[]) => void,
     children: React.ReactNode,
-    opts?: { filter?: boolean; maxTagCount?: number },
+    opts?: { filter?: boolean; maxTagCount?: number }
   ) => (
     <div className="loop-fields__row">
       <div className="loop-fields__label">{label}</div>
-      <Select multiple value={value} onChange={(v) => onChange((v ?? []) as string[])} showClear filter={opts?.filter} disabled={searching} maxTagCount={opts?.maxTagCount ?? 1} {...FIELD_POPUP} style={{ width: "100%" }} placeholder={label}>
+      <Select
+        multiple
+        value={value}
+        onChange={(v) => onChange((v ?? []) as string[])}
+        showClear
+        filter={opts?.filter}
+        disabled={searching}
+        maxTagCount={opts?.maxTagCount ?? 1}
+        {...FIELD_POPUP}
+        style={{ width: "100%" }}
+        placeholder={label}
+      >
         {children}
       </Select>
     </div>
@@ -384,39 +492,143 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       <div className="loop-filter-panel__head">
         <span>{t("loop.action.filter")}</span>
         {activeFilters > 0 && (
-          <button type="button" className="loop-filter-panel__clear" onClick={clearFilters}>{t("loop.action.clearFilters")}</button>
+          <button
+            type="button"
+            className="loop-filter-panel__clear"
+            onClick={clearFilters}
+          >
+            {t("loop.action.clearFilters")}
+          </button>
         )}
       </div>
-      {filterSelect(t("loop.filter.status"), f.statuses, (v) => update({ statuses: v as IssueStatus[] }), statusOpts, { maxTagCount: 2 })}
-      {filterSelect(t("loop.filter.priority"), f.priorities, (v) => update({ priorities: v as IssuePriority[] }), priorityOpts, { maxTagCount: 2 })}
+      {filterSelect(
+        t("loop.filter.status"),
+        f.statuses,
+        (v) => update({ statuses: v as IssueStatus[] }),
+        statusOpts,
+        { maxTagCount: 2 }
+      )}
+      {filterSelect(
+        t("loop.filter.priority"),
+        f.priorities,
+        (v) => update({ priorities: v as IssuePriority[] }),
+        priorityOpts,
+        { maxTagCount: 2 }
+      )}
       {/* 「谁」类筛选(负责人/无负责人/创建者)在「我的回路」隐藏——该页本就锁定「与我相关」,
           按他人负责人/创建者筛与语义矛盾,且会污染并集扇出(见 listMyGroupedIssues)。 */}
-      {!isMyLoop && filterSelect(t("loop.filter.assignee"), f.assigneeIds, (v) => update({ assigneeIds: v }), cands.map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)), { filter: true })}
+      {!isMyLoop &&
+        filterSelect(
+          t("loop.filter.assignee"),
+          f.assigneeIds,
+          (v) => update({ assigneeIds: v }),
+          cands.map((c) => (
+            <Select.Option key={c.id} value={c.id}>
+              {c.name}
+            </Select.Option>
+          )),
+          { filter: true }
+        )}
       {!isMyLoop && (
         <div className="loop-fields__row">
-          <Checkbox className="loop-nofilter" checked={noAssigneeActive} onChange={(e) => update({ noAssignee: !!e.target.checked })} disabled={searching || scope !== "all"}>{t("loop.filter.noAssignee")}</Checkbox>
+          <Checkbox
+            className="loop-nofilter"
+            checked={noAssigneeActive}
+            onChange={(e) => update({ noAssignee: !!e.target.checked })}
+            disabled={searching || scope !== "all"}
+          >
+            {t("loop.filter.noAssignee")}
+          </Checkbox>
         </div>
       )}
-      {!isMyLoop && filterSelect(t("loop.filter.creator"), f.creatorIds, (v) => update({ creatorIds: v }), cands.filter((c) => c.type === "member").map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)), { filter: true })}
-      {projects.length > 0 && filterSelect(t("loop.filter.project"), f.projectIds, (v) => update({ projectIds: v }), projectOpts, { filter: true })}
+      {!isMyLoop &&
+        filterSelect(
+          t("loop.filter.creator"),
+          f.creatorIds,
+          (v) => update({ creatorIds: v }),
+          cands
+            .filter((c) => c.type === "member")
+            .map((c) => (
+              <Select.Option key={c.id} value={c.id}>
+                {c.name}
+              </Select.Option>
+            )),
+          { filter: true }
+        )}
+      {projects.length > 0 &&
+        filterSelect(
+          t("loop.filter.project"),
+          f.projectIds,
+          (v) => update({ projectIds: v }),
+          projectOpts,
+          { filter: true }
+        )}
       <div className="loop-fields__row">
-        <Checkbox className="loop-nofilter" checked={f.noProject} onChange={(e) => update({ noProject: !!e.target.checked })} disabled={searching}>{t("loop.filter.noProject")}</Checkbox>
+        <Checkbox
+          className="loop-nofilter"
+          checked={f.noProject}
+          onChange={(e) => update({ noProject: !!e.target.checked })}
+          disabled={searching}
+        >
+          {t("loop.filter.noProject")}
+        </Checkbox>
       </div>
-      {labels.length > 0 && filterSelect(t("loop.filter.label"), f.labelIds, (v) => update({ labelIds: v }), labelOpts, { filter: true })}
+      {labels.length > 0 &&
+        filterSelect(
+          t("loop.filter.tag"),
+          f.labelIds,
+          (v) => update({ labelIds: v }),
+          labelOpts,
+          { filter: true }
+        )}
       <div className="loop-fields__row">
         <div className="loop-fields__label">{t("loop.filter.dateRange")}</div>
         <div className="loop-fields__inline">
-          <Select value={f.dateField} onChange={(v) => update({ dateField: v as IssueDateField })} disabled={searching} {...FIELD_POPUP} style={{ width: 104 }}>
-            {ISSUE_DATE_FIELDS.map((d) => (<Select.Option key={d} value={d}>{t(`loop.dateField.${d}`)}</Select.Option>))}
+          <Select
+            value={f.dateField}
+            onChange={(v) => update({ dateField: v as IssueDateField })}
+            disabled={searching}
+            {...FIELD_POPUP}
+            style={{ width: 104 }}
+          >
+            {ISSUE_DATE_FIELDS.map((d) => (
+              <Select.Option key={d} value={d}>
+                {t(`loop.dateField.${d}`)}
+              </Select.Option>
+            ))}
           </Select>
-          <DatePicker type="dateRange" density="compact" disabled={searching} value={f.dateRange} onChange={(d) => update({ dateRange: Array.isArray(d) && d.length === 2 && d[0] && d[1] ? (d as Date[]) : undefined })} placeholder={t("loop.filter.dateRange")} zIndex={FIELD_POPUP.zIndex} style={{ flex: 1 }} />
+          <DatePicker
+            type="dateRange"
+            density="compact"
+            disabled={searching}
+            value={f.dateRange}
+            onChange={(d) =>
+              update({
+                dateRange:
+                  Array.isArray(d) && d.length === 2 && d[0] && d[1]
+                    ? (d as Date[])
+                    : undefined,
+              })
+            }
+            placeholder={t("loop.filter.dateRange")}
+            zIndex={FIELD_POPUP.zIndex}
+            style={{ flex: 1 }}
+          />
         </div>
       </div>
       {/* 关键词走全文搜索(平铺,分组视图前端按负责人再分组呈现)。「我的回路」不支持(搜索不吃 involves)。 */}
       {!isMyLoop && (
         <div className="loop-fields__row">
           <div className="loop-fields__label">{t("loop.search.issue")}</div>
-          <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.issue")} value={f.keyword} onChange={(v) => update({ keyword: v })} showClear style={{ width: "100%" }} />
+          <Input
+            className="loop-search"
+            prefix={<Search size={14} />}
+            placeholder={t("loop.search.issue")}
+            value={f.keyword}
+            onChange={(v) => update({ keyword: v })}
+            showClear
+            style={{ width: "100%" }}
+          />
         </div>
       )}
     </div>
@@ -424,13 +636,28 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
   const showPanel = (
     <div className="loop-fields loop-show-panel">
-      <div className="loop-filter-panel__head"><span>{t("loop.action.show")}</span></div>
+      <div className="loop-filter-panel__head">
+        <span>{t("loop.action.show")}</span>
+      </div>
       <div className="loop-fields__row">
         <div className="loop-fields__label">{t("loop.view.board")}</div>
         <div className="loop-seg" role="tablist">
           {(["board", "grouped", "list"] as ViewMode[]).map((v) => (
-            <button key={v} type="button" role="tab" aria-selected={view === v} className={`loop-seg__btn${view === v ? " is-active" : ""}`} onClick={() => switchView(v)}>
-              {v === "board" ? <LayoutGrid size={14} /> : v === "grouped" ? <Users size={14} /> : <ListIcon size={14} />}
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              className={`loop-seg__btn${view === v ? " is-active" : ""}`}
+              onClick={() => switchView(v)}
+            >
+              {v === "board" ? (
+                <LayoutGrid size={14} />
+              ) : v === "grouped" ? (
+                <Users size={14} />
+              ) : (
+                <ListIcon size={14} />
+              )}
               {t(`loop.view.${v}`)}
             </button>
           ))}
@@ -462,8 +689,13 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
                     role="tab"
                     aria-selected={active}
                     disabled={searching}
-                    className={`loop-agent-scope__btn${active ? " is-active" : ""}`}
-                    onClick={() => { setScope(s); setPage(0); }}
+                    className={`loop-agent-scope__btn${
+                      active ? " is-active" : ""
+                    }`}
+                    onClick={() => {
+                      setScope(s);
+                      setPage(0);
+                    }}
                   >
                     {t(`loop.scope.${s}`)}
                   </button>
@@ -472,16 +704,32 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
             </div>
           )}
           <div className="loop-page__spacer" />
-          <Dropdown trigger="click" visible={filterOpen} onVisibleChange={setFilterOpen} position="bottomRight" render={filterPanel}>
-            <button className={`loop-toolbtn${activeFilters > 0 ? " is-on" : ""}`}>
+          <Dropdown
+            trigger="click"
+            visible={filterOpen}
+            onVisibleChange={setFilterOpen}
+            position="bottomRight"
+            render={filterPanel}
+          >
+            <button
+              className={`loop-toolbtn${activeFilters > 0 ? " is-on" : ""}`}
+            >
               <Filter size={14} />
               {t("loop.action.filter")}
-              {activeFilters > 0 && <span className="loop-toolbtn__badge">{activeFilters}</span>}
+              {activeFilters > 0 && (
+                <span className="loop-toolbtn__badge">{activeFilters}</span>
+              )}
             </button>
           </Dropdown>
           {/* 「我的回路」锁死分组视图,不给切视图/排序 → 隐藏「显示」入口。 */}
           {!isMyLoop && (
-            <Dropdown trigger="click" visible={showOpen} onVisibleChange={setShowOpen} position="bottomRight" render={showPanel}>
+            <Dropdown
+              trigger="click"
+              visible={showOpen}
+              onVisibleChange={setShowOpen}
+              position="bottomRight"
+              render={showPanel}
+            >
               <button className="loop-toolbtn">
                 <SlidersHorizontal size={14} />
                 {t("loop.action.show")}
@@ -502,21 +750,47 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
         ) : isEmpty ? (
           <div className="loop-empty">
             <ClipboardList size={40} className="loop-empty__icon" />
-            <div className="loop-empty__title">{t("loop.empty.issueTitle")}</div>
+            <div className="loop-empty__title">
+              {t("loop.empty.issueTitle")}
+            </div>
             <div className="loop-empty__desc">{t("loop.empty.issueDesc")}</div>
-            <LoopButton icon={<Plus size={14} />} onClick={openNewLoop} style={{ marginTop: 12 }}>
+            <LoopButton
+              icon={<Plus size={14} />}
+              onClick={openNewLoop}
+              style={{ marginTop: 12 }}
+            >
               {t("loop.action.newIssue")}
             </LoopButton>
           </div>
         ) : view === "board" ? (
-          <IssueBoard issues={issues} onOpen={openDetail} onChanged={onMutated} running={running} />
+          <IssueBoard
+            issues={issues}
+            onOpen={openDetail}
+            onChanged={onMutated}
+            running={running}
+          />
         ) : view === "grouped" ? (
-          <IssueGroupBoard groups={groups} onOpen={openDetail} running={running} />
+          <IssueGroupBoard
+            groups={groups}
+            onOpen={openDetail}
+            running={running}
+          />
         ) : (
           <>
-            <IssueList issues={issues} onOpen={openDetail} onChanged={onMutated} running={running} />
+            <IssueList
+              issues={issues}
+              onOpen={openDetail}
+              onChanged={onMutated}
+              running={running}
+            />
             {total > PAGE_SIZE && (
-              <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 4px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  padding: "12px 4px",
+                }}
+              >
                 <Pagination
                   total={total}
                   pageSize={PAGE_SIZE}
@@ -531,7 +805,11 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       <CreateIssueModal
         visible={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={() => { setCreateOpen(false); onMutated(); Toast.success(t("loop.toast.created")); }}
+        onCreated={() => {
+          setCreateOpen(false);
+          onMutated();
+          Toast.success(t("loop.toast.created"));
+        }}
       />
     </div>
   );
