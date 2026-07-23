@@ -4,7 +4,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C11 loop issue assignee 内联切换 — picker → 选 Admin User → UI 反映", async ({
+test("@C11 @p0 @loop @issue loop issue assignee 内联切换 — picker → 选 Admin User → UI 反映", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-issue");

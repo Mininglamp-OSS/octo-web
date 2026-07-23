@@ -5,7 +5,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C3 loop 有 workspace 默认视图 — sidebar 显示 workspace 名 + 主区域 issue 空态", async ({
+test("@C3 @p0 @loop @workspace loop 有 workspace 默认视图 — sidebar 显示 workspace 名 + 主区域 issue 空态", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-ws");

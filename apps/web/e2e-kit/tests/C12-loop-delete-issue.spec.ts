@@ -4,7 +4,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C12 loop 删除 issue — 详情 → 更多菜单 → 删除 → Modal 确认 → 详情消失", async ({
+test("@C12 @p0 @loop @issue loop 删除 issue — 详情 → 更多菜单 → 删除 → Modal 确认 → 详情消失", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-issue");

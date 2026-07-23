@@ -4,7 +4,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C13 loop 新建子任务 — 详情 → 更多菜单 → 新建子任务 → 弹窗填 title → 提交", async ({
+test("@C13 @p0 @loop @issue loop 新建子任务 — 详情 → 更多菜单 → 新建子任务 → 弹窗填 title → 提交", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-issue");

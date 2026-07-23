@@ -5,7 +5,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C6 loop 切换 workspace — 从 A 切到 B, sidebar 名字变化", async ({
+test("@C6 @p0 @loop @workspace loop 切换 workspace — 从 A 切到 B, sidebar 名字变化", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "two-ws");

@@ -5,7 +5,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C24 loop 移除 member — settings/成员 → 删除普通成员 → 行消失", async ({
+test("@C24 @p0 @loop @member loop 移除 member — settings/成员 → 删除普通成员 → 行消失", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "member-remove");

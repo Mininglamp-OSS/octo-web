@@ -6,7 +6,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C23 loop 添加成员 — settings/成员 → 下拉选 space 用户 → 添加成员", async ({
+test("@C23 @p0 @loop @member loop 添加成员 — settings/成员 → 下拉选 space 用户 → 添加成员", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "ws-with-members");

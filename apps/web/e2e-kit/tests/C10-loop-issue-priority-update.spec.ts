@@ -4,7 +4,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C10 loop issue priority 内联切换 — 详情 pill → Dropdown → 选高 → UI 反映", async ({
+test("@C10 @p0 @loop @issue loop issue priority 内联切换 — 详情 pill → Dropdown → 选高 → UI 反映", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-issue");

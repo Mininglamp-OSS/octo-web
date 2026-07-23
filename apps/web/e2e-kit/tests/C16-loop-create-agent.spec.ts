@@ -4,7 +4,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C16 loop 创建 agent — 专家 tab → 新建 → 填 name + runtime → 提交", async ({
+test("@C16 @p0 @loop @agent loop 创建 agent — 专家 tab → 新建 → 填 name + runtime → 提交", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-ws");

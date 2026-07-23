@@ -11,7 +11,7 @@ import { installMockImRuntime } from "../_kit/mock-im-runtime";
 const MOCK_BOT_UID = "e2e-bot-989";
 const MOCK_BOT_NAME = "富贵儿测试 bot";
 
-test("@C989 顶部搜索 bot → 名片发送消息 → 外层搜索弹窗关闭", async ({ authedPage }, testInfo) => {
+test("@C989 @p0 @search 顶部搜索 bot → 名片发送消息 → 外层搜索弹窗关闭", async ({ authedPage }, testInfo) => {
   const kf = (name: string) =>
     testInfo.outputPath(`keyframes/${name}.png`);
   // 补 mock-im seed: 让 isBot(botUid) 返 true (chat 点击命中走开 BotDetailModal 分支)

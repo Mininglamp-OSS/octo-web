@@ -5,7 +5,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C7 loop workspace 设置更新 — 进 settings tab → 改 name → 保存 → toast 出现", async ({
+test("@C7 @p0 @loop @workspace loop workspace 设置更新 — 进 settings tab → 改 name → 保存 → toast 出现", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-ws");

@@ -4,7 +4,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C20 loop 创建 automation — 自动化 tab → 新建 → 填 name + executor → 提交", async ({
+test("@C20 @p0 @loop @automation loop 创建 automation — 自动化 tab → 新建 → 填 name + executor → 提交", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-ws");
