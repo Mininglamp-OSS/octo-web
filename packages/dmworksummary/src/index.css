@@ -615,6 +615,7 @@
 /* Regenerate modal textarea */
 .summary-regenerate-content {
     padding: 10px 16px;
+    margin-top: 16px;
     display: flex;
     flex-direction: column;
     gap: 16px;
