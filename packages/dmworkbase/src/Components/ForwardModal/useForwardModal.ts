@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { WKSDK, Channel, ChannelInfo, ChannelInfoListener, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
+import { Channel, ChannelInfo, ChannelInfoListener, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
 import { ConversationWrap } from "../../Service/Model"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import { shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace } from "../../Service/SpaceService"
@@ -17,7 +17,12 @@ import {
   type ChatKind,
 } from "../ChatSelector/tabFilter"
 import type { ForwardFinished, ForwardGrantRole } from "./grant"
-import { addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime"
+import {
+  addCurrentImChannelInfoListener,
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime"
+import { getCurrentImConversationsDirectly } from "../../im-runtime/currentConversationRuntime"
 
 // 复合 key：${channelType}::${channelID}，防跨类型 id 碰撞。channelType 取值
 // (个人=1 / 群=2 / 子区=5) 恰与 SidebarTargetType(DM/CHANNEL/THREAD) 一致，
@@ -68,9 +73,9 @@ function conversationWrapToForwardItem(wrap: ConversationWrap, parentChannelID?:
   const channelInfo = wrap.channelInfo
   const isThread = wrap.channel.channelType === ChannelTypeCommunityTopic
   // hasThreads: 判断该群聊下是否有子区（子区会出现在 conversations 里，其 orgData.parentGroupNo 指向父群）
-  const hasThreads = !isThread && WKSDK.shared().conversationManager.conversations?.some(
+  const hasThreads = !isThread && getCurrentImConversationsDirectly<ConversationWrap["conversation"]>().some(
     (c) => c.channel.channelType === ChannelTypeCommunityTopic
-      && (getImChannelInfo(WKSDK.shared(), c.channel)?.orgData?.parentGroupNo === wrap.channel.channelID)
+      && (getCurrentImChannelInfo(c.channel)?.orgData?.parentGroupNo === wrap.channel.channelID)
   )
   return {
     channelID: wrap.channel.channelID,
@@ -212,9 +217,9 @@ export function useForwardModal(
     if (fetchedRef.current.has(item.channelID)) return
     const ch = channelMapRef.current.get(item.channelID)
       ?? new Channel(item.channelID, item.channelType)
-    if (getImChannelInfo(WKSDK.shared(), ch)) return
+    if (getCurrentImChannelInfo(ch)) return
     fetchedRef.current.add(item.channelID)
-    void fetchImChannelInfo(WKSDK.shared(), ch)
+    void fetchCurrentImChannelInfo(ch)
   }, [])
 
   const rebuildConvItems = useCallback(() => {
@@ -342,7 +347,7 @@ export function useForwardModal(
         // 最近会话：仅构造 wrap，不再对每个 conv 主动 fetchChannelInfo。
         // channelInfo 由 ForwardModal 中每个 ItemRow 的 VisibilityTrigger 在
         // 进入视口时按需拉取（去重 + debounce 合批 forceUpdate）。
-        const conversations = WKSDK.shared().conversationManager.conversations ?? []
+        const conversations = getCurrentImConversationsDirectly<ConversationWrap["conversation"]>()
         const wraps: ConversationWrap[] = []
         for (const conv of conversations) {
           if (shouldSkipChannelForSpace(conv.channel)) continue
@@ -388,7 +393,7 @@ export function useForwardModal(
     const channelListener: ChannelInfoListener = (_channelInfo: ChannelInfo) => {
       rebuildDebounced()
     }
-    const unsubscribeChannelListener = addImChannelInfoListener(WKSDK.shared(), channelListener)
+    const unsubscribeChannelListener = addCurrentImChannelInfoListener(channelListener)
 
     // 切 Space 后 conversationManager.conversations 会被先清空再回填,
     // 如果 modal 在回填前打开,初次 load() 会读到空 cache（缺最近会话/子区）。

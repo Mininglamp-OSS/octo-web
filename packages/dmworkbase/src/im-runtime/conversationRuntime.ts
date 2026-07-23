@@ -4,6 +4,7 @@ export interface ImConversationManagerRuntime<
   TChannel extends ImChannelLike = ImChannelLike,
   TConversation = any
 > {
+  createEmptyConversation?: (channel: TChannel) => TConversation | undefined;
   findConversation: (channel: TChannel) => TConversation | undefined;
   notifyConversationListeners: (
     conversation: TConversation,
@@ -28,6 +29,13 @@ export function findImConversation<
   channel: TChannel
 ) {
   return sdk.conversationManager.findConversation(channel);
+}
+
+export function createEmptyImConversation<
+  TChannel extends ImChannelLike,
+  TConversation = any
+>(sdk: ImConversationRuntimeSdk<TChannel, TConversation>, channel: TChannel) {
+  return sdk.conversationManager.createEmptyConversation?.(channel);
 }
 
 export function removeImConversation<TChannel extends ImChannelLike>(

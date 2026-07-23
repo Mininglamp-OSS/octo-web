@@ -85,21 +85,29 @@ vi.mock("wukongimjssdk", () => {
             this.channelType = channelType
         }
     }
+    const sdk = {
+        conversationManager: {
+            get conversations() {
+                return hoisted.conversations
+            },
+        },
+        channelManager: {
+            getChannelInfo: hoisted.getChannelInfo,
+            addListener: (fn: any) => {
+                hoisted.addListener(fn)
+                hoisted.channelListeners.push(fn)
+            },
+            removeListener: hoisted.removeListener,
+            fetchChannelInfo: hoisted.fetchChannelInfo,
+        },
+    }
     return {
         __esModule: true,
+        default: {
+            shared: () => sdk,
+        },
         WKSDK: {
-            shared: () => ({
-                conversationManager: { conversations: hoisted.conversations },
-                channelManager: {
-                    getChannelInfo: hoisted.getChannelInfo,
-                    addListener: (fn: any) => {
-                        hoisted.addListener(fn)
-                        hoisted.channelListeners.push(fn)
-                    },
-                    removeListener: hoisted.removeListener,
-                    fetchChannelInfo: hoisted.fetchChannelInfo,
-                },
-            }),
+            shared: () => sdk,
         },
         Channel,
         ChannelInfo: class {},

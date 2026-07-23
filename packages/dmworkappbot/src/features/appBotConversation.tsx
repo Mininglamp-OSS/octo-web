@@ -1,6 +1,12 @@
 import React, { useCallback, useRef, useState } from "react"
-import { Channel, ChannelInfo, ChannelTypePerson, WKSDK } from "wukongimjssdk"
-import { Conversation, WKApp } from "@octo/base"
+import { Channel, ChannelInfo, ChannelTypePerson } from "wukongimjssdk"
+import {
+  Conversation,
+  WKApp,
+  createCurrentEmptyImConversation,
+  findCurrentImConversation,
+  setCurrentImChannelInfoCache,
+} from "@octo/base"
 import AppBotService from "../Service/AppBotService"
 import type { AppBotViewItem } from "../bridge/types"
 import AppBotAvatar from "./AppBotAvatar"
@@ -47,12 +53,9 @@ function renderAppBotConversation(bot: AppBotViewItem, channel: Channel) {
 function defaultOpenConversationDeps(): OpenAppBotConversationDeps {
   return {
     applyBot: AppBotService.applyBot,
-    setChannelInfo: (info) => WKSDK.shared().channelManager.setChannleInfoForCache(info),
-    findConversation: (channel) => WKSDK.shared().conversationManager.findConversation(channel),
-    createEmptyConversation: (channel) => {
-      const convMgr = WKSDK.shared().conversationManager
-      return convMgr.createEmptyConversation?.(channel)
-    },
+    setChannelInfo: (info) => setCurrentImChannelInfoCache(info),
+    findConversation: (channel) => findCurrentImConversation(channel),
+    createEmptyConversation: (channel) => createCurrentEmptyImConversation(channel),
     replaceToRoot: (element) => WKApp.routeRight.replaceToRoot(element),
   }
 }

@@ -2,6 +2,7 @@ import WKSDK from "wukongimjssdk";
 
 import type { ImChannelLike } from "./channelRuntime";
 import {
+  createEmptyImConversation,
   findImConversation,
   notifyImConversationListeners,
   removeImConversation,
@@ -28,6 +29,16 @@ export function findCurrentImConversation<
   TConversation = any
 >(channel: TChannel) {
   return findImConversation<TChannel, TConversation>(
+    currentImConversationRuntime<TChannel, TConversation>(),
+    channel
+  );
+}
+
+export function createCurrentEmptyImConversation<
+  TChannel extends ImChannelLike,
+  TConversation = any
+>(channel: TChannel) {
+  return createEmptyImConversation<TChannel, TConversation>(
     currentImConversationRuntime<TChannel, TConversation>(),
     channel
   );
