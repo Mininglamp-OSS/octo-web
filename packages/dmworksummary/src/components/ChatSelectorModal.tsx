@@ -33,8 +33,9 @@ interface Props {
 
 interface State {
     keyword: string;
-    activeTab: "followed" | "recent" | "group" | "direct";
+    activeTab: "followed" | "recent" | "group" | "direct" | "all_members" | "managers" | "normal_members";
     candidates: ChatCandidate[];
+    memberRoles: Map<string, number>;
     loading: boolean;
     localSelected: ChatCandidate[];
     localSelectedMembers: MemberCandidate[];
@@ -57,6 +58,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
         keyword: "",
         activeTab: "followed",
         candidates: [],
+        memberRoles: new Map<string, number>(),
         loading: false,
         localSelected: [],
         localSelectedMembers: [],
@@ -74,6 +76,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 this.setState({
                     localSelectedMembers: [...(this.props.selectedMembers ?? [])],
                     keyword: "",
+                    activeTab: "all_members",
                 });
                 this.loadMembers();
             } else {
@@ -92,12 +95,19 @@ export default class ChatSelectorModal extends Component<Props, State> {
             await sdk.channelManager.syncSubscribes(channel);
             const subscribers = sdk.channelManager.getSubscribes(channel) || [];
             const humans = subscribers.filter((m: any) => !m.is_bot);
-            this.setState({ candidates: humans.map((m: any) => ({
-                chat_id: m.uid,
-                chat_type: "direct" as const,
-                name: m.name || m.uid,
-                member_count: null,
-            })) });
+            const roles = new Map<string, number>();
+            for (const m of humans) {
+                if (m.role != null) roles.set(m.uid, m.role);
+            }
+            this.setState({
+                memberRoles: roles,
+                candidates: humans.map((m: any) => ({
+                    chat_id: m.uid,
+                    chat_type: "direct" as const,
+                    name: m.name || m.uid,
+                    member_count: null,
+                })),
+            });
         } catch {
             this.setState({ candidates: [] });
         } finally {
@@ -203,9 +213,17 @@ export default class ChatSelectorModal extends Component<Props, State> {
         const { candidates, activeTab, keyword } = this.state;
         const kw = keyword.trim().toLowerCase();
 
-        // members 模式：不过滤 tab，直接返回搜索过滤后的列表
+        // members 模式：按 tab 过滤角色 + 搜索
         if (this.props.mode === "members") {
+            const { memberRoles } = this.state;
             return candidates
+                .filter((c) => {
+                    if (activeTab === "all_members") return true;
+                    const role = memberRoles.get(c.chat_id);
+                    if (activeTab === "managers") return role === 1 || role === 2; // owner=1, manager=2
+                    if (activeTab === "normal_members") return role == null || role === 0; // normal
+                    return true;
+                })
                 .filter((c) => !kw || c.name.toLowerCase().includes(kw))
                 .map((c) => ({ item: c, indent: false }));
         }
@@ -397,12 +415,20 @@ export default class ChatSelectorModal extends Component<Props, State> {
         const { t } = this.context;
         const displayList = this.getDisplayList();
 
-        const tabs = [
+        const chatTabs = [
             { key: "followed", label: t("summary.chatSelector.followed") },
             { key: "recent", label: t("summary.chatSelector.recent") },
             { key: "group", label: t("summary.chatSelector.allGroups") },
             { key: "direct", label: t("summary.chatSelector.allDirects") },
         ];
+
+        const memberTabs = [
+            { key: "all_members", label: t("summary.chatSelector.allMembers") },
+            { key: "managers", label: t("summary.chatSelector.managers") },
+            { key: "normal_members", label: t("summary.chatSelector.normalMembers") },
+        ];
+
+        const currentTabs = mode === "members" ? memberTabs : chatTabs;
 
         if (!visible) return null;
 
@@ -430,29 +456,25 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                     onChange={(e) => this.handleKeywordChange(e.target.value)}
                                 />
                             </div>
-                            {mode !== "members" && (
-                                <>
-                                    <div className="chat-selector-tabs">
-                                        {tabs.map((tab) => (
-                                            <button
-                                                key={tab.key}
-                                                className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
-                                                onClick={() => this.handleTabChange(tab.key)}
-                                            >
-                                                {tab.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    {(activeTab === "group" || activeTab === "followed") && (
-                                        <label className="chat-selector-archived-toggle">
-                                            <Checkbox
-                                                checked={includeArchived}
-                                                onChange={(e) => this.handleIncludeArchivedChange(e.target.checked)}
-                                            />
-                                            <span>{t("summary.chatSelector.includeArchived")}</span>
-                                        </label>
-                                    )}
-                                </>
+                            <div className="chat-selector-tabs">
+                                {currentTabs.map((tab) => (
+                                    <button
+                                        key={tab.key}
+                                        className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
+                                        onClick={() => this.handleTabChange(tab.key)}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                            {mode !== "members" && (activeTab === "group" || activeTab === "followed") && (
+                                <label className="chat-selector-archived-toggle">
+                                    <Checkbox
+                                        checked={includeArchived}
+                                        onChange={(e) => this.handleIncludeArchivedChange(e.target.checked)}
+                                    />
+                                    <span>{t("summary.chatSelector.includeArchived")}</span>
+                                </label>
                             )}
                             <div className="chat-selector-list">
                                 {loading ? (
