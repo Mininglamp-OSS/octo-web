@@ -266,6 +266,7 @@ export class ForwardService {
                 } catch (error) {
                     result.failures.push({
                         channelID: channel.channelID,
+                        channelType: channel.channelType,
                         messageIndex: contents.length > 1 ? index : undefined,
                         reason: "send-error",
                         error,
@@ -291,6 +292,7 @@ export class ForwardService {
                         for (let j = i + 1; j < contents.length; j++) {
                             result.failures.push({
                                 channelID: channel.channelID,
+                                channelType: channel.channelType,
                                 messageIndex: j,
                                 reason: "send-error",
                             });
