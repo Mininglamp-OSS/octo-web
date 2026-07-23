@@ -48,6 +48,12 @@ import {
     setImChannelSubscribersCache,
     syncImChannelSubscribers,
 } from "../../im-runtime/channelRuntime";
+import { resolveEffectiveCardContent } from "../../Messages/InteractiveCard/resolveContent";
+import { isAgentProgressCard } from "../../Messages/InteractiveCard/cardLayout";
+import {
+    isNonTerminalProgressCard,
+    isProgressCardIdleEnough,
+} from "../../Messages/InteractiveCard/agentProgressFallback";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -910,6 +916,8 @@ export default class ConversationVM extends ProviderListener {
 
             const messageWrap = new MessageWrap(message)
             this.fillOrder(messageWrap)
+            this.stampProgressCardArrival(messageWrap)
+            this.maybeFinalizeStuckProgressCard(messageWrap)
             this.appendMessage(messageWrap)
         }
         WKSDK.shared().chatManager.addMessageListener(this.messageListener)
@@ -1429,6 +1437,69 @@ export default class ConversationVM extends ProviderListener {
         this.notifyListener()
     }
 
+    /**
+     * type=17 progress 卡「客户端兜底」——判定当前有效卡片的 AdaptiveCard 树。
+     * 非 InteractiveCard / 非 agent_progress 卡返回 null。
+     */
+    private resolveProgressCard(messageWrap: MessageWrap): Record<string, unknown> | null {
+        if (messageWrap.contentType !== MessageContentTypeConst.interactiveCard) {
+            return null
+        }
+        const content = messageWrap.content
+        if (!(content instanceof InteractiveCardContent)) {
+            return null
+        }
+        const effective = resolveEffectiveCardContent(content, messageWrap.message.remoteExtra)
+        return isAgentProgressCard(effective.card) ? effective.card : null
+    }
+
+    /** 记录一张 progress 卡的最近帧到达时刻（创建或 patch），供 final-text 兜底做空闲判定。 */
+    private stampProgressCardArrival(messageWrap: MessageWrap) {
+        if (this.resolveProgressCard(messageWrap)) {
+            messageWrap.progressUpdatedAtSec = Date.now() / 1000
+        }
+    }
+
+    /**
+     * 收到某 assistant 的 type=1 final text 后的客户端兜底：若该 assistant 最近一张 type=17 卡是
+     * 「未终态」的 progress 卡、且距其最后一次帧到达已空闲够久，则把它降级显示为「已完成（未收到
+     * 显式终态）」。严格按 senderId 匹配「最近一张卡」，多助理并发不误伤别人；只叠加本地 UI 态，
+     * 不写回消息内容。发方补发终态（WS-97 Sub-1 根治）后不冲突：真终态帧会走正常渲染。
+     */
+    private maybeFinalizeStuckProgressCard(finalTextWrap: MessageWrap) {
+        if (finalTextWrap.contentType !== MessageContentType.text) return
+        if (finalTextWrap.send) return // 自己发的文本不触发
+        if (finalTextWrap.message.streamNo) return // 流式分片非 final（正常已在上游早退，双保险）
+        const text = (finalTextWrap.content as MessageText)?.text
+        if (!text || !text.trim()) return
+        const senderId = finalTextWrap.fromUID
+        if (!senderId) return
+
+        const finalAtSec = Date.now() / 1000
+        for (let i = this.messagesOfOrigin.length - 1; i >= 0; i--) {
+            const m = this.messagesOfOrigin[i]
+            if (m.fromUID !== senderId) continue
+            if (m.contentType !== MessageContentTypeConst.interactiveCard) continue
+            // m = 该 assistant 最近一张 type=17 卡：只对这一张判定，不再往前看（对齐「最近一张」语义）。
+            if (m.localFallbackApplied) return // 幂等
+            const card = this.resolveProgressCard(m)
+            if (
+                card &&
+                isNonTerminalProgressCard(card) &&
+                isProgressCardIdleEnough(m.progressUpdatedAtSec, finalAtSec)
+            ) {
+                m.localFallbackApplied = true
+                const idleSec = finalAtSec - (m.progressUpdatedAtSec ?? finalAtSec)
+                console.debug(
+                    `[interactive-card] client fallback finalized stuck progress card sender=${senderId} messageID=${m.messageID} idleSec=${idleSec.toFixed(1)}`
+                )
+                this.rebuildRenderItems()
+                this.notifyListener()
+            }
+            return
+        }
+    }
+
     // 更新消息扩展数据
     updateMessageByMessageExtras(messageExtras: MessageExtra[]) {
         if (!messageExtras || messageExtras.length == 0) {
@@ -1440,6 +1511,7 @@ export default class ConversationVM extends ProviderListener {
             if (message) {
                 message.message.remoteExtra = messageExtra
                 message.resetParts()
+                this.stampProgressCardArrival(message)
             }
         }
         this.notifyListener()

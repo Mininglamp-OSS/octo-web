@@ -979,6 +979,8 @@
   "message.interactiveCard.copySuccess": "已复制",
   "message.interactiveCard.copyFailed": "复制失败",
   "message.interactiveCard.copyTable": "复制",
+  "message.interactiveCard.fallbackFinalized": "⚠️ 已完成（未收到显式终态）",
+  "message.interactiveCard.fallbackTag": "兜底触发",
   "message.interactiveCard.denyDialog.title": "拒绝文档访问申请",
   "message.interactiveCard.denyDialog.descWithContext": "拒绝后，{{actor}} 将无法获得“{{title}}”的查看权限。",
   "message.interactiveCard.denyDialog.desc": "拒绝后，申请人将无法获得该文档的查看权限。",
