@@ -154,6 +154,12 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         window.addEventListener("summary-detail-inactive", this.handleDetailInactive_);
     }
 
+    componentDidUpdate(prevProps: SummaryListPageProps) {
+        if (prevProps.channelId !== this.props.channelId) {
+            this.loadData();
+        }
+    }
+
     componentWillUnmount() {
         window.dispatchEvent(new CustomEvent("summary-list-unmount"));
         if (this.searchTimer) clearTimeout(this.searchTimer);
@@ -351,13 +357,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         try {
             await api.deleteSummary(taskId);
             Toast.success(t("summary.list.deleteSuccess"));
-            // If we deleted the only item on a non-first page, go back to page 1
-            // before re-fetching, otherwise we'd see an empty page and misroute to create.
-            if (this.state.page > 1 && this.state.items.length <= 1) {
-                this.setState({ page: 1 }, () => this.handleDelete_refetch());
-            } else {
-                this.handleDelete_refetch();
-            }
+            // Always reload from page 1 after delete to avoid losing earlier pages
+            this.loadData();
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.deleteFailed"));
         }

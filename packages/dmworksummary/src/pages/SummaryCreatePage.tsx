@@ -768,7 +768,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             Toast.info(t("summary.create.selectChatFirst"));
             return;
         }
-        const channelType = chat.chat_id.includes("____") ? 5 : 2;
+        const channelType = chat.chat_type === "thread" ? 5 : chat.chat_type === "direct" ? 1 : 2;
         const channel = new Channel(chat.chat_id, channelType);
         this.setState({
             showMemberSelector: true,
