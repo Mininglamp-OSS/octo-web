@@ -27,7 +27,7 @@ import { listIssues, searchIssues, listGroupedIssues, listMyGroupedIssues, getAg
 import { groupIssuesByAssignee } from "../api/issueGrouping";
 import { listProjectOptions } from "../api/directory";
 import { listLabels } from "../api/labelApi";
-import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
+import { useAssigneeCandidateState } from "../ui/useAssigneeCandidates";
 import { ISSUE_STATUS_ORDER, PRIORITY_ORDER, isActiveRun } from "../ui/meta";
 import IssueBoard from "../panel/IssueBoard";
 import IssueGroupBoard from "../panel/IssueGroupBoard";
@@ -36,6 +36,14 @@ import IssueDetailPage from "../panel/IssueDetailPage";
 import CreateIssueModal from "../ui/CreateIssueModal";
 import { pushFleetIssueDeepLink, replaceLoopRootPath } from "../issueDeepLink";
 import { readView, writeView } from "../ui/viewMode";
+import {
+  defaultIssueFilters,
+  issueFilterStorageKey,
+  readIssueFilterState,
+  reconcileIssueFilters,
+  writeIssueFilterState,
+  type IssueFilters,
+} from "../ui/issueFilterPersistence";
 
 type ViewMode = "board" | "grouped" | "list";
 
@@ -49,19 +57,7 @@ function scopeToAssigneeTypes(scope: IssueScope): ("member" | "agent" | "squad")
 
 // 统一筛选:全维度数组多选 + 正交的「无负责人 / 无项目」布尔,同一套应用到看板/列表/分组
 // 三视图。keyword 走独立全文搜索端点,故与其它维度不并存于同一请求。
-interface Filters {
-  keyword: string;
-  statuses: IssueStatus[];
-  priorities: IssuePriority[];
-  assigneeIds: string[];
-  noAssignee: boolean;
-  creatorIds: string[];
-  projectIds: string[];
-  noProject: boolean;
-  labelIds: string[];
-  dateField: IssueDateField; // 时间范围筛选的列(created_at|updated_at)
-  dateRange?: Date[];        // [start, end];为空则不按时间筛选
-}
+type Filters = IssueFilters;
 
 const PAGE_SIZE = 50;
 
@@ -82,14 +78,24 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   // 「我的回路」= involves:只有分组视图能表达「指派/创建/关联」三路并集(listMyGroupedIssues 扇出),
   // 看板/列表无对应查询会退化成显示全工作区 → 该页锁死分组、不给切视图。
   const isMyLoop = defaultScope === "involves";
+  const workspaceSlug = currentWorkspaceSlug();
+  const filterStorageKey = issueFilterStorageKey(workspaceSlug, viewKey);
+  const [initialFilterState] = useState(() =>
+    readIssueFilterState(
+      localStorage,
+      filterStorageKey,
+      defaultScope ?? "all",
+      isMyLoop,
+    ),
+  );
   const [issues, setIssues] = useState<Issue[]>([]);
   const [groups, setGroups] = useState<IssueGroup[]>([]);
   const [running, setRunning] = useState<ReadonlySet<string>>(new Set());
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>(() => isMyLoop ? "grouped" : (viewKey ? readView(viewKey, ["board", "grouped", "list"], defaultView ?? "board") : (defaultView ?? "board")));
-  const [scope, setScope] = useState<IssueScope>(defaultScope ?? "all");
-  const [f, setF] = useState<Filters>({ keyword: "", statuses: [], priorities: [], assigneeIds: [], noAssignee: false, creatorIds: [], projectIds: [], noProject: false, labelIds: [], dateField: "created_at" });
+  const [scope, setScope] = useState<IssueScope>(initialFilterState.scope);
+  const [f, setF] = useState<Filters>(initialFilterState.filters);
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
   // 「无负责人」仅在 scope=全部 时有效(与 assignee_types 组合恒空)。单一来源:发送/勾选态/计数共用,防漂移。
   const noAssigneeActive = scope === "all" && f.noAssignee;
@@ -98,7 +104,7 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   // onVisibleChange —— 仅外部点击关闭,内部多字段交互保持面板打开。
   const [filterOpen, setFilterOpen] = useState(false);
   const [showOpen, setShowOpen] = useState(false);
-  const cands = useAssigneeCandidates();
+  const { candidates: cands, loaded: candsLoaded } = useAssigneeCandidateState();
   // 当前 octo 成员的后端 user_id(involves_user_id 需 UUID,非 octo uid)：
   // 复用订阅特性的身份解析——候选里 octo_uid===loginInfo.uid 的 member。未解析出则「与我相关」不可用。
   const myMemberId = useMemo(() => {
@@ -108,12 +114,36 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   // 项目下拉复用 directory 已缓存的 /projects(避免重复请求);随 workspace 切换整页重挂而刷新。
   const [projects, setProjects] = useState<Array<{ id: string; title: string }>>([]);
   const [labels, setLabels] = useState<IssueLabel[]>([]);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+  const [labelsLoaded, setLabelsLoaded] = useState(false);
   const seq = useRef(0); // 请求序号：只应用最新一次的响应，防并发乱序覆盖
 
   useEffect(() => {
-    listProjectOptions().then(setProjects).catch(() => {});
-    listLabels().then(setLabels).catch(() => {});
+    let alive = true;
+    listProjectOptions()
+      .then((rows) => { if (alive) setProjects(rows); })
+      .catch(() => { if (alive) setProjects([]); })
+      .finally(() => { if (alive) setProjectsLoaded(true); });
+    listLabels()
+      .then((rows) => { if (alive) setLabels(rows); })
+      .catch(() => { if (alive) setLabels([]); })
+      .finally(() => { if (alive) setLabelsLoaded(true); });
+    return () => { alive = false; };
   }, []);
+
+  useEffect(() => {
+    writeIssueFilterState(localStorage, filterStorageKey, { filters: f, scope }, isMyLoop);
+  }, [f, filterStorageKey, isMyLoop, scope]);
+
+  useEffect(() => {
+    const optionIds = {
+      assigneeIds: candsLoaded ? cands.map((c) => c.id) : undefined,
+      creatorIds: candsLoaded ? cands.filter((c) => c.type === "member").map((c) => c.id) : undefined,
+      projectIds: projectsLoaded ? projects.map((p) => p.id) : undefined,
+      labelIds: labelsLoaded ? labels.map((l) => l.id) : undefined,
+    };
+    setF((prev) => reconcileIssueFilters(prev, optionIds, isMyLoop));
+  }, [cands, candsLoaded, isMyLoop, labels, labelsLoaded, projects, projectsLoaded]);
 
   const reload = useCallback(() => {
     const my = ++seq.current;
@@ -308,8 +338,7 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
   const clearFilters = () =>
     update({
-      keyword: "", statuses: [], priorities: [], assigneeIds: [], noAssignee: false,
-      creatorIds: [], projectIds: [], noProject: false, labelIds: [], dateRange: undefined,
+      ...defaultIssueFilters(),
     });
 
   // 一行多选筛选(标签 + Select multiple)。各维度只差 options / filter / maxTagCount,收进一个函数。
