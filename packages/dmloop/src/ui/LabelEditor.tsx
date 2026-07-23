@@ -12,10 +12,12 @@ export default function LabelEditor({
   issueId,
   labels,
   onChanged,
+  className,
 }: {
   issueId: string;
   labels?: IssueLabel[] | null;
   onChanged: () => void;
+  className?: string;
 }) {
   const { t } = useI18n();
   const [all, setAll] = useState<IssueLabel[]>([]);
@@ -81,10 +83,10 @@ export default function LabelEditor({
 
   // clickToHide 默认 false:勾选多个标签时下拉保持打开;每次打开重新拉全量标签。
   return (
-    <Dropdown trigger="click" position="bottomLeft" render={menu} onVisibleChange={(v) => v && loadAll()}>
-      <span style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
-        {labels && labels.length > 0 ? <LabelChips labels={labels} /> : <span style={{ opacity: 0.5 }}>{t("loop.label.add")}</span>}
-      </span>
+    <Dropdown trigger="click" position="bottomRight" render={menu} onVisibleChange={(v) => v && loadAll()}>
+      <button type="button" className={`loop-label-editor${className ? ` ${className}` : ""}`}>
+        {labels && labels.length > 0 ? <LabelChips labels={labels} /> : <span className="loop-label-editor__empty">{t("loop.label.add")}</span>}
+      </button>
     </Dropdown>
   );
 }

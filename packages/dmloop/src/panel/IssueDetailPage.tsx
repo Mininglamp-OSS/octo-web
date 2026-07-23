@@ -72,6 +72,7 @@ import { listProjects } from "../api/projectApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
 import LabelEditor from "../ui/LabelEditor";
+import LabelChips from "../ui/LabelChips";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
@@ -1234,6 +1235,21 @@ export default function IssueDetailPage({ issueId, onChanged, onClose, snapshot,
                     </button>
                   </Dropdown>}
                 </div>
+                <div className="loop-idp__prop loop-idp__prop--inline loop-idp__prop--labels">
+                  <span className="loop-idp__prop-k">{t("loop.field.labels")}</span>
+                  {readOnly ? (
+                    <span className={`loop-idp__prop-v loop-idp__prop-labels${issue.labels?.length ? "" : " loop-idp__prop-v--muted"}`}>
+                      {issue.labels?.length ? <LabelChips labels={issue.labels} /> : t("loop.label.add")}
+                    </span>
+                  ) : (
+                    <LabelEditor
+                      issueId={issue.id}
+                      labels={issue.labels}
+                      className="loop-idp__label-editor"
+                      onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }}
+                    />
+                  )}
+                </div>
               </div>
             )}
           </section>
@@ -1321,7 +1337,7 @@ export default function IssueDetailPage({ issueId, onChanged, onClose, snapshot,
         }}
       />}
 
-      {/* 编辑属性弹窗：标签 / 父回路 / 开始/截止日期 / 阶段（侧栏保持只读，编辑走 ⋯ → 此弹窗） */}
+      {/* 编辑属性弹窗：父回路 / 开始/截止日期 / 阶段（标签直接在属性栏点击管理） */}
       {!readOnly && <Modal
         className="loop-modal"
         title={t("loop.menu.editProps")}
@@ -1331,10 +1347,6 @@ export default function IssueDetailPage({ issueId, onChanged, onClose, snapshot,
         width={460}
       >
         <div className="loop-fields">
-          <div className="loop-fields__row">
-            <div className="loop-fields__label">{t("loop.field.labels")}</div>
-            <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
-          </div>
           <div className="loop-fields__row">
             <div className="loop-fields__label">{t("loop.field.parent")}</div>
             <Select
