@@ -7,17 +7,13 @@ import path from "node:path";
 // "exports is not defined in ES module scope". 跟 playwright.config.ts 保持一致.
 
 /**
- * kit-provided CI-only config. 差异 vs playwright.config.ts:
- *  - webServer.command 改成 preview / static-serve (build 产物, 冷启快)
+ * CI-only playwright config (adapted from e2e-kit v0.4). 差异 vs playwright.config.ts:
+ *  - webServer.command: pnpm preview:e2e (build 产物, 冷启快)
  *  - reuseExistingServer: false (CI 每次都新)
- *  - PW_PREVIEW_PORT env: CI 各 job 用不同 port 隔离
+ *  - PW_PREVIEW_PORT env: 各 job 用不同 port 隔离
  *  - 硬约束 TARGET=local: CI 只跑 mock 模式, 真后端走另一条 pipeline
  *
- * TODO(接入方) 填占位:
- *  - `<PROJECT_PREVIEW_COMMAND>` — 例 "pnpm preview:e2e" 或 "node ci/static-serve.mjs"
- *  - `<PROJECT_ROOT_REL>` — 相对 e2e/ 到项目根 (通常 "..")
- *
- * 前提: 先 `pnpm build:e2e` 产 dist-e2e/, tree-shake 掉 harness route gate.
+ * 前提: 先 `pnpm build:e2e` 产 build-e2e/, tree-shake 掉 MSW / mock IM.
  */
 const PREVIEW_PORT = process.env.PW_PREVIEW_PORT ?? "5173";
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${PREVIEW_PORT}`;

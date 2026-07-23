@@ -15,6 +15,10 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/e2e.yml"
+      - ".github/workflows/e2e-nightly.yml"
+
+permissions:
+  contents: read
 
 concurrency:
   group: e2e-${{ github.ref }}
@@ -25,9 +29,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 11.2.2
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22.16.0"
@@ -58,9 +60,7 @@ jobs:
         with:
           name: build-e2e
           path: apps/web/build-e2e/
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 11.2.2
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22.16.0"
@@ -87,6 +87,8 @@ jobs:
             /<\/testcase>/ { name="" }
           ' "$JUNIT")
           TOTAL_FAIL=$(echo "$FAILED_NAMES" | grep -c . || true)
+          # visual vs business split 依赖 playwright junit reporter 把 test title (含 @tag) 写进 <testcase name=...>.
+          # 若未来 reporter 改成不带 tag, 此 grep 将退化 (全部误判 business), 需同步改判定.
           VISUAL_FAIL=$(echo "$FAILED_NAMES" | grep -c "@visual" || true)
           BUSINESS_FAIL=$((TOTAL_FAIL - VISUAL_FAIL))
           TOTAL_TESTS=$(grep -oE 'tests="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
@@ -100,7 +102,7 @@ jobs:
           if [[ "$TOTAL_FAIL" -gt 0 ]]; then
             echo ""
             echo "   fail case names:"
-            echo "$FAILED_NAMES" | sed 's/^/     · /'
+            echo "$FAILED_NAMES" | awk '{print "     · " $0}'
           fi
           echo "═════════════════════════════════════════════════════════════"
 
