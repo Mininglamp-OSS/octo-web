@@ -11,7 +11,7 @@ import {
     Dropdown,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Check } from "lucide-react";
 import { Channel, MessageText } from "wukongimjssdk";
 import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -2083,10 +2083,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             <div className="summary-progress-stages">
                 {SUMMARY_WORKFLOW_STAGES.map((item, index) => {
                     let className = "summary-progress-stage summary-progress-stage-pending";
-                    let mark: React.ReactNode = "○";
+                    let mark: React.ReactNode = <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>○</span>;
                     if (allDone || (activeIndex >= 0 && index < activeIndex)) {
                         className = "summary-progress-stage summary-progress-stage-done";
-                        mark = "✓";
+                        mark = <Check size={16} color="rgba(0,0,0,0.4)" />;
                     } else if (activeIndex === index) {
                         className = personalFailed
                             ? "summary-progress-stage summary-progress-stage-failed"
@@ -2095,7 +2095,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     }
                     return (
                         <div className={className} key={item.key}>
-                            <span style={{ width: 20, display: "inline-block" }}>{mark}</span>
+                            <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{mark}</span>
                             <span>{t(item.labelKey)}</span>
                         </div>
                     );
@@ -2432,7 +2432,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
         if (!personalResult) return null;
         if (personalResult.content?.trim() && !this.canRevealPersonalContent()) return null;
-        const { isEditing } = this.state;
+        const { isEditing, detail: stateDetail } = this.state;
+        const isProcessing = stateDetail && (stateDetail.status === TaskStatus.PENDING || stateDetail.status === TaskStatus.PROCESSING) && !personalResult?.content;
         return (
             <div className="summary-detail-personal">
                 {/* Meta info: creation time + source chips */}
@@ -2453,29 +2454,40 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 )}
                 <hr className="summary-detail-meta-divider" />
-                {!isEditing && personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
-                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
-                            {t("summary.detail.submitToAll")}
-                        </Button>
+                {isProcessing ? (
+                    <div className="summary-detail-processing">
+                        <div className="summary-progress-header">
+                            <span className="summary-progress-header-text">{t("summary.detail.aiThinking")}</span>
+                        </div>
+                        {this.renderWorkflowProgress()}
                     </div>
-                )}
-                {!isEditing && this.renderPersonalVersionHistory()}
-                {isEditing ? (
-                    <div className="summary-detail-content-box">
-                        <SummaryEditor
-                            taskId={this.state.detail?.task_id || 0}
-                            baseResultId={this.state.detail?.result_id || 0}
-                            initialContent={personalResult.content || ""}
-                            onSave={this.handleEditSave}
-                            onCancel={this.handleEditCancel}
-                            exposeSave={(fn) => { this.editorSaveFn = fn; }}
-                        />
-                    </div>
-                ) : personalResult.content && (
-                    <div className="summary-detail-content-box">
-                        <CitationText content={personalResult.content} citations={personalResult.citations || []} />
-                    </div>
+                ) : (
+                    <>
+                        {!isEditing && personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
+                                    {t("summary.detail.submitToAll")}
+                                </Button>
+                            </div>
+                        )}
+                        {!isEditing && this.renderPersonalVersionHistory()}
+                        {isEditing ? (
+                            <div className="summary-detail-content-box">
+                                <SummaryEditor
+                                    taskId={this.state.detail?.task_id || 0}
+                                    baseResultId={this.state.detail?.result_id || 0}
+                                    initialContent={personalResult.content || ""}
+                                    onSave={this.handleEditSave}
+                                    onCancel={this.handleEditCancel}
+                                    exposeSave={(fn) => { this.editorSaveFn = fn; }}
+                                />
+                            </div>
+                        ) : personalResult.content && (
+                            <div className="summary-detail-content-box">
+                                <CitationText content={personalResult.content} citations={personalResult.citations || []} />
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         );
@@ -3522,7 +3534,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                             里我那条，need3）；单人 BY_PERSON 维持显示「我的总结」及其行内编辑。 */}
                                         {!this.isMultiCollab() && (
                                             <>
-                                                {this.shouldShowProcessingCard() && !this.personalReady && this.renderProcessing()}
                                                 {this.renderPersonalSummary()}
                                             </>
                                         )}

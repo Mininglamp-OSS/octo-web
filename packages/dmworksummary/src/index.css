@@ -890,26 +890,41 @@
 /* Processing */
 .summary-detail-processing {
     text-align: left;
-    padding: 48px 56px;
-    background: linear-gradient(135deg, var(--semi-color-primary-light-default) 0%, var(--semi-color-bg-1) 100%);
-    border-radius: 8px;
-    margin: 28px 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    margin: 0;
+}
+
+.summary-progress-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.summary-progress-header-text {
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 20px;
+    color: #000000;
 }
 
 .summary-progress-copy {
-    margin-bottom: 18px;
+    margin-bottom: 0;
 }
 
 .summary-progress-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--semi-color-text-0);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 20px;
+    color: #000000;
 }
 
 .summary-progress-desc {
-    margin-top: 8px;
+    margin-top: 4px;
     font-size: 14px;
-    color: var(--semi-color-text-2);
+    color: rgba(28, 28, 35, 0.6);
 }
 
 .summary-detail-processing h3 {
@@ -1623,28 +1638,30 @@
 .summary-progress-stages {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-top: 18px;
+    gap: 8px;
+    padding-left: 48px;
     align-items: flex-start;
 }
 
 .summary-progress-stage {
     display: flex;
     align-items: center;
+    gap: 8px;
     font-size: 14px;
+    line-height: 20px;
 }
 
 .summary-progress-stage-done {
-    color: var(--semi-color-success);
+    color: rgba(0, 0, 0, 0.4);
 }
 
 .summary-progress-stage-active {
-    color: var(--semi-color-primary);
-    font-weight: 500;
+    color: rgba(0, 0, 0, 0.8);
+    font-weight: 400;
 }
 
 .summary-progress-stage-pending {
-    color: var(--semi-color-text-2);
+    color: rgba(0, 0, 0, 0.4);
 }
 
 .summary-progress-stage-failed {
@@ -1653,13 +1670,11 @@
 }
 
 .summary-progress-stage-spinner {
-    width: 10px;
-    height: 10px;
+    width: 4px;
+    height: 4px;
     display: inline-block;
-    border: 2px solid var(--semi-color-primary-light-active);
-    border-top-color: var(--semi-color-primary);
+    background: #7F3BF5;
     border-radius: 50%;
-    animation: summary-progress-spin 0.8s linear infinite;
 }
 
 @keyframes summary-progress-spin {

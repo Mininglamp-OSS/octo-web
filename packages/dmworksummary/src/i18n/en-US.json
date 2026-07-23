@@ -399,6 +399,7 @@
         "forwardedToMatter": "Forwarded to \"{{title}}\"",
         "processingTitle": "Generating summary...",
         "processingDesc": "This may take a little while. Please wait.",
+        "aiThinking": "AI is thinking...",
         "workflowUnderstandQuestion": "Understand the summary request",
         "workflowFindRelevantChats": "Find relevant chats",
         "workflowFilterUsefulContent": "Filter useful content",

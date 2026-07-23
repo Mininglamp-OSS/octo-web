@@ -399,6 +399,7 @@
         "forwardedToMatter": "已转发到「{{title}}」",
         "processingTitle": "正在生成总结...",
         "processingDesc": "这可能需要一些时间，请耐心等待",
+        "aiThinking": "AI正在思考中...",
         "workflowUnderstandQuestion": "理解总结问题",
         "workflowFindRelevantChats": "查找相关聊天",
         "workflowFilterUsefulContent": "筛选有效内容",
