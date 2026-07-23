@@ -174,6 +174,7 @@
         "scheduleFailed": "总结已创建，但定时更新配置失败",
         "success": "总结任务已创建",
         "selectChat": "选择聊天",
+        "selectChatFirst": "请先选择聊天",
         "selectedChats": "已选 {{count}} 个聊天",
         "selectMembers": "选择参与者",
         "selectedMembers": "已选 {{count}} 位参与者",
