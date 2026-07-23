@@ -1960,8 +1960,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 void Promise.all(grants.map(async (grant) => {
                     try {
                         await api.revokeSummaryShare(grant.share_id);
-                    } catch {
-                        // Best effort only: cleanup must not mask the send result.
+                    } catch (e) {
+                        // Best effort: cleanup must not mask the send result. But a silent
+                        // failure leaves an orphan grant with no card behind it, so log it
+                        // to make the leak observable (#1002 follow-up).
+                        console.warn("[summary-share] failed to revoke orphan grant", grant.share_id, e);
                     }
                 }));
             };
@@ -2001,8 +2004,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     { channelMode: "serial", spaceId: WKApp.shared.currentSpaceId },
                 );
 
-                const failedChannelIDs = new Set(result.failures.map((failure) => failure.channelID));
-                revokeGrants(share.grants.filter((grant) => failedChannelIDs.has(grant.channel_id)));
+                const failedKeys = new Set(result.failures.map((failure) => `${failure.channelType}:${failure.channelID}`));
+                revokeGrants(share.grants.filter((grant) => failedKeys.has(`${grant.channel_type}:${grant.channel_id}`)));
 
                 const state = interpretForwardResult(result, "targets");
                 if (state.kind === "all-failed") Toast.error(t("summary.detail.forwardFailed"));
