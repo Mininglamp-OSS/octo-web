@@ -53,7 +53,7 @@
     padding: 0;
     overflow: hidden;
     isolation: isolate;
-    background: transparent;
+    background: #fff;
 }
 
 /* 详情页内容容器 */
@@ -73,15 +73,55 @@
 }
 
 .summary-detail-sources-footer {
-    flex-shrink: 0;
-    border-top: 1px solid var(--semi-color-border);
-    background: var(--semi-color-bg-0);
-    padding: 12px 32px;
+    display: none;
 }
 
-.summary-detail-sources-footer-inner {
-    max-width: 920px;
+/* Edit mode footer (取消/保存) */
+.summary-detail-footer {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px;
+    background: #fff;
+    max-width: 984px;
     margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.summary-detail-footer-btn {
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    border-radius: 99px;
+    padding: 6px 12px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 20px;
+}
+
+.summary-detail-footer-btn--cancel {
+    background: #fff;
+    border: 1px solid rgba(28, 28, 35, 0.1);
+    color: rgba(28, 28, 35, 0.8);
+}
+
+.summary-detail-footer-btn--cancel:hover {
+    background: rgba(28, 28, 35, 0.02);
+}
+
+.summary-detail-footer-btn--save {
+    background: #1C1C23;
+    color: #fff;
+}
+
+.summary-detail-footer-btn--save:hover {
+    background: #333;
 }
 
 /* 详情页内容区域 - 使用更宽敞的布局 */
@@ -948,7 +988,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
-    justify-content: center;
+    justify-content: flex-start;
 }
 
 .summary-detail-source-chip {

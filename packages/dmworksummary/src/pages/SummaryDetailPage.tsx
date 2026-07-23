@@ -3626,14 +3626,39 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         )}
                     </div>
                 </div>
-                {detail && !loading && (
-                    <div className="summary-detail-sources-footer">
-                        <div className="summary-detail-sources-footer-inner">
-                            <SelectedSourcesPanel sources={detail.sources} />
-                        </div>
+                </div>
+
+                {/* Edit mode footer */}
+                {(this.state.isEditing || this.state.editingTeamSummary) && (
+                    <div className="summary-detail-footer">
+                        <button
+                            type="button"
+                            className="summary-detail-footer-btn summary-detail-footer-btn--cancel"
+                            onClick={() => {
+                                if (this.state.editingTeamSummary) {
+                                    this.handleEditTeamCancel();
+                                } else {
+                                    this.handleEditCancel();
+                                }
+                            }}
+                        >
+                            {t("summary.common.cancel")}
+                        </button>
+                        <button
+                            type="button"
+                            className="summary-detail-footer-btn summary-detail-footer-btn--save"
+                            onClick={() => {
+                                if (this.state.editingTeamSummary) {
+                                    this.handleEditTeamSave();
+                                } else {
+                                    this.handleEditSave();
+                                }
+                            }}
+                        >
+                            {t("summary.common.save")}
+                        </button>
                     </div>
                 )}
-                </div>
 
                 <ScheduleConfigModal
                     visible={showScheduleConfig}
