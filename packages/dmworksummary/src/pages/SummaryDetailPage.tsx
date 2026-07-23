@@ -2431,6 +2431,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
         if (!personalResult) return null;
         if (personalResult.content?.trim() && !this.canRevealPersonalContent()) return null;
+        const { isEditing } = this.state;
         return (
             <div className="summary-detail-personal">
                 {/* Meta info: creation time + source chips */}
@@ -2451,15 +2452,25 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 )}
                 <hr className="summary-detail-meta-divider" />
-                {personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
+                {!isEditing && personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>
                         <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
                             {t("summary.detail.submitToAll")}
                         </Button>
                     </div>
                 )}
-                {this.renderPersonalVersionHistory()}
-                {personalResult.content && (
+                {!isEditing && this.renderPersonalVersionHistory()}
+                {isEditing ? (
+                    <div className="summary-detail-content-box">
+                        <SummaryEditor
+                            taskId={this.state.detail?.task_id || 0}
+                            baseResultId={personalResult.result_id || 0}
+                            initialContent={personalResult.content || ""}
+                            onSave={this.handleEditSave}
+                            onCancel={this.handleEditCancel}
+                        />
+                    </div>
+                ) : personalResult.content && (
                     <div className="summary-detail-content-box">
                         <CitationText content={personalResult.content} citations={personalResult.citations || []} />
                     </div>
@@ -2563,16 +2574,30 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (editingTeamSummary && canEditTeam && detail.result_id) {
             return (
                 <div className="summary-detail-team">
-                    <div className="summary-detail-section-header">
-                        <span>{t("summary.detail.teamSummary")}</span>
+                    <div className="summary-detail-meta">
+                        <div className="summary-detail-meta-time">
+                            {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
+                        </div>
+                        {detail.sources && detail.sources.length > 0 && (
+                            <div className="summary-detail-source-chips">
+                                {detail.sources.map((src, i) => (
+                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                        {src.source_name || src.source_id}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                    <SummaryEditor
-                        taskId={detail.task_id}
-                        baseResultId={detail.result_id}
-                        initialContent={detail.result.content || ""}
-                        onSave={this.handleEditTeamSave}
-                        onCancel={this.handleEditTeamCancel}
-                    />
+                    <hr className="summary-detail-meta-divider" />
+                    <div className="summary-detail-content-box">
+                        <SummaryEditor
+                            taskId={detail.task_id}
+                            baseResultId={detail.result_id}
+                            initialContent={detail.result.content || ""}
+                            onSave={this.handleEditTeamSave}
+                            onCancel={this.handleEditTeamCancel}
+                        />
+                    </div>
                 </div>
             );
         }
