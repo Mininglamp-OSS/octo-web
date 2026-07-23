@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, ListChecks, Calendar, MessageSquare } from 'lucide-react';
+import { FileText, ListChecks, Calendar, MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import type { TopicTemplate } from '../types/summary';
 
 const ICON_MAP: Record<string, React.FC<{ size?: number }>> = {
@@ -51,7 +51,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, onEdit, 
                             }}
                             aria-label={editLabel}
                         >
-                            {editLabel}
+                            <Pencil size={14} />
                         </button>
                     )}
                     {onDelete && (
@@ -64,7 +64,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, onEdit, 
                             }}
                             aria-label={deleteLabel}
                         >
-                            {deleteLabel}
+                            <Trash2 size={14} />
                         </button>
                     )}
                 </div>

@@ -2879,32 +2879,27 @@
     }
 }
 
-.chat-summary-template-edit {
-    padding: 0;
-    border: 0;
-    color: var(--semi-color-primary);
-    background: transparent;
-    font-size: var(--wk-text-size-sm);
-    line-height: var(--wk-line-height-sm);
+.chat-summary-template-edit, .chat-summary-template-delete {
+    padding: 4px;
+    border: none;
+    background: none;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(28, 28, 35, 0.4);
+    border-radius: 4px;
+    line-height: 1;
 }
 
 .chat-summary-template-edit:hover {
-    color: var(--semi-color-primary-hover);
-}
-
-.chat-summary-template-delete {
-    padding: 0;
-    border: 0;
-    color: var(--semi-color-danger);
-    background: transparent;
-    font-size: var(--wk-text-size-sm);
-    line-height: var(--wk-line-height-sm);
-    cursor: pointer;
+    color: #7F3BF5;
+    background: rgba(127, 59, 245, 0.06);
 }
 
 .chat-summary-template-delete:hover {
-    color: var(--semi-color-danger-hover);
+    color: #F54A45;
+    background: rgba(245, 74, 69, 0.06);
 }
 
 .summary-template-edit-textarea {
