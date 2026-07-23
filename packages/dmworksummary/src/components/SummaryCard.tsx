@@ -62,6 +62,7 @@ function getStatusColor(status: number): string | null {
 const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onRegenerate, onEdit }) => {
     const { t } = useI18n();
     const [confirmType, setConfirmType] = useState<'delete' | 'leave' | null>(null);
+    const [menuVisible, setMenuVisible] = useState(false);
     const currentUid = WKApp.loginInfo.uid;
     const myParticipant = task.participants?.find((p) => p.user_id === currentUid);
     const isMultiParticipant = (task.participants?.length ?? 0) > 1;
@@ -145,28 +146,30 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                     <Dropdown
                         trigger="click"
                         position="bottomRight"
+                        visible={menuVisible}
+                        onVisibleChange={setMenuVisible}
                         render={
                             <Dropdown.Menu className="summary-card-menu">
                                 {isCreator && (
                                     <>
                                         {/* Generating / Waiting: 取消任务 */}
                                         {isGenerating && (
-                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); onLeave?.(task.task_id); }}>
+                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onLeave?.(task.task_id); }}>
                                                 {t("summary.summaryCard.cancelTask")}
                                             </Dropdown.Item>
                                         )}
                                         {displayStatus === TaskStatus.WAITING_CONFIRM && (
-                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); onLeave?.(task.task_id); }}>
+                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onLeave?.(task.task_id); }}>
                                                 {t("summary.summaryCard.cancelTask")}
                                             </Dropdown.Item>
                                         )}
                                         {/* Failed: 重试 + 编辑 */}
                                         {task.status === TaskStatus.FAILED && (
                                             <>
-                                                <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); onRetry?.(task.task_id); }}>
+                                                <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRetry?.(task.task_id); }}>
                                                     {t("summary.summaryCard.retry")}
                                                 </Dropdown.Item>
-                                                <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); onEdit?.(task.task_id); }}>
+                                                <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onEdit?.(task.task_id); }}>
                                                     {t("summary.summaryCard.edit")}
                                                 </Dropdown.Item>
                                             </>
@@ -174,10 +177,10 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                         {/* Completed: 重新生成 + 编辑 */}
                                         {task.status === TaskStatus.COMPLETED && (
                                             <>
-                                                <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); onRegenerate?.(task.task_id); }}>
+                                                <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRegenerate?.(task.task_id); }}>
                                                     {t("summary.summaryCard.regenerate")}
                                                 </Dropdown.Item>
-                                                <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); onEdit?.(task.task_id); }}>
+                                                <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onEdit?.(task.task_id); }}>
                                                     {t("summary.summaryCard.edit")}
                                                 </Dropdown.Item>
                                             </>
@@ -185,7 +188,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                         {/* 删除（红色，所有状态都有） */}
                                         <Dropdown.Item
                                             type="danger"
-                                            onClick={handleDeleteClick}
+                                            onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); handleDeleteClick(e as any); }}
                                         >
                                             {t("summary.common.delete")}
                                         </Dropdown.Item>
@@ -194,7 +197,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                 {!isCreator && isParticipant && onLeave && (
                                     <Dropdown.Item
                                         type="danger"
-                                        onClick={handleLeaveClick}
+                                        onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); handleLeaveClick(e as any); }}
                                     >
                                         {t("summary.summaryCard.leave")}
                                     </Dropdown.Item>
