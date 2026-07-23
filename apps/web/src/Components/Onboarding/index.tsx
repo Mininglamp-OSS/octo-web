@@ -267,12 +267,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     onDismiss?.();
   };
 
-  const dismissOnEscape = () => {
-    if (isCompleting) return;
-    persistDismissed();
-    hideOnboarding();
-  };
-
   const handleClose = () => {
     if (isCompleting) return;
 
@@ -348,13 +342,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({
   };
 
   const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      dismissOnEscape();
-      return;
-    }
-
     if (event.key !== "Tab") return;
 
     const dialog = dialogRef.current;
