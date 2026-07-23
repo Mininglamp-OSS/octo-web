@@ -549,6 +549,13 @@
     },
     "citation": {
         "reference": "引用 [{{index}}]",
+        "title": "引用消息 [{{indices}}]",
+        "meta": "{{source}} · {{context}} 条上下文 · {{cited}} 条直接引用",
+        "close": "关闭引用消息",
+        "searchPlaceholder": "搜索发送人或消息内容",
+        "citedOnly": "仅看引用",
+        "empty": "没有找到相关消息",
+        "position": "{{current}} / {{total}} 条直接引用",
         "jumpToOriginal": "跳转到原文 →",
         "source": "来源：{{source}}",
         "member": "成员：{{name}}"

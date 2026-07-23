@@ -9,13 +9,16 @@
 .citation-badge {
     display: inline-flex;
     align-items: center;
-    background: var(--wk-brand-tint-08);
-    color: var(--wk-text-strong);
+    min-width: var(--wk-sp-5);
+    height: var(--wk-sp-4);
+    justify-content: center;
+    background: var(--wk-accent-tint-08);
+    color: var(--wk-text-accent);
     border-radius: var(--wk-r-xs);
     padding: 0 var(--wk-sp-1);
     margin-left: var(--wk-sp-0-5);
-    font-size: var(--wk-text-size-xs);
-    line-height: 1.4;
+    font-size: 10px;
+    line-height: 14px;
     vertical-align: super;
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease;
@@ -24,8 +27,8 @@
 
 .citation-badge:hover,
 .citation-badge:focus-visible {
-    background: var(--wk-brand-tint-15);
-    color: var(--wk-brand-primary);
+    background: var(--wk-bg-selected);
+    color: var(--wk-text-accent);
     outline: none;
 }
 
@@ -43,6 +46,52 @@
 .citation-popover--wide {
     max-width: 360px;
 }
+
+.citation-popover--timeline {
+    width: min(560px, calc(100vw - 32px));
+    max-width: none;
+    height: min(480px, calc(100vh - 32px));
+    max-height: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--wk-border-subtle);
+    border-radius: var(--wk-r-md);
+    background: var(--wk-bg-surface);
+}
+
+.citation-popover-header {
+    min-height: 64px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--wk-sp-4);
+    padding: var(--wk-sp-3) var(--wk-sp-4);
+    border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.citation-popover-heading { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: var(--wk-sp-1); }
+.citation-popover-heading strong { font-size: var(--wk-text-size-base); line-height: 20px; }
+.citation-popover-heading span { overflow: hidden; color: var(--wk-text-tertiary); font-size: var(--wk-text-size-sm); line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.citation-close { width: 28px; height: 28px; flex: 0 0 28px; padding: 0; border: 0; border-radius: var(--wk-r-full); color: var(--wk-text-secondary); background: transparent; font-size: 20px; }
+.citation-close:hover { background: var(--wk-bg-hover); }
+
+.citation-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--wk-sp-2); padding: var(--wk-sp-3) var(--wk-sp-4); border-bottom: 1px solid var(--wk-border-subtle); background: var(--wk-bg-elevated); }
+.citation-toolbar input { width: 100%; height: 36px; padding: 0 var(--wk-sp-3); border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-full); color: var(--wk-text-primary); background: var(--wk-bg-surface); outline: 0; }
+.citation-toolbar input:focus { border-color: var(--wk-text-accent); box-shadow: 0 0 0 2px var(--wk-ai-border); }
+.citation-toolbar button { height: 28px; padding: 0 var(--wk-sp-3); border: 1px solid transparent; border-radius: var(--wk-r-full); color: var(--wk-text-secondary); background: var(--wk-bg-hover); white-space: nowrap; }
+.citation-toolbar button.is-active { border-color: var(--wk-ai-border); color: var(--wk-text-accent); background: var(--wk-accent-tint-08); }
+
+.citation-message-list { min-height: 0; flex: 1; overflow-y: auto; padding: var(--wk-sp-3) var(--wk-sp-4); scroll-behavior: smooth; scrollbar-gutter: stable; }
+.citation-message { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: var(--wk-sp-2); padding: var(--wk-sp-2); border-left: 3px solid transparent; border-radius: var(--wk-r-md); }
+.citation-message + .citation-message { margin-top: var(--wk-sp-1); }
+.citation-message.is-cited { border-left-color: var(--wk-text-accent); background: var(--wk-ai-surface); }
+.citation-message.is-current { background: var(--wk-bg-selected); }
+.citation-avatar { width: 24px; height: 24px; display: grid; place-items: center; border-radius: var(--wk-r-full); color: var(--wk-text-secondary); background: var(--wk-bg-elevated); font-size: 10px; font-weight: 600; }
+.citation-message.is-cited .citation-avatar { color: var(--wk-text-accent); background: var(--wk-accent-tint-08); }
+.citation-message-content { min-width: 0; }
+.citation-empty { min-height: 200px; display: grid; place-content: center; color: var(--wk-text-tertiary); text-align: center; }
 
 .citation-mini-preview {
     max-width: 320px;
@@ -81,7 +130,6 @@
     padding: var(--wk-sp-1) var(--wk-sp-2);
     font-size: var(--wk-text-size-sm);
     color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.55));
-    font-style: italic;
     line-height: 1.5;
     word-break: break-word;
 }
@@ -132,18 +180,42 @@
 }
 
 .citation-jumplink {
-    margin-top: var(--wk-sp-2);
-    padding-top: var(--wk-sp-1-5);
-    border-top: 1px solid var(--wk-brand-tint-08);
-    text-align: right;
+    margin: 0;
+    padding: 0;
+    border: 0;
 }
 
 .citation-jumplink-btn {
-    color: var(--wk-brand-primary);
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 var(--wk-sp-3);
+    border: 1px solid var(--wk-ai-border);
+    border-radius: var(--wk-r-full);
+    color: var(--wk-text-accent);
+    background: var(--wk-accent-tint-08);
     font-size: var(--wk-text-size-sm);
     cursor: pointer;
 }
 
 .citation-jumplink-btn:hover {
-    text-decoration: underline;
+    background: var(--wk-bg-selected);
+}
+
+.citation-popover-footer { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: var(--wk-sp-3); padding: var(--wk-sp-3) var(--wk-sp-4); border-top: 1px solid var(--wk-border-subtle); background: var(--wk-bg-surface); }
+.citation-reference-nav { display: flex; align-items: center; gap: var(--wk-sp-1); color: var(--wk-text-tertiary); font-size: var(--wk-text-size-sm); }
+.citation-reference-nav > span { margin-right: var(--wk-sp-1); white-space: nowrap; }
+.citation-reference-nav button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--wk-r-full); color: var(--wk-text-secondary); background: transparent; }
+.citation-reference-nav button:hover:not(:disabled) { background: var(--wk-bg-hover); }
+.citation-reference-nav button:disabled { color: var(--wk-text-disabled); cursor: not-allowed; }
+
+@media (max-width: 719px) {
+    .citation-popover--timeline { width: calc(100vw - 24px); height: calc(100vh - 24px); }
+    .citation-popover-header, .citation-toolbar, .citation-popover-footer { padding-inline: var(--wk-sp-3); }
+    .citation-popover-heading span { white-space: normal; }
+    .citation-reference-nav > span { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .citation-message-list { scroll-behavior: auto; }
 }

@@ -59,7 +59,7 @@
 
 /* 详情页内容区域 - 使用更宽敞的布局 */
 .summary-detail-content-inner {
-    max-width: 920px;
+    max-width: 1088px;
     margin: 0 auto;
     padding: 24px 32px;
     display: flex;
@@ -610,7 +610,7 @@
     background: var(--semi-color-bg-0);
     border: 1px solid var(--semi-color-border);
     border-radius: 8px;
-    padding: 16px;
+    padding: 0;
     box-shadow: none;
 }
 
@@ -618,9 +618,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
-    padding-bottom: 0;
-    border-bottom: none;
+    min-height: 52px;
+    margin-bottom: 0;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--wk-border-subtle);
 }
 
 .summary-detail-result-header h3 {
@@ -638,7 +639,7 @@
 }
 
 .summary-detail-result-content {
-    padding: 0;
+    padding: 24px 32px 32px;
     line-height: 1.7;
     font-size: 14px;
     color: var(--semi-color-text-0);
@@ -648,9 +649,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-top: 12px;
-    padding-top: 0;
-    border-top: none;
+    margin-top: 0;
+    padding: 12px 16px;
+    border-top: 1px solid var(--wk-border-subtle);
 }
 
 .summary-detail-result-time {

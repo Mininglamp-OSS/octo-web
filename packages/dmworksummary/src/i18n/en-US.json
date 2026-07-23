@@ -549,6 +549,13 @@
     },
     "citation": {
         "reference": "Citation [{{index}}]",
+        "title": "Cited messages [{{indices}}]",
+        "meta": "{{source}} · {{context}} context messages · {{cited}} direct citations",
+        "close": "Close cited messages",
+        "searchPlaceholder": "Search sender or message",
+        "citedOnly": "Citations only",
+        "empty": "No matching messages",
+        "position": "{{current}} / {{total}} direct citations",
         "jumpToOriginal": "Open original →",
         "source": "Source: {{source}}",
         "member": "Member: {{name}}"

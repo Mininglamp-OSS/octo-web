@@ -75,8 +75,8 @@ export default function SummaryMarkdownReader({ content, citations = [], teamCit
         </article>
         {showOutline && outline.length > 0 ? <nav className="summary-markdown-reader__outline" aria-label={outlineLabel}>
             <div className="summary-markdown-reader__outline-title">{outlineLabel}</div>
-            {outline.map((item, index) => <a key={item.id} className={`summary-markdown-reader__outline-link summary-markdown-reader__outline-link--h${item.level}`} href={`#${item.id}`} aria-current={activeId === item.id ? "location" : undefined} onClick={(event) => goToHeading(event, item.id)}>
-                <span className="summary-markdown-reader__outline-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+            {outline.map((item) => <a key={item.id} className={`summary-markdown-reader__outline-link summary-markdown-reader__outline-link--h${item.level}`} href={`#${item.id}`} aria-current={activeId === item.id ? "location" : undefined} onClick={(event) => goToHeading(event, item.id)}>
+                {item.level === 2 ? <span className="summary-markdown-reader__outline-index" aria-hidden="true">{String(outline.filter(candidate => candidate.level === 2 && outline.indexOf(candidate) <= outline.indexOf(item)).length).padStart(2, "0")}</span> : null}
                 <span>{item.text}</span>
             </a>)}
         </nav> : null}
