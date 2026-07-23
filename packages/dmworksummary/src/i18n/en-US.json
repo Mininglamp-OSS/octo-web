@@ -437,7 +437,7 @@
         "regenerate": "Regenerate",
         "regenerateEditTitle": "Edit prompt and regenerate",
         "regenerateTopicLabel": "Prompt",
-        "adjustSummaryTitle": "Adjust summary",
+        "adjustSummaryTitle": "Modify prompt and regenerate",
         "refineAction": "Apply feedback",
         "refineSuccess": "Refinement successful, updated to version {{version}}",
         "refineModeTitle": "Adjust current result",

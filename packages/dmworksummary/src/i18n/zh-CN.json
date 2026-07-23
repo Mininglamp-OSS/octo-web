@@ -437,7 +437,7 @@
         "regenerate": "重新生成",
         "regenerateEditTitle": "修改提示词并重新生成",
         "regenerateTopicLabel": "提示词",
-        "adjustSummaryTitle": "调整总结",
+        "adjustSummaryTitle": "修改提示词并重新生成",
         "refineAction": "按意见调整",
         "refineSuccess": "修改成功，已更新到版本 {{version}}",
         "refineModeTitle": "按意见调整当前结果",

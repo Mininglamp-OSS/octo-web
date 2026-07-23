@@ -3760,13 +3760,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             ref={this.regenerateTopicRef}
                             className="summary-regenerate-textarea"
                             rows={3}
-                            maxLength={SUMMARY_INPUT_MAX_LENGTH}
-                            placeholder={t("summary.detail.regenerateTopicLabel")}
+                            maxLength={1000}
+                            placeholder="请输入"
                             value={this.state.regenerateTopic}
-                            onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH) })}
+                            onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
                         />
                         <div className="summary-regenerate-char-count">
-                            {this.state.regenerateTopic.length}/{SUMMARY_INPUT_MAX_LENGTH}
+                            {this.state.regenerateTopic.length}/1000
                         </div>
                     </div>
                     <div className="summary-confirm-footer">
