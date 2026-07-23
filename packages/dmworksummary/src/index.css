@@ -2458,7 +2458,7 @@
 
 .summary-template-custom-section {
     padding: 0;
-    margin-top: 16px;
+    margin-top: 24px;
 }
 
 .summary-template-custom-header {
@@ -2466,7 +2466,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
     height: 24px;
 }
 
@@ -2484,6 +2484,12 @@
     max-height: calc((var(--wk-sp-3) * 8 + var(--wk-sp-3) * 2) * 3);
     overflow-y: auto;
     padding-right: var(--wk-sp-1);
+}
+
+/* 面板模式：自定义模板 2 列 */
+.summary-workbench--panel .summary-template-custom-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
 }
 
 .chat-summary-new-modal .summary-template-custom-list {
