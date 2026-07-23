@@ -616,6 +616,20 @@ describe('SummaryCreatePage handleSubmit error handling', () => {
 });
 
 describe('SummaryCreatePage derivedFromTask cross-session isolation (#907 P1 Jerry-Xin)', () => {
+    it('opens a requested new Agent conversation directly with no previous session or reference', async () => {
+        localStorage.setItem('agent-chat-session:__workbench__', 'old-session');
+        localStorage.setItem('agent-chat-referenced:__workbench__', JSON.stringify({ task_id: 99, title: 'old' }));
+        const ref = React.createRef<SummaryCreatePage>();
+
+        render(<SummaryCreatePage ref={ref} startNewAgentConversation />);
+
+        expect(ref.current?.state.mode).toBe('agent');
+        expect(ref.current?.state.sessionId).toBe('');
+        expect(ref.current?.state.referencedTask).toBeNull();
+        expect(localStorage.getItem('agent-chat-session:__workbench__')).toBeNull();
+        expect(localStorage.getItem('agent-chat-referenced:__workbench__')).toBeNull();
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         localStorage.clear();

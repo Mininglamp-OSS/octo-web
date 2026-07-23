@@ -46,7 +46,10 @@ export default function SummaryMarkdownReader({ content, citations = [], teamCit
         </article>
         {showOutline && outline.length > 0 ? <nav className="summary-markdown-reader__outline" aria-label={outlineLabel}>
             <div className="summary-markdown-reader__outline-title">{outlineLabel}</div>
-            {outline.map(item => <a key={item.id} className={`summary-markdown-reader__outline-link summary-markdown-reader__outline-link--h${item.level}`} href={`#${item.id}`}>{item.text}</a>)}
+            {outline.map((item, index) => <a key={item.id} className={`summary-markdown-reader__outline-link summary-markdown-reader__outline-link--h${item.level}`} href={`#${item.id}`}>
+                <span className="summary-markdown-reader__outline-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                <span>{item.text}</span>
+            </a>)}
         </nav> : null}
     </div>;
 }

@@ -3,6 +3,7 @@ import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import CitationText from './CitationText';
 import type { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
+import WKApp from '@octo/base/src/App';
 
 // @octo/base is aliased to the dmworkBase mock by vitest.config.ts, so useI18n /
 // i18n already resolve. We only need to tame the semi-ui Popover here: the real
@@ -72,6 +73,20 @@ function badgeByText(text: string) {
 }
 
 describe('CitationText — [n] vs [Pn] parsing', () => {
+    it('clicking a normal citation jumps directly with its displayed number', () => {
+        const showConversation = vi.spyOn(WKApp.endpoints, 'showConversation');
+        render(<CitationText content="结论 [37]" citations={[makeCitation({ index: 37 })]} />);
+
+        fireEvent.click(badgeByText('[1]')!);
+
+        expect(showConversation).toHaveBeenCalledTimes(1);
+        expect(showConversation.mock.calls[0][1]).toMatchObject({
+            initLocateMessageSeq: 100,
+            initLocateCitationDisplayIndex: 1,
+        });
+        showConversation.mockRestore();
+    });
+
     it('1) renders normal [n] and team [P1] side by side without crosstalk', () => {
         render(
             <CitationText

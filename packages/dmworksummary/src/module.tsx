@@ -175,7 +175,7 @@ export class SummaryModule implements IModule {
             WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} />);
         }) as EventListener);
         window.addEventListener('summary-open-new-agent-chat', (() => {
-            WKApp.routeRight.push(<SummaryCreatePage />);
+            WKApp.routeRight.push(<SummaryCreatePage startNewAgentConversation />);
         }) as EventListener);
 
         WKApp.route.register("/summary/detail", (param: any) => {
