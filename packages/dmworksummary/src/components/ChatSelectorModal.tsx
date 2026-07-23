@@ -5,12 +5,19 @@ import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
-import { Channel } from "wukongimjssdk";
+import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import WKApp from "@octo/base/src/App";
 import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT } from "../constants/limits";
+
+interface MemberCandidate {
+    uid: string;
+    name: string;
+    avatar?: string;
+    is_bot?: boolean;
+}
 
 interface Props {
     visible: boolean;
@@ -18,6 +25,10 @@ interface Props {
     onConfirm: (selected: ChatCandidate[]) => void;
     onCancel: () => void;
     maxSelect?: number;
+    mode?: "chat" | "members";
+    channel?: Channel | null;
+    selectedMembers?: MemberCandidate[];
+    onConfirmMembers?: (members: MemberCandidate[]) => void;
 }
 
 interface State {
@@ -26,6 +37,7 @@ interface State {
     candidates: ChatCandidate[];
     loading: boolean;
     localSelected: ChatCandidate[];
+    localSelectedMembers: MemberCandidate[];
     includeArchived: boolean;
     followedIds: Set<string>;
     recentIds: Set<string>;
@@ -47,6 +59,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
         candidates: [],
         loading: false,
         localSelected: [],
+        localSelectedMembers: [],
         includeArchived: false,
         followedIds: new Set<string>(),
         recentIds: new Set<string>(),
@@ -57,8 +70,36 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     componentDidUpdate(prevProps: Props) {
         if (this.props.visible && !prevProps.visible) {
-            this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed", includeArchived: false });
-            this.loadCandidates(false);
+            if (this.props.mode === "members") {
+                this.setState({
+                    localSelectedMembers: [...(this.props.selectedMembers ?? [])],
+                    keyword: "",
+                });
+                this.loadMembers();
+            } else {
+                this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed", includeArchived: false });
+                this.loadCandidates(false);
+            }
+        }
+    }
+
+    async loadMembers() {
+        const channel = this.props.channel;
+        if (!channel) return;
+        this.setState({ loading: true });
+        try {
+            const members = await WKApp.shared.getSubscribers(channel);
+            const humans = members.filter((m: any) => !m.is_bot && !WKApp.shared.isBot?.(m.uid));
+            this.setState({ candidates: humans.map((m: any) => ({
+                chat_id: m.uid,
+                chat_type: "direct" as const,
+                name: m.name || m.uid,
+                member_count: null,
+            })) });
+        } catch {
+            this.setState({ candidates: [] });
+        } finally {
+            this.setState({ loading: false });
         }
     }
 
@@ -125,7 +166,23 @@ export default class ChatSelectorModal extends Component<Props, State> {
     };
 
     handleConfirm = () => {
-        this.props.onConfirm(this.state.localSelected);
+        if (this.props.mode === "members") {
+            this.props.onConfirmMembers?.(this.state.localSelectedMembers);
+        } else {
+            this.props.onConfirm(this.state.localSelected);
+        }
+    };
+
+    handleToggleMember = (member: MemberCandidate) => {
+        const { localSelectedMembers } = this.state;
+        const maxSelect = this.props.maxSelect ?? MAX_CHAT_SELECT;
+        const existing = localSelectedMembers.find((m) => m.uid === member.uid);
+        if (existing) {
+            this.setState({ localSelectedMembers: localSelectedMembers.filter((m) => m.uid !== member.uid) });
+        } else {
+            if (localSelectedMembers.length >= maxSelect) return;
+            this.setState({ localSelectedMembers: [...localSelectedMembers, member] });
+        }
     };
 
     static chatTypeToTargetType(chatType: string): number {
@@ -249,6 +306,30 @@ export default class ChatSelectorModal extends Component<Props, State> {
         }
     }
 
+    renderMemberItem = (entry: DisplayEntry) => {
+        const { localSelectedMembers } = this.state;
+        const maxSelect = this.props.maxSelect ?? MAX_CHAT_SELECT;
+        const { item } = entry;
+        const checked = !!localSelectedMembers.find((m) => m.uid === item.chat_id);
+        const disabled = !checked && localSelectedMembers.length >= maxSelect;
+        return (
+            <div
+                key={item.chat_id}
+                className={`chat-selector-item${disabled ? " chat-selector-item--disabled" : ""}`}
+                onClick={() => !disabled && this.handleToggleMember({ uid: item.chat_id, name: item.name })}
+            >
+                <Checkbox checked={checked} disabled={disabled} />
+                <WKAvatar
+                    channel={new Channel(item.chat_id, ChannelTypePerson)}
+                    style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }}
+                />
+                <div className="chat-selector-item-info">
+                    <span className="chat-selector-item-name">{item.name}</span>
+                </div>
+            </div>
+        );
+    };
+
     renderItem = (entry: DisplayEntry) => {
         const { localSelected } = this.state;
         const maxSelect = this.props.maxSelect ?? MAX_CHAT_SELECT;
@@ -302,7 +383,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
     };
 
     render() {
-        const { visible, onCancel } = this.props;
+        const { visible, onCancel, mode } = this.props;
         const { keyword, activeTab, loading, localSelected, includeArchived } = this.state;
         const { t } = this.context;
         const displayList = this.getDisplayList();
@@ -321,7 +402,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 <div className="chat-selector-modal" onClick={(e) => e.stopPropagation()}>
                     {/* Header */}
                     <div className="chat-selector-header">
-                        <span className="chat-selector-title">{t("summary.chatSelector.title")}</span>
+                        <span className="chat-selector-title">{mode === "members" ? t("summary.create.selectMembers") : t("summary.chatSelector.title")}</span>
                         <button type="button" className="chat-selector-close" onClick={onCancel}>
                             <X size={20} />
                         </button>
@@ -340,33 +421,39 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                     onChange={(e) => this.handleKeywordChange(e.target.value)}
                                 />
                             </div>
-                            <div className="chat-selector-tabs">
-                                {tabs.map((tab) => (
-                                    <button
-                                        key={tab.key}
-                                        className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
-                                        onClick={() => this.handleTabChange(tab.key)}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
-                            </div>
-                            {(activeTab === "group" || activeTab === "followed") && (
-                                <label className="chat-selector-archived-toggle">
-                                    <Checkbox
-                                        checked={includeArchived}
-                                        onChange={(e) => this.handleIncludeArchivedChange(e.target.checked)}
-                                    />
-                                    <span>{t("summary.chatSelector.includeArchived")}</span>
-                                </label>
+                            {mode !== "members" && (
+                                <>
+                                    <div className="chat-selector-tabs">
+                                        {tabs.map((tab) => (
+                                            <button
+                                                key={tab.key}
+                                                className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
+                                                onClick={() => this.handleTabChange(tab.key)}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {(activeTab === "group" || activeTab === "followed") && (
+                                        <label className="chat-selector-archived-toggle">
+                                            <Checkbox
+                                                checked={includeArchived}
+                                                onChange={(e) => this.handleIncludeArchivedChange(e.target.checked)}
+                                            />
+                                            <span>{t("summary.chatSelector.includeArchived")}</span>
+                                        </label>
+                                    )}
+                                </>
                             )}
                             <div className="chat-selector-list">
                                 {loading ? (
                                     <div className="chat-selector-loading"><Spin /></div>
-                                ) : displayList.length === 0 ? (
+                                ) : mode === "members" ? (
+                                    this.getDisplayList().map((entry) => this.renderMemberItem(entry))
+                                ) : this.getDisplayList().length === 0 ? (
                                     <Empty description={t("summary.chatSelector.noData")} />
                                 ) : (
-                                    displayList.map((entry) => this.renderItem(entry))
+                                    this.getDisplayList().map((entry) => this.renderItem(entry))
                                 )}
                             </div>
                         </div>
@@ -374,10 +461,30 @@ export default class ChatSelectorModal extends Component<Props, State> {
                         {/* Right column */}
                         <div className="chat-selector-right">
                             <div className="chat-selector-right-header">
-                                {t("summary.common.selectedCount", { values: { count: localSelected.length, max: this.props.maxSelect ?? MAX_CHAT_SELECT } })}
+                                {mode === "members"
+                                    ? t("summary.common.selectedCount", { values: { count: localSelectedMembers.length, max: this.props.maxSelect ?? MAX_CHAT_SELECT } })
+                                    : t("summary.common.selectedCount", { values: { count: localSelected.length, max: this.props.maxSelect ?? MAX_CHAT_SELECT } })}
                             </div>
                             <div className="chat-selector-right-list">
-                                {localSelected.map((item) => this.renderSelected(item))}
+                                {mode === "members"
+                                    ? localSelectedMembers.map((m) => (
+                                        <div key={m.uid} className="chat-selector-selected-item">
+                                            <WKAvatar
+                                                channel={new Channel(m.uid, ChannelTypePerson)}
+                                                style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }}
+                                            />
+                                            <span className="chat-selector-selected-name">{m.name}</span>
+                                            <button
+                                                type="button"
+                                                className="chat-selector-selected-remove"
+                                                onClick={() => this.handleToggleMember(m)}
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        </div>
+                                    ))
+                                    : localSelected.map((item) => this.renderSelected(item))
+                                }
                             </div>
                         </div>
                     </div>

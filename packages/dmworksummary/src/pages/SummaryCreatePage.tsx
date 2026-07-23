@@ -1313,46 +1313,20 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     onCancel={() => this.setState({ showScheduleConfig: false })}
                     showGenerationInstruction={false}
                 />
-                <Modal
+                <ChatSelectorModal
                     visible={showMemberSelector}
-                    header={null}
-                    footer={null}
-                    width={600}
-                    className="summary-confirm"
-                    centered
-                    maskClosable
+                    mode="members"
+                    channel={memberSelectorChannel}
+                    selected={[]}
+                    selectedMembers={selectedMembers.map(m => ({ uid: m.user_id, name: m.name }))}
+                    onConfirmMembers={(members) => {
+                        this.setState({
+                            selectedMembers: members.map(m => ({ user_id: m.uid, name: m.name })),
+                            showMemberSelector: false,
+                        });
+                    }}
                     onCancel={() => this.setState({ showMemberSelector: false })}
-                >
-                    <div className="summary-confirm-body">
-                        <div className="summary-confirm-main">
-                            <div className="summary-confirm-caption">
-                                <div className="summary-confirm-title">{translate("summary.create.selectMembers")}</div>
-                            </div>
-                        </div>
-                        <button type="button" className="summary-confirm-close" onClick={() => this.setState({ showMemberSelector: false })}>
-                            <X size={20} />
-                        </button>
-                    </div>
-                    <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-                        {memberSelectorChannel && (
-                            <SubscriberList
-                                channel={memberSelectorChannel}
-                                canSelect
-                                humansOnly
-                                disableSelectList={memberSelectorExcluded}
-                                onSelect={memberSelectorOnSelect || (() => {})}
-                            />
-                        )}
-                    </div>
-                    <div className="summary-confirm-footer">
-                        <button type="button" className="summary-confirm-btn summary-confirm-btn--cancel" onClick={() => this.setState({ showMemberSelector: false })}>
-                            {translate("summary.common.cancel")}
-                        </button>
-                        <button type="button" className="summary-confirm-btn summary-confirm-btn--dark" onClick={this.handleMemberSelectorConfirm}>
-                            {translate("summary.common.confirm")}
-                        </button>
-                    </div>
-                </Modal>
+                />
                 <Modal
                     visible={templateEditorVisible}
                     title={translate(creatingCustomTemplate
