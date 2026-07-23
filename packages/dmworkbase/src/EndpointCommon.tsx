@@ -15,6 +15,8 @@ export class MessageContextMenus {
 export class ShowConversationOptions {
   // 聊天消息定位的messageSeq
   initLocateMessageSeq?: number;
+  /** Citation number shown beside the located source message. */
+  initLocateCitationDisplayIndex?: number;
   /** 打开会话后同时展开右侧聊天记录搜索面板 */
   openChannelSearch?: boolean;
   /**
@@ -161,7 +163,7 @@ export class EndpointCommon {
 
         let key = channel.getChannelKey()
         if (initLocateMessageSeq > 0) {
-          key = `${key}-${initLocateMessageSeq}`
+          key = `${key}-${initLocateMessageSeq}-${opts.initLocateCitationDisplayIndex || 0}`
         }
 
         WKApp.routeRight.replaceToRoot(
@@ -169,6 +171,7 @@ export class EndpointCommon {
             key={key}
             channel={channel}
             initLocateMessageSeq={initLocateMessageSeq}
+            initLocateCitationDisplayIndex={opts.initLocateCitationDisplayIndex}
             initialShowChannelSearch={
               !!opts.openChannelSearch && isChannelSearchEnabled(channel)
             }

@@ -39,6 +39,8 @@ interface CitationTextProps {
     hidePlainCitations?: boolean;
     /** 历史版本详情只展示当时的 [Pn] 姓名，不用当前成员列表展开个人报告。 */
     disableTeamMemberPreview?: boolean;
+    /** Optional stable ids for H2/H3 headings, in document order. */
+    headingIds?: string[];
 }
 
 const citationSchema = {
@@ -211,8 +213,16 @@ function markdownComponents(
     teamCitations: TeamCitationItem[],
     members: MemberStatus[],
     disableTeamMemberPreview: boolean,
+    headingIds: string[] = [],
 ): any {
+    let headingIndex = 0;
+    const heading = (Tag: 'h2' | 'h3') => ({ children, ...props }: any) => {
+        const id = headingIds[headingIndex++];
+        return <Tag id={id} {...props}>{children}</Tag>;
+    };
     return {
+        h2: heading('h2'),
+        h3: heading('h3'),
         citation: ({ node, ...props }: any) => {
             const idx = node?.properties?.index ?? props?.index;
             const displayIdx = node?.properties?.displayindex ?? props?.displayindex;
@@ -260,6 +270,7 @@ const CitationText: React.FC<CitationTextProps> = ({
     members = [],
     hidePlainCitations = false,
     disableTeamMemberPreview = false,
+    headingIds = [],
 }) => {
     const { t } = useI18n();
     const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -295,7 +306,7 @@ const CitationText: React.FC<CitationTextProps> = ({
                 <ReactMarkdown
                     remarkPlugins={remarkPlugins}
                     rehypePlugins={[[rehypeSanitize, citationSchema]]}
-                    components={markdownComponents(citations, teamCitations, members, disableTeamMemberPreview)}
+                    components={markdownComponents(citations, teamCitations, members, disableTeamMemberPreview, headingIds)}
                 >
                     {normalized}
                 </ReactMarkdown>

@@ -231,6 +231,7 @@ body[theme-mode="dark"] .wk-conversation-content {
 /* ── 折叠卡片展开区：紧凑列表样式 ── */
 .wk-fold-msg {
   display: flex;
+  position: relative;
   gap: 8px;
   align-items: flex-start;
   padding: 0;
@@ -922,4 +923,17 @@ body[theme-mode="dark"] .wk-conversationpositionview-item {
   100% {
     background-color: transparent;
   }
+}
+.wk-message-citation-marker {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: var(--wk-sp-2);
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-text-accent);
+  color: var(--wk-bg-surface);
+  font-size: var(--wk-text-size-xs);
+  font-weight: 600;
+  transform: translateY(-50%);
 }

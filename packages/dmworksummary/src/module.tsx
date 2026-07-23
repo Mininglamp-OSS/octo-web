@@ -174,6 +174,9 @@ export class SummaryModule implements IModule {
             if (!task || !task.task_id) return;
             WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} />);
         }) as EventListener);
+        window.addEventListener('summary-open-new-agent-chat', (() => {
+            WKApp.routeRight.push(<SummaryCreatePage />);
+        }) as EventListener);
 
         WKApp.route.register("/summary/detail", (param: any) => {
             return <SummaryDetailPage taskId={param?.taskId} />;

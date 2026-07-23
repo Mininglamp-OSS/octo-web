@@ -517,7 +517,11 @@
         "refineNotCreator": "你不是本总结的创建者，无法修改",
         "refineNoSnapshot": "本总结数据版本较老，无法增量修改",
         "refineFailed": "修改失败，请稍后重试",
-        "continueRefine": "继续优化"
+        "continueRefine": "继续优化",
+        "copyMarkdown": "复制 Markdown",
+        "markdownCopied": "Markdown 已复制",
+        "newAgentChat": "新建 Agent 对话",
+        "outline": "本文目录"
     },
     "summaryCard": {
         "createdBy": "{{name}} 发起",

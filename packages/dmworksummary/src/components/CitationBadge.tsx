@@ -120,7 +120,7 @@ function ContextMessages({ messages }: { messages?: CitationContextMessage[] }) 
     );
 }
 
-function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; badgeKey: string; closeKey: (key: string) => void }) {
+function JumpLink({ citation, displayIndex, badgeKey, closeKey }: { citation: CitationItem; displayIndex: number; badgeKey: string; closeKey: (key: string) => void }) {
     const { t } = useI18n();
     if (!citation.channel_id || !citation.message_seq || citation.channel_type == null) return null;
     return (
@@ -139,6 +139,7 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
                     const channel = new Channel(channelId, channelType);
                     const opts = new ShowConversationOptions();
                     opts.initLocateMessageSeq = citation.message_seq;
+                    opts.initLocateCitationDisplayIndex = displayIndex;
                     WKApp.endpoints.showConversation(channel, opts);
                 }}
             >
@@ -235,7 +236,7 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
                 <div className="citation-msg-body">{citation.content}</div>
             </div>
             <ContextMessages messages={citation.context_after} />
-            <JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />
+            <JumpLink citation={citation} displayIndex={shownIndex} badgeKey={badgeKey} closeKey={closeKey} />
         </div>
     );
 
@@ -313,7 +314,7 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                     <div className={msg.cited ? 'citation-msg-body' : 'citation-msg-body--context'}>{msg.content}</div>
                 </div>
             ))}
-            <JumpLink citation={firstCitation} badgeKey={badgeKey} closeKey={closeKey} />
+            <JumpLink citation={firstCitation} displayIndex={shownList[0]} badgeKey={badgeKey} closeKey={closeKey} />
         </div>
     );
 

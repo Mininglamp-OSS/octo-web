@@ -237,6 +237,7 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
 export interface ChatContentPageProps {
   channel: Channel;
   initLocateMessageSeq?: number; // 打开时定位到某条消息
+  initLocateCitationDisplayIndex?: number;
   /** 打开会话后默认展开右侧聊天记录搜索面板 */
   initialShowChannelSearch?: boolean;
 }
@@ -1054,7 +1055,7 @@ export class ChatContentPage extends Component<
   }
 
   render(): React.ReactNode {
-    const { channel, initLocateMessageSeq } = this.props;
+    const { channel, initLocateMessageSeq, initLocateCitationDisplayIndex } = this.props;
     const {
       showChannelSetting,
       selectionMode,
@@ -1302,6 +1303,7 @@ export class ChatContentPage extends Component<
             <ErrorBoundary moduleName={t("base.chatPage.chatModuleName")}>
               <Conversation
                 initLocateMessageSeq={initLocateMessageSeq}
+                initLocateCitationDisplayIndex={initLocateCitationDisplayIndex}
                 shouldShowHistorySplit={true}
                 onContext={(ctx) => {
                   this.conversationContext = ctx;
