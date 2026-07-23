@@ -258,6 +258,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.addEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.addEventListener("summary-list-unmount", this.handleListPageUnmount);
         window.addEventListener("summary-detail-regenerate", this.handleRegenerateFromList);
+        window.addEventListener("summary-detail-edit", this.handleEditFromList);
         this.loadDetail();
         if (this.props.emitSelection) {
             const activeTaskId = this.taskId;
@@ -316,12 +317,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
+    private handleEditFromList = (e: Event) => {
+        const detail = e as CustomEvent;
+        if (detail.detail?.taskId === this.taskId) {
+            this.handleStartEdit();
+        }
+    };
+
     componentWillUnmount() {
         this.unmounted = true;
         window.removeEventListener("summary-status-change", this.handleStatusChangeEvent);
         window.removeEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.removeEventListener("summary-list-unmount", this.handleListPageUnmount);
         window.removeEventListener("summary-detail-regenerate", this.handleRegenerateFromList);
+        window.removeEventListener("summary-detail-edit", this.handleEditFromList);
         this.setVersionDetailScrollLock(false);
         this.clearAllTimers();
         if (this.props.emitSelection) {

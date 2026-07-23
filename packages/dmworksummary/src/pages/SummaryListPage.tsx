@@ -436,6 +436,13 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         setTimeout(() => {
             window.dispatchEvent(new CustomEvent("summary-detail-regenerate", { detail: { taskId } }));
         }, 300);
+    };
+
+    handleEdit = (taskId: number) => {
+        this.handleCardClick(taskId);
+        setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("summary-detail-edit", { detail: { taskId } }));
+        }, 300);
     };;
 
     handleCreate = () => {
@@ -584,6 +591,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 onLeave={this.handleLeave}
                                 onRetry={this.handleRetry}
                                 onRegenerate={this.handleRegenerate}
+                                onEdit={this.handleEdit}
                             />
                         ))}
                         {loadingMore && (
