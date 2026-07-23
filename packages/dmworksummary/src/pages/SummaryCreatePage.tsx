@@ -78,6 +78,10 @@ interface SummaryCreatePageState {
     scheduleConfig: ScheduleConfig | null;
     showChatSelector: boolean;
     showMemberSelector: boolean;
+    memberSelectorChannel: Channel | null;
+    memberSelectorExcluded: string[];
+    memberSelectorSelectedItems: (() => any[]) | null;
+    memberSelectorOnSelect: ((items: any[]) => void) | null;
     showScheduleConfig: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
@@ -137,6 +141,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         scheduleConfig: null,
         showChatSelector: false,
         showMemberSelector: false,
+        memberSelectorChannel: null,
+        memberSelectorExcluded: [],
+        memberSelectorSelectedItems: null,
+        memberSelectorOnSelect: null,
         showScheduleConfig: false,
         submitting: false,
         agentSubmitting: false,
@@ -732,54 +740,28 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     handleOpenMemberSelector = () => {
         const { selectedChats, selectedMembers } = this.state;
-        console.log('[MemberSelector] selectedChats:', JSON.stringify(selectedChats));
-        console.log('[MemberSelector] selectedMembers:', JSON.stringify(selectedMembers));
-        // 从已选聊天推断频道
         const chat = selectedChats[0];
-        if (!chat) {
-            console.log('[MemberSelector] no chat selected, returning early');
-            return;
-        }
-        // 根据 chat_id 推断 channelType：含 "____" 是子区(type=5)，否则群聊(type=2)
+        if (!chat) return;
         const channelType = chat.chat_id.includes("____") ? 5 : 2;
         const channel = new Channel(chat.chat_id, channelType);
-        console.log('[MemberSelector] channel:', JSON.stringify({ channelID: channel.channelID, channelType: channel.channelType }));
         const excluded = selectedMembers.map((m) => m.user_id);
         let selectedItems: any[] = [];
-        console.log('[MemberSelector] calling WKApp.routeRight.push...');
-        WKApp.routeRight.push(
-            <RoutePage
-                title={t("summary.create.selectMembers")}
-                onClose={() => WKApp.routeRight.pop()}
-                render={(context: any) => (
-                    <>
-                        <SubscriberList
-                            channel={channel}
-                            canSelect
-                            humansOnly
-                            disableSelectList={excluded}
-                            onSelect={(items) => { selectedItems = items; }}
-                        />
-                        <div style={{ padding: "12px 16px", borderTop: "1px solid var(--semi-color-border)" }}>
-                            <Button
-                                theme="solid"
-                                block
-                                onClick={() => {
-                                    const members: MemberCandidate[] = selectedItems.map((s: any) => ({
-                                        user_id: s.uid,
-                                        name: s.name || s.uid,
-                                    }));
-                                    this.setState({ selectedMembers: members });
-                                    WKApp.routeRight.pop();
-                                }}
-                            >
-                                {t("summary.common.confirm")}
-                            </Button>
-                        </div>
-                    </>
-                )}
-            />
-        );
+        this.setState({
+            showMemberSelector: true,
+            memberSelectorChannel: channel,
+            memberSelectorExcluded: excluded,
+            memberSelectorSelectedItems: () => selectedItems,
+            memberSelectorOnSelect: (items: any[]) => { selectedItems = items; },
+        });
+    };
+
+    handleMemberSelectorConfirm = () => {
+        const items = this.state.memberSelectorSelectedItems?.() ?? [];
+        const members: MemberCandidate[] = items.map((s: any) => ({
+            user_id: s.uid,
+            name: s.name || s.uid,
+        }));
+        this.setState({ selectedMembers: members, showMemberSelector: false });
     };
 
     /**
@@ -1330,6 +1312,46 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     onCancel={() => this.setState({ showScheduleConfig: false })}
                     showGenerationInstruction={false}
                 />
+                <Modal
+                    visible={showMemberSelector}
+                    header={null}
+                    footer={null}
+                    width={600}
+                    className="summary-confirm"
+                    centered
+                    maskClosable
+                    onCancel={() => this.setState({ showMemberSelector: false })}
+                >
+                    <div className="summary-confirm-body">
+                        <div className="summary-confirm-main">
+                            <div className="summary-confirm-caption">
+                                <div className="summary-confirm-title">{translate("summary.create.selectMembers")}</div>
+                            </div>
+                        </div>
+                        <button type="button" className="summary-confirm-close" onClick={() => this.setState({ showMemberSelector: false })}>
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                        {memberSelectorChannel && (
+                            <SubscriberList
+                                channel={memberSelectorChannel}
+                                canSelect
+                                humansOnly
+                                disableSelectList={memberSelectorExcluded}
+                                onSelect={memberSelectorOnSelect || (() => {})}
+                            />
+                        )}
+                    </div>
+                    <div className="summary-confirm-footer">
+                        <button type="button" className="summary-confirm-btn summary-confirm-btn--cancel" onClick={() => this.setState({ showMemberSelector: false })}>
+                            {translate("summary.common.cancel")}
+                        </button>
+                        <button type="button" className="summary-confirm-btn summary-confirm-btn--dark" onClick={this.handleMemberSelectorConfirm}>
+                            {translate("summary.common.confirm")}
+                        </button>
+                    </div>
+                </Modal>
                 <Modal
                     visible={templateEditorVisible}
                     title={translate(creatingCustomTemplate
