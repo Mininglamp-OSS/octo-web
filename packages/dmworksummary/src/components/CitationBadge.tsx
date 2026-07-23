@@ -1,10 +1,11 @@
 import React, { useContext, useMemo } from 'react';
-import { Popover } from '@douyinfe/semi-ui';
-import { i18n, useI18n } from '@octo/base';
-import { Channel, ChannelTypeGroup, ChannelTypePerson } from 'wukongimjssdk';
-import WKApp from '@octo/base/src/App';
-import { ShowConversationOptions } from '@octo/base/src/EndpointCommon';
-import { ChannelTypeCommunityTopic } from '@octo/base/src/Service/Const';
+import { Popover } from "@douyinfe/semi-ui";
+import { i18n, useI18n } from "@octo/base";
+import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
+import WKApp from "@octo/base/src/App";
+import WKAvatar from "@octo/base/src/Components/WKAvatar";
+import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
+import { ChannelTypeCommunityTopic } from "@octo/base/src/Service/Const";
 import CitationText, { CitationContext } from './CitationText';
 import { CitationItem, CitationContextMessage, TeamCitationItem, MemberStatus } from '../types/summary';
 
@@ -78,6 +79,7 @@ const citedMsgStyle: React.CSSProperties = {
 
 interface MergedMessage {
     sender: string;
+    sender_uid?: string;
     content: string;
     sent_at: string;
     message_seq?: number;
@@ -90,11 +92,12 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
     for (const c of groupCitations) {
         if (c.context_before) {
             for (const msg of c.context_before) {
-                all.push({ sender: msg.sender, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, cited: false });
+                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, cited: false });
             }
         }
         all.push({
             sender: c.sender,
+            sender_uid: c.sender_uid,
             content: c.content,
             sent_at: c.sent_at,
             message_seq: c.message_seq,
@@ -103,7 +106,7 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
         });
         if (c.context_after) {
             for (const msg of c.context_after) {
-                all.push({ sender: msg.sender, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, cited: false });
+                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, cited: false });
             }
         }
     }
@@ -127,7 +130,15 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
     return result;
 }
 
-function MessageAvatar({ name }: { name: string }) {
+function MessageAvatar({ name, uid }: { name: string; uid?: string }) {
+    if (uid) {
+        return (
+            <WKAvatar
+                channel={new Channel(uid, ChannelTypePerson)}
+                style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0 }}
+            />
+        );
+    }
     const initials = name.slice(0, 1);
     return (
         <span style={{
@@ -150,15 +161,15 @@ function MessageAvatar({ name }: { name: string }) {
     );
 }
 
-function MessageHeader({ sender, sentAt, gap = 4 }: { sender: string; sentAt: string; gap?: number }) {
+function MessageHeader({ sender, sentAt, uid }: { sender: string; sentAt: string; uid?: string }) {
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <MessageAvatar name={sender} />
+                <MessageAvatar name={sender} uid={uid} />
                 <span style={{ fontSize: 14, fontWeight: 500, lineHeight: '20px', color: '#1C1C23' }}>{sender}</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap }}>
-                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)' }}>{formatTime(sentAt)}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)', fontFamily: 'Inter, sans-serif', letterSpacing: '-0.01em' }}>{formatTime(sentAt)}</span>
                 <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>：</span>
             </div>
         </div>
@@ -171,7 +182,7 @@ function ContextMessages({ messages }: { messages?: CitationContextMessage[] }) 
         <>
             {messages.map((msg, i) => (
                 <div key={i} style={{ ...contextMsgStyle, opacity: 0.5 }}>
-                    <MessageHeader sender={msg.sender} sentAt={msg.sent_at} />
+                    <MessageHeader sender={msg.sender} sentAt={msg.sent_at} uid={msg.sender_uid} />
                     <div style={{ paddingLeft: 24, color: '#1C1C23', fontSize: 14, fontWeight: 400, lineHeight: '20px' }}>
                         {msg.content}
                     </div>
@@ -244,11 +255,11 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, citations, badgeKe
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         <ContextMessages messages={citation.context_before} />
                         <div style={citedMsgStyle}>
-                            <MessageHeader sender={citation.sender} sentAt={citation.sent_at} />
+                            <MessageHeader sender={citation.sender} sentAt={citation.sent_at} uid={citation.sender_uid} />
+                            <JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />
                             <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
                                 {citation.content}
                             </div>
-                            <JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />
                         </div>
                         <ContextMessages messages={citation.context_after} />
                     </div>
@@ -297,17 +308,20 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                     </div>
                     <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {mergedMessages.map((msg, i) => (
-                            <div key={msg.message_seq ?? i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
-                                <MessageHeader sender={msg.sender} sentAt={msg.sent_at} />
-                                <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
-                                    {msg.content}
+                        {mergedMessages.map((msg, i) => {
+                            const cit = groupCitations.find(c => c.index === msg.citation_index);
+                            return (
+                                <div key={msg.message_seq ?? i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
+                                    <MessageHeader sender={msg.sender} sentAt={msg.sent_at} uid={msg.sender_uid} />
+                                    {msg.cited && cit && (
+                                        <JumpLink citation={cit} badgeKey={badgeKey} closeKey={closeKey} />
+                                    )}
+                                    <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
+                                        {msg.content}
+                                    </div>
                                 </div>
-                                {msg.cited && (
-                                    <JumpLink citation={firstCitation} badgeKey={badgeKey} closeKey={closeKey} />
-                                )}
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             }
@@ -379,10 +393,13 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({
             showArrow
             onClickOutSide={() => closeKey(badgeKey)}
             content={
-                <div style={{ maxWidth: 360, padding: '8px 4px', maxHeight: 400, overflowY: 'auto' }}>
+                <div style={{ width: 480, padding: 12, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 400, overflowY: 'auto' }}>
                     <div style={memberRowStyle}>
-                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: memberContent ? 4 : 0 }}>
-                            {t("summary.citation.member", { values: { name: citation.user_name } })}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <MessageAvatar name={citation.user_name} uid={citation.user_id} />
+                            <span style={{ fontWeight: 600, fontSize: 14, color: '#1C1C23', marginBottom: memberContent ? 4 : 0 }}>
+                                {t("summary.citation.member", { values: { name: citation.user_name } })}
+                            </span>
                         </div>
                         {!disableMemberPreview && memberContent ? (
                             <CitationText
