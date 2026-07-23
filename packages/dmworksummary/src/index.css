@@ -91,7 +91,7 @@
     padding: 24px 32px;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
 }
 
 /* 详情页内容区域第一个元素的顶部间距调整 */
@@ -695,9 +695,18 @@
 }
 
 /* ========== Detail Page ========== */
+/* Title row (moved into content-inner, no fixed header) */
+.summary-detail-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
 .summary-detail-header {
     background: transparent;
-    border-bottom: 1px solid var(--semi-color-border);
+    border-bottom: none;
 }
 
 /*

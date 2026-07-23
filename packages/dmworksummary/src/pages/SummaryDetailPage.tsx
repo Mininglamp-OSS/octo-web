@@ -3352,30 +3352,30 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const hasMoreActions = showForwardToChat || showForwardToMatter || showRegenerate || showCancel || showDelete || showLeave;
 
         return (
-            <div className="summary-detail-header">
-                <div className="summary-detail-header-inner">
-                    <div className="summary-detail-header-title-wrap">
-                        <OverflowTooltip as="h2" className="summary-detail-title" title={displayTitle}>
-                            {displayTitle}
-                        </OverflowTooltip>
-                        {this.renderScheduleSummary()}
-                    </div>
-                    <div className="summary-detail-header-actions">
-                        {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
-                            <Button
-                                theme="solid"
-                                type="primary"
-                                onClick={this.handleContinueRefine}
-                            >
-                                {t("summary.detail.continueRefine")}
-                            </Button>
-                        )}
-                        {this.renderScheduleButton()}
-                        {hasMoreActions && (
-                            <Dropdown
-                                trigger="click"
-                                position="bottomRight"
-                                render={
+            <>
+            <div className="summary-detail-title-row">
+                <div className="summary-detail-header-title-wrap">
+                    <OverflowTooltip as="h2" className="summary-detail-title" title={displayTitle}>
+                        {displayTitle}
+                    </OverflowTooltip>
+                    {this.renderScheduleSummary()}
+                </div>
+                <div className="summary-detail-header-actions">
+                    {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
+                        <Button
+                            theme="solid"
+                            type="primary"
+                            onClick={this.handleContinueRefine}
+                        >
+                            {t("summary.detail.continueRefine")}
+                        </Button>
+                    )}
+                    {this.renderScheduleButton()}
+                    {hasMoreActions && (
+                        <Dropdown
+                            trigger="click"
+                            position="bottomRight"
+                            render={
                                     <Dropdown.Menu>
                                         {showForwardToChat && (
                                             <Dropdown.Item
@@ -3446,7 +3446,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 </div>
                 {this.renderScheduleConfirm()}
-            </div>
+            </>
         );
     }
 
@@ -3456,11 +3456,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         return (
             <div className="summary-detail-page">
-                {this.renderHeader()}
-
                 <div className="summary-detail-content-wrapper">
                     <div className="summary-detail-content-scroll">
                         <div className="summary-detail-content-inner">
+                        {detail && !loading && this.renderHeader()}
                         {loading && (
                             <div className="summary-detail-loading">
                                 <Spin size="large" />
