@@ -13,6 +13,8 @@
     "build": "vite build",
     "build:electron": "cross-env VITE_ELECTRON_BUILD=true vite build",
     "build:analyzer": "cross-env ANALYZER=true vite build",
+    "build:e2e": "VITE_E2E_MOCK=1 VITE_E2E_MOCK_IM=1 VITE_API_URL=http://mock.e2e.local vite build --outDir build-e2e",
+    "preview:e2e": "vite preview --outDir build-e2e --port ${PW_PREVIEW_PORT:-5173} --strictPort",
     "build-ele:mac": "npm-run-all build:electron compile:electron electron:build:mac",
     "build-ele:mac-x64": "npm-run-all clean:dist-ele build:electron compile:electron electron:build:mac-x64",
     "build-ele:mac-arm64": "npm-run-all clean:dist-ele build:electron compile:electron electron:build:mac-arm64",

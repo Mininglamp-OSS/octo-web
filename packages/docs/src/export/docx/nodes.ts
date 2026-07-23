@@ -29,8 +29,15 @@ export { isSafeHref } from './href-safety.ts'
  * images that carry no resolved attachment mime, so a JPEG/GIF/BMP is embedded
  * with the correct type instead of a broken default. Returns null when unknown.
  */
-function sniffImageType(buffer: ArrayBuffer): 'jpg' | 'png' | 'gif' | 'bmp' | null {
+function sniffImageType(buffer: ArrayBuffer): 'jpg' | 'png' | 'gif' | 'bmp' | 'svg' | null {
   const b = new Uint8Array(buffer)
+  if (b.length === 0) return null
+  // SVG is XML/text, not a PNG. `docx` can only embed it when supplied with a
+  // real raster fallback; this frontend has no rasterizer dependency, so the
+  // safe behavior is to omit it below rather than put SVG bytes in a .png part.
+  // Decode only a small prefix (with optional UTF-8 BOM/whitespace/XML prolog).
+  const prefix = new TextDecoder().decode(b.subarray(0, Math.min(b.length, 1024)))
+  if (/^\uFEFF?\s*(?:<\?xml[^>]*>\s*)?<svg(?:\s|>)/i.test(prefix)) return 'svg'
   if (b.length < 4) return null
   // JPEG: FF D8 FF
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg'
@@ -433,25 +440,48 @@ export function convertImage(node: MdNode, ctx: DocxContext): FileChild[] {
     ]
   }
 
-  const dims = getImageDimensions(node, buffer, ctx.maxImageWidthPx)
-  // Image uses `align` attr (left/center/right), not `textAlign`
-  const align = mapTextAlign(node.attrs?.align)
-
-  // Detect image type. Prefer a resolved attachment's mime; for raw src / data:
-  // images (no attachment mime) sniff the buffer's magic bytes so a JPEG/GIF/BMP
-  // is not mislabelled as PNG (which Word renders broken). Default png when unknown.
+  // Detect image type from the final buffer. SVG buffers are normally replaced
+  // with genuine PNG bytes by the async export pre-pass; if rasterization failed,
+  // the remaining SVG still degrades safely instead of being mislabeled.
   const attachId = typeof node.attrs?.attachId === 'string' ? node.attrs.attachId : undefined
   const resolved = attachId ? ctx.urls.get(attachId) : undefined
   const mime = resolved?.mime ?? ''
-  let imgType: 'jpg' | 'png' | 'gif' | 'bmp' = 'png'
-  if (mime.includes('jpeg') || mime.includes('jpg')) imgType = 'jpg'
-  else if (mime.includes('gif')) imgType = 'gif'
-  else if (mime.includes('bmp')) imgType = 'bmp'
-  else if (mime.includes('png')) imgType = 'png'
-  else {
-    const sniffed = sniffImageType(buffer)
-    if (sniffed) imgType = sniffed
+  const sniffed = sniffImageType(buffer)
+  if (sniffed === 'svg') {
+    return [
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: alt ? `[SVG image: ${alt}]` : '[SVG image omitted]',
+            italics: true,
+            color: '888888',
+          }),
+        ],
+      }),
+    ]
   }
+  let imgType: 'jpg' | 'png' | 'gif' | 'bmp' | null = sniffed
+  if (!imgType && (mime.includes('jpeg') || mime.includes('jpg'))) imgType = 'jpg'
+  else if (!imgType && mime.includes('gif')) imgType = 'gif'
+  else if (!imgType && mime.includes('bmp')) imgType = 'bmp'
+  else if (!imgType && mime.includes('png')) imgType = 'png'
+  if (!imgType) {
+    return [
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: alt ? `[Image: ${alt}]` : '[Unsupported image omitted]',
+            italics: true,
+            color: '888888',
+          }),
+        ],
+      }),
+    ]
+  }
+
+  const dims = getImageDimensions(node, buffer, ctx.maxImageWidthPx)
+  // Image uses `align` attr (left/center/right), not `textAlign`
+  const align = mapTextAlign(node.attrs?.align)
 
   return [
     new Paragraph({
@@ -460,6 +490,7 @@ export function convertImage(node: MdNode, ctx: DocxContext): FileChild[] {
           data: buffer,
           transformation: { width: dims.width, height: dims.height },
           type: imgType,
+          ...(alt ? { altText: { name: alt, title: alt, description: alt } } : {}),
         }),
       ],
       ...(align ? { alignment: align } : {}),

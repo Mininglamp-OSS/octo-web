@@ -1,5 +1,6 @@
 import React from "react";
 import { Tooltip } from "@douyinfe/semi-ui";
+import { IconWrenchStroked } from "@douyinfe/semi-icons";
 import type { McpListItem } from "../types/mcp";
 import { t } from "@octo/base";
 import { IconGlyph } from "../utils/icon";
@@ -126,8 +127,13 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, keyword }) => {
       <div className="wk-mcp-card__slogan"><Highlight text={item.slogan} keyword={keyword} /></div>
       {item.matchReasons?.length ? <MatchReasons reasons={item.matchReasons} keyword={keyword} /> : null}
       <div className="wk-mcp-card__footer">
-        <span>
-          {t("mcp.card.toolCount", { values: { count: item.toolCount } })}
+        <span
+          className="wk-mcp-card__stat"
+          title={t("mcp.card.toolCount", { values: { count: item.toolCount } })}
+          aria-label={t("mcp.card.toolCount", { values: { count: item.toolCount } })}
+        >
+          <IconWrenchStroked size="small" />
+          {item.toolCount}
         </span>
       </div>
     </div>

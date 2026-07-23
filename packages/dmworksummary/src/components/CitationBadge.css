@@ -1,0 +1,126 @@
+/* Citation badge (inline [n] token in summary body).
+ *
+ * Wraps a <sup> so it participates in surrounding text flow but sits slightly
+ * raised. Uses brand-tinted background so it visually anchors to the site
+ * primary color (currently near-black) rather than the previous hard-coded
+ * Ant-blue. All colors / spacing / radius come from --wk-* semantic tokens
+ * so light/dark themes track automatically (per DEVELOPMENT.md §2).
+ */
+.citation-badge {
+    display: inline-flex;
+    align-items: center;
+    background: var(--wk-brand-tint-08);
+    color: var(--wk-text-strong);
+    border-radius: var(--wk-r-xs);
+    padding: 0 var(--wk-sp-1);
+    margin-left: var(--wk-sp-0-5);
+    font-size: var(--wk-text-size-xs);
+    line-height: 1.4;
+    vertical-align: super;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    user-select: none;
+}
+
+.citation-badge:hover,
+.citation-badge:focus-visible {
+    background: var(--wk-brand-tint-15);
+    color: var(--wk-brand-primary);
+    outline: none;
+}
+
+/* Popover content wrappers (shared by CitationBadge, CitationGroupBadge,
+ * TeamCitationBadge, and their internal message rows). Extracted from the
+ * old inline React.CSSProperties objects so tokens work + dark theme.
+ */
+.citation-popover {
+    max-width: 340px;
+    max-height: 400px;
+    padding: var(--wk-sp-2) var(--wk-sp-1);
+    overflow-y: auto;
+}
+
+.citation-popover--wide {
+    max-width: 360px;
+}
+
+.citation-mini-preview {
+    max-width: 320px;
+    padding: var(--wk-sp-2);
+}
+
+.citation-cited-msg {
+    padding: var(--wk-sp-1) var(--wk-sp-2);
+    border-left: 3px solid var(--wk-brand-primary);
+    font-size: var(--wk-text-size-base);
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.citation-context-msg {
+    padding: var(--wk-sp-1) var(--wk-sp-2);
+    font-size: var(--wk-text-size-sm);
+    color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.55));
+    font-style: italic;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.citation-msg-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--wk-sp-0-5);
+}
+
+.citation-msg-sender {
+    font-weight: 600;
+    font-size: var(--wk-text-size-base);
+}
+
+.citation-msg-sender--context {
+    font-weight: 500;
+    font-size: var(--wk-text-size-sm);
+}
+
+.citation-msg-time {
+    font-size: var(--wk-text-size-sm);
+    color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.55));
+}
+
+.citation-msg-time--context {
+    font-size: var(--wk-text-size-xs);
+    color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.45));
+}
+
+.citation-msg-source {
+    font-size: var(--wk-text-size-sm);
+    color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.55));
+    margin-bottom: var(--wk-sp-1);
+}
+
+.citation-msg-body {
+    font-size: var(--wk-text-size-base);
+    line-height: 1.5;
+}
+
+.citation-msg-body--context {
+    font-size: var(--wk-text-size-sm);
+    line-height: 1.5;
+}
+
+.citation-jumplink {
+    margin-top: var(--wk-sp-2);
+    padding-top: var(--wk-sp-1-5);
+    border-top: 1px solid var(--wk-brand-tint-08);
+    text-align: right;
+}
+
+.citation-jumplink-btn {
+    color: var(--wk-brand-primary);
+    font-size: var(--wk-text-size-sm);
+    cursor: pointer;
+}
+
+.citation-jumplink-btn:hover {
+    text-decoration: underline;
+}

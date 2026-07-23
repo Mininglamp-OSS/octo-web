@@ -101,6 +101,34 @@ describe('attachment API — bare-relative docs paths (frontend-design §3.5)', 
 })
 
 describe('uploadImage — end-to-end flow yields attachId + signed src, never base64', () => {
+  it('sends SVG bytes to the dedicated validated endpoint (including empty browser MIME)', async () => {
+    api.responder = () => ({ data: { attachId: 'att_svg', url: 'https://assets.octo.example.com/x.svg' }, status: 200 })
+    const file = new File(['<svg/>'], 'diagram.svg', { type: '' })
+    const result = await uploadImage('d_1', file)
+
+    expect(result).toEqual({ attachId: 'att_svg', src: 'https://assets.octo.example.com/x.svg' })
+    expect(api.calls).toHaveLength(1)
+    expect(api.calls[0]).toMatchObject({
+      method: 'post',
+      url: '/docs/d_1/attachments/svg',
+      body: file,
+    })
+    expect(api.calls[0].config?.headers).toMatchObject({
+      'Content-Type': 'image/svg+xml',
+      'X-File-Name': 'diagram.svg',
+    })
+  })
+
+  it('does not route a non-SVG MIME to the SVG endpoint merely because the name ends in .svg', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })))
+    api.responder = (method, url) => {
+      if (method === 'post' && url.endsWith('/attachments/presign')) return { data: PRESIGN, status: 200 }
+      return { data: { url: 'https://assets.octo.example.com/x' }, status: 200 }
+    }
+    await uploadImage('d_1', new File(['png'], 'misleading.svg', { type: 'image/png' }))
+    expect(api.calls[0].url).toBe('/docs/d_1/attachments/presign')
+  })
+
   it('presigns, PUTs the bytes, then resolves a display url', async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)

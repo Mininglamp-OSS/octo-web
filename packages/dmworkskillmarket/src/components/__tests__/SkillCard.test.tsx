@@ -36,8 +36,8 @@ describe("SkillCard", () => {
     render(<SkillCard skill={skill} categories={categories} onOpen={vi.fn()} />);
 
     expect(screen.getByRole("heading", { name: "test" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ci-helper @我" })).toBeInTheDocument();
-    expect(screen.getByText("@我")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper 我" })).toBeInTheDocument();
+    expect(screen.getByText("我")).toBeInTheDocument();
     expect(screen.getByText("CI")).toBeInTheDocument();
     expect(screen.getByText("调试")).toBeInTheDocument();
     expect(screen.getByText("日志")).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe("SkillCard", () => {
     expect(screen.getByLabelText("下载次数：0")).toHaveTextContent("0");
   });
 
-  it("hides owner metadata for public skills", () => {
+  it("shows publisher metadata for public skills", () => {
     render(
       <SkillCard
         skill={{ ...skill, visibility: "public" }}
@@ -58,8 +58,8 @@ describe("SkillCard", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "ci-helper" })).toBeInTheDocument();
-    expect(screen.queryByText("@我")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper 我" })).toBeInTheDocument();
+    expect(screen.getByText("我")).toBeInTheDocument();
   });
 
   it("shows creator and owner when they are different", () => {
@@ -77,8 +77,9 @@ describe("SkillCard", () => {
       />,
     );
 
-    expect(screen.getByText("@CI Bot · @Developer")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ci-helper @CI Bot · @Developer" })).toBeInTheDocument();
+    expect(screen.getByText("CI Bot")).toBeInTheDocument();
+    expect(screen.getByText("Developer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper CI Bot · Developer" })).toBeInTheDocument();
   });
 
   it("uses a bot icon instead of @ for bot creators", () => {
@@ -97,9 +98,66 @@ describe("SkillCard", () => {
     );
 
     expect(screen.getByText("Publisher Bot")).toBeInTheDocument();
+    expect(screen.getByText("Developer")).toBeInTheDocument();
     expect(screen.queryByText("@Publisher Bot · @Developer")).not.toBeInTheDocument();
-    expect(screen.queryByText("@Developer")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ci-helper Publisher Bot" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper Publisher Bot · Developer" })).toBeInTheDocument();
+  });
+
+  it("shows the bot name when catalog responses omit ownerId", () => {
+    render(
+      <SkillCard
+        skill={{
+          ...skill,
+          ownerId: "",
+          ownerName: "Developer",
+          creatorId: "bot-1",
+          creatorName: "lm-hermes",
+        }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("lm-hermes")).toBeInTheDocument();
+    expect(screen.getByText("Developer")).toBeInTheDocument();
+  });
+
+  it("treats equal stable IDs as one publisher even when names differ", () => {
+    render(
+      <SkillCard
+        skill={{
+          ...skill,
+          ownerId: "developer",
+          ownerName: "Developer",
+          creatorId: "developer",
+          creatorName: "Developer Renamed",
+        }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "ci-helper Developer Renamed" })).toBeInTheDocument();
+    expect(screen.queryByText("Developer")).not.toBeInTheDocument();
+  });
+
+  it("keeps creator attribution when owner metadata is empty", () => {
+    render(
+      <SkillCard
+        skill={{
+          ...skill,
+          ownerId: "",
+          ownerName: "",
+          creatorId: "publisher",
+          creatorName: "Publisher",
+        }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Publisher")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper Publisher" })).toBeInTheDocument();
   });
 
   it("supports keyboard open and exposed owner actions without opening the card", () => {
@@ -119,7 +177,7 @@ describe("SkillCard", () => {
       />,
     );
 
-    fireEvent.keyDown(screen.getByRole("button", { name: "ci-helper @我" }), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "ci-helper 我" }), { key: "Enter" });
     expect(onOpen).toHaveBeenCalledWith(skill);
 
     expect(screen.queryByRole("button", { name: "安装" })).not.toBeInTheDocument();

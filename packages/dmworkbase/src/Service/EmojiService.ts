@@ -49,11 +49,18 @@ const EMOJI_MANIFEST_CACHE_KEY = "emoji_manifest_v1"
 //   key  = 消息正文 token
 //   name = 人类可读标签（选择器 title / 无障碍）
 //   base = public/emoji 下的文件名（不含扩展名）
+export const BUILTIN_CUSTOM_EMOJI_KEYS = {
+    mission: "[使命必达]",
+    action: "[崇尚行动]",
+    taste: "[有品位]",
+    shangfang: "[尚方宝剑]",
+} as const
+
 const BUILTIN_CUSTOM_EMOJIS: Array<{ key: string; name: string; base: string }> = [
-    { key: "[使命必达]", name: "使命必达", base: "custom_mission" },
-    { key: "[崇尚行动]", name: "崇尚行动", base: "custom_action" },
-    { key: "[有品位]", name: "有品位", base: "custom_taste" },
-    { key: "[尚方宝剑]", name: "尚方宝剑", base: "custom_shangfang" },
+    { key: BUILTIN_CUSTOM_EMOJI_KEYS.mission, name: BUILTIN_CUSTOM_EMOJI_KEYS.mission.slice(1, -1), base: "custom_mission" },
+    { key: BUILTIN_CUSTOM_EMOJI_KEYS.action, name: BUILTIN_CUSTOM_EMOJI_KEYS.action.slice(1, -1), base: "custom_action" },
+    { key: BUILTIN_CUSTOM_EMOJI_KEYS.taste, name: BUILTIN_CUSTOM_EMOJI_KEYS.taste.slice(1, -1), base: "custom_taste" },
+    { key: BUILTIN_CUSTOM_EMOJI_KEYS.shangfang, name: BUILTIN_CUSTOM_EMOJI_KEYS.shangfang.slice(1, -1), base: "custom_shangfang" },
 ]
 const BUILTIN_BASE_BY_KEY = new Map(BUILTIN_CUSTOM_EMOJIS.map((e) => [e.key, e.base]))
 

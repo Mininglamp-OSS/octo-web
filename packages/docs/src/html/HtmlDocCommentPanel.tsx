@@ -10,7 +10,8 @@
 // "让 AI 处理" click forwards an instruction to chat (openDocForward). The two are decoupled.
 
 import { useCallback, useEffect, useState } from 'react'
-import { canForwardToChat, openDocForward, t, getWKApp } from '../octoweb/index.ts'
+import { canForwardToChat, openDocForward, t } from '../octoweb/index.ts'
+import { avatarUrlForUid } from './htmlAvatar.ts'
 import {
   createComment,
   formatCommentTime,
@@ -61,24 +62,14 @@ function authorName(author: OctoDocAuthor | null | undefined): string {
 }
 
 /**
- * Resolve a comment author's avatar URL. Prefer the backend-supplied avatar_url when present;
- * otherwise derive it from the author uid (author.login) the same way collaborator avatars do:
- * the octo-server `/v1/users/<uid>/avatar` image endpoint, reached via the same-origin `/api/v1/`
- * proxy. This makes comment avatars work for ALL comments (incl. history) without the verify API
- * having to return an avatar. Returns null when no uid is available (→ initial-letter fallback).
+ * Resolve a comment author's avatar URL. Backend-supplied `avatar_url` wins; otherwise fall back
+ * to the shared `/api/v1/users/<uid>/avatar` endpoint via avatarUrlForUid (same helper the header
+ * ≡ menu uses for the doc creator). Order matters: never invert — an incoming avatar_url is the
+ * only path that carries a non-avatar-endpoint image the panel must respect.
  */
 function avatarUrlFor(author: OctoDocAuthor | null | undefined): string | null {
   if (author?.avatar_url) return author.avatar_url
-  let uid = author?.login?.trim()
-  if (!uid) return null
-  // Strip the Space-scoped prefix (s<spaceId>_) so we address the raw uid, mirroring
-  // WKApp.avatarUser()'s handling of person channel ids.
-  const spaceId = getWKApp().shared?.currentSpaceId
-  if (spaceId && uid.startsWith(`s${spaceId}_`)) {
-    uid = uid.substring(spaceId.length + 2)
-  }
-  if (!uid) return null
-  return `/api/v1/users/${encodeURIComponent(uid)}/avatar`
+  return avatarUrlForUid(author?.login)
 }
 
 /** Author + time line shown under each root comment and reply. */

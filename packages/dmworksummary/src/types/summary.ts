@@ -241,6 +241,42 @@ export interface SummaryDetail {
     };
 }
 
+export interface SummaryShareSnapshot {
+    id: number;
+    task_id: number;
+    task_no: string;
+    space_id: string;
+    title: string;
+    source_name: string;
+    source_count: number;
+    participant_count: number;
+    message_count: number;
+    time_range_start: string;
+    time_range_end: string;
+    summary_mode: number;
+    result_version: number;
+    preview: string;
+    content: string;
+    created_at: string;
+}
+
+export interface SummaryShareGrant {
+    share_id: string;
+    channel_id: string;
+    channel_type: number;
+}
+
+export interface CreateSummarySharesResponse {
+    snapshot: SummaryShareSnapshot;
+    grants: SummaryShareGrant[];
+}
+
+export interface GetSummaryShareResponse {
+    share_id: string;
+    source_accessible: boolean;
+    snapshot: SummaryShareSnapshot;
+}
+
 /** 创建请求 */
 export interface CreateSummaryParams {
     topic: string;
@@ -304,6 +340,8 @@ export interface AgentChatParams {
      * 后续轮次此字段被忽略(引用一次锁定)。见 CHAT-REFERENCE-BASED-DESIGN-v1。
      */
     referenced_task_ids?: number[];
+    /** 用户在 UI 中明确选定、希望 agent 默认处理的聊天。 */
+    selected_channels?: Array<Pick<ChatCandidate, 'chat_id' | 'chat_type' | 'name' | 'is_archived'>>;
 }
 
 /** Agent 对话响应（post() 已解包 data） */

@@ -1,6 +1,6 @@
 import { Button, Spin } from "@douyinfe/semi-ui";
 import classNames from "classnames";
-import { Channel, ChannelInfo, WKSDK, Subscriber } from "wukongimjssdk";
+import { Channel, ChannelInfo, Subscriber } from "wukongimjssdk";
 import React from "react";
 import { Component } from "react";
 import WKApp from "../../App";
@@ -12,7 +12,7 @@ import RoutePage from "../RoutePage";
 import ConversationContext from "../Conversation/context";
 import { ChannelTypeCustomerService } from "../../Service/Const";
 import { I18nContext } from "../../i18n";
-import { getImChannelInfo } from "../../im-runtime/channelRuntime";
+import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
 export interface ChannelSettingProps {
     onClose?: () => void
@@ -50,7 +50,7 @@ export default class ChannelSetting extends Component<ChannelSettingProps> {
 
            let  memberCount = vm.subscribers.length
 
-            const channelInfo = getImChannelInfo(WKSDK.shared(), channel)
+            const channelInfo = getCurrentImChannelInfo(channel)
             if(channelInfo?.orgData?.member_count) {
                 memberCount = channelInfo.orgData.member_count
             }

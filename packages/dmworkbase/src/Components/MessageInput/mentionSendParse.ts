@@ -29,6 +29,7 @@
 
 import { subscriberDisplayName } from "../../Utils/displayName";
 import type { SubscriberLike } from "../../Utils/displayName";
+import { isSafeUrl } from "../../Utils/security";
 import {
   MENTION_UID_LEGACY_ALL,
   MENTION_UID_HUMANS,
@@ -191,6 +192,52 @@ export function stripTrustMark(text: string): string {
   return text.includes(MENTION_TRUST_MARK)
     ? text.split(MENTION_TRUST_MARK).join("")
     : text;
+}
+
+export interface EditorTextMark {
+  type: string;
+  attrs?: Record<string, unknown>;
+}
+
+export interface EditorTextNode {
+  text?: string;
+  marks?: EditorTextMark[];
+}
+
+function escapeMarkdownLinkLabel(text: string): string {
+  // Encode `&` first so literal character-reference-looking text remains
+  // literal. A colon is encoded as a CommonMark character reference rather
+  // than backslash-escaped: the renderer still shows `:`, while the send-side
+  // `@[uid:label]` regex cannot synthesize a mention when an `@` text node is
+  // immediately followed by this link node (octo-web#971 review blocker).
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/:/g, "&#58;")
+    .replace(/([\\\[\]`*_~|<>])/g, "\\$1");
+}
+
+/**
+ * Serialize a Tiptap text node at the send boundary.
+ *
+ * External rich-text paste keeps hyperlinks as Link marks. The message wire
+ * format is Markdown text, so a safe http/https mark must become
+ * `[label](url)` before the editor JSON is flattened. Unsafe or malformed
+ * targets fail closed to the visible label. Text-origin mention trust marks
+ * are still stripped before any output is produced.
+ */
+export function serializeEditorTextNodeForSend(node: EditorTextNode): string {
+  const text = stripTrustMark(node.text || "");
+  const linkMark = node.marks?.find((mark) => mark.type === "link");
+  const href = linkMark?.attrs?.href;
+
+  if (!text || typeof href !== "string" || !isSafeUrl(href)) {
+    return text;
+  }
+
+  const normalizedHref = new URL(href).href
+    .replace(/\(/g, "%28")
+    .replace(/\)/g, "%29");
+  return `[${escapeMarkdownLinkLabel(text)}](${normalizedHref})`;
 }
 
 // ─── Draft deserialization ────────────────────────────────────────────────

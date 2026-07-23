@@ -1068,6 +1068,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                             ? [this.state.referencedTask.task_id]
                                             : undefined
                                     }
+                                    selectedChannels={selectedChats}
                                     referenceHeader={this.renderReferenceHeader(translate)}
                                 />
                             </div>
@@ -1279,15 +1280,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                         <span>{translate("summary.create.selectChat")}</span>
                                     </button>
                                 </div>
-                            ) : (
-                                <button
-                                    type="button"
-                                    className="summary-workbench-add-chat"
-                                    onClick={() => this.setState({ showChatSelector: true })}
-                                >
-                                    <Plus size={16} />
-                                    <span>{translate("summary.create.selectChat")}</span>
-                                </button>
                             )}
                             {/* 选择参与者 */}
                             <div className="summary-workbench-chat-row">

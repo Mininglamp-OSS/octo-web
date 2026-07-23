@@ -41,15 +41,19 @@ export interface McpQuickStart {
   slug?: string;
   /** Remote endpoint (streamable-http / sse). */
   url?: string;
-  /** Whether the remote endpoint needs a bearer token. */
-  authType?: "bearer" | "none";
-  /** Extra request headers for the remote transport (merged into the JSON
-   *  snippet; the Bearer header from authType is appended on top). */
+  /** Extra request headers for the remote transport. */
   headers?: Record<string, string>;
+  /** Subset of `headers` keys whose value must be filled locally by each
+   *  consumer (not by the MCP author). The wire keeps the value as sentinel /
+   *  empty for these; the UI renders a "needs user config" toggle ON. Keys
+   *  NOT in this array are shared values persisted as-is. */
+  headersUserSupplied?: string[];
   /** stdio command + args + env (stdio transport only). */
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Same semantics as `headersUserSupplied` but for the stdio env map. */
+  envUserSupplied?: string[];
 }
 
 /** Card + list representation of an MCP server. */
@@ -221,8 +225,12 @@ export interface CreateMcpParams {
   env?: Record<string, string>;
   /** Remote request headers (streamable-http / sse). */
   headers?: Record<string, string>;
-  /** Auth style for the remote transport ("bearer" enables token snippet). */
-  authType?: "bearer" | "none";
+  /** Header keys whose value each consumer must fill locally (never persisted
+   *  as a shared value). See McpQuickStart.headersUserSupplied for the wire
+   *  contract. */
+  headersUserSupplied?: string[];
+  /** Env keys whose value each consumer must fill locally. */
+  envUserSupplied?: string[];
   /** The tool list — probed or hand-filled. */
   tools: McpTool[];
   /** Usage examples — each one rendered as its own quote block. */

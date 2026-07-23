@@ -1,6 +1,5 @@
-import { Toast } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk";
-import WKApp from "../App";
+import { updateChannelSetting } from "./ChannelSettingService";
 
 
 export class ChannelSettingManager {
@@ -60,9 +59,8 @@ export class ChannelSettingManager {
     }
 
     _onSetting(setting: any, channel: Channel): Promise<void> {
-        return WKApp.dataSource.channelDataSource.updateSetting(setting, channel).catch((err) => {
+        return updateChannelSetting(setting, channel).catch((err) => {
             console.error('Setting update failed:', err);
-            Toast.error(err.msg)
             throw err;
         })
     }

@@ -168,6 +168,9 @@ export const OnboardingIntro: React.FC<OnboardingIntroProps> = ({
     onContinue();
   }, [isSilkRevealed, onContinue, phase]);
 
+  const continueFromSilkRef = useRef(continueFromSilk);
+  continueFromSilkRef.current = continueFromSilk;
+
   const handleSilkKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
 
@@ -178,12 +181,15 @@ export const OnboardingIntro: React.FC<OnboardingIntroProps> = ({
   useEffect(() => {
     if (phase !== "silk" || !isSilkRevealed) return;
 
+    // Depend only on phase/isSilkRevealed so parent re-renders (which change
+    // onContinue → continueFromSilk identity) don't keep resetting this timer
+    // and stranding the user on the last frame in foreground (issue #999).
     const timer = window.setTimeout(() => {
-      continueFromSilk();
+      continueFromSilkRef.current();
     }, SILK_AUTO_CONTINUE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [continueFromSilk, isSilkRevealed, phase]);
+  }, [isSilkRevealed, phase]);
 
   useEffect(() => {
     return () => {

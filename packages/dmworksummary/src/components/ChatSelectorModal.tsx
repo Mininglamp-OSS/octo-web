@@ -11,6 +11,7 @@ import * as api from "../api/summaryApi";
 import WKApp from "@octo/base/src/App";
 import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT } from "../constants/limits";
+import "./SummarySelectors.css";
 
 interface MemberCandidate {
     uid: string;
@@ -368,7 +369,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
             <div
                 key={item.chat_id}
                 className={`chat-selector-item${indent ? " chat-selector-item--indent" : ""}${disabled ? " chat-selector-item--disabled" : ""}`}
-                onClick={() => !disabled && this.handleToggle(item)}
+                className={`chat-selector-item${indent ? " chat-selector-item--indent" : ""}${disabled ? " chat-selector-item--disabled" : ""}`}
             >
                 <Checkbox checked={checked} disabled={disabled} />
                 <WKAvatar
@@ -381,9 +382,14 @@ export default class ChatSelectorModal extends Component<Props, State> {
                         {item.chat_type === "direct" && item.is_bot && (
                             <AiBadge size="small" />
                         )}
+                        {item.is_archived && (
+                            <Tag size="small" color="grey">{t("summary.chatSelector.archivedTag")}</Tag>
+                        )}
                     </span>
-                    {item.is_archived && (
-                        <Tag size="small" color="grey">{t("summary.chatSelector.archivedTag")}</Tag>
+                    {item.member_count !== null && (
+                        <span className="chat-selector-item-meta">
+                            {t("summary.common.peopleCount", { values: { count: item.member_count } })}
+                        </span>
                     )}
                 </div>
             </div>

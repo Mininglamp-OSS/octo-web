@@ -4,7 +4,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C22 loop 打开 automation 详情 — 点开 → 详情页显示 title + trigger", async ({
+test("@C22 @p0 @loop @automation loop 打开 automation 详情 — 点开 → 详情页显示 title + trigger", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-automation");

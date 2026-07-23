@@ -649,14 +649,181 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(container.querySelector('.octo-modal-overlay')).toBeNull()
   })
 
-  it('forwards the whole-doc link via openDocForward from the header forward button', async () => {
+  it('admin-not-author viewer never sees author-only slots and never lists octo-doc grants (OCT-216 regression)', async () => {
+    // Two gates, two authorities: octo-doc author manages /v1/docs/{slug}/grants (Slot 2/5);
+    // docs-backend admin manages Share/Invite/Requests (Slot 1/3/4). Merging them at the parent
+    // would leak author-only slots to a non-author admin AND drive a 403 on the author-only
+    // listGrants endpoint. HtmlDocView must forward isAuthor + role WITHOUT collapsing them into
+    // the legacy `canManage` prop.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'admin' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    const fetchSpy = serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" />)
+    await waitForFrame(container)
+    // Wait for docs-backend role to land so the panel's backend gate can render its slots.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    // Admin still gets the entry (canOpenPanel = isAuthor OR admin) and the modal opens.
+    fireEvent.click(screen.getByTitle('docs.toolbar.members'))
+    await waitFor(() =>
+      expect(container.querySelector('.octo-modal-overlay .octo-member-panel')).toBeTruthy()
+    )
+    // Backend slot 1 (ShareScope) heading is present so we know the panel finished rendering.
+    await waitFor(() => expect(screen.queryByText('docs.share.title')).toBeTruthy())
+    // Author-only slots must stay hidden — the leaked-merge bug rendered both of these.
+    expect(screen.queryByText('docs.member.addMember')).toBeNull()
+    expect(screen.queryByText('docs.member.currentMembers')).toBeNull()
+    // And the author-only octo-doc grants endpoint must never be called (it would 403 and drive
+    // the "docs.member.errorLoad" banner into the panel).
+    const grantsCalls = (fetchSpy.mock.calls as unknown as Array<[unknown]>)
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes('/v1/docs/') && u.includes('/grants'))
+    expect(grantsCalls).toEqual([])
+    expect(screen.queryByText('docs.member.errorLoad')).toBeNull()
+  })
+
+  it('forwards the whole-doc link via startDocForward from the header forward button (non-admin viewer: canGrant=false)', async () => {
+    // docs-backend GET /docs/:id supplies the LIVE role + ownerId startDocForward consumes; a reader
+    // whose uid ≠ owner produces canGrant=false, matching the prior sharing-only behaviour.
+    wk.apiClient.responder = (method, url) => {
+      // docs-backend is keyed by docId (d1), NEVER by the octo-doc slug (the-slug).
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'reader' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
     serveDoc('<p>body</p>', { title: 'My Doc' })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
     await waitForFrame(container)
+    // Wait for the role to land so the click is not early-returned by the `!role` guard.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
     fireEvent.click(screen.getByTitle('docs.forward.entry'))
-    expect(wk.openDocForwardCalls).toHaveLength(1)
+    await waitFor(() => expect(wk.openDocForwardCalls).toHaveLength(1))
     expect(wk.openDocForwardCalls[0]).toMatchObject({ docId: 'd1', title: 'My Doc', canGrant: false })
     expect(typeof wk.openDocForwardCalls[0].link).toBe('string')
+    // Sharing-only: no grantAccess executor when canGrant is false.
+    expect(wk.openDocForwardCalls[0].grantAccess).toBeUndefined()
+  })
+
+  it('opens forward with canGrant=true and wires a grantAccess executor when the viewer is owner/admin (computeCanGrant)', async () => {
+    // Owner (uid === ownerId) satisfies computeCanGrant regardless of role; grantAccess must be
+    // wired to the /docs/{docId}/forward-grant loop so the modal授权区 fires the per-uid grants.
+    wk.apiClient.responder = (method, url) => {
+      // docs-backend is keyed by docId (d1), NEVER by the octo-doc slug (the-slug).
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_viewer', role: 'admin' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    fireEvent.click(screen.getByTitle('docs.forward.entry'))
+    await waitFor(() => expect(wk.openDocForwardCalls).toHaveLength(1))
+    expect(wk.openDocForwardCalls[0]).toMatchObject({ docId: 'd1', canGrant: true })
+    expect(typeof wk.openDocForwardCalls[0].grantAccess).toBe('function')
+  })
+
+  it('does not render the Forward button while docs-backend role is still loading (no dead button, no stale canGrant snapshot)', async () => {
+    // A never-resolving getDoc keeps role=null. Previously the button rendered and the handler
+    // early-returned on `!role` — a silent dead button. The button gate now includes `role`, so
+    // the affordance is hidden entirely; startDocForward stays unfired (mirrors EditorShell
+    // `if (!role) return`) so a demoted admin never gets a stale canGrant snapshot.
+    wk.apiClient.responder = () => new Promise(() => {})
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    expect(screen.queryByTitle('docs.forward.entry')).toBeNull()
+    expect(container.querySelector('.octo-doc-forward-btn')).toBeNull()
+    expect(wk.openDocForwardCalls).toHaveLength(0)
+  })
+
+  it('does not render the Forward button while role is unresolved (mirrors EditorShell role && canForward gate, no dead button)', async () => {
+    // role=null (getDoc 404 fail-soft) must hide the Forward button entirely, not render a silent
+    // no-op affordance. Mirrors EditorShell.tsx `{role && canForward && (` gate.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: {}, status: 404 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    // Let the 404 land so role definitively resolves to null (not merely still-loading).
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    expect(screen.queryByTitle('docs.forward.entry')).toBeNull()
+    expect(container.querySelector('.octo-doc-forward-btn')).toBeNull()
+  })
+
+  it('hides the More-menu Forward entry when role is unresolved (twin of the toolbar gate; no dead menu row)', async () => {
+    // OCT-220 short-return: the toolbar Forward at :579 was gated on `role && canForward`, but its
+    // twin inside DocMoreMenu at :614 still only checked `canForward`. On the role=null fail-soft
+    // path (getDoc 404, or docs-backend rejects) the menu row rendered as a clickable no-op that
+    // doForward's `if (!canForward || !role) return` guard silently swallowed. Both Forward
+    // affordances must hide together — otherwise the twin entries diverge in behaviour.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: {}, status: 404 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    // Let the 404 land so role is definitively null (not merely still-loading).
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    // Open the ≡ menu so any conditional menu items render into the DOM.
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    // The neutral "open in new page" row is always present — confirms the menu did open, so a
+    // missing Forward row means it was gated out, not that the menu itself failed to render.
+    expect(screen.getByText('docs.standalone.openInNewPage')).toBeTruthy()
+    // Forward must be absent from both surfaces: no toolbar button AND no menu row.
+    expect(screen.queryByTitle('docs.forward.entry')).toBeNull()
+    expect(container.querySelector('.octo-doc-forward-btn')).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /docs\.forward\.entry/ })).toBeNull()
+  })
+
+  it('renders BOTH Forward entries (toolbar + More menu) once role resolves — reader suffices, guarding against over-tightening', async () => {
+    // Positive symmetric case: when role is resolved AND canForward is true, both twin Forward
+    // affordances must render together. Prevents the fix from over-collapsing the gate and hiding
+    // the menu row in the very case where the toolbar button is showing.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'reader' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    // Toolbar Forward first — waits out role resolution.
+    await waitFor(() => expect(screen.queryByTitle('docs.forward.entry')).not.toBeNull())
+    // Open the ≡ menu and confirm the twin menu row is also present.
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    expect(screen.queryByRole('menuitem', { name: /docs\.forward\.entry/ })).toBeTruthy()
+  })
+
+  it('renders the Forward button once role resolves (reader suffices; the guard is role != null)', async () => {
+    // Guard against over-tightening: any resolved role must restore the button. reader is the
+    // weakest positive case — sharing-only forward (canGrant=false) still needs the entry.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'reader' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { title: 'My Doc' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" version="v2" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    await waitFor(() => expect(screen.queryByTitle('docs.forward.entry')).not.toBeNull())
+    expect(container.querySelector('.octo-doc-forward-btn')).toBeTruthy()
   })
 
   it('offers delete only to the author in the ≡ menu', async () => {
@@ -678,10 +845,266 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(screen.getByText('docs.doc.deleteEntry')).toBeTruthy()
   })
 
+  it('hides the delete affordance from an admin-not-author viewer (author-only, matches htmlDocAdmin.deleteDoc backend)', async () => {
+    // Delete is author-only both at the octo-doc backend (see htmlDocAdmin.ts header comment) and
+    // symmetrically at the UI gate. A docs-backend admin who is NOT the author must never see the
+    // Delete entry — otherwise clicking it hits the octo-doc 403 ("guaranteed-fail entry").
+    // Symmetric with OCT-216 grants-side hiding of Add member / Current Members from the same
+    // admin-not-author viewer.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner', role: 'admin' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" />)
+    await waitForFrame(container)
+    // Wait for docs-backend role=admin to land so canManageBackend is true (canOpenPanel would
+    // therefore render the entry pre-fix); the assertion below then proves the gate is isAuthor,
+    // not canOpenPanel.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    expect(screen.queryByText('docs.doc.deleteEntry')).toBeNull()
+    // Neutral rows should still be there so we know the menu opened.
+    expect(screen.getByText('docs.standalone.openInNewPage')).toBeTruthy()
+  })
+
   it('injects a <base> into the iframe srcdoc so CSS/relative assets resolve to the doc origin', async () => {
     serveDoc('<html><head></head><body><p>body</p></body></html>')
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     const frame = await waitForFrame(container)
     expect(frame.getAttribute('srcdoc')).toContain('<base href="https://od.test/">')
+  })
+})
+
+describe('HtmlDocView — creator/created head sourced from docs-backend (OCT-194)', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  function serveDoc(htmlBody: string) {
+    // Header-only tests: the __ODOC__ / __ODOC_CAP__ inline blobs are irrelevant here because the
+    // creator display now reads exclusively from docs-backend (getDoc + getUserName).
+    return stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
+      return htmlResponse(htmlBody)
+    })
+  }
+
+  beforeEach(() => {
+    ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
+    wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    setWKApp(wk)
+  })
+  afterEach(() => {
+    delete (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
+    setWKApp(undefined as never)
+  })
+
+  it('renders the creator name (from getUserName) and created-on date (from getDoc.createdAt) in the ≡ menu head', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return {
+          data: { docId: 'd1', ownerId: 'u_owner', createdAt: '2026-07-15T04:09:00Z' },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url === '/users/u_owner') {
+        return { data: { name: 'Nick', real_name: 'Alice Owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>')
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/users/u_owner')).toBe(true))
+    // Open the ≡ menu.
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    // In-shell (creatorNicknameOnly unset) prefers real_name — the verified name lands in the head.
+    await waitFor(() => expect(screen.getByText('Alice Owner')).toBeTruthy())
+    // Created-on is a lexical YYYY-MM-DD slice (no tz drift).
+    expect(screen.getByText(/2026-07-15/)).toBeTruthy()
+  })
+
+  it('passes X-Space-Id on the docs-backend GET so the standalone /d/:docId space-required middleware accepts it', async () => {
+    wk.apiClient.responder = () => ({ data: {}, status: 200 })
+    serveDoc('<p>body</p>')
+    render(<HtmlDocView docId="d1" space="sp_42" />)
+    await waitFor(() => {
+      const call = wk.apiClient.calls.find((c) => c.url === '/docs/d1')
+      expect(call).toBeTruthy()
+      expect(call?.config?.headers).toMatchObject({ 'X-Space-Id': 'sp_42' })
+    })
+  })
+
+  it('standalone (creatorNicknameOnly) resolves nickname-only — real_name never surfaces to the link holder', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return { data: { docId: 'd1', ownerId: 'u_owner' }, status: 200 }
+      }
+      if (method === 'get' && url === '/users/u_owner') {
+        // Server returns both; the standalone surface must ignore real_name (preferRealName:false).
+        return { data: { name: 'Nick', real_name: 'Real Legal Name' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>')
+    const { container } = render(<HtmlDocView docId="d1" space="sp" creatorNicknameOnly />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/users/u_owner')).toBe(true))
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    await waitFor(() => expect(screen.getByText('Nick')).toBeTruthy())
+    expect(screen.queryByText('Real Legal Name')).toBeNull()
+  })
+
+  it('fails soft when docs-backend rejects (404/network) — header falls back to slug initial, ≡ menu still opens, no crash', async () => {
+    wk.apiClient.responder = () => Promise.reject(new Error('not found'))
+    serveDoc('<p>body</p>')
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="the-slug" />)
+    await waitForFrame(container)
+    // Header title falls through to the slug (no meta.title).
+    expect(container.querySelector('.octo-html-doc-title')?.textContent).toBe('the-slug')
+    // ≡ menu opens without crashing; the creator row shows the '—' placeholder (ownerId undefined).
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    expect(document.querySelector('.octo-doc-more-name')?.textContent).toBe('—')
+  })
+
+  it('OCT-198 regression: standalone slug≠docId hits docs-backend by docId (not slug); owner/created/role resolve', async () => {
+    // StandaloneDocPage passes docId=meta.docId + slug=meta.octoDocSlug as TWO different ids.
+    // The bug: getDoc was called with effectiveSlug (=slug), so `/docs/{slug}` 404'd and silently
+    // wiped ownerId/createdAt/role — creator display + forward授权 broke on every published html
+    // doc with a distinct octo-doc slug. Guard the fix: docs-backend receives docId, slug is
+    // reserved for octo-doc render (`/d/{slug}/v/{ver}`) + comment/asset/grant paths.
+    wk.apiClient.responder = (method, url) => {
+      // docs-backend keyed by docId. A slug-shaped call here is the pre-fix bug returning.
+      if (method === 'get' && url === '/docs/doc_abc') {
+        return {
+          data: { docId: 'doc_abc', ownerId: 'u_owner', role: 'admin', createdAt: '2026-07-20T00:00:00Z' },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url === '/users/u_owner') {
+        return { data: { name: 'Nick', real_name: 'Alice Owner' }, status: 200 }
+      }
+      // Explicit trap: a call to `/docs/{slug}` means the bug regressed.
+      if (method === 'get' && url === '/docs/published-slug-xyz') {
+        throw new Error('OCT-198 regression: getDoc called with slug instead of docId')
+      }
+      return { data: {}, status: 200 }
+    }
+    serveDoc('<p>body</p>')
+    const { container } = render(
+      <HtmlDocView docId="doc_abc" space="sp_1" slug="published-slug-xyz" version="v2" />
+    )
+    await waitForFrame(container)
+    // 1) docs-backend addressed by docId, never by slug.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/doc_abc')).toBe(true))
+    expect(wk.apiClient.calls.some((c) => c.url === '/docs/published-slug-xyz')).toBe(false)
+    // 2) octo-doc render path still uses the slug (unchanged).
+    const octoCalls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls
+    expect(octoCalls.some(([u]) => String(u).includes('/d/published-slug-xyz/v/v2'))).toBe(true)
+    // 3) ownerId/createdAt/role landed — so the creator name resolves and forward授权 unblocks.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/users/u_owner')).toBe(true))
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    await waitFor(() => expect(screen.getByText('Alice Owner')).toBeTruthy())
+    expect(screen.getByText(/2026-07-20/)).toBeTruthy()
+  })
+})
+
+describe('HtmlDocView — Members panel gate (author OR admin)', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  // Serves an octo-doc HTML body with an optional __ODOC_CAP__ authorship marker. Mirrors
+  // serveDoc from the "header parity" suite; kept local so this suite owns its fetch stub.
+  function serveDoc(opts?: { isAuthor?: boolean }) {
+    const cap =
+      opts?.isAuthor === undefined
+        ? ''
+        : `<script>window.__ODOC_CAP__ = {isAuthor: ${opts.isAuthor ? 'true' : 'false'}};</script>`
+    return stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
+      return htmlResponse(`${cap}<p>body</p>`)
+    })
+  }
+
+  // Docs-backend responder that pins the current viewer's role for the /docs/d1 hop. role=null
+  // (undefined) mirrors "still loading / no doc_meta"; role='admin'|'writer'|'reader' pins a
+  // resolved role. ownerId is decoupled from viewer uid so isAuthor is driven purely by __ODOC_CAP__.
+  function mockRole(role: 'admin' | 'writer' | 'reader' | null) {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d1') {
+        return {
+          data: { docId: 'd1', ownerId: 'u_owner', ...(role ? { role } : {}) },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+  }
+
+  beforeEach(() => {
+    ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
+    wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    setWKApp(wk)
+  })
+  afterEach(() => {
+    delete (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
+    setWKApp(undefined as never)
+  })
+
+  it('opens the panel for the author even when role is still null (fail-soft short-circuit)', async () => {
+    // isAuthor=true short-circuits before role is inspected, so a never-resolving getDoc must not
+    // block the panel from opening. Guards the "role=null" branch of decision #2.
+    wk.apiClient.responder = () => new Promise(() => {})
+    serveDoc({ isAuthor: true })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    fireEvent.click(screen.getByTitle('docs.toolbar.members'))
+    expect(container.querySelector('.octo-modal-overlay .octo-modal')).toBeTruthy()
+    expect(container.querySelector('.octo-member-panel')).toBeTruthy()
+  })
+
+  it('opens the panel for a non-author admin (docs-backend role gate)', async () => {
+    mockRole('admin')
+    serveDoc({ isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    // Button must render only after role resolves — wait for it rather than snapshotting.
+    const btn = await waitFor(() => screen.getByTitle('docs.toolbar.members'))
+    fireEvent.click(btn)
+    expect(container.querySelector('.octo-modal-overlay .octo-modal')).toBeTruthy()
+    expect(container.querySelector('.octo-member-panel')).toBeTruthy()
+  })
+
+  it('hides the panel entry for a non-author reader', async () => {
+    mockRole('reader')
+    serveDoc({ isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    // Even after the role settles, the button must not appear (reader has no manage capability
+    // on either backend authority).
+    expect(screen.queryByTitle('docs.toolbar.members')).toBeNull()
+    expect(container.querySelector('.octo-modal-overlay')).toBeNull()
+  })
+
+  it('hides the panel entry for a non-author writer', async () => {
+    mockRole('writer')
+    serveDoc({ isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d1')).toBe(true))
+    expect(screen.queryByTitle('docs.toolbar.members')).toBeNull()
+  })
+
+  it('hides the panel entry when role is still null and the viewer is not the author (fail-soft)', async () => {
+    // Never-resolving getDoc keeps role=null; a non-author must NOT get the button on loading state
+    // (decision #2 fail-soft: `role != null && canManage(role)` short-circuits to false).
+    wk.apiClient.responder = () => new Promise(() => {})
+    serveDoc({ isAuthor: false })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    await waitForFrame(container)
+    expect(screen.queryByTitle('docs.toolbar.members')).toBeNull()
+    expect(container.querySelector('.octo-modal-overlay')).toBeNull()
   })
 })

@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import { Spin, Toast } from "@douyinfe/semi-ui";
-import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
-import { I18nContext, t, WKApp, WKInput, WKButton } from "@octo/base";
+import { IconSearch, IconPlus, IconClose } from "@douyinfe/semi-icons";
+import { I18nContext, t, WKApp, WKButton } from "@octo/base";
 import { fetchMcpList, fetchMcpMine } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
 import type { McpCategory, McpCreatedByType, McpDetail, McpListItem } from "../types/mcp";
@@ -313,12 +313,27 @@ export default class McpMarketListPage extends Component<
           </nav>
           <div className="wk-mcp__topbar-actions">
             <div className="wk-mcp__search">
-              <WKInput
-                value={keyword}
-                onChange={this.handleKeyword}
-                prefix={<IconSearch />}
-                placeholder={t("mcp.list.searchPlaceholder")}
-              />
+              <div className="wk-mcp__search-control">
+                <IconSearch aria-hidden />
+                <input
+                  type="search"
+                  value={keyword}
+                  onChange={(e) => this.handleKeyword(e.target.value)}
+                  placeholder={t("mcp.list.searchPlaceholder")}
+                  aria-label={t("mcp.list.searchPlaceholder")}
+                />
+                {keyword && (
+                  <button
+                    type="button"
+                    className="wk-mcp__search-clear"
+                    aria-label={t("mcp.list.searchClear")}
+                    title={t("mcp.list.searchClear")}
+                    onClick={() => this.handleKeyword("")}
+                  >
+                    <IconClose aria-hidden />
+                  </button>
+                )}
+              </div>
             </div>
             <WKButton
               variant="primary"
@@ -330,13 +345,7 @@ export default class McpMarketListPage extends Component<
           </div>
         </header>
 
-        <div
-          className={
-            mode === "mine"
-              ? "wk-mcp__toolbar wk-mcp__toolbar--mine"
-              : "wk-mcp__toolbar"
-          }
-        >
+        <div className="wk-mcp__toolbar">
           <div className="wk-mcp__pills">
             {categories.map((cat) => (
               <button
@@ -353,34 +362,6 @@ export default class McpMarketListPage extends Component<
               </button>
             ))}
           </div>
-          {/* Provenance filter — segmented, single-select. Positioned to the
-              right of the category pills so it reads as an orthogonal
-              refinement. `全部` = clear filter. */}
-          <div className="wk-mcp__source-filter" role="group" aria-label={t("mcp.list.source.filterLabel")}>
-            {SOURCE_FILTER_OPTIONS.map(({ value, labelKey }) => {
-              const active =
-                value === undefined ? createdByType === undefined : createdByType === value;
-              return (
-                <button
-                  key={value ?? "all"}
-                  type="button"
-                  className={
-                    active
-                      ? "wk-mcp__source-btn wk-mcp__source-btn--active"
-                      : "wk-mcp__source-btn"
-                  }
-                  onClick={() => this.handleCreatedBy(value)}
-                >
-                  {t(labelKey)}
-                </button>
-              );
-            })}
-          </div>
-          {mode === "mine" && (
-            <span className="wk-mcp__mine-count">
-              {t("mcp.list.mineTotal", { values: { count: total } })}
-            </span>
-          )}
         </div>
 
         <div
@@ -400,29 +381,70 @@ export default class McpMarketListPage extends Component<
                 <span>{error}</span>
                 <WKButton onClick={() => this.loadData()}>{t("mcp.list.retry")}</WKButton>
               </div>
-            ) : items.length === 0 ? (
-              <div className="wk-mcp__state">{t("mcp.list.empty")}</div>
             ) : (
               <>
-                <div className="wk-mcp__grid">
-                  {items.map((item) => (
-                    <McpCard
-                      key={item.id}
-                      item={item}
-                      keyword={keyword}
-                      onClick={(it) => this.setState({ detailId: it.id })}
-                    />
-                  ))}
+                <div className="wk-mcp__result-summary">
+                  <span
+                    className="wk-mcp__result-summary-total"
+                    aria-live="polite"
+                  >
+                    {t("mcp.list.total", { values: { count: total } })}
+                  </span>
+                  {/* 来源筛选 — 单选分段控件，放在结果摘要的右侧，跟
+                      dmworkskillmarket 的 sort 位置一致。「全部来源」= 清除筛选。
+                      即使当前结果为空也保留，方便用户放宽筛选。 */}
+                  <div
+                    className="wk-mcp__source-filter"
+                    role="group"
+                    aria-label={t("mcp.list.source.filterLabel")}
+                  >
+                    {SOURCE_FILTER_OPTIONS.map(({ value, labelKey }) => {
+                      const active =
+                        value === undefined
+                          ? createdByType === undefined
+                          : createdByType === value;
+                      return (
+                        <button
+                          key={value ?? "all"}
+                          type="button"
+                          className={
+                            active
+                              ? "wk-mcp__source-btn wk-mcp__source-btn--active"
+                              : "wk-mcp__source-btn"
+                          }
+                          onClick={() => this.handleCreatedBy(value)}
+                        >
+                          {t(labelKey)}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="wk-mcp__footnote">
-                  {loadingMore ? (
-                    <Spin size="small" />
-                  ) : hasMore ? (
-                    <span>{t("mcp.list.loadMore")}</span>
-                  ) : (
-                    <span>{t("mcp.list.reachedEnd")}</span>
-                  )}
-                </div>
+                {items.length === 0 ? (
+                  <div className="wk-mcp__state">{t("mcp.list.empty")}</div>
+                ) : (
+                  <>
+                    <div className="wk-mcp__grid">
+                      {items.map((item) => (
+                        <McpCard
+                          key={item.id}
+                          item={item}
+                          keyword={keyword}
+                          onClick={(it) => this.setState({ detailId: it.id })}
+                        />
+                      ))}
+                    </div>
+                    <div className="wk-mcp__footnote">
+                      {loadingMore ? (
+                        <Spin size="small" />
+                      ) : hasMore ? (
+                        <span>{t("mcp.list.loadMore")}</span>
+                      ) : (
+                        <span>{t("mcp.list.reachedEnd")}</span>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>

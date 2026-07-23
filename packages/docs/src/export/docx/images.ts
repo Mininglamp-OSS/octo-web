@@ -5,6 +5,7 @@
 
 import { resolveAttachments, type ResolvedAttachment } from '../../attachments/api.ts'
 import { sanitizeAssetUrl } from '../../editor/sanitize.ts'
+import { rasterizeSvgToPng } from '../imageRasterize.ts'
 import type { MdNode, ImageRef, DocxContext } from './types.ts'
 
 /**
@@ -174,6 +175,46 @@ export async function resolveAndFetchImages(
   }
 
   return { urls, imageBuffers }
+}
+
+/** Detect SVG from bytes even when attachment metadata is absent or incorrect. */
+export function isSvgBuffer(buffer: ArrayBuffer): boolean {
+  const bytes = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 1024))
+  const prefix = new TextDecoder().decode(bytes)
+  return /^\uFEFF?\s*(?:<\?xml[^>]*>\s*)?<svg(?:\s|>)/i.test(prefix)
+}
+
+/**
+ * Replace fetched SVG buffers with genuine browser-rasterized PNG buffers before
+ * the synchronous ProseMirror → docx conversion starts. This keeps the existing
+ * converter synchronous (including table recursion) while allowing ImageRun to
+ * receive only formats Word reliably supports.
+ */
+export async function rasterizeSvgImageBuffers(
+  doc: MdNode,
+  urls: Map<string, ResolvedAttachment>,
+  imageBuffers: Map<string, ArrayBuffer>,
+): Promise<void> {
+  const tasks: Promise<void>[] = []
+  for (const ref of collectImageRefs(doc)) {
+    const key = ref.attachId || ref.src
+    if (!key) continue
+    const buffer = imageBuffers.get(key)
+    if (!buffer) continue
+    const mime = ref.attachId ? urls.get(ref.attachId)?.mime?.toLowerCase() ?? '' : ''
+    if (!mime.includes('svg') && !isSvgBuffer(buffer)) continue
+    tasks.push((async () => {
+      try {
+        const png = await rasterizeSvgToPng(new Blob([buffer], { type: 'image/svg+xml' }))
+        imageBuffers.set(key, await png.arrayBuffer())
+      } catch (error) {
+        // Keep the original SVG so convertImage emits its safe alt-text fallback
+        // rather than embedding unsupported or mislabeled bytes.
+        console.warn('[docx-export] failed to rasterize SVG image:', error)
+      }
+    })())
+  }
+  await Promise.all(tasks)
 }
 
 /**

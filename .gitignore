@@ -15,8 +15,7 @@ playwright-report
 .next/
 out/
 build
-
-# TypeScript incremental build cache
+build-e2e
 *.tsbuildinfo
 
 # misc
@@ -66,6 +65,7 @@ package-lock.json
 **/rawdata.txt
 .kiro/handoff-*.md
 .claude/
+.codex/
 .zed/
 .ftre/memory/
 .vscode/settings.json

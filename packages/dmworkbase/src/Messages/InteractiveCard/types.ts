@@ -51,6 +51,8 @@ export interface InteractiveCardPayload {
   plain: string;
   card_version: string;
   profile: string;
+  /** 可选视觉兼容代际；缺失永久表示 legacy。 */
+  render_profile?: string;
   /** P2 tolerant-only，波 1 不实现任何行为。 */
   card_seq?: number;
   /** P2 tolerant-only，波 1 不实现任何行为。 */

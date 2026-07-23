@@ -14,7 +14,7 @@ import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
 import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
-import { SummaryDetailPage } from "@dmwork/summary";
+import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
 import { isLoopCliAuthorizePath, LOOP_CLI_AUTHORIZE_PATH } from "@octo/loop";
@@ -79,6 +79,7 @@ function clearExpiredStandaloneSessionAndReload(): void {
 
 /** `/s/:taskNo` — summary taskNo is a single URL path segment, optional trailing slash. */
 const STANDALONE_SUMMARY_PATH = /^\/s\/([A-Za-z0-9_-]+)\/?$/;
+const STANDALONE_SUMMARY_SHARE_PATH = /^\/s\/share\/([A-Za-z0-9_-]+)\/?$/;
 
 export function parseStandaloneSummaryTaskNo(pathname: string): string | null {
     if (typeof pathname !== "string") return null;
@@ -91,6 +92,12 @@ export function parseStandaloneSummaryTaskNo(pathname: string): string | null {
 // SummaryDetailPage with an undefined taskId).
 export function isStandaloneSummaryPath(pathname: string): boolean {
     return parseStandaloneSummaryTaskNo(pathname) !== null;
+}
+
+export function parseStandaloneSummaryShareId(pathname: string): string | null {
+    if (typeof pathname !== "string") return null;
+    const match = STANDALONE_SUMMARY_SHARE_PATH.exec(pathname);
+    return match ? match[1] : null;
 }
 
 function applyStandaloneSummarySpaceFromQuery(): void {
@@ -434,6 +441,19 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             // written for a first-time visitor — onLogin consumes it via consumeStandaloneReturn.
             persistStandaloneReturn();
             // Anonymous: fall through to the login screen (below) without navigating away.
+        }
+
+        // Read-only shared summary deep-link (`/s/share/:shareId`). It uses the same
+        // clean cold-load session recovery as task summary deep-links.
+        const standaloneShareId = parseStandaloneSummaryShareId(window.location.pathname);
+        if (standaloneShareId) {
+            if (!WKApp.loginInfo.token) WKApp.loginInfo.load();
+            if (!WKApp.loginInfo.token) recoverOctoSessionFromStorage(true);
+            if (WKApp.loginInfo.token) {
+                applyStandaloneSummarySpaceFromQuery();
+                return <SummaryShareDetailPage shareId={standaloneShareId} />;
+            }
+            persistStandaloneReturn();
         }
 
         // Standalone summary deep-link (`/s/:taskNo`): notification cards use task_no (not numeric

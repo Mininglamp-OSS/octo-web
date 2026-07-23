@@ -27,6 +27,12 @@ import { getPulldownRestoredScrollTop, getRestoredAnchorScrollTop } from "./hist
 import { applyMsgLevelExternalFieldsWithFallback } from "../../Service/Convert";
 import { wrapSendContentForInjection } from "../../Utils/sendContentProxy";
 import { isMessageSelectable } from "../../Service/messageSelection";
+import { canReadMessageReaction } from "../../Service/featureFlags";
+import MessageReactionService from "../../Service/MessageReactionService";
+import {
+    createMessageReactionSyncController,
+    messageReactionCommandSeq,
+} from "../../features/messageReaction/syncController";
 import {
     addImConnectStatusListener,
     handleImReconnectRefresh,
@@ -136,6 +142,7 @@ export default class ConversationVM extends ProviderListener {
     private liveFoldRevokeClientMsgNos: Set<string> = new Set()
     afterFoldSessionClientMsgNos: Set<string> = new Set() // 紧跟在折叠卡片后的消息，需强制独立显示
     private foldSessionActiveTimer: ReturnType<typeof setTimeout> | null = null // 协作态超时自动结束
+    private reactionSyncController: ReturnType<typeof createMessageReactionSyncController>
 
     fileDragEnter?: boolean // 文件拖拽上传（拖进来了）
     fileDragLeave?: boolean // 文件拖拽上传（拖离开了）
@@ -161,6 +168,15 @@ export default class ConversationVM extends ProviderListener {
     constructor(channel: Channel, initLocateMessageSeq?: number) {
         super()
         this.channel = channel
+        this.reactionSyncController = createMessageReactionSyncController({
+            channel,
+            // messagesOfOrigin 是已加载消息的权威集合；pullupHasMore 期间新消息先进入
+            // pendingMessages，必须一并参与 reaction 合并，避免游标先推进后漏掉该消息。
+            getMessages: () => [...this.messagesOfOrigin, ...this.pendingMessages]
+                .map((message) => message.message),
+            sync: (request) => MessageReactionService.sync(request),
+            notify: () => this.notifyListener(),
+        })
         if (initLocateMessageSeq == 0) {
             this.initLocateMessageSeq = undefined
         } else {
@@ -922,6 +938,13 @@ export default class ConversationVM extends ProviderListener {
                     })
                 }
 
+            } else if (canReadMessageReaction()) {
+                const seq = messageReactionCommandSeq(cmdContent.cmd, param, this.channel)
+                if (seq !== undefined) {
+                    void this.reactionSyncController.request(seq).catch((err) => {
+                        console.error('[ConversationVM] syncMessageReaction failed:', err)
+                    })
+                }
             }
         }
         WKSDK.shared().chatManager.addCMDListener(this.cmdListener)

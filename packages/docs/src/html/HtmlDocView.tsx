@@ -17,7 +17,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
-import { canForwardToChat, openDocForward, t, getWKApp } from '../octoweb/index.ts'
+import { canForwardToChat, t, getWKApp, getCurrentUid } from '../octoweb/index.ts'
+import { getDoc, getUserName } from '../pages/docsApi.ts'
+import { useMemberNames } from '../members/useMemberNames.ts'
+import { startDocForward } from '../forward/startDocForward.ts'
+import { avatarUrlForUid } from './htmlAvatar.ts'
+import { canManage, type Role } from '../auth/roles.ts'
 import { buildDocLink } from '../forward/link.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
@@ -195,6 +200,12 @@ export interface HtmlDocViewProps {
   version?: string
   /** Called after the doc is deleted so the shell returns to the list + refreshes it (mirror of SheetView). */
   onDeleted?: (docId: string) => void
+  /**
+   * Standalone /d/:docId (externally shared) surface flag. When true the creator name resolves
+   * nickname-only (skips the member map, forces `preferRealName:false`) so a link holder never
+   * sees the creator's verified real_name — mirrors EditorShell/BoardShell's XIN-392 P2-1 gate.
+   */
+  creatorNicknameOnly?: boolean
 }
 
 /**
@@ -243,13 +254,21 @@ type LoadState =
 // doc creator. __ODOC__ (core.OverlayConfig) does NOT carry creator_uid — so never derive
 // authorship by comparing viewer uid against identity.login (that is always the viewer =
 // always true). Authorship comes from window.__ODOC_CAP__.isAuthor (see parseOdocCap).
+//
+// creator_uid / creator_name / created_at fields are DEPRECATED — the header now reads
+// ownerId/createdAt from docs-backend getDoc (single source of truth, same as EditorShell).
+// Interface entries retained only so a payload that still carries them parses cleanly; DO NOT
+// reintroduce readers of these fields — future backends may drop them without notice.
 interface OctoDocMeta {
   slug?: string
   title?: string
   version?: number
   identity?: { login?: string; name?: string } | null
+  /** @deprecated use docs-backend getDoc().ownerId */
   creator_uid?: string
+  /** @deprecated use docs-backend getUserName(ownerId) */
   creator_name?: string
+  /** @deprecated use docs-backend getDoc().createdAt */
   created_at?: string
 }
 
@@ -275,7 +294,7 @@ function parseOdocCap(html: string): boolean {
   return m?.[1] === 'true'
 }
 
-export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted }: HtmlDocViewProps) {
+export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted, creatorNicknameOnly }: HtmlDocViewProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   // Guards a late fetch resolve from overwriting state after the docId/slug changed.
   const reqSeq = useRef(0)
@@ -299,13 +318,90 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
   // viewer uid to any __ODOC__ field: identity there is the viewer itself and creator_uid is absent,
   // so a client-side comparison would make every viewer an "author" (the invited-viewer-as-owner bug).
   const isAuthor = state.status === 'ready' ? state.isAuthor : false
-  // Title: backend does not expose a human title yet → fall back to slug. Creator: prefer a
-  // display name, else the creator/login uid.
+
+  // Creator + role now come from docs-backend (getDoc → resolveRole), not from the inlined
+  // __ODOC__ blob. Keeps HTML docs on the same data source as EditorShell/BoardShell/SheetView so
+  // creator display and forward-grant capability are computed identically across doc kinds.
+  // Fail-soft: 404 (裸 doc, no doc_meta) / 403 leaves everything undefined → header falls back to
+  // the slug/initial and forward授权 stays greyed, without crashing.
+  const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
+  const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
+  const [role, setRole] = useState<Role | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    // standalone /d/:docId mounts before the space is restored, so the request interceptor injects
+    // no X-Space-Id; pass it explicitly (same as EditorShell's getDoc call).
+    const opts = space ? { spaceId: space } : undefined
+    // docs-backend `/docs/{docId}` is keyed by docId — MUST NOT be effectiveSlug/slug. Standalone
+    // /d/:docId passes docId=meta.docId + slug=meta.octoDocSlug as two distinct identifiers, so a
+    // slug lookup 404s and silently zeroes ownerId/createdAt/role (creator display + forward授权
+    // break). octo-doc render/comment/asset paths keep using effectiveSlug; only this docs-backend
+    // hop is docId-keyed.
+    getDoc(docId, opts)
+      .then((m) => {
+        if (cancelled) return
+        if (typeof m?.ownerId === 'string' && m.ownerId) setOwnerId(m.ownerId)
+        if (typeof m?.createdAt === 'string' && m.createdAt) setCreatedAt(m.createdAt)
+        if (m?.role) setRole(m.role)
+      })
+      .catch(() => {
+        /* fail-soft: creator/created/role stay undefined; header uses fallbacks, canGrant=false */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [docId, space])
+
+  // Resolve creator display name (parity with EditorShell): in-shell prefers the already-loaded
+  // space-member map (free), then falls back to GET /users/:uid for a verified real name. The
+  // standalone surface (creatorNicknameOnly) SKIPS the member map entirely and forces nickname-
+  // only so a link holder never sees the creator's verified real_name (XIN-392 P2-1).
+  const names = useMemberNames(space)
+  const [creatorName, setCreatorName] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    setCreatorName(undefined)
+    if (!ownerId) return
+    if (!creatorNicknameOnly) {
+      const fromMembers = names.get(ownerId)
+      if (fromMembers && fromMembers !== ownerId) {
+        setCreatorName(fromMembers)
+        return
+      }
+    }
+    let cancelled = false
+    getUserName(ownerId, { preferRealName: !creatorNicknameOnly })
+      .then((name) => {
+        if (!cancelled && name) setCreatorName(name)
+      })
+      .catch(() => {
+        /* keep the uid fallback */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ownerId, names, creatorNicknameOnly])
+
+  // Title: backend does not expose a human title yet → fall back to slug.
   const headerTitle = meta?.title || effectiveSlug
-  const headerCreator = meta?.creator_name || meta?.creator_uid || '—'
-  // Author-only affordances (member management, delete) gate on the backend flag, never on uid math.
-  const creatorUid = meta?.creator_uid
-  const canManage = isAuthor
+  // Creator display: resolved name → short uid → placeholder. Never blank, never crashes.
+  const headerCreator = creatorName || (ownerId ? ownerId.slice(0, 8) : '—')
+  const creatorAvatarUrl = avatarUrlForUid(ownerId)
+  // Two independent gates, kept separate on purpose (合并 = UI 骗人):
+  //   - canManageBackend: docs-backend admin, drives Share/Invite/Requests inside the panel.
+  //     role=null (still resolving) collapses to false — the panel renders a loading placeholder
+  //     for those slots rather than a half-baked admin UI.
+  //   - canOpenPanel: entry-visibility union — either authority is enough to see the button and
+  //     open the modal. When role is still resolving, canOpenPanel short-circuits on isAuthor so
+  //     a non-author viewer never gets a flashed entry that later disappears.
+  // The panel itself derives canManageAuthorGrants from isAuthor alone; we intentionally stop
+  // forwarding the legacy `canManage` prop so a merged authority can never leak the author-only
+  // slots (Add member / Current Members) or trigger the author-only listGrants 403.
+  // The header ≡ Delete affordance is gated on isAuthor for the same reason — symmetric with the
+  // grants-side hiding, so a docs-backend admin who is not the author never sees a guaranteed-403
+  // affordance whose backend is octo-doc /v1/docs/{slug} (author-only).
+  const creatorUid = ownerId
+  const canManageBackend = role != null && canManage(role)
+  const canOpenPanel = isAuthor || canManageBackend
   // Browser-openable address for forwarding this doc to chat. Build the PATH-style standalone
   // link (/d/<docId>?sp=<space>) like every other kind (buildDocLink), NOT window.location.href:
   // the in-shell address is the legacy /docs?doc= query form, whose docId is wiped by the host's
@@ -315,12 +411,21 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
   const docUrl = buildDocLink({ docId, space })
   const canForward = canForwardToChat()
 
+  // Forward-to-chat: unified with EditorShell/BoardShell/SheetView via startDocForward — it computes
+  // canGrant = computeCanGrant(role, currentUid, ownerId) and wires the per-uid grant executor
+  // against POST /docs/{docId}/forward-grant. Early-return while role is still loading so we never
+  // send canGrant=false before resolveRole has spoken (mirrors EditorShell's `if (!role) return`).
   const doForward = useCallback(() => {
-    if (!canForward) return
-    // Doc-level forward: the whole document link (not a specific comment). canGrant=false — this
-    // shares a read link, not an access grant.
-    openDocForward({ docId, title: headerTitle, link: docUrl, canGrant: false })
-  }, [canForward, docId, headerTitle, docUrl])
+    if (!canForward || !role) return
+    startDocForward({
+      docId,
+      title: headerTitle,
+      role,
+      currentUid: getCurrentUid(),
+      ownerId,
+      space,
+    })
+  }, [canForward, docId, headerTitle, role, ownerId, space])
 
   const confirmDeleteDoc = useCallback(() => {
     setDeleting(true)
@@ -467,9 +572,11 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
           >
             💬 {t('docs.toolbar.comments')}
           </button>
-          {/* Forward gated on canForward so it never renders as a dead no-op where the host lacks the
-              conversation-select surface (the standalone /d/ page). */}
-          {canForward && (
+          {/* Forward gated on canForward (no dead entry where the host lacks the conversation-select
+              surface, e.g. standalone /d/) AND on role (mirrors EditorShell.tsx role && canForward:
+              while role is unresolved — getDoc 404 fail-soft or still loading — the button hides
+              instead of rendering a silent no-op the doForward guard would swallow). */}
+          {role && canForward && (
             <button
               type="button"
               className="octo-tb-btn octo-doc-forward-btn"
@@ -479,10 +586,10 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
               ⤴ {t('docs.forward.entry')}
             </button>
           )}
-          {/* Members button is author-only: a reader has no member-management capability, so
-              the entry is hidden entirely (parity with EditorShell's `{manage && …}` gate) rather
-              than rendered as a click-to-empty no-op. */}
-          {canManage && (
+          {/* Members panel entry: hidden entirely for viewers who can neither manage member grants
+              (author) nor manage docs-backend Share/Invites/Access-Requests (admin), matching the
+              two backend authorities that the panel writes against. */}
+          {canOpenPanel && (
             <button
               type="button"
               className={membersOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
@@ -495,7 +602,8 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
           )}
           <DocMoreMenu
             creatorName={headerCreator}
-            createdAt={meta?.created_at}
+            creatorAvatarUrl={creatorAvatarUrl}
+            createdAt={createdAt}
             items={[
               {
                 key: 'open-new-page',
@@ -503,7 +611,10 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
                 icon: OpenNewPageIcon,
                 onClick: () => window.open(docUrl, '_blank'),
               },
-              ...(canForward
+              // Twin of the toolbar Forward at :579 — same `role && canForward` gate so both
+              // affordances hide together when role is unresolved (getDoc 404 fail-soft), instead of
+              // leaving a dead menu row that doForward's role guard would swallow.
+              ...(role && canForward
                 ? [
                     {
                       key: 'forward',
@@ -515,7 +626,11 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
                 : []),
             ]}
             dangerItem={
-              canManage
+              // Delete is author-only, matching htmlDocAdmin.deleteDoc's octo-doc backend
+              // ("caller gates the UI entry"). Symmetric with the grants-side hiding of Add/Current
+              // members from an admin-not-author viewer (OCT-216) — two backend authorities kept
+              // independent so a docs-backend admin never sees a guaranteed-403 affordance.
+              isAuthor
                 ? {
                     key: 'delete',
                     label: t('docs.doc.deleteEntry'),
@@ -546,7 +661,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
       {/* Members open in a centered modal dialog (overlay + click-outside to close), matching the
           rich-doc member modal (EditorShell #A4) so HTML docs share the same floating-panel shape.
           Only the panel CONTENT differs (HtmlMemberPanel → octo-doc grants), never the shell. */}
-      {membersOpen && canManage && (
+      {membersOpen && canOpenPanel && (
         <div className="octo-modal-overlay" role="presentation" onMouseDown={() => setMembersOpen(false)}>
           <div
             className="octo-modal"
@@ -559,8 +674,10 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
               slug={effectiveSlug}
               space={space}
               creatorUid={creatorUid}
-              canManage={canManage}
               onClose={() => setMembersOpen(false)}
+              docId={docId}
+              role={role}
+              isAuthor={isAuthor}
             />
           </div>
         </div>

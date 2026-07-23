@@ -5,7 +5,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C28 @edge loop squad member status polling baseline — 详情稳定渲染, 未因 polling crash", async ({
+test("@C28 @p0 @loop @squad @edge loop squad member status polling baseline — 详情稳定渲染, 未因 polling crash", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-squad");

@@ -1,4 +1,4 @@
-import WKSDK, {
+import {
   Channel,
   ChannelInfo,
   ChannelInfoListener,
@@ -12,7 +12,7 @@ import { MessageContentTypeConst } from "../../Service/Const";
 import { ProviderListener } from "../../Service/Provider";
 import { debounce } from "../../Utils/rateLimit";
 import { t } from "../../i18n";
-import { addImChannelInfoListener, getImChannelInfo } from "../../im-runtime/channelRuntime";
+import { addCurrentImChannelInfoListener, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
 /** Legacy contacts/groups bridge retained while the aggregated tabs migrate. */
 export default class GlobalSearchVM extends ProviderListener {
@@ -64,8 +64,7 @@ export default class GlobalSearchVM extends ProviderListener {
   // 搜索标题
   public get searchTitle() {
     if (this.searchInChannel) {
-      const channelInfo = getImChannelInfo(
-        WKSDK.shared(),
+      const channelInfo = getCurrentImChannelInfo(
         this.channel!
       );
       if (channelInfo) {
@@ -116,8 +115,7 @@ export default class GlobalSearchVM extends ProviderListener {
       }
     };
 
-    this.unsubscribeChannelInfoListener = addImChannelInfoListener(
-      WKSDK.shared(),
+    this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(
       this.channelInfoListener
     );
   }

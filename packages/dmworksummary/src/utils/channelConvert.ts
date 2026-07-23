@@ -30,5 +30,11 @@ export function channelToChatCandidate(channel: {
         chat_type: chatType,
         name: info?.title || channel.channelID,
         member_count: (info?.orgData as any)?.member_count ?? null,
+        // ThreadStatus.Archived = 2. The chat-entry modal builds its default
+        // candidate from WK channel metadata rather than the summary API, so
+        // preserve the archived bit here for the agent access bridge.
+        ...(chatType === 'thread' && (info?.orgData as any)?.thread?.status === 2
+            ? { is_archived: true }
+            : {}),
     };
 }

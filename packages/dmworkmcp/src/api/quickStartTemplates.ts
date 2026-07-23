@@ -1,4 +1,4 @@
-import { isSecretKey, slugifyServerName } from "../utils/constants";
+import { slugifyServerName } from "../utils/constants";
 import type { McpQuickStart } from "../types/mcp";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -63,15 +63,10 @@ function serverKey(qs: McpQuickStart): string {
 function buildJson(qs: McpQuickStart): string {
   const key = serverKey(qs);
   if (isRemote(qs)) {
-    // Bearer token overrides any user-supplied Authorization header: we set
-    // it AFTER spreading the user headers, so `merged.Authorization` is the
-    // masked bearer line regardless of what came in. yujiawei PR#851 P2:
-    // the previous comment claimed user headers won on collision, which the
-    // code contradicts.
-    const merged: Record<string, string> = maskSecrets(qs.headers ?? {});
-    if (qs.authType === "bearer") {
-      merged.Authorization = `Bearer ${TOKEN_PLACEHOLDER}`;
-    }
+    const merged = applyUserSuppliedPlaceholder(
+      qs.headers ?? {},
+      qs.headersUserSupplied
+    );
     const server: Record<string, unknown> = {
       type: jsonTypeField(qs),
       url: qs.url ?? "",
@@ -87,19 +82,24 @@ function buildJson(qs: McpQuickStart): string {
     args: qs.args ?? [],
   };
   if (qs.env && Object.keys(qs.env).length > 0) {
-    server.env = maskSecrets(qs.env);
+    server.env = applyUserSuppliedPlaceholder(qs.env, qs.envUserSupplied);
   }
   return JSON.stringify({ mcpServers: { [key]: server } }, null, 2);
 }
 
-/** Replace secret-looking values with the token placeholder so the snippet is
- *  copy-pasteable without leaking anything the user's browser echoed back. Uses
- *  the same key pattern as the backend redaction rule (mcp-v1.md §5.1) so the
- *  frontend's "this is a secret" judgement matches the wire. */
-function maskSecrets(m: Record<string, string>): Record<string, string> {
+/** Render each key/value from the persisted map, substituting the visible
+ *  token placeholder for any key that the MCP author marked as
+ *  "user-supplied" (`headers_user_supplied` / `env_user_supplied`). Values
+ *  for shared keys pass through verbatim — the author chose to publish them,
+ *  and the copy-paste snippet has to include them for the config to work. */
+function applyUserSuppliedPlaceholder(
+  m: Record<string, string>,
+  userSupplied: string[] | undefined
+): Record<string, string> {
+  const supplied = new Set(userSupplied ?? []);
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(m)) {
-    out[k] = isSecretKey(k) ? TOKEN_PLACEHOLDER : v;
+    out[k] = supplied.has(k) ? TOKEN_PLACEHOLDER : v;
   }
   return out;
 }
@@ -121,7 +121,6 @@ type PromptTexts = {
     transport: string;
     url: string;
     extraHeaders: string;
-    auth: string;
   }) => string;
   stdio: (v: {
     serverName: string;
@@ -129,41 +128,38 @@ type PromptTexts = {
     args: string;
     env: string;
   }) => string;
-  authBearer: (token: string) => string;
   headersLabel: string;
   envLabel: string;
 };
 
 const PROMPT_TEXTS: Record<"zh" | "en", PromptTexts> = {
   zh: {
-    remote: ({ serverName, transport, url, extraHeaders, auth }) =>
+    remote: ({ serverName, transport, url, extraHeaders }) =>
       `帮我接入一个 MCP server：
 - 名称：${serverName}
 - 传输方式：${transport}
-- 地址：${url}${extraHeaders}${auth}
+- 地址：${url}${extraHeaders}
 请把它加到我的 MCP 配置里并确认连接可用。`,
     stdio: ({ serverName, command, args, env }) =>
       `帮我接入一个本地（stdio）MCP server：
 - 名称：${serverName}
 - 启动命令：${command} ${args}${env}
 请把它加到我的 MCP 配置里并确认连接可用。`,
-    authBearer: (token) => `\n鉴权：请求头 Authorization: Bearer ${token}`,
     headersLabel: "\n请求头：",
     envLabel: "\n环境变量：",
   },
   en: {
-    remote: ({ serverName, transport, url, extraHeaders, auth }) =>
+    remote: ({ serverName, transport, url, extraHeaders }) =>
       `Please help me add an MCP server:
 - Name: ${serverName}
 - Transport: ${transport}
-- URL: ${url}${extraHeaders}${auth}
+- URL: ${url}${extraHeaders}
 Add it to my MCP config and confirm the connection works.`,
     stdio: ({ serverName, command, args, env }) =>
       `Please help me add a local (stdio) MCP server:
 - Name: ${serverName}
 - Command: ${command} ${args}${env}
 Add it to my MCP config and confirm the connection works.`,
-    authBearer: (token) => `\nAuth: header Authorization: Bearer ${token}`,
     headersLabel: "\nHeaders: ",
     envLabel: "\nEnv: ",
   },
@@ -181,14 +177,15 @@ function currentPromptLocale(): "zh" | "en" {
 function buildPrompt(qs: McpQuickStart): string {
   const texts = PROMPT_TEXTS[currentPromptLocale()];
   if (isRemote(qs)) {
-    const auth =
-      qs.authType === "bearer" ? texts.authBearer(TOKEN_PLACEHOLDER) : "";
+    const headerSupplied = new Set(qs.headersUserSupplied ?? []);
     const extraHeaders =
       qs.headers && Object.keys(qs.headers).length > 0
         ? texts.headersLabel +
           Object.entries(qs.headers)
             .map(([k, v]) =>
-              isSecretKey(k) ? `${k}: ${TOKEN_PLACEHOLDER}` : `${k}: ${v}`
+              headerSupplied.has(k)
+                ? `${k}: ${TOKEN_PLACEHOLDER}`
+                : `${k}: ${v}`
             )
             .join(", ")
         : "";
@@ -197,7 +194,6 @@ function buildPrompt(qs: McpQuickStart): string {
       transport: qs.transport,
       url: qs.url ?? "",
       extraHeaders,
-      auth,
     });
   }
   // Shell-quote any arg containing whitespace so an arg like `--config "a b"`
@@ -209,12 +205,13 @@ function buildPrompt(qs: McpQuickStart): string {
       /\s/.test(a) ? `"${a.replace(/(["\\])/g, "\\$1")}"` : a
     )
     .join(" ");
+  const envSupplied = new Set(qs.envUserSupplied ?? []);
   const env =
     qs.env && Object.keys(qs.env).length > 0
       ? texts.envLabel +
         Object.entries(qs.env)
           .map(([k, v]) =>
-            isSecretKey(k) ? `${k}=${TOKEN_PLACEHOLDER}` : `${k}=${v}`
+            envSupplied.has(k) ? `${k}=${TOKEN_PLACEHOLDER}` : `${k}=${v}`
           )
           .join(", ")
       : "";

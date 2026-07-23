@@ -301,3 +301,61 @@ describe("parseImportJSON — flat server.json-ish format", () => {
     expect(r.fields.transport).toBe("stdio");
   });
 });
+
+describe("parseImportJSON — Format C (single-key wrapper, vendor exports)", () => {
+  // Real payload from a mixreach export — mcpServers wrapper omitted,
+  // transport aliased as `protocol_type`, value uses underscore.
+  it("mixreach-style: single-key wrapper + protocol_type + streamable_http", () => {
+    const raw = JSON.stringify({
+      "mixreach-mcp-tools": {
+        url: "https://open-api-mixreach.cn.miaozhen.com/mcp_server/mcp/",
+        headers: { Authorization: "Bearer jajJJDHqIEJDKkkk" },
+        protocol_type: "streamable_http",
+      },
+    });
+    const r = parseImportJSON(raw);
+    expect(r.error).toBeUndefined();
+    expect(r.fields.name).toBe("mixreach-mcp-tools");
+    expect(r.fields.slug).toBe("mixreach-mcp-tools");
+    expect(r.fields.url).toBe(
+      "https://open-api-mixreach.cn.miaozhen.com/mcp_server/mcp/"
+    );
+    expect(r.fields.headerKeys).toEqual(["Authorization"]);
+    expect(r.fields.transport).toBe("streamable-http");
+    // Real header value → the "values dropped" warning fires so the user
+    // knows the Bearer token wasn't imported.
+    expect(r.warnings).toContain(
+      "mcp.create.import.warning.headerValuesDropped"
+    );
+  });
+
+  it("multiple single-key entries → first wins + multipleServers warning", () => {
+    const raw = JSON.stringify({
+      first: { url: "https://a", type: "streamable-http" },
+      second: { url: "https://b", type: "sse" },
+    });
+    const r = parseImportJSON(raw);
+    expect(r.error).toBeUndefined();
+    expect(r.fields.name).toBe("first");
+    expect(r.fields.url).toBe("https://a");
+    expect(r.warnings).toContain(
+      "mcp.create.import.warning.multipleServers"
+    );
+  });
+
+  it("top-level non-server entries don't false-positive as Format C", () => {
+    // A JSON blob whose top-level values are primitives or unrelated objects
+    // should NOT be interpreted as a single-key wrapper.
+    const r = parseImportJSON(
+      JSON.stringify({ someRandom: "just a string" })
+    );
+    expect(r.error).toBe("mcp.create.import.error.unknownFormat");
+  });
+
+  it("`type` also accepts the underscore variant streamable_http", () => {
+    const r = parseImportJSON(
+      JSON.stringify({ url: "https://x", type: "streamable_http" })
+    );
+    expect(r.fields.transport).toBe("streamable-http");
+  });
+});

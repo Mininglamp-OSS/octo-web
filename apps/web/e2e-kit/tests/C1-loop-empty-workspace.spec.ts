@@ -11,7 +11,7 @@
 
 import { test, expect } from "../fixtures-authed";
 
-test("@C1 loop 空 workspace 引导 — 打开 /loop 空态显示 '还没有工作区' + 创建按钮", async ({
+test("@C1 @p0 @loop @workspace loop 空 workspace 引导 — 打开 /loop 空态显示 '还没有工作区' + 创建按钮", async ({
   authedPage,
 }) => {
   await authedPage.goto("/loop?sid=e2etest");

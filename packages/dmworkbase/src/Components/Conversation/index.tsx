@@ -32,6 +32,13 @@ import { MessageWrap, Part, PartType } from "../../Service/Model";
 import WKApp from "../../App";
 import { RevokeCell } from "../../Messages/Revoke";
 import {
+  MAX_REEDIT_FILE_BYTES,
+  canReeditRevokedMessage,
+  getReeditableMessageBlocks,
+  remoteReeditFileToFile,
+  restoreReeditableMessageBlocks,
+} from "../../Messages/Revoke/reeditableMessage";
+import {
   MessageContentTypeConst,
   ChannelTypeCommunityTopic,
 } from "../../Service/Const";
@@ -85,6 +92,7 @@ import {
 } from "../../Messages/RichText/RichTextContent";
 import { formatMessageTimestamp } from "../../Utils/time";
 import { isSafeUrl } from "../../Utils/security";
+import { imageBlockToPasteFile } from "../MessageInput/richTextPaste";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -127,6 +135,20 @@ import {
   getImChannelInfo,
   getImChannelSubscribers,
 } from "../../im-runtime/channelRuntime";
+import {
+  SummaryCardContent,
+  SummaryCardForwardBlockedError,
+} from "../../Messages/SummaryCard/SummaryCardContent";
+
+function forwardBlockedMessageKey(error: unknown): string | null {
+  if (error instanceof InteractiveCardForwardBlockedError) {
+    return "base.conversation.forward.interactiveCardBlocked";
+  }
+  if (error instanceof SummaryCardForwardBlockedError) {
+    return "base.conversation.forward.cardBlocked";
+  }
+  return null;
+}
 
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
@@ -154,6 +176,9 @@ function getEffectiveContent(message: Message): MessageContent {
         trustedForwardSource
       );
     }
+  }
+  if (content instanceof SummaryCardContent && content.shareId) {
+    throw new SummaryCardForwardBlockedError();
   }
   return content;
 }
@@ -557,11 +582,8 @@ export class Conversation
         this.showForwardResult(result, "targets");
       } catch (e) {
         console.error("[forward] build content failed", e);
-        Toast.error(
-          e instanceof InteractiveCardForwardBlockedError
-            ? t("base.conversation.forward.interactiveCardBlocked")
-            : t("base.conversation.forward.allFailed"),
-        );
+        const blockedMessageKey = forwardBlockedMessageKey(e);
+        Toast.error(t(blockedMessageKey ?? "base.conversation.forward.allFailed"));
       }
     });
   }
@@ -647,6 +669,66 @@ export class Conversation
       message.channel
     );
     return newMessage;
+  }
+
+  async reeditRevokedMessage(message: MessageWrap): Promise<void> {
+    if (!canReeditRevokedMessage(message, WKApp.loginInfo.uid)) return;
+    const input = this.messageInputContext();
+    if (!input) return;
+
+    await restoreReeditableMessageBlocks(
+      getReeditableMessageBlocks(message),
+      {
+        restoreBlock: async (block) => {
+          if (block.type === "content") {
+            input.insertContent(block.content);
+            return;
+          }
+          if (block.type === "image") {
+            const file = await imageBlockToPasteFile(
+              block,
+              WKApp.dataSource.commonDataSource.getImageURL.bind(
+                WKApp.dataSource.commonDataSource
+              )
+            );
+            if (!file) {
+              input.insertContent([
+                { type: "text", text: RichTextImagePlaceholder },
+              ]);
+              Toast.error(t("base.revoke.reeditAttachmentFailed"));
+              return;
+            }
+            await input.addAttachment([file], "paste");
+            return;
+          }
+
+          const fileUrl = resolveSafeFileUrl(block);
+          const file = fileUrl
+            ? await remoteReeditFileToFile({ ...block, url: fileUrl })
+            : null;
+          if (!file) {
+            Toast.error(
+              t("base.revoke.reeditFileFailed", {
+                values: {
+                  name: block.name,
+                  max: formatFileSize(MAX_REEDIT_FILE_BYTES),
+                },
+              })
+            );
+            return;
+          }
+          await input.addAttachment([file], "upload");
+        },
+        onBlockError: (block, error) => {
+          console.error(
+            `[revoke] failed to restore ${block.type} block`,
+            error
+          );
+          Toast.error(t("base.revoke.reeditBlockFailed"));
+        },
+        onComplete: () => input.focus(),
+      }
+    );
   }
 
   /**
@@ -2626,13 +2708,8 @@ export class Conversation
                             this.showForwardResult(result, "messages");
                           } catch (e) {
                             console.error("[forward] build content failed", e);
-                            Toast.error(
-                              e instanceof InteractiveCardForwardBlockedError
-                                ? t(
-                                    "base.conversation.forward.interactiveCardBlocked"
-                                  )
-                                : t("base.conversation.forward.allFailed"),
-                            );
+                            const blockedMessageKey = forwardBlockedMessageKey(e);
+                            Toast.error(t(blockedMessageKey ?? "base.conversation.forward.allFailed"));
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();
@@ -2665,13 +2742,8 @@ export class Conversation
                               "[merge-forward] build content failed",
                               e,
                             );
-                            Toast.error(
-                              e instanceof InteractiveCardForwardBlockedError
-                                ? t(
-                                    "base.conversation.forward.interactiveCardBlocked"
-                                  )
-                                : t("base.conversation.forward.allFailed"),
-                            );
+                            const blockedMessageKey = forwardBlockedMessageKey(e);
+                            Toast.error(t(blockedMessageKey ?? "base.conversation.forward.allFailed"));
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();

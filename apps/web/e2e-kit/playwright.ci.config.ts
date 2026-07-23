@@ -1,22 +1,19 @@
 /* eslint-disable no-undef -- e2e code runs in Node */
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// 注: 用 __dirname (CJS) 而不是 import.meta.url. 本 repo root 无 "type": "module",
+// playwright pirates transform 走 CJS 加载 config, import.meta 挂不上会报
+// "exports is not defined in ES module scope". 跟 playwright.config.ts 保持一致.
 
 /**
- * kit-provided CI-only config. 差异 vs playwright.config.ts:
- *  - webServer.command 改成 preview / static-serve (build 产物, 冷启快)
+ * CI-only playwright config (adapted from e2e-kit v0.4). 差异 vs playwright.config.ts:
+ *  - webServer.command: pnpm preview:e2e (build 产物, 冷启快)
  *  - reuseExistingServer: false (CI 每次都新)
- *  - PW_PREVIEW_PORT env: CI 各 job 用不同 port 隔离
+ *  - PW_PREVIEW_PORT env: 各 job 用不同 port 隔离
  *  - 硬约束 TARGET=local: CI 只跑 mock 模式, 真后端走另一条 pipeline
  *
- * TODO(接入方) 填占位:
- *  - `<PROJECT_PREVIEW_COMMAND>` — 例 "pnpm preview:e2e" 或 "node ci/static-serve.mjs"
- *  - `<PROJECT_ROOT_REL>` — 相对 e2e/ 到项目根 (通常 "..")
- *
- * 前提: 先 `pnpm build:e2e` 产 dist-e2e/, tree-shake 掉 harness route gate.
+ * 前提: 先 `pnpm build:e2e` 产 build-e2e/, tree-shake 掉 MSW / mock IM.
  */
 const PREVIEW_PORT = process.env.PW_PREVIEW_PORT ?? "5173";
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${PREVIEW_PORT}`;
@@ -56,14 +53,13 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 
   webServer: {
-    command: "<PROJECT_PREVIEW_COMMAND>",       // TODO
-    cwd: path.resolve(__dirname, "<PROJECT_ROOT_REL>"),  // TODO
+    command: "pnpm preview:e2e",
+    cwd: path.resolve(__dirname, ".."),
     url: `http://localhost:${PREVIEW_PORT}`,
     reuseExistingServer: false,
-    // 静态 http 服务 (推荐): 冷启 ~200ms. `vite preview` / `vp preview` 在
-    // 复杂 vite config (tailwind v4 / 多 plugin) 下冷启可能 > 60s 屡屡 timeout;
-    // 若必须走 vite preview, 请把 timeout 加到 180_000 且监控 CI runner 内存.
-    timeout: 30_000,
+    // vite preview 冷启在此项目大约 3-10s; 若 CI runner 内存受限或 vite plugin 复杂化,
+    // 可加 timeout 或改静态 http 服务. 当前 60s 留余量.
+    timeout: 60_000,
     stdout: "pipe",
     stderr: "pipe",
     env: { PW_PREVIEW_PORT: PREVIEW_PORT },

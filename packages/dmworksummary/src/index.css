@@ -880,6 +880,10 @@
     flex-wrap: wrap;
 }
 
+.summary-detail-back-to-chat {
+    flex: 0 0 auto;
+}
+
 .summary-detail-header-title-wrap {
     display: flex;
     flex-direction: column;
@@ -1252,6 +1256,12 @@
     line-height: 22px;
     font-size: 14px;
     color: #1C1F23;
+}
+
+.summary-detail-content-box .summary-content-markdown table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
 }
 
 .summary-detail-personal h3,

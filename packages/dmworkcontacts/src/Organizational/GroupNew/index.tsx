@@ -1,31 +1,18 @@
-import React from "react";
-import { Component, ReactNode } from "react";
-import WKSDK, { Channel, ChannelTypeGroup, ChannelTypePerson, Subscriber } from "wukongimjssdk";
+import React, { Component, ReactNode } from "react";
+import { Toast } from "@douyinfe/semi-ui";
 
-import {
-  Button,
-  Space,
-  Tree,
-  Input,
-  CheckboxGroup,
-  Checkbox,
-  Toast,
-} from "@douyinfe/semi-ui";
-import { BasicTreeNodeData } from "@douyinfe/semi-foundation/lib/cjs/tree/foundation";
-import { WKApp, ThemeMode, WKViewQueueHeader, WKModal, I18nContext, t, GroupAvatarPreview, GroupAvatarEditModal, getImChannelInfo, getImChannelSubscribers, syncImChannelSubscribers } from "@octo/base";
-import WKAvatar from "@octo/base/src/Components/WKAvatar";
-import AiBadge from "@octo/base/src/Components/AiBadge";
-import "./index.css";
-import { SuperGroup } from "@octo/base/src/Utils/const";
+import { I18nContext, t, WKApp } from "@octo/base";
 import { GROUP_NAME_MAX_LENGTH } from "@octo/base/src/Service/nameLimits";
-import { buildPrivateChatGroupMemberUids } from "./memberUids";
+
+import { useGroupCreate } from "../../bridge/groupCreate/useGroupCreate";
+import GroupCreateDialog from "../../ui/GroupCreateDialog";
 
 export enum OrganizationalGroupNewAction {
-  createGroup, // 创建群聊
-  AddMember // 添加成员
+  createGroup,
+  AddMember,
 }
 
-interface IPorpsOrganizationalGroupNew {
+interface OrganizationalGroupNewProps {
   channel: {
     channelID: string;
     channelType: number;
@@ -40,897 +27,175 @@ interface IPorpsOrganizationalGroupNew {
   keepSidebarTab?: boolean;
 }
 
-interface ISateOrganizationalGroupNew {
-  showModal: boolean;
-  optTitle: string;
-  organizationInfo: {
-    name: string;
-    is_upload_logo?: number;
-    org_id?: string;
-    short_no?: string;
-  };
-  treeData: any[];
-  optPersonnelData: any[];
-  isFriend: boolean;
-  friendData: any[];
-  friendSearchData: any[];
-  searchVaule: string;
-  // 发起群聊（createGroup）专用：群名 + 自定义头像态 + 二次弹窗开关。
-  groupName: string;
-  avatarText: string;
-  avatarColorIndex?: number;
-  showAvatarEdit: boolean;
+interface OrganizationalGroupNewState {
+  isOpen: boolean;
+}
+
+function GroupCreateFeature({
+  props,
+  isOpen,
+  onClose,
+}: {
+  props: OrganizationalGroupNewProps;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const mode =
+    props.action === OrganizationalGroupNewAction.createGroup
+      ? "createGroup"
+      : "addMember";
+  const model = useGroupCreate({
+    action: mode,
+    channel: props.channel,
+    isOpen,
+    defaultCategoryId: props.defaultCategoryId,
+    keepSidebarTab: props.keepSidebarTab,
+    onClose,
+    onSuccess: props.onSuccess,
+    notice: {
+      onError: (message) => Toast.error(message),
+      onNameRequired: () =>
+        Toast.warning(t("contacts.groupCreate.nameRequired")),
+      onMembersRequired: () =>
+        Toast.warning(t("contacts.groupNew.selectContactsWarning")),
+    },
+  });
+
+  const selectedTitle =
+    mode === "createGroup"
+      ? t("contacts.groupCreate.selectedCount", {
+          values: { count: model.selected.length },
+        })
+      : t(
+          props.channel.channelType === 1
+            ? "contacts.groupNew.title.createGroup"
+            : "contacts.groupNew.title.selectContacts"
+        );
+
+  return (
+    <GroupCreateDialog
+      mode={mode}
+      isOpen={isOpen}
+      copy={{
+        title: t("contacts.groupCreate.title"),
+        avatarLabel: t("contacts.groupCreate.avatarLabel"),
+        editAvatar: t("contacts.groupCreate.editAvatar"),
+        nameLabel: t("contacts.groupCreate.nameLabel"),
+        namePlaceholder: t("contacts.groupCreate.namePlaceholder"),
+        membersLabel: t("contacts.groupCreate.membersLabel"),
+        confirm: t("contacts.common.confirm"),
+        cancel: t("contacts.common.cancel"),
+      }}
+      form={{
+        groupName: model.groupName,
+        avatarText: model.avatar.text,
+        avatarColorIndex: model.avatar.colorIndex,
+        maxNameLength: GROUP_NAME_MAX_LENGTH,
+        isAvatarEditorOpen: model.avatar.isEditorOpen,
+      }}
+      memberPicker={{
+        mode,
+        candidates: model.candidates,
+        selected: model.selected,
+        selectedUids: model.selectedUidSet,
+        keyword: model.keyword,
+        copy: {
+          searchPlaceholder: t("contacts.common.search"),
+          selectedTitle,
+          confirm: t("contacts.common.confirm"),
+          cancel: t("contacts.common.cancel"),
+        },
+        avatarForUid: (uid) => WKApp.shared.avatarUser(uid),
+        actions: {
+          onKeywordChange: model.setKeyword,
+          onToggleMember: model.toggleMember,
+          onCancel: onClose,
+          onConfirm: model.submit,
+        },
+      }}
+      actions={{
+        onCancel: onClose,
+        onConfirm: model.submit,
+        onGroupNameChange: model.setGroupName,
+        onOpenAvatarEditor: model.avatar.openEditor,
+        onCloseAvatarEditor: model.avatar.closeEditor,
+        onSaveAvatar: model.avatar.save,
+      }}
+    />
+  );
 }
 
 export class OrganizationalGroupNew extends Component<
-  IPorpsOrganizationalGroupNew,
-  ISateOrganizationalGroupNew
+  OrganizationalGroupNewProps,
+  OrganizationalGroupNewState
 > {
   static contextType = I18nContext;
   declare context: React.ContextType<typeof I18nContext>;
 
-  state: ISateOrganizationalGroupNew = {
-    showModal: false,
-    optTitle: "",
-    organizationInfo: {
-      name: "",
-    },
-    treeData: [],
-    optPersonnelData: [],
-    isFriend: true,
-    friendData: [],
-    friendSearchData: [],
-    searchVaule: "",
-    groupName: "",
-    avatarText: "",
-    avatarColorIndex: undefined,
-    showAvatarEdit: false,
-  };
-  treeRef: any = React.createRef();
-
-  constructor(props: IPorpsOrganizationalGroupNew) {
-    super(props);
-  }
+  state: OrganizationalGroupNewState = { isOpen: false };
 
   componentDidMount(): void {
-    if (this.props.autoShow) {
-      this.onShowModal();
-    }
+    if (this.props.autoShow) this.open();
   }
 
-  // 获取加入公司
-  async getJoinOrganization() {
-    const res = await WKApp.apiClient.get("/organization/joined");
-    if (res && res.length > 0) {
-      const organizationInfo = res[0];
-      this.setState({
-        organizationInfo: organizationInfo,
-      });
-      if (organizationInfo) {
-        this.getOrganizationDepartment(organizationInfo.org_id);
-      }
-    }
-  }
-  // 获取加入公司所有部门
-  async getOrganizationDepartment(org_id: string) {
-    const res = await WKApp.apiClient.get(
-      `/organizations/${org_id}/department`
-    );
-    if (!res) return;
-    // 部门
-    const departments: any = Array.isArray(res.departments)
-      ? this.handleTree(res.departments)
-      : [];
-    // 人员
-    const employees: any[] = [];
-    if (!Array.isArray(res.employees)) {
-      this.setState({ treeData: [...departments] });
-      return;
-    }
-    res.employees.forEach((y: any) => {
-      employees.push({
-        label: y.employee_name,
-        value: y.employee_id,
-        key: `uid_${y.uid}`,
-        icon: (
-          <WKAvatar
-            src={WKApp.shared.avatarUser(y.uid as string)}
-            style={{ width: "20px", height: "20px", marginRight: "6px" }}
-          />
-        ),
-        is_employee: true,
-        ...y,
-      });
-    });
-    this.setState({
-      treeData: [...departments, ...employees],
-    });
-  }
-  // 处理全部子部门人数
-  handelEmployeesNum(arr: any[]) {
-    let employeesNums: number[] = [];
-    arr.forEach((item) => {
-      if (item.employees && item.employees.length > 0) {
-        employeesNums.push(item.employees.length);
-      }
-      if (item.children && item.children.length > 0) {
-        const employeesNum = this.handelEmployeesNum(item.children);
-        employeesNums = [...employeesNums, ...employeesNum];
-      }
-    });
-    return employeesNums;
-  }
+  open = () => this.setState({ isOpen: true });
 
-  handleTree(arr: any[]) {
-    const OTree: any = [];
-    arr.forEach((item: any) => {
-      let children: any[] = [];
-      let employeesNum: number = 0;
-      // 获取当前部门人数
-      if (item.employees) {
-        employeesNum = parseInt(item.employees.length);
-      }
-      // 获取全部子部门人数
-      if (item.children) {
-        const employeesNums = this.handelEmployeesNum(item.children);
-        employeesNums.forEach((num) => {
-          employeesNum += num;
-        });
-      }
-      // 有组织和人员
-      if (item.children && item.employees) {
-        children = this.handleTree(item.children);
-        const employees: any[] = [];
-        item.employees.forEach((y: any) => {
-          employees.push({
-            label: y.employee_name,
-            value: y.employee_id,
-            key: `${item.dept_id}_${y.employee_id}`,
-            icon: (
-              <WKAvatar
-                src={WKApp.shared.avatarUser(y.uid as string)}
-                style={{ width: "24px", height: "24px", marginRight: "6px" }}
-              />
-            ),
-            is_employee: true,
-            ...y,
-          });
-        });
-        children = [...children, ...employees];
-      }
-      // 只有人员
-      if (!item.children && item.employees) {
-        const employees: any[] = [];
-        item.employees.forEach((y: any) => {
-          employees.push({
-            label: y.employee_name,
-            value: y.employee_id,
-            key: `${item.dept_id}_${y.employee_id}`,
-            icon: (
-              <WKAvatar
-                src={WKApp.shared.avatarUser(y.uid as string)}
-                style={{ width: "20px", height: "20px", marginRight: "6px" }}
-              />
-            ),
-            is_employee: true,
-            ...y,
-          });
-        });
-        children = [...children, ...employees];
-      }
+  close = () => {
+    this.setState({ isOpen: false });
+    this.props.remove?.();
+  };
 
-      OTree.push({
-        label: employeesNum > 0 ? `${item.name}(${employeesNum})` : `${item.name}`,
-        value: item.dept_id,
-        key: item.short_no,
-        icon: (
-          <span
-            className="department-icon"
-            style={{ display: "flex", marginRight: "6px" }}
-          >
-            <svg
-              width="24px"
-              height="18px"
-              viewBox="0 0 24 18"
-              version="1.1"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <g
-                id="page-1"
-                stroke="none"
-                strokeWidth="1"
-                fill="none"
-                fillRule="evenodd"
-              >
-                <g
-                  id="02"
-                  transform="translate(-98.000000, -131.000000)"
-                  fill="currentColor"
-                  fillRule="nonzero"
-                >
-                  <g
-                    id="wenjianjia"
-                    transform="translate(98.000000, 131.000000)"
-                  >
-                    <path
-                      d="M21.343573,4.88046647 C21.6937698,4.9154519 22.0439666,5.00291545 22.3941634,5.14285714 C22.7443602,5.28279883 23.0484784,5.47959184 23.3065182,5.73323615 C23.5645579,5.98688047 23.7580877,6.30612245 23.8871076,6.6909621 C24.0161275,7.07580175 24.0345589,7.5393586 23.9424018,8.08163265 C23.905539,8.22157434 23.8318134,8.56705539 23.7212249,9.1180758 C23.6106365,9.66909621 23.4816166,10.303207 23.3341653,11.0204082 C23.186714,11.7376093 23.0208313,12.4766764 22.8365172,13.2376093 C22.6522031,13.9985423 22.4771047,14.6501458 22.311222,15.1924198 C22.219065,15.5072886 22.0854373,15.8309038 21.9103389,16.1632653 C21.7352405,16.4956268 21.5094557,16.7973761 21.2329845,17.0685131 C20.9565134,17.3396501 20.624748,17.5626822 20.2376884,17.7376093 C19.8506288,17.9125364 19.3898435,18 18.8553326,18 L3.53883076,18 C3.15177114,18 2.75088797,17.9212828 2.33618124,17.7638484 C1.92147451,17.606414 1.53902275,17.3833819 1.18882596,17.0947522 C0.838629164,16.8061224 0.552942306,16.4562682 0.331765384,16.0451895 C0.110588461,15.6341108 0,15.1749271 0,14.6676385 L0,3.41107872 C0,2.34402332 0.304118268,1.50874636 0.912354805,0.905247813 C1.52059134,0.301749271 2.37765192,0 3.48353653,0 L17.0859173,0 C17.4914083,0 17.9107229,0.0743440233 18.343861,0.22303207 C18.7769991,0.371720117 19.1686666,0.577259475 19.5188634,0.839650146 C19.8690602,1.10204082 20.154747,1.40816327 20.375924,1.75801749 C20.5971009,2.10787172 20.7076894,2.48396501 20.7076894,2.88629738 L20.7076894,3.17492711 L19.2700394,3.17492711 C18.532783,3.17492711 17.6711145,3.17055394 16.6850341,3.16180758 C15.6989536,3.15306122 14.6483633,3.14868805 13.5332629,3.14868805 C12.4181626,3.14868805 11.3767879,3.14431487 10.4091389,3.13556851 C9.44148987,3.12682216 8.60746856,3.12244898 7.90707497,3.12244898 L6.63530767,3.12244898 C6.15609101,3.12244898 5.78285495,3.26676385 5.5155995,3.55539359 C5.24834405,3.84402332 5.04099069,4.2244898 4.89353941,4.696793 C4.74608813,5.20408163 4.58020543,5.74198251 4.39589133,6.31049563 C4.21157723,6.87900875 4.04569454,7.40816327 3.89824326,7.89795918 C3.71392915,8.47521866 3.52961505,9.03498542 3.34530095,9.57725948 C3.30843813,9.71720117 3.29000672,9.83090379 3.29000672,9.91836735 C3.29000672,10.2157434 3.39598733,10.4650146 3.60794855,10.6661808 C3.81990976,10.8673469 4.08255736,10.96793 4.39589133,10.96793 C4.96726505,10.96793 5.35432466,10.6268222 5.55707017,9.94460641 L7.02236728,4.85422741 C9.41845061,4.87172012 11.6117884,4.88046647 13.6023807,4.88046647 L21.343573,4.88046647 L21.343573,4.88046647 Z"
-                      id="folder-path"
-                    ></path>
-                  </g>
-                </g>
-              </g>
-            </svg>
-          </span>
-        ),
-        dept_id: item.dept_id,
-        org_id: item.org_id,
-        name: item.name,
-        is_department: true,
-        children: children,
-      });
-    });
-    return OTree;
-  }
+  renderTrigger(): ReactNode {
+    if (this.props.render) return this.props.render;
+    if (!this.props.showAdd) return null;
 
-  onSelectOrganization(
-    selectedKey: string,
-    selected: boolean,
-    selectedNode: BasicTreeNodeData
-  ) {
-    if (selected) {
-      const getOptTreeData = [];
-      getOptTreeData.push(selectedNode);
-
-      const newOptTreeData = [
-        ...this.state.optPersonnelData,
-        ...this.handOptTree(getOptTreeData),
-      ];
-      // 处理去重
-      const uniqueArr = Object.values(
-        newOptTreeData.reduce((acc, curr) => {
-          acc[curr.uid] = curr;
-          return acc;
-        }, {})
-      );
-      this.setState({
-        optPersonnelData: [...uniqueArr],
-      });
-    }
-  }
-
-  handOptTree(arr: any[]) {
-    let OTree: any = [];
-    arr.forEach((item: any) => {
-      if (item.children && item.is_department) {
-        const res = this.handOptTree(item.children);
-        OTree = [...OTree, ...res];
-      }
-      if (item.is_employee) {
-        OTree.push({
-          name: item.employee_name,
-          uid: item.uid,
-        });
-      }
-    });
-    return OTree;
-  }
-
-  onDelOptPersonnel(uid: string) {
-    const newOpt = this.state.optPersonnelData.filter((item) => {
-      return item.uid !== uid;
-    });
-    const newFriendData = this.state.friendData.map((item) => {
-      if (item.uid === uid) {
-        return { ...item, checked: false };
-      }
-      return item;
-    });
-    this.setState({
-      optPersonnelData: newOpt,
-      friendData: newFriendData
-    });
-  }
-
-  async getFriendData() {
-
-    let subscribers = new Array<Subscriber>();
-
-    // 群聊
-    if (this.props.channel.channelID.trim() !== "") {
-      const channel = new Channel(this.props.channel.channelID, this.props.channel.channelType)
-
-      // 个人聊天，对方不可选
-      if (this.props.channel.channelType === ChannelTypePerson) {
-        const sub = new Subscriber()
-        sub.uid = this.props.channel.channelID
-        subscribers.push(sub)
-      } else {
-        // 群聊
-        const channelInfo = getImChannelInfo(WKSDK.shared(), channel); // 获取频道信息
-        if (channelInfo?.orgData?.group_type === SuperGroup) {
-          subscribers = await WKApp.dataSource.channelDataSource.subscribers(channel, {
-            limit: 5000,
-            page: 1
-          })
-        } else {
-          await syncImChannelSubscribers(WKSDK.shared(), channel); // 同步订阅者
-          subscribers = getImChannelSubscribers(WKSDK.shared(), channel); // 获取订阅者
-        }
-      }
-
-    }
-
-    let subscriberUids = new Array<string>()
-    if (subscribers) {
-      subscriberUids = subscribers.map((item) => {
-        return item.uid;
-      })
-    }
-
-    // 系统账号不可被拉入群聊
-    const systemUids = ["botfather", "fileHelper"];
-    const setFriendData: any[] = [];
-
-    // Space 模式：从 Space 成员列表获取可选联系人
-    const spaceId = WKApp.shared.currentSpaceId;
-    if (spaceId) {
-      try {
-        const { SpaceService } = await import("@octo/base/src/Service/SpaceService");
-        // 翻页拉取空间全部成员：getMembers 单次 limit 上限 10000，超大空间只请求一页会把第
-        // 10000 名之后的成员静默丢弃。10000/页循环到取尽，最多 20 页兜底（20 万）。同一
-        // getMembers 接口、page/limit 传参不变，不碰后端、不影响移动端。
-        const members: any[] = [];
-        for (let page = 1; page <= 20; page++) {
-          const batch = await SpaceService.shared.getMembers(spaceId, page, 10000);
-          if (!batch || batch.length === 0) break;
-          members.push(...batch);
-          if (batch.length < 10000) break; // 最后一页
-        }
-        members.forEach((m: any) => {
-          if (!subscriberUids.includes(m.uid) && !systemUids.includes(m.uid) && m.uid !== WKApp.loginInfo.uid) {
-            setFriendData.push({ name: m.name, uid: m.uid, avatar: m.avatar, robot: m.robot === 1 });
-          }
-        });
-      } catch {
-        // fallback to contacts list
-        WKApp.dataSource.contactsList.forEach((item) => {
-          if (!subscriberUids.includes(item.uid) && !systemUids.includes(item.uid)) {
-            setFriendData.push({ name: item.name, uid: item.uid, avatar: WKApp.shared.avatarUser(item.uid), robot: item.robot });
-          }
-        });
-      }
-    } else {
-      WKApp.dataSource.contactsList.forEach((item) => {
-        if (!subscriberUids.includes(item.uid) && !systemUids.includes(item.uid)) {
-          setFriendData.push({ name: item.name, uid: item.uid, avatar: WKApp.shared.avatarUser(item.uid), robot: item.robot });
-        }
-      });
-    }
-    this.setState({
-      friendData: [...setFriendData],
-      friendSearchData: [...setFriendData],
-    });
-  }
-
-  onFriendChange(values: string[]) {
-    const getFriendOpt: any[] = [];
-    const { friendData } = this.state;
-    let { optPersonnelData } = this.state;
-
-    // Use immutable update pattern - create new objects instead of mutating
-    const newFriendData = friendData.map(item => {
-      const isSelected = values.includes(item.uid);
-      if (isSelected) {
-        const updatedItem = { ...item, checked: true };
-        getFriendOpt.push(updatedItem);
-        return updatedItem;
-      } else {
-        // Remove from optPersonnelData if unchecked
-        optPersonnelData = optPersonnelData.filter(p => p.uid !== item.uid);
-        return { ...item, checked: false };
-      }
-    });
-
-    const newPersonnelData = [...getFriendOpt, ...optPersonnelData];
-
-    // 处理去重
-    const uniqueArr = Object.values(
-      newPersonnelData.reduce((acc, curr) => {
-        acc[curr.uid] = curr;
-        return acc;
-      }, {})
-    );
-    this.setState({
-      optPersonnelData: [...uniqueArr],
-      friendData: newFriendData
-    });
-  }
-
-  onOrginzational() {
-    this.setState({
-      isFriend: false,
-      searchVaule: "",
-    });
-  }
-
-  onShowModal() {
-    const { channelType } = this.props.channel;
-    // this.getJoinOrganization();
-    this.getFriendData();
-    this.setState({
-      showModal: true,
-      optTitle: channelType === 1 ? "contacts.groupNew.title.createGroup" : "contacts.groupNew.title.selectContacts",
-      groupName: "",
-      avatarText: "",
-      avatarColorIndex: undefined,
-      showAvatarEdit: false,
-    });
-  }
-
-  onCancel() {
-    this.setState({
-      showModal: false,
-      isFriend: true,
-      optPersonnelData: [],
-      groupName: "",
-      avatarText: "",
-      avatarColorIndex: undefined,
-      showAvatarEdit: false,
-    });
-    this.props.remove && this.props.remove();
-  }
-
-  async onOK() {
-    const channel = this.props.channel as any;
-    const { optPersonnelData } = this.state;
-    const isCreate =
-      this.props.action === OrganizationalGroupNewAction.createGroup;
-    const name = this.state.groupName.trim();
-    // 群名必填（创建群）——先于成员校验，匹配「群名在上、选人在下」的视觉顺序。
-    if (isCreate && !name) {
-      return Toast.warning(t("contacts.groupCreate.nameRequired"));
-    }
-    if (optPersonnelData.length === 0) {
-      return Toast.warning(t("contacts.groupNew.selectContactsWarning"));
-    }
-
-    const getOptPersonnelData = optPersonnelData.map((item) => {
-      return item.uid;
-    });
-
-    // 创建群
-    if (isCreate) {
-      try {
-        const result = await WKApp.dataSource.channelDataSource.createChannel(
-          [...getOptPersonnelData],
-          {
-            categoryId: this.props.defaultCategoryId,
-            name,
-            // 仅在用户显式设置时下发；缺省由服务端渲染默认双人图标。
-            avatarText: this.state.avatarText || undefined,
-            avatarColor: this.state.avatarColorIndex,
-          }
-        )
-        if (result?.group_no) {
-          WKApp.endpoints.showConversation(
-            new Channel(result.group_no, ChannelTypeGroup),
-            this.props.keepSidebarTab ? { fromSidebarList: true } : undefined,
-          )
-        }
-        this.props.onSuccess?.()
-      } catch (error: any) {
-        Toast.error(error.msg);
-        return
-      }
-    }
-    // 添加联系人
-    if (this.props.action === OrganizationalGroupNewAction.AddMember) {
-      try {
-        if (channel.channelType === ChannelTypePerson) {
-          const memberUids = buildPrivateChatGroupMemberUids(
-            WKApp.loginInfo.uid,
-            channel.channelID,
-            getOptPersonnelData
-          );
-          const result = await WKApp.dataSource.channelDataSource.createChannel(
-            memberUids
-          );
-          if (result?.group_no) {
-            WKApp.endpoints.showConversation(
-              new Channel(result.group_no, ChannelTypeGroup)
-            );
-          }
-        } else {
-          await WKApp.dataSource.channelDataSource.addSubscribers(
-            channel,
-            getOptPersonnelData
-          );
-        }
-      } catch (error: any) {
-        Toast.error(error.msg);
-        return
-      }
-
-    }
-    this.onCancel();
-  }
-
-  onChangeSearch(value: string) {
-    const { friendSearchData, isFriend } = this.state;
-
-    if (isFriend) {
-      this.setState({
-        searchVaule: value,
-        friendData: friendSearchData.filter((item) => {
-          return item.name.toLowerCase().indexOf(value.toLowerCase()) !== -1;
-        }),
-      });
-    }
-    if (!isFriend) {
-      this.setState({
-        searchVaule: value,
-      });
-      this.treeRef && this.treeRef.current.search(value);
-    }
-  }
-
-  // 选人左栏（搜索 + 好友/组织架构列表）—— 发起群聊与添加成员两种布局共用。
-  renderMemberLeft(): ReactNode {
-    const {
-      treeData,
-      organizationInfo,
-      isFriend,
-      friendData,
-      searchVaule,
-      optPersonnelData,
-    } = this.state;
     return (
-      <div className="wk-organizational-group-new-left">
-        <div className="group-new-left-search">
-          <Input
-            className="group-new-left-search-input"
-            placeholder={t("contacts.common.search")}
-            value={searchVaule}
-            showClear
-            onChange={(value) => {
-              this.onChangeSearch(value);
-            }}
-          />
-        </div>
-        <div className="group-new-left-main">
-          {isFriend ? (
-            <div className="friend-opt">
-              {/* 组织架构 */}
-              {organizationInfo?.org_id && (
-                <div
-                  className="organization-name"
-                  onClick={() => {
-                    this.onOrginzational();
-                  }}
-                >
-                  <img
-                    style={{ width: "24px", height: "24px", marginRight: "6px" }}
-                    src={require("../../assets/organizational_new.png")}
-                    alt=""
-                  />
-                  <span>{organizationInfo?.name}</span>
-                </div>
-              )}
-
-              <div className="friend-opt-main">
-                <CheckboxGroup
-                  style={{ width: "100%" }}
-                  value={optPersonnelData.map((item) => item.uid)}
-                  onChange={(value) => {
-                    this.onFriendChange(value);
-                  }}
-                >
-                  {friendData.map((friend) => (
-                    <Checkbox
-                      key={friend.uid}
-                      value={friend.uid}
-                      className="friend-opt-item"
-                    >
-                      <WKAvatar
-                        src={
-                          friend.avatar ||
-                          WKApp.shared.avatarUser(friend.uid as string)
-                        }
-                        style={{
-                          width: "24px",
-                          height: "24px",
-                          marginRight: "6px",
-                        }}
-                      />
-                      <span>{friend.name}</span>
-                      {friend.robot && <AiBadge size="small" />}
-                    </Checkbox>
-                  ))}
-                </CheckboxGroup>
-              </div>
-            </div>
-          ) : (
-            <div className="organizational-opt">
-              <div className="organizational-opt-header">
-                <WKViewQueueHeader
-                  title={organizationInfo.name}
-                  onBack={() => {
-                    this.setState({ isFriend: true, searchVaule: "" });
-                  }}
-                />
-              </div>
-              <div className="organizational-opt-main">
-                <Tree
-                  ref={this.treeRef}
-                  treeData={treeData}
-                  filterTreeNode
-                  searchRender={false}
-                  multiple
-                  showFilteredOnly={true}
-                  className="organizational-tree"
-                  onSelect={(
-                    selectedKey: string,
-                    selected: boolean,
-                    selectedNode: BasicTreeNodeData
-                  ) => {
-                    this.onSelectOrganization(
-                      selectedKey,
-                      selected,
-                      selectedNode
-                    );
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // 右侧「已选成员」列表项 —— 两种布局共用。
-  renderSelectedList(): ReactNode {
-    const { optPersonnelData } = this.state;
-    return optPersonnelData?.map((item) => (
-      <div key={item.uid} className="opt-personnel-item">
-        <div className="user-info">
-          <WKAvatar
-            src={item.avatar || WKApp.shared.avatarUser(item.uid as string)}
-            style={{ width: "24px", height: "24px", marginRight: "6px" }}
-          />
-          <span>{item.name}</span>
-          {item.robot && <AiBadge size="small" />}
-        </div>
-        <div
-          className="close-icon"
-          onClick={() => {
-            this.onDelOptPersonnel(item.uid);
-          }}
+      <>
+        <svg
+          viewBox="0 0 22 22"
+          fill={WKApp.config.themeColor}
+          width="20px"
+          height="20px"
+          focusable="false"
+          aria-hidden="true"
         >
-          <span className="semi-icon semi-icon-default semi-icon-close">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              width="1em"
-              height="1em"
-              focusable="false"
-              aria-hidden="true"
-            >
-              <path
-                d="M17.6568 19.7782C18.2426 20.3639 19.1924 20.3639 19.7782 19.7782C20.3639 19.1924 20.3639 18.2426 19.7782 17.6568L14.1213 12L19.7782 6.34313C20.3639 5.75734 20.3639 4.8076 19.7782 4.22181C19.1924 3.63602 18.2426 3.63602 17.6568 4.22181L12 9.87866L6.34313 4.22181C5.75734 3.63602 4.8076 3.63602 4.22181 4.22181C3.63602 4.8076 3.63602 5.75734 4.22181 6.34313L9.87866 12L4.22181 17.6568C3.63602 18.2426 3.63602 19.1924 4.22181 19.7782C4.8076 20.3639 5.75734 20.3639 6.34313 19.7782L12 14.1213L17.6568 19.7782Z"
-                fill="currentColor"
-              ></path>
-            </svg>
-          </span>
-        </div>
-      </div>
-    ));
-  }
-
-  // 发起群聊布局：群头像（预览 + 修改头像）+ 群名（必填）+ 选人。
-  renderCreateModal(): ReactNode {
-    const { showModal, groupName, avatarText, avatarColorIndex, optPersonnelData } =
-      this.state;
-    return (
-      <WKModal
-        size="lg"
-        className="wk-main-modal-group-create"
-        visible={showModal}
-        title={t("contacts.groupCreate.title")}
-        options={{ closable: true, maskClosable: false }}
-        onCancel={() => {
-          this.onCancel();
-        }}
-        footerConfig={{
-          onOk: () => {
-            this.onOK();
-          },
-          okText: t("contacts.common.confirm"),
-          cancelText: t("contacts.common.cancel"),
-        }}
-      >
-        <div className="group-create-body">
-          <div className="group-create-field">
-            <div className="group-create-label">
-              {t("contacts.groupCreate.avatarLabel")}
-            </div>
-            <div className="group-create-avatar-row">
-              <GroupAvatarPreview
-                avatarText={avatarText}
-                colorIndex={avatarColorIndex}
-                name={groupName}
-                size={48}
-              />
-              <span
-                className="group-create-edit-avatar"
-                onClick={() => this.setState({ showAvatarEdit: true })}
-              >
-                {t("contacts.groupCreate.editAvatar")}
-              </span>
-            </div>
-          </div>
-
-          <div className="group-create-field">
-            <div className="group-create-label group-create-required">
-              {t("contacts.groupCreate.nameLabel")}
-            </div>
-            <Input
-              value={groupName}
-              maxLength={GROUP_NAME_MAX_LENGTH}
-              placeholder={t("contacts.groupCreate.namePlaceholder")}
-              onChange={(value) => this.setState({ groupName: value })}
+          <g clipPath="url(#clip_user_add)">
+            <path
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M19.0796 19.8369C17.7027 17.6014 14.7559 15.5 10.4593 15.5C6.16267 15.5 3.21588 17.6014 1.83892 19.8369C1.19533 20.8817 2.10818 22 3.33535 22H17.5832C18.8104 22 19.7232 20.8817 19.0796 19.8369Z"
             />
-            <div className={`group-create-input-count ${groupName.length > GROUP_NAME_MAX_LENGTH ? "group-create-input-count--exceeded" : ""}`}>
-              {groupName.length} / {GROUP_NAME_MAX_LENGTH}
-            </div>
-          </div>
-
-          <div className="group-create-field">
-            <div className="group-create-label group-create-required">
-              {t("contacts.groupCreate.membersLabel")}
-            </div>
-            <div className="group-create-members">
-              {this.renderMemberLeft()}
-              <div className="group-create-selected">
-                <div className="organizational-group-new-right-title">
-                  {t("contacts.groupCreate.selectedCount", {
-                    values: { count: optPersonnelData.length },
-                  })}
-                </div>
-                <div className="organizational-group-new-right-body">
-                  {this.renderSelectedList()}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </WKModal>
+            <path
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M14.0499 10.4204C14.5723 10.2065 15.0693 9.55774 15.2962 8.71085C15.5913 7.60959 15.5327 6.62629 14.7285 6.3203C14.6504 2.48444 13.1369 1 9.96023 1C6.7838 1 5.27021 2.48424 5.19199 6.31952C4.38589 6.62467 4.32701 7.60866 4.62233 8.7108C4.84958 9.55892 5.34768 10.2083 5.87087 10.4213C6.71146 12.5727 8.24123 14.013 9.96023 14.013C11.6795 14.013 13.2094 12.5723 14.0499 10.4204Z"
+            />
+            <path
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M20 1C19.4478 1 19 1.44772 19 2V4H17C16.4478 4 16 4.44772 16 5C16 5.55228 16.4478 6 17 6H19V8C19 8.55228 19.4478 9 20 9C20.5523 9 21 8.55228 21 8V6H23C23.5523 6 24 5.55228 24 5C24 4.44772 23.5523 4 23 4H21V2C21 1.44772 20.5523 1 20 1Z"
+            />
+          </g>
+          <defs>
+            <clipPath id="clip_user_add">
+              <rect width="24" height="24" fill="currentColor" />
+            </clipPath>
+          </defs>
+        </svg>
+        <div className="wk-conversation-header-mask" />
+      </>
     );
   }
 
   render(): ReactNode {
-    const { showModal, optTitle } = this.state;
-    const { showAdd, render } = this.props;
-    const isCreate =
-      this.props.action === OrganizationalGroupNewAction.createGroup;
+    const trigger = this.renderTrigger();
     return (
-      <div
-        onClick={(e) => {
-          e.stopPropagation();
-        }}
-      >
-        {showAdd && (
-          <div
-            onClick={() => {
-              this.onShowModal();
-            }}
-          >
-            <svg
-              viewBox="0 0 22 22"
-              fill={WKApp.config.themeColor}
-              width="20px"
-              height="20px"
-              focusable="false"
-              aria-hidden="true"
-            >
-              <g clipPath="url(#clip_user_add)">
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M19.0796 19.8369C17.7027 17.6014 14.7559 15.5 10.4593 15.5C6.16267 15.5 3.21588 17.6014 1.83892 19.8369C1.19533 20.8817 2.10818 22 3.33535 22H17.5832C18.8104 22 19.7232 20.8817 19.0796 19.8369Z"
-                ></path>
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M14.0499 10.4204C14.5723 10.2065 15.0693 9.55774 15.2962 8.71085C15.5913 7.60959 15.5327 6.62629 14.7285 6.3203C14.6504 2.48444 13.1369 1 9.96023 1C6.7838 1 5.27021 2.48424 5.19199 6.31952C4.38589 6.62467 4.32701 7.60866 4.62233 8.7108C4.84958 9.55892 5.34768 10.2083 5.87087 10.4213C6.71146 12.5727 8.24123 14.013 9.96023 14.013C11.6795 14.013 13.2094 12.5723 14.0499 10.4204Z"
-                ></path>
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M20 1C19.4478 1 19 1.44772 19 2V4H17C16.4478 4 16 4.44772 16 5C16 5.55228 16.4478 6 17 6H19V8C19 8.55228 19.4478 9 20 9C20.5523 9 21 8.55228 21 8V6H23C23.5523 6 24 5.55228 24 5C24 4.44772 23.5523 4 23 4H21V2C21 1.44772 20.5523 1 20 1Z"
-                ></path>
-              </g>
-              <defs>
-                <clipPath id="clip_user_add">
-                  <rect width="24" height="24" fill="currentColor"></rect>
-                </clipPath>
-              </defs>
-            </svg>
-            <div className="wk-conversation-header-mask"></div>
-          </div>
-        )}
-
-        {render && (
-          <div
-            onClick={() => {
-              this.onShowModal();
-            }}
-          >
-            {render}
-          </div>
-        )}
-
-        {isCreate ? (
-          this.renderCreateModal()
-        ) : (
-          <WKModal
-            size="lg"
-            className="wk-main-modal-organizational-group-new"
-            visible={showModal}
-            options={{ closable: false, maskClosable: false }}
-            onCancel={() => {
-              this.onCancel();
-            }}
-          >
-            {this.renderMemberLeft()}
-            <div className="wk-organizational-group-new-right">
-              <div className="organizational-group-new-right-title">
-                {optTitle ? t(optTitle) : ""}
-              </div>
-              <div className="organizational-group-new-right-body">
-                {this.renderSelectedList()}
-              </div>
-              <div className="organizational-group-new-right-footer">
-                <Space spacing="medium">
-                  <Button
-                    style={{ width: 80 }}
-                    onClick={() => {
-                      this.onCancel();
-                    }}
-                  >
-                    {t("contacts.common.cancel")}
-                  </Button>
-                  <Button
-                    style={{ width: 80 }}
-                    className="wk-but-ok"
-                    theme="solid"
-                    type="primary"
-                    onClick={() => {
-                      this.onOK();
-                    }}
-                  >
-                    {t("contacts.common.confirm")}
-                  </Button>
-                </Space>
-              </div>
-            </div>
-          </WKModal>
-        )}
-
-        <GroupAvatarEditModal
-          visible={this.state.showAvatarEdit}
-          name={this.state.groupName}
-          initialAvatarText={this.state.avatarText}
-          initialColorIndex={this.state.avatarColorIndex}
-          onCancel={() => this.setState({ showAvatarEdit: false })}
-          onSave={(r) =>
-            this.setState({
-              avatarText: r.avatarText,
-              avatarColorIndex: r.colorIndex,
-              showAvatarEdit: false,
-            })
-          }
+      <div onClick={(event) => event.stopPropagation()}>
+        {trigger && <div onClick={this.open}>{trigger}</div>}
+        <GroupCreateFeature
+          props={this.props}
+          isOpen={this.state.isOpen}
+          onClose={this.close}
         />
       </div>
     );

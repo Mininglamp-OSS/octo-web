@@ -2,6 +2,10 @@ import { negotiate } from "./guards";
 import { classifyCardSender, isTrustedCardSender } from "./senderTrust";
 import { CARD_PROFILE_OCTO_V2 } from "./types";
 import { validateCardForOcto } from "./validateCardForOcto";
+import {
+  resolveCardRenderProfile,
+  type ResolvedCardRenderProfile,
+} from "./renderProfile";
 
 /**
  * 卡片主体渲染决策（纯策略，独立于 SDK 挂载）。集中兜底，对齐服务端
@@ -34,6 +38,7 @@ export type CardDecision =
       card: Record<string, unknown>;
       allowInteractive: boolean;
       interactive: boolean;
+      renderProfile: ResolvedCardRenderProfile;
     };
 
 export interface DecideCardInput {
@@ -44,6 +49,7 @@ export interface DecideCardInput {
    */
   forwardedFromUID?: string;
   profile: string;
+  renderProfile?: string;
   cardVersion: string;
   card: Record<string, unknown>;
 }
@@ -56,12 +62,18 @@ export function decideCardBody(input: DecideCardInput): CardDecision {
     return { kind: "plain" };
   }
 
-  // 2. profile / card_version 协商：不支持 → plain + 更新提示。
+  // 2. Render Profile 协商：缺失走 legacy，未知非空值提示升级。
+  const renderProfile = resolveCardRenderProfile(input.renderProfile ?? "");
+  if (!renderProfile.ok) {
+    return { kind: "hint" };
+  }
+
+  // 3. Wire profile / card_version 协商：不支持 → plain + 更新提示。
   if (!negotiate(input.profile, input.cardVersion).ok) {
     return { kind: "hint" };
   }
 
-  // 3. octo 预校验（整卡降级守门）。通过才交 SDK 渲染。
+  // 4. octo 预校验（整卡降级守门）。通过才交 SDK 渲染。
   const allowInteractive = input.profile === CARD_PROFILE_OCTO_V2;
   if (!validateCardForOcto(input.card, { allowInteractive }).ok) {
     return { kind: "plain" };
@@ -72,5 +84,6 @@ export function decideCardBody(input: DecideCardInput): CardDecision {
     card: input.card,
     allowInteractive,
     interactive: trust === "bot",
+    renderProfile: renderProfile.profile,
   };
 }

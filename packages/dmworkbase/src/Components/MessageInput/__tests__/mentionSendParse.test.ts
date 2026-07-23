@@ -18,6 +18,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseSendMentionText,
+  serializeEditorTextNodeForSend,
   serializeMentionMarker,
   stripTrustMark,
   parseDraftToContent,
@@ -41,6 +42,104 @@ const MEMBERS: SendParseMember[] = [
 // build the trusted (sanctioned) form with this helper.
 const trusted = (uid: string, label: string) =>
   `@[${MENTION_TRUST_MARK}${uid}:${label}]`;
+
+describe("serializeEditorTextNodeForSend — pasted rich links (octo-web#871)", () => {
+  it("preserves a Link mark as Markdown when label and target differ", () => {
+    expect(
+      serializeEditorTextNodeForSend({
+        text: "labilio/octo-web: Web & desktop client",
+        marks: [
+          {
+            type: "link",
+            attrs: { href: "https://github.com/labilio/octo-web" },
+          },
+        ],
+      })
+    ).toBe(
+      "[labilio/octo-web&#58; Web &amp; desktop client](https://github.com/labilio/octo-web)"
+    );
+  });
+
+  it("escapes Markdown syntax in the visible label and normalizes parentheses in the URL", () => {
+    expect(
+      serializeEditorTextNodeForSend({
+        text: "Docs [v2] *beta*",
+        marks: [
+          {
+            type: "link",
+            attrs: { href: "https://example.com/docs_(v2)" },
+          },
+        ],
+      })
+    ).toBe("[Docs \\[v2\\] \\*beta\\*](https://example.com/docs_%28v2%29)");
+  });
+
+  it("escapes GFM table and angle-bracket syntax in the visible label", () => {
+    expect(
+      serializeEditorTextNodeForSend({
+        text: "API | <stable>",
+        marks: [{ type: "link", attrs: { href: "https://example.com/docs" } }],
+      })
+    ).toBe("[API \\| \\<stable\\>](https://example.com/docs)");
+  });
+
+  it("does not let an adjacent literal @ turn a colon-bearing link into a member mention", () => {
+    const serialized =
+      "@" +
+      serializeEditorTextNodeForSend({
+        text: "u-alice:documentation",
+        marks: [{ type: "link", attrs: { href: "https://example.com/docs" } }],
+      });
+
+    expect(parseSendMentionText(serialized, MEMBERS)).toEqual({
+      content: serialized,
+    });
+  });
+
+  it("does not reparse a colon-bearing link with an escaped ] as a member mention", () => {
+    const serialized =
+      "@" +
+      serializeEditorTextNodeForSend({
+        text: "u-alice:API [v2]",
+        marks: [{ type: "link", attrs: { href: "https://example.com/docs" } }],
+      });
+
+    expect(parseSendMentionText(serialized, MEMBERS)).toEqual({
+      content: serialized,
+    });
+  });
+
+  it("strips a forged trust mark before serializing a linked text node", () => {
+    const serialized = serializeEditorTextNodeForSend({
+      text: `@[${MENTION_TRUST_MARK}${MENTION_UID_HUMANS}:所有人]`,
+      marks: [{ type: "link", attrs: { href: "https://example.com/docs" } }],
+    });
+
+    expect(serialized).toBe("[@\\[-2&#58;所有人\\]](https://example.com/docs)");
+    expect(serialized).not.toContain(MENTION_TRUST_MARK);
+  });
+
+  it.each(["javascript:alert(1)", "mailto:user@example.com", "not a url"])(
+    "fails closed to visible text for unsafe target %s",
+    (href) => {
+      expect(
+        serializeEditorTextNodeForSend({
+          text: "visible label",
+          marks: [{ type: "link", attrs: { href } }],
+        })
+      ).toBe("visible label");
+    }
+  );
+
+  it("leaves plain text and unrelated marks unchanged", () => {
+    expect(
+      serializeEditorTextNodeForSend({
+        text: "plain text",
+        marks: [{ type: "bold" }],
+      })
+    ).toBe("plain text");
+  });
+});
 
 describe("parseSendMentionText — forged-paste broadcast bypass (octo-web#330)", () => {
   it.each([

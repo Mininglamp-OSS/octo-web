@@ -46,6 +46,20 @@ vi.mock("../../../App", () => ({
     __esModule: true,
 }))
 
+vi.mock("../../../Service/APIClient", () => ({
+    extractErrorMsg: (err: any) =>
+        err && typeof err === "object" && typeof err.msg === "string" ? err.msg : "",
+    default: {
+        shared: {
+            get: hoisted.get,
+            post: hoisted.post,
+            delete: hoisted.del,
+            put: hoisted.put,
+        },
+    },
+    __esModule: true,
+}))
+
 vi.mock("@douyinfe/semi-ui", () => ({
     // 最小 Switch stub：渲染一个普通 checkbox，避免拉起 Semi 的样式 / portal 系统。
     Switch: (props: any) =>

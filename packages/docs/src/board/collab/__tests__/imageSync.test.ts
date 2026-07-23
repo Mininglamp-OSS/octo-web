@@ -94,6 +94,20 @@ describe('whiteboard image sync (XIN-702)', () => {
       expect(yFile.has('dataURL')).toBe(false)
     })
 
+    it('persists native SVG MIME for an SVG data URL', async () => {
+      const uploader = vi.fn(async () => 'att-svg')
+      binding.setFileSync({ uploader })
+      binding.handleLocalChange([makeEl('img-svg', { type: 'image', fileId: 'f-svg' })], {
+        'f-svg': { id: 'f-svg', mimeType: 'image/svg+xml', dataURL: 'data:image/svg+xml;base64,PHN2Zy8+' },
+      })
+      await flushMicrotasks()
+
+      const yFile = filesOf(doc).get('f-svg')!
+      expect(yFile.get('attachId')).toBe('att-svg')
+      expect(yFile.get('mimeType')).toBe('image/svg+xml')
+      expect(yFile.has('dataURL')).toBe(false)
+    })
+
     it('does not re-upload a file that already carries an attachId', async () => {
       const uploader = vi.fn(async (_file: BinaryFileData) => 'att-x')
       binding.setFileSync({ uploader })

@@ -4,7 +4,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C21 loop 手动触发 automation — 自动化列表 → 更多菜单 → 手动运行 → 确认 → toast", async ({
+test("@C21 @p0 @loop @automation loop 手动触发 automation — 自动化列表 → 更多菜单 → 手动运行 → 确认 → toast", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-automation");

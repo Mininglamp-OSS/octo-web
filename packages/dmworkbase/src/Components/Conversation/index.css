@@ -49,6 +49,11 @@ body[theme-mode="dark"] .wk-conversation-content {
   padding: var(--wk-sp-2) var(--wk-sp-4);
 }
 
+.wk-message-item-system > .wk-message-system,
+.wk-message-item:has(.wk-message-system) > .wk-message-system {
+  max-width: 100%;
+}
+
 .wk-message-item-fold-session {
   justify-content: flex-start;
   padding: 24px 0 0;

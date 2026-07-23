@@ -5,7 +5,7 @@
 import { test, expect } from "../fixtures-authed";
 import { installMswScenario } from "../_lib/mswScenario";
 
-test("@C27 @edge loop automation trigger cron edit baseline — 详情稳定加载, cron 段显示", async ({
+test("@C27 @p0 @loop @automation @edge loop automation trigger cron edit baseline — 详情稳定加载, cron 段显示", async ({
   authedPage,
 }) => {
   await installMswScenario(authedPage, "one-automation");

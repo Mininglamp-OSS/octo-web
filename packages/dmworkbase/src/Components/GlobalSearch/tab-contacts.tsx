@@ -5,16 +5,18 @@ import ItemContacts from "./item-contacts";
 import WKApp from "../../App";
 import { isBot } from "../WKAvatar";
 import BotDetailModal from "../BotDetailModal";
-import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from "wukongimjssdk";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { debounce } from "../../Utils/rateLimit";
-import { addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
+import { addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import "./tab-contacts.css"
 
 interface TabContactsProps {
     keyword?: string;
     friends?: any[];
     onClick?: (item: any) => void;
+    // #989: bot 名片"发送消息"跳转会话后，外层搜索弹窗需要一起关掉
+    hideModal?: () => void;
 }
 
 interface TabContactsState {
@@ -47,7 +49,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
                 this._forceUpdateDebounced()
             }
         }
-        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this._channelInfoListener)
+        this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(this._channelInfoListener)
     }
 
     componentWillUnmount() {
@@ -70,9 +72,9 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
         if (!(missingHome && missingLegacy)) return
         if (this.fetchedUids.has(friend.channel_id)) return
         const ch = new Channel(friend.channel_id, ChannelTypePerson)
-        if (getImChannelInfo(WKSDK.shared(), ch)) return
+        if (getCurrentImChannelInfo(ch)) return
         this.fetchedUids.add(friend.channel_id)
-        void fetchImChannelInfo(WKSDK.shared(), ch)
+        void fetchCurrentImChannelInfo(ch)
     }
 
     /**
@@ -98,7 +100,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
             isExternalLegacy === undefined || isExternalLegacy === null
         if (missingHome && missingLegacy && friend?.channel_id) {
             const ch = new Channel(friend.channel_id, ChannelTypePerson)
-            const ci = getImChannelInfo(WKSDK.shared(), ch)
+            const ci = getCurrentImChannelInfo(ch)
             const ciOrg = ci?.orgData
             if (ciOrg) {
                 homeId = ciOrg.home_space_id as string | undefined
@@ -146,6 +148,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
                 onChat={(channel) => {
                     WKApp.endpoints.showConversation(channel);
                     this.setState({ botDetailVisible: false });
+                    this.props.hideModal?.();
                 }}
             />
         </div>

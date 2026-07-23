@@ -255,14 +255,21 @@ function buildDetailFromCreate(id: string, params: CreateMcpParams): McpDetail {
     serverName: params.name.trim(),
     slug: slugifyServerName(params.slug?.trim() ? params.slug : params.name),
     url: params.url || undefined,
-    authType: params.authType,
     headers:
       params.headers && Object.keys(params.headers).length
         ? params.headers
         : undefined,
+    headersUserSupplied:
+      params.headersUserSupplied && params.headersUserSupplied.length
+        ? params.headersUserSupplied
+        : undefined,
     command: params.command || undefined,
     args: params.args && params.args.length ? params.args : undefined,
     env: params.env && Object.keys(params.env).length ? params.env : undefined,
+    envUserSupplied:
+      params.envUserSupplied && params.envUserSupplied.length
+        ? params.envUserSupplied
+        : undefined,
   };
   return {
     id,
@@ -511,7 +518,15 @@ interface McpDetailWire extends McpListItemWire {
     command?: string;
     args?: string[];
     env?: Record<string, string>;
+    env_user_supplied?: string[];
     headers?: Record<string, string>;
+    headers_user_supplied?: string[];
+    // Legacy marker (mcp-v1.md §5.2). No longer sent on new records —
+    // Bearer auth is expressed as an `Authorization` row + toggle ON —
+    // but pre-toggle records still carry `auth_type: "bearer"` without a
+    // matching `Authorization` header entry. mapDetail synthesizes the
+    // missing user-supplied entry so the copy-paste snippet keeps
+    // rendering an Authorization line for those records.
     auth_type?: "bearer" | "none";
   };
   tools: McpDetail["tools"];
@@ -560,6 +575,30 @@ function mapDetail(raw: McpDetailWire): McpDetail {
   // an empty stdio-shaped block so the modal renders with an empty
   // quick-access tab instead of blowing up.
   const q = raw.quick_start ?? ({} as McpDetailWire["quick_start"]);
+  // Legacy-bearer migration shim: records created before the
+  // user_supplied toggle model expressed Bearer auth via
+  // `auth_type: "bearer"` alone, without a matching Authorization row.
+  // The snippet renderer no longer looks at auth_type, so without
+  // synthesizing an entry here those old snippets ship WITHOUT an
+  // Authorization line at all. Rebuild a user-supplied Authorization
+  // slot so consumers still see a placeholder to fill in. Only fires
+  // when the wire had no Authorization key already (any explicit row
+  // wins over the marker).
+  let headers = q.headers;
+  let headersUserSupplied = q.headers_user_supplied;
+  if (q.auth_type === "bearer") {
+    const hasAuthKey = !!(
+      headers &&
+      Object.keys(headers).some((k) => k.toLowerCase() === "authorization")
+    );
+    if (!hasAuthKey) {
+      headers = { ...(headers ?? {}), Authorization: "" };
+      headersUserSupplied = [
+        ...(headersUserSupplied ?? []),
+        "Authorization",
+      ];
+    }
+  }
   return {
     ...item,
     quickStart: {
@@ -570,8 +609,9 @@ function mapDetail(raw: McpDetailWire): McpDetail {
       command: q.command,
       args: q.args,
       env: q.env,
-      headers: q.headers,
-      authType: q.auth_type,
+      envUserSupplied: q.env_user_supplied,
+      headers,
+      headersUserSupplied,
     },
     tools: raw.tools ?? [],
     usageExamples: raw.usage_examples ?? [],
@@ -595,8 +635,9 @@ function toWireParams(params: CreateMcpParams | UpdateMcpParams) {
     command: params.command,
     args: params.args,
     env: params.env,
+    env_user_supplied: params.envUserSupplied,
     headers: params.headers,
-    auth_type: params.authType,
+    headers_user_supplied: params.headersUserSupplied,
     tools: params.tools,
     usage_examples: params.usageExamples,
     faqs: params.faqs,

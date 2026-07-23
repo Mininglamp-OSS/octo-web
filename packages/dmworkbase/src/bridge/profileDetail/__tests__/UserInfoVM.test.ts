@@ -10,24 +10,8 @@ const mocks = vi.hoisted(() => ({
   userInfos: vi.fn(),
 }));
 
-vi.mock("wukongimjssdk", () => ({
-  Channel: class {
-    channelID: string;
-    channelType: number;
-    constructor(channelID: string, channelType: number) {
-      this.channelID = channelID;
-      this.channelType = channelType;
-    }
-  },
-  ChannelInfo: class {
-    channel: unknown;
-    title = "";
-    logo = "";
-    orgData: Record<string, unknown> = {};
-  },
-  ChannelTypeGroup: 2,
-  ChannelTypePerson: 1,
-  WKSDK: {
+vi.mock("wukongimjssdk", () => {
+  const sdk = {
     shared: () => ({
       channelManager: {
         fetchChannelInfo: mocks.fetchChannelInfo,
@@ -37,8 +21,28 @@ vi.mock("wukongimjssdk", () => ({
         getChannelInfo: vi.fn(),
       },
     }),
-  },
-}));
+  };
+  return {
+    default: sdk,
+    Channel: class {
+      channelID: string;
+      channelType: number;
+      constructor(channelID: string, channelType: number) {
+        this.channelID = channelID;
+        this.channelType = channelType;
+      }
+    },
+    ChannelInfo: class {
+      channel: unknown;
+      title = "";
+      logo = "";
+      orgData: Record<string, unknown> = {};
+    },
+    ChannelTypeGroup: 2,
+    ChannelTypePerson: 1,
+    WKSDK: sdk,
+  };
+});
 
 vi.mock("../../../App", () => ({
   default: {

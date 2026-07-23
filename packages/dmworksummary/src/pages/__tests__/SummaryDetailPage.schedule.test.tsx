@@ -2,7 +2,9 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 // SummaryDetailPage import wukongimjssdk，测试环境会拉起无关依赖导致解析失败，mock 掉。
 vi.mock('wukongimjssdk', () => ({
-    Channel: class {},
+    Channel: class {
+        constructor(public channelID: string, public channelType: number) {}
+    },
     ChannelTypeGroup: 2,
     ChannelTypePerson: 1,
     MessageText: class {},
@@ -52,6 +54,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
 }));
 
 import * as api from '../../api/summaryApi';
+import { WKApp } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 
 vi.mock('../../api/summaryApi');
@@ -64,6 +67,70 @@ function makePage(taskId: number | string) {
     };
     return page;
 }
+
+describe('SummaryDetailPage — 返回分享卡片所在群聊', () => {
+    it('分享入口打开原总结时通知左侧列表选中同一个 task', () => {
+        const page = new SummaryDetailPage({
+            taskId: 42,
+            emitSelection: true,
+            originChannel: { channelId: 'alice', channelType: 1 },
+        } as any);
+        (page as any).loadDetail = vi.fn();
+        const dispatchEvent = vi.spyOn(window, 'dispatchEvent');
+
+        try {
+            page.componentDidMount();
+
+            expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'summary-detail-active',
+                detail: { taskId: 42 },
+            }));
+        } finally {
+            page.componentWillUnmount();
+            dispatchEvent.mockRestore();
+        }
+    });
+
+    it('仅携带来源会话时展示入口，并返回该会话', () => {
+        const page = new SummaryDetailPage({
+            taskId: 1,
+            originChannel: { channelId: 'alice', channelType: 1 },
+        } as any);
+        (page as any).context = { t: (key: string) => key };
+        page.state = { ...page.state, detail: baseDetail() as any };
+        const showConversation = vi.fn();
+        const previous = (WKApp as any).endpoints.showConversation;
+        (WKApp as any).endpoints.showConversation = showConversation;
+
+        try {
+            const header = (page as any).renderHeader();
+            const inner = Array.isArray(header.props.children)
+                ? header.props.children[0]
+                : header.props.children;
+            const backButton = inner.props.children[0];
+            expect(backButton.props.children).toBe('summary.share.backToChat');
+
+            backButton.props.onClick();
+            expect(showConversation).toHaveBeenCalledWith(expect.objectContaining({
+                channelID: 'alice',
+                channelType: 1,
+            }));
+        } finally {
+            (WKApp as any).endpoints.showConversation = previous;
+        }
+    });
+
+    it('普通总结入口不展示返回群聊', () => {
+        const page = makePage(1);
+        page.state = { ...page.state, detail: baseDetail() as any };
+
+        const header = (page as any).renderHeader();
+        const inner = Array.isArray(header.props.children)
+            ? header.props.children[0]
+            : header.props.children;
+        expect(inner.props.children[0]).toBeNull();
+    });
+});
 
 it('keeps regeneration voice insertion within the 2000-character limit', () => {
     const page = makePage(1);

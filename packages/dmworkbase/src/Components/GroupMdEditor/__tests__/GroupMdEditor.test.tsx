@@ -55,6 +55,11 @@ vi.mock("../../../Messages/Text/MarkdownContent", () => ({
   __esModule: true,
 }));
 
+vi.mock("../../VoiceInputButton", () => ({
+  default: () => React.createElement("button", { type: "button" }),
+  __esModule: true,
+}));
+
 beforeEach(() => {
   hoisted.getGroupMd.mockReset();
 });

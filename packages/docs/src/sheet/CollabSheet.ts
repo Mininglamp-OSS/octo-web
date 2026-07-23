@@ -15,7 +15,7 @@
 import * as Y from 'yjs'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { IndexeddbPersistence } from 'y-indexeddb'
-import { LocaleType, mergeLocales, ICommandService, CommandType, IContextService, FOCUSING_COMMON_DRAWINGS } from '@univerjs/core'
+import { LocaleType, mergeLocales, ICommandService, CommandType, IContextService, FOCUSING_COMMON_DRAWINGS, IImageIoService } from '@univerjs/core'
 import { IMenuManagerService, RibbonInsertGroup, MenuItemType, IFontService } from '@univerjs/ui'
 import { createUniver } from './createUniver.ts'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
@@ -46,9 +46,11 @@ import '@univerjs/preset-sheets-core/lib/index.css'
 // IImageIoService (base64-inline image storage), so no upload backend is required to insert.
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing'
 import { ISheetDrawingService } from '@univerjs/preset-sheets-drawing'
-import { IDrawingManagerService } from '@univerjs/drawing'
+import { DRAWING_IMAGE_ALLOW_IMAGE_LIST, IDrawingManagerService } from '@univerjs/drawing'
 import sheetsDrawingZhCN from '@univerjs/preset-sheets-drawing/locales/zh-CN'
 import '@univerjs/preset-sheets-drawing/lib/index.css'
+import { enableSheetSvgImages } from './sheetImageTypes.ts'
+import { SanitizedSheetImageIoService } from './sheetImageIoService.ts'
 // Hyperlink (insert link) preset — OSS, same pattern as drawing. Hyperlinks live in the
 // SHEET_HYPER_LINK_PLUGIN resource (not cell data), so persistence/replication rides a dedicated
 // Yjs sync in binding.ts (fed the HyperLinkModel resolved from the injector below).
@@ -72,6 +74,9 @@ import { SheetCommentMarkers, type MarkedCell } from './sheetCommentMarkers.ts'
 import { SheetCellMention, stripTrailingQuery } from './sheetMention.ts'
 import type { MentionItem } from '../mentions/source.ts'
 import { colorFromId } from '../awareness/presence.ts'
+
+// This is the actual Univer picker/runtime gate (not a parallel app-owned picker).
+enableSheetSvgImages(DRAWING_IMAGE_ALLOW_IMAGE_LIST)
 
 /** 0-based column index → spreadsheet letters (0→A, 26→AA). */
 function colToA1(col: number): string {
@@ -256,6 +261,10 @@ export class CollabSheet {
       locale: LocaleType.ZH_CN,
       locales: { [LocaleType.ZH_CN]: mergedZhCN },
       darkMode: isDarkTheme(),
+      // Override Univer's base64 image service only for this sheet instance. Raster images retain
+      // the existing local path; SVG is uploaded, backend-sanitized, then downloaded from the
+      // returned trusted attachment URL before it can enter shared Yjs state.
+      override: [[IImageIoService, { useValue: new SanitizedSheetImageIoService(opts.docId) }]],
       presets: [
         UniverSheetsCorePreset({
           container: opts.container,

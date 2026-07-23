@@ -32,8 +32,10 @@ import { installLibraryControlButtons } from './libraryControlButtons.ts'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData, FileFetchRef } from './collab/index.ts'
 import { makeGenerateIdForFile, dataURLToBlob, sanitizeFractionalIndices } from './collab/index.ts'
-import { presignUpload, uploadBinary } from '../attachments/api.ts'
+import { presignUpload, uploadBinary, uploadImage } from '../attachments/api.ts'
 import { fetchBoardFileBinaries } from './boardFiles.ts'
+import { installSvgFileInputPreprocessor } from './svgFilePreprocessor.ts'
+import { classifyBoardImage } from './boardImageMime.ts'
 import {
   setLocalPresenceUser,
   publishLocalPointer,
@@ -207,13 +209,11 @@ function toExcalidrawLang(locale: string): string {
 const boardGenerateIdForFile = makeGenerateIdForFile()
 
 /**
- * Board image upload limits mirroring the backend attachments contract (XIN-701): the image tier is
- * 10 MB and `image/svg+xml` is denied (SVG can carry script → stored-XSS). The backend is the final
- * authority (it 400s on violation); these client-side guards just avoid a doomed round-trip and keep
- * an oversize/SVG paste from ever leaving the browser.
+ * Board image upload limit mirroring the backend attachments contract (XIN-701): the image tier is
+ * 10 MB. SVG is sent through the backend's dedicated sanitizer endpoint; raster images keep the
+ * presigned object-store path. The backend remains the final authority.
  */
 const MAX_BOARD_IMAGE_BYTES = 10 * 1024 * 1024
-const DENIED_IMAGE_MIME = new Set(['image/svg+xml'])
 
 /** Best-effort theme: follow the OS preference, matching the docs `.octo-theme` media query. */
 function prefersDark(): boolean {
@@ -440,6 +440,13 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     return () => {
       active = false
     }
+  }, [])
+
+  // Excalidraw 0.18.1 normalizes SVGs before creating its data URL. Materialize safe inline
+  // presentation styles as attributes first so native SVG color survives import and collaboration.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    return installSvgFileInputPreprocessor(document)
   }, [])
 
   // Follow OS theme changes live so the canvas re-themes with the rest of the app.
@@ -787,17 +794,19 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       if (!file.dataURL) return null
       const blob = dataURLToBlob(file.dataURL)
       if (!blob) return null // already a remote URL, or not decodable — nothing to upload
-      const mime = file.mimeType ?? blob.type ?? 'application/octet-stream'
-      // Contract limits (XIN-701): SVG is denied (XSS), image tier caps at 10 MB. Skip the upload
-      // rather than fire a request the backend will 400; the image still renders locally for the
-      // author, it just does not sync — surfaced in the console for diagnosis.
-      if (DENIED_IMAGE_MIME.has(mime)) {
-        console.warn('[board] image type not allowed for upload:', mime)
-        return null
-      }
+      // File metadata is caller-controlled and may be empty or oddly cased. Prefer the decoded
+      // data-URL Blob MIME when Excalidraw omitted it, normalize before routing, and content-sniff
+      // SVG so a mislabeled file can never reach the generic uninspected presign path.
+      const { mime, isSvg } = await classifyBoardImage(blob, file.mimeType)
+      // Contract limits (XIN-701): image tier caps at 10 MB. SVG uses the dedicated
+      // sanitized endpoint below; raster images retain the presign path.
       if (blob.size > MAX_BOARD_IMAGE_BYTES) {
         console.warn('[board] image exceeds the 10MB limit, not uploaded:', blob.size)
         return null
+      }
+      if (isSvg) {
+        const svgFile = new File([blob], `${file.id}.svg`, { type: mime })
+        return (await uploadImage(docId, svgFile)).attachId
       }
       const presign = await presignUpload(docId, {
         fileName: file.id,

@@ -1,0 +1,150 @@
+# e2e MR gate: build once, run @p0 cases, junit 后处理判 business vs visual fail
+# 姿势沿用 e2e-kit v0.4 依据 (docs/methodology/module-organization.md tag 层次):
+#   - @p0 阻断 (fail block PR)
+#   - @visual 视觉基线 (fail 不 block, 需 baseline 更新 workflow, 目前无 case)
+# 冷启动 baseline 未 ready 期间, MR 只跑 @p0, 完全跳过 @visual (grep 无 @visual pattern).
+
+name: e2e
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/e2e.yml"
+      - ".github/workflows/e2e-nightly.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Build e2e bundle (tree-shakes MSW into build-e2e/)
+        working-directory: apps/web
+        run: pnpm build:e2e
+      - name: Upload build-e2e artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-e2e
+          path: apps/web/build-e2e/
+          retention-days: 1
+
+  e2e-p0:
+    needs: install-build
+    runs-on: ubuntu-22.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+    env:
+      E2E_TARGET: local
+      PW_PREVIEW_PORT: "5173"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-e2e
+          path: apps/web/build-e2e/
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Run @p0 e2e
+        working-directory: apps/web
+        shell: bash
+        run: |
+          set +e
+          pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts --grep "@p0"
+          PW_EXIT=$?
+          set -e
+
+          JUNIT="e2e-kit/playwright-report/junit.xml"
+          if [[ ! -f "$JUNIT" ]]; then
+            echo "❌ junit.xml missing, treat as hard fail (playwright exit=$PW_EXIT)"
+            exit 1
+          fi
+          FAILED_NAMES=$(awk '
+            /<testcase / { match($0, /name="[^"]*"/); name = substr($0, RSTART+6, RLENGTH-7); has_fail=0; next }
+            /<failure|<error/ { if (name && !has_fail) { print name; has_fail=1 } }
+            /<\/testcase>/ { name="" }
+          ' "$JUNIT")
+          TOTAL_FAIL=$(echo "$FAILED_NAMES" | grep -c . || true)
+          # visual vs business split 依赖 playwright junit reporter 把 test title (含 @tag) 写进 <testcase name=...>.
+          # 若未来 reporter 改成不带 tag, 此 grep 将退化 (全部误判 business), 需同步改判定.
+          # VISUAL_FAIL 只算 "带 @visual 且 不带 @p0" 的 fail — @p0 case 即使也带 @visual,
+          # 一挂就必须 block (@p0 是硬阻断契约). 交叉 tag 走 BUSINESS 分支.
+          VISUAL_FAIL=$(echo "$FAILED_NAMES" | grep "@visual" | grep -vc "@p0" || true)
+          BUSINESS_FAIL=$((TOTAL_FAIL - VISUAL_FAIL))
+          TOTAL_TESTS=$(grep -oE 'tests="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          echo ""
+          echo "═════════════════════════════════════════════════════════════"
+          echo "📊 e2e @p0 summary (playwright exit=$PW_EXIT):"
+          echo "   total tests:   $TOTAL_TESTS"
+          echo "   total fail:    $TOTAL_FAIL"
+          echo "   business fail: $BUSINESS_FAIL"
+          echo "   visual fail:   $VISUAL_FAIL"
+          if [[ "$TOTAL_FAIL" -gt 0 ]]; then
+            echo ""
+            echo "   fail case names:"
+            echo "$FAILED_NAMES" | awk '{print "     · " $0}'
+          fi
+          echo "═════════════════════════════════════════════════════════════"
+
+          # 判定顺序 (fail-closed, PW_EXIT 检查在 visual allow 之前避免掩盖 crash):
+          #  1. tests=0 → webServer / playwright 挂了根本没跑, block
+          #  2. tests < EXPECTED_P0 → 有 case 静默掉了 @p0 tag / grep 漂了, block
+          #  3. 有业务 fail (含 @p0+@visual 交叉 case) → block
+          #  4. PW_EXIT!=0 但 junit 无 business fail → playwright 本身 crash/OOM/timeout, block
+          #  5. 仅视觉 fail (无 @p0 交叉) 且 playwright 干净退出 → allow
+          #  6. 全绿 → success
+          EXPECTED_P0=29
+          if [[ "$TOTAL_TESTS" -eq 0 ]]; then
+            echo "❌ tests=0 (playwright 没跑起 test, 通常是 preview server timeout), block PR"
+            exit 1
+          elif [[ "$TOTAL_TESTS" -lt "$EXPECTED_P0" ]]; then
+            echo "❌ tests=$TOTAL_TESTS < EXPECTED_P0=$EXPECTED_P0 (有 case 掉了 @p0 tag 或 grep 漂了), block PR"
+            echo "   若确认减 case, 请同步下调 EXPECTED_P0."
+            exit 1
+          elif [[ "$BUSINESS_FAIL" -gt 0 ]]; then
+            echo "❌ 有 $BUSINESS_FAIL 个业务 case fail → block PR"
+            exit 1
+          elif [[ "$PW_EXIT" -ne 0 && "$VISUAL_FAIL" -eq 0 ]]; then
+            echo "❌ playwright exit=$PW_EXIT 但 junit 无 fail 条目 (crash/OOM/timeout), block PR"
+            exit 1
+          elif [[ "$VISUAL_FAIL" -gt 0 && "$PW_EXIT" -ne 0 ]]; then
+            echo "⚠️  仅 $VISUAL_FAIL 个视觉 case fail, playwright 非 0 退出符合预期 → allow PR (需手动更新 baseline)"
+            exit 0
+          elif [[ "$PW_EXIT" -ne 0 ]]; then
+            echo "❌ playwright exit=$PW_EXIT 但无 visual fail 也无 business fail (异常), block PR"
+            exit 1
+          else
+            echo "✅ all pass"
+            exit 0
+          fi
+      - name: Upload playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-p0
+          path: |
+            apps/web/e2e-kit/playwright-report/
+            apps/web/e2e-kit/test-results/
+          retention-days: 30

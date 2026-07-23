@@ -2,7 +2,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1-5);
-  max-width: min(100%, 680px);
   word-break: break-word;
 }
 
@@ -17,7 +16,7 @@
 
 .wk-msg-mixed-image {
   display: flex;
-  max-width: 100%;
+  max-width: min(100%, 680px);
 }
 
 .wk-msg-mixed-file {

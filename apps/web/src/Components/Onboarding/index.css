@@ -31,10 +31,9 @@
     animation: wkIntroToPanelOut 620ms var(--wk-ease) forwards;
 }
 
-.wk-onboarding-skip-transition-target {
-    padding: 0;
-    background: var(--wk-bg-surface);
-    backdrop-filter: none;
+.wk-onboarding-overlay-intro.is-skip-transition-target {
+    visibility: hidden;
+    pointer-events: none;
     transition: none;
 }
 

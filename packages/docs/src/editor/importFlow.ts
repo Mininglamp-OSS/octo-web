@@ -7,7 +7,11 @@
 
 import { parseMarkdownToPmDoc } from '../import/markdown.ts'
 import { createDoc, importDocx } from '../pages/docsApi.ts'
-import { copyAttachments, ingestAttachments, type CopySourceRef } from '../attachments/api.ts'
+import {
+  copyAttachments,
+  ingestAttachments,
+  type CopySourceRef,
+} from '../attachments/api.ts'
 import { emojiGlyph } from './emoji.ts'
 
 const IMPORT_KEY_PREFIX = 'octo-import-pm-'
@@ -237,7 +241,10 @@ export async function migrateImportedImages(
 
   // Split image nodes into our-service (by source ref) vs external (by URL), de-duped. We keep
   // the NODE objects (not just attrs) so a failed external image can be transformed into a link.
-  const byRef = new Map<string, { ref: CopySourceRef; nodes: Array<Record<string, unknown>> }>()
+  const byRef = new Map<string, {
+    ref: CopySourceRef
+    nodes: Array<Record<string, unknown>>
+  }>()
   const byUrl = new Map<string, Array<Record<string, unknown>>>()
   for (const node of images) {
     const attrs = (node.attrs ?? {}) as Record<string, unknown>
@@ -508,4 +515,3 @@ function pickDocxFile(t?: Translate): Promise<PickedDocxFile> {
 function stripDocxExtension(name: string): string {
   return name.replace(/\.docx$/i, '')
 }
-

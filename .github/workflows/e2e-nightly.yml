@@ -1,0 +1,102 @@
+# e2e nightly: 全量跑 (排除 @visual, baseline 未 ready 前跳过视觉)
+# 每天 UTC 03:00 (北京 11:00) 触发, 只在 default branch 生效.
+# workflow_dispatch 也开着, 便于维护者手动触发 debug.
+
+name: e2e-nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-nightly
+  cancel-in-progress: true
+
+jobs:
+  install-build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Build e2e bundle
+        working-directory: apps/web
+        run: pnpm build:e2e
+      - name: Upload build-e2e artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-e2e-nightly
+          path: apps/web/build-e2e/
+          retention-days: 1
+
+  e2e-all:
+    needs: install-build
+    runs-on: ubuntu-22.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+    env:
+      E2E_TARGET: local
+      PW_PREVIEW_PORT: "5174"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-e2e-nightly
+          path: apps/web/build-e2e/
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Run e2e (tagged @p* only, non-visual)
+        working-directory: apps/web
+        # --grep "@p[0-9]": 只跑打了优先级 tag 的 case (@p0/@p1/@p2), 排除:
+        #   - tests/bind/ (未打 @p 系列, dev-server-only, 未验证过 preview 环境)
+        #   - tests/standalone-doc/ (同上, AC-N: pattern 未走 CaseId 约定)
+        # --grep-invert "@visual": baseline 未 ready, 视觉 case 目前必红且不该 block nightly
+        # 组合语义: grep AND grep-invert (playwright 官方支持)
+        shell: bash
+        run: |
+          set +e
+          pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts \
+            --grep "@p[0-9]" --grep-invert "@visual"
+          PW_EXIT=$?
+          set -e
+
+          JUNIT="e2e-kit/playwright-report/junit.xml"
+          if [[ ! -f "$JUNIT" ]]; then
+            echo "❌ junit.xml missing, treat as hard fail (playwright exit=$PW_EXIT)"
+            exit 1
+          fi
+          TOTAL_TESTS=$(grep -oE 'tests="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          # nightly 也加 tests=0 guard: 防 grep drift 让 nightly 静默"全绿"
+          EXPECTED_P0=29
+          if [[ "$TOTAL_TESTS" -eq 0 ]]; then
+            echo "❌ nightly tests=0 (grep 漂了 / preview 挂了), fail"
+            exit 1
+          elif [[ "$TOTAL_TESTS" -lt "$EXPECTED_P0" ]]; then
+            echo "❌ nightly tests=$TOTAL_TESTS < EXPECTED_P0=$EXPECTED_P0 (有 case 掉 @p tag), fail"
+            exit 1
+          fi
+          echo "✅ nightly ran $TOTAL_TESTS tests (playwright exit=$PW_EXIT)"
+          exit $PW_EXIT
+      - name: Upload playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-nightly
+          path: |
+            apps/web/e2e-kit/playwright-report/
+            apps/web/e2e-kit/test-results/
+          retention-days: 30

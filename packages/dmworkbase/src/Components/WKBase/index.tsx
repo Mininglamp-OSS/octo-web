@@ -1,6 +1,6 @@
 import { Modal, Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
-import WKSDK, { Channel, ChannelTypePerson, MessageText } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, MessageText } from "wukongimjssdk";
 import React, { Component, HTMLProps, ReactNode } from "react";
 import ConversationSelect from "../ConversationSelect";
 import type { ConversationSelectGrant } from "../ConversationSelect";
@@ -22,7 +22,10 @@ import {
 } from "./userInfoRouter";
 import { I18nContext } from "../../i18n";
 import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
-import { getImChannelSubscribers, syncImChannelSubscribers } from "../../im-runtime/channelRuntime";
+import {
+  getCurrentImChannelSubscribers,
+  syncCurrentImChannelSubscribers,
+} from "../../im-runtime/currentChannelRuntime";
 import "./index.css";
 
 /**
@@ -51,7 +54,7 @@ export function createDefaultExternalViewerGate(): ExternalViewerGate {
     isExternal: (uid, fromChannel, channelInfo) => {
       // 1) Group subscriber orgData (primary source, matches UserInfoVM step 1).
       if (fromChannel && fromChannel.channelType !== ChannelTypePerson) {
-        const subscribers = getImChannelSubscribers(WKSDK.shared(), fromChannel) as
+        const subscribers = getCurrentImChannelSubscribers(fromChannel) as
           { uid?: string; orgData?: ChannelInfoOrgDataLike }[];
         const sub = subscribers.find((s) => s && s.uid === uid);
         const org = sub?.orgData;
@@ -278,11 +281,11 @@ export default class WKBase
         continue;
       }
       try {
-        await syncImChannelSubscribers(WKSDK.shared(), ch);
+        await syncCurrentImChannelSubscribers(ch);
       } catch {
         // best-effort: fall back to whatever is already cached
       }
-      const subs = getImChannelSubscribers(WKSDK.shared(), ch) as { uid?: string }[];
+      const subs = getCurrentImChannelSubscribers(ch) as { uid?: string }[];
       for (const s of subs) {
         if (s?.uid) uids.add(s.uid);
       }
