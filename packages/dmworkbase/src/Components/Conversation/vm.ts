@@ -1461,6 +1461,24 @@ export default class ConversationVM extends ProviderListener {
     }
 
     /**
+     * 该 type=17 卡当前有效帧是否已「终态」——用于收到权威新帧后撤回本地兜底注解。
+     * 终态 = 有效卡不再是「未终态 progress 卡」：要么命中终态标记（✅/⚠️/…），要么已不是
+     * agent_progress 卡（如终态+回答合并帧剥离了 layout metadata）。只读扩展（read receipt 等，
+     * 无 contentEdit）不改变有效卡，仍判为非终态，不会误撤回兜底。
+     */
+    private progressCardFrameIsTerminal(messageWrap: MessageWrap): boolean {
+        if (messageWrap.contentType !== MessageContentTypeConst.interactiveCard) {
+            return false
+        }
+        const content = messageWrap.content
+        if (!(content instanceof InteractiveCardContent)) {
+            return false
+        }
+        const effective = resolveEffectiveCardContent(content, messageWrap.message.remoteExtra)
+        return !isNonTerminalProgressCard(effective.card)
+    }
+
+    /**
      * 收到某 assistant 的 type=1 final text 后的客户端兜底：若该 assistant 最近一张 type=17 卡是
      * 「未终态」的 progress 卡、且距其最后一次帧到达已空闲够久，则把它降级显示为「已完成（未收到
      * 显式终态）」。严格按 senderId 匹配「最近一张卡」，多助理并发不误伤别人；只叠加本地 UI 态，
@@ -1512,6 +1530,11 @@ export default class ConversationVM extends ProviderListener {
                 message.message.remoteExtra = messageExtra
                 message.resetParts()
                 this.stampProgressCardArrival(message)
+                // 权威终态帧到达即覆盖本地兜底注解：撤回「未收到显式终态」标记，让真实终态正常
+                // 渲染，闭环 client fallback race（评审 blocker）。只读扩展不判为终态，不误撤回。
+                if (message.localFallbackApplied && this.progressCardFrameIsTerminal(message)) {
+                    message.localFallbackApplied = false
+                }
             }
         }
         this.notifyListener()
