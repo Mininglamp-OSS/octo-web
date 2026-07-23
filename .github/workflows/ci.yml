@@ -88,6 +88,14 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: I18n check
         run: pnpm i18n:check
+      - name: Unified import/export unit tests
+        run: >-
+          pnpm --filter @octo/docs exec vitest run
+          src/editor/EditorShell.test.tsx
+          src/editor/fontFamilies.verify.test.ts
+          src/editor/importFlow.markdown.test.ts
+          src/pages/docsApi.export.test.ts
+          src/pages/docsApi.import.test.ts
       - name: Build
         run: pnpm build
       - name: Lint

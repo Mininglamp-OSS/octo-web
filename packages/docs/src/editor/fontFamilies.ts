@@ -23,6 +23,7 @@
  * time (zh-CN shows the Chinese face name, en-US the romanized family name).
  */
 export const FONT_FAMILIES = [
+  { labelKey: 'docs.toolbar.font.calibri', value: 'Calibri, Carlito, sans-serif' },
   { labelKey: 'docs.toolbar.font.timesNewRoman', value: '"Times New Roman", Times, serif' },
   { labelKey: 'docs.toolbar.font.tahoma', value: 'Tahoma, sans-serif' },
   { labelKey: 'docs.toolbar.font.verdana', value: 'Verdana, sans-serif' },

@@ -26,11 +26,12 @@ vi.mock('../collab/useCollabEditor.ts', () => ({
   }),
 }))
 
-// Capture the markdown the handler serializes; the body content is irrelevant here.
-const exportSpy = vi.fn(async (..._args: unknown[]) => '# exported\n')
-vi.mock('../export/markdown.ts', () => ({
-  exportDocToMarkdown: (...args: unknown[]) => exportSpy(...args),
-}))
+// Capture calls to the single authoritative backend export endpoint.
+const exportSpy = vi.fn(async (..._args: unknown[]) => new ArrayBuffer(8))
+vi.mock('../pages/docsApi.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../pages/docsApi.ts')>()
+  return { ...actual, exportDocFile: (...args: unknown[]) => exportSpy(...args) }
+})
 
 // Stub the presentational children that take the live editor/provider — they are not under test.
 vi.mock('@tiptap/react', () => ({ EditorContent: () => null }))
@@ -135,9 +136,10 @@ describe('EditorShell — export filename uses the live title, not the stale pro
 
     // Export moved into the header ≡ "more" menu: open it, then trigger the export row.
     fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    fireEvent.click(screen.getByText('docs.toolbar.export'))
     fireEvent.click(screen.getByText('docs.toolbar.exportMarkdown'))
 
-    await waitFor(() => expect(exportSpy).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md'))
     await waitFor(() => expect(createdAnchors.length).toBeGreaterThan(0))
     const a = createdAnchors[createdAnchors.length - 1]
     expect(a.download).toBe('Live Title.md')
@@ -166,6 +168,7 @@ describe('EditorShell — header injection props (#512 AC-8)', () => {
     // The low-frequency controls now live behind the ≡ "more" menu, not as resident buttons.
     expect(screen.getByTitle('docs.toolbar.more')).toBeTruthy()
     fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    fireEvent.click(screen.getByText('docs.toolbar.export'))
     expect(screen.getByText('docs.toolbar.exportMarkdown')).toBeTruthy()
     expect(screen.getByText('docs.toolbar.history')).toBeTruthy()
   })
@@ -184,6 +187,7 @@ describe('EditorShell — header injection props (#512 AC-8)', () => {
     expect(screen.getByTitle('docs.list.back')).toBeTruthy()
     // ...and the built-in controls are still reachable via the ≡ menu (parity preserved).
     fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    fireEvent.click(screen.getByText('docs.toolbar.export'))
     expect(screen.getByText('docs.toolbar.exportMarkdown')).toBeTruthy()
   })
 })
@@ -207,6 +211,7 @@ describe('EditorShell — header "more" (≡) menu', () => {
     // Closed by default: no rows visible.
     expect(screen.queryByText('docs.toolbar.exportMarkdown')).toBeNull()
     fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    fireEvent.click(screen.getByText('docs.toolbar.export'))
 
     const historyRow = screen.getByText('docs.toolbar.history').closest('button')!
     const exportRow = screen.getByText('docs.toolbar.exportMarkdown').closest('button')!

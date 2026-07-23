@@ -790,9 +790,8 @@ function DocsList({
     )
   }
 
-  // "从 Markdown 导入" → pick a .md file, parse it to a ProseMirror document client-side, create a
-  // NEW doc (title from the H1 / filename), stash the parsed content, then open it. Import never
-  // touches an existing doc — it always lands in its own new file, mirroring the Excel import flow.
+  // "从 Markdown 导入" → pick a .md file, create a NEW doc, then ask the backend to parse and
+  // atomically apply it to the live Y.Doc. Open only after that authoritative write succeeds.
   const onImportMarkdown = async () => {
     if (creating) return
     setCreating(true)
@@ -818,9 +817,8 @@ function DocsList({
   }
 
   // "从 Word 导入" → pick a .docx file, create a NEW doc, POST the file to the server-side
-  // importer (parses OOXML → ProseMirror JSON, uploads embedded images scoped to the new doc),
-  // stash the returned content, then open it. Like every import path, it lands in its own new
-  // file and never overwrites an existing doc.
+  // importer, which uploads embedded images and atomically applies content to the live Y.Doc.
+  // Open only after that write succeeds; the editor never receives PM content through storage.
   const onImportWord = async () => {
     if (creating) return
     setCreating(true)
