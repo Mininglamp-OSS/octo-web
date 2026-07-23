@@ -260,6 +260,11 @@ function markdownComponents(
                 {children}
             </a>
         ),
+        table: ({ children, ...props }: any) => (
+            <div className="summary-markdown-table-wrap" tabIndex={0} role="region">
+                <table {...props}>{children}</table>
+            </div>
+        ),
     };
 }
 
