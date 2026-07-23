@@ -104,7 +104,11 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   // onVisibleChange —— 仅外部点击关闭,内部多字段交互保持面板打开。
   const [filterOpen, setFilterOpen] = useState(false);
   const [showOpen, setShowOpen] = useState(false);
-  const { candidates: cands, loaded: candsLoaded } = useAssigneeCandidateState();
+  const {
+    candidates: cands,
+    loaded: candsLoaded,
+    succeeded: candsSucceeded,
+  } = useAssigneeCandidateState();
   // 当前 octo 成员的后端 user_id(involves_user_id 需 UUID,非 octo uid)：
   // 复用订阅特性的身份解析——候选里 octo_uid===loginInfo.uid 的 member。未解析出则「与我相关」不可用。
   const myMemberId = useMemo(() => {
@@ -116,17 +120,23 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   const [labels, setLabels] = useState<IssueLabel[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [labelsLoaded, setLabelsLoaded] = useState(false);
+  const [projectsSucceeded, setProjectsSucceeded] = useState(false);
+  const [labelsSucceeded, setLabelsSucceeded] = useState(false);
   const seq = useRef(0); // 请求序号：只应用最新一次的响应，防并发乱序覆盖
 
   useEffect(() => {
     let alive = true;
+    setProjectsLoaded(false);
+    setProjectsSucceeded(false);
+    setLabelsLoaded(false);
+    setLabelsSucceeded(false);
     listProjectOptions()
-      .then((rows) => { if (alive) setProjects(rows); })
-      .catch(() => { if (alive) setProjects([]); })
+      .then((rows) => { if (alive) { setProjects(rows); setProjectsSucceeded(true); } })
+      .catch(() => { if (alive) { setProjects([]); setProjectsSucceeded(false); } })
       .finally(() => { if (alive) setProjectsLoaded(true); });
     listLabels()
-      .then((rows) => { if (alive) setLabels(rows); })
-      .catch(() => { if (alive) setLabels([]); })
+      .then((rows) => { if (alive) { setLabels(rows); setLabelsSucceeded(true); } })
+      .catch(() => { if (alive) { setLabels([]); setLabelsSucceeded(false); } })
       .finally(() => { if (alive) setLabelsLoaded(true); });
     return () => { alive = false; };
   }, []);
@@ -137,13 +147,13 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
   useEffect(() => {
     const optionIds = {
-      assigneeIds: candsLoaded ? cands.map((c) => c.id) : undefined,
-      creatorIds: candsLoaded ? cands.filter((c) => c.type === "member").map((c) => c.id) : undefined,
-      projectIds: projectsLoaded ? projects.map((p) => p.id) : undefined,
-      labelIds: labelsLoaded ? labels.map((l) => l.id) : undefined,
+      assigneeIds: candsLoaded && candsSucceeded ? cands.map((c) => c.id) : undefined,
+      creatorIds: candsLoaded && candsSucceeded ? cands.filter((c) => c.type === "member").map((c) => c.id) : undefined,
+      projectIds: projectsLoaded && projectsSucceeded ? projects.map((p) => p.id) : undefined,
+      labelIds: labelsLoaded && labelsSucceeded ? labels.map((l) => l.id) : undefined,
     };
     setF((prev) => reconcileIssueFilters(prev, optionIds, isMyLoop));
-  }, [cands, candsLoaded, isMyLoop, labels, labelsLoaded, projects, projectsLoaded]);
+  }, [cands, candsLoaded, candsSucceeded, isMyLoop, labels, labelsLoaded, labelsSucceeded, projects, projectsLoaded, projectsSucceeded]);
 
   const reload = useCallback(() => {
     const my = ++seq.current;

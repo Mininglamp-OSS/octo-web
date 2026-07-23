@@ -5,23 +5,25 @@ import { listAssigneeCandidates } from "../api/issueApi";
 export interface AssigneeCandidateState {
   candidates: AssigneeCandidate[];
   loaded: boolean;
+  succeeded: boolean;
 }
 
 export function useAssigneeCandidateState(enabled = true): AssigneeCandidateState {
   const [state, setState] = useState<AssigneeCandidateState>({
     candidates: [],
     loaded: !enabled,
+    succeeded: !enabled,
   });
   useEffect(() => {
     let alive = true;
     if (!enabled) {
-      setState({ candidates: [], loaded: true });
+      setState({ candidates: [], loaded: true, succeeded: true });
       return () => { alive = false; };
     }
-    setState((prev) => ({ candidates: prev.candidates, loaded: false }));
+    setState((prev) => ({ candidates: prev.candidates, loaded: false, succeeded: false }));
     listAssigneeCandidates()
-      .then((candidates) => { if (alive) setState({ candidates, loaded: true }); })
-      .catch(() => { if (alive) setState({ candidates: [], loaded: true }); });
+      .then((candidates) => { if (alive) setState({ candidates, loaded: true, succeeded: true }); })
+      .catch(() => { if (alive) setState({ candidates: [], loaded: true, succeeded: false }); });
     return () => { alive = false; };
   }, [enabled]);
   return state;

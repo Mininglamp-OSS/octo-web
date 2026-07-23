@@ -51,7 +51,7 @@ const STATUSES: IssueStatus[] = [
   "cancelled",
 ];
 const PRIORITIES: IssuePriority[] = ["urgent", "high", "medium", "low", "none"];
-const SCOPES: IssueScope[] = ["all", "members", "agents", "involves"];
+const ISSUE_PAGE_SCOPES: IssueScope[] = ["all", "members", "agents"];
 
 export function defaultIssueFilters(): IssueFilters {
   return {
@@ -162,7 +162,7 @@ function normalizeState(
   const scope =
     !isMyLoop &&
     typeof v.scope === "string" &&
-    SCOPES.includes(v.scope as IssueScope)
+    ISSUE_PAGE_SCOPES.includes(v.scope as IssueScope)
       ? (v.scope as IssueScope)
       : fallbackScope;
   return { filters, scope };

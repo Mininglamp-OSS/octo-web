@@ -152,6 +152,35 @@ describe("issue filter persistence", () => {
     });
   });
 
+  it("preserves stored ids when option requests did not succeed", () => {
+    const filters = {
+      ...defaultIssueFilters(),
+      assigneeIds: ["a1"],
+      creatorIds: ["c1"],
+      projectIds: ["p1"],
+      labelIds: ["l1"],
+    };
+
+    expect(reconcileIssueFilters(filters, {}, false)).toBe(filters);
+  });
+
+  it("does not restore My Loop scope on the normal issue page", () => {
+    const storage = new MemoryStorage();
+    const key = "filters";
+    storage.setItem(
+      key,
+      JSON.stringify({
+        filters: { statuses: ["todo"] },
+        scope: "involves",
+      })
+    );
+
+    expect(readIssueFilterState(storage, key, "all", false)).toEqual({
+      filters: { ...defaultIssueFilters(), statuses: ["todo"] },
+      scope: "all",
+    });
+  });
+
   it("drops filters that do not apply to My Loop", () => {
     const storage = new MemoryStorage();
     const key = "filters";
