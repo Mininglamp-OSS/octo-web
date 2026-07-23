@@ -207,17 +207,26 @@ export function useChannelWebhookActions(params: {
   const regenerateWebhook = useCallback(
     async (item: IncomingWebhook): Promise<ChannelWebhookRegenerateResult> => {
       const actionScopeKey = scopeKey;
-      const response = await runtime.regenerate(
-        params.channel.channelID,
-        item.webhook_id,
-        params.threadShortId
-      );
+      let response: IncomingWebhookCreateResp;
+      try {
+        response = await runtime.regenerate(
+          params.channel.channelID,
+          item.webhook_id,
+          params.threadShortId
+        );
+      } catch (error) {
+        if (!isCurrentScope(actionScopeKey)) {
+          return { ok: false, reason: "stale" };
+        }
+        throw error;
+      }
       if (refreshIfCurrentScope(actionScopeKey)) {
         return { ok: true, response };
       }
       return { ok: false, reason: "stale" };
     },
     [
+      isCurrentScope,
       params.channel.channelID,
       params.threadShortId,
       refreshIfCurrentScope,
@@ -229,17 +238,25 @@ export function useChannelWebhookActions(params: {
   const deleteWebhook = useCallback(
     async (item: IncomingWebhook): Promise<ChannelWebhookDeleteResult> => {
       const actionScopeKey = scopeKey;
-      await runtime.delete(
-        params.channel.channelID,
-        item.webhook_id,
-        params.threadShortId
-      );
+      try {
+        await runtime.delete(
+          params.channel.channelID,
+          item.webhook_id,
+          params.threadShortId
+        );
+      } catch (error) {
+        if (!isCurrentScope(actionScopeKey)) {
+          return { ok: false, reason: "stale" };
+        }
+        throw error;
+      }
       if (refreshIfCurrentScope(actionScopeKey)) {
         return { ok: true };
       }
       return { ok: false, reason: "stale" };
     },
     [
+      isCurrentScope,
       params.channel.channelID,
       params.threadShortId,
       refreshIfCurrentScope,

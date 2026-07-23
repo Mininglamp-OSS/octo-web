@@ -139,22 +139,37 @@ export function useChannelWebhookEditor(params: {
       setSaving(true);
       try {
         if (isEdit && params.webhook) {
-          await runtime.update(
-            params.channel.channelID,
-            params.webhook.webhook_id,
-            request,
-            params.threadShortId
-          );
+          try {
+            await runtime.update(
+              params.channel.channelID,
+              params.webhook.webhook_id,
+              request,
+              params.threadShortId
+            );
+          } catch (error) {
+            if (!isCurrentRequest(requestSequence)) {
+              return { ok: true, status: "stale" };
+            }
+            throw error;
+          }
           if (!isCurrentRequest(requestSequence)) {
             return { ok: true, status: "stale" };
           }
           return { ok: true, status: "updated" };
         }
-        const created = await runtime.create(
-          params.channel.channelID,
-          request,
-          params.threadShortId
-        );
+        let created: IncomingWebhookCreateResp;
+        try {
+          created = await runtime.create(
+            params.channel.channelID,
+            request,
+            params.threadShortId
+          );
+        } catch (error) {
+          if (!isCurrentRequest(requestSequence)) {
+            return { ok: true, status: "stale" };
+          }
+          throw error;
+        }
         if (!isCurrentRequest(requestSequence)) {
           return { ok: true, status: "stale" };
         }

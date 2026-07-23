@@ -230,4 +230,58 @@ describe("useChannelWebhookActions", () => {
     });
     expect(reload).not.toHaveBeenCalled();
   });
+
+  it("marks regenerate and delete rejections stale after scope changes", async () => {
+    let rejectRegenerate!: (reason: unknown) => void;
+    let rejectDelete!: (reason: unknown) => void;
+    const runtime = createRuntime({
+      regenerate: vi.fn(
+        () =>
+          new Promise((_, reject) => {
+            rejectRegenerate = reject;
+          })
+      ),
+      delete: vi.fn(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectDelete = reject;
+          })
+      ),
+    });
+    const reload = vi.fn();
+    renderProbe({ runtime, reload, channelId: "g1" });
+
+    let regeneratePromise!: ReturnType<typeof current.regenerateWebhook>;
+    await act(async () => {
+      regeneratePromise = current.regenerateWebhook(createWebhook());
+      await Promise.resolve();
+    });
+    renderProbe({ runtime, reload, channelId: "g2" });
+    await act(async () => {
+      rejectRegenerate(new Error("regenerate failed"));
+    });
+
+    await expect(regeneratePromise).resolves.toEqual({
+      ok: false,
+      reason: "stale",
+    });
+    expect(reload).not.toHaveBeenCalled();
+
+    renderProbe({ runtime, reload, channelId: "g1" });
+    let deletePromise!: ReturnType<typeof current.deleteWebhook>;
+    await act(async () => {
+      deletePromise = current.deleteWebhook(createWebhook());
+      await Promise.resolve();
+    });
+    renderProbe({ runtime, reload, channelId: "g2" });
+    await act(async () => {
+      rejectDelete(new Error("delete failed"));
+    });
+
+    await expect(deletePromise).resolves.toEqual({
+      ok: false,
+      reason: "stale",
+    });
+    expect(reload).not.toHaveBeenCalled();
+  });
 });
