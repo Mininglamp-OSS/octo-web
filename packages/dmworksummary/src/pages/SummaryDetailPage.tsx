@@ -2430,7 +2430,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     renderPersonalSummary() {
-        const { personalResult, personalLoading, detail } = this.state;
+        const { personalResult, personalLoading, detail, personalExpanded } = this.state;
         const { t } = this.context;
         // Failed 状态由 renderFailed() 统一处理，不在这里渲染
         if (detail && detail.status === TaskStatus.FAILED) return null;
