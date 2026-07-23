@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { t } from '../octoweb/index.ts'
+import { avatarUrlFromUid } from '../html/avatarUrl.ts'
 
 /**
  * A single row in the header "more" (≡) dropdown. `danger` paints the row red (delete);
@@ -23,6 +24,10 @@ export interface DocMoreMenuItem {
 export interface DocMoreMenuProps {
   /** Resolved creator display name. The parent handles the resolution + fallback (short uid). */
   creatorName: string
+  /** Creator uid from __ODOC__.creator_uid — used only to fetch the head avatar image via
+   *  /api/v1/users/<uid>/avatar. Missing / broken image falls back to the initial-letter chip.
+   *  Never used for authorship checks (authorship comes from __ODOC_CAP__.isAuthor). */
+  creatorUid?: string
   /** Creation timestamp (RFC3339). Rendered as "Created on YYYY-MM-DD"; omitted when absent/invalid. */
   createdAt?: string
   /** Neutral action rows, rendered top-to-bottom in the given order. */
@@ -183,10 +188,18 @@ function MenuRow({ item, onSelect }: { item: DocMoreMenuItem; onSelect: () => vo
  * Self-contained plain-React popover (no antd, no portal): a relatively-positioned wrapper anchors
  * an absolutely-positioned panel below the trigger. Closes on outside pointer-down and on Escape.
  */
-export function DocMoreMenu({ creatorName, createdAt, items, dangerItem }: DocMoreMenuProps) {
+export function DocMoreMenu({ creatorName, creatorUid, createdAt, items, dangerItem }: DocMoreMenuProps) {
   const [open, setOpen] = useState(false)
+  // Head avatar: try /api/v1/users/<uid>/avatar; onError falls back to the initial-letter chip.
+  const avatarUrl = avatarUrlFromUid(creatorUid)
+  const [avatarFailed, setAvatarFailed] = useState(false)
+  const showAvatarImg = !!avatarUrl && !avatarFailed
   const wrapRef = useRef<HTMLDivElement>(null)
   const close = () => setOpen(false)
+
+  useEffect(() => {
+    setAvatarFailed(false)
+  }, [avatarUrl])
 
   useEffect(() => {
     if (!open) return
@@ -223,9 +236,19 @@ export function DocMoreMenu({ creatorName, createdAt, items, dangerItem }: DocMo
         <div className="octo-doc-more-panel" role="menu">
           <div className="octo-doc-more-head">
             <div className="octo-doc-more-creator">
-              <span className="octo-doc-more-avatar" aria-hidden="true">
-                {avatarInitial(creatorName)}
-              </span>
+              {showAvatarImg ? (
+                <img
+                  className="octo-doc-more-avatar"
+                  src={avatarUrl!}
+                  alt=""
+                  title={creatorName}
+                  onError={() => setAvatarFailed(true)}
+                />
+              ) : (
+                <span className="octo-doc-more-avatar" aria-hidden="true">
+                  {avatarInitial(creatorName)}
+                </span>
+              )}
               <span className="octo-doc-more-name" title={creatorName}>
                 {creatorName}
               </span>

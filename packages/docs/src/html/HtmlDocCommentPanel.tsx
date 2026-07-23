@@ -10,7 +10,7 @@
 // "让 AI 处理" click forwards an instruction to chat (openDocForward). The two are decoupled.
 
 import { useCallback, useEffect, useState } from 'react'
-import { canForwardToChat, openDocForward, t, getWKApp } from '../octoweb/index.ts'
+import { canForwardToChat, openDocForward, t } from '../octoweb/index.ts'
 import {
   createComment,
   formatCommentTime,
@@ -21,6 +21,7 @@ import {
   type OctoDocCommentThread,
 } from './htmlDocComments.ts'
 import { buildAgentInstruction, truncateAnchorText, type AgentInstructionDoc } from './htmlDocAnchor.ts'
+import { avatarUrlFromUid } from './avatarUrl.ts'
 
 export interface HtmlDocCommentPanelProps {
   docId: string
@@ -69,16 +70,7 @@ function authorName(author: OctoDocAuthor | null | undefined): string {
  */
 function avatarUrlFor(author: OctoDocAuthor | null | undefined): string | null {
   if (author?.avatar_url) return author.avatar_url
-  let uid = author?.login?.trim()
-  if (!uid) return null
-  // Strip the Space-scoped prefix (s<spaceId>_) so we address the raw uid, mirroring
-  // WKApp.avatarUser()'s handling of person channel ids.
-  const spaceId = getWKApp().shared?.currentSpaceId
-  if (spaceId && uid.startsWith(`s${spaceId}_`)) {
-    uid = uid.substring(spaceId.length + 2)
-  }
-  if (!uid) return null
-  return `/api/v1/users/${encodeURIComponent(uid)}/avatar`
+  return avatarUrlFromUid(author?.login)
 }
 
 /** Author + time line shown under each root comment and reply. */

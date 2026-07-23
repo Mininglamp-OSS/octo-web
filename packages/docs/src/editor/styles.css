@@ -2132,6 +2132,14 @@ body.octo-row-resizing {
   justify-content: center;
   text-transform: uppercase;
 }
+/* When a real avatar image is available (creator_uid → /api/v1/users/<uid>/avatar) we swap
+   the span for an img with the same class. object-fit keeps it circular even for non-square
+   sources; background stays as the fallback tint if the image is transparent. */
+img.octo-doc-more-avatar {
+  object-fit: cover;
+  display: block;
+  border: none;
+}
 .octo-doc-more-name {
   font-size: 14px;
   font-weight: 600;

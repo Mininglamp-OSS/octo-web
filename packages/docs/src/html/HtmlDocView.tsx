@@ -240,9 +240,10 @@ type LoadState =
 
 // Minimal metadata the render page injects as window.__ODOC__ (see doc-side render).
 // ⚠️ identity here is the CURRENT VIEWER's session identity (identityFromSession), NOT the
-// doc creator. __ODOC__ (core.OverlayConfig) does NOT carry creator_uid — so never derive
-// authorship by comparing viewer uid against identity.login (that is always the viewer =
-// always true). Authorship comes from window.__ODOC_CAP__.isAuthor (see parseOdocCap).
+// doc creator. __ODOC__ carries creator_uid / creator_name / created_at **for display only**
+// (header creator name + avatar image); authorship still comes from window.__ODOC_CAP__.isAuthor
+// (see parseOdocCap). Never write `viewer.login === meta.creator_uid` to gate author-only UI —
+// that both bypasses the backend cap check and lets any viewer forge author capability.
 interface OctoDocMeta {
   slug?: string
   title?: string
@@ -495,6 +496,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted 
           )}
           <DocMoreMenu
             creatorName={headerCreator}
+            creatorUid={meta?.creator_uid}
             createdAt={meta?.created_at}
             items={[
               {
