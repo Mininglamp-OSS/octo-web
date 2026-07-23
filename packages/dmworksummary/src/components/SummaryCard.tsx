@@ -15,6 +15,7 @@ interface SummaryCardProps {
     onDelete: (taskId: number) => void;
     onRespond?: (taskId: number, action: "accept" | "reject") => void;
     onLeave?: (taskId: number) => void;
+    onRetry?: (taskId: number) => void;
 }
 
 /** 相对时间格式化 */
@@ -56,7 +57,7 @@ function getStatusColor(status: number): string | null {
     }
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave }) => {
+const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry }) => {
     const { t } = useI18n();
     const [confirmType, setConfirmType] = useState<'delete' | 'leave' | null>(null);
     const currentUid = WKApp.loginInfo.uid;
@@ -160,7 +161,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                         {/* Failed: 重试 + 编辑 */}
                                         {task.status === TaskStatus.FAILED && (
                                             <>
-                                                <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); onClick(task.task_id); }}>
+                                                <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); onRetry?.(task.task_id); }}>
                                                     {t("summary.summaryCard.retry")}
                                                 </Dropdown.Item>
                                                 <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); onClick(task.task_id); }}>

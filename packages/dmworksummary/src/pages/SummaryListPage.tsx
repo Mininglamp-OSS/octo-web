@@ -420,6 +420,17 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }
     };
 
+    handleRetry = async (taskId: number) => {
+        try {
+            const task = this.state.items.find(i => i.task_id === taskId);
+            await api.regenerateSummary(taskId, { topic: task?.title || "" });
+            Toast.success(t("summary.list.retrySuccess"));
+            this.loadData();
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.common.operationFailed"));
+        }
+    };;
+
     handleCreate = () => {
         if (this.props.onCreateNew) {
             this.props.onCreateNew();
@@ -564,6 +575,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 onDelete={this.handleDelete}
                                 onRespond={this.handleRespond}
                                 onLeave={this.handleLeave}
+                                onRetry={this.handleRetry}
                             />
                         ))}
                         {loadingMore && (
