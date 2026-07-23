@@ -56,9 +56,11 @@
     background: #fff;
 }
 
-/* 禁用 WKViewQueue 路由切换动画（右滑入/出），详情页直接显示 */
+/* 禁用 WKViewQueue 路由切换动画（右滑入/出），总结相关页面直接显示 */
 .wk-viewqueue-view-in:has(.summary-detail-page),
-.wk-viewqueue-view-out:has(.summary-detail-page) {
+.wk-viewqueue-view-out:has(.summary-detail-page),
+.wk-viewqueue-view-in:has(.summary-workbench),
+.wk-viewqueue-view-out:has(.summary-workbench) {
     animation: none !important;
     -webkit-animation: none !important;
 }
