@@ -4,7 +4,7 @@ import { MoreHorizontal, AlertTriangle, X } from "lucide-react";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
-import { ParticipantStatus, TaskStatus, TriggerType } from "../types/summary";
+import { ParticipantStatus, TaskStatus } from "../types/summary";
 import { getStatusLabel } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 
@@ -87,7 +87,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         ? t("summary.summaryCard.youStartedAt", { values: { time: relativeTime } })
         : t("summary.summaryCard.startedAt", { values: { name: task.creator_name || t("summary.common.unknown"), time: relativeTime } });
 
-    const isScheduledTask = (task.schedule_id != null && task.schedule_id > 0) || task.trigger_type === TriggerType.SCHEDULED;
+    
 
     const handleDeleteClick = (e: React.MouseEvent) => {
         e.stopPropagation();

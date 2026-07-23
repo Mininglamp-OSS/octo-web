@@ -192,7 +192,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         editingMyDraft: false,
         showMatterPicker: false,
         forwardingToMatter: false,
-        forwardingToMatter: false,
         showRegenerateModal: false,
         regenerateMode: "refine",
         regenerateTopic: "",
@@ -2904,6 +2903,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     initialContent={content}
                                     onSave={this.handleEditPersonalReportSave}
                                     onCancel={this.handleEditPersonalReportCancel}
+                                    exposeSave={(fn) => { this.editorSaveFn = fn; }}
                                 />
                             </div>
                         );
@@ -3697,7 +3697,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 </div>
 
                 {/* Edit mode footer */}
-                {(this.state.isEditing || this.state.editingTeamSummary || this.state.editingMyDraft) && (
+                {(this.state.isEditing || this.state.editingTeamSummary || this.state.editingMyDraft || this.state.editingPersonalReport) && (
                     <div className="summary-detail-footer">
                         <button
                             type="button"
@@ -3707,6 +3707,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     this.handleEditTeamCancel();
                                 } else if (this.state.editingMyDraft) {
                                     this.handleEditMyDraftCancel();
+                                } else if (this.state.editingPersonalReport) {
+                                    this.handleEditPersonalReportCancel();
                                 } else {
                                     this.handleEditCancel();
                                 }
@@ -3724,6 +3726,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     this.handleEditTeamSave();
                                 } else if (this.state.editingMyDraft) {
                                     this.handleEditMyDraftSave();
+                                } else if (this.state.editingPersonalReport) {
+                                    this.handleEditPersonalReportSave();
                                 } else {
                                     this.handleEditSave();
                                 }

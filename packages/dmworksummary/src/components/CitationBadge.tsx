@@ -8,6 +8,7 @@ import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
 import { ChannelTypeCommunityTopic } from "@octo/base/src/Service/Const";
 import CitationText, { CitationContext } from './CitationText';
 import { CitationItem, CitationContextMessage, TeamCitationItem, MemberStatus } from '../types/summary';
+import { formatGroupLabel } from './citationFormat';
 
 interface CitationBadgeProps {
     index: number;
@@ -224,7 +225,7 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
     );
 }
 
-const CitationBadge: React.FC<CitationBadgeProps> = ({ index, citations, badgeKey }) => {
+const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, citations, badgeKey }) => {
     const { t } = useI18n();
     const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
     const citation = citations.find(c => c.index === index);
@@ -280,9 +281,7 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
     const { t } = useI18n();
     const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
 
-    const first = displayIndices?.[0] ?? indices[0];
-    const last = (displayIndices?.[displayIndices.length - 1]) ?? (indices[indices.length - 1]);
-    const label = `${first}-${last}`;
+    const label = formatGroupLabel(displayIndices ?? indices);
 
     const indicesKey = indices.join(',');
     const groupCitations = useMemo(
