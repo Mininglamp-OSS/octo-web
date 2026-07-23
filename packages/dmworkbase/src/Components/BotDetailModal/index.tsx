@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
-import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
+import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
 import { WKAvatarEditor } from "../WKAvatarEditor";
@@ -17,7 +17,7 @@ import BotDetailVM, {
     stripBotDetailDisplayName,
 } from "../../bridge/profileDetail/BotDetailVM";
 import BotDetailView from "../../ui/profileDetail/BotDetailView";
-import { fetchImChannelInfo } from "../../im-runtime/channelRuntime";
+import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import "./index.css";
 
 interface BotDetailModalProps {
@@ -43,17 +43,15 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
             getLoginUid: () => WKApp.loginInfo.uid,
             getToken: () => WKApp.loginInfo.token || "",
             getSpaceId: () => WKApp.shared.currentSpaceId,
-            fetchChannelInfo: (uid) => fetchImChannelInfo(
-                WKSDK.shared(),
+            fetchChannelInfo: (uid) => fetchCurrentImChannelInfo(
                 new Channel(uid, ChannelTypePerson)
             ),
-            refreshChannelInfo: (uid) => fetchImChannelInfo(
-                WKSDK.shared(),
+            refreshChannelInfo: (uid) => fetchCurrentImChannelInfo(
                 new Channel(uid, ChannelTypePerson)
             ),
             onAvatarChanged: (uid) => {
                 WKApp.shared.changeChannelAvatarTag(new Channel(uid, ChannelTypePerson));
-                void fetchImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson));
+                void fetchCurrentImChannelInfo(new Channel(uid, ChannelTypePerson));
                 this.forceUpdate();
             },
         });
