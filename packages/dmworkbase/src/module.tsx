@@ -21,10 +21,7 @@ import { isChannelSearchEnabled } from "./features/channelSearch/feature";
 import ChatSearchEntryButton from "./features/channelSearch/ChatSearchEntryButton";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
 import { InputEdit } from "./Components/InputEdit";
-import {
-  ListItem,
-  ListItemTip,
-} from "./Components/ListItem";
+import { ListItem, ListItemTip } from "./Components/ListItem";
 import { Card, CardCell } from "./Messages/Card";
 import { GifCell, GifContent } from "./Messages/Gif";
 import { HistorySplitCell, HistorySplitContent } from "./Messages/HistorySplit";
@@ -182,9 +179,7 @@ const pendingRevokeRoleFetches = new Set<string>();
 
 function findSubscriber(channel: Channel, uid: string): Subscriber | undefined {
   const subscribers = getCurrentImChannelSubscribers(channel) as Subscriber[];
-  return subscribers.find(
-    (subscriber) => subscriber && subscriber.uid === uid
-  );
+  return subscribers.find((subscriber) => subscriber && subscriber.uid === uid);
 }
 
 function mergeSubscriberIntoCache(channel: Channel, subscriber: Subscriber) {
@@ -330,13 +325,19 @@ export default class BaseModule implements IModule {
       }
     );
 
-    registerCurrentImMessageContent(MessageContentType.image, () => new ImageContent()); // 图片
+    registerCurrentImMessageContent(
+      MessageContentType.image,
+      () => new ImageContent()
+    ); // 图片
     registerCurrentImMessageContent(
       MessageContentTypeConst.file,
       () => new FileContent()
     ); // 文件
 
-    registerCurrentImMessageContent(MessageContentTypeConst.card, () => new Card()); // 名片
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.card,
+      () => new Card()
+    ); // 名片
     registerCurrentImMessageContent(
       MessageContentTypeConst.interactiveCard,
       () => new InteractiveCardContent()
@@ -676,7 +677,7 @@ export default class BaseModule implements IModule {
         if (!isChannelSearchEnabled(channel)) return undefined;
         return <ChatSearchEntryButton channel={channel} />;
       },
-      4900, // 排在 matter (5000) / summary (5100) 之前
+      4900 // 排在 matter (5000) / summary (5100) 之前
     );
   }
 
@@ -907,7 +908,10 @@ export default class BaseModule implements IModule {
           return null;
         }
         // 服务端本期只接受纯文本；尚未拿到服务端 message_id 的本地待发送消息也不展示。
-        if (message.contentType !== MessageContentType.text || !message.messageID) {
+        if (
+          message.contentType !== MessageContentType.text ||
+          !message.messageID
+        ) {
           return null;
         }
         return {
@@ -1222,7 +1226,8 @@ export default class BaseModule implements IModule {
           channelInfo,
           fromSubscriberOfUser,
         });
-        const membershipCreatedAt = userInfoMembershipCreatedAt(membershipOrgData);
+        const membershipCreatedAt =
+          userInfoMembershipCreatedAt(membershipOrgData);
         if (membershipCreatedAt) {
           let joinDesc = `${membershipCreatedAt.substr(0, 10)}`;
           if (
@@ -1316,9 +1321,8 @@ export default class BaseModule implements IModule {
                             data.uid,
                             ChannelTypePerson
                           );
-                          const conversation = findCurrentImConversation(
-                            channel
-                          );
+                          const conversation =
+                            findCurrentImConversation(channel);
                           if (conversation) {
                             WKApp.conversationProvider.clearConversationMessages(
                               conversation
@@ -1515,12 +1519,14 @@ export default class BaseModule implements IModule {
     placeholder?: string,
     maxCount?: number,
     allowEmpty?: boolean,
-    allowWrap?: boolean
+    allowWrap?: boolean,
+    className?: string
   ) {
     let value: string;
     let finishButtonContext: FinishButtonContext;
     context.push(
       <InputEdit
+        className={className}
         defaultValue={defaultValue}
         placeholder={placeholder}
         onChange={(v, exceeded) => {
@@ -1554,6 +1560,27 @@ export default class BaseModule implements IModule {
     );
   }
 
+  channelSettingInputEditPush(
+    context: RouteContext<any>,
+    defaultValue: string,
+    onFinish: (value: string) => Promise<void>,
+    placeholder?: string,
+    maxCount?: number,
+    allowEmpty?: boolean,
+    allowWrap?: boolean
+  ) {
+    this.inputEditPush(
+      context,
+      defaultValue,
+      onFinish,
+      placeholder,
+      maxCount,
+      allowEmpty,
+      allowWrap,
+      "wk-channelsetting-input-edit"
+    );
+  }
+
   registerChannelSettings() {
     WKApp.shared.channelSettingRegister("channel.subscribers", (context) => {
       return buildChannelMembersSection(context);
@@ -1564,7 +1591,7 @@ export default class BaseModule implements IModule {
       (context) => {
         return buildChannelGroupInfoSection(
           context,
-          this.inputEditPush.bind(this)
+          this.channelSettingInputEditPush.bind(this)
         );
       },
       1000
@@ -1583,7 +1610,7 @@ export default class BaseModule implements IModule {
       (context) => {
         return buildMyGroupNicknameSection(
           context,
-          this.inputEditPush.bind(this)
+          this.channelSettingInputEditPush.bind(this)
         );
       },
       4000
@@ -1642,7 +1669,7 @@ export default class BaseModule implements IModule {
       (context) => {
         return buildThreadInfoSection(
           context,
-          this.inputEditPush.bind(this)
+          this.channelSettingInputEditPush.bind(this)
         );
       },
       500

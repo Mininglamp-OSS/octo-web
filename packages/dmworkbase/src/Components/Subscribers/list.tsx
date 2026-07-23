@@ -39,6 +39,8 @@ export interface SubscriberListProps {
   filter?: (subscriber: Subscriber) => boolean; // 过滤函数
   /** 只显示真实人类成员，排除 AI/bot。基于 isBot(uid) 判断。 */
   humansOnly?: boolean;
+  /** 可选的本地搜索实现；未提供时保持原有服务端搜索。 */
+  localSearch?: (keyword: string) => Subscriber[];
 }
 
 export interface SubscriberListState {
@@ -111,13 +113,19 @@ export class SubscriberList extends Component<
   }
 
   // Store debounced search functions per VM instance
-  private debouncedSearchMap = new WeakMap<SubscriberListVM, (v: string) => void>();
+  private debouncedSearchMap = new WeakMap<
+    SubscriberListVM,
+    (v: string) => void
+  >();
 
   getDebouncedSearch = (vm: SubscriberListVM) => {
     if (!this.debouncedSearchMap.has(vm)) {
-      this.debouncedSearchMap.set(vm, debounce((v: string) => {
-        vm.search(v);
-      }, 300));
+      this.debouncedSearchMap.set(
+        vm,
+        debounce((v: string) => {
+          vm.search(v);
+        }, 300)
+      );
     }
     return this.debouncedSearchMap.get(vm)!;
   };
@@ -127,20 +135,26 @@ export class SubscriberList extends Component<
   };
 
   // Store throttled scroll handlers per VM instance
-  private throttledScrollMap = new WeakMap<SubscriberListVM, (e: React.UIEvent<HTMLDivElement>) => void>();
+  private throttledScrollMap = new WeakMap<
+    SubscriberListVM,
+    (e: React.UIEvent<HTMLDivElement>) => void
+  >();
 
   getThrottledScroll = (vm: SubscriberListVM) => {
     if (!this.throttledScrollMap.has(vm)) {
-      this.throttledScrollMap.set(vm, throttle((e: React.UIEvent<HTMLDivElement>) => {
-        const target = e.target as HTMLDivElement;
-        const offset = 200;
-        if (
-          target.scrollTop + target.clientHeight + offset >=
-          target.scrollHeight
-        ) {
-          vm.loadMoreSubscribersIfNeed();
-        }
-      }, 100));
+      this.throttledScrollMap.set(
+        vm,
+        throttle((e: React.UIEvent<HTMLDivElement>) => {
+          const target = e.target as HTMLDivElement;
+          const offset = 200;
+          if (
+            target.scrollTop + target.clientHeight + offset >=
+            target.scrollHeight
+          ) {
+            vm.loadMoreSubscribersIfNeed();
+          }
+        }, 100)
+      );
     }
     return this.throttledScrollMap.get(vm)!;
   };
@@ -210,10 +224,15 @@ export class SubscriberList extends Component<
   checkItem(item: Subscriber) {
     const { selectedList } = this.state;
     const { onSelect, singleSelect } = this.props;
-    const found = selectedList.findIndex((selected) => selected.uid === item.uid);
+    const found = selectedList.findIndex(
+      (selected) => selected.uid === item.uid
+    );
     let newSelectedList;
     if (found >= 0) {
-      newSelectedList = [...selectedList.slice(0, found), ...selectedList.slice(found + 1)];
+      newSelectedList = [
+        ...selectedList.slice(0, found),
+        ...selectedList.slice(found + 1),
+      ];
     } else if (singleSelect) {
       newSelectedList = [item];
     } else {
@@ -254,136 +273,147 @@ export class SubscriberList extends Component<
     const { canSelect } = this.props;
     return (
       <>
-      <Provider
-        create={() => {
-          const vm = new SubscriberListVM(this.props.channel, this.props.humansOnly
-            ? (s: Subscriber) => !isBot(s.uid)
-            : this.props.filter);
-          // 在数据加载完成的回调中触发预取，避免在 render 内产生副作用
-          vm.onSubscribersLoaded = (subscribers) => {
-            this.prefetchSubscribersChannelInfo(subscribers);
-          };
-          return vm;
-        }}
-        render={(vm: SubscriberListVM) => {
-          return (
-            <div
-              className="wk-subscrierlist"
-              onScroll={(e) => {
-                this.handleScroll(e, vm);
-              }}
-            >
-              <div className="wk-indextable-search-box">
-                <div className="wk-indextable-search-icon">
-                  <IconSearchStroked
-                    style={{ color: "#bbbfc4", fontSize: "20px" }}
-                  />
+        <Provider
+          create={() => {
+            const vm = new SubscriberListVM(
+              this.props.channel,
+              this.props.humansOnly
+                ? (subscriber: Subscriber) => !isBot(subscriber.uid)
+                : this.props.filter,
+              this.props.localSearch
+            );
+            // 在数据加载完成的回调中触发预取，避免在 render 内产生副作用
+            vm.onSubscribersLoaded = (subscribers) => {
+              this.prefetchSubscribersChannelInfo(subscribers);
+            };
+            return vm;
+          }}
+          render={(vm: SubscriberListVM) => {
+            return (
+              <div
+                className="wk-subscrierlist"
+                onScroll={(e) => {
+                  this.handleScroll(e, vm);
+                }}
+              >
+                <div className="wk-indextable-search-box">
+                  <div className="wk-indextable-search-icon">
+                    <IconSearchStroked
+                      style={{ color: "#bbbfc4", fontSize: "20px" }}
+                    />
+                  </div>
+                  <div className="wk-indextable-search-input">
+                    <input
+                      onChange={(v) => {
+                        this.onSearch(v.target.value, vm);
+                      }}
+                      placeholder={this.context.t(
+                        "base.subscribers.searchPlaceholder"
+                      )}
+                      ref={(rf) => {}}
+                      type="text"
+                      style={{ fontSize: "17px" }}
+                    />
+                  </div>
                 </div>
-                <div className="wk-indextable-search-input">
-                  <input
-                    onChange={(v) => {
-                      this.onSearch(v.target.value, vm);
-                    }}
-                    placeholder={this.context.t("base.subscribers.searchPlaceholder")}
-                    ref={(rf) => {}}
-                    type="text"
-                    style={{ fontSize: "17px" }}
-                  />
-                </div>
-              </div>
-              <div className="wk-subscrierlist-list">
-                {vm.subscribers.map((item) => {
-                  const itemIsBot = isBot(item.uid);
-                  const isBotAdmin = item.orgData?.bot_admin === 1;
-                  // 外部 Tag 与来源按当前查看 Space 相对渲染。
-                  // 优先新字段 home_space_id / home_space_name，缺失时回落旧字段。
-                  const { isExternal: isExternalToViewer, sourceSpaceName: viewerSourceSpaceName } =
-                    resolveExternalForViewer({
+                <div className="wk-subscrierlist-list">
+                  {vm.subscribers.map((item) => {
+                    const itemIsBot = isBot(item.uid);
+                    const isBotAdmin = item.orgData?.bot_admin === 1;
+                    // 外部 Tag 与来源按当前查看 Space 相对渲染。
+                    // 优先新字段 home_space_id / home_space_name，缺失时回落旧字段。
+                    const {
+                      isExternal: isExternalToViewer,
+                      sourceSpaceName: viewerSourceSpaceName,
+                    } = resolveExternalForViewer({
                       homeSpaceId: item.orgData?.home_space_id,
                       homeSpaceName: item.orgData?.home_space_name,
                       isExternalLegacy: item.orgData?.is_external,
                       sourceSpaceNameLegacy: item.orgData?.source_space_name,
                     });
-                  const showOnline = this.needShowOnlineStatus(item.uid);
-                  const onlineTip = this.getOnlineTip(item.uid);
+                    const showOnline = this.needShowOnlineStatus(item.uid);
+                    const onlineTip = this.getOnlineTip(item.uid);
 
-                  return (
-                    <div
-                      className="wk-subscrierlist-list-item"
-                      key={item.uid}
-                      onClick={() => {
-                        this.onItemClick(item);
-                      }}
-                    >
-                      {canSelect ? (
-                        <div className="wk-indextable-checkbox">
-                          <Checkbox
-                            checked={
-                              this.isDisableItem(item.uid) ||
-                              this.isCheckItem(item)
-                            }
-                            disabled={this.isDisableItem(item.uid)}
-                          ></Checkbox>
-                        </div>
-                      ) : undefined}
-                      <div className="wk-subscrierlist-item-avatar">
-                        <WKAvatar src={item.avatar}></WKAvatar>
-                        {showOnline && (
-                          <div className="wk-subscrierlist-item-online-badge">
-                            <OnlineStatusBadge tip={onlineTip} />
+                    return (
+                      <div
+                        className="wk-subscrierlist-list-item"
+                        key={item.uid}
+                        onClick={() => {
+                          this.onItemClick(item);
+                        }}
+                      >
+                        {canSelect ? (
+                          <div className="wk-indextable-checkbox">
+                            <Checkbox
+                              checked={
+                                this.isDisableItem(item.uid) ||
+                                this.isCheckItem(item)
+                              }
+                              disabled={this.isDisableItem(item.uid)}
+                            ></Checkbox>
                           </div>
-                        )}
-                      </div>
-                      <div className="wk-subscrierlist-item-content">
-                        <div className="wk-subscrierlist-item-name">
-                          {this.getShowName(item)}
-                          {/* Epic dmwork-web#1169 Phase A: 实名徽章
+                        ) : undefined}
+                        <div className="wk-subscrierlist-item-avatar">
+                          <WKAvatar src={item.avatar}></WKAvatar>
+                          {showOnline && (
+                            <div className="wk-subscrierlist-item-online-badge">
+                              <OnlineStatusBadge tip={onlineTip} />
+                            </div>
+                          )}
+                        </div>
+                        <div className="wk-subscrierlist-item-content">
+                          <div className="wk-subscrierlist-item-name">
+                            {this.getShowName(item)}
+                            {/* Epic dmwork-web#1169 Phase A: 实名徽章
                               （icon variant）紧贴姓名右侧，已实名才渲染。
                               Bot 走同样规则（isRealnameVerified
                               对非实名 bot 返回 false，不会出现 Bot + 实名 同时显示）。*/}
-                          {isRealnameVerified(item.orgData) && (
-                            <RealnameVerifiedBadge variant="icon" />
-                          )}
-                          {/* 「@SpaceName」后缀（企微风格），按当前查看 Space 相对渲染。
+                            {isRealnameVerified(item.orgData) && (
+                              <RealnameVerifiedBadge variant="icon" />
+                            )}
+                            {/* 「@SpaceName」后缀（企微风格），按当前查看 Space 相对渲染。
                               观察者 home_space 与成员 home_space 不同时显示；自己看自己不显示。
                               Bot 成员走同一规则（resolveExternalForViewer 对 bot 与人类对称）。*/}
-                          {isExternalToViewer && viewerSourceSpaceName && (
-                            <span
-                              className="wk-subscrierlist-item-space"
-                              title={`@${viewerSourceSpaceName}`}
-                            >
-                              @{viewerSourceSpaceName}
-                            </span>
-                          )}
-                          {itemIsBot && <AiBadge />}
-                          {itemIsBot && isBotAdmin && (
-                            <Tag size="small" color="green" style={{ marginLeft: 4 }}>
-                              {this.context.t("base.subscribers.botAdmin")}
-                            </Tag>
-                          )}
-                        </div>
-                        <div className="wk-subscrierlist-item-desc">
-                          {this.getRoleName(item)}
+                            {isExternalToViewer && viewerSourceSpaceName && (
+                              <span
+                                className="wk-subscrierlist-item-space"
+                                title={`@${viewerSourceSpaceName}`}
+                              >
+                                @{viewerSourceSpaceName}
+                              </span>
+                            )}
+                            {itemIsBot && <AiBadge />}
+                            {itemIsBot && isBotAdmin && (
+                              <Tag
+                                size="small"
+                                color="green"
+                                style={{ marginLeft: 4 }}
+                              >
+                                {this.context.t("base.subscribers.botAdmin")}
+                              </Tag>
+                            )}
+                          </div>
+                          <div className="wk-subscrierlist-item-desc">
+                            {this.getRoleName(item)}
+                          </div>
                         </div>
                       </div>
-
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          );
-        }}
-      ></Provider>
-      <BotDetailModal
-        uid={this.state.botDetailUid}
-        visible={this.state.botDetailVisible}
-        onClose={() => this.setState({ botDetailVisible: false })}
-        onChat={(channel) => {
-          WKApp.endpoints.showConversation(channel);
-          this.setState({ botDetailVisible: false });
-        }}
-      />
+            );
+          }}
+        ></Provider>
+        <BotDetailModal
+          uid={this.state.botDetailUid}
+          visible={this.state.botDetailVisible}
+          onClose={() => this.setState({ botDetailVisible: false })}
+          onChat={(channel) => {
+            WKApp.endpoints.showConversation(channel);
+            this.setState({ botDetailVisible: false });
+          }}
+        />
       </>
     );
   }
