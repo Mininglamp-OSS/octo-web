@@ -149,19 +149,6 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
                         />
                     )}
                 </div>
-                <div className="summary-editor-actions">
-                    <Button onClick={onCancel} disabled={saving}>
-                        {translate("summary.common.cancel")}
-                    </Button>
-                    <Button
-                        theme="solid"
-                        onClick={this.handleSave}
-                        disabled={!this.hasChanges || saving}
-                        loading={saving}
-                    >
-                        {translate("summary.common.save")}
-                    </Button>
-                </div>
             </div>
         );
     }
