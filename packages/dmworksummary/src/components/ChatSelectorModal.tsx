@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
-import { Channel, ChannelTypePerson } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import WKApp from "@octo/base/src/App";
@@ -88,8 +88,10 @@ export default class ChatSelectorModal extends Component<Props, State> {
         if (!channel) return;
         this.setState({ loading: true });
         try {
-            const members = await WKApp.shared.getSubscribers(channel);
-            const humans = members.filter((m: any) => !m.is_bot && !WKApp.shared.isBot?.(m.uid));
+            const sdk = WKSDK.shared();
+            await sdk.channelManager.syncSubscribes(channel);
+            const subscribers = sdk.channelManager.getSubscribes(channel) || [];
+            const humans = subscribers.filter((m: any) => !m.is_bot);
             this.setState({ candidates: humans.map((m: any) => ({
                 chat_id: m.uid,
                 chat_type: "direct" as const,
@@ -200,6 +202,13 @@ export default class ChatSelectorModal extends Component<Props, State> {
     getDisplayList(): DisplayEntry[] {
         const { candidates, activeTab, keyword } = this.state;
         const kw = keyword.trim().toLowerCase();
+
+        // members 模式：不过滤 tab，直接返回搜索过滤后的列表
+        if (this.props.mode === "members") {
+            return candidates
+                .filter((c) => !kw || c.name.toLowerCase().includes(kw))
+                .map((c) => ({ item: c, indent: false }));
+        }
 
         if (activeTab === "direct") {
             return candidates
