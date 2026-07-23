@@ -1268,14 +1268,38 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 </button>
                             )}
                             {/* 选择参与者 */}
-                            <button
-                                type="button"
-                                className="summary-workbench-add-chat"
-                                onClick={this.handleOpenMemberSelector}
-                            >
-                                <Plus size={16} />
-                                <span>{translate("summary.create.selectMembers")}</span>
-                            </button>
+                            <div className="summary-workbench-chat-row">
+                                {selectedMembers.length > 0 && (
+                                    <div className="summary-workbench-chat-chips" style={{ flex: '0 1 auto' }}>
+                                        {selectedMembers.map((m) => (
+                                            <div key={m.user_id} className="summary-workbench-chat-chip">
+                                                <WKAvatar
+                                                    channel={new Channel(m.user_id, 1)}
+                                                    style={{ width: 16, height: 16, borderRadius: "50%" }}
+                                                />
+                                                <span className="summary-workbench-chat-chip-name">{m.name}</span>
+                                                <button
+                                                    type="button"
+                                                    className="summary-workbench-chat-chip-close"
+                                                    onClick={() => this.setState({
+                                                        selectedMembers: selectedMembers.filter((x) => x.user_id !== m.user_id)
+                                                    })}
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <button
+                                    type="button"
+                                    className="summary-workbench-add-chat"
+                                    onClick={this.handleOpenMemberSelector}
+                                >
+                                    <Plus size={16} />
+                                    <span>{translate("summary.create.selectMembers")}</span>
+                                </button>
+                            </div>
                         </div>
                         {mode !== 'agent' && (
                             <Button
