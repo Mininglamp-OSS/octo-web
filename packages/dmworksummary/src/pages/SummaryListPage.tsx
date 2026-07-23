@@ -450,10 +450,12 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
 
     handleEdit = (taskId: number) => {
         this.handleCardClick(taskId);
+        // 300ms delay allows detail page to mount and register event listener
+        // before dispatching the edit action event
         setTimeout(() => {
             window.dispatchEvent(new CustomEvent("summary-detail-edit", { detail: { taskId } }));
         }, 300);
-    };;
+    };
 
     handleCreate = () => {
         if (this.props.onCreateNew) {
