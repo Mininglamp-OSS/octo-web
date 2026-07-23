@@ -8,7 +8,7 @@ import {
     Modal,
     Popconfirm,
 } from "@douyinfe/semi-ui";
-import { IconArrowLeft, IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete } from "@douyinfe/semi-icons";
+import { IconArrowLeft, IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconCopy } from "@douyinfe/semi-icons";
 import { ChevronDown } from "lucide-react";
 import { Channel } from "wukongimjssdk";
 import { I18nContext, t, ForwardService, interpretForwardResult, SummaryCardContent } from "@octo/base";
@@ -43,6 +43,7 @@ import {
     shouldReactivateOnSave,
 } from "../utils/summaryHelpers";
 import CitationText from "../components/CitationText";
+import SummaryMarkdownReader from "../ui/SummaryMarkdownReader";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import MatterPickerModal from "../components/MatterPickerModal";
@@ -1942,6 +1943,21 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.dispatchEvent(event);
     };
 
+    handleCopyMarkdown = async () => {
+        const content = this.state.detail?.result?.content ?? this.state.personalResult?.content ?? "";
+        if (!content.trim()) return;
+        try {
+            await navigator.clipboard.writeText(content);
+            Toast.success(this.context.t("summary.detail.markdownCopied"));
+        } catch {
+            Toast.error(this.context.t("summary.common.operationFailed"));
+        }
+    };
+
+    handleNewAgentChat = () => {
+        window.dispatchEvent(new CustomEvent("summary-open-new-agent-chat"));
+    };
+
     handleForwardToChat = () => {
         const { detail, personalResult } = this.state;
         // #158/#161 agent 总结 fallback:agent workflow 只写 personal_result 表,
@@ -2405,7 +2421,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 </div>
                 {this.renderVersionHistory()}
                 <div className="summary-detail-result-content">
-                    <CitationText content={detail.result.content} citations={detail.result.citations || []} />
+                    <SummaryMarkdownReader content={detail.result.content} citations={detail.result.citations || []} outlineLabel={t("summary.detail.outline")} />
                 </div>
                 <div className="summary-detail-result-footer">
                     <span className="summary-detail-result-time">
@@ -2484,7 +2500,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {this.renderPersonalVersionHistory()}
                         {personalResult.content && (
                             <div className="summary-detail-content-box">
-                                <CitationText content={personalResult.content} citations={personalResult.citations || []} />
+                                <SummaryMarkdownReader content={personalResult.content} citations={personalResult.citations || []} outlineLabel={t("summary.detail.outline")} />
                             </div>
                         )}
                     </>
@@ -2633,12 +2649,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 </div>
                 {this.renderVersionHistory()}
                 <div className="summary-detail-content-box">
-                    <CitationText
+                    <SummaryMarkdownReader
                         content={detail.result.content}
                         citations={detail.result.citations || []}
                         teamCitations={detail.result.team_citations || []}
                         members={members}
                         hidePlainCitations
+                        outlineLabel={t("summary.detail.outline")}
                     />
                 </div>
             </div>
@@ -3326,6 +3343,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             >
                                 {t("summary.detail.continueRefine")}
                             </Button>
+                        )}
+                        {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
+                            <>
+                                <Button size="small" theme="borderless" type="tertiary" icon={<IconCopy />} onClick={this.handleCopyMarkdown}>
+                                    {t("summary.detail.copyMarkdown")}
+                                </Button>
+                                <Button size="small" theme="borderless" type="tertiary" icon={<IconPlus />} onClick={this.handleNewAgentChat}>
+                                    {t("summary.detail.newAgentChat")}
+                                </Button>
+                            </>
                         )}
                         {this.renderScheduleButton()}
                         {detail && detail.status === TaskStatus.COMPLETED && (() => {

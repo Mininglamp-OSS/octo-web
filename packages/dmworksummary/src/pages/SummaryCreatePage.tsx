@@ -46,6 +46,8 @@ const { Text } = Typography;
 
 interface SummaryCreatePageProps {
     onCreated?: () => void;
+    /** Open directly in Agent mode with a clean session and no summary reference. */
+    startNewAgentConversation?: boolean;
     /**
      * 从详情页「继续优化」入口打开时,预填的引用总结。
      * mount 时会自动切到 agent 模式 + 把此 task 填进 referencedTask,
@@ -176,6 +178,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             writeAgentChatReferenced(this.agentChannelId(), {
                 task_id: this.props.derivedFromTask.task_id,
                 title: this.props.derivedFromTask.title ?? '',
+            });
+        } else if (this.props.startNewAgentConversation) {
+            clearAgentChatSession(this.agentChannelId());
+            clearAgentChatReferenced(this.agentChannelId());
+            this.setState({
+                mode: 'agent',
+                referencedTask: null,
+                sessionId: '',
+                messages: [],
             });
         }
     }

@@ -405,6 +405,7 @@ export interface ConversationProps {
   chatBg?: string; // 聊天背景
   shouldShowHistorySplit?: boolean;
   initLocateMessageSeq?: number;
+  initLocateCitationDisplayIndex?: number;
   onContext?: (ctx: ConversationContext) => void;
   onOpenThreadPanel?: (threadChannelId: string, threadName: string) => void;
   onOpenWebhookPreview?: (target: WebhookIssuePreviewTarget) => void;
@@ -1774,6 +1775,8 @@ export class Conversation
       <FoldSessionExpandedList
         messages={messages}
         editMode={editMode}
+        locateCitationMessageSeq={this.props.initLocateMessageSeq}
+        locateCitationDisplayIndex={this.props.initLocateCitationDisplayIndex}
         renderAvatar={(message) => (
           <WKAvatar
             channel={new Channel(message.fromUID, ChannelTypePerson)}
@@ -2179,6 +2182,9 @@ export class Conversation
           isSystemMessage ? "wk-message-item-system" : undefined
         )}
       >
+        {this.props.initLocateCitationDisplayIndex && message.messageSeq === this.props.initLocateMessageSeq ? (
+          <span className="wk-message-citation-marker">[{this.props.initLocateCitationDisplayIndex}]</span>
+        ) : null}
         {MessageCell ? (
           <MessageCell
             key={message.clientMsgNo}

@@ -517,7 +517,11 @@
         "refineNotCreator": "你不是本总结的创建者，无法修改",
         "refineNoSnapshot": "本总结数据版本较老，无法增量修改",
         "refineFailed": "修改失败，请稍后重试",
-        "continueRefine": "继续优化"
+        "continueRefine": "继续优化",
+        "copyMarkdown": "复制 Markdown",
+        "markdownCopied": "Markdown 已复制",
+        "newAgentChat": "新建 Agent 对话",
+        "outline": "本文目录"
     },
     "summaryCard": {
         "createdBy": "{{name}} 发起",
@@ -544,6 +548,14 @@
         "empty": "暂无总结内容"
     },
     "citation": {
+        "reference": "引用 [{{index}}]",
+        "title": "引用消息 [{{indices}}]",
+        "meta": "{{source}} · {{context}} 条上下文 · {{cited}} 条直接引用",
+        "close": "关闭引用消息",
+        "searchPlaceholder": "搜索发送人或消息内容",
+        "citedOnly": "仅看引用",
+        "empty": "没有找到相关消息",
+        "position": "{{current}} / {{total}} 条直接引用",
         "jumpToOriginal": "跳转到原文 →",
         "source": "来源：{{source}}",
         "member": "成员：{{name}}"

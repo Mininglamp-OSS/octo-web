@@ -18,6 +18,8 @@ interface FoldSessionExpandedListProps {
   ) => void;
   getMessageElementId?: (message: MessageWrap) => string;
   onLocateAnimationEnd?: (message: MessageWrap) => void;
+  locateCitationMessageSeq?: number;
+  locateCitationDisplayIndex?: number;
 }
 
 const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
@@ -29,6 +31,8 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
   onMessageContextMenu,
   getMessageElementId,
   onLocateAnimationEnd,
+  locateCitationMessageSeq,
+  locateCitationDisplayIndex,
 }) => {
   return (
     <>
@@ -75,6 +79,9 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
               onMessageContextMenu(message.message, event);
             }}
           >
+            {locateCitationDisplayIndex && message.messageSeq === locateCitationMessageSeq ? (
+              <span className="wk-message-citation-marker">[{locateCitationDisplayIndex}]</span>
+            ) : null}
             {editMode && selectable ? (
               <div
                 className="wk-fold-msg-check"
