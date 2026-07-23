@@ -1163,10 +1163,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (this.taskId == null) return;
         this.setState({
             showRegenerateModal: true,
-            regenerateMode: "refine",
+            regenerateMode: "full",
             regenerateTopic: detail?.title || "",
-            refineFeedback: "",
         });
+    };
+
+    handleRetry = async () => {
+        const { detail } = this.state;
+        if (!detail || this.taskId == null) return;
+        try {
+            this.setState({ regenerateSubmitting: true });
+            await api.regenerateSummary(this.taskId, { topic: detail.title || "" });
+            this.setState({ regenerateSubmitting: false });
+            this.loadDetail();
+        } catch (err: any) {
+            this.setState({ regenerateSubmitting: false });
+            Toast.error(err.message || t("summary.common.operationFailed"));
+        }
     };
 
     async loadVersions(taskId = this.taskId) {
@@ -3366,6 +3379,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const showForwardToChat = !!detail && detail.status === TaskStatus.COMPLETED;
         const showForwardToMatter = SHOW_FORWARD_TO_MATTER && !!detail && detail.status === TaskStatus.COMPLETED;
         const showRegenerate = !!detail && canRegenerate(detail.status) && !isAgent;
+        const showRetry = !!detail && detail.status === TaskStatus.FAILED;
         const showCancel = !!detail && canCancel(detail.status);
         const showDelete = !!detail && isCreator;
         const showLeave = !!detail && isParticipant && !isCreator;
@@ -3374,7 +3388,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const scheduleItem = this.state.scheduleItem;
         const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
         const showSchedule = canSchedule;
-        const hasMoreActions = showForwardToChat || showForwardToMatter || showRegenerate || showCancel || showDelete || showLeave || showEdit || showSchedule;
+        const hasMoreActions = showForwardToChat || showForwardToMatter || showRegenerate || showRetry || showCancel || showDelete || showLeave || showEdit || showSchedule;
 
         return (
             <>
@@ -3436,12 +3450,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                                 {t("summary.detail.forwardToMatter")}
                                             </Dropdown.Item>
                                         )}
-                                        {showRegenerate && (
+                                        {showRegenerate && !showRetry && (
                                             <Dropdown.Item
                                                 icon={<IconHistory />}
                                                 onClick={this.handleRegenerate}
                                             >
                                                 {t("summary.detail.regenerate")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showRetry && (
+                                            <Dropdown.Item
+                                                icon={<IconHistory />}
+                                                onClick={this.handleRetry}
+                                            >
+                                                {t("summary.summaryCard.retry")}
                                             </Dropdown.Item>
                                         )}
                                         {showCancel && (
@@ -3706,78 +3728,51 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 {/* need7：添加成员复用 SubscriberList 路由页面，见 handleOpenAddMember */}
                 {this.renderVersionDetailModal()}
                 <Modal
-                    title={t("summary.detail.adjustSummaryTitle")}
+                    header={null}
+                    footer={null}
                     visible={this.state.showRegenerateModal}
-                    onOk={this.handleRegenerateConfirm}
-                    onCancel={this.handleRegenerateCancel}
-                    okText={this.state.regenerateMode === "refine" ? t("summary.detail.refineAction") : t("summary.detail.regenerate")}
-                    cancelText={t("summary.common.cancel")}
-                    confirmLoading={this.state.regenerateSubmitting}
-                    okButtonProps={{
-                        disabled: this.state.regenerateMode === "refine"
-                            ? !this.state.refineFeedback.trim() || (this.state.detail?.summary_mode === SummaryMode.BY_PERSON && !this.shouldOperateOnTeamSummary() ? !this.state.personalResult?.id : !this.state.detail?.result_id)
-                            : !this.state.regenerateTopic.trim(),
-                    }}
+                    width={480}
+                    className="summary-confirm"
+                    centered
+                    maskClosable
                 >
-<div className="summary-adjust-mode-list">
-                        <button
-                            type="button"
-                            className={this.state.regenerateMode === "refine" ? "summary-adjust-mode is-active" : "summary-adjust-mode"}
-                            onClick={() => this.setState({ regenerateMode: "refine" })}
-                        >
-                            <span className="summary-adjust-mode-title">{t("summary.detail.refineModeTitle")}</span>
-                            <span className="summary-adjust-mode-desc">{t("summary.detail.refineModeDesc")}</span>
-                        </button>
-                        <button
-                            type="button"
-                            className={this.state.regenerateMode === "full" ? "summary-adjust-mode is-active" : "summary-adjust-mode"}
-                            onClick={() => this.setState({ regenerateMode: "full" })}
-                        >
-                            <span className="summary-adjust-mode-title">{t("summary.detail.fullRegenerateModeTitle")}</span>
-                            <span className="summary-adjust-mode-desc">{t("summary.detail.fullRegenerateModeDesc")}</span>
+                    <div className="summary-confirm-body">
+                        <div className="summary-confirm-main">
+                            <div className="summary-confirm-caption">
+                                <div className="summary-confirm-title">{t("summary.detail.adjustSummaryTitle")}</div>
+                            </div>
+                        </div>
+                        <button type="button" className="summary-confirm-close" onClick={this.handleRegenerateCancel}>
+                            <X size={20} />
                         </button>
                     </div>
-                    {this.state.regenerateMode === "refine" ? (
-                        <>
-                            <label id="summary-refine-feedback-label" className="summary-adjust-label">
-                                {t("summary.detail.refineFeedbackLabel")}
-                            </label>
-                            <textarea
-                                aria-labelledby="summary-refine-feedback-label"
-                                className="summary-regenerate-topic-textarea"
-                                rows={4}
-                                maxLength={2000}
-                                placeholder={t("summary.detail.refineFeedbackPlaceholder")}
-                                value={this.state.refineFeedback}
-                                onChange={(e) => this.setState({ refineFeedback: e.target.value.slice(0, 2000) })}
-                            />
-                        </>
-                    ) : (
-                        <>
-                            <label id="regenerate-topic-label" className="summary-adjust-label">
-                                {t("summary.detail.regenerateTopicLabel")}
-                            </label>
-                            <div style={{ position: "relative" }}>
-                                <textarea
-                                    ref={this.regenerateTopicRef}
-                                    aria-labelledby="regenerate-topic-label"
-                                    className="summary-regenerate-topic-textarea"
-                                    rows={3}
-                                    maxLength={SUMMARY_INPUT_MAX_LENGTH}
-                                    value={this.state.regenerateTopic}
-                                    onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH) })}
-                                />
-                                <VoiceInputButton
-                                    inputRef={this.regenerateTopicRef}
-                                    onTranscribed={this.handleRegenerateTopicVoice}
-                                    getCurrentText={() => this.state.regenerateTopic}
-                                    showModeMenu
-                                    size="sm"
-                                    className="wk-vib--textarea-corner"
-                                />
-                            </div>
-                        </>
-                    )}
+                    <div className="summary-regenerate-content">
+                        <textarea
+                            ref={this.regenerateTopicRef}
+                            className="summary-regenerate-textarea"
+                            rows={3}
+                            maxLength={SUMMARY_INPUT_MAX_LENGTH}
+                            placeholder={t("summary.detail.regenerateTopicLabel")}
+                            value={this.state.regenerateTopic}
+                            onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH) })}
+                        />
+                        <div className="summary-regenerate-char-count">
+                            {this.state.regenerateTopic.length}/{SUMMARY_INPUT_MAX_LENGTH}
+                        </div>
+                    </div>
+                    <div className="summary-confirm-footer">
+                        <button type="button" className="summary-confirm-btn summary-confirm-btn--cancel" onClick={this.handleRegenerateCancel}>
+                            {t("summary.common.cancel")}
+                        </button>
+                        <button
+                            type="button"
+                            className="summary-confirm-btn summary-confirm-btn--danger"
+                            disabled={this.state.regenerateSubmitting || !this.state.regenerateTopic.trim()}
+                            onClick={this.handleRegenerateConfirm}
+                        >
+                            {this.state.regenerateSubmitting ? t("summary.create.submitting") : t("summary.common.confirm")}
+                        </button>
+                    </div>
                 </Modal>
             </div>
         );

@@ -601,6 +601,42 @@
     background: #E03A32;
 }
 
+/* Regenerate modal textarea */
+.summary-regenerate-content {
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.summary-regenerate-textarea {
+    width: 100%;
+    height: 75px;
+    padding: 6px 12px;
+    border: none;
+    outline: none;
+    background: rgba(28, 28, 35, 0.04);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 20px;
+    color: #1C1C23;
+    resize: none;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+.summary-regenerate-textarea::placeholder {
+    color: rgba(28, 28, 35, 0.4);
+}
+
+.summary-regenerate-char-count {
+    text-align: right;
+    font-size: 12px;
+    color: rgba(28, 28, 35, 0.4);
+    font-family: Inter, sans-serif;
+}
+
 /* Respond buttons (pending invite) */
 .summary-card-respond {
     display: flex;
