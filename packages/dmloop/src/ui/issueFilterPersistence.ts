@@ -79,6 +79,7 @@ export function defaultIssueFilters(): IssueFilters {
     noProject: false,
     labelIds: [],
     dateField: "created_at",
+    dateRange: undefined,
   };
 }
 

@@ -123,6 +123,18 @@ describe("issue filter persistence", () => {
     ]);
   });
 
+  it("clears date range when defaults are merged over active filters", () => {
+    const active = {
+      ...defaultIssueFilters(),
+      dateRange: [
+        new Date("2026-07-01T00:00:00.000Z"),
+        new Date("2026-07-02T00:00:00.000Z"),
+      ],
+    };
+
+    expect({ ...active, ...defaultIssueFilters() }.dateRange).toBeUndefined();
+  });
+
   it("falls back on malformed or invalid storage data", () => {
     const storage = new MemoryStorage();
     const key = "filters";
