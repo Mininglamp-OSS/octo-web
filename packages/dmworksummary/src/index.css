@@ -2061,15 +2061,6 @@
     border-radius: 12px;
 }
 
-/* 面板模式 card 收紧 */
-.summary-workbench--panel .summary-workbench-card {
-    padding: 16px;
-    gap: 16px;
-    border: none;
-    box-shadow: none;
-    background: transparent;
-}
-
 /* Agent 模式：给 AgentChatPanel 一个确定的有界高度 */
 .summary-workbench-agent-chat {
     height: 60vh;
@@ -2083,11 +2074,6 @@
     height: 420px;
     flex-shrink: 0;
     overflow: hidden;
-}
-
-.summary-workbench--panel .summary-workbench-input-wrap {
-    height: auto;
-    min-height: 120px;
 }
 
 .summary-workbench-input-wrap > div:first-child {
@@ -2152,6 +2138,46 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 24px;
+}
+
+/* 面板模式：模板 2 列，收紧 gap */
+.summary-workbench--panel .summary-workbench-templates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+/* 面板模式：输入框高度缩小 */
+.summary-workbench--panel .summary-workbench-input-wrap {
+    height: auto;
+    min-height: 120px;
+}
+
+/* 面板模式：标题缩小 */
+.summary-workbench--panel .summary-workbench-title {
+    font-size: 18px;
+    line-height: 28px;
+}
+
+/* 面板模式：内容卡片收紧 */
+.summary-workbench--panel .summary-workbench-card {
+    padding: 16px;
+    gap: 16px;
+}
+
+/* 面板模式：padding 收紧 */
+.summary-workbench--panel {
+    padding: 16px;
+}
+
+/* 面板模式：底部操作栏适配窄宽度 */
+.summary-workbench--panel .summary-workbench-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+}
+
+.summary-workbench--panel .summary-workbench-start-btn {
+    align-self: flex-end;
 }
 
 /* Divider */
