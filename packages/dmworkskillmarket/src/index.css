@@ -720,13 +720,13 @@
 
 .skill-market-card__title-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--wk-sp-2);
   min-width: 0;
 }
 
 .skill-market-card__title-row h3 {
-  display: -webkit-box;
+  display: block;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -735,8 +735,8 @@
   font-size: 16px;
   font-weight: 700;
   line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .skill-market-card__version {
