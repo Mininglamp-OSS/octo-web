@@ -61,6 +61,10 @@
       "reason": "Agent prompt template for the Bot publish flow. Same rationale as installPrompt.ts above — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
     },
     {
+      "path": "packages/dmworkmcp/src/utils/mcpBotPublishPrompt.ts",
+      "reason": "Agent prompt template for the MCP marketplace publish flow. Same rationale as dmworkskillmarket/src/utils/botPublishPrompt.ts — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
+    },
+    {
       "path": "packages/dmworksummary/src/__mocks__/handlers.ts",
       "reason": "MSW test fixture data with sample user names, titles, and message bodies; not UI copy."
     },
