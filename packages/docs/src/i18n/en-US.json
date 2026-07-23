@@ -471,7 +471,7 @@
     "restricted": "Restricted",
     "restrictedHint": "Only collaborators can access",
     "anyoneInSpace": "Anyone in Space",
-    "anyoneInSpaceHint": "Anyone in this space can access",
+    "anyoneInSpaceHint": "Anyone in this Space can access",
     "permission": "Permission",
     "role": {
       "read": "Can read",

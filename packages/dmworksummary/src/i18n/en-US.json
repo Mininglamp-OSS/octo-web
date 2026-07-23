@@ -390,7 +390,7 @@
         "scheduleSaved": "Scheduled update saved",
         "scheduleCreated": "Scheduled update created",
         "forwardFailed": "Failed to forward",
-        "partialForwardFailed": "Failed to forward to some channels ({{failed}}/{{total}})",
+        "partialForwardFailed": "Failed to forward to some conversations ({{failed}}/{{total}})",
         "forwarded": "Forwarded",
         "forwardToChat": "Forward to chat",
         "forwardToMatter": "Forward to Matters",

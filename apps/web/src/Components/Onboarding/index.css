@@ -1642,14 +1642,14 @@ html[data-octo-onboarding-vt="active"]::view-transition-new(root) {
     line-height: var(--wk-leading-loose);
 }
 
-.wk-onboarding-description.is-favorites,
+.wk-onboarding-description.is-following,
 .wk-onboarding-description.is-group-md,
 .wk-onboarding-description.is-smart-summary,
 .wk-onboarding-description.is-webhook,
 .wk-onboarding-description.is-browser-extension,
 .wk-onboarding-description.is-create-bot,
-.wk-onboarding-description.is-workspace,
-.wk-onboarding-description.is-subspaces {
+.wk-onboarding-description.is-space,
+.wk-onboarding-description.is-threads {
     display: grid;
     gap: var(--wk-onboarding-copy-gap);
     max-width: 100%;

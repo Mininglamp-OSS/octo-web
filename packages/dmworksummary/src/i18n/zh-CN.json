@@ -390,7 +390,7 @@
         "scheduleSaved": "定时更新已保存",
         "scheduleCreated": "定时更新已创建",
         "forwardFailed": "转发失败",
-        "partialForwardFailed": "部分频道转发失败 ({{failed}}/{{total}})",
+        "partialForwardFailed": "部分会话转发失败（{{failed}}/{{total}}）",
         "forwarded": "已转发",
         "forwardToChat": "转发到聊天",
         "forwardToMatter": "转发到 Matters",

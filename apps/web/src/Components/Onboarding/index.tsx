@@ -185,7 +185,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     () => resolveOnboardingSections(config, t),
     [config, t]
   );
-  const [activeId, setActiveId] = useState<OnboardingSectionId>("workspace");
+  const [activeId, setActiveId] = useState<OnboardingSectionId>("space");
   const [completionOrigin, setCompletionOrigin] = useState<{
     x: number;
     y: number;

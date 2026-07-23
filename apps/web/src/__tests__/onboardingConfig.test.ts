@@ -82,7 +82,7 @@ describe("resolveOnboardingSections", () => {
         },
         {
           ...defaultOnboardingConfig.sections[0],
-          id: "favorites",
+          id: "following",
           image: "",
         },
         {
@@ -106,7 +106,7 @@ describe("resolveOnboardingSections", () => {
 
     expect(sections).toHaveLength(1);
     expect(sections[0]).toMatchObject({
-      id: "workspace",
+      id: "space",
       label: "Label",
       title: "Title",
       description: "Description",
@@ -118,14 +118,23 @@ describe("resolveOnboardingSections", () => {
     expect(
       defaultOnboardingConfig.sections.map((section) => section.id)
     ).toEqual([
-      "workspace",
-      "subspaces",
-      "favorites",
+      "space",
+      "threads",
+      "following",
       "group-md",
       "smart-summary",
       "webhook",
       "browser-extension",
       "create-bot",
+    ]);
+    expect(
+      defaultOnboardingConfig.sections
+        .slice(0, 3)
+        .map((section) => section.labelKey)
+    ).toEqual([
+      "app.onboarding.sections.space.label",
+      "app.onboarding.sections.threads.label",
+      "app.onboarding.sections.following.label",
     ]);
     expect(defaultOnboardingConfig.sections.at(-1)?.action?.type).toBe(
       "finish"

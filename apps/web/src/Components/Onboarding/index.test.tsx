@@ -32,8 +32,8 @@ const { runOnboardingViewTransition, viewTransitionState } = vi.hoisted(() => {
 const translations: Record<string, string> = {
   "app.onboarding.dialog.introAria": "Octo onboarding introduction",
   "app.onboarding.intro.actions.skip": "Skip",
-  "app.onboarding.sections.workspace.description":
-    "Workspace lead\nShared context\nHuman and AI coordination",
+  "app.onboarding.sections.space.description":
+    "Space lead\nShared context\nHuman and AI coordination",
   "app.onboarding.sections.createBot.label": "Create your Bot",
   "app.onboarding.sections.createBot.title": "Create your Bot",
   "app.onboarding.sections.createBot.description":
@@ -139,7 +139,7 @@ describe("Onboarding", () => {
   it("renders the white directory copy as a lead and supporting lines", () => {
     render(<Onboarding forceVisible skipIntro />);
 
-    expect(screen.getByText("Workspace lead")).toHaveClass(
+    expect(screen.getByText("Space lead")).toHaveClass(
       "wk-onboarding-description-lead"
     );
     expect(screen.getByText("Shared context")).toHaveClass(
