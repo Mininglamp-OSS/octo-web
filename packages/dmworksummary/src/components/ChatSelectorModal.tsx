@@ -368,7 +368,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
             <div
                 key={item.chat_id}
                 className={`chat-selector-item${indent ? " chat-selector-item--indent" : ""}${disabled ? " chat-selector-item--disabled" : ""}`}
-                className={`chat-selector-item${indent ? " chat-selector-item--indent" : ""}${disabled ? " chat-selector-item--disabled" : ""}`}
+                onClick={() => !disabled && this.handleToggle(item)}
             >
                 <Checkbox checked={checked} disabled={disabled} />
                 <WKAvatar
