@@ -40,7 +40,7 @@ baseline PNG 合入前，PR gate 可以先暴露 visual diff 但不因 visual-on
 3. **业务失败 gate**: `@p0` 必须真执行且通过 (`tests >= EXPECTED_P0`, `skipped=0`, 无 proxy error), 有业务失败就拒 push
 4. `playwright test --grep "@visual" --update-snapshots`
 5. 再跑一次 `@visual` verify, 无 proxy error 后 commit baseline diff
-6. push 回 PR source branch (带 `[skip ci]`)
+6. push 回 PR source branch，让普通 `pull_request` gate 在新 head 上重新验证 baseline diff
 
 reviewer 在同一 PR 看到 UI + baseline 两组 diff.
 

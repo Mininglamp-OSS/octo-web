@@ -137,6 +137,8 @@ jobs:
           fi
       - name: Commit snapshots to PR branch
         shell: bash
+        env:
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
         run: |
           set -euo pipefail
           if ! command -v git >/dev/null 2>&1; then
@@ -153,8 +155,8 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore(e2e): update visual baselines [skip ci]"
-          git push origin "HEAD:${{ steps.pr.outputs.head_ref }}"
+          git commit -m "chore(e2e): update visual baselines"
+          git push origin "HEAD:$HEAD_REF"
       - name: Upload playwright report
         if: always()
         uses: actions/upload-artifact@v4
