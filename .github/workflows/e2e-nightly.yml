@@ -98,7 +98,7 @@ jobs:
             exit 1
           fi
           echo "✅ nightly ran $TOTAL_TESTS tests (playwright exit=$PW_EXIT)"
-          exit $PW_EXIT
+          exit "$PW_EXIT"
       - name: Upload playwright report
         if: always()
         uses: actions/upload-artifact@v4
