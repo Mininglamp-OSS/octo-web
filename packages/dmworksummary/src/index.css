@@ -788,7 +788,6 @@
     gap: 4px;
     flex: 1;
     min-width: 0;
-    min-width: 260px;
 }
 
 .summary-detail-title {
@@ -797,6 +796,10 @@
     font-weight: 600;
     color: #1C1C23;
     line-height: 36px;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    word-break: break-word;
 }
 
 .summary-detail-header-actions {
