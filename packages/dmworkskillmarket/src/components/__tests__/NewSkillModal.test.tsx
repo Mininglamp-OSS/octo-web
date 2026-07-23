@@ -231,6 +231,44 @@ describe("NewSkillModal", () => {
     });
   });
 
+  it("blocks an 11-tag parse result and recovers after removing one tag", async () => {
+    vi.mocked(api.pollParse).mockResolvedValue({
+      status: "success",
+      result: {
+        name: "skill-pack",
+        description: "skill-pack 提供可复用的自动化工作流。",
+        tags: ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"],
+        version: "1.0.0",
+        readmeContent: "# skill-pack",
+        fileName: "skill-pack.zip",
+        fileSize: 1024,
+        fileSha256: "abc123",
+      },
+    });
+    render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), {
+        target: { files: [zipFile()] },
+      });
+    });
+    await waitFor(() => expect(screen.getByText(tagLimit)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "Skill Pack" } });
+    fireEvent.change(screen.getByLabelText(categoryLabel), { target: { value: "office" } });
+    const create = screen.getByRole("button", { name: createButton });
+    expect(create).toBeDisabled();
+    fireEvent.click(create);
+    expect(api.createSkill).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "eleven" }));
+    await waitFor(() => expect(create).toBeEnabled());
+    fireEvent.click(create);
+    await waitFor(() => expect(api.createSkill).toHaveBeenCalledWith(expect.objectContaining({
+      tags: ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"],
+    })));
+  });
+
   it("shows tag validation hints for invalid characters and length", async () => {
     render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
 

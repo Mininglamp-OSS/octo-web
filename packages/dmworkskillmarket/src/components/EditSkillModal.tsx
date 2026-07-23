@@ -366,8 +366,9 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
       return;
     }
     const draftError = getTagDraftError();
-    if (tagError || draftError) {
-      setTagError(tagError ?? draftError);
+    const tagsError = validateSkillTags(tags);
+    if (tagError || tagsError || draftError) {
+      setTagError(tagError ?? tagsError ?? draftError);
       return;
     }
     const submittedTags = tagDraft.trim()
