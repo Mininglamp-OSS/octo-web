@@ -159,6 +159,7 @@
         "networkError": "网络连接异常，请检查网络后重试",
         "noMore": "没有更多了",
         "retrySuccess": "已重新提交总结任务",
+        "cancelSuccess": "已取消总结任务",
         "emptyTitle": "暂无总结记录",
         "emptyDesc": "快速生成群聊或个人工作总结，让 AI 帮你梳理重要信息",
         "createFirst": "创建第一份总结",
@@ -167,8 +168,10 @@
     },
     "create": {
         "title": "邀请同事一起总结信息",
+        "desc": "邀请同事一起总结信息，并根据聊天等内容自动总结",
         "topicPlaceholder": "请输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点",
         "topicPlaceholderInChat": "输入聊天内你想总结的主题",
+        "placeholder": "请输入",
         "templatesTitle": "试试下列模版",
         "submitting": "总结中...",
         "scheduleFailed": "总结已创建，但定时更新配置失败",
@@ -571,6 +574,7 @@
     "citation": {
         "jumpToOriginal": "跳转到原文 →",
         "source": "来源：{{source}}",
+        "sourceDefault": "未知来源",
         "member": "成员：{{name}}"
     },
     "matterPicker": {

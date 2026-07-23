@@ -18,6 +18,7 @@ interface SummaryCardProps {
     onRetry?: (taskId: number) => void;
     onRegenerate?: (taskId: number) => void;
     onEdit?: (taskId: number) => void;
+    onCancel?: (taskId: number) => void;
 }
 
 /** 相对时间格式化 */
@@ -59,7 +60,7 @@ function getStatusColor(status: number): string | null {
     }
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onRegenerate, onEdit }) => {
+const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onRegenerate, onEdit, onCancel }) => {
     const { t } = useI18n();
     const [confirmType, setConfirmType] = useState<'delete' | 'leave' | null>(null);
     const [menuVisible, setMenuVisible] = useState(false);
@@ -155,12 +156,12 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                     <>
                                         {/* Generating / Waiting: 取消任务 */}
                                         {isGenerating && (
-                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onLeave?.(task.task_id); }}>
+                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onCancel?.(task.task_id); }}>
                                                 {t("summary.summaryCard.cancelTask")}
                                             </Dropdown.Item>
                                         )}
                                         {displayStatus === TaskStatus.WAITING_CONFIRM && (
-                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onLeave?.(task.task_id); }}>
+                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onCancel?.(task.task_id); }}>
                                                 {t("summary.summaryCard.cancelTask")}
                                             </Dropdown.Item>
                                         )}

@@ -159,6 +159,7 @@
         "networkError": "Network connection error. Check your connection and retry.",
         "noMore": "No more",
         "retrySuccess": "Summary task resubmitted",
+        "cancelSuccess": "Summary task cancelled",
         "emptyTitle": "No summaries yet",
         "emptyDesc": "Generate group or personal work summaries quickly, and let AI organize key information for you.",
         "createFirst": "Create first summary",
@@ -167,8 +168,10 @@
     },
     "create": {
         "title": "Invite teammates to summarize together",
+        "desc": "Invite teammates to summarize information together, with automatic summaries from chats and related content.",
         "topicPlaceholder": "Enter a topic to summarize, e.g., this week's project progress, customer feedback",
         "topicPlaceholderInChat": "Enter a topic to summarize in this chat",
+        "placeholder": "Please enter",
         "templatesTitle": "Try these templates",
         "submitting": "Summarizing...",
         "scheduleFailed": "Summary was created, but scheduled updates failed",
@@ -571,6 +574,7 @@
     "citation": {
         "jumpToOriginal": "Open original →",
         "source": "Source: {{source}}",
+        "sourceDefault": "Unknown source",
         "member": "Member: {{name}}"
     },
     "matterPicker": {

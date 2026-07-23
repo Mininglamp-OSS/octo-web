@@ -3,7 +3,7 @@ import { Checkbox, Spin, Empty, Tag } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
-import WKAvatar from "@octo/base/src/Components/WKAvatar";
+import WKAvatar, { isBot } from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import type { ChatCandidate } from "../types/summary";
@@ -94,7 +94,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
             const sdk = WKSDK.shared();
             await sdk.channelManager.syncSubscribes(channel);
             const subscribers = sdk.channelManager.getSubscribes(channel) || [];
-            const humans = subscribers.filter((m: any) => !m.is_bot);
+            const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid));
             const roles = new Map<string, number>();
             for (const m of humans) {
                 if (m.role != null) roles.set(m.uid, m.role);

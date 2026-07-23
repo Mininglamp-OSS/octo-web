@@ -11,12 +11,14 @@ import { CitationItem, CitationContextMessage, TeamCitationItem, MemberStatus } 
 
 interface CitationBadgeProps {
     index: number;
+    displayIndex?: number;
     citations: CitationItem[];
     badgeKey: string;
 }
 
 interface CitationGroupBadgeProps {
     indices: number[];
+    displayIndices?: number[];
     citations: CitationItem[];
     badgeKey: string;
 }
@@ -269,16 +271,17 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, citations, badgeKe
                 </div>
             }
         >
-            <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[{index}]</sup>
+            <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[{displayIndex ?? index}]</sup>
         </Popover>
     );
 };
 
-export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices, citations, badgeKey }) => {
+export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices, displayIndices, citations, badgeKey }) => {
+    const { t } = useI18n();
     const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
 
-    const first = indices[0];
-    const last = indices[indices.length - 1];
+    const first = displayIndices?.[0] ?? indices[0];
+    const last = (displayIndices?.[displayIndices.length - 1]) ?? (indices[indices.length - 1]);
     const label = `${first}-${last}`;
 
     const indicesKey = indices.join(',');

@@ -1,4 +1,5 @@
 import { AdaptiveCard, HostConfig, type Action } from "adaptivecards";
+import forgeHostConfig from "@mlt-org/octo-card-profile-octo-chat/host-config.json";
 import { cardMarkdownToSafeHtml } from "../renderer/cardMarkdownHtml";
 import { browserCssVarResolver, buildOctoHostConfig } from "./octoHostConfig";
 import { createOctoSerializationContext } from "./octoSerialization";
@@ -49,7 +50,7 @@ export function createCardHostConfig(
   renderProfile: ResolvedCardRenderProfile = "legacy"
 ): HostConfig {
   return renderProfile === FORGE_RENDER_PROFILE
-    ? buildOctoHostConfig(browserCssVarResolver(target))
+    ? new HostConfig(forgeHostConfig)
     : buildOctoHostConfig(browserCssVarResolver(target));
 }
 

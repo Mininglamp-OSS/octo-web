@@ -431,6 +431,16 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }
     };
 
+    handleCancel = async (taskId: number) => {
+        try {
+            await api.cancelSummary(taskId);
+            Toast.success(t("summary.list.cancelSuccess"));
+            this.loadData();
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.common.operationFailed"));
+        }
+    };
+
     handleRegenerate = (taskId: number) => {
         this.handleCardClick(taskId);
         setTimeout(() => {
@@ -592,6 +602,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 onRetry={this.handleRetry}
                                 onRegenerate={this.handleRegenerate}
                                 onEdit={this.handleEdit}
+                                onCancel={this.handleCancel}
                             />
                         ))}
                         {loadingMore && (

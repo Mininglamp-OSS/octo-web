@@ -3032,6 +3032,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         initialContent={myContent}
                         onSave={this.handleEditMyDraftSave}
                         onCancel={this.handleEditMyDraftCancel}
+                        exposeSave={(fn) => { this.editorSaveFn = fn; }}
                     />
                 </div>
             );
@@ -3696,7 +3697,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 </div>
 
                 {/* Edit mode footer */}
-                {(this.state.isEditing || this.state.editingTeamSummary) && (
+                {(this.state.isEditing || this.state.editingTeamSummary || this.state.editingMyDraft) && (
                     <div className="summary-detail-footer">
                         <button
                             type="button"
@@ -3704,6 +3705,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             onClick={() => {
                                 if (this.state.editingTeamSummary) {
                                     this.handleEditTeamCancel();
+                                } else if (this.state.editingMyDraft) {
+                                    this.handleEditMyDraftCancel();
                                 } else {
                                     this.handleEditCancel();
                                 }
@@ -3719,6 +3722,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     this.editorSaveFn();
                                 } else if (this.state.editingTeamSummary) {
                                     this.handleEditTeamSave();
+                                } else if (this.state.editingMyDraft) {
+                                    this.handleEditMyDraftSave();
                                 } else {
                                     this.handleEditSave();
                                 }
@@ -3771,7 +3776,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 className="summary-regenerate-textarea"
                                 rows={3}
                                 maxLength={1000}
-                                placeholder="请输入"
+                                placeholder={t("summary.create.placeholder")}
                                 value={this.state.regenerateTopic}
                                 onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
                             />
