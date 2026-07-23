@@ -117,6 +117,7 @@ interface SummaryCreatePageState {
     editingTemplateDescription: string;
     savingTemplate: boolean;
     visibleChipCount: number;
+    visibleMemberChipCount: number;
 }
 
 export default class SummaryCreatePage extends Component<SummaryCreatePageProps, SummaryCreatePageState> {
@@ -162,6 +163,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         editingTemplateDescription: "",
         savingTemplate: false,
         visibleChipCount: 999,
+        visibleMemberChipCount: 999,
     };
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
@@ -177,6 +179,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     private historyLoadToken = 0;
 
     private chipsContainerRef = createRef<HTMLDivElement>();
+    private memberChipsContainerRef = createRef<HTMLDivElement>();
     private selectChatRef = createRef<HTMLDivElement>();
     private chipResizeObserver: ResizeObserver | null = null;
 
@@ -202,9 +205,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         selectChat.style.maxWidth = width + 'px';
     };
 
-    private updateVisibleChipCount = () => {
-        this.updateSelectChatWidth();
-        const container = this.chipsContainerRef.current;
+    private applyChipOverflow = (
+        container: HTMLDivElement | null,
+        setCount: (n: number) => void,
+    ) => {
         if (!container) return;
         const chips = container.querySelectorAll('.summary-workbench-chat-chip');
         if (chips.length === 0) return;
@@ -229,7 +233,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         // 没有溢出时不预留空间
         if (visible >= chips.length) {
             // 全部能放下，不隐藏
-            this.setState({ visibleChipCount: 999 });
+            setCount(999);
             return;
         }
 
@@ -253,7 +257,20 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
         });
 
-        this.setState({ visibleChipCount: visible2 });
+        setCount(visible2);
+    };
+
+    private updateVisibleChipCount = () => {
+        this.updateSelectChatWidth();
+        this.applyChipOverflow(this.chipsContainerRef.current, (n) =>
+            this.setState({ visibleChipCount: n }),
+        );
+    };
+
+    private updateVisibleMemberChipCount = () => {
+        this.applyChipOverflow(this.memberChipsContainerRef.current, (n) =>
+            this.setState({ visibleMemberChipCount: n }),
+        );
     };
 
     componentDidMount() {
@@ -261,11 +278,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         // select-chat 宽度计算 + 芯片溢出检测
         this.updateSelectChatWidth();
         this.updateVisibleChipCount();
+        this.updateVisibleMemberChipCount();
         const observeEl = this.selectChatRef.current?.parentElement;
         if (observeEl) {
             this.chipResizeObserver = new ResizeObserver(() => {
                 this.updateSelectChatWidth();
                 this.updateVisibleChipCount();
+                this.updateVisibleMemberChipCount();
             });
             this.chipResizeObserver.observe(observeEl);
         }
@@ -304,6 +323,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (prevState.selectedChats !== this.state.selectedChats) {
             this.updateSelectChatWidth();
             this.setState({ visibleChipCount: 999 }, () => this.updateVisibleChipCount());
+        }
+        if (prevState.selectedMembers !== this.state.selectedMembers) {
+            this.setState({ visibleMemberChipCount: 999 }, () => this.updateVisibleMemberChipCount());
         }
     }
 
@@ -1270,9 +1292,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             {/* 选择参与者 */}
                             <div className="summary-workbench-chat-row">
                                 {selectedMembers.length > 0 && (
-                                    <div className="summary-workbench-chat-chips" style={{ maxHeight: '24px', overflow: 'hidden', flex: '1 1 0', minWidth: 0 }}>
-                                        {selectedMembers.slice(0, 10).map((m) => (
-                                            <div key={m.user_id} className="summary-workbench-chat-chip">
+                                    <div className="summary-workbench-chat-chips" ref={this.memberChipsContainerRef}>
+                                        {selectedMembers.map((m, idx) => (
+                                            <div
+                                                key={m.user_id}
+                                                className={`summary-workbench-chat-chip${idx >= this.state.visibleMemberChipCount ? " summary-workbench-chat-chip--hidden" : ""}`}
+                                            >
                                                 <WKAvatar
                                                     channel={new Channel(m.user_id, 1)}
                                                     style={{ width: 16, height: 16, borderRadius: "50%" }}
@@ -1289,13 +1314,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                                 </button>
                                             </div>
                                         ))}
-                                        {selectedMembers.length > 10 && (
+                                        {selectedMembers.length > this.state.visibleMemberChipCount && (
                                             <Tooltip
                                                 content={selectedMembers.map((m) => m.name).join("、")}
                                                 position="top"
                                             >
                                                 <span className="summary-workbench-chat-chip-overflow">
-                                                    ...+{selectedMembers.length - 10}
+                                                    ...+{selectedMembers.length - this.state.visibleMemberChipCount}
                                                 </span>
                                             </Tooltip>
                                         )}
