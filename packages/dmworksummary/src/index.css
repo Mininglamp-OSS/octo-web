@@ -560,8 +560,7 @@
     align-items: center;
     justify-content: flex-end;
     gap: 12px;
-    height: 80px;
-    padding: 0 24px;
+    padding: 16px;
 }
 
 .summary-confirm-btn {
@@ -599,6 +598,18 @@
 
 .summary-confirm-btn--danger:hover {
     background: #E03A32;
+}
+
+.summary-confirm-btn--dark {
+    background: #1C1C23;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 20px;
+}
+
+.summary-confirm-btn--dark:hover {
+    background: #333;
 }
 
 /* Regenerate modal textarea */

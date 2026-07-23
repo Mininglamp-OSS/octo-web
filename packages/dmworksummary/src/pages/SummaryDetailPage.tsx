@@ -3775,7 +3775,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </button>
                         <button
                             type="button"
-                            className="summary-confirm-btn summary-confirm-btn--danger"
+                            className="summary-confirm-btn summary-confirm-btn--dark"
                             disabled={this.state.regenerateSubmitting || !this.state.regenerateTopic.trim()}
                             onClick={this.handleRegenerateConfirm}
                         >
