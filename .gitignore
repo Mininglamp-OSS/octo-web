@@ -15,8 +15,7 @@ playwright-report
 .next/
 out/
 build
-
-# TypeScript incremental build cache
+build-e2e
 *.tsbuildinfo
 
 # misc
