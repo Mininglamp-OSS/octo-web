@@ -516,17 +516,19 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                     onChange={(e) => this.handleKeywordChange(e.target.value)}
                                 />
                             </div>
-                            <div className="chat-selector-tabs">
-                                {currentTabs.map((tab) => (
-                                    <button
-                                        key={tab.key}
-                                        className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
-                                        onClick={() => this.handleTabChange(tab.key)}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
-                            </div>
+                            {currentTabs.length > 1 && (
+                                <div className="chat-selector-tabs">
+                                    {currentTabs.map((tab) => (
+                                        <button
+                                            key={tab.key}
+                                            className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
+                                            onClick={() => this.handleTabChange(tab.key)}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             {mode !== "members" && (activeTab === "group" || activeTab === "followed") && (
                                 <label className="chat-selector-archived-toggle">
                                     <Checkbox
