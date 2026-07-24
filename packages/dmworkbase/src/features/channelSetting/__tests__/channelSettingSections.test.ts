@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ChannelTypeCommunityTopic } from "../../../Service/Const";
 import { ThreadStatus } from "../../../Service/Thread";
 import { GroupStatusDisband } from "../../../Utils/groupDisband";
+import { updateChannelSettingMyGroupNickname } from "../../../bridge/channelSetting/channelSettingActions";
 import { buildChannelGroupInfoSection } from "../channelSettingGroupInfoSection";
 import {
   buildChannelDangerSection,
@@ -44,6 +45,20 @@ vi.mock("../../../Service/threadPermission", () => ({
   canRenameThread: vi.fn(() => true),
   isParentGroupManager: vi.fn(() => true),
   shouldShowThreadArchiveAction: vi.fn(() => true),
+}));
+
+vi.mock("../../../bridge/channelSetting/channelSettingActions", () => ({
+  clearChannelSettingMessages: vi.fn(),
+  exitChannelSettingGroup: vi.fn(),
+  leaveChannelSettingThread: vi.fn(),
+  muteChannelSetting: vi.fn(),
+  remarkChannelSetting: vi.fn(),
+  saveChannelSetting: vi.fn(),
+  topChannelSetting: vi.fn(),
+  transferChannelSettingOwner: vi.fn(),
+  updateChannelSettingField: vi.fn(),
+  updateChannelSettingMyGroupNickname: vi.fn(() => Promise.resolve()),
+  updateChannelSettingThreadName: vi.fn(),
 }));
 
 function createContext(overrides: Record<string, any> = {}) {
@@ -154,8 +169,25 @@ describe("channel setting section builders", () => {
     );
 
     expect(normal?.rows).toHaveLength(1);
-    expect(normal?.rows?.[0].properties.subTitle).toBe("Ali");
+    expect(normal?.rows?.[0].properties.value).toBe("Ali");
     expect(disbanded).toBeUndefined();
+  });
+
+  it("updates the visible group nickname after a successful save", async () => {
+    const context = createContext();
+    const inputEditPush = vi.fn();
+    const section = buildMyGroupNicknameSection(context, inputEditPush);
+
+    section?.rows?.[0].properties.onClick();
+    const onFinish = inputEditPush.mock.calls[0][2];
+    await onFinish("Alice Updated");
+
+    expect(updateChannelSettingMyGroupNickname).toHaveBeenCalledWith({
+      channel: context.routeData().channel,
+      remark: "Alice Updated",
+    });
+    expect(context.routeData().subscriberOfMe.remark).toBe("Alice Updated");
+    expect(context.routeData().refresh).toHaveBeenCalled();
   });
 
   it("builds danger rows only for active groups", () => {
@@ -201,7 +233,7 @@ describe("channel setting section builders", () => {
 
     expect(activeOwner?.rows).toHaveLength(9);
     expect(disbanded?.rows).toHaveLength(1);
-    expect(disbanded?.rows?.[0].properties.subTitle).toBe("remark");
+    expect(disbanded?.rows?.[0].properties.value).toBe("remark");
   });
 
   it("builds thread setting sections for active thread channels", () => {

@@ -16,7 +16,7 @@ import * as Y from 'yjs'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import { LocaleType, mergeLocales, ICommandService, CommandType, IContextService, FOCUSING_COMMON_DRAWINGS, IImageIoService } from '@univerjs/core'
-import { IMenuManagerService, RibbonInsertGroup, MenuItemType, IFontService } from '@univerjs/ui'
+import { IMenuManagerService, RibbonInsertGroup, MenuItemType, IFontService, ILocalFileService } from '@univerjs/ui'
 import { createUniver } from './createUniver.ts'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
 import { MathFormula, OCTO_MATH_FORMULA_KEY } from './floatDom/MathFormula.tsx'
@@ -51,6 +51,7 @@ import sheetsDrawingZhCN from '@univerjs/preset-sheets-drawing/locales/zh-CN'
 import '@univerjs/preset-sheets-drawing/lib/index.css'
 import { enableSheetSvgImages } from './sheetImageTypes.ts'
 import { SanitizedSheetImageIoService } from './sheetImageIoService.ts'
+import { SheetLocalFileService } from './sheetLocalFileService.ts'
 // Hyperlink (insert link) preset — OSS, same pattern as drawing. Hyperlinks live in the
 // SHEET_HYPER_LINK_PLUGIN resource (not cell data), so persistence/replication rides a dedicated
 // Yjs sync in binding.ts (fed the HyperLinkModel resolved from the injector below).
@@ -264,7 +265,10 @@ export class CollabSheet {
       // Override Univer's base64 image service only for this sheet instance. Raster images retain
       // the existing local path; SVG is uploaded, backend-sanitized, then downloaded from the
       // returned trusted attachment URL before it can enter shared Yjs state.
-      override: [[IImageIoService, { useValue: new SanitizedSheetImageIoService(opts.docId) }]],
+      override: [
+        [IImageIoService, { useValue: new SanitizedSheetImageIoService(opts.docId) }],
+        [ILocalFileService, { useClass: SheetLocalFileService }],
+      ],
       presets: [
         UniverSheetsCorePreset({
           container: opts.container,

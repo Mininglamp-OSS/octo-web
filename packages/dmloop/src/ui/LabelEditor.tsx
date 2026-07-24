@@ -1,53 +1,41 @@
 import React, { useState } from "react";
-import { Dropdown, Input, Button, Toast } from "@douyinfe/semi-ui";
-import { Check, Plus } from "lucide-react";
+import { Dropdown, Toast } from "@douyinfe/semi-ui";
+import { Check, Settings2, Tag } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { IssueLabel } from "../api/types";
-import { listLabels, createLabel, attachLabel, detachLabel } from "../api/labelApi";
+import { attachLabel, detachLabel, listLabels } from "../api/labelApi";
 import LabelChips from "./LabelChips";
+import LabelManagementModal from "./LabelManagementModal";
 
-// issue 标签编辑器:点开下拉列出工作区标签(勾选=挂/摘),底部内联建新标签并挂上。
-// UI 从简(默认色,取色器等留待 UI 定稿);核心是把挂/摘/建标签能力接上后端。
 export default function LabelEditor({
   issueId,
   labels,
   onChanged,
+  className,
 }: {
   issueId: string;
   labels?: IssueLabel[] | null;
   onChanged: () => void;
+  className?: string;
 }) {
   const { t } = useI18n();
   const [all, setAll] = useState<IssueLabel[]>([]);
   const [busy, setBusy] = useState(false);
-  const [newName, setNewName] = useState("");
-  const attached = new Set((labels ?? []).map((l) => l.id));
+  const [manageOpen, setManageOpen] = useState(false);
+  const attachedLabels = labels ?? [];
+  const attached = new Set(attachedLabels.map((label) => label.id));
 
-  const loadAll = () => listLabels().then(setAll).catch(() => {});
+  const loadAll = () =>
+    listLabels()
+      .then(setAll)
+      .catch(() => {});
 
-  const toggle = async (l: IssueLabel) => {
+  const toggle = async (label: IssueLabel) => {
     if (busy) return;
     setBusy(true);
     try {
-      if (attached.has(l.id)) await detachLabel(issueId, l.id);
-      else await attachLabel(issueId, l.id);
-      onChanged();
-    } catch (e) {
-      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const create = async () => {
-    const name = newName.trim();
-    if (!name || busy) return;
-    setBusy(true);
-    try {
-      const label = await createLabel(name, "#8B5CF6"); // 默认紫,取色留待 UI 定稿
-      await attachLabel(issueId, label.id);
-      setNewName("");
-      await loadAll();
+      if (attached.has(label.id)) await detachLabel(issueId, label.id);
+      else await attachLabel(issueId, label.id);
       onChanged();
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
@@ -58,33 +46,60 @@ export default function LabelEditor({
 
   const menu = (
     <Dropdown.Menu>
-      {all.map((l) => (
-        <Dropdown.Item key={l.id} onClick={() => toggle(l)}>
-          <span style={{ flex: 1, marginRight: 8 }}>{l.name}</span>
-          {attached.has(l.id) && <Check size={14} />}
-        </Dropdown.Item>
-      ))}
+      {all.length === 0 && (
+        <Dropdown.Item disabled>{t("loop.label.empty")}</Dropdown.Item>
+      )}
+      {all.map((label) => {
+        const active = attached.has(label.id);
+        return (
+          <Dropdown.Item key={label.id} onClick={() => toggle(label)}>
+            <span className="loop-label-option">
+              <LabelChips labels={[label]} />
+              {active && <Check size={14} />}
+            </span>
+          </Dropdown.Item>
+        );
+      })}
       <Dropdown.Divider />
-      <div style={{ padding: "4px 8px", display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
-        <Input
-          size="small"
-          value={newName}
-          onChange={setNewName}
-          placeholder={t("loop.label.newPlaceholder")}
-          onEnterPress={create}
-          style={{ width: 130 }}
-        />
-        <Button size="small" icon={<Plus size={14} />} onClick={create} loading={busy} aria-label={t("loop.label.create")} />
-      </div>
+      <Dropdown.Item onClick={() => setManageOpen(true)}>
+        <span className="loop-label-option loop-label-option--manage">
+          <Settings2 size={14} />
+          {t("loop.label.manage")}
+        </span>
+      </Dropdown.Item>
     </Dropdown.Menu>
   );
 
-  // clickToHide 默认 false:勾选多个标签时下拉保持打开;每次打开重新拉全量标签。
   return (
-    <Dropdown trigger="click" position="bottomLeft" render={menu} onVisibleChange={(v) => v && loadAll()}>
-      <span style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
-        {labels && labels.length > 0 ? <LabelChips labels={labels} /> : <span style={{ opacity: 0.5 }}>{t("loop.label.add")}</span>}
-      </span>
-    </Dropdown>
+    <>
+      <Dropdown
+        trigger="click"
+        position="bottomRight"
+        render={menu}
+        onVisibleChange={(visible) => visible && loadAll()}
+      >
+        <div className={`loop-label-editor${className ? ` ${className}` : ""}`}>
+          {attachedLabels.length > 0 ? (
+            <button type="button" className="loop-label-chipbutton">
+              <LabelChips labels={attachedLabels} />
+            </button>
+          ) : (
+            <button type="button" className="loop-label-add">
+              <Tag size={13} />
+              {t("loop.label.add")}
+            </button>
+          )}
+        </div>
+      </Dropdown>
+      <LabelManagementModal
+        visible={manageOpen}
+        onClose={() => setManageOpen(false)}
+        issueId={issueId}
+        attachedLabelIds={attachedLabels.map((label) => label.id)}
+        onChanged={() => {
+          onChanged();
+        }}
+      />
+    </>
   );
 }

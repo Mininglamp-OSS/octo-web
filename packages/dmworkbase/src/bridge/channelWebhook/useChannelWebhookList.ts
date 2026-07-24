@@ -1,88 +1,123 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Channel, WKSDK } from "wukongimjssdk";
+import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
-import { IncomingWebhook, IncomingWebhookService } from "../../Service/IncomingWebhook";
+import {
+  IncomingWebhook,
+  IncomingWebhookService,
+} from "../../Service/IncomingWebhook";
 import { subscriberDisplayName, SubscriberLike } from "../../Utils/displayName";
-import { getImChannelSubscribers } from "../../im-runtime/channelRuntime";
+import { getCurrentImChannelSubscribers } from "../../im-runtime/currentChannelRuntime";
 
 export interface UseChannelWebhookListOptions {
-    channel: Channel;
-    threadShortId?: string;
-    selfFallback: string;
-    onLoadError: (error: unknown) => void;
+  channel: Channel;
+  threadShortId?: string;
+  selfFallback: string;
+  onLoadError: (error: unknown) => void;
+}
+
+export interface ChannelWebhookListReloadOptions {
+  showLoading?: boolean;
+  silentError?: boolean;
 }
 
 /** Runtime bridge for Webhook list data. UI state for edit/confirm overlays stays in the container. */
 export function useChannelWebhookList({
-    channel,
-    threadShortId,
-    selfFallback,
-    onLoadError,
+  channel,
+  threadShortId,
+  selfFallback,
+  onLoadError,
 }: UseChannelWebhookListOptions) {
-    const [items, setItems] = useState<IncomingWebhook[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(false);
-    const requestSequenceRef = useRef(0);
-    const mountedRef = useRef(true);
-    const groupNo = channel.channelID;
-    const scopeKey = `${groupNo}:${threadShortId || "group"}`;
-    const myUid = WKApp.loginInfo.uid || "";
+  const [items, setItems] = useState<IncomingWebhook[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const requestSequenceRef = useRef(0);
+  const mountedRef = useRef(true);
+  const groupNo = channel.channelID;
+  const scopeKey = `${groupNo}:${threadShortId || "group"}`;
+  const myUid = WKApp.loginInfo.uid || "";
 
-    useEffect(() => {
-        mountedRef.current = true;
-        return () => {
-            mountedRef.current = false;
-            requestSequenceRef.current += 1;
-        };
-    }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestSequenceRef.current += 1;
+    };
+  }, []);
 
-    const load = useCallback(async (showLoading = false) => {
-        const requestSequence = ++requestSequenceRef.current;
-        if (showLoading) setLoading(true);
-        setError(false);
-        try {
-            const list = await IncomingWebhookService.list(groupNo, threadShortId);
-            if (!mountedRef.current || requestSequence !== requestSequenceRef.current) return;
-            setItems(list);
-        } catch (loadError) {
-            if (!mountedRef.current || requestSequence !== requestSequenceRef.current) return;
-            setError(true);
-            onLoadError(loadError);
-        } finally {
-            if (mountedRef.current && requestSequence === requestSequenceRef.current) {
-                setLoading(false);
-            }
+  const load = useCallback(
+    async (options: boolean | ChannelWebhookListReloadOptions = false) => {
+      const showLoading =
+        typeof options === "boolean" ? options : !!options.showLoading;
+      const silentError =
+        typeof options === "boolean" ? false : !!options.silentError;
+      const requestSequence = ++requestSequenceRef.current;
+      if (showLoading) setLoading(true);
+      setError(false);
+      try {
+        const list = await IncomingWebhookService.list(groupNo, threadShortId);
+        if (
+          !mountedRef.current ||
+          requestSequence !== requestSequenceRef.current
+        )
+          return;
+        setItems(list);
+      } catch (loadError) {
+        if (
+          !mountedRef.current ||
+          requestSequence !== requestSequenceRef.current
+        )
+          return;
+        if (!silentError) {
+          setError(true);
+          onLoadError(loadError);
         }
-    }, [groupNo, onLoadError, threadShortId]);
-
-    useEffect(() => {
-        requestSequenceRef.current += 1;
-        setItems([]);
-        setLoading(true);
-        setError(false);
-        void load();
-    }, [load, scopeKey]);
-
-    const creatorNames = useMemo(() => {
-        const wanted = new Set(items.map((item) => item.creator_uid));
-        const names = new Map<string, string>();
-        try {
-            const subscribers = getImChannelSubscribers(WKSDK.shared(), channel) as Array<
-                { uid?: string } & SubscriberLike
-            >;
-            for (const subscriber of subscribers) {
-                if (!subscriber?.uid || !wanted.has(subscriber.uid) || names.has(subscriber.uid)) continue;
-                const name = subscriberDisplayName(subscriber);
-                if (name) names.set(subscriber.uid, name);
-            }
-        } catch {
-            // SDK member cache may not be ready; metadata gracefully falls back to creation time.
+      } finally {
+        if (
+          mountedRef.current &&
+          requestSequence === requestSequenceRef.current
+        ) {
+          setLoading(false);
         }
-        if (wanted.has(myUid) && !names.has(myUid)) {
-            names.set(myUid, WKApp.loginInfo.selfDisplayName?.() || selfFallback);
-        }
-        return names;
-    }, [channel, items, myUid, selfFallback]);
+      }
+    },
+    [groupNo, onLoadError, threadShortId]
+  );
 
-    return { items, loading, error, myUid, creatorNames, reload: load };
+  useEffect(() => {
+    requestSequenceRef.current += 1;
+    setItems([]);
+    setLoading(true);
+    setError(false);
+    void load();
+  }, [load, scopeKey]);
+
+  const creatorNames = useMemo(() => {
+    const wanted = new Set(
+      items.map((item: IncomingWebhook) => item.creator_uid)
+    );
+    const names = new Map<string, string>();
+    try {
+      const subscribers = getCurrentImChannelSubscribers(channel) as Array<
+        { uid?: string } & SubscriberLike
+      >;
+      for (const subscriber of subscribers) {
+        if (
+          !subscriber?.uid ||
+          !wanted.has(subscriber.uid) ||
+          names.has(subscriber.uid)
+        )
+          continue;
+        const name = subscriberDisplayName(subscriber);
+        if (name) names.set(subscriber.uid, name);
+      }
+    } catch {
+      // SDK member cache may not be ready; metadata gracefully falls back to creation time.
+    }
+    if (wanted.has(myUid) && !names.has(myUid)) {
+      names.set(myUid, WKApp.loginInfo.selfDisplayName?.() || selfFallback);
+    }
+    return names;
+  }, [channel, items, myUid, selfFallback]);
+
+  return { items, loading, error, myUid, creatorNames, reload: load };
 }

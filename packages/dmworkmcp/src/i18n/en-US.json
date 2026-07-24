@@ -33,15 +33,12 @@
     "ai": "AI"
   },
   "source": {
-    "human": "Human",
-    "bot": "Bot",
-    "import": "Imported",
-    "botTooltip": "Created by {{owner}}'s bot"
+    "bot": "Bot"
   },
   "list": {
     "desc": "Browse and connect MCP servers to extend your agent's tools.",
-    "create": "New MCP",
-    "searchPlaceholder": "Search MCPs, tools, tags, or capabilities",
+    "create": "Publish MCP",
+    "searchPlaceholder": "Search name or description...",
     "searchClear": "Clear",
     "errorTitle": "Failed to load MCPs",
     "retry": "Retry",
@@ -60,20 +57,55 @@
     "mode": {
       "all": "All",
       "mine": "Mine"
-    },
-    "source": {
-      "filterLabel": "Filter by source",
-      "all": "All sources"
     }
   },
+  "publishMenu": {
+    "botTitle": "Publish via Bot",
+    "botHint": "Copy the prompt for an Agent",
+    "manualTitle": "Manual",
+    "manualHint": "Fill in the form to create an MCP"
+  },
+  "botPublish": {
+    "title": "Publish via Bot",
+    "hint": "Copy the prompt to an Agent and let it publish for you",
+    "copyBtn": "Copy prompt",
+    "copied": "Copied",
+    "copyFailed": "Copy failed. Select the text manually.",
+    "copyUnavailable": "Automatic copy is not available here. Select the text manually."
+  },
+  "form": {
+    "tagLimit": "At most {{count}} tags",
+    "tagLengthLimit": "A tag can have at most {{count}} characters",
+    "tagInvalidChars": "Tags can only contain letters, digits, spaces, and - _ . / # +"
+  },
+  "filter": {
+    "tags": "Tags",
+    "searchTags": "Search tags",
+    "noTags": "No tags available yet",
+    "noTagsSelected": "No tags selected",
+    "tagsSelected": "{{count}} tag(s) selected",
+    "clear": "Clear"
+  },
   "card": {
-    "hitTool": "Matched tool",
-    "hitTag": "Matched tag",
-    "matchReason": { "name": "Matched name", "description": "Matched summary", "tool": "Matched tool", "tag": "Matched tag", "category": "Matched category", "usage": "Matched usage example", "creator": "Matched publisher", "other": "Matched content" },
-    "toolCount": "Tools: {{count}}"
+    "matchReason": {
+      "name": "Matched name",
+      "description": "Matched summary",
+      "tool": "Matched tool",
+      "tag": "Matched tag",
+      "category": "Matched category",
+      "usage": "Matched usage example",
+      "creator": "Matched publisher",
+      "other": "Matched content"
+    },
+    "toolCount": "Tools: {{count}}",
+    "editAriaLabel": "Edit {{name}}",
+    "deleteAriaLabel": "Delete {{name}}",
+    "edit": "Edit",
+    "delete": "Delete"
   },
   "detail": {
     "title": "MCP Details",
+    "updatedAt": "Updated {{time}}",
     "quickAccess": "Quick access",
     "qsTab": {
       "prompt": "Prompt",
@@ -86,7 +118,7 @@
       "headersLabel": "\nHeaders: ",
       "envLabel": "\nEnv: "
     },
-    "tokenHint": "Replace the <把这里换成你的 Token> placeholder in the config with your own token before use.",
+    "tokenHint": "Replace each <把这里换成你的 …> placeholder in the config with your own value before use.",
     "copy": "Copy",
     "copied": "Copied to clipboard",
     "copyFailed": "Copy failed",
@@ -112,7 +144,7 @@
     "failed": "Delete failed"
   },
   "create": {
-    "title": "New MCP",
+    "title": "Publish MCP",
     "sectionBasics": "Basics",
     "sectionBasicsDesc": "Shown on the market card and detail header",
     "sectionConnect": "Connection",
@@ -251,5 +283,11 @@
     "submit": "Submit",
     "success": "Created",
     "failed": "Create failed"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}} hours ago",
+    "daysAgo": "{{count}} days ago"
   }
 }

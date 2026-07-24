@@ -63,6 +63,7 @@ export interface TimeRange {
 /** Citation 上下文消息 */
 export interface CitationContextMessage {
     sender: string;
+    sender_uid?: string;
     content: string;
     sent_at: string;
     message_seq?: number;
@@ -72,6 +73,7 @@ export interface CitationContextMessage {
 export interface CitationItem {
     index: number;
     sender: string;
+    sender_uid?: string;
     content: string;
     sent_at: string;
     source: string;
@@ -338,6 +340,8 @@ export interface AgentChatParams {
      * 后续轮次此字段被忽略(引用一次锁定)。见 CHAT-REFERENCE-BASED-DESIGN-v1。
      */
     referenced_task_ids?: number[];
+    /** 用户在 UI 中明确选定、希望 agent 默认处理的聊天。 */
+    selected_channels?: Array<Pick<ChatCandidate, 'chat_id' | 'chat_type' | 'name' | 'is_archived'>>;
 }
 
 /** Agent 对话响应（post() 已解包 data） */

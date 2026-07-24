@@ -1,4 +1,4 @@
-# e2e nightly: 全量跑 (排除 @visual, baseline 未 ready 前跳过视觉)
+# e2e nightly: 全量跑已标记的 @p* 与 @visual case
 # 每天 UTC 03:00 (北京 11:00) 触发, 只在 default branch 生效.
 # workflow_dispatch 也开着, 便于维护者手动触发 debug.
 
@@ -59,19 +59,20 @@ jobs:
           cache: "pnpm"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
-      - name: Run e2e (tagged @p* only, non-visual)
+      - name: Run e2e (tagged @p* plus @visual)
         working-directory: apps/web
-        # --grep "@p[0-9]": 只跑打了优先级 tag 的 case (@p0/@p1/@p2), 排除:
+        # --grep "@p[0-9]|@visual": 跑打了优先级 tag 的业务 case (@p0/@p1/@p2) 与独立视觉 case, 排除:
         #   - tests/bind/ (未打 @p 系列, dev-server-only, 未验证过 preview 环境)
         #   - tests/standalone-doc/ (同上, AC-N: pattern 未走 CaseId 约定)
-        # --grep-invert "@visual": baseline 未 ready, 视觉 case 目前必红且不该 block nightly
-        # 组合语义: grep AND grep-invert (playwright 官方支持)
         shell: bash
         run: |
+          E2E_LOG="e2e-kit/playwright-report/e2e-nightly.log"
+          mkdir -p "$(dirname "$E2E_LOG")"
+
           set +e
           pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts \
-            --grep "@p[0-9]" --grep-invert "@visual"
-          PW_EXIT=$?
+            --grep "@p[0-9]|@visual" 2>&1 | tee "$E2E_LOG"
+          PW_EXIT=${PIPESTATUS[0]}
           set -e
 
           JUNIT="e2e-kit/playwright-report/junit.xml"
@@ -80,17 +81,28 @@ jobs:
             exit 1
           fi
           TOTAL_TESTS=$(grep -oE 'tests="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          SKIPPED=$(grep -oE 'skipped="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          PROXY_ERRORS=$(grep -c "http proxy error:" "$E2E_LOG" || true)
           # nightly 也加 tests=0 guard: 防 grep drift 让 nightly 静默"全绿"
           EXPECTED_P0=29
+          EXPECTED_VISUAL=2
+          EXPECTED_TOTAL=$((EXPECTED_P0 + EXPECTED_VISUAL))
           if [[ "$TOTAL_TESTS" -eq 0 ]]; then
             echo "❌ nightly tests=0 (grep 漂了 / preview 挂了), fail"
             exit 1
-          elif [[ "$TOTAL_TESTS" -lt "$EXPECTED_P0" ]]; then
-            echo "❌ nightly tests=$TOTAL_TESTS < EXPECTED_P0=$EXPECTED_P0 (有 case 掉 @p tag), fail"
+          elif [[ "$TOTAL_TESTS" -lt "$EXPECTED_TOTAL" ]]; then
+            echo "❌ nightly tests=$TOTAL_TESTS < EXPECTED_TOTAL=$EXPECTED_TOTAL (有 case 掉 @p/@visual tag), fail"
+            exit 1
+          elif [[ "$SKIPPED" -gt 0 ]]; then
+            echo "❌ nightly skipped=$SKIPPED (有 case 没真执行), fail"
+            exit 1
+          elif [[ "$PROXY_ERRORS" -gt 0 ]]; then
+            echo "❌ nightly 出现 $PROXY_ERRORS 条 Vite proxy error, 说明 mock 覆盖漏网, fail"
+            grep "http proxy error:" "$E2E_LOG" | sed -E 's/.*http proxy error: //g' | sort | uniq -c
             exit 1
           fi
           echo "✅ nightly ran $TOTAL_TESTS tests (playwright exit=$PW_EXIT)"
-          exit $PW_EXIT
+          exit "$PW_EXIT"
       - name: Upload playwright report
         if: always()
         uses: actions/upload-artifact@v4

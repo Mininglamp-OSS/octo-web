@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createCurrentEmptyImConversation,
   findCurrentImConversation,
+  getCurrentImConversationsDirectly,
   notifyCurrentImConversationListeners,
   removeCurrentImConversation,
   syncCurrentImConversationExtra,
@@ -10,6 +12,8 @@ import {
 const hoisted = vi.hoisted(() => {
   const sdk = {
     conversationManager: {
+      conversations: [] as unknown[],
+      createEmptyConversation: vi.fn(),
       findConversation: vi.fn(),
       notifyConversationListeners: vi.fn(),
       removeConversation: vi.fn(),
@@ -31,6 +35,8 @@ vi.mock("wukongimjssdk", () => ({
 describe("currentConversationRuntime", () => {
   beforeEach(() => {
     hoisted.shared.mockClear();
+    hoisted.sdk.conversationManager.conversations = [];
+    hoisted.sdk.conversationManager.createEmptyConversation.mockReset();
     hoisted.sdk.conversationManager.findConversation.mockReset();
     hoisted.sdk.conversationManager.notifyConversationListeners.mockReset();
     hoisted.sdk.conversationManager.removeConversation.mockReset();
@@ -48,6 +54,20 @@ describe("currentConversationRuntime", () => {
     expect(hoisted.shared).toHaveBeenCalledTimes(1);
     expect(
       hoisted.sdk.conversationManager.findConversation
+    ).toHaveBeenCalledWith(channel);
+  });
+
+  it("creates an empty conversation from the current SDK runtime", () => {
+    const channel = { channelID: "g1", channelType: 2 };
+    const conversation = { channel };
+    hoisted.sdk.conversationManager.createEmptyConversation.mockReturnValueOnce(
+      conversation
+    );
+
+    expect(createCurrentEmptyImConversation(channel)).toBe(conversation);
+    expect(hoisted.shared).toHaveBeenCalledTimes(1);
+    expect(
+      hoisted.sdk.conversationManager.createEmptyConversation
     ).toHaveBeenCalledWith(channel);
   });
 
@@ -79,5 +99,23 @@ describe("currentConversationRuntime", () => {
 
     expect(hoisted.shared).toHaveBeenCalledTimes(1);
     expect(hoisted.sdk.conversationManager.syncExtra).toHaveBeenCalled();
+  });
+
+  it("reads conversations directly from the current SDK conversationManager field", () => {
+    const conversations = [
+      { channel: { channelID: "g1", channelType: 2 } },
+      { channel: { channelID: "g2", channelType: 5 } },
+    ];
+    hoisted.sdk.conversationManager.conversations = conversations;
+
+    expect(getCurrentImConversationsDirectly()).toBe(conversations);
+    expect(hoisted.shared).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an empty array when the SDK has no conversations", () => {
+    hoisted.sdk.conversationManager.conversations =
+      undefined as unknown as unknown[];
+
+    expect(getCurrentImConversationsDirectly()).toEqual([]);
   });
 });

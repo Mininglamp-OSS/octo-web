@@ -33,15 +33,12 @@
     "ai": "AI 能力"
   },
   "source": {
-    "human": "人工创建",
-    "bot": "Bot 创建",
-    "import": "从仓库导入",
-    "botTooltip": "由 {{owner}} 的 Bot 创建"
+    "bot": "Bot 创建"
   },
   "list": {
     "desc": "浏览并接入 MCP 服务，为你的智能体扩展工具能力。",
-    "create": "新建 MCP",
-    "searchPlaceholder": "搜索 MCP、工具、标签或能力",
+    "create": "上架 MCP",
+    "searchPlaceholder": "搜索名称、描述...",
     "searchClear": "清除",
     "errorTitle": "加载 MCP 失败",
     "retry": "重试",
@@ -60,20 +57,55 @@
     "mode": {
       "all": "全部",
       "mine": "我的"
-    },
-    "source": {
-      "filterLabel": "按来源筛选",
-      "all": "全部来源"
     }
   },
+  "publishMenu": {
+    "botTitle": "Bot 上架",
+    "botHint": "复制提示词给 Agent",
+    "manualTitle": "手动上架",
+    "manualHint": "填写表单创建 MCP"
+  },
+  "botPublish": {
+    "title": "Bot 上架",
+    "hint": "复制提示词给 Agent，让它帮你完成上架",
+    "copyBtn": "复制提示词",
+    "copied": "已复制",
+    "copyFailed": "复制失败，请手动选中文本复制",
+    "copyUnavailable": "当前环境不支持自动复制，请手动选中文本复制"
+  },
+  "form": {
+    "tagLimit": "最多添加 {{count}} 个标签",
+    "tagLengthLimit": "单个标签最多 {{count}} 个字符",
+    "tagInvalidChars": "标签仅支持文字、数字、空格和 - _ . / # +"
+  },
+  "filter": {
+    "tags": "标签",
+    "searchTags": "搜索标签",
+    "noTags": "还没有可选标签",
+    "noTagsSelected": "未选择标签",
+    "tagsSelected": "已选 {{count}} 个标签",
+    "clear": "清空"
+  },
   "card": {
-    "hitTool": "命中工具",
-    "hitTag": "命中标签",
-    "matchReason": { "name": "命中名称", "description": "命中简介", "tool": "命中工具", "tag": "命中标签", "category": "命中分类", "usage": "命中使用示例", "creator": "命中发布者", "other": "命中内容" },
-    "toolCount": "工具数量: {{count}} 个"
+    "matchReason": {
+      "name": "命中名称",
+      "description": "命中简介",
+      "tool": "命中工具",
+      "tag": "命中标签",
+      "category": "命中分类",
+      "usage": "命中使用示例",
+      "creator": "命中发布者",
+      "other": "命中内容"
+    },
+    "toolCount": "工具数量: {{count}} 个",
+    "editAriaLabel": "编辑 {{name}}",
+    "deleteAriaLabel": "删除 {{name}}",
+    "edit": "编辑",
+    "delete": "删除"
   },
   "detail": {
     "title": "MCP 详情",
+    "updatedAt": "{{time}}更新",
     "quickAccess": "快速接入",
     "qsTab": {
       "prompt": "提示词",
@@ -86,7 +118,7 @@
       "headersLabel": "\n请求头：",
       "envLabel": "\n环境变量："
     },
-    "tokenHint": "配置里的 <把这里换成你的 Token> 请替换成你自己的 Token 后再使用。",
+    "tokenHint": "配置里的 <把这里换成你的 …> 请替换成你自己的值后再使用。",
     "copy": "复制",
     "copied": "已复制到剪贴板",
     "copyFailed": "复制失败",
@@ -112,7 +144,7 @@
     "failed": "删除失败"
   },
   "create": {
-    "title": "新建 MCP",
+    "title": "上架 MCP",
     "sectionBasics": "基本信息",
     "sectionBasicsDesc": "展示在市场卡片和详情页顶部",
     "sectionConnect": "接入方式",
@@ -251,5 +283,11 @@
     "submit": "提交",
     "success": "创建成功",
     "failed": "创建失败"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "daysAgo": "{{count}} 天前"
   }
 }

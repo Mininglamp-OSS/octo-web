@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ChatSummaryPanel from '../ChatSummaryPanel';
 
 const mockEmit = vi.fn();
-const mockOpenSummaryDetail = vi.fn();
 
 vi.mock('@octo/base', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('../../__mocks__/dmworkBase');
@@ -12,7 +11,6 @@ vi.mock('@octo/base', async () => {
         ...actual,
         WKApp: {
             mittBus: { emit: (...args: any[]) => mockEmit(...args) },
-            openSummaryDetail: (...args: any[]) => mockOpenSummaryDetail(...args),
         },
     };
 });
@@ -22,21 +20,38 @@ vi.mock('lucide-react', () => ({
     ChevronLeft: () => <svg data-testid="back-icon" />,
 }));
 
-// 列表组件：暴露一个点击入口触发 onViewDetail，并标记自身是否挂载
+// SummaryListPage mock: exposes create/detail callbacks
+let createNewCb: (() => void) | null = null;
 let viewDetailCb: ((taskId: number) => void) | null = null;
-vi.mock('../ChatSummaryHistory', () => ({
+vi.mock('../../pages/SummaryListPage', () => ({
     default: (props: any) => {
+        createNewCb = props.onCreateNew;
         viewDetailCb = props.onViewDetail;
         return (
-            <div data-testid="summary-history" data-paused={String(!!props.paused)}>
+            <div data-testid="summary-list" data-channel-id={props.channelId}>
                 <button onClick={() => props.onViewDetail(42)}>open-detail</button>
                 <button onClick={() => props.onCreateNew()}>create-new</button>
+                {props.onClose && (
+                    <button data-testid="list-close" onClick={props.onClose}>
+                        close
+                    </button>
+                )}
             </div>
         );
     },
 }));
 
-// 详情组件：仅记录收到的 taskId
+// SummaryCreatePage mock
+vi.mock('../../pages/SummaryCreatePage', () => ({
+    default: (props: any) => (
+        <div data-testid="summary-create" data-channel={props.channel?.channelID}>
+            <button onClick={() => props.onSubmit?.(99)}>submit-create</button>
+            <button onClick={() => props.onClose?.()}>cancel-create</button>
+        </div>
+    ),
+}));
+
+// SummaryDetailPage mock
 vi.mock('../../pages/SummaryDetailPage', () => ({
     default: (props: any) => (
         <div data-testid="summary-detail" data-task-id={String(props.taskId)} />
@@ -53,57 +68,64 @@ describe('ChatSummaryPanel', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        createNewCb = null;
         viewDetailCb = null;
     });
 
     it('renders the list view by default', () => {
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
-        expect(screen.getByTestId('summary-history')).toBeInTheDocument();
+        expect(screen.getByTestId('summary-list')).toBeInTheDocument();
         expect(screen.queryByTestId('summary-detail')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('summary-create')).not.toBeInTheDocument();
     });
 
-    it('switches to detail view in-panel without closing or routing away', () => {
+    it('passes channelId to SummaryListPage for channel-scoped list', () => {
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
+        expect(screen.getByTestId('summary-list').dataset.channelId).toBe('ch1');
+    });
 
+    it('switches to detail view in-panel without closing', () => {
+        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
         fireEvent.click(screen.getByText('open-detail'));
 
         const detail = screen.getByTestId('summary-detail');
         expect(detail).toBeInTheDocument();
         expect(detail.dataset.taskId).toBe('42');
-        // 关键：不关闭侧边栏、不走整页路由
         expect(onClose).not.toHaveBeenCalled();
-        expect(mockOpenSummaryDetail).not.toHaveBeenCalled();
     });
 
-    it('keeps the list mounted (hidden) while detail is open to preserve scroll', () => {
+    it('switches to create view in-panel without emitting open-summary-modal', () => {
+        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
+        fireEvent.click(screen.getByText('create-new'));
+
+        expect(screen.getByTestId('summary-create')).toBeInTheDocument();
+        // List stays mounted but hidden (display:none) to preserve scroll
+        expect(screen.queryByTestId('summary-list')).not.toBeVisible();
+        // Must NOT emit wk:open-summary-modal — create is now in-panel
+        expect(mockEmit).not.toHaveBeenCalledWith('wk:open-summary-modal', expect.anything());
+    });
+
+    it('returns from create to list via back button', () => {
+        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
+        fireEvent.click(screen.getByText('create-new'));
+        expect(screen.getByTestId('summary-create')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('back-icon').closest('button')!);
+        expect(screen.queryByTestId('summary-create')).not.toBeInTheDocument();
+        expect(screen.getByTestId('summary-list')).toBeInTheDocument();
+    });
+
+    it('returns from detail to list via back button', () => {
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
         fireEvent.click(screen.getByText('open-detail'));
-
-        // 列表常驻挂载，仅隐藏
-        expect(screen.getByTestId('summary-history')).toBeInTheDocument();
         expect(screen.getByTestId('summary-detail')).toBeInTheDocument();
-    });
 
-    it('pauses list polling while detail is open', () => {
-        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
-        expect(screen.getByTestId('summary-history').dataset.paused).toBe('false');
-
-        fireEvent.click(screen.getByText('open-detail'));
-        expect(screen.getByTestId('summary-history').dataset.paused).toBe('true');
-    });
-
-    it('returns to the list view via the back button', () => {
-        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
-        fireEvent.click(screen.getByText('open-detail'));
-        expect(screen.getByTestId('summary-detail')).toBeInTheDocument();
-
-        fireEvent.click(screen.getByText('返回'));
-
+        fireEvent.click(screen.getByTestId('back-icon').closest('button')!);
         expect(screen.queryByTestId('summary-detail')).not.toBeInTheDocument();
-        expect(screen.getByTestId('summary-history').dataset.paused).toBe('false');
+        expect(screen.getByTestId('summary-list')).toBeInTheDocument();
     });
 
-    it('resets to the list view when the channel changes', () => {
+    it('resets to initial view when channel changes', () => {
         const { rerender } = render(
             <ChatSummaryPanel visible channel={channel} onClose={onClose} />,
         );
@@ -119,28 +141,38 @@ describe('ChatSummaryPanel', () => {
         );
 
         expect(screen.queryByTestId('summary-detail')).not.toBeInTheDocument();
-        expect(screen.getByTestId('summary-history')).toBeInTheDocument();
+        expect(screen.getByTestId('summary-list')).toBeInTheDocument();
     });
 
-    it('closes the panel via the close button in list view', () => {
-        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
-        fireEvent.click(screen.getByTestId('close-icon').closest('button')!);
-        expect(onClose).toHaveBeenCalledTimes(1);
+    it('starts in create view when summaryPanelView is "new"', () => {
+        render(
+            <ChatSummaryPanel
+                visible
+                channel={channel}
+                onClose={onClose}
+                summaryPanelView="new"
+            />,
+        );
+        expect(screen.getByTestId('summary-create')).toBeInTheDocument();
+        // List stays mounted but hidden (display:none) to preserve scroll
+        expect(screen.queryByTestId('summary-list')).not.toBeVisible();
     });
 
-    it('emits open-summary-modal when creating a new summary', () => {
+    it('emits summary-list-refresh-requested after create submit', () => {
+        vi.useFakeTimers();
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
         fireEvent.click(screen.getByText('create-new'));
-        expect(mockEmit).toHaveBeenCalledWith('wk:open-summary-modal', {
-            channelId: 'ch1',
-            channelType: 2,
-        });
+        fireEvent.click(screen.getByText('submit-create'));
+
+        // Fast-forward the 800ms setTimeout
+        vi.advanceTimersByTime(800);
+        expect(mockEmit).toHaveBeenCalledWith('summary-list-refresh-requested');
+        vi.useRealTimers();
     });
 
     describe('resizable splitter', () => {
         beforeEach(() => {
             localStorage.clear();
-            // 宽屏，保证 400px 不被 50% 可用空间约束 clamp 掉
             Object.defineProperty(window, 'innerWidth', {
                 value: 1600,
                 configurable: true,
@@ -165,13 +197,11 @@ describe('ChatSummaryPanel', () => {
                 '.wk-thread-panel-splitter',
             ) as HTMLElement;
 
-            // 起点 360（默认），向左拖 40px → 宽度变 400
             fireEvent.mouseDown(splitter, { clientX: 1000 });
             fireEvent.mouseMove(document, { clientX: 960 });
             fireEvent.mouseUp(document);
 
             expect(localStorage.getItem('wk-summary-panel-width')).toBe('400');
-            // 不污染 thread 面板宽度
             expect(localStorage.getItem('wk-thread-panel-width')).toBeNull();
         });
 

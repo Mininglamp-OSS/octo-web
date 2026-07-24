@@ -33,9 +33,14 @@ const MOCK_SPACE = {
 export const chatBaselineHandlers = [
   // === Common / config ===
   // shape: { version, list: [{ key, name, url }] } - 见 packages/dmworkbase/src/Service/EmojiService.ts:30
-  http.get("http://localhost:3000/api/v1/common/emojis", () =>
+  http.get("*/api/v1/common/emojis", () =>
     HttpResponse.json({ version: 0, list: [] })
   ),
+  http.get("*/common/emojis", () =>
+    HttpResponse.json({ version: 0, list: [] })
+  ),
+  http.get("*/api/v1/health", () => HttpResponse.json({ ok: true })),
+  http.get("*/health", () => HttpResponse.json({ ok: true })),
   http.get("*/voice/config", () =>
     HttpResponse.json({ enable: 0, provider: "", config: {} })
   ),
@@ -49,6 +54,13 @@ export const chatBaselineHandlers = [
     HttpResponse.arrayBuffer(new Uint8Array([]).buffer, {
       headers: { "content-type": "image/png" },
     })
+  ),
+  http.get("*/group/avatar_palette", () =>
+    // 空 colors 会走前端 fallback palette, 但请求本身不该漏到 Vite proxy.
+    HttpResponse.json({ size: 0, colors: [] })
+  ),
+  http.get("*/api/v1/group/avatar_palette", () =>
+    HttpResponse.json({ size: 0, colors: [] })
   ),
   http.get("*/user/devices/:deviceId", () =>
     // 400 表示设备未注册, App.tsx 里 syncClientMsgDeviceId 已有静默 fallback.
@@ -71,6 +83,16 @@ export const chatBaselineHandlers = [
   http.post("*/sidebar/sync", () =>
     HttpResponse.json({ conversations: [], groups: [], users: [] })
   ),
+  http.post("*/message/channel/sync", () =>
+    HttpResponse.json({ messages: [] })
+  ),
+  http.post("*/api/v1/message/channel/sync", () =>
+    HttpResponse.json({ messages: [] })
+  ),
+
+  // === OBO / persona ===
+  http.get("*/api/v1/obo/grants", () => HttpResponse.json([])),
+  http.get("*/obo/grants", () => HttpResponse.json([])),
 
   // === Summary ===
   // 空列表, 界面停在"暂无总结"稳定分支; 不返 200 会无限重试打爆 network.

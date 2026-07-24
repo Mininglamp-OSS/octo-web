@@ -359,7 +359,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     const activeElement = document.activeElement;
 
     if (event.shiftKey) {
-      if (activeElement === firstElement || !dialog.contains(activeElement)) {
+      if (
+        activeElement === firstElement ||
+        activeElement === dialog ||
+        !dialog.contains(activeElement)
+      ) {
         event.preventDefault();
         focusElement(lastElement);
       }
@@ -401,6 +405,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       const dialog = dialogRef.current;
       if (!dialog) return;
 
+      if (showIntro) {
+        focusElement(dialog);
+        return;
+      }
+
       focusElement(getFocusableElements(dialog)[0] || dialog);
     }, 0);
   }, [showIntro, visible]);
@@ -415,31 +424,23 @@ export const Onboarding: React.FC<OnboardingProps> = ({
 
   if (showIntro) {
     return (
-      <>
-        <div
-          ref={dialogRef}
-          className={`wk-onboarding-overlay wk-onboarding-overlay-intro${
-            introLeaving ? " is-intro-leaving" : ""
-          }`}
-          role="dialog"
-          aria-modal="true"
-          aria-hidden={isIntroSkipTransitionTarget ? true : undefined}
-          aria-label={t("app.onboarding.dialog.introAria")}
-          tabIndex={-1}
-          onKeyDown={handleDialogKeyDown}
-        >
-          <OnboardingIntro
-            onContinue={handleIntroContinue}
-            onSkip={handleIntroSkip}
-          />
-        </div>
-        {isIntroSkipTransitionTarget ? (
-          <div
-            className="wk-onboarding-overlay wk-onboarding-skip-transition-target"
-            aria-hidden="true"
-          />
-        ) : null}
-      </>
+      <div
+        ref={dialogRef}
+        className={`wk-onboarding-overlay wk-onboarding-overlay-intro${
+          introLeaving ? " is-intro-leaving" : ""
+        }${isIntroSkipTransitionTarget ? " is-skip-transition-target" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-hidden={isIntroSkipTransitionTarget ? true : undefined}
+        aria-label={t("app.onboarding.dialog.introAria")}
+        tabIndex={-1}
+        onKeyDown={handleDialogKeyDown}
+      >
+        <OnboardingIntro
+          onContinue={handleIntroContinue}
+          onSkip={handleIntroSkip}
+        />
+      </div>
     );
   }
 

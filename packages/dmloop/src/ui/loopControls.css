@@ -130,21 +130,27 @@
 
 /* 触发器外观：白底 + 描边 + 圆角（白底修复了 Semi 默认灰 fill 与 loop 白底控件的冲突） */
 :is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-select,
-:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-input-wrapper {
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)
+  .semi-input-wrapper {
   background: var(--semi-color-bg-0, #fff);
   border-radius: 8px;
   border-color: var(--semi-color-border, #e8e9eb);
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-select:hover,
-:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-input-wrapper:hover {
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)
+  .semi-select:hover,
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)
+  .semi-input-wrapper:hover {
   border-color: var(--semi-color-text-3, #c9cdd4);
 }
 
-:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-select-focus,
-:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-select-open,
-:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-input-wrapper-focus {
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)
+  .semi-select-focus,
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)
+  .semi-select-open,
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)
+  .semi-input-wrapper-focus {
   border-color: var(--semi-color-primary, #6a5cff) !important;
   box-shadow: 0 0 0 3px var(--semi-color-primary-light-default, #eef2ff);
 }
@@ -156,15 +162,19 @@
 
 /* 字号 / 行高 / placeholder 统一——让 Semi 控件手感与原生 .loop-field 一致 */
 :is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-input,
-:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-select-selection {
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)
+  .semi-select-selection {
   font-size: 13px;
 }
-:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) textarea.semi-input-textarea {
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)
+  textarea.semi-input-textarea {
   font-size: 13px;
   line-height: 1.6;
 }
-:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-input::placeholder,
-:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) textarea.semi-input-textarea::placeholder {
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)
+  .semi-input::placeholder,
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)
+  textarea.semi-input-textarea::placeholder {
   color: var(--semi-color-text-2, #a4a9b3);
 }
 
@@ -210,7 +220,8 @@
   color: var(--semi-color-text-1, #4e5969);
   font-size: 13px;
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  transition: background-color 120ms ease, color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .loop-seg__btn:hover {
@@ -265,14 +276,30 @@
  * 命名 --loop-tag-* 为新增 token，非 Semi 覆盖；集中在此单一来源，改一处全站生效。
  * ========================================================================== */
 :root {
-  --loop-tag-grey-bg: #F1F2F4;   --loop-tag-grey-fg: #5D626F;   --loop-tag-grey-bd: #DDDFE3;
-  --loop-tag-blue-bg: #E4EAF2;   --loop-tag-blue-fg: #3E6598;   --loop-tag-blue-bd: #CDD7E4;
-  --loop-tag-green-bg: #E1EFE9;  --loop-tag-green-fg: #337154;  --loop-tag-green-bd: #CBE2D7;
-  --loop-tag-amber-bg: #F2ECDE;  --loop-tag-amber-fg: #896D34;  --loop-tag-amber-bd: #E7DDC5;
-  --loop-tag-orange-bg: #F4EAE1; --loop-tag-orange-fg: #9B653B; --loop-tag-orange-bd: #E9D8C9;
-  --loop-tag-red-bg: #F5E7E5;    --loop-tag-red-fg: #B14E43;    --loop-tag-red-bd: #ECD3D0;
-  --loop-tag-violet-bg: #ECE7F3; --loop-tag-violet-fg: #7B56B3; --loop-tag-violet-bd: #D9D1E6;
-  --loop-tag-purple-bg: #F0E7F3; --loop-tag-purple-fg: #9852AD; --loop-tag-purple-bd: #E1D1E6;
+  --loop-tag-grey-bg: #f1f2f4;
+  --loop-tag-grey-fg: #5d626f;
+  --loop-tag-grey-bd: #dddfe3;
+  --loop-tag-blue-bg: #e4eaf2;
+  --loop-tag-blue-fg: #3e6598;
+  --loop-tag-blue-bd: #cdd7e4;
+  --loop-tag-green-bg: #e1efe9;
+  --loop-tag-green-fg: #337154;
+  --loop-tag-green-bd: #cbe2d7;
+  --loop-tag-amber-bg: #f2ecde;
+  --loop-tag-amber-fg: #896d34;
+  --loop-tag-amber-bd: #e7ddc5;
+  --loop-tag-orange-bg: #f4eae1;
+  --loop-tag-orange-fg: #9b653b;
+  --loop-tag-orange-bd: #e9d8c9;
+  --loop-tag-red-bg: #f5e7e5;
+  --loop-tag-red-fg: #b14e43;
+  --loop-tag-red-bd: #ecd3d0;
+  --loop-tag-violet-bg: #ece7f3;
+  --loop-tag-violet-fg: #7b56b3;
+  --loop-tag-violet-bd: #d9d1e6;
+  --loop-tag-purple-bg: #f0e7f3;
+  --loop-tag-purple-fg: #9852ad;
+  --loop-tag-purple-bd: #e1d1e6;
 }
 
 /* 标签公共外形（语义标签 loop-tag 与用户色标签 loop-label-chip 共用，避免重复声明） */
@@ -290,27 +317,269 @@
   white-space: nowrap;
 }
 
-.loop-tag { border: 1px solid transparent; }
+.loop-tag {
+  border: 1px solid transparent;
+}
 
-.loop-tag--grey   { background: var(--loop-tag-grey-bg);   color: var(--loop-tag-grey-fg);   border-color: var(--loop-tag-grey-bd); }
-.loop-tag--blue   { background: var(--loop-tag-blue-bg);   color: var(--loop-tag-blue-fg);   border-color: var(--loop-tag-blue-bd); }
-.loop-tag--green  { background: var(--loop-tag-green-bg);  color: var(--loop-tag-green-fg);  border-color: var(--loop-tag-green-bd); }
-.loop-tag--amber  { background: var(--loop-tag-amber-bg);  color: var(--loop-tag-amber-fg);  border-color: var(--loop-tag-amber-bd); }
-.loop-tag--orange { background: var(--loop-tag-orange-bg); color: var(--loop-tag-orange-fg); border-color: var(--loop-tag-orange-bd); }
-.loop-tag--red    { background: var(--loop-tag-red-bg);    color: var(--loop-tag-red-fg);    border-color: var(--loop-tag-red-bd); }
-.loop-tag--violet { background: var(--loop-tag-violet-bg); color: var(--loop-tag-violet-fg); border-color: var(--loop-tag-violet-bd); }
-.loop-tag--purple { background: var(--loop-tag-purple-bg); color: var(--loop-tag-purple-fg); border-color: var(--loop-tag-purple-bd); }
+.loop-tag--grey {
+  background: var(--loop-tag-grey-bg);
+  color: var(--loop-tag-grey-fg);
+  border-color: var(--loop-tag-grey-bd);
+}
+.loop-tag--blue {
+  background: var(--loop-tag-blue-bg);
+  color: var(--loop-tag-blue-fg);
+  border-color: var(--loop-tag-blue-bd);
+}
+.loop-tag--green {
+  background: var(--loop-tag-green-bg);
+  color: var(--loop-tag-green-fg);
+  border-color: var(--loop-tag-green-bd);
+}
+.loop-tag--amber {
+  background: var(--loop-tag-amber-bg);
+  color: var(--loop-tag-amber-fg);
+  border-color: var(--loop-tag-amber-bd);
+}
+.loop-tag--orange {
+  background: var(--loop-tag-orange-bg);
+  color: var(--loop-tag-orange-fg);
+  border-color: var(--loop-tag-orange-bd);
+}
+.loop-tag--red {
+  background: var(--loop-tag-red-bg);
+  color: var(--loop-tag-red-fg);
+  border-color: var(--loop-tag-red-bd);
+}
+.loop-tag--violet {
+  background: var(--loop-tag-violet-bg);
+  color: var(--loop-tag-violet-fg);
+  border-color: var(--loop-tag-violet-bd);
+}
+.loop-tag--purple {
+  background: var(--loop-tag-purple-bg);
+  color: var(--loop-tag-purple-fg);
+  border-color: var(--loop-tag-purple-bd);
+}
 
 /* 任意后端色相的用户标签：把 hex 与白/黑混合拉出深度，避免 12% 透明度贴白底的塑料感。
  * --loop-chip-color 由 <LabelChips> 内联传入。每个属性先给中性灰 token 兜底：不支持
  * color-mix 的老引擎会丢弃整条 color-mix 声明、退回上一条，chip 仍成形而非裸样式。 */
 .loop-label-chip {
   background: var(--loop-tag-grey-bg);
-  background: color-mix(in oklch, var(--loop-chip-color, #8a8f99) 16%, var(--semi-color-bg-0, #fff));
+  background: color-mix(
+    in oklch,
+    var(--loop-chip-color, #8a8f99) 16%,
+    var(--semi-color-bg-0, #fff)
+  );
   border: 1px solid var(--loop-tag-grey-bd);
-  border: 1px solid color-mix(in oklch, var(--loop-chip-color, #8a8f99) 32%, var(--semi-color-bg-0, #fff));
+  border: 1px solid
+    color-mix(
+      in oklch,
+      var(--loop-chip-color, #8a8f99) 32%,
+      var(--semi-color-bg-0, #fff)
+    );
   color: var(--loop-tag-grey-fg);
   color: color-mix(in oklch, var(--loop-chip-color, #8a8f99) 74%, #14161a);
+}
+
+.loop-label-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-width: 160px;
+}
+
+.loop-label-option--manage {
+  justify-content: flex-start;
+  color: var(--semi-color-text-1, #4e5969);
+}
+
+.loop-label-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.loop-label-editor__chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.loop-label-removable {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.loop-label-chipbutton {
+  display: inline-flex;
+  justify-content: flex-end;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.loop-label-chipbutton .loop-label-chips {
+  justify-content: flex-end;
+}
+
+.loop-label-removable button {
+  width: 18px;
+  height: 20px;
+  margin-left: -3px;
+  border: 1px solid
+    color-mix(
+      in oklch,
+      var(--loop-chip-color, #8a8f99) 32%,
+      var(--semi-color-bg-0, #fff)
+    );
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  background: color-mix(
+    in oklch,
+    var(--loop-chip-color, #8a8f99) 12%,
+    var(--semi-color-bg-0, #fff)
+  );
+  color: color-mix(in oklch, var(--loop-chip-color, #8a8f99) 70%, #14161a);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loop-label-removable button:hover {
+  background: color-mix(
+    in oklch,
+    var(--loop-chip-color, #8a8f99) 22%,
+    var(--semi-color-bg-0, #fff)
+  );
+}
+
+.loop-label-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px dashed var(--semi-color-border, #e8e9eb);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--semi-color-text-1, #4e5969);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.loop-label-add:hover {
+  border-color: var(--semi-color-text-3, #c9cdd4);
+  background: var(--semi-color-fill-0, #f5f6f8);
+  color: var(--semi-color-text-0, #1c1f23);
+}
+
+.loop-label-color {
+  display: grid;
+  grid-template-columns: repeat(10, 24px);
+  gap: 6px;
+}
+
+.loop-label-color__swatch {
+  width: 24px;
+  height: 24px;
+  border: 1px solid
+    color-mix(in oklch, var(--loop-chip-color, #8a8f99) 44%, #fff);
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--loop-chip-color, #8a8f99) 78%, #fff);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loop-label-color__swatch:hover,
+.loop-label-color__swatch.is-active {
+  box-shadow: 0 0 0 2px var(--semi-color-bg-0, #fff),
+    0 0 0 4px color-mix(in oklch, var(--loop-chip-color, #8a8f99) 42%, #fff);
+}
+
+.loop-label-mgr {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.loop-label-mgr__create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.loop-label-mgr__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.loop-label-mgr__empty {
+  padding: 18px 12px;
+  border: 1px dashed var(--semi-color-border, #e8e9eb);
+  border-radius: 8px;
+  color: var(--semi-color-text-2, #8a8f99);
+  text-align: center;
+  font-size: 13px;
+}
+
+.loop-label-mgr__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px;
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 8px;
+}
+
+.loop-label-mgr__edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.loop-label-mgr__pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.loop-label-mgr__pick.is-active {
+  color: var(--semi-color-primary, #1c1c23);
+}
+
+.loop-label-mgr__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ==========================================================================
@@ -334,21 +603,38 @@
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+  transition: background-color 120ms ease, border-color 120ms ease,
+    color 120ms ease, opacity 120ms ease;
 }
 
-.loop-btn--sm { height: 28px; padding: 0 10px; font-size: 12px; gap: 4px; }
-.loop-btn--block { width: 100%; }
-.loop-btn--icon { width: 32px; padding: 0; }
-.loop-btn--icon.loop-btn--sm { width: 28px; }
+.loop-btn--sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  gap: 4px;
+}
+.loop-btn--block {
+  width: 100%;
+}
+.loop-btn--icon {
+  width: 32px;
+  padding: 0;
+}
+.loop-btn--icon.loop-btn--sm {
+  width: 28px;
+}
 
 /* primary：品牌黑 + 同色系提亮/压深 */
 .loop-btn--primary {
-  background: var(--semi-color-primary, #1C1C23);
+  background: var(--semi-color-primary, #1c1c23);
   color: #fff;
 }
-.loop-btn--primary:hover:not(:disabled) { background: var(--semi-color-primary-hover, #2A2A33); }
-.loop-btn--primary:active:not(:disabled) { background: var(--semi-color-primary-active, #101014); }
+.loop-btn--primary:hover:not(:disabled) {
+  background: var(--semi-color-primary-hover, #2a2a33);
+}
+.loop-btn--primary:active:not(:disabled) {
+  background: var(--semi-color-primary-active, #101014);
+}
 
 /* secondary：白底描边（取消/次级操作） */
 .loop-btn--secondary {
@@ -360,19 +646,33 @@
   border-color: var(--semi-color-text-3, #c9cdd4);
   background: var(--semi-color-fill-0, #f7f8fa);
 }
-.loop-btn--secondary:active:not(:disabled) { background: var(--semi-color-fill-1, #f0f1f4); }
+.loop-btn--secondary:active:not(:disabled) {
+  background: var(--semi-color-fill-1, #f0f1f4);
+}
 
 /* ghost：无边框（工具栏/内联次级） */
-.loop-btn--ghost { background: transparent; color: var(--semi-color-text-1, #4e5969); }
+.loop-btn--ghost {
+  background: transparent;
+  color: var(--semi-color-text-1, #4e5969);
+}
 .loop-btn--ghost:hover:not(:disabled) {
   background: var(--semi-color-fill-0, #f5f6f8);
   color: var(--semi-color-text-0, #1c1f23);
 }
 
-.loop-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.loop-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
-.loop-btn__spin { animation: loop-btn-spin 0.7s linear infinite; }
-@keyframes loop-btn-spin { to { transform: rotate(360deg); } }
+.loop-btn__spin {
+  animation: loop-btn-spin 0.7s linear infinite;
+}
+@keyframes loop-btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 /* ==========================================================================
  * Loop 属性 pill（loop-pill）—— 对齐 multica 建单工具栏的圆角属性选择器
@@ -398,6 +698,11 @@
   background: var(--semi-color-fill-0, #f5f6f8);
   border-color: var(--semi-color-text-3, #c9cdd4);
 }
-.loop-pill__caret { color: var(--semi-color-text-2, #a4a9b3); }
-.loop-pill__opt { display: inline-flex; align-items: center; gap: 8px; }
-
+.loop-pill__caret {
+  color: var(--semi-color-text-2, #a4a9b3);
+}
+.loop-pill__opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

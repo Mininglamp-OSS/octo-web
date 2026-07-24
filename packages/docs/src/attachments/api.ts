@@ -150,7 +150,8 @@ export async function uploadImage(docId: string, file: File): Promise<UploadedIm
   const declaredType = file.type.trim().toLowerCase()
   // Some platforms leave SVG's File.type empty; use the extension only in that
   // case. Never let a misleading .svg name override a non-SVG declared MIME.
-  const isSvg = declaredType === 'image/svg+xml' || (!declaredType && /\.svg$/i.test(file.name))
+  const isSvg = declaredType === 'image/svg+xml' || declaredType === 'image/svg'
+    || (!declaredType && /\.svg$/i.test(file.name))
   if (isSvg) {
     const { data } = await apiClient().post<{
       attachId: string

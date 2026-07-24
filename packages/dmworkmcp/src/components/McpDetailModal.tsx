@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { WKModal, WKButton, t } from "@octo/base";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
+import { Bot, UserRound } from "lucide-react";
 import { deleteMcp, fetchMcpDetail } from "../api/mcpService";
-import { buildQuickStartTabs, TOKEN_PLACEHOLDER } from "../api/quickStartTemplates";
+import { buildQuickStartTabs, TOKEN_PLACEHOLDER_RE } from "../api/quickStartTemplates";
 import type { McpDetail, McpQuickStart } from "../types/mcp";
 import { IconGlyph } from "../utils/icon";
-import { SourceBadge } from "./McpCard";
+import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
+import { resolveOwner } from "./McpCard";
 
 interface McpDetailModalProps {
   /** The id of the MCP to show; null closes the modal. */
@@ -24,8 +26,9 @@ interface McpDetailModalProps {
 
 /**
  * The ⚡快速接入 block. Two tabs (提示词 / JSON) are generated from the
- * structured `quickStart` payload; the token position always renders as the
- * `<把这里换成你的 Token>` placeholder. Default tab = 提示词.
+ * structured `quickStart` payload; each user-supplied header/env value
+ * renders as the interpolated `<把这里换成你的 KEY>` placeholder so the
+ * user sees exactly which field they need to fill. Default tab = 提示词.
  */
 const QuickAccess: React.FC<{ quickStart: McpQuickStart }> = ({
   quickStart,
@@ -44,26 +47,34 @@ const QuickAccess: React.FC<{ quickStart: McpQuickStart }> = ({
     }
   };
 
-  /** Split the snippet on TOKEN_PLACEHOLDER so each occurrence renders as a
-   *  visually distinct <mark>. Users pasting the snippet elsewhere have to
-   *  hand-swap this literal for a real secret; highlighting the exact
-   *  span the token lives in makes that step un-missable. */
+  /** Split the snippet on every interpolated placeholder (one per
+   *  user-supplied header/env key) so each occurrence renders as a visually
+   *  distinct <mark>. Users pasting the snippet elsewhere have to hand-swap
+   *  each literal for a real value; highlighting the exact span makes that
+   *  step un-missable. */
   const renderedContent = useMemo(() => {
     const text = current?.content ?? "";
     if (!text) return null;
-    const parts = text.split(TOKEN_PLACEHOLDER);
-    if (parts.length === 1) return text;
+    // Fresh regex per render — sharing TOKEN_PLACEHOLDER_RE across calls
+    // would carry `lastIndex` state and produce phantom empty matches.
+    const re = new RegExp(TOKEN_PLACEHOLDER_RE.source, "g");
     const nodes: React.ReactNode[] = [];
-    parts.forEach((part, idx) => {
-      if (idx > 0) {
-        nodes.push(
-          <mark key={`t-${idx}`} className="wk-mcp-code__token">
-            {TOKEN_PLACEHOLDER}
-          </mark>
-        );
+    let cursor = 0;
+    let idx = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+      if (match.index > cursor) {
+        nodes.push(text.slice(cursor, match.index));
       }
-      if (part) nodes.push(part);
-    });
+      nodes.push(
+        <mark key={`t-${idx++}`} className="wk-mcp-code__token">
+          {match[0]}
+        </mark>
+      );
+      cursor = match.index + match[0].length;
+    }
+    if (nodes.length === 0) return text;
+    if (cursor < text.length) nodes.push(text.slice(cursor));
     return nodes;
   }, [current?.content]);
 
@@ -187,6 +198,113 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
     onClose();
   };
 
+  /** Local relative-time formatter — mirrors dmworkskillmarket's
+   *  `formatRelativeTime` but reads from the MCP i18n namespace so we don't
+   *  pull the whole skillmarket utils package for one helper.
+   *
+   *  Negative diffMs (server clock ahead / bad ISO with wrong timezone) would
+   *  otherwise land in the `< minute` branch and stamp every stale future
+   *  date as "just now"; treat any non-positive diff as "just now" only for
+   *  small skew (< 1 min) and fall through to the absolute-date fallback
+   *  otherwise so the tooltip surfaces the raw date instead of a lie. */
+  const formatUpdatedTime = (iso: string): string => {
+    const parsed = new Date(iso).getTime();
+    if (Number.isNaN(parsed)) return "";
+    const diffMs = Date.now() - parsed;
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    if (diffMs < 0) {
+      // Small clock-skew: still say "just now"; large future skew: show date.
+      if (-diffMs < minute) return t("mcp.time.justNow");
+      return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(parsed));
+    }
+    if (diffMs < minute) return t("mcp.time.justNow");
+    if (diffMs < hour) return t("mcp.time.minutesAgo", { values: { count: Math.max(1, Math.floor(diffMs / minute)) } });
+    if (diffMs < day) return t("mcp.time.hoursAgo", { values: { count: Math.max(1, Math.floor(diffMs / hour)) } });
+    if (diffMs < 30 * day) return t("mcp.time.daysAgo", { values: { count: Math.max(1, Math.floor(diffMs / day)) } });
+    return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(parsed));
+  };
+
+  /** Resolve category display label. `t()` returns the key string when a
+   *  translation is missing, so a backend-added category slug the frontend
+   *  bundle hasn't shipped yet would otherwise render "mcp.category.foo" in
+   *  the badge. Fall back to the raw slug — ugly but truthful — instead. */
+  const resolveCategoryLabel = (key: string): string => {
+    const i18nKey = `mcp.category.${key}`;
+    const label = t(i18nKey);
+    return label === i18nKey ? key : label;
+  };
+
+  const detailHeader = detail ? (
+    <div className="wk-mcp-detail-header">
+      <div className="wk-mcp-detail-header__icon">
+        {detail.icon?.trim() ? (
+          <IconGlyph
+            icon={detail.icon}
+            className="wk-mcp-detail__icon-img"
+            alt={detail.name}
+          />
+        ) : (
+          <span
+            className="wk-mcp-card__icon-default"
+            style={{ background: getMcpAvatarColor(detail.id) }}
+          >
+            {getMcpAvatarText(detail.name)}
+          </span>
+        )}
+      </div>
+      <div className="wk-mcp-detail-header__main">
+        <div className="wk-mcp-detail-header__title-row">
+          <h2 className="wk-mcp-detail-header__title" title={detail.name}>
+            {detail.name}
+          </h2>
+          {detail.category && (
+            <span className="wk-mcp-detail-header__badge" title={resolveCategoryLabel(detail.category)}>
+              {resolveCategoryLabel(detail.category)}
+            </span>
+          )}
+        </div>
+        {(() => {
+          const owner = resolveOwner(detail);
+          const parts: React.ReactNode[] = [];
+          if (owner?.botName) {
+            parts.push(
+              <span key="bot" className="wk-mcp-detail__owner" title={owner.botName}>
+                <Bot className="wk-mcp-card__owner-bot-icon" size={13} aria-hidden="true" />
+                <span className="wk-mcp-card__owner-name">{owner.botName}</span>
+              </span>
+            );
+          }
+          if (owner?.humanName) {
+            parts.push(
+              <span key="human" className="wk-mcp-detail__owner" title={owner.humanName}>
+                <UserRound className="wk-mcp-card__owner-user-icon" size={13} aria-hidden="true" />
+                <span className="wk-mcp-card__owner-name">{owner.humanName}</span>
+              </span>
+            );
+          }
+          if (detail.updatedAt) {
+            parts.push(
+              <span key="updated" className="wk-mcp-detail-header__updated" title={detail.updatedAt}>
+                {t("mcp.detail.updatedAt", { values: { time: formatUpdatedTime(detail.updatedAt) } })}
+              </span>
+            );
+          }
+          if (parts.length === 0) return null;
+          const withSeparators: React.ReactNode[] = [];
+          parts.forEach((p, i) => {
+            if (i > 0) {
+              withSeparators.push(<span key={`sep-${i}`} className="wk-mcp-card__meta-separator">·</span>);
+            }
+            withSeparators.push(p);
+          });
+          return <div className="wk-mcp-detail-header__meta">{withSeparators}</div>;
+        })()}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <WKModal
       visible={!!mcpId}
@@ -194,7 +312,8 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
       width={900}
       className="wk-mcp-detail-modal"
       bodyStyle={{ height: "70vh", overflowY: "auto" }}
-      title={detail ? detail.name : t("mcp.detail.title")}
+      title={detail ? null : t("mcp.detail.title")}
+      header={detailHeader}
       footer={
         showActions ? (
           confirmingDelete ? (
@@ -236,56 +355,35 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
         </div>
       ) : (
         <div className="wk-mcp-detail">
-          <div className="wk-mcp-detail__meta">
-            <div className="wk-mcp-detail__icon">
-              <IconGlyph
-                icon={detail.icon}
-                className="wk-mcp-detail__icon-img"
-                alt={detail.name}
-              />
-            </div>
-            <div className="wk-mcp-detail__meta-main">
-              <div className="wk-mcp-card__tags">
-                {detail.tags.map((tag) => (
-                  <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-              {(detail.creatorName || detail.createdByType === "bot") && (
-                <div className="wk-mcp-detail__meta-line">
-                  {detail.creatorName && (
-                    <span className="wk-mcp-detail__owner">
-                      @{detail.creatorName}
-                    </span>
-                  )}
-                  {/* Bot 徽章跟着 @owner 放在同一行；human/legacy 情况下
-                      SourceBadge 自己会返回 null。 */}
-                  <SourceBadge item={detail} />
-                </div>
-              )}
-              {/* Slogan / 简介 — 详情页空间够，不 clamp。 */}
-              {detail.slogan && (
-                <div className="wk-mcp-detail__slogan">{detail.slogan}</div>
-              )}
-              {/* 工具数量下沉到简介之下，图标 + 数字，与卡片 footer 及
-                  dmworkskillmarket 的 .skill-market-card__stat 一致。 */}
-              <div className="wk-mcp-detail__stats">
-                <span
-                  className="wk-mcp-card__stat"
-                  title={t("mcp.card.toolCount", {
-                    values: { count: detail.toolCount },
-                  })}
-                  aria-label={t("mcp.card.toolCount", {
-                    values: { count: detail.toolCount },
-                  })}
-                >
-                  <IconWrenchStroked size="small" />
-                  {detail.toolCount}
-                </span>
-              </div>
-            </div>
+          {/* Slogan / 简介 — 详情页空间够，不 clamp。 */}
+          {detail.slogan && (
+            <div className="wk-mcp-detail__slogan">{detail.slogan}</div>
+          )}
+          {/* 工具数量：与卡片 footer 及 dmworkskillmarket 的 stats 一致。 */}
+          <div className="wk-mcp-detail__stats">
+            <span
+              className="wk-mcp-card__stat"
+              title={t("mcp.card.toolCount", {
+                values: { count: detail.toolCount },
+              })}
+              aria-label={t("mcp.card.toolCount", {
+                values: { count: detail.toolCount },
+              })}
+            >
+              <IconWrenchStroked size="small" />
+              {detail.toolCount}
+            </span>
           </div>
+          {/* Tags — 放到最下面，与 dmworkskillmarket 的详情弹窗一致。 */}
+          {detail.tags.length > 0 && (
+            <div className="wk-mcp-detail__tags">
+              {detail.tags.map((tag) => (
+                <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* 1. ⚡快速接入 */}
           <section className="wk-mcp-section">

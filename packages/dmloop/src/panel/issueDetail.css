@@ -512,15 +512,24 @@
 }
 .loop-idp__prop--inline {
   flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: var(--wk-sp-2, 8px);
 }
 .loop-idp__prop-k {
+  flex: 0 0 72px;
+  width: 72px;
+  padding-top: var(--wk-sp-1, 4px);
   font-size: 12px;
+  white-space: nowrap;
   color: var(--semi-color-text-2, #8a8f99);
 }
 .loop-idp__prop-v {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13px;
+  text-align: left;
+  overflow-wrap: anywhere;
   color: var(--semi-color-text-0, #1f2329);
 }
 .loop-idp__prop-v--muted {
@@ -563,8 +572,38 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13px;
   color: var(--semi-color-text-0, #1f2329);
+}
+
+.loop-idp__prop--labels {
+  align-items: flex-start;
+}
+
+.loop-idp__label-editor {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--wk-sp-0-5, 2px) 0;
+  text-align: left;
+}
+
+.loop-idp__label-editor.loop-label-editor {
+  justify-content: flex-start;
+}
+
+.loop-idp__label-editor .loop-label-chipbutton {
+  justify-content: flex-start;
+}
+
+.loop-idp__label-editor .loop-label-chipbutton .loop-label-chips {
+  justify-content: flex-start;
+}
+
+.loop-idp__prop-labels {
+  padding-top: var(--wk-sp-0-5, 2px);
 }
 
 /* 执行日志：折叠开关 + run 列表 */

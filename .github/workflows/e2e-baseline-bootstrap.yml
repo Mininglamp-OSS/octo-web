@@ -1,0 +1,138 @@
+# e2e visual baseline bootstrap: 维护者手动触发，在 GitHub Actions runner 生成初始 baseline PNG。
+# 不接 pull_request，避免普通 PR gate 拿写权限；baseline PNG 通过单独 PR review 后合入。
+
+name: e2e-baseline-bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: "Baseline init branch to create/update"
+        required: false
+        default: "chore/e2e-baseline-init"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: e2e-baseline-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-22.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+    env:
+      E2E_TARGET: local
+      PW_PREVIEW_PORT: "5175"
+      BASELINE_BRANCH: ${{ inputs.branch_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Trust workspace for git
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Prepare bootstrap branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$BASELINE_BRANCH" || true
+          if git show-ref --verify --quiet "refs/remotes/origin/$BASELINE_BRANCH"; then
+            git switch -C "$BASELINE_BRANCH" "origin/$BASELINE_BRANCH"
+          else
+            git switch -C "$BASELINE_BRANCH"
+          fi
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Build e2e bundle
+        working-directory: apps/web
+        run: pnpm build:e2e
+      - name: Generate visual baseline snapshots
+        working-directory: apps/web
+        shell: bash
+        run: |
+          set -euo pipefail
+          E2E_LOG="e2e-kit/playwright-report/e2e-visual-bootstrap-update.log"
+          mkdir -p "$(dirname "$E2E_LOG")"
+          pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts \
+            --grep "@visual" --update-snapshots 2>&1 | tee "$E2E_LOG"
+      - name: Verify generated visual baselines
+        working-directory: apps/web
+        shell: bash
+        run: |
+          set -euo pipefail
+          E2E_LOG="e2e-kit/playwright-report/e2e-visual-bootstrap-verify.log"
+          mkdir -p "$(dirname "$E2E_LOG")"
+          pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts \
+            --grep "@visual" 2>&1 | tee "$E2E_LOG"
+          if grep -R "http proxy error:" e2e-kit/playwright-report/*.log; then
+            echo "❌ visual bootstrap 出现 Vite proxy error, 说明 mock 覆盖漏网, 拒绝提交 baseline"
+            exit 1
+          fi
+      - name: Commit snapshots to bootstrap branch
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v git >/dev/null 2>&1; then
+            echo "❌ container image missing git binary"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f apps/web/e2e-kit/screenshots/
+
+          if git diff --cached --quiet; then
+            echo "No baseline snapshot changes to commit."
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git commit -m "chore(e2e): bootstrap visual baselines"
+          git push --set-upstream origin "$BASELINE_BRANCH"
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+      - name: Open or reuse bootstrap PR
+        if: steps.commit.outputs.committed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = process.env.BASELINE_BRANCH;
+            const { owner, repo } = context.repo;
+            const existing = await github.rest.pulls.list({
+              owner,
+              repo,
+              head: `${owner}:${branch}`,
+              base: 'main',
+              state: 'open',
+            });
+            if (existing.data.length > 0) {
+              core.notice(`Baseline bootstrap PR already exists: ${existing.data[0].html_url}`);
+              return;
+            }
+            const { data: pr } = await github.rest.pulls.create({
+              owner,
+              repo,
+              base: 'main',
+              head: branch,
+              title: 'chore(e2e): bootstrap visual baselines',
+              body: 'Generate initial Playwright visual baseline PNGs from the GitHub Actions runner.\n\nThis PR only contains files under apps/web/e2e-kit/screenshots/.',
+            });
+            core.notice(`Created baseline bootstrap PR: ${pr.html_url}`);
+      - name: Upload playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-visual-bootstrap
+          path: |
+            apps/web/e2e-kit/playwright-report/
+            apps/web/e2e-kit/test-results/
+          retention-days: 30

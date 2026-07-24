@@ -1,16 +1,25 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Toast, Avatar } from "@douyinfe/semi-ui";
-import { ChevronRight, X, Paperclip } from "lucide-react";
+import { Modal, Toast, Avatar, Select } from "@douyinfe/semi-ui";
+import { ChevronRight, X, Paperclip, Tag } from "lucide-react";
 import { useI18n } from "@octo/base";
-import type { IssueStatus, IssuePriority, AssigneeType } from "../api/types";
+import type {
+  IssueStatus,
+  IssuePriority,
+  AssigneeType,
+  IssueLabel,
+} from "../api/types";
 import { createIssue, listAssigneeCandidates } from "../api/issueApi";
 import { listProjectOptions } from "../api/directory";
 import { uploadAttachment } from "../api/attachmentApi";
+import { attachLabel, listLabels } from "../api/labelApi";
 import { currentWorkspaceName } from "../api/http";
 import AssigneePicker from "./AssigneePicker";
 import AutoGrowTextarea from "./AutoGrowTextarea";
+import LabelChips from "./LabelChips";
 import LoopButton from "./LoopButton";
-import LoopPropertyPill, { type LoopPropertyPillOption } from "./LoopPropertyPill";
+import LoopPropertyPill, {
+  type LoopPropertyPillOption,
+} from "./LoopPropertyPill";
 import {
   ISSUE_STATUS_ORDER,
   ISSUE_STATUS_ICON,
@@ -34,12 +43,24 @@ type LastAssignee = { id: string; type: AssigneeType; name: string };
 function readLastAssignee(): LastAssignee | null {
   try {
     const p = JSON.parse(sessionStorage.getItem(LAST_ASSIGNEE_KEY) ?? "null");
-    if (p && typeof p.id === "string" && typeof p.type === "string" && typeof p.name === "string") return p;
-  } catch { /* ignore */ }
+    if (
+      p &&
+      typeof p.id === "string" &&
+      typeof p.type === "string" &&
+      typeof p.name === "string"
+    )
+      return p;
+  } catch {
+    /* ignore */
+  }
   return null;
 }
 function writeLastAssignee(a: LastAssignee): void {
-  try { sessionStorage.setItem(LAST_ASSIGNEE_KEY, JSON.stringify(a)); } catch { /* ignore */ }
+  try {
+    sessionStorage.setItem(LAST_ASSIGNEE_KEY, JSON.stringify(a));
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -48,14 +69,23 @@ function writeLastAssignee(a: LastAssignee): void {
  * 底栏(左附件 · 右取消/创建)。指派默认落到「我的第一个 AI队友」,并记忆上次选择。
  * 传 parentIssueId 时创建为子任务。
  */
-export default function CreateIssueModal({ visible, onClose, onCreated, parentIssueId }: CreateIssueModalProps) {
+export default function CreateIssueModal({
+  visible,
+  onClose,
+  onCreated,
+  parentIssueId,
+}: CreateIssueModalProps) {
   const { t } = useI18n();
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [status, setStatus] = useState<IssueStatus>("todo");
   const [priority, setPriority] = useState<IssuePriority>("none");
   const [projectId, setProjectId] = useState<string>("");
-  const [projects, setProjects] = useState<Array<{ id: string; title: string }>>([]);
+  const [projects, setProjects] = useState<
+    Array<{ id: string; title: string }>
+  >([]);
+  const [labels, setLabels] = useState<IssueLabel[]>([]);
+  const [labelIds, setLabelIds] = useState<string[]>([]);
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [assigneeType, setAssigneeType] = useState<AssigneeType | null>(null);
   const [assigneeName, setAssigneeName] = useState<string | null>(null);
@@ -64,10 +94,31 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
 
   useEffect(() => {
     if (!visible) return;
-    setTitle(""); setDesc(""); setStatus("todo"); setPriority("none"); setProjectId(""); setPendingFiles([]);
-    setAssigneeId(null); setAssigneeType(null); setAssigneeName(null);
+    setTitle("");
+    setDesc("");
+    setStatus("todo");
+    setPriority("none");
+    setProjectId("");
+    setPendingFiles([]);
+    setLabelIds([]);
+    setAssigneeId(null);
+    setAssigneeType(null);
+    setAssigneeName(null);
     let alive = true;
-    listProjectOptions().then((ps) => { if (alive) setProjects(ps); }).catch(() => { if (alive) setProjects([]); });
+    listProjectOptions()
+      .then((ps) => {
+        if (alive) setProjects(ps);
+      })
+      .catch(() => {
+        if (alive) setProjects([]);
+      });
+    listLabels()
+      .then((rows) => {
+        if (alive) setLabels(rows);
+      })
+      .catch(() => {
+        if (alive) setLabels([]);
+      });
     // 默认指派:优先复用上次选择(若仍是有效候选),否则落到我的第一个 AI队友(agent)。
     listAssigneeCandidates()
       .then((cands) => {
@@ -75,10 +126,18 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
         const last = readLastAssignee();
         const reuse = last ? cands.find((c) => c.id === last.id) : undefined;
         const pick = reuse ?? cands.find((c) => c.type === "agent") ?? null;
-        if (pick) { setAssigneeId(pick.id); setAssigneeType(pick.type); setAssigneeName(pick.name); }
+        if (pick) {
+          setAssigneeId(pick.id);
+          setAssigneeType(pick.type);
+          setAssigneeName(pick.name);
+        }
       })
-      .catch(() => { /* 无候选则保持未指派 */ });
-    return () => { alive = false; };
+      .catch(() => {
+        /* 无候选则保持未指派 */
+      });
+    return () => {
+      alive = false;
+    };
   }, [visible]);
 
   const isBot = assigneeType === "agent" || assigneeType === "squad";
@@ -88,7 +147,8 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
     const arr = Array.from(files);
     setPendingFiles((p) => [...p, ...arr]);
   };
-  const removeFile = (idx: number) => setPendingFiles((p) => p.filter((_, i) => i !== idx));
+  const removeFile = (idx: number) =>
+    setPendingFiles((p) => p.filter((_, i) => i !== idx));
 
   const submit = async () => {
     if (!title.trim() || submitting) return;
@@ -100,12 +160,21 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
         const ids: string[] = [];
         let failed = 0;
         for (const f of pendingFiles) {
-          try { ids.push((await uploadAttachment(f)).id); } catch { failed++; }
+          try {
+            ids.push((await uploadAttachment(f)).id);
+          } catch {
+            failed++;
+          }
         }
-        if (failed) { Toast.error(t("loop.attach.attachFailed", { values: { count: failed } })); return; }
+        if (failed) {
+          Toast.error(
+            t("loop.attach.attachFailed", { values: { count: failed } })
+          );
+          return;
+        }
         if (ids.length) attachmentIds = ids;
       }
-      await createIssue({
+      const issue = await createIssue({
         title: title.trim(),
         description: desc || undefined,
         status,
@@ -116,9 +185,28 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
         parent_issue_id: parentIssueId,
         attachment_ids: attachmentIds,
       });
+      if (labelIds.length) {
+        const results = await Promise.all(
+          labelIds.map((labelId) =>
+            attachLabel(issue.id, labelId).then(
+              () => true,
+              () => false
+            )
+          )
+        );
+        const failed = results.filter((ok) => !ok).length;
+        if (failed)
+          Toast.error(
+            t("loop.label.attachPartialFailed", { values: { count: failed } })
+          );
+      }
       // 记忆本次 AI 队友选择(仅 agent/squad),下次 new loop 复用。
       if (isBot && assigneeId && assigneeType && assigneeName) {
-        writeLastAssignee({ id: assigneeId, type: assigneeType, name: assigneeName });
+        writeLastAssignee({
+          id: assigneeId,
+          type: assigneeType,
+          name: assigneeName,
+        });
       }
       onClose();
       onCreated?.();
@@ -127,14 +215,24 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
     }
   };
 
-  const statusOptions: LoopPropertyPillOption<IssueStatus>[] = ISSUE_STATUS_ORDER.map((s) => {
-    const Icon = ISSUE_STATUS_ICON[s];
-    return { value: s, label: t(`loop.status.${s}`), icon: <Icon size={14} style={{ color: ISSUE_STATUS_HEX[s] }} /> };
-  });
-  const priorityOptions: LoopPropertyPillOption<IssuePriority>[] = PRIORITY_ORDER.map((p) => {
-    const Icon = PRIORITY_ICON[p];
-    return { value: p, label: t(`loop.priority.${p}`), icon: <Icon size={14} style={{ color: PRIORITY_HEX[p] }} /> };
-  });
+  const statusOptions: LoopPropertyPillOption<IssueStatus>[] =
+    ISSUE_STATUS_ORDER.map((s) => {
+      const Icon = ISSUE_STATUS_ICON[s];
+      return {
+        value: s,
+        label: t(`loop.status.${s}`),
+        icon: <Icon size={14} style={{ color: ISSUE_STATUS_HEX[s] }} />,
+      };
+    });
+  const priorityOptions: LoopPropertyPillOption<IssuePriority>[] =
+    PRIORITY_ORDER.map((p) => {
+      const Icon = PRIORITY_ICON[p];
+      return {
+        value: p,
+        label: t(`loop.priority.${p}`),
+        icon: <Icon size={14} style={{ color: PRIORITY_HEX[p] }} />,
+      };
+    });
   const projectOptions: LoopPropertyPillOption<string>[] = [
     { value: "", label: t("loop.field.noProject") },
     ...projects.map((p) => ({ value: p.id, label: p.title })),
@@ -161,9 +259,18 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
                 <ChevronRight size={13} className="loop-ci__crumb-sep" />
               </>
             )}
-            <span className="loop-ci__crumb-cur">{parentIssueId ? t("loop.subIssue.create") : t("loop.action.newIssue")}</span>
+            <span className="loop-ci__crumb-cur">
+              {parentIssueId
+                ? t("loop.subIssue.create")
+                : t("loop.action.newIssue")}
+            </span>
           </div>
-          <button type="button" className="loop-ci__close" onClick={onClose} aria-label={t("loop.action.cancel")}>
+          <button
+            type="button"
+            className="loop-ci__close"
+            onClick={onClose}
+            aria-label={t("loop.action.cancel")}
+          >
             <X size={16} />
           </button>
         </div>
@@ -174,7 +281,9 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={t("loop.field.titlePlaceholder")}
-          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
         />
         <AutoGrowTextarea
           className="loop-ci__desc"
@@ -185,21 +294,68 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
 
         {isBot && assigneeName && (
           <div className="loop-ci__hint">
-            <Avatar size="extra-extra-small" color="light-blue">{assigneeName.slice(0, 1)}</Avatar>
-            <span>{t("loop.createIssue.runHint", { values: { name: assigneeName } })}</span>
+            <Avatar size="extra-extra-small" color="light-blue">
+              {assigneeName.slice(0, 1)}
+            </Avatar>
+            <span>
+              {t("loop.createIssue.runHint", {
+                values: { name: assigneeName },
+              })}
+            </span>
           </div>
         )}
 
         <div className="loop-ci__toolbar">
-          <LoopPropertyPill value={status} options={statusOptions} onChange={setStatus} ariaLabel={t("loop.field.status")} />
-          <LoopPropertyPill value={priority} options={priorityOptions} onChange={setPriority} ariaLabel={t("loop.field.priority")} />
+          <LoopPropertyPill
+            value={status}
+            options={statusOptions}
+            onChange={setStatus}
+            ariaLabel={t("loop.field.status")}
+          />
+          <LoopPropertyPill
+            value={priority}
+            options={priorityOptions}
+            onChange={setPriority}
+            ariaLabel={t("loop.field.priority")}
+          />
           <AssigneePicker
             value={assigneeId}
             valueName={assigneeName}
-            onChange={(id, type, name) => { setAssigneeId(id); setAssigneeType(type); setAssigneeName(name); }}
+            onChange={(id, type, name) => {
+              setAssigneeId(id);
+              setAssigneeType(type);
+              setAssigneeName(name);
+            }}
           />
-          <LoopPropertyPill value={projectId} options={projectOptions} onChange={setProjectId} ariaLabel={t("loop.field.project")} />
+          <LoopPropertyPill
+            value={projectId}
+            options={projectOptions}
+            onChange={setProjectId}
+            ariaLabel={t("loop.field.project")}
+          />
         </div>
+
+        {labels.length > 0 && (
+          <div className="loop-ci__labels">
+            <Tag size={14} />
+            <Select
+              multiple
+              filter
+              value={labelIds}
+              onChange={(v) => setLabelIds((v ?? []) as string[])}
+              dropdownClassName="loop-fields__dropdown"
+              placeholder={t("loop.label.selectPlaceholder")}
+              maxTagCount={2}
+              style={{ flex: 1 }}
+            >
+              {labels.map((label) => (
+                <Select.Option key={label.id} value={label.id} label={label.name}>
+                  <LabelChips labels={[label]} />
+                </Select.Option>
+              ))}
+            </Select>
+          </div>
+        )}
 
         {pendingFiles.length > 0 && (
           <div className="loop-ci__atts">
@@ -207,7 +363,13 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
               <span key={i} className="loop-ci__att">
                 <Paperclip size={12} />
                 <span>{f.name}</span>
-                <button type="button" aria-label={t("loop.action.delete")} onClick={() => removeFile(i)}>×</button>
+                <button
+                  type="button"
+                  aria-label={t("loop.action.delete")}
+                  onClick={() => removeFile(i)}
+                >
+                  ×
+                </button>
               </span>
             ))}
           </div>
@@ -216,11 +378,28 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
         <div className="loop-ci__footer">
           <label className="loop-ci__attach" aria-label={t("loop.attach.add")}>
             <Paperclip size={16} />
-            <input type="file" multiple hidden disabled={submitting} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+            <input
+              type="file"
+              multiple
+              hidden
+              disabled={submitting}
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
           </label>
           <div className="loop-ci__footer-right">
-            <LoopButton variant="ghost" onClick={onClose}>{t("loop.action.cancel")}</LoopButton>
-            <LoopButton loading={submitting} disabled={!title.trim()} onClick={submit}>{t("loop.action.create")}</LoopButton>
+            <LoopButton variant="ghost" onClick={onClose}>
+              {t("loop.action.cancel")}
+            </LoopButton>
+            <LoopButton
+              loading={submitting}
+              disabled={!title.trim()}
+              onClick={submit}
+            >
+              {t("loop.action.create")}
+            </LoopButton>
           </div>
         </div>
       </div>

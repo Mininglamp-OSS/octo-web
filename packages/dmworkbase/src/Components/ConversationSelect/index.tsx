@@ -8,11 +8,14 @@
  * 不传 → 行为与之前完全一致。
  */
 import React from "react"
-import WKSDK, { Channel, ChannelTypePerson } from "wukongimjssdk"
+import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import { ForwardModal } from "../ForwardModal/ForwardModal"
 import { useForwardModal } from "../ForwardModal/useForwardModal"
 import type { ForwardFinished, ForwardGrantConfig, ForwardGrantRole } from "../ForwardModal/grant"
-import { getImChannelSubscribers, syncImChannelSubscribers } from "../../im-runtime/channelRuntime"
+import {
+  getCurrentImChannelSubscribers,
+  syncCurrentImChannelSubscribers,
+} from "../../im-runtime/currentChannelRuntime"
 
 export interface ConversationSelectGrant {
   canGrant: boolean
@@ -80,12 +83,12 @@ export default function ConversationSelect({
       }
       for (const ch of groups) {
         try {
-          await syncImChannelSubscribers(WKSDK.shared(), ch)
+          await syncCurrentImChannelSubscribers(ch)
         } catch {
           // best-effort：拉取失败时退回已缓存的成员快照。
         }
         if (cancelled) return
-        const subs = getImChannelSubscribers(WKSDK.shared(), ch) as { uid?: string }[]
+        const subs = getCurrentImChannelSubscribers(ch) as { uid?: string }[]
         for (const s of subs) {
           if (s?.uid) uids.add(s.uid)
         }

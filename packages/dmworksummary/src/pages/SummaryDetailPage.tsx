@@ -7,14 +7,21 @@ import {
     Tag,
     Modal,
     Popconfirm,
+    Tooltip,
+    Dropdown,
 } from "@douyinfe/semi-ui";
-import { IconArrowLeft, IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete } from "@douyinfe/semi-icons";
-import { ChevronDown } from "lucide-react";
-import { Channel } from "wukongimjssdk";
-import { I18nContext, t, ForwardService, interpretForwardResult, SummaryCardContent } from "@octo/base";
+import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
+import { ChevronDown, Check, X } from "lucide-react";
+import { Channel, MessageText } from "wukongimjssdk";
+import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
+import RouteContext, { RouteContextConfig } from "@octo/base/src/Service/Context";
+import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
+import RoutePage from "@octo/base/src/Components/RoutePage";
+import { Channel as WkChannel } from "wukongimjssdk";
+import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
@@ -49,13 +56,11 @@ import MatterPickerModal from "../components/MatterPickerModal";
 import * as matterBridge from "../api/matterBridge";
 import SummaryEditor from "../components/SummaryEditor";
 import SummaryVersionHistory from "../components/SummaryVersionHistory";
-import MemberSelectorModal from "../components/MemberSelectorModal";
-import type { MemberCandidate } from "../types/summary";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
-    /** 仅从聊天分享卡片进入时存在，用于返回卡片所在会话。 */
-    originChannel?: { channelId: string; channelType: number };
+    /** Called after delete/leave in embedded mode so the panel can switch back to list. */
+    onAfterMutate?: () => void;
     /** Only the list-owned detail route emits list-highlight events. Embedded
      *  instances (ChatSummaryPanel, SummaryConfirmPage) must not pollute the
      *  list selection state. */
@@ -92,13 +97,8 @@ interface SummaryDetailPageState {
     editingTeamSummary: boolean;
     /** OCT-21：提交前编辑「我自己的个人报告」草稿中（行内编辑器接管「我（未提交）」行）。 */
     editingMyDraft: boolean;
-    /** need7：成员选择器弹窗显隐。 */
-    showAddMember: boolean;
-    /** need7：添加成员提交中。 */
-    addingMember: boolean;
     showMatterPicker: boolean;
     forwardingToMatter: boolean;
-    forwardingToChat: boolean;
     showRegenerateModal: boolean;
     regenerateMode: RegenerateMode;
     regenerateTopic: string;
@@ -128,6 +128,7 @@ interface SummaryDetailPageState {
     teamStreamError: string | null;
 }
 
+const INTER_MESSAGE_DELAY_MS = 200;
 const PERSONAL_RESULT_POLL_INTERVAL_MS = 1500;
 const WORKFLOW_COMPLETE_REVEAL_DELAY_MS = 650;
 
@@ -189,11 +190,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         editingPersonalReport: false,
         editingTeamSummary: false,
         editingMyDraft: false,
-        showAddMember: false,
-        addingMember: false,
         showMatterPicker: false,
         forwardingToMatter: false,
-        forwardingToChat: false,
         showRegenerateModal: false,
         regenerateMode: "refine",
         regenerateTopic: "",
@@ -231,6 +229,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private streamAbortController: AbortController | null = null;
     private streamingTaskId: number | null = null;
     private streamClosedTaskId: number | null = null;
+    private editorSaveFn: (() => void) | null = null;
     private teamStreamAbortController: AbortController | null = null;
     private teamStreamingTaskId: number | null = null;
     private teamStreamClosedTaskId: number | null = null;
@@ -257,6 +256,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.addEventListener("summary-status-change", this.handleStatusChangeEvent);
         window.addEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.addEventListener("summary-list-unmount", this.handleListPageUnmount);
+        window.addEventListener("summary-detail-regenerate", this.handleRegenerateFromList);
+        window.addEventListener("summary-detail-edit", this.handleEditFromList);
         this.loadDetail();
         if (this.props.emitSelection) {
             const activeTaskId = this.taskId;
@@ -308,11 +309,27 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     }
 
+    private handleRegenerateFromList = (e: Event) => {
+        const detail = e as CustomEvent;
+        if (detail.detail?.taskId === this.taskId) {
+            this.handleRegenerate();
+        }
+    };
+
+    private handleEditFromList = (e: Event) => {
+        const detail = e as CustomEvent;
+        if (detail.detail?.taskId === this.taskId) {
+            this.handleStartEdit();
+        }
+    };
+
     componentWillUnmount() {
         this.unmounted = true;
         window.removeEventListener("summary-status-change", this.handleStatusChangeEvent);
         window.removeEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.removeEventListener("summary-list-unmount", this.handleListPageUnmount);
+        window.removeEventListener("summary-detail-regenerate", this.handleRegenerateFromList);
+        window.removeEventListener("summary-detail-edit", this.handleEditFromList);
         this.setVersionDetailScrollLock(false);
         this.clearAllTimers();
         if (this.props.emitSelection) {
@@ -789,10 +806,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const requestTaskId = this.taskId;
         try {
             await api.leaveSummary(this.taskId);
-            // FE-1（切 task 竞态）：await 期间可能已切走，迟到响应不能在新 task 上弹提示/导航。
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.leaveSuccess"));
-            WKApp.routeRight.popToRoot();
+            if (this.props.onAfterMutate) {
+                this.props.onAfterMutate();
+            } else {
+                WKApp.routeRight.popToRoot();
+            }
             WKApp.mittBus.emit("summary-list-refresh-requested" as any);
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
@@ -807,7 +827,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             await api.deleteSummary(this.taskId);
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.list.deleteSuccess"));
-            WKApp.routeRight.popToRoot();
+            if (this.props.onAfterMutate) {
+                this.props.onAfterMutate();
+            } else {
+                WKApp.routeRight.popToRoot();
+            }
             WKApp.mittBus.emit("summary-list-refresh-requested" as any);
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
@@ -1156,10 +1180,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (this.taskId == null) return;
         this.setState({
             showRegenerateModal: true,
-            regenerateMode: "refine",
+            regenerateMode: "full",
             regenerateTopic: detail?.title || "",
-            refineFeedback: "",
         });
+    };
+
+    handleRetry = async () => {
+        const { detail } = this.state;
+        if (!detail || this.taskId == null) return;
+        try {
+            this.setState({ regenerateSubmitting: true });
+            await api.regenerateSummary(this.taskId, { topic: detail.title || "" });
+            this.setState({ regenerateSubmitting: false });
+            this.loadDetail();
+        } catch (err: any) {
+            this.setState({ regenerateSubmitting: false });
+            Toast.error(err.message || t("summary.common.operationFailed"));
+        }
     };
 
     async loadVersions(taskId = this.taskId) {
@@ -1951,68 +1988,34 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 传统 workflow 优先走 detail.result;agent workflow 走 personalResult。
         // 两者的 content 语义都是"给用户看的最终交付文本",转发到聊天的姿势一致。
         const sourceContent = detail?.result?.content ?? personalResult?.content ?? '';
-        if (!detail || !sourceContent.trim() || this.state.forwardingToChat) return;
+        if (!sourceContent.trim()) return;
         WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
-            if (channels.length === 0) return;
-            this.setState({ forwardingToChat: true });
-            let createdGrants: Array<{ share_id: string }> = [];
-            const revokeGrants = (grants: Array<{ share_id: string }>) => {
-                void Promise.all(grants.map(async (grant) => {
-                    try {
-                        await api.revokeSummaryShare(grant.share_id);
-                    } catch {
-                        // Best effort only: cleanup must not mask the send result.
-                    }
-                }));
-            };
-            try {
-                const idempotencyKey = typeof crypto !== "undefined" && crypto.randomUUID
-                    ? crypto.randomUUID()
-                    : `summary-share-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                const share = await api.createSummaryShares(
-                    detail.task_no || detail.task_id,
-                    idempotencyKey,
-                    channels.map((channel) => ({ channel_id: channel.channelID, channel_type: channel.channelType })),
-                );
-                createdGrants = share.grants;
-                const grants = new Map(share.grants.map((grant) => [`${grant.channel_type}:${grant.channel_id}`, grant]));
-                const result = await ForwardService.send(
-                    channels,
-                    (channel) => {
-                        const grant = grants.get(`${channel.channelType}:${channel.channelID}`);
-                        if (!grant) throw new Error("missing summary share grant");
-                        const card = new SummaryCardContent();
-                        card.schemaVersion = 2;
-                        card.taskId = share.snapshot.task_id;
-                        card.taskNo = share.snapshot.task_no;
-                        card.shareId = grant.share_id;
-                        card.title = share.snapshot.title;
-                        card.sourceName = share.snapshot.source_name;
-                        card.sourceCount = share.snapshot.source_count;
-                        card.participantCount = share.snapshot.participant_count;
-                        card.totalMsgCount = share.snapshot.message_count;
-                        card.preview = share.snapshot.preview;
-                        card.timeRangeStart = share.snapshot.time_range_start;
-                        card.timeRangeEnd = share.snapshot.time_range_end;
-                        card.summaryMode = share.snapshot.summary_mode;
-                        card.spaceId = share.snapshot.space_id;
-                        return card;
-                    },
-                    { channelMode: "serial", spaceId: WKApp.shared.currentSpaceId },
-                );
+            const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
+            const chunks = splitSummaryText(cleanContent);
 
-                const failedChannelIDs = new Set(result.failures.map((failure) => failure.channelID));
-                revokeGrants(share.grants.filter((grant) => failedChannelIDs.has(grant.channel_id)));
+            // 长文分块 → 同 channel 内 serial 保序 + interMessageDelayMs 节流；
+            // 跨 channel 也走 serial（保持与原实现一致的顺序体验）。
+            // 原先手写的 space_id monkey-patch 由 ForwardService 内部
+            // wrapSendContentForInjection + opts.spaceId 代替。
+            const result = await ForwardService.send(
+                channels,
+                () => chunks.map((c) => new MessageText(c)),
+                {
+                    channelMode: "serial",
+                    messageMode: "serial",
+                    interMessageDelayMs: INTER_MESSAGE_DELAY_MS,
+                    spaceId: WKApp.shared.currentSpaceId,
+                },
+            );
 
-                const state = interpretForwardResult(result, "targets");
-                if (state.kind === "all-failed") Toast.error(t("summary.detail.forwardFailed"));
-                else if (state.kind === "partial") Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: state.failed, total: state.total } }));
-                else Toast.success(t("summary.detail.forwarded"));
-            } catch {
-                revokeGrants(createdGrants);
+            // 分母保持 channels 数（scope='targets'），不改动用户可见的 Toast 语义。
+            const state = interpretForwardResult(result, "targets");
+            if (state.kind === "all-failed") {
                 Toast.error(t("summary.detail.forwardFailed"));
-            } finally {
-                this.setState({ forwardingToChat: false });
+            } else if (state.kind === "partial") {
+                Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: state.failed, total: state.total } }));
+            } else {
+                Toast.success(t("summary.detail.forwarded"));
             }
         }, t("summary.detail.forwardToChat"));
     };
@@ -2110,10 +2113,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             <div className="summary-progress-stages">
                 {SUMMARY_WORKFLOW_STAGES.map((item, index) => {
                     let className = "summary-progress-stage summary-progress-stage-pending";
-                    let mark: React.ReactNode = "○";
+                    let mark: React.ReactNode = <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>○</span>;
                     if (allDone || (activeIndex >= 0 && index < activeIndex)) {
                         className = "summary-progress-stage summary-progress-stage-done";
-                        mark = "✓";
+                        mark = <Check size={16} color="rgba(0,0,0,0.4)" />;
                     } else if (activeIndex === index) {
                         className = personalFailed
                             ? "summary-progress-stage summary-progress-stage-failed"
@@ -2122,7 +2125,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     }
                     return (
                         <div className={className} key={item.key}>
-                            <span style={{ width: 20, display: "inline-block" }}>{mark}</span>
+                            <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{mark}</span>
                             <span>{t(item.labelKey)}</span>
                         </div>
                     );
@@ -2227,17 +2230,36 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         if (!detail) return null;
         return (
-            <div className="summary-detail-failed">
-                <div className="summary-detail-failed-icon">⚠️</div>
-                <h3>{t("summary.detail.failedTitle")}</h3>
-                {detail.error_message && (
-                    <div className="summary-detail-failed-reason">
-                        {detail.error_message}
+            <div className="summary-detail-personal">
+                <div className="summary-detail-meta">
+                    <div className="summary-detail-meta-time">
+                        {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
-                )}
-                <div className="summary-detail-failed-meta">
-                    <div>{t("summary.detail.taskNo", { values: { taskNo: detail.task_no } })}</div>
-                    <div>{t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}</div>
+                    {detail.sources && detail.sources.length > 0 && (
+                        <div className="summary-detail-source-chips">
+                            {detail.sources.map((src, i) => (
+                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                    {src.source_name || src.source_id}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <hr className="summary-detail-meta-divider" />
+                <div className="summary-detail-failed">
+                    <div className="summary-detail-failed-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F54A45" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                            <line x1="12" y1="9" x2="12" y2="13" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                    </div>
+                    <h3>{t("summary.detail.failedTitle")}</h3>
+                    {detail.error_message && (
+                        <div className="summary-detail-failed-reason">
+                            {detail.error_message}
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -2385,6 +2407,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (!detail || !detail.result) return null;
         return (
             <div className="summary-detail-result">
+                {/* Meta info: creation time + source chips */}
+                <div className="summary-detail-meta">
+                    <div className="summary-detail-meta-time">
+                        {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
+                    </div>
+                    {detail.sources && detail.sources.length > 0 && (
+                        <div className="summary-detail-source-chips">
+                            {detail.sources.map((src, i) => (
+                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                    {src.source_name || src.source_id}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <hr className="summary-detail-meta-divider" />
                 <div className="summary-detail-result-header">
                     <h3>{t("summary.detail.contentTitle")}</h3>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2424,6 +2462,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     renderPersonalSummary() {
         const { personalResult, personalLoading, detail, personalExpanded } = this.state;
         const { t } = this.context;
+        // Failed 状态由 renderFailed() 统一处理，不在这里渲染
+        if (detail && detail.status === TaskStatus.FAILED) return null;
         if (personalLoading) {
             return (
                 <div className="summary-detail-personal">
@@ -2443,46 +2483,57 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
         if (!personalResult) return null;
         if (personalResult.content?.trim() && !this.canRevealPersonalContent()) return null;
+        const { isEditing, detail: stateDetail } = this.state;
+        const isProcessing = stateDetail && (stateDetail.status === TaskStatus.PENDING || stateDetail.status === TaskStatus.PROCESSING) && !personalResult?.content;
         return (
             <div className="summary-detail-personal">
-                <div className="summary-detail-section-header">
-                    <button
-                        type="button"
-                        className="summary-detail-section-toggle"
-                        onClick={this.togglePersonalExpanded}
-                    >
-                        <ChevronDown size={14} className={`summary-detail-chevron${personalExpanded ? " summary-detail-chevron--expanded" : ""}`} />
-                        <span>{t("summary.detail.mySummary")}</span>
-                    </button>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {/* #158/#161 fast-follow：agent 总结不支持 edit —— 后端 PUT /edit
-                            走的是 SummaryResult 表更新，但 agent 保存路径只写
-                            personal_result 表（agent_summary.go 里 creatorPR 是唯一
-                            deliverable，不建 summary_result 行）。用户点击编辑保存后
-                            会 404 "总结结果不存在"。前端直接不渲染。
-                            如果未来后端为 agent 建 SummaryResult 行，只需删除下面
-                            这行 trigger_type 判断即可。 */}
-                        {detail && detail.status === TaskStatus.COMPLETED && detail.permissions?.can_edit && !this.state.isEditing && detail.trigger_type !== TriggerType.AGENT && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                icon={<IconEdit />}
-                                onClick={this.handleStartEdit}
-                            >
-                                {t("summary.common.edit")}
-                            </Button>
-                        )}
-                        {personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
-                            <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
-                                {t("summary.detail.submitToAll")}
-                            </Button>
+                {/* Meta info: creation time + source chips */}
+                {detail && (
+                    <div className="summary-detail-meta">
+                        <div className="summary-detail-meta-time">
+                            {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
+                        </div>
+                        {detail.sources && detail.sources.length > 0 && (
+                            <div className="summary-detail-source-chips">
+                                {detail.sources.map((src, i) => (
+                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                        {src.source_name || src.source_id}
+                                    </span>
+                                ))}
+                            </div>
                         )}
                     </div>
-                </div>
-                {personalExpanded && (
+                )}
+                <hr className="summary-detail-meta-divider" />
+                {isProcessing ? (
+                    <div className="summary-detail-processing">
+                        <div className="summary-progress-header">
+                            <span className="summary-progress-header-text">{t("summary.detail.aiThinking")}</span>
+                        </div>
+                        {this.renderWorkflowProgress()}
+                    </div>
+                ) : (
                     <>
-                        {this.renderPersonalVersionHistory()}
-                        {personalResult.content && (
+                        {!isEditing && personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
+                                    {t("summary.detail.submitToAll")}
+                                </Button>
+                            </div>
+                        )}
+                        {!isEditing && this.renderPersonalVersionHistory()}
+                        {isEditing ? (
+                            <div className="summary-detail-content-box">
+                                <SummaryEditor
+                                    taskId={this.state.detail?.task_id || 0}
+                                    baseResultId={this.state.detail?.result_id || 0}
+                                    initialContent={personalResult.content || ""}
+                                    onSave={this.handleEditSave}
+                                    onCancel={this.handleEditCancel}
+                                    exposeSave={(fn) => { this.editorSaveFn = fn; }}
+                                />
+                            </div>
+                        ) : personalResult.content && (
                             <div className="summary-detail-content-box">
                                 <CitationText content={personalResult.content} citations={personalResult.citations || []} />
                             </div>
@@ -2588,21 +2639,52 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (editingTeamSummary && canEditTeam && detail.result_id) {
             return (
                 <div className="summary-detail-team">
-                    <div className="summary-detail-section-header">
-                        <span>{t("summary.detail.teamSummary")}</span>
+                    <div className="summary-detail-meta">
+                        <div className="summary-detail-meta-time">
+                            {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
+                        </div>
+                        {detail.sources && detail.sources.length > 0 && (
+                            <div className="summary-detail-source-chips">
+                                {detail.sources.map((src, i) => (
+                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                        {src.source_name || src.source_id}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                    <SummaryEditor
-                        taskId={detail.task_id}
-                        baseResultId={detail.result_id}
-                        initialContent={detail.result.content || ""}
-                        onSave={this.handleEditTeamSave}
-                        onCancel={this.handleEditTeamCancel}
-                    />
+                    <hr className="summary-detail-meta-divider" />
+                    <div className="summary-detail-content-box">
+                        <SummaryEditor
+                            taskId={detail.task_id}
+                            baseResultId={detail.result_id}
+                            initialContent={detail.result.content || ""}
+                            onSave={this.handleEditTeamSave}
+                            onCancel={this.handleEditTeamCancel}
+                            exposeSave={(fn) => { this.editorSaveFn = fn; }}
+                        />
+                    </div>
                 </div>
             );
         }
         return (
             <div className="summary-detail-team">
+                {/* Meta info: creation time + source chips */}
+                <div className="summary-detail-meta">
+                    <div className="summary-detail-meta-time">
+                        {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
+                    </div>
+                    {detail.sources && detail.sources.length > 0 && (
+                        <div className="summary-detail-source-chips">
+                            {detail.sources.map((src, i) => (
+                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                    {src.source_name || src.source_id}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <hr className="summary-detail-meta-divider" />
                 <div className="summary-detail-section-header">
                     <span>{t("summary.detail.teamSummary")}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2618,17 +2700,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
                             </Tag>
                         </div>
-                        {/* need4：团队编辑按钮仅 creator（can_edit_team），非 creator 不渲染。 */}
-                        {canEditTeam && detail.status === TaskStatus.COMPLETED && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                icon={<IconEdit />}
-                                onClick={this.handleStartEditTeam}
-                            >
-                                {t("summary.detail.editTeamSummary")}
-                            </Button>
-                        )}
+                        {/* need4：团队编辑按钮移到 more dropdown，不再在卡片内独立渲染。 */}
                     </div>
                 </div>
                 {this.renderVersionHistory()}
@@ -2831,6 +2903,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     initialContent={content}
                                     onSave={this.handleEditPersonalReportSave}
                                     onCancel={this.handleEditPersonalReportCancel}
+                                    exposeSave={(fn) => { this.editorSaveFn = fn; }}
                                 />
                             </div>
                         );
@@ -2959,6 +3032,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         initialContent={myContent}
                         onSave={this.handleEditMyDraftSave}
                         onCancel={this.handleEditMyDraftCancel}
+                        exposeSave={(fn) => { this.editorSaveFn = fn; }}
                     />
                 </div>
             );
@@ -3072,29 +3146,53 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     // need7：creator 添加新成员。选定后调 POST /members，成功 loadDetail 刷新（新成员 Pending）。
     handleOpenAddMember = () => {
-        this.setState({ showAddMember: true });
-    };
-    handleAddMemberConfirm = async (selected: MemberCandidate[]) => {
         if (this.taskId == null) return;
-        const userIds = selected.map((m) => m.user_id).filter(Boolean);
-        if (userIds.length === 0) {
-            this.setState({ showAddMember: false });
-            return;
-        }
-        this.setState({ addingMember: true });
-        try {
-            await api.addMembers(this.taskId, userIds);
-            Toast.success(t("summary.detail.addMemberSuccess"));
-            this.setState({ showAddMember: false, addingMember: false });
-            // 新成员以「待确认」出现在成员状态列表，重拉详情。
-            this.loadDetail();
-        } catch (err: any) {
-            this.setState({ addingMember: false });
-            Toast.error(err.message || t("summary.detail.addMemberFailed"));
-        }
-    };
-    handleAddMemberCancel = () => {
-        this.setState({ showAddMember: false });
+        const detail = this.state.detail;
+        if (!detail) return;
+        // 推断频道：origin_channel_id + origin_channel_type
+        const channelId = detail.origin_channel_id;
+        const channelType = detail.origin_channel_type === 1 ? 2 : detail.origin_channel_type === 3 ? 1 : 2;
+        const channel = channelId ? new WkChannel(channelId, channelType) : new WkChannel(this.taskId.toString(), 2);
+        const excluded = (detail.participants || []).map((p) => p.user_id);
+        let selectedItems: any[] = [];
+        WKApp.routeRight.push(
+            <RoutePage
+                title={t("summary.detail.addMember")}
+                onClose={() => WKApp.routeRight.pop()}
+                render={(context: any) => (
+                    <>
+                        <SubscriberList
+                            channel={channel}
+                            canSelect
+                            humansOnly
+                            disableSelectList={excluded}
+                            onSelect={(items) => { selectedItems = items; }}
+                        />
+                        <div style={{ padding: "12px 16px", borderTop: "1px solid var(--semi-color-border)" }}>
+                            <Button
+                                theme="solid"
+                                block
+                                loading={this.state.addingMember}
+                                onClick={async () => {
+                                    const userIds = selectedItems.map((s: any) => s.uid).filter(Boolean);
+                                    if (userIds.length === 0) return;
+                                    try {
+                                        await api.addMembers(this.taskId!, userIds);
+                                        Toast.success(t("summary.detail.addMemberSuccess"));
+                                        WKApp.routeRight.pop();
+                                        this.loadDetail();
+                                    } catch (err: any) {
+                                        Toast.error(err.message || t("summary.detail.addMemberFailed"));
+                                    }
+                                }}
+                            >
+                                {t("summary.common.confirm")}
+                            </Button>
+                        </div>
+                    </>
+                )}
+            />
+        );
     };
 
     renderScheduleButton() {
@@ -3102,10 +3200,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         // OCT-21 / GPT-S1：草稿编辑态也隐藏 schedule 按钮，与其它编辑态保持一致约束。
         if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport || editingMyDraft) return null;
-        // #158/#161 fast-follow：agent 总结不支持 schedule —— schedule 到点会 trigger
-        // 后端 pipeline 走传统 map-reduce 重跑，但 agent 总结的产出是 chat 交互生成，
-        // 没有可 replay 的 sources/participants。触发后任务会卡在 Pending 或 fail，
-        // 用户体验很差。前端直接不渲染这个按钮，避免用户误点。
+        // Agent 总结不支持定时更新：schedule 到点会 trigger 传统 map-reduce pipeline，
+        // 但 agent 总结产出是 chat 交互生成，无 replayable sources/participants。
         if (detail?.trigger_type === TriggerType.AGENT) return null;
 
         // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
@@ -3283,148 +3379,156 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     renderHeader() {
-        const { detail } = this.state;
+        const { detail, scheduleLoading } = this.state;
         const { t } = this.context;
         const myUid = WKApp.loginInfo.uid;
         const isCreator = detail?.creator_id != null && detail.creator_id === myUid;
         const isParticipant = !!detail?.participants?.some((p) => p.user_id === myUid);
         const displayTitle = deriveSummaryDisplayContent(detail?.topic || detail?.title || "") || t("summary.detail.defaultTitle");
 
+        // #907 review (yujiawei P2-1): agent summary forward sources fall through to
+        // personalResult.content, which is fetched async by loadPersonalResult. During
+        // that load window a click would silently no-op. Disable until the fallback
+        // content is in. Traditional workflow has detail.result inline, so it is never
+        // gated here.
+        const isAgent = detail?.trigger_type === TriggerType.AGENT;
+        const agentContentReady = !!this.state.personalResult?.content?.trim();
+        const waitingForFallback = !!detail && isAgent && !detail.result?.content?.trim() && !agentContentReady;
+
+        const showForwardToChat = !!detail && detail.status === TaskStatus.COMPLETED;
+        const showForwardToMatter = SHOW_FORWARD_TO_MATTER && !!detail && detail.status === TaskStatus.COMPLETED;
+        const showRegenerate = !!detail && canRegenerate(detail.status) && !isAgent;
+        const showRetry = !!detail && detail.status === TaskStatus.FAILED;
+        const showCancel = !!detail && canCancel(detail.status);
+        const showDelete = !!detail && isCreator;
+        const showLeave = !!detail && isParticipant && !isCreator;
+        const showEdit = !!detail && detail.status === TaskStatus.COMPLETED && !!detail.permissions?.can_edit && detail.trigger_type !== TriggerType.AGENT && !this.state.isEditing;
+        const canSchedule = !!detail?.permissions?.can_schedule && detail?.trigger_type !== TriggerType.AGENT && !this.state.isEditing && !this.state.editingTeamSummary;
+        const scheduleItem = this.state.scheduleItem;
+        const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
+        const showSchedule = canSchedule;
+        const hasMoreActions = showForwardToChat || showForwardToMatter || showRegenerate || showRetry || showCancel || showDelete || showLeave || showEdit || showSchedule;
+
         return (
-            <div className="summary-detail-header">
-                <div className="summary-detail-header-inner">
-                    {this.props.originChannel ? (
+            <>
+            <div className="summary-detail-title-row">
+                <div className="summary-detail-header-title-wrap">
+                    <OverflowTooltip as="h2" className="summary-detail-title" title={displayTitle}>
+                        {displayTitle}
+                    </OverflowTooltip>
+                    {this.renderScheduleSummary()}
+                </div>
+                <div className="summary-detail-header-actions">
+                    {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
                         <Button
-                            className="summary-detail-back-to-chat"
-                            size="small"
-                            theme="borderless"
-                            type="tertiary"
-                            icon={<IconArrowLeft />}
-                            onClick={() => {
-                                const { originChannel } = this.props;
-                                if (!originChannel) return;
-                                WKApp.endpoints.showConversation(
-                                    new Channel(originChannel.channelId, originChannel.channelType),
-                                );
-                            }}
+                            theme="solid"
+                            type="primary"
+                            onClick={this.handleContinueRefine}
                         >
-                            {t("summary.share.backToChat")}
+                            {t("summary.detail.continueRefine")}
                         </Button>
-                    ) : null}
-                    <div className="summary-detail-header-title-wrap">
-                        <OverflowTooltip as="h2" className="summary-detail-title" title={displayTitle}>
-                            {displayTitle}
-                        </OverflowTooltip>
-                        {this.renderScheduleSummary()}
-                    </div>
-                    <div className="summary-detail-header-actions">
-                        {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
-                            <Button
-                                theme="solid"
-                                type="primary"
-                                onClick={this.handleContinueRefine}
+                    )}
+                    {hasMoreActions && (
+                        <Dropdown
+                            trigger="click"
+                            position="bottomRight"
+                            render={
+                                    <Dropdown.Menu>
+                                        {showEdit && (
+                                            <Dropdown.Item
+                                                icon={<IconEdit />}
+                                                onClick={this.handleStartEdit}
+                                            >
+                                                {t("summary.common.edit")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showSchedule && (
+                                            <Dropdown.Item
+                                                icon={<IconClock />}
+                                                onClick={this.openScheduleModal}
+                                                disabled={scheduleLoading}
+                                            >
+                                                {t(hasActiveSchedule ? "summary.detail.editSchedule" : "summary.detail.setSchedule")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showForwardToChat && (
+                                            <Dropdown.Item
+                                                icon={<IconSend />}
+                                                onClick={this.handleForwardToChat}
+                                                disabled={waitingForFallback}
+                                            >
+                                                {t("summary.detail.forwardToChat")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showForwardToMatter && (
+                                            <Dropdown.Item
+                                                icon={<IconExit />}
+                                                onClick={this.handleForwardToMatter}
+                                                disabled={this.state.forwardingToMatter}
+                                            >
+                                                {t("summary.detail.forwardToMatter")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showRegenerate && !showRetry && (
+                                            <Dropdown.Item
+                                                icon={<IconHistory />}
+                                                onClick={this.handleRegenerate}
+                                            >
+                                                {t("summary.detail.regenerate")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showRetry && (
+                                            <Dropdown.Item
+                                                icon={<IconHistory />}
+                                                onClick={this.handleRetry}
+                                            >
+                                                {t("summary.summaryCard.retry")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showCancel && (
+                                            <Dropdown.Item
+                                                icon={<IconClose />}
+                                                onClick={this.handleCancel}
+                                            >
+                                                {t("summary.detail.cancelTask")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showDelete && (
+                                            <Dropdown.Item
+                                                type="danger"
+                                                icon={<IconDelete />}
+                                                onClick={() => Modal.confirm({
+                                                    title: t("summary.summaryCard.deleteTitle"),
+                                                    content: t("summary.summaryCard.deleteContent", { values: { title: detail?.title || detail?.task_no || "" } }),
+                                                    onOk: this.handleDeleteTask,
+                                                })}
+                                            >
+                                                {t("summary.common.delete")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {showLeave && (
+                                            <Dropdown.Item
+                                                type="danger"
+                                                icon={<IconMinusCircle />}
+                                                onClick={() => Modal.confirm({
+                                                    title: t("summary.detail.leaveTask"),
+                                                    content: t("summary.detail.leaveConfirm"),
+                                                    onOk: this.handleLeaveTask,
+                                                })}
+                                            >
+                                                {t("summary.detail.leaveTask")}
+                                            </Dropdown.Item>
+                                        )}
+                                    </Dropdown.Menu>
+                                }
                             >
-                                {t("summary.detail.continueRefine")}
-                            </Button>
+                                <Button size="small" theme="borderless" type="tertiary" icon={<IconMore />} />
+                            </Dropdown>
                         )}
-                        {this.renderScheduleButton()}
-                        {detail && detail.status === TaskStatus.COMPLETED && (() => {
-                            // #907 review (yujiawei P2-1): agent summary forward
-                            // sources fall through to personalResult.content, which
-                            // is fetched async by loadPersonalResult. During that
-                            // load window a click would silently no-op. Disable +
-                            // loading state until the fallback content is in.
-                            // Traditional workflow has detail.result inline, so it
-                            // is never gated here.
-                            const isAgent = detail.trigger_type === TriggerType.AGENT;
-                            const agentContentReady = !!this.state.personalResult?.content?.trim();
-                            const waitingForFallback = isAgent && !detail.result?.content?.trim() && !agentContentReady;
-                            return (
-                                <Button
-                                    size="small"
-                                    theme="borderless"
-                                    type="tertiary"
-                                    icon={<IconSend />}
-                                    onClick={this.handleForwardToChat}
-                                    loading={(waitingForFallback && this.state.personalLoading) || this.state.forwardingToChat}
-                                    disabled={waitingForFallback || this.state.forwardingToChat}
-                                >
-                                    {t("summary.detail.forwardToChat")}
-                                </Button>
-                            );
-                        })()}
-                        {SHOW_FORWARD_TO_MATTER && detail && detail.status === TaskStatus.COMPLETED && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                type="tertiary"
-                                icon={<IconSend />}
-                                onClick={this.handleForwardToMatter}
-                                loading={this.state.forwardingToMatter}
-                                disabled={this.state.forwardingToMatter}
-                            >
-                                {t("summary.detail.forwardToMatter")}
-                            </Button>
-                        )}
-                        {/* #158/#161 fast-follow：agent 总结不支持 regenerate —— 传统
-                            regenerate 走 triggerWorker("personal_summary")，agent 任务无
-                            participants/sources 可 replay 会卡死；"重生成"对 agent 应为
-                            "重开一次 chat"，continueRefine 已覆盖该入口。 */}
-                        {detail && canRegenerate(detail.status) && detail.trigger_type !== TriggerType.AGENT && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                type="tertiary"
-                                icon={<IconHistory />}
-                                onClick={this.handleRegenerate}
-                            >
-                                {t("summary.detail.regenerate")}
-                            </Button>
-                        )}
-                        {detail && canCancel(detail.status) && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                type="tertiary"
-                                icon={<IconClose />}
-                                onClick={this.handleCancel}
-                            >
-                                {t("summary.detail.cancelTask")}
-                            </Button>
-                        )}
-                        {detail && isCreator ? (
-                            <Popconfirm
-                                title={t("summary.summaryCard.deleteTitle")}
-                                content={t("summary.summaryCard.deleteContent", { values: { title: detail?.title || detail?.task_no || "" } })}
-                                onConfirm={this.handleDeleteTask}
-                            >
-                                <Button
-                                    size="small"
-                                    theme="borderless"
-                                    type="tertiary"
-                                    icon={<IconDelete />}
-                                    aria-label={t("summary.common.delete")}
-                                />
-                            </Popconfirm>
-                        ) : detail && isParticipant ? (
-                            <Popconfirm
-                                title={t("summary.detail.leaveTask")}
-                                content={t("summary.detail.leaveConfirm")}
-                                onConfirm={this.handleLeaveTask}
-                            >
-                                <Button
-                                    size="small"
-                                    theme="borderless"
-                                    type="tertiary"
-                                    icon={<IconExit />}
-                                    aria-label={t("summary.detail.leaveTask")}
-                                />
-                            </Popconfirm>
-                        ) : null}
                     </div>
                 </div>
                 {this.renderScheduleConfirm()}
-            </div>
+            </>
         );
     }
 
@@ -3434,11 +3538,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         return (
             <div className="summary-detail-page">
-                {this.renderHeader()}
-
                 <div className="summary-detail-content-wrapper">
                     <div className="summary-detail-content-scroll">
                         <div className="summary-detail-content-inner">
+                        {detail && !loading && this.renderHeader()}
                         {loading && (
                             <div className="summary-detail-loading">
                                 <Spin size="large" />
@@ -3493,21 +3596,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                             里我那条，need3）；单人 BY_PERSON 维持显示「我的总结」及其行内编辑。 */}
                                         {!this.isMultiCollab() && (
                                             <>
-                                                {this.shouldShowProcessingCard() && !this.personalReady && this.renderProcessing()}
-                                                {this.state.isEditing && this.state.personalResult && detail.result_id ? (
-                                                    <div className="summary-detail-personal">
-                                                        <h3>{t("summary.detail.mySummaryPlain")}</h3>
-                                                        <SummaryEditor
-                                                            taskId={detail.task_id}
-                                                            baseResultId={detail.result_id}
-                                                            initialContent={this.state.personalResult.content || ""}
-                                                            onSave={this.handleEditSave}
-                                                            onCancel={this.handleEditCancel}
-                                                        />
-                                                    </div>
-                                                ) : (
-                                                    this.renderPersonalSummary()
-                                                )}
+                                                {this.renderPersonalSummary()}
                                             </>
                                         )}
                                         {/* 回归修复：多人协作页给「我自己」补回「提交给全部」轻量入口。
@@ -3605,14 +3694,49 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         )}
                     </div>
                 </div>
-                {detail && !loading && (
-                    <div className="summary-detail-sources-footer">
-                        <div className="summary-detail-sources-footer-inner">
-                            <SelectedSourcesPanel sources={detail.sources} />
-                        </div>
+                </div>
+
+                {/* Edit mode footer */}
+                {(this.state.isEditing || this.state.editingTeamSummary || this.state.editingMyDraft || this.state.editingPersonalReport) && (
+                    <div className="summary-detail-footer">
+                        <button
+                            type="button"
+                            className="summary-detail-footer-btn summary-detail-footer-btn--cancel"
+                            onClick={() => {
+                                if (this.state.editingTeamSummary) {
+                                    this.handleEditTeamCancel();
+                                } else if (this.state.editingMyDraft) {
+                                    this.handleEditMyDraftCancel();
+                                } else if (this.state.editingPersonalReport) {
+                                    this.handleEditPersonalReportCancel();
+                                } else {
+                                    this.handleEditCancel();
+                                }
+                            }}
+                        >
+                            {t("summary.common.cancel")}
+                        </button>
+                        <button
+                            type="button"
+                            className="summary-detail-footer-btn summary-detail-footer-btn--save"
+                            onClick={() => {
+                                if (this.editorSaveFn) {
+                                    this.editorSaveFn();
+                                } else if (this.state.editingTeamSummary) {
+                                    this.handleEditTeamSave();
+                                } else if (this.state.editingMyDraft) {
+                                    this.handleEditMyDraftSave();
+                                } else if (this.state.editingPersonalReport) {
+                                    this.handleEditPersonalReportSave();
+                                } else {
+                                    this.handleEditSave();
+                                }
+                            }}
+                        >
+                            {t("summary.common.save")}
+                        </button>
                     </div>
                 )}
-                </div>
 
                 <ScheduleConfigModal
                     visible={showScheduleConfig}
@@ -3628,89 +3752,56 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     onSelect={this.handleMatterSelected}
                     onCancel={() => this.setState({ showMatterPicker: false })}
                 />
-                {/* need7：复用创建任务时的成员选择器，creator 添加新成员。 */}
-                <MemberSelectorModal
-                    visible={this.state.showAddMember}
-                    selected={[]}
-                    excludedUserIds={(this.state.detail?.participants || []).map((p) => p.user_id)}
-                    confirmLoading={this.state.addingMember}
-                    onConfirm={this.handleAddMemberConfirm}
-                    onCancel={this.handleAddMemberCancel}
-                />
+                {/* need7：添加成员复用 SubscriberList 路由页面，见 handleOpenAddMember */}
                 {this.renderVersionDetailModal()}
                 <Modal
-                    title={t("summary.detail.adjustSummaryTitle")}
+                    header={null}
+                    footer={null}
                     visible={this.state.showRegenerateModal}
-                    onOk={this.handleRegenerateConfirm}
-                    onCancel={this.handleRegenerateCancel}
-                    okText={this.state.regenerateMode === "refine" ? t("summary.detail.refineAction") : t("summary.detail.regenerate")}
-                    cancelText={t("summary.common.cancel")}
-                    confirmLoading={this.state.regenerateSubmitting}
-                    okButtonProps={{
-                        disabled: this.state.regenerateMode === "refine"
-                            ? !this.state.refineFeedback.trim() || (this.state.detail?.summary_mode === SummaryMode.BY_PERSON && !this.shouldOperateOnTeamSummary() ? !this.state.personalResult?.id : !this.state.detail?.result_id)
-                            : !this.state.regenerateTopic.trim(),
-                    }}
+                    width={480}
+                    className="summary-confirm"
+                    centered
+                    maskClosable
                 >
-<div className="summary-adjust-mode-list">
-                        <button
-                            type="button"
-                            className={this.state.regenerateMode === "refine" ? "summary-adjust-mode is-active" : "summary-adjust-mode"}
-                            onClick={() => this.setState({ regenerateMode: "refine" })}
-                        >
-                            <span className="summary-adjust-mode-title">{t("summary.detail.refineModeTitle")}</span>
-                            <span className="summary-adjust-mode-desc">{t("summary.detail.refineModeDesc")}</span>
-                        </button>
-                        <button
-                            type="button"
-                            className={this.state.regenerateMode === "full" ? "summary-adjust-mode is-active" : "summary-adjust-mode"}
-                            onClick={() => this.setState({ regenerateMode: "full" })}
-                        >
-                            <span className="summary-adjust-mode-title">{t("summary.detail.fullRegenerateModeTitle")}</span>
-                            <span className="summary-adjust-mode-desc">{t("summary.detail.fullRegenerateModeDesc")}</span>
+                    <div className="summary-confirm-body">
+                        <div className="summary-confirm-main">
+                            <div className="summary-confirm-caption">
+                                <div className="summary-confirm-title">{t("summary.detail.adjustSummaryTitle")}</div>
+                            </div>
+                        </div>
+                        <button type="button" className="summary-confirm-close" onClick={this.handleRegenerateCancel}>
+                            <X size={20} />
                         </button>
                     </div>
-                    {this.state.regenerateMode === "refine" ? (
-                        <>
-                            <label id="summary-refine-feedback-label" className="summary-adjust-label">
-                                {t("summary.detail.refineFeedbackLabel")}
-                            </label>
+                    <div className="summary-regenerate-content">
+                        <div className="summary-regenerate-textarea-wrap">
                             <textarea
-                                aria-labelledby="summary-refine-feedback-label"
-                                className="summary-regenerate-topic-textarea"
-                                rows={4}
-                                maxLength={2000}
-                                placeholder={t("summary.detail.refineFeedbackPlaceholder")}
-                                value={this.state.refineFeedback}
-                                onChange={(e) => this.setState({ refineFeedback: e.target.value.slice(0, 2000) })}
+                                ref={this.regenerateTopicRef}
+                                className="summary-regenerate-textarea"
+                                rows={3}
+                                maxLength={1000}
+                                placeholder={t("summary.create.placeholder")}
+                                value={this.state.regenerateTopic}
+                                onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
                             />
-                        </>
-                    ) : (
-                        <>
-                            <label id="regenerate-topic-label" className="summary-adjust-label">
-                                {t("summary.detail.regenerateTopicLabel")}
-                            </label>
-                            <div style={{ position: "relative" }}>
-                                <textarea
-                                    ref={this.regenerateTopicRef}
-                                    aria-labelledby="regenerate-topic-label"
-                                    className="summary-regenerate-topic-textarea"
-                                    rows={3}
-                                    maxLength={SUMMARY_INPUT_MAX_LENGTH}
-                                    value={this.state.regenerateTopic}
-                                    onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH) })}
-                                />
-                                <VoiceInputButton
-                                    inputRef={this.regenerateTopicRef}
-                                    onTranscribed={this.handleRegenerateTopicVoice}
-                                    getCurrentText={() => this.state.regenerateTopic}
-                                    showModeMenu
-                                    size="sm"
-                                    className="wk-vib--textarea-corner"
-                                />
-                            </div>
-                        </>
-                    )}
+                            <span className="summary-regenerate-char-count">
+                                {this.state.regenerateTopic.length}/1000
+                            </span>
+                        </div>
+                    </div>
+                    <div className="summary-confirm-footer">
+                        <button type="button" className="summary-confirm-btn summary-confirm-btn--cancel" onClick={this.handleRegenerateCancel}>
+                            {t("summary.common.cancel")}
+                        </button>
+                        <button
+                            type="button"
+                            className="summary-confirm-btn summary-confirm-btn--dark"
+                            disabled={this.state.regenerateSubmitting || !this.state.regenerateTopic.trim()}
+                            onClick={this.handleRegenerateConfirm}
+                        >
+                            {this.state.regenerateSubmitting ? t("summary.create.submitting") : t("summary.common.confirm")}
+                        </button>
+                    </div>
                 </Modal>
             </div>
         );
