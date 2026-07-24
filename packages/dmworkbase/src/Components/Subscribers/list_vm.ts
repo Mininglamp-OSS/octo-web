@@ -12,7 +12,6 @@ export class SubscriberListVM extends ProviderListener {
   keyword: string = "";
   filter?: (subscriber: Subscriber) => boolean;
   private localSearch?: (keyword: string) => Subscriber[];
-  private localSearchComplete: boolean;
   /** 每次 subscribers 数据加载完成后调用，用于触发预取等副作用 */
   onSubscribersLoaded?: (subscribers: Subscriber[]) => void;
   private _isMounted: boolean = false;
@@ -21,14 +20,12 @@ export class SubscriberListVM extends ProviderListener {
   constructor(
     channel: Channel,
     filter?: (subscriber: Subscriber) => boolean,
-    localSearch?: (keyword: string) => Subscriber[],
-    localSearchComplete: boolean = true
+    localSearch?: (keyword: string) => Subscriber[]
   ) {
     super();
     this.channel = channel;
     this.filter = filter;
     this.localSearch = localSearch;
-    this.localSearchComplete = localSearchComplete;
   }
 
   didMount(): void {
@@ -52,13 +49,21 @@ export class SubscriberListVM extends ProviderListener {
     if (this.localSearch && keyword.trim()) {
       const requestVersion = ++this._requestVersion;
       this.hasMore = false;
-      const localResults = this.localSearch(keyword);
+      let localResults: Subscriber[];
+      try {
+        localResults = this.localSearch(keyword);
+      } catch {
+        this.requestSubscribers(requestVersion);
+        return;
+      }
       this.subscribers = this.filter
         ? localResults.filter(this.filter)
         : localResults;
       this.notifyListener();
       this.onSubscribersLoaded?.(this.subscribers);
-      if (this.localSearchComplete) return;
+      // Keep the original server-backed keyword search authoritative. The
+      // local index adds immediate pinyin matches, but may represent only a
+      // partial SDK cache (for example, the first 100 super-group members).
       this.requestSubscribers(requestVersion, this.subscribers);
       return;
     }

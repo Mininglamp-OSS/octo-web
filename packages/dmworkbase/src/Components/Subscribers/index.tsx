@@ -15,7 +15,6 @@ import { GroupRole } from "../../Service/Const";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import { I18nContext } from "../../i18n";
 import { createChannelSettingMemberSearch } from "../../features/channelSetting/channelSettingMemberSearch";
-import { SuperGroup } from "../../Utils/const";
 
 export interface SubscribersProps {
   context: RouteContext<any>;
@@ -156,12 +155,6 @@ export class Subscribers extends Component<SubscribersProps> {
                           localSearch={createChannelSettingMemberSearch(
                             vm.subscribers
                           )}
-                          localSearchComplete={
-                            vm.routeData.channelInfo?.orgData?.group_type !==
-                              undefined &&
-                            vm.routeData.channelInfo.orgData.group_type !==
-                              SuperGroup
-                          }
                         />,
                         new RouteContextConfig({
                           title: this.context.t("base.subscribers.memberList"),

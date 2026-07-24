@@ -33,7 +33,8 @@ describe("SubscriberListVM local search", () => {
     subscribersRequest.mockReset();
   });
 
-  it("uses local search for a non-empty keyword", () => {
+  it("shows local results immediately and preserves server keyword search", async () => {
+    subscribersRequest.mockResolvedValue([]);
     const localSearch = vi.fn(() => localResult);
     const vm = new SubscriberListVM(channel, undefined, localSearch);
     (vm as any)._isMounted = true;
@@ -43,7 +44,12 @@ describe("SubscriberListVM local search", () => {
     expect(localSearch).toHaveBeenCalledWith("weijiao");
     expect(vm.subscribers).toEqual(localResult);
     expect(vm.hasMore).toBe(false);
-    expect(subscribersRequest).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledOnce());
+    expect(subscribersRequest).toHaveBeenCalledWith(channel, {
+      page: 1,
+      limit: vm.limit,
+      keyword: "weijiao",
+    });
   });
 
   it("applies the existing subscriber filter to local search results", () => {
@@ -74,7 +80,9 @@ describe("SubscriberListVM local search", () => {
 
   it("does not let an older server response overwrite local results", async () => {
     const pending = deferred<Subscriber[]>();
-    subscribersRequest.mockReturnValue(pending.promise);
+    subscribersRequest
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce([]);
     const vm = new SubscriberListVM(channel, undefined, () => localResult);
     (vm as any)._isMounted = true;
 
@@ -92,7 +100,7 @@ describe("SubscriberListVM local search", () => {
       name: "魏娇莹",
     } as Subscriber;
     subscribersRequest.mockResolvedValue([remoteResult]);
-    const vm = new SubscriberListVM(channel, undefined, () => [], false);
+    const vm = new SubscriberListVM(channel, undefined, () => []);
     (vm as any)._isMounted = true;
 
     vm.search("weijiao");
@@ -107,12 +115,7 @@ describe("SubscriberListVM local search", () => {
 
   it("deduplicates matching members returned by local and server search", async () => {
     subscribersRequest.mockResolvedValue(localResult);
-    const vm = new SubscriberListVM(
-      channel,
-      undefined,
-      () => localResult,
-      false
-    );
+    const vm = new SubscriberListVM(channel, undefined, () => localResult);
     (vm as any)._isMounted = true;
 
     vm.search("weijiao");
@@ -127,8 +130,7 @@ describe("SubscriberListVM local search", () => {
     const vm = new SubscriberListVM(
       channel,
       (subscriber) => subscriber.uid !== blocked.uid,
-      () => [],
-      false
+      () => []
     );
     (vm as any)._isMounted = true;
 
@@ -142,14 +144,10 @@ describe("SubscriberListVM local search", () => {
     subscribersRequest
       .mockReturnValueOnce(firstRequest.promise)
       .mockResolvedValueOnce(secondResult);
-    const vm = new SubscriberListVM(
-      channel,
-      undefined,
-      (keyword) =>
-        keyword === "second"
-          ? ([{ uid: "second-local", name: "Second Local" }] as Subscriber[])
-          : [],
-      false
+    const vm = new SubscriberListVM(channel, undefined, (keyword) =>
+      keyword === "second"
+        ? ([{ uid: "second-local", name: "Second Local" }] as Subscriber[])
+        : []
     );
     (vm as any)._isMounted = true;
 
@@ -177,12 +175,7 @@ describe("SubscriberListVM local search", () => {
     subscribersRequest
       .mockResolvedValueOnce(firstPage)
       .mockResolvedValueOnce(secondPage);
-    const vm = new SubscriberListVM(
-      channel,
-      undefined,
-      () => localResult,
-      false
-    );
+    const vm = new SubscriberListVM(channel, undefined, () => localResult);
     (vm as any)._isMounted = true;
 
     vm.search("wei");
@@ -196,5 +189,22 @@ describe("SubscriberListVM local search", () => {
     });
     expect(vm.subscribers).toHaveLength(52);
     expect(vm.hasMore).toBe(false);
+  });
+
+  it("falls back to server search if the local search callback fails", async () => {
+    subscribersRequest.mockResolvedValue(localResult);
+    const vm = new SubscriberListVM(channel, undefined, () => {
+      throw new Error("local index failed");
+    });
+    (vm as any)._isMounted = true;
+
+    vm.search("weijiao");
+    await vi.waitFor(() => expect(vm.subscribers).toEqual(localResult));
+
+    expect(subscribersRequest).toHaveBeenCalledWith(channel, {
+      page: 1,
+      limit: vm.limit,
+      keyword: "weijiao",
+    });
   });
 });
