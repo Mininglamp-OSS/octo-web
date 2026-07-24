@@ -15,6 +15,11 @@ export interface UseChannelWebhookListOptions {
   onLoadError: (error: unknown) => void;
 }
 
+export interface ChannelWebhookListReloadOptions {
+  showLoading?: boolean;
+  silentError?: boolean;
+}
+
 /** Runtime bridge for Webhook list data. UI state for edit/confirm overlays stays in the container. */
 export function useChannelWebhookList({
   channel,
@@ -40,7 +45,11 @@ export function useChannelWebhookList({
   }, []);
 
   const load = useCallback(
-    async (showLoading = false) => {
+    async (options: boolean | ChannelWebhookListReloadOptions = false) => {
+      const showLoading =
+        typeof options === "boolean" ? options : !!options.showLoading;
+      const silentError =
+        typeof options === "boolean" ? false : !!options.silentError;
       const requestSequence = ++requestSequenceRef.current;
       if (showLoading) setLoading(true);
       setError(false);
@@ -58,8 +67,10 @@ export function useChannelWebhookList({
           requestSequence !== requestSequenceRef.current
         )
           return;
-        setError(true);
-        onLoadError(loadError);
+        if (!silentError) {
+          setError(true);
+          onLoadError(loadError);
+        }
       } finally {
         if (
           mountedRef.current &&

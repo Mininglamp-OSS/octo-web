@@ -124,8 +124,10 @@ export function useChannelWebhookMembers(params: {
     })
   );
   const scopeKey = params.channel.getChannelKey?.() || params.channel.channelID;
+  const channelRef = useRef(params.channel);
   const requestSequenceRef = useRef(0);
   const mountedRef = useRef(true);
+  channelRef.current = params.channel;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -137,14 +139,15 @@ export function useChannelWebhookMembers(params: {
 
   useEffect(() => {
     const requestSequence = ++requestSequenceRef.current;
+    const channel = channelRef.current;
     setMemberOptions(
       readChannelWebhookMemberOptions({
-        channel: params.channel,
+        channel,
         runtime,
       })
     );
     runtime
-      .syncSubscribers(params.channel)
+      .syncSubscribers(channel)
       .then(() => {
         if (
           !mountedRef.current ||
@@ -154,7 +157,7 @@ export function useChannelWebhookMembers(params: {
         }
         setMemberOptions(
           readChannelWebhookMemberOptions({
-            channel: params.channel,
+            channel,
             runtime,
           })
         );
@@ -162,7 +165,7 @@ export function useChannelWebhookMembers(params: {
       .catch(() => {
         // Keep cached member options. The server still validates membership.
       });
-  }, [params.channel, runtime, scopeKey]);
+  }, [runtime, scopeKey]);
 
   const memberOptionsForSelect = useMemo(
     () =>

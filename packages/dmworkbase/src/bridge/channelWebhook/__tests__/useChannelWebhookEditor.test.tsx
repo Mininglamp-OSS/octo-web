@@ -130,7 +130,13 @@ describe("useChannelWebhookEditor", () => {
 
     await expect(submitPromise).resolves.toEqual({
       ok: true,
-      status: "stale",
+      status: "created",
+      created: {
+        ...createWebhook({ webhook_id: "iwh_new", group_no: "g1" }),
+        token: "token",
+        url: "/v1/incoming-webhooks/iwh_new/token",
+      },
+      stale: true,
     });
   });
 
