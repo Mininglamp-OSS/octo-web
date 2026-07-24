@@ -96,10 +96,12 @@ export default class ChatSelectorModal extends Component<Props, State> {
                     localSelectedMembers: [...(this.props.selectedMembers ?? [])],
                     keyword: "",
                     activeTab: "all_members",
+                    visibleStart: 0,
+                    visibleEnd: 20,
                 });
                 this.loadMembers();
             } else {
-                this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed", includeArchived: false });
+                this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed", includeArchived: false, visibleStart: 0, visibleEnd: 20 });
                 this.loadCandidates(false);
             }
         }
@@ -107,12 +109,14 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     async loadMembers() {
         const channel = this.props.channel;
+        const seq = ++this.reqSeq;
         this.setState({ loading: true });
         try {
             if (channel) {
                 // 有选中聊天：加载该群聊成员
                 const sdk = WKSDK.shared();
                 await sdk.channelManager.syncSubscribes(channel);
+                if (seq !== this.reqSeq) return;
                 const subscribers = sdk.channelManager.getSubscribes(channel) || [];
                 const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid));
                 const roles = new Map<string, number>();
@@ -131,10 +135,13 @@ export default class ChatSelectorModal extends Component<Props, State> {
             } else {
                 // 无选中聊天：加载全局联系人
                 const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
+                if (seq !== this.reqSeq) return;
                 const humans = list.filter((m: any) => {
                     // Contacts 类型用 robot 字段，不是 is_bot
                     const isRobot = m.robot === true || m.is_bot === true || isBot(m.uid || m.user_id || "");
-                    return !isRobot;
+                    // 过滤黑名单联系人 (ContactsStatus.Blacklist = 2)
+                    const isBlacklisted = m.status === 2;
+                    return !isRobot && !isBlacklisted;
                 });
                 this.setState({
                     memberRoles: new Map<string, number>(),
@@ -147,8 +154,10 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 });
             }
         } catch {
+            if (seq !== this.reqSeq) return;
             this.setState({ candidates: [] });
         } finally {
+            if (seq !== this.reqSeq) return;
             this.setState({ loading: false });
         }
     }
@@ -191,7 +200,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
     }
 
     handleIncludeArchivedChange = (checked: boolean) => {
-        this.setState({ includeArchived: checked });
+        this.setState({ includeArchived: checked, visibleStart: 0, visibleEnd: 20 });
         this.loadCandidates(checked);
     };
 
@@ -531,15 +540,19 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                 {loading ? (
                                     <div className="chat-selector-loading"><Spin /></div>
                                 ) : mode === "members" ? (
-                                    <>
-                                        <div style={{ height: displayList.length * 40, position: 'relative' }}>
-                                            {displayList.slice(this.state.visibleStart, this.state.visibleEnd).map((entry, i) => (
-                                                <div key={entry.item.chat_id} style={{ position: 'absolute', top: (this.state.visibleStart + i) * 40, left: 0, right: 0, height: 40 }}>
-                                                    {this.renderMemberItem(entry)}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </>
+                                    displayList.length === 0 ? (
+                                        <Empty description={t("summary.chatSelector.noData")} />
+                                    ) : (
+                                        <>
+                                            <div style={{ height: displayList.length * 40, position: 'relative' }}>
+                                                {displayList.slice(this.state.visibleStart, this.state.visibleEnd).map((entry, i) => (
+                                                    <div key={entry.item.chat_id} style={{ position: 'absolute', top: (this.state.visibleStart + i) * 40, left: 0, right: 0, height: 40 }}>
+                                                        {this.renderMemberItem(entry)}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )
                                 ) : displayList.length === 0 ? (
                                     <Empty description={t("summary.chatSelector.noData")} />
                                 ) : (

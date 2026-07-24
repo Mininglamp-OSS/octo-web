@@ -177,7 +177,6 @@
         "scheduleFailed": "Summary was created, but scheduled updates failed",
         "success": "Summary task created",
         "selectChat": "Select chats",
-        "selectChatFirst": "Please select a chat first",
         "selectedChats": "{{count}} chats selected",
         "selectMembers": "Select participants",
         "selectedMembers": "{{count}} participants selected",
