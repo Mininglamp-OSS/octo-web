@@ -17,12 +17,15 @@ import {
   getCurrentImChannelInfo,
 } from "../../im-runtime/currentChannelRuntime";
 import { t } from "../../i18n";
-import { ChannelSettingInfoRow } from "../../ui/ChannelSettingRows";
+import {
+  ChannelSettingInfoRow,
+  ChannelSettingInlineEditRow,
+} from "../../ui/ChannelSettingRows";
 import { ChannelSettingInputEditPush } from "./types";
 
 export function buildThreadInfoSection(
   context: RouteContext<ChannelSettingRouteData>,
-  inputEditPush: ChannelSettingInputEditPush
+  _inputEditPush: ChannelSettingInputEditPush
 ) {
   const data = context.routeData() as ChannelSettingRouteData;
   const { channel, channelInfo } = data;
@@ -49,37 +52,34 @@ export function buildThreadInfoSection(
       : "green";
   const rows: Row[] = [
     new Row({
-      cell: ChannelSettingInfoRow,
+      cell: ChannelSettingInlineEditRow,
       properties: {
         title: t("base.module.thread.name"),
-        value: threadName,
-        onClick: () => {
-          if (!threadInfo) return;
+        value: threadName || "",
+        placeholder: t("base.module.thread.name"),
+        maxCount: THREAD_NAME_MAX_LENGTH,
+        onStartEdit: () => {
+          if (!threadInfo) return false;
           if (!canEdit) {
             Toast.warning(t("base.module.thread.nameOnlyCreatorOrManager"));
-            return;
+            return false;
           }
-          inputEditPush(
-            context,
-            threadName || "",
-            async (value) => {
-              try {
-                await updateChannelSettingThreadName({
-                  channel,
-                  groupNo: threadInfo.groupNo,
-                  shortId: threadInfo.shortId,
-                  name: value,
-                });
-                data.refresh();
-              } catch (error: any) {
-                Toast.error(
-                  error?.msg || t("base.module.thread.saveFailedRetry")
-                );
-              }
-            },
-            t("base.module.thread.name"),
-            THREAD_NAME_MAX_LENGTH
-          );
+          return true;
+        },
+        onSave: async (value: string) => {
+          if (!threadInfo) return;
+          try {
+            await updateChannelSettingThreadName({
+              channel,
+              groupNo: threadInfo.groupNo,
+              shortId: threadInfo.shortId,
+              name: value,
+            });
+            data.refresh();
+          } catch (error: any) {
+            Toast.error(error?.msg || t("base.module.thread.saveFailedRetry"));
+            return false;
+          }
         },
       },
     }),

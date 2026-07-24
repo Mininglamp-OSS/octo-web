@@ -54,12 +54,12 @@ export class Subscribers extends Component<SubscribersProps> {
         <div className="wk-subscribers-item-avatar-wrap">
           <img src={WKApp.shared.avatarUser(subscriber.uid)} alt=""></img>
           {subscriber.role === GroupRole.owner && (
-            <span className="wk-subscribers-item-role-badge">
+            <span className="wk-subscribers-item-role-badge wk-subscribers-item-role-badge-owner">
               {this.context.t("base.subscribers.role.owner")}
             </span>
           )}
           {subscriber.role === GroupRole.manager && (
-            <span className="wk-subscribers-item-role-badge">
+            <span className="wk-subscribers-item-role-badge wk-subscribers-item-role-badge-manager">
               {this.context.t("base.subscribers.role.manager")}
             </span>
           )}
@@ -157,12 +157,17 @@ export class Subscribers extends Component<SubscribersProps> {
                           )}
                         />,
                         new RouteContextConfig({
-                          title: this.context.t("base.subscribers.memberList"),
+                          title: this.context.t(
+                            "base.subscribers.memberListWithCount",
+                            { values: { count: vm.memberCount() } }
+                          ),
                         })
                       );
                     }}
                   >
-                    {this.context.t("base.subscribers.viewMore")}
+                    {this.context.t("base.subscribers.viewAll", {
+                      values: { count: vm.memberCount() },
+                    })}
                   </div>
                 ) : undefined}
               </div>

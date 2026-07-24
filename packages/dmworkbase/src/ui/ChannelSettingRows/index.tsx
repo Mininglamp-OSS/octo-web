@@ -1,4 +1,5 @@
-import React from "react";
+import { Button, Input, TextArea } from "@douyinfe/semi-ui";
+import React, { useEffect, useState } from "react";
 
 import {
   ListItem,
@@ -9,6 +10,8 @@ import {
   ListItemSwitch,
   ListItemSwitchContext,
 } from "../../Components/ListItem";
+import { t } from "../../i18n";
+import "./index.css";
 
 export interface ChannelSettingInfoRowProps {
   title: string;
@@ -82,5 +85,121 @@ export function ChannelSettingActionRow({
       onClick={onClick}
       style={{}}
     />
+  );
+}
+
+export interface ChannelSettingInlineEditRowProps {
+  title: string;
+  value?: string;
+  displayValue?: React.ReactNode;
+  placeholder?: string;
+  maxCount?: number;
+  allowEmpty?: boolean;
+  multiline?: boolean;
+  onStartEdit?: () => boolean | void;
+  onSave: (value: string) => Promise<void | boolean>;
+}
+
+export function ChannelSettingInlineEditRow({
+  title,
+  value = "",
+  displayValue,
+  placeholder,
+  maxCount,
+  allowEmpty = false,
+  multiline = false,
+  onStartEdit,
+  onSave,
+}: ChannelSettingInlineEditRowProps) {
+  const [editing, setEditing] = useState(false);
+  const [currentValue, setCurrentValue] = useState(value);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setCurrentValue(value);
+    setDraft(value);
+  }, [value]);
+
+  const exceeded = maxCount !== undefined && draft.length > maxCount;
+  const emptyInvalid = !allowEmpty && draft.trim().length === 0;
+  const unchanged = draft === currentValue;
+  const saveDisabled = saving || exceeded || emptyInvalid || unchanged;
+
+  const startEdit = () => {
+    if (onStartEdit?.() === false) return;
+    setDraft(currentValue);
+    setEditing(true);
+  };
+
+  if (!editing) {
+    return (
+      <ChannelSettingInfoRow
+        title={title}
+        value={currentValue === value ? displayValue ?? value : currentValue}
+        multiline={multiline}
+        onClick={startEdit}
+      />
+    );
+  }
+
+  const inputProps = {
+    value: draft,
+    placeholder,
+    disabled: saving,
+    showClear: true,
+    onChange: (next: string) => setDraft(next),
+    onClear: () => setDraft(""),
+  };
+
+  return (
+    <div className="wk-channelsetting-inline-edit">
+      <div className="wk-channelsetting-inline-edit-title">{title}</div>
+      {multiline ? (
+        <TextArea {...inputProps} autosize={{ minRows: 2, maxRows: 6 }} />
+      ) : (
+        <Input {...inputProps} />
+      )}
+      <div className="wk-channelsetting-inline-edit-footer">
+        {maxCount !== undefined ? (
+          <span
+            className={`wk-channelsetting-inline-edit-count${
+              exceeded ? " wk-channelsetting-inline-edit-count-error" : ""
+            }`}
+          >
+            {draft.length} / {maxCount}
+          </span>
+        ) : null}
+        <Button
+          theme="borderless"
+          disabled={saving}
+          onClick={() => {
+            setDraft(currentValue);
+            setEditing(false);
+          }}
+        >
+          {t("base.common.cancel")}
+        </Button>
+        <Button
+          theme="solid"
+          loading={saving}
+          disabled={saveDisabled}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              const saved = await onSave(draft);
+              if (saved !== false) setCurrentValue(draft);
+              setEditing(false);
+            } catch {
+              // The bridge/container owns the user-facing error message.
+            } finally {
+              setSaving(false);
+            }
+          }}
+        >
+          {t("base.common.save")}
+        </Button>
+      </div>
+    </div>
   );
 }

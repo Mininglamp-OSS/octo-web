@@ -83,7 +83,143 @@
     width: 100%;
     height: 100%;
     overflow: auto;
-    padding-bottom: 40px;
+    padding: var(--wk-sp-2) 0 var(--wk-sp-4);
+    background: var(--wk-bg-surface);
+}
+
+/* 仅作用于 ChannelSetting，避免影响其他 Sections/ListItem 调用方。 */
+.wk-channelsetting-content > .wk-sections {
+    display: flex;
+    flex-direction: column;
+    gap: var(--wk-sp-2);
+}
+
+.wk-channelsetting-content .wk-section {
+    margin: 0 var(--wk-sp-4);
+    overflow: hidden;
+    background: var(--wk-bg-base);
+    border: 1px solid var(--wk-border-subtle);
+    border-radius: var(--wk-r-sm);
+}
+
+.wk-channelsetting-content .wk-section-title {
+    padding: var(--wk-sp-3) var(--wk-sp-4) var(--wk-sp-2);
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-sm);
+}
+
+.wk-channelsetting-content .wk-section-subtitle {
+    padding: var(--wk-sp-2) var(--wk-sp-4) var(--wk-sp-3);
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-sm);
+}
+
+.wk-channelsetting-content .wk-section-row + .wk-section-row {
+    border-top: 1px solid var(--wk-border-subtle);
+}
+
+.wk-channelsetting-content .wk-list-item {
+    min-height: calc(var(--wk-sp-10) + var(--wk-sp-2));
+    padding: var(--wk-sp-2) var(--wk-sp-4);
+    background: transparent;
+}
+
+.wk-channelsetting-content .wk-list-item:hover {
+    background: var(--wk-bg-hover);
+}
+
+.wk-channelsetting-content .wk-list-item-static:hover {
+    background: transparent;
+}
+
+.wk-channelsetting-content .wk-list-item-title {
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-md);
+}
+
+.wk-channelsetting-content .wk-list-item-subtitle {
+    min-width: 0;
+    margin-left: var(--wk-sp-4);
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-base);
+}
+
+.wk-channelsetting-content .wk-list-item-subtitle-muliteline {
+    margin-top: var(--wk-sp-2);
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-base);
+}
+
+.wk-channelsetting-content .wk-channelsetting-qrcode-icon {
+    width: var(--wk-sp-4);
+    height: var(--wk-sp-4);
+    color: var(--wk-text-tertiary);
+}
+
+.wk-channelsetting-content .wk-section:has(.wk-subscribers) {
+    padding: var(--wk-sp-4) var(--wk-sp-2) var(--wk-sp-3);
+}
+
+.wk-channelsetting-content .wk-section:has(.wk-subscribers) .wk-section-row {
+    border: 0;
+}
+
+.wk-channelsetting-content .wk-subscribers-content {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    column-gap: var(--wk-sp-2);
+    row-gap: var(--wk-sp-4);
+    padding-inline: var(--wk-sp-2);
+}
+
+.wk-channelsetting-content .wk-subscribers-item {
+    min-height: 0;
+    gap: var(--wk-sp-1-5);
+}
+
+.wk-channelsetting-content .wk-subscribers-item img,
+.wk-channelsetting-content .wk-subscribers-item-avatar-wrap img,
+.wk-channelsetting-content .wk-subscribers-item-avatar-wrap {
+    width: var(--wk-sp-12);
+    height: var(--wk-sp-12);
+}
+
+.wk-channelsetting-content .wk-subscribers-item-name {
+    margin-top: 0;
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-xs);
+    line-height: var(--wk-text-size-md);
+}
+
+.wk-channelsetting-content .wk-subscribers-item-role-badge {
+    right: auto;
+    bottom: calc(0px - var(--wk-sp-1));
+    left: 50%;
+    padding: var(--wk-sp-0-5) var(--wk-sp-1);
+    color: var(--wk-text-inverse);
+    font-size: var(--wk-text-size-badge);
+    border-radius: var(--wk-r-xs);
+    box-shadow: none;
+    transform: translateX(-50%);
+}
+
+.wk-channelsetting-content .wk-subscribers-item-role-badge-owner {
+    background: var(--wk-color-warning);
+}
+
+.wk-channelsetting-content .wk-subscribers-item-role-badge-manager {
+    background: var(--wk-text-primary);
+}
+
+.wk-channelsetting-content .wk-subscribers-more {
+    margin: var(--wk-sp-4) var(--wk-sp-2) 0;
+    padding: var(--wk-sp-2);
+    border-radius: var(--wk-r-sm);
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-sm);
+}
+
+.wk-channelsetting-content .wk-subscribers-more:hover {
+    background: var(--wk-bg-hover);
 }
 
 .wk-channelsetting-channel-info {
@@ -198,8 +334,12 @@
 
 .wk-route-content .wk-channelsetting-input-edit {
     box-sizing: border-box;
-    width: calc(100% - (2 * var(--wk-sp-2)));
-    margin: 0 var(--wk-sp-2);
+    width: calc(100% - (2 * var(--wk-sp-4)));
+    margin: var(--wk-sp-2) var(--wk-sp-4) 0;
+    overflow: hidden;
+    background: var(--wk-bg-base);
+    border: 1px solid var(--wk-border-subtle);
+    border-radius: var(--wk-r-sm);
 }
 
 .wk-channelmanage {

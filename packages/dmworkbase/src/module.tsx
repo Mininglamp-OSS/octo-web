@@ -155,9 +155,7 @@ import { buildChannelMembersSection } from "./features/channelSetting/channelSet
 import { buildChannelGroupInfoSection } from "./features/channelSetting/channelSettingGroupInfoSection";
 import {
   buildThreadActionsSection,
-  buildThreadInfoSection,
-  buildThreadMdSection,
-  buildThreadWebhookSection,
+  buildThreadOverviewSection,
 } from "./features/channelSetting/channelSettingThreadSections";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
@@ -1663,40 +1661,17 @@ export default class BaseModule implements IModule {
       90000
     );
 
-    // 子区 (Thread) 设置项
+    // 子区信息行沿用各自既有 builder 和权限/点击逻辑，只在展示层合并为同一信息卡。
+    // 当前未注册的免打扰、查找聊天内容等入口不得因 UI 参考图而补回。
     WKApp.shared.channelSettingRegister(
-      "thread.base.info",
+      "thread.overview",
       (context) => {
-        return buildThreadInfoSection(
+        return buildThreadOverviewSection(
           context,
           this.channelSettingInputEditPush.bind(this)
         );
       },
       500
-    );
-
-    // 子区 GROUP.md 设置项
-    WKApp.shared.channelSettingRegister(
-      "thread.md.setting",
-      (context) => {
-        return buildThreadMdSection(context);
-      },
-      1000
-    );
-
-    // 子区入站 Webhook（入口 A：聊天信息 / 完整会话设置页）。与入口 B
-    // （ThreadPanel 右上角「…」菜单）完全同口径：复用群面板 ChannelWebhookPanel，
-    // 传【父群】channel + 子区 short_id，datasource 据此拼
-    // groups/{group}/threads/{short}/incoming-webhooks 做作用域隔离；
-    // isManager 锚【父群】角色（子区无独立角色矩阵，普通成员仍可管自己创建的）。
-    // 仅【活跃中】子区显示 —— 归档子区建 webhook 会被后端拒，避免无效入口，
-    // 与入口 B 的 status 门槛保持一致。
-    WKApp.shared.channelSettingRegister(
-      "thread.webhook",
-      (context) => {
-        return buildThreadWebhookSection(context);
-      },
-      2000
     );
 
     // 子区设置说明：

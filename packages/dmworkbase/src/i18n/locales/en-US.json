@@ -1054,6 +1054,8 @@
   "subscribers.role.owner": "Owner",
   "subscribers.searchPlaceholder": "Search",
   "subscribers.viewMore": "View more group members",
+  "subscribers.viewAll": "View all {{count}} members",
+  "subscribers.memberListWithCount": "Members ({{count}})",
   "threadCreated.created": "Created a thread",
   "threadCreated.deleted": "This thread has been deleted.",
   "threadCreated.deletedOrMissing": "This thread has been deleted or does not exist.",

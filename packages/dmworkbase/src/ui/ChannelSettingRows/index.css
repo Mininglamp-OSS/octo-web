@@ -1,0 +1,36 @@
+.wk-channelsetting-inline-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  background: var(--wk-bg-base);
+}
+
+.wk-channelsetting-inline-edit-title {
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-md);
+}
+
+.wk-channelsetting-inline-edit .semi-input-wrapper,
+.wk-channelsetting-inline-edit .semi-input-textarea-wrapper {
+  background: var(--wk-bg-surface);
+  border-color: var(--wk-border-strong);
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-channelsetting-inline-edit-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+}
+
+.wk-channelsetting-inline-edit-count {
+  margin-right: auto;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+}
+
+.wk-channelsetting-inline-edit-count-error {
+  color: var(--wk-color-error);
+}

@@ -1054,6 +1054,8 @@
   "subscribers.role.owner": "群主",
   "subscribers.searchPlaceholder": "搜索",
   "subscribers.viewMore": "查看更多群成员",
+  "subscribers.viewAll": "查看全部 {{count}} 名成员",
+  "subscribers.memberListWithCount": "成员（{{count}}）",
   "threadCreated.created": "新建了子区",
   "threadCreated.deleted": "该子区已删除",
   "threadCreated.deletedOrMissing": "该子区已删除或不存在",

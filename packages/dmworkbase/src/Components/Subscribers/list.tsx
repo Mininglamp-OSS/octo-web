@@ -298,9 +298,7 @@ export class SubscriberList extends Component<
               >
                 <div className="wk-indextable-search-box">
                   <div className="wk-indextable-search-icon">
-                    <IconSearchStroked
-                      style={{ color: "#bbbfc4", fontSize: "20px" }}
-                    />
+                    <IconSearchStroked className="wk-subscrierlist-search-icon" />
                   </div>
                   <div className="wk-indextable-search-input">
                     <input
@@ -312,7 +310,6 @@ export class SubscriberList extends Component<
                       )}
                       ref={(rf) => {}}
                       type="text"
-                      style={{ fontSize: "17px" }}
                     />
                   </div>
                 </div>
@@ -393,7 +390,15 @@ export class SubscriberList extends Component<
                               </Tag>
                             )}
                           </div>
-                          <div className="wk-subscrierlist-item-desc">
+                          <div
+                            className={`wk-subscrierlist-item-desc${
+                              item.role === GroupRole.owner
+                                ? " wk-subscrierlist-item-desc-owner"
+                                : item.role === GroupRole.manager
+                                ? " wk-subscrierlist-item-desc-manager"
+                                : ""
+                            }`}
+                          >
                             {this.getRoleName(item)}
                           </div>
                         </div>

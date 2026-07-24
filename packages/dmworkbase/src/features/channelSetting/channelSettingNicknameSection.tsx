@@ -6,12 +6,12 @@ import { Row, Section } from "../../Service/Section";
 import { isGroupDisbanded } from "../../Utils/groupDisband";
 import { updateChannelSettingMyGroupNickname } from "../../bridge/channelSetting/channelSettingActions";
 import { t } from "../../i18n";
-import { ChannelSettingInfoRow } from "../../ui/ChannelSettingRows";
+import { ChannelSettingInlineEditRow } from "../../ui/ChannelSettingRows";
 import { ChannelSettingInputEditPush } from "./types";
 
 export function buildMyGroupNicknameSection(
   context: RouteContext<ChannelSettingRouteData>,
-  inputEditPush: ChannelSettingInputEditPush
+  _inputEditPush: ChannelSettingInputEditPush
 ) {
   const data = context.routeData() as ChannelSettingRouteData;
   if (
@@ -21,33 +21,30 @@ export function buildMyGroupNicknameSection(
     return undefined;
   }
 
-  const displayName = data.subscriberOfMe?.remark || data.subscriberOfMe?.name;
+  const groupNickname = data.subscriberOfMe?.remark ?? "";
 
   return new Section({
     rows: [
       new Row({
-        cell: ChannelSettingInfoRow,
+        cell: ChannelSettingInlineEditRow,
         properties: {
           title: t("base.module.channelSettings.myGroupNickname"),
-          value: displayName,
-          onClick: () => {
-            inputEditPush(
-              context,
-              displayName || "",
-              async (value: string) => {
-                await updateChannelSettingMyGroupNickname({
-                  channel: data.channel,
-                  remark: value,
-                });
-                if (data.subscriberOfMe) {
-                  data.subscriberOfMe.remark = value;
-                }
-                data.refresh();
-              },
-              t("base.module.channelSettings.myGroupNicknamePlaceholder"),
-              10,
-              true
-            );
+          value: groupNickname,
+          displayValue: groupNickname || t("base.common.notSet"),
+          placeholder: t(
+            "base.module.channelSettings.myGroupNicknamePlaceholder"
+          ),
+          maxCount: 10,
+          allowEmpty: true,
+          onSave: async (value: string) => {
+            await updateChannelSettingMyGroupNickname({
+              channel: data.channel,
+              remark: value,
+            });
+            if (data.subscriberOfMe) {
+              data.subscriberOfMe.remark = value;
+            }
+            data.refresh();
           },
         },
       }),
