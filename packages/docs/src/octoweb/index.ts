@@ -368,6 +368,12 @@ export function openDocForward(opts: OpenDocForwardOptions): void {
   host.showConversationSelect(undefined, opts.modalTitle, {
     messageTitle: opts.title,
     link: opts.link,
+    shareAsCard: opts.shareAsCard,
+    docId: opts.docId,
+    spaceId: opts.spaceId,
+    kind: opts.kind,
+    ownerName: opts.ownerName,
+    updatedAt: opts.updatedAt,
     canGrant: opts.canGrant,
     disabledReason: opts.disabledReason,
     defaultRole: opts.defaultRole,

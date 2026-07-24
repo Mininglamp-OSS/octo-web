@@ -64,6 +64,24 @@ export interface DocForwardOpen {
   messageTitle: string
   /** Clickable link with the docId embedded. */
   link: string
+  /**
+   * Whether to send this forward as a DocumentShareCard (type-18) rather than a plain-text link.
+   * ONLY the "share document to chat" flow sets this true. Other forward entries that reuse this
+   * bridge — notably the html-doc "让 AI 处理" AI-instruction forward — carry a docId but must stay
+   * a plain-text message with their instruction-specific anchored link, so they leave this unset
+   * (Jerry-Xin blocker: docId presence alone must NOT trigger the card conversion).
+   */
+  shareAsCard?: boolean
+  /** docId — carried into the DocumentShareCard payload so the receiver can fetch an ACL-safe preview. */
+  docId?: string
+  /** The doc's space id (deep-link + preview both need it). */
+  spaceId?: string
+  /** Resource kind — doc/board/sheet — drives the card icon + which preview endpoint the cell calls. */
+  kind?: "doc" | "board" | "sheet"
+  /** Pre-resolved owner display name for the card eyebrow (optional). */
+  ownerName?: string
+  /** Pre-formatted "updated at" string for the card eyebrow (optional). */
+  updatedAt?: string
   /** Precomputed by docs: canManage(role) || currentUid === ownerId. */
   canGrant: boolean
   /** Grey-out hint for non-grantors. */
