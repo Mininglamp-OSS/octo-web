@@ -1,6 +1,5 @@
 import React from "react";
 import { Switch } from "@douyinfe/semi-ui";
-import { Trash2 } from "lucide-react";
 import WKButton from "../../../Components/WKButton";
 import "./index.css";
 
@@ -103,7 +102,7 @@ function GroupManagementMemberRow({
           aria-label={`${labels.removeMember} ${labelText}`}
           title={labels.removeMember}
         >
-          <Trash2 size={15} aria-hidden="true" />
+          <span className="wk-group-management-remove-icon" aria-hidden="true" />
         </button>
       )}
     </li>

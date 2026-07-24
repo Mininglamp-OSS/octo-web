@@ -242,8 +242,8 @@
 
 .wk-group-management-remove {
   display: inline-flex;
-  width: var(--wk-sp-7);
-  height: var(--wk-sp-7);
+  width: var(--wk-sp-6);
+  height: var(--wk-sp-6);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -253,8 +253,33 @@
   background: transparent;
   color: var(--wk-text-tertiary);
   cursor: pointer;
+  line-height: 0;
   transition: background-color var(--wk-dur-fast) var(--wk-ease),
     color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-group-management-remove-icon {
+  position: relative;
+  display: inline-flex;
+  width: calc(var(--wk-sp-3) + var(--wk-sp-0-5));
+  height: calc(var(--wk-sp-3) + var(--wk-sp-0-5));
+  align-items: center;
+  justify-content: center;
+  border: 1px solid currentColor;
+  border-radius: var(--wk-r-full);
+  box-sizing: border-box;
+}
+
+.wk-group-management-remove-icon::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--wk-sp-2);
+  height: 1px;
+  border-radius: var(--wk-r-full);
+  background: currentColor;
+  content: "";
+  transform: translate(-50%, -50%);
 }
 
 .wk-group-management-remove:hover,
