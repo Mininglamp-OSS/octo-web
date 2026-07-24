@@ -2049,6 +2049,41 @@
     margin-bottom: 16px;
 }
 
+/* Mode switch (normal/agent) */
+.summary-workbench-mode-switch {
+    margin-left: auto;
+    display: flex;
+    gap: 0;
+    background: rgba(28, 28, 35, 0.04);
+    border-radius: 99px;
+    padding: 2px;
+    flex-shrink: 0;
+}
+
+.summary-workbench-mode-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 20px;
+    padding: 4px 12px;
+    border-radius: 99px;
+    color: rgba(28, 28, 35, 0.6);
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+
+.summary-workbench-mode-btn--active {
+    background: #1C1C23;
+    color: #fff;
+}
+
+.summary-workbench-mode-btn:not(.summary-workbench-mode-btn--active):hover {
+    color: rgba(28, 28, 35, 0.8);
+}
+
 .summary-workbench-header-emoji {
     font-size: 28px;
     line-height: 1;
