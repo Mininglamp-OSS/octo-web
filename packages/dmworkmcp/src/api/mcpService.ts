@@ -1,5 +1,10 @@
 import axios, { AxiosRequestConfig } from "axios";
-import { WKApp, buildAcceptLanguage, t, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
+import {
+  WKApp,
+  buildAcceptLanguage,
+  t,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+} from "@octo/base";
 import type {
   CreateMcpParams,
   ListMcpParams,
@@ -12,6 +17,7 @@ import type {
   McpQuickStart,
   UpdateMcpParams,
 } from "../types/mcp";
+import { toWireParams } from "./mcpWireParams";
 import {
   MCP_CATEGORY_LABELS,
   MCP_CATEGORY_ORDER,
@@ -20,7 +26,11 @@ import {
   MOCK_PROBED_TOOLS,
 } from "../mock/mcpMock";
 import { CATEGORY_KEY_ALL, slugifyServerName } from "../utils/constants";
-import { McpListError, classifyMcpListError, executeMcpListRequest } from "./mcpListError";
+import {
+  McpListError,
+  classifyMcpListError,
+  executeMcpListRequest,
+} from "./mcpListError";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MCP Market service layer
@@ -87,7 +97,11 @@ function assertSafeUploadURL(raw: string): void {
     throw new Error(t("mcp.create.iconUploadFailed"));
   }
   if (u.protocol === "https:") return;
-  if (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) return;
+  if (
+    u.protocol === "http:" &&
+    (u.hostname === "localhost" || u.hostname === "127.0.0.1")
+  )
+    return;
   throw new Error(t("mcp.create.iconUploadFailed"));
 }
 
@@ -237,6 +251,7 @@ async function updateMcpMock(
   next.createdByType = prev.createdByType;
   next.createdByBotUid = prev.createdByBotUid;
   next.createdByBotName = prev.createdByBotName;
+  next.visibility = prev.visibility;
   MOCK_MCP_DETAILS[idx] = next;
   const listIdx = MOCK_MCP_LIST.findIndex((it) => it.id === id);
   if (listIdx !== -1) MOCK_MCP_LIST[listIdx] = projectListItem(next);
@@ -569,9 +584,11 @@ function mapListItem(raw: McpListItemWire): McpListItem {
     createdByType: raw.created_by_type,
     createdByBotUid: raw.created_by_bot_uid,
     createdByBotName: raw.created_by_bot_name,
-    transport: raw.transport, source: raw.source,
+    transport: raw.transport,
+    source: raw.source,
     verificationStatus: raw.verification_status,
-    matchReasons: raw.match_reasons ?? [], relevance: raw.relevance,
+    matchReasons: raw.match_reasons ?? [],
+    relevance: raw.relevance,
     updatedAt: raw.updated_at,
   };
 }
@@ -603,10 +620,7 @@ function mapDetail(raw: McpDetailWire): McpDetail {
     );
     if (!hasAuthKey) {
       headers = { ...(headers ?? {}), Authorization: "" };
-      headersUserSupplied = [
-        ...(headersUserSupplied ?? []),
-        "Authorization",
-      ];
+      headersUserSupplied = [...(headersUserSupplied ?? []), "Authorization"];
     }
   }
   return {
@@ -632,30 +646,6 @@ function mapDetail(raw: McpDetailWire): McpDetail {
   };
 }
 
-function toWireParams(params: CreateMcpParams | UpdateMcpParams) {
-  return {
-    name: params.name,
-    slug: params.slug,
-    slogan: params.slogan,
-    category: params.category,
-    icon: params.icon,
-    tags: params.tags,
-    transport: params.transport,
-    url: params.url,
-    command: params.command,
-    args: params.args,
-    env: params.env,
-    env_user_supplied: params.envUserSupplied,
-    headers: params.headers,
-    headers_user_supplied: params.headersUserSupplied,
-    tools: params.tools,
-    usage_examples: params.usageExamples,
-    faqs: params.faqs,
-    notes: params.notes,
-    visibility: params.visibility,
-  };
-}
-
 async function fetchMcpListReal(
   params: ListMcpParams
 ): Promise<ListMcpResponse> {
@@ -678,7 +668,9 @@ async function fetchMcpListPath(
   const keyword = params.keyword?.trim();
   if (keyword) query.keyword = keyword;
   // `all` disables the filter server-side; send it verbatim per §0.
-  query.category = params.categories?.length ? params.categories[0] : (params.category ?? CATEGORY_KEY_ALL);
+  query.category = params.categories?.length
+    ? params.categories[0]
+    : params.category ?? CATEGORY_KEY_ALL;
   if (params.createdByType) {
     query.created_by_type = params.createdByType;
   }
@@ -704,15 +696,21 @@ async function fetchMcpListPath(
   // wire-shape truth for repeated-array values.
   const categoryParams: Record<string, unknown> = {};
   if (path === "/mcps/mine") categoryParams.mode = "mine";
-  if (params.createdByType) categoryParams.created_by_type = params.createdByType;
-  const [resp, categoryWire] = await executeMcpListRequest(() => Promise.all([
+  if (params.createdByType)
+    categoryParams.created_by_type = params.createdByType;
+  const [resp, categoryWire] = await executeMcpListRequest(() =>
+    Promise.all([
       mcpAxios.get<McpListResponseWire>(`${BASE}${path}`, { params: query }),
       mcpAxios
-        .get<{ data: { key: string; count: number }[] }>(`${BASE}/mcp_categories`, {
-          params: categoryParams,
-        })
+        .get<{ data: { key: string; count: number }[] }>(
+          `${BASE}/mcp_categories`,
+          {
+            params: categoryParams,
+          }
+        )
         .then((r) => r.data.data),
-    ]));
+    ])
+  );
   const items = (resp.data.data ?? []).map(mapListItem);
   const categoryCounts = new Map(
     categoryWire.map((item) => [item.key, item.count])
@@ -831,10 +829,7 @@ async function uploadMcpIconReal(_id: string, file: File): Promise<string> {
       content_type: file.type || "application/octet-stream",
     }
   );
-  if (
-    !init.data?.data?.presigned_url ||
-    !init.data?.data?.download_url
-  ) {
+  if (!init.data?.data?.presigned_url || !init.data?.data?.download_url) {
     throw new Error(t("mcp.create.iconUploadFailed"));
   }
   const { presigned_url, download_url, headers } = init.data.data;
