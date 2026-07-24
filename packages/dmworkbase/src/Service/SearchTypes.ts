@@ -196,6 +196,43 @@ export interface GlobalSearchDataSource {
   getSelfUid: () => string;
   searchMessages: (query: GlobalSearchQuery) => Promise<GlobalSearchResponse>;
   getFileTypeCategories: () => Promise<GlobalSearchFileTypeCategory[]>;
+  // Cloud-docs full-text search (octo-docs-backend POST /api/v1/docs/search).
+  // Optional so existing DataSource fakes/tests stay valid; the docs tab is
+  // only rendered where a real API data source provides it.
+  searchDocs?: (query: DocSearchQuery) => Promise<DocSearchResponse>;
+}
+
+// --- Cloud-docs search (octo-docs-backend) -------------------------------
+// doc_type enum as returned/accepted by the backend search endpoint.
+export type DocSearchDocType = "doc" | "sheet" | "board";
+
+export interface DocSearchItem {
+  docId: string;
+  title: string;
+  docType: DocSearchDocType;
+  /** updated_at as epoch millis (backend `updatedAt`). */
+  updatedAt: number;
+  /** The doc's real space id (backend `spaceId`), passed to buildDocLink's `?sp=` so the standalone preflight addresses the doc's own space. */
+  spaceId?: string;
+  /**
+   * OpenSearch-generated highlight fragment (may contain <em></em>).
+   * MUST be rendered with an <em>-only allowlist (escape everything else)
+   * to avoid XSS — never dangerouslySetInnerHTML the raw value.
+   */
+  highlight?: string;
+}
+
+export interface DocSearchQuery {
+  keyword: string;
+  docType?: DocSearchDocType | DocSearchDocType[];
+  page: number; // 1-based
+  pageSize: number;
+  signal?: AbortSignal;
+}
+
+export interface DocSearchResponse {
+  total: number;
+  items: DocSearchItem[];
 }
 
 export interface GlobalSearchChannelOption {

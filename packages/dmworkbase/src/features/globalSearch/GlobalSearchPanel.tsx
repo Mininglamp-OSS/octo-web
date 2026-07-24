@@ -9,6 +9,7 @@ import TabGroup from "../../Components/GlobalSearch/tab-group";
 import TabFile from "../../Components/GlobalSearch/tab-file";
 import { Channel } from "wukongimjssdk";
 import GlobalContentSearchPanel from "../../Components/GlobalSearch/GlobalContentSearchPanel";
+import DocSearchPanel from "../../Components/GlobalSearch/DocSearchPanel";
 import GlobalSearchFilterPanel from "../../Components/GlobalSearch/GlobalSearchFilterPanel";
 import GlobalChatSearchPanel from "../globalChatSearch/GlobalChatSearchPanel";
 import { createGlobalSearchApiDataSource } from "../../bridge/globalSearch/createGlobalSearchDataSource";
@@ -19,7 +20,10 @@ import {
   type GlobalSearchDataSource,
   type GlobalSearchFilters,
 } from "../../Service/SearchTypes";
-import type { ChannelSearchItem } from "../../Service/SearchTypes";
+import type {
+  ChannelSearchItem,
+  DocSearchItem,
+} from "../../Service/SearchTypes";
 import { canLocateChannelSearchItem } from "../../bridge/channelSearch/locate";
 import WKApp from "../../App";
 import { t as translate } from "../../i18n";
@@ -46,6 +50,10 @@ export interface GlobalSearchProps {
   dataSource?: GlobalSearchDataSource;
   contentSearchEnabled?: boolean;
   onLocateContentItem?: (item: ChannelSearchItem) => void;
+  // Host-provided opener for a cloud-docs search hit (docs tab). Route/endpoint
+  // is a deployment concern; when omitted the docs tab still searches but the
+  // click is a no-op (see handleOpenDoc).
+  onOpenDoc?: (item: DocSearchItem) => void;
   initialState?: Partial<GlobalSearchState>;
 }
 
@@ -141,6 +149,23 @@ export default class GlobalSearch extends Component<
       console.warn("[GlobalSearch] showConversation failed", err);
     }
     this.props.hideModal?.();
+  };
+
+  // Cloud-docs tab: open the clicked doc via the host `onOpenDoc` (route/endpoint
+  // is a deployment concern still being finalized); when unwired this is a no-op
+  // plus a console hint rather than a bogus navigation. The doc opens in a new
+  // browser tab, so we intentionally keep this search modal open (the current
+  // page is untouched) — letting the user click more results in a row.
+  handleOpenDoc = (item: DocSearchItem) => {
+    if (this.props.onOpenDoc) {
+      this.props.onOpenDoc(item);
+      return;
+    }
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[GlobalSearch] onOpenDoc not wired; cannot open cloud doc",
+      item.docId
+    );
   };
 
   // 同时挂载所有 tab 组件，通过 display 切换可见性。
@@ -242,6 +267,14 @@ export default class GlobalSearch extends Component<
               onClick={onClickOf("file")}
             />
           )}
+        </div>
+        <div className="wk-search-tabs__panel" style={panelStyle("docs")}>
+          <DocSearchPanel
+            keyword={vm.keyword}
+            dataSource={this.globalDataSource}
+            isActive={currentKey === "docs"}
+            onOpenDoc={this.handleOpenDoc}
+          />
         </div>
         {showSharedFilter && (
           <aside className="wk-search-tabs__shared-filter">

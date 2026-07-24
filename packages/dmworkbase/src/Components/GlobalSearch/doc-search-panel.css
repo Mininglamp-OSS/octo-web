@@ -1,0 +1,119 @@
+/* Cloud-docs search tab. Mirrors the chrome of the message/file content panels
+   (see global-content-search-panel.css) using the shared theme tokens from
+   theme/semantic.css. Kept token-only (no literal fallbacks) to match the
+   existing panels and to inherit light/dark theming automatically. */
+.wk-doc-search {
+  height: 100%;
+  min-height: 0;
+}
+.wk-doc-search__list {
+  height: var(--wk-global-search-content-height, min(58vh, 640px));
+  overflow: auto;
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+}
+.wk-doc-search__item {
+  display: flex;
+  gap: var(--wk-sp-3);
+  width: 100%;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: 0;
+  border-radius: var(--wk-r-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  align-items: flex-start;
+}
+.wk-doc-search__item:hover {
+  background: var(--wk-bg-item-hover);
+}
+.wk-doc-search__icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--wk-r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--wk-text-inverse);
+  background: var(--wk-text-accent);
+}
+/* doc_type accent colours. Light values follow the product palette
+   (blue/green/orange); dark variants are dimmed to match the item-file.css
+   dark-mode convention. */
+.wk-doc-search__icon--doc {
+  background: #3370ff;
+}
+.wk-doc-search__icon--sheet {
+  background: #00b42a;
+}
+.wk-doc-search__icon--board {
+  background: #f7734b;
+}
+body[theme-mode="dark"] .wk-doc-search__icon--doc {
+  background: #2b5fd9;
+}
+body[theme-mode="dark"] .wk-doc-search__icon--sheet {
+  background: #009a24;
+}
+body[theme-mode="dark"] .wk-doc-search__icon--board {
+  background: #d9603c;
+}
+.wk-doc-search__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wk-doc-search__title {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--wk-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-doc-search__snippet {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-text-secondary);
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wk-doc-search__snippet em {
+  font-style: normal;
+  color: var(--wk-text-accent);
+  font-weight: 600;
+}
+.wk-doc-search__sub {
+  font-size: 12px;
+  color: var(--wk-text-tertiary);
+  margin-top: 4px;
+}
+.wk-doc-search__hint,
+.wk-doc-search__empty {
+  padding: var(--wk-sp-6) var(--wk-sp-4);
+  text-align: center;
+  color: var(--wk-text-tertiary);
+  font-size: 13px;
+}
+.wk-doc-search__loadmore {
+  display: flex;
+  gap: var(--wk-sp-2);
+  align-items: center;
+  justify-content: center;
+  padding: var(--wk-sp-3);
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}
+.wk-doc-search__loadmore button {
+  border: 0;
+  background: transparent;
+  color: var(--wk-text-accent);
+  cursor: pointer;
+  font-size: 12px;
+}

@@ -47,6 +47,7 @@ import { ChannelInfoListener } from "wukongimjssdk";
 import { ChatMenus } from "../../App";
 import ConversationContext from "../../Components/Conversation/context";
 import GlobalSearch from "../../features/globalSearch/GlobalSearchPanel";
+import { buildDocLink } from "../../Utils/docLink";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import SpaceList from "../../Components/SpaceList";
 import SpaceCreate from "../../Components/SpaceCreate";
@@ -1970,6 +1971,22 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       void handleGlobalSearchClick(item, type, () => {
                         vm.showGlobalSearch = false;
                       });
+                    }}
+                    onOpenDoc={(item) => {
+                      // Open the clicked cloud-doc in the standalone `/d/:docId`
+                      // page, carrying the doc's real space on `?sp=` so the
+                      // preflight addresses the right space (buildDocLink). The
+                      // `/d` namespace is intercepted by apps/web Layout OUTSIDE
+                      // the app shell and is not a RouteManager route, so it can't
+                      // be reached by an in-shell soft push — open it in a new tab
+                      // (same as DocsHome's onOpenInNewPage), which leaves this
+                      // page untouched. The search modal stays open so the user
+                      // can open more results in a row.
+                      const url = buildDocLink({
+                        docId: item.docId,
+                        space: item.spaceId,
+                      });
+                      window.open(url, "_blank", "noopener,noreferrer");
                     }}
                     hideModal={() => {
                       vm.showGlobalSearch = false;

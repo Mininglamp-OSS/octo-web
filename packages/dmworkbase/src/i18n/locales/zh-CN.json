@@ -1346,5 +1346,11 @@
   "secrets.error.deleteFailed": "删除失败，请重试",
   "secrets.error.copyFailed": "复制失败",
   "secrets.pasteGuard.title": "已拦截密钥粘贴",
-  "secrets.pasteGuard.content": "为避免密钥进入聊天，已拦截这次明文粘贴。点这里改用密钥管理保存。"
+  "secrets.pasteGuard.content": "为避免密钥进入聊天，已拦截这次明文粘贴。点这里改用密钥管理保存。",
+  "globalSearch.tab.docs": "云文档",
+  "globalSearch.docs.emptyHint": "输入关键词搜索云文档",
+  "globalSearch.docs.noResults": "没有找到相关云文档",
+  "globalSearch.docs.loading": "搜索中…",
+  "globalSearch.docs.searchFailed": "搜索失败，请稍后重试",
+  "globalSearch.docs.loadMore": "加载更多"
 }
