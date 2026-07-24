@@ -101,9 +101,9 @@ describe('attachment API — bare-relative docs paths (frontend-design §3.5)', 
 })
 
 describe('uploadImage — end-to-end flow yields attachId + signed src, never base64', () => {
-  it('sends SVG bytes to the dedicated validated endpoint (including empty browser MIME)', async () => {
+  it.each(['', 'image/svg'])('sends SVG bytes to the validated endpoint for browser MIME %j', async (type) => {
     api.responder = () => ({ data: { attachId: 'att_svg', url: 'https://assets.octo.example.com/x.svg' }, status: 200 })
-    const file = new File(['<svg/>'], 'diagram.svg', { type: '' })
+    const file = new File(['<svg/>'], 'diagram.svg', { type })
     const result = await uploadImage('d_1', file)
 
     expect(result).toEqual({ attachId: 'att_svg', src: 'https://assets.octo.example.com/x.svg' })
@@ -117,6 +117,7 @@ describe('uploadImage — end-to-end flow yields attachId + signed src, never ba
       'Content-Type': 'image/svg+xml',
       'X-File-Name': 'diagram.svg',
     })
+    api.calls.length = 0
   })
 
   it('does not route a non-SVG MIME to the SVG endpoint merely because the name ends in .svg', async () => {
