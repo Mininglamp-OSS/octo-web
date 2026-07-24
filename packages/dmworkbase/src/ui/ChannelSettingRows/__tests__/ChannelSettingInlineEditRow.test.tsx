@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ChannelSettingInlineEditRow } from "../index";
@@ -69,5 +69,27 @@ describe("ChannelSettingInlineEditRow", () => {
     fireEvent.click(save);
 
     expect(onSave).toHaveBeenCalledWith("");
+  });
+
+  it("keeps the draft open when saving fails", async () => {
+    const onSave = vi.fn(() => Promise.resolve(false));
+
+    render(
+      <ChannelSettingInlineEditRow
+        title="Group name"
+        value="Old name"
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Group name" }));
+
+    const input = screen.getByDisplayValue("Old name") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Unsaved draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "base.common.save" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith("Unsaved draft"));
+    expect(screen.getByDisplayValue("Unsaved draft")).toBe(input);
+    expect(screen.getByRole("button", { name: "base.common.cancel" })).toBeEnabled();
   });
 });

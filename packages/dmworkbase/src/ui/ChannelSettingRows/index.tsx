@@ -210,8 +210,10 @@ export function ChannelSettingInlineEditRow({
             setSaving(true);
             try {
               const saved = await onSave(draft);
-              if (saved !== false) setCurrentValue(draft);
-              setEditing(false);
+              if (saved !== false) {
+                setCurrentValue(draft);
+                setEditing(false);
+              }
             } catch {
               // The bridge/container owns the user-facing error message.
             } finally {
