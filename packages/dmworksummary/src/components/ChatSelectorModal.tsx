@@ -88,26 +88,42 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     async loadMembers() {
         const channel = this.props.channel;
-        if (!channel) return;
         this.setState({ loading: true });
         try {
-            const sdk = WKSDK.shared();
-            await sdk.channelManager.syncSubscribes(channel);
-            const subscribers = sdk.channelManager.getSubscribes(channel) || [];
-            const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid));
-            const roles = new Map<string, number>();
-            for (const m of humans) {
-                if (m.role != null) roles.set(m.uid, m.role);
+            if (channel) {
+                // 有选中聊天：加载该群聊成员
+                const sdk = WKSDK.shared();
+                await sdk.channelManager.syncSubscribes(channel);
+                const subscribers = sdk.channelManager.getSubscribes(channel) || [];
+                const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid));
+                const roles = new Map<string, number>();
+                for (const m of humans) {
+                    if (m.role != null) roles.set(m.uid, m.role);
+                }
+                this.setState({
+                    memberRoles: roles,
+                    candidates: humans.map((m: any) => ({
+                        chat_id: m.uid,
+                        chat_type: "direct" as const,
+                        name: m.name || m.uid,
+                        member_count: null,
+                    })),
+                });
+            } else {
+                // 无选中聊天：加载全局联系人
+                const result = await WKApp.dataSource.searchUser("");
+                const list = Array.isArray(result) ? result : (result?.list ?? []);
+                const humans = list.filter((m: any) => !m.is_bot && !isBot(m.uid || m.user_id || ""));
+                this.setState({
+                    memberRoles: new Map<string, number>(),
+                    candidates: humans.map((m: any) => ({
+                        chat_id: m.uid || m.user_id || m.id,
+                        chat_type: "direct" as const,
+                        name: m.name || m.username || m.uid || m.user_id || m.id,
+                        member_count: null,
+                    })),
+                });
             }
-            this.setState({
-                memberRoles: roles,
-                candidates: humans.map((m: any) => ({
-                    chat_id: m.uid,
-                    chat_type: "direct" as const,
-                    name: m.name || m.uid,
-                    member_count: null,
-                })),
-            });
         } catch {
             this.setState({ candidates: [] });
         } finally {
@@ -427,11 +443,15 @@ export default class ChatSelectorModal extends Component<Props, State> {
             { key: "direct", label: t("summary.chatSelector.allDirects") },
         ];
 
-        const memberTabs = [
-            { key: "all_members", label: t("summary.chatSelector.allMembers") },
-            { key: "managers", label: t("summary.chatSelector.managers") },
-            { key: "normal_members", label: t("summary.chatSelector.normalMembers") },
-        ];
+        const memberTabs = this.props.channel
+            ? [
+                { key: "all_members", label: t("summary.chatSelector.allMembers") },
+                { key: "managers", label: t("summary.chatSelector.managers") },
+                { key: "normal_members", label: t("summary.chatSelector.normalMembers") },
+            ]
+            : [
+                { key: "all_members", label: t("summary.chatSelector.allMembers") },
+            ];
 
         const currentTabs = mode === "members" ? memberTabs : chatTabs;
 
