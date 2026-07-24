@@ -34,11 +34,14 @@ interface Props {
     teamCitations?: TeamCitationItem[];
     members?: MemberStatus[];
     hidePlainCitations?: boolean;
+    disableTeamMemberPreview?: boolean;
     showOutline?: boolean;
+    /** Reuse the reader typography inside an existing card/modal without adding another card shell. */
+    embedded?: boolean;
     outlineLabel: string;
 }
 
-export default function SummaryMarkdownReader({ content, citations = [], teamCitations = [], members = [], hidePlainCitations = false, showOutline = true, outlineLabel }: Props) {
+export default function SummaryMarkdownReader({ content, citations = [], teamCitations = [], members = [], hidePlainCitations = false, disableTeamMemberPreview = false, showOutline = true, embedded = false, outlineLabel }: Props) {
     const outline = useMemo(() => extractSummaryOutline(content), [content]);
     const rootRef = useRef<HTMLDivElement>(null);
     const [activeId, setActiveId] = useState(outline[0]?.id || "");
@@ -69,9 +72,9 @@ export default function SummaryMarkdownReader({ content, citations = [], teamCit
         setActiveId(id);
     };
 
-    return <div className="summary-markdown-reader" ref={rootRef}>
+    return <div className={`summary-markdown-reader${embedded ? " summary-markdown-reader--embedded" : ""}`} ref={rootRef}>
         <article className="summary-markdown-reader__content">
-            <CitationText content={content} citations={citations} teamCitations={teamCitations} members={members} hidePlainCitations={hidePlainCitations} headingIds={outline.map(item => item.id)} />
+            <CitationText content={content} citations={citations} teamCitations={teamCitations} members={members} hidePlainCitations={hidePlainCitations} disableTeamMemberPreview={disableTeamMemberPreview} headingIds={outline.map(item => item.id)} />
         </article>
         {showOutline && outline.length > 0 ? <nav className="summary-markdown-reader__outline" aria-label={outlineLabel}>
             <div className="summary-markdown-reader__outline-title">{outlineLabel}</div>

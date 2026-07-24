@@ -9,44 +9,78 @@
 
 .summary-markdown-reader__content {
     min-width: 0;
-    padding: var(--wk-sp-6) var(--wk-sp-8) var(--wk-sp-8);
+    padding: var(--wk-sp-5) var(--wk-sp-8) var(--wk-sp-8);
     overflow-wrap: anywhere;
     border: 1px solid var(--wk-border-default);
     border-radius: var(--wk-r-md);
     background: var(--wk-bg-surface);
 }
+.summary-markdown-reader--embedded { display: block; width: 100%; margin: 0; }
+.summary-markdown-reader--embedded .summary-markdown-reader__content { padding: 0; border: 0; border-radius: 0; background: transparent; }
 .summary-markdown-reader__content .summary-content-markdown { color: var(--wk-text-primary); font-size: var(--wk-text-size-md); line-height: 24px; }
-.summary-markdown-reader__content .summary-content-markdown h1 { margin: 0 0 var(--wk-sp-2); font-size: 22px; line-height: 29px; letter-spacing: -0.01em; }
-.summary-markdown-reader__content .summary-content-markdown h2 { scroll-margin-top: var(--wk-sp-6); margin: var(--wk-sp-8) 0 var(--wk-sp-4); font-size: 18px; line-height: 26px; }
+.summary-markdown-reader__content .summary-content-markdown h1 { margin: 0 0 var(--wk-sp-2); font-size: 22px; line-height: 29px; font-weight: 700; letter-spacing: -0.01em; }
+.summary-markdown-reader__content .summary-content-markdown h2 { scroll-margin-top: var(--wk-sp-6); margin: var(--wk-sp-6) 0 var(--wk-sp-3); color: var(--wk-text-primary); font-size: 18px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
 .summary-markdown-reader__content .summary-content-markdown h2:first-child { margin-top: 0; }
-.summary-markdown-reader__content .summary-content-markdown h2:not(:first-child) { padding-top: var(--wk-sp-8); border-top: 1px solid var(--wk-border-subtle); }
+.summary-markdown-reader__content .summary-content-markdown h2:not(:first-child) { padding-top: var(--wk-sp-6); border-top: 1px solid var(--wk-border-subtle); }
+.summary-markdown-reader__content .summary-content-markdown hr + h2 { margin-top: 0; padding-top: 0; border-top: 0; }
 .summary-markdown-reader__content .summary-content-markdown h3 { scroll-margin-top: var(--wk-sp-6); margin: var(--wk-sp-6) 0 var(--wk-sp-2); font-size: 16px; line-height: 24px; }
 .summary-markdown-reader__content .summary-content-markdown h4 { margin: var(--wk-sp-5) 0 var(--wk-sp-2); font-size: 14px; line-height: 20px; }
 .summary-markdown-reader__content .summary-content-markdown h5,
 .summary-markdown-reader__content .summary-content-markdown h6 { margin: var(--wk-sp-4) 0 var(--wk-sp-2); font-size: 12px; line-height: 18px; }
-.summary-markdown-reader__content .summary-content-markdown p { margin: var(--wk-sp-2) 0; line-height: 24px; }
+.summary-markdown-reader__content .summary-content-markdown p { margin: var(--wk-sp-2) 0; color: var(--wk-text-primary); line-height: 24px; }
+.summary-markdown-reader__content .summary-content-markdown strong { font-weight: 600; }
+.summary-markdown-reader__content .summary-content-markdown em { color: var(--wk-text-secondary); }
+.summary-markdown-reader__content .summary-content-markdown del { color: var(--wk-text-tertiary); }
 .summary-markdown-reader__content .summary-content-markdown ul,
 .summary-markdown-reader__content .summary-content-markdown ol { margin: var(--wk-sp-2) 0 var(--wk-sp-4); padding-left: var(--wk-sp-6); }
 .summary-markdown-reader__content .summary-content-markdown li { margin: var(--wk-sp-2) 0; line-height: 24px; }
+.summary-markdown-reader__content .summary-content-markdown li::marker { color: var(--wk-icon-muted); }
+.summary-markdown-reader__content .summary-content-markdown li > ul,
+.summary-markdown-reader__content .summary-content-markdown li > ol { margin: var(--wk-sp-1) 0 var(--wk-sp-2); }
 .summary-markdown-reader__content .summary-content-markdown a { color: var(--wk-text-accent); text-decoration-color: var(--wk-ai-border); text-underline-offset: 2px; }
 .summary-markdown-reader__content .summary-content-markdown blockquote { margin: var(--wk-sp-3) 0 var(--wk-sp-5); padding: var(--wk-sp-3) var(--wk-sp-4); border: 1px solid var(--wk-border-default); border-left: 3px solid var(--wk-color-info); border-radius: 0 var(--wk-r-md) var(--wk-r-md) 0; color: var(--wk-text-secondary); background: var(--wk-color-info-bg); }
 .summary-markdown-reader__content .summary-content-markdown blockquote > :first-child { margin-top: 0; }
 .summary-markdown-reader__content .summary-content-markdown blockquote > :last-child { margin-bottom: 0; }
+.summary-markdown-reader__content .summary-content-markdown blockquote blockquote { margin: var(--wk-sp-2) 0 0; padding: var(--wk-sp-2) var(--wk-sp-3); border-left-color: var(--wk-border-strong); background: var(--wk-bg-surface); }
+.summary-markdown-reader__content .summary-content-markdown blockquote blockquote p { font-size: var(--wk-text-size-sm); line-height: 18px; }
 .summary-markdown-reader__content .summary-content-markdown code { padding: var(--wk-sp-0-5) var(--wk-sp-1-5); border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-xs); color: var(--wk-color-info); background: var(--wk-bg-elevated); font-size: var(--wk-text-size-sm); }
 .summary-markdown-reader__content .summary-content-markdown pre { margin: var(--wk-sp-4) 0; padding: var(--wk-sp-4); overflow-x: auto; border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-md); background: var(--wk-bg-elevated); }
 .summary-markdown-reader__content .summary-content-markdown pre code { padding: 0; border: 0; color: inherit; background: transparent; line-height: 20px; }
-.summary-markdown-reader__content .summary-markdown-table-wrap { width: 100%; margin: var(--wk-sp-4) 0; overflow-x: auto; border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-md); scrollbar-gutter: stable; }
-.summary-markdown-reader__content .summary-content-markdown table { width: 100%; min-width: 620px; margin: 0; border-spacing: 0; border-collapse: separate; }
+.summary-markdown-reader__content .summary-markdown-table-wrap { display: block; width: 100%; max-width: 100%; margin: var(--wk-sp-3) 0 var(--wk-sp-5); overflow-x: auto; border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-md); scrollbar-gutter: stable; }
+.summary-markdown-reader__content .summary-markdown-table-wrap > table { display: table; width: 100%; min-width: 620px; margin: 0; overflow: visible; table-layout: auto; border: 0; border-radius: 0; border-spacing: 0; border-collapse: separate; }
 .summary-markdown-reader__content .summary-content-markdown th,
-.summary-markdown-reader__content .summary-content-markdown td { padding: var(--wk-sp-2) var(--wk-sp-3); border-right: 1px solid var(--wk-border-default); border-bottom: 1px solid var(--wk-border-default); text-align: left; vertical-align: top; font-size: var(--wk-text-size-sm); line-height: 18px; }
+.summary-markdown-reader__content .summary-content-markdown td { min-width: 0; padding: 9px var(--wk-sp-3); border: 0; border-right: 1px solid var(--wk-border-default); border-bottom: 1px solid var(--wk-border-default); overflow-wrap: break-word; text-align: left; vertical-align: top; font-size: var(--wk-text-size-sm); line-height: 20px; }
 .summary-markdown-reader__content .summary-content-markdown th { color: var(--wk-text-secondary); background: var(--wk-bg-elevated); }
+.summary-markdown-reader__content .summary-content-markdown td { background: var(--wk-bg-surface); }
+.summary-markdown-reader__content .summary-content-markdown th[align="center"],
+.summary-markdown-reader__content .summary-content-markdown td[align="center"] { text-align: center; }
+.summary-markdown-reader__content .summary-content-markdown th[align="right"],
+.summary-markdown-reader__content .summary-content-markdown td[align="right"] { text-align: right; }
 .summary-markdown-reader__content .summary-content-markdown tr:last-child td { border-bottom: 0; }
 .summary-markdown-reader__content .summary-content-markdown th:last-child,
 .summary-markdown-reader__content .summary-content-markdown td:last-child { border-right: 0; }
 .summary-markdown-reader__content .summary-content-markdown tbody tr:hover td { background: var(--wk-bg-hover); }
 .summary-markdown-reader__content .summary-content-markdown img { display: block; max-width: 100%; height: auto; margin: var(--wk-sp-4) 0; border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-md); }
-.summary-markdown-reader__content .summary-content-markdown input[type="checkbox"] { width: 16px; height: 16px; margin: var(--wk-sp-1) var(--wk-sp-2) 0 0; accent-color: var(--wk-text-accent); }
-.summary-markdown-reader__content .summary-content-markdown hr { height: 1px; margin: var(--wk-sp-5) 0; border: 0; background: var(--wk-border-default); }
+.summary-markdown-reader__content .summary-content-markdown .contains-task-list { padding-left: 0; list-style: none; }
+.summary-markdown-reader__content .summary-content-markdown .task-list-item { display: flex; align-items: flex-start; gap: var(--wk-sp-2); padding-left: 0; }
+.summary-markdown-reader__content .summary-content-markdown input[type="checkbox"] { appearance: none; display: grid; place-content: center; width: 16px; height: 16px; flex: 0 0 16px; margin: var(--wk-sp-1) 0 0; border: 1px solid var(--wk-border-strong); border-radius: var(--wk-r-xs); background: var(--wk-bg-surface); color: white; }
+.summary-markdown-reader__content .summary-content-markdown input[type="checkbox"]::before { width: 8px; height: 4px; border-bottom: 2px solid currentColor; border-left: 2px solid currentColor; content: ""; visibility: hidden; transform: translateY(-1px) rotate(-45deg); }
+.summary-markdown-reader__content .summary-content-markdown input[type="checkbox"]:checked { border-color: var(--wk-brand-primary); background: var(--wk-brand-primary); }
+.summary-markdown-reader__content .summary-content-markdown input[type="checkbox"]:checked::before { visibility: visible; }
+.summary-markdown-reader__content .summary-content-markdown .task-list-item:has(input:checked) { color: var(--wk-text-secondary); }
+.summary-markdown-reader__content .summary-content-markdown hr { height: 1px; margin: var(--wk-sp-6) 0 var(--wk-sp-5); border: 0; background: var(--wk-border-subtle); }
+/* LLM 输出偶尔在正文开头连续生成 `---`。它们不承载章节语义，隐藏后避免卡片顶部出现空白和多条横线。 */
+.summary-markdown-reader__content .summary-content-markdown > hr:first-child,
+.summary-markdown-reader__content .summary-content-markdown > hr:first-child + hr,
+.summary-markdown-reader__content .summary-content-markdown > hr:first-child + hr + hr { display: none; }
+.summary-markdown-reader__content .summary-content-markdown a:has(> img) { display: block; margin: var(--wk-sp-4) 0; overflow: hidden; border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-md); background: var(--wk-bg-base); }
+.summary-markdown-reader__content .summary-content-markdown a > img { margin: 0; border: 0; border-radius: 0; }
+.summary-markdown-reader__content .summary-content-markdown [data-footnotes] { margin-top: var(--wk-sp-8); padding-top: var(--wk-sp-4); border-top: 1px solid var(--wk-border-default); color: var(--wk-text-tertiary); font-size: var(--wk-text-size-sm); }
+.summary-markdown-reader__content .summary-content-markdown [data-footnote-ref] { display: inline-flex; min-width: 16px; height: 16px; align-items: center; justify-content: center; margin-left: var(--wk-sp-0-5); border-radius: var(--wk-r-full); background: var(--wk-bg-elevated); font-size: var(--wk-text-size-xs); text-decoration: none; vertical-align: super; }
+.summary-markdown-reader__content .summary-content-markdown [data-footnotes] ol { margin: 0; padding-left: var(--wk-sp-5); }
+.summary-markdown-reader__content .summary-content-markdown [data-footnotes] li,
+.summary-markdown-reader__content .summary-content-markdown [data-footnotes] p { margin: 0; color: var(--wk-text-tertiary); font-size: var(--wk-text-size-sm); line-height: 18px; }
+.summary-markdown-reader__content .summary-content-markdown [data-footnote-backref] { display: inline-flex; margin-left: var(--wk-sp-2); white-space: nowrap; }
 
 .summary-markdown-reader__outline {
     position: sticky;
@@ -58,7 +92,7 @@
     flex-direction: column;
     gap: var(--wk-sp-1);
     padding: var(--wk-sp-2) 0;
-    background: transparent;
+    background: var(--wk-bg-base);
 }
 .summary-markdown-reader__outline-title { margin-bottom: var(--wk-sp-1); color: var(--wk-text-tertiary); font-size: var(--wk-text-size-sm); line-height: 18px; font-weight: 600; }
 .summary-markdown-reader__outline-link { min-height: var(--wk-sp-8); display: flex; align-items: center; gap: var(--wk-sp-2); padding: var(--wk-sp-1) var(--wk-sp-2); border-radius: var(--wk-r-sm); color: var(--wk-text-secondary); text-decoration: none; line-height: 1.5; }

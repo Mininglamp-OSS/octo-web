@@ -42,7 +42,6 @@ import {
     formatScheduleSummary,
     shouldReactivateOnSave,
 } from "../utils/summaryHelpers";
-import CitationText from "../components/CitationText";
 import SummaryMarkdownReader from "../ui/SummaryMarkdownReader";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
@@ -2217,7 +2216,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div className="summary-detail-personal summary-detail-streaming">
                 <div className="summary-detail-content-box">
-                    <CitationText content={this.state.streamingContent} citations={[]} />
+                    <SummaryMarkdownReader content={this.state.streamingContent} citations={[]} showOutline={false} embedded outlineLabel={this.context.t("summary.detail.outline")} />
                 </div>
             </div>
         );
@@ -2232,7 +2231,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <span>{this.context.t("summary.detail.teamSummary")}</span>
                 </div>
                 <div className="summary-detail-content-box">
-                    <CitationText content={this.state.teamStreamingContent} citations={[]} members={this.state.members} />
+                    <SummaryMarkdownReader content={this.state.teamStreamingContent} citations={[]} members={this.state.members} showOutline={false} embedded outlineLabel={this.context.t("summary.detail.outline")} />
                 </div>
             </div>
         );
@@ -2380,12 +2379,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <section className="summary-version-detail-section">
                             <div className="summary-version-detail-label">{t("summary.detail.versionDetailResult")}</div>
                             <div className="summary-version-detail-content">
-                                <CitationText
+                                <SummaryMarkdownReader
                                     content={versionDetail.content}
                                     citations={versionDetail.citations || []}
                                     teamCitations={versionDetail.team_citations || []}
                                     members={this.state.members}
                                     disableTeamMemberPreview
+                                    showOutline={false}
+                                    embedded
+                                    outlineLabel={t("summary.detail.outline")}
                                 />
                             </div>
                         </section>
@@ -2582,12 +2584,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {t("summary.detail.previousTeamSummaryDesc")}
                     </div>
                     <div className="summary-detail-content-box">
-                        <CitationText
+                        <SummaryMarkdownReader
                             content={detail.result.content}
                             citations={detail.result.citations || []}
                             teamCitations={detail.result.team_citations || []}
                             members={members}
                             hidePlainCitations
+                            showOutline={false}
+                            embedded
+                            outlineLabel={t("summary.detail.outline")}
                         />
                     </div>
                 </div>
@@ -2892,14 +2897,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     collapsed 时传截断后的 content（截断后编号可能丢失，
                                     可接受），展开时传完整 content。他人那条逻辑不变。 */}
                                 {isMe ? (
-                                    <CitationText
+                                    <SummaryMarkdownReader
                                         content={expanded || !needsTruncate ? displayContent : displayContent.slice(0, 100) + "..."}
                                         citations={displayCitations}
+                                        showOutline={false}
+                                        embedded
+                                        outlineLabel={t("summary.detail.outline")}
                                     />
                                 ) : expanded ? (
-                                    <CitationText
+                                    <SummaryMarkdownReader
                                         content={displayContent}
                                         citations={displayCitations}
+                                        showOutline={false}
+                                        embedded
+                                        outlineLabel={t("summary.detail.outline")}
                                     />
                                 ) : (
                                     <div>
@@ -3009,7 +3020,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 {this.renderPersonalVersionHistory()}
                 {myContent && this.canRevealPersonalContent() && (
                     <div className="summary-detail-participant-report-content">
-                        <CitationText content={myContent} citations={myCitations} />
+                        <SummaryMarkdownReader content={myContent} citations={myCitations} showOutline={false} embedded outlineLabel={t("summary.detail.outline")} />
                     </div>
                 )}
             </div>

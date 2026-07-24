@@ -73,6 +73,39 @@ function badgeByText(text: string) {
 }
 
 describe('CitationText — [n] vs [Pn] parsing', () => {
+    it('wraps GFM tables in a dedicated horizontal scroll region', () => {
+        const { container } = render(
+            <CitationText
+                content={'| 模块 | 状态 |\n| --- | --- |\n| 引用 | 完成 |'}
+                citations={[]}
+            />,
+        );
+
+        const wrapper = container.querySelector('.summary-markdown-table-wrap');
+        expect(wrapper).toBeTruthy();
+        expect(wrapper?.querySelector('table')).toBeTruthy();
+        expect(screen.getByRole('columnheader', { name: '模块' })).toBeTruthy();
+        expect(screen.getByRole('cell', { name: '完成' })).toBeTruthy();
+    });
+
+    it('renders the complete markdown structures used by the reader example', () => {
+        const { container } = render(
+            <CitationText
+                content={'# 完整示例\n\n**粗体**、*斜体*、~~删除~~\n\n> 外层\n>\n> > 嵌套引用\n\n- [x] 已完成\n- [ ] 待完成\n\n| 左对齐 | 居中 | 右对齐 |\n| :--- | :---: | ---: |\n| A | B | C |\n\n脚注[^1]\n\n[^1]: 脚注内容'}
+                citations={[]}
+            />,
+        );
+
+        expect(screen.getByRole('heading', { name: '完整示例' })).toBeTruthy();
+        expect(container.querySelector('strong')?.textContent).toBe('粗体');
+        expect(container.querySelector('del')?.textContent).toBe('删除');
+        expect(container.querySelectorAll('blockquote')).toHaveLength(2);
+        expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+        expect(container.querySelector('.summary-markdown-table-wrap > table')).toBeTruthy();
+        expect(container.innerHTML).toContain('text-align: center');
+        expect(container.querySelector('[data-footnotes]')).toBeTruthy();
+    });
+
     it('opens the cited message first and only jumps from the popover action', () => {
         const showConversation = vi.spyOn(WKApp.endpoints, 'showConversation');
         render(<CitationText content="结论 [37]" citations={[makeCitation({ index: 37 })]} />);

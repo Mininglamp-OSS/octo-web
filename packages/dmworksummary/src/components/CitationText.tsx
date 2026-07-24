@@ -48,6 +48,8 @@ const citationSchema = {
     tagNames: [...(defaultSchema.tagNames || []), 'citation', 'citationgroup', 'teamcitation'],
     attributes: {
         ...defaultSchema.attributes,
+        th: [...(defaultSchema.attributes?.th || []), 'align'],
+        td: [...(defaultSchema.attributes?.td || []), 'align'],
         citation: ['index', 'displayindex', 'badgekey'],
         citationgroup: ['indices', 'displayindices', 'badgekey'],
         teamcitation: ['index', 'badgekey'],
