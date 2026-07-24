@@ -827,6 +827,7 @@
 }
 
 .skill-market-card__owner-bot-icon,
+.skill-market-card__owner-platform-icon,
 .skill-market-card__owner-user-icon {
   flex: 0 0 auto;
 }

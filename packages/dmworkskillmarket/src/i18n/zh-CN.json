@@ -63,6 +63,7 @@
     "downloads": "下载"
   },
   "card": {
+    "platformPublisher": "官方发布",
     "editAriaLabel": "编辑 {{name}}",
     "deleteAriaLabel": "删除 {{name}}",
     "statsAriaLabel": "Skill 统计",
