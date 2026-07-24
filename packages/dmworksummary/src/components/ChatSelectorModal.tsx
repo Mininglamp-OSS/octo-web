@@ -91,6 +91,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     componentDidUpdate(prevProps: Props) {
         if (this.props.visible && !prevProps.visible) {
+            if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
             if (this.props.mode === "members") {
                 this.setState({
                     localSelectedMembers: [...(this.props.selectedMembers ?? [])],
@@ -200,15 +201,18 @@ export default class ChatSelectorModal extends Component<Props, State> {
     }
 
     handleIncludeArchivedChange = (checked: boolean) => {
+        if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
         this.setState({ includeArchived: checked, visibleStart: 0, visibleEnd: 20 });
         this.loadCandidates(checked);
     };
 
     handleKeywordChange = (val: string) => {
+        if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
         this.setState({ keyword: val, visibleStart: 0, visibleEnd: 20 });
     };
 
     handleTabChange = (tab: string) => {
+        if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
         this.setState({ activeTab: tab as State["activeTab"], visibleStart: 0, visibleEnd: 20 });
     };
 

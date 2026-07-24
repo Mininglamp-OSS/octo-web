@@ -1027,22 +1027,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 <div className="summary-workbench-header">
                     <span className="summary-workbench-header-emoji">🚀</span>
                     <span className="summary-workbench-title">{translate("summary.create.title")}</span>
-                    <div className="summary-workbench-mode-switch">
-                        <button
-                            type="button"
-                            className={`summary-workbench-mode-btn${mode === 'normal' ? ' summary-workbench-mode-btn--active' : ''}`}
-                            onClick={() => this.handleSelectMode('normal')}
-                        >
-                            {translate("summary.create.start")}
-                        </button>
-                        <button
-                            type="button"
-                            className={`summary-workbench-mode-btn${mode === 'agent' ? ' summary-workbench-mode-btn--active' : ''}`}
-                            onClick={() => this.handleSelectMode('agent')}
-                        >
-                            {translate("summary.create.agentStart")}
-                        </button>
-                    </div>
                 </div>
 
                 {/* Content card */}
@@ -1301,8 +1285,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <span>{translate("summary.create.selectChat")}</span>
                                 </button>
                             )}
-                            {/* 选择参与者（仅 normal 模式） */}
-                            {mode !== 'agent' && (
+                            {/* 选择参与者 */}
                             <div className="summary-workbench-chat-row">
                                 {selectedMembers.length > 0 && (
                                     <div className="summary-workbench-chat-chips" ref={this.memberChipsContainerRef}>
@@ -1348,20 +1331,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <span>{translate("summary.create.selectMembers")}</span>
                                 </button>
                             </div>
-                            )}
                         </div>
-                        {mode !== 'agent' && (
-                            <Button
-                                theme="solid"
-                                className="summary-workbench-start-btn"
-                                loading={submitting}
-                                disabled={!this.canSubmit() || submitting}
-                                onClick={this.handlePrimaryClick}
-                            >
-                                <Sparkles size={16} />
-                                {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
-                            </Button>
-                        )}
+                        <Button
+                            theme="solid"
+                            className="summary-workbench-start-btn"
+                            loading={submitting}
+                            disabled={!this.canSubmit() || submitting}
+                            onClick={this.handlePrimaryClick}
+                        >
+                            <Sparkles size={16} />
+                            {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                        </Button>
                     </div>
                 </div>
 
