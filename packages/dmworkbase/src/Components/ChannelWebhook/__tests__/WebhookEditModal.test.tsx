@@ -20,6 +20,8 @@ const hoisted = vi.hoisted(() => ({
     .mockResolvedValue({ webhook_id: "iwh_new", token: "t", url: "/u" }),
   update: vi.fn().mockResolvedValue(undefined),
   subscribers: [] as any[],
+  toastSuccess: vi.fn(),
+  toastError: vi.fn(),
 }));
 
 // 自定义 Select mock：把每个 Option 渲染成可点击按钮（点击切换 value，多选语义）。
@@ -60,7 +62,11 @@ vi.mock("@douyinfe/semi-ui", () => {
       "data-checked": String(!!checked),
       onClick: () => onChange(!checked),
     });
-  return { Select, Switch, Toast: { success: vi.fn(), error: vi.fn() } };
+  return {
+    Select,
+    Switch,
+    Toast: { success: hoisted.toastSuccess, error: hoisted.toastError },
+  };
 });
 
 vi.mock("@douyinfe/semi-icons", () => ({
@@ -137,6 +143,8 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ webhook_id: "iwh_new", token: "t", url: "/u" });
   hoisted.update.mockReset().mockResolvedValue(undefined);
+  hoisted.toastSuccess.mockReset();
+  hoisted.toastError.mockReset();
   // 注意：订阅列表故意不含 self('me')——验证组件会显式把当前用户补进候选。
   hoisted.subscribers = [
     { uid: "u1", name: "Alice" },
@@ -224,6 +232,36 @@ describe("WebhookEditModal mention_uids picker", () => {
     expect(hoisted.create).toHaveBeenCalledTimes(1);
     const req = hoisted.create.mock.calls[0][1];
     expect(req.mention_uids).toEqual(["u1", "bot1"]);
+  });
+
+  it("create: stale result after scope change is not surfaced", async () => {
+    let resolveCreate!: (value: unknown) => void;
+    hoisted.create.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        })
+    );
+    const onSaved = vi.fn();
+
+    await render({
+      channel: { channelID: "g1" },
+      onSaved,
+    });
+    clickSave();
+    await flush();
+
+    await render({
+      channel: { channelID: "g2" },
+      onSaved,
+    });
+    await act(async () => {
+      resolveCreate({ webhook_id: "iwh_new", token: "t", url: "/u" });
+    });
+    await flush();
+
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(hoisted.toastSuccess).not.toHaveBeenCalled();
   });
 
   it("edit: clearing all selections sends an explicit empty array", async () => {
