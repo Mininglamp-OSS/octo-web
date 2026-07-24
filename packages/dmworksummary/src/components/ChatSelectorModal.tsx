@@ -111,12 +111,13 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 });
             } else {
                 // 无选中聊天：加载全局联系人
-                const result = await WKApp.dataSource.searchUser("");
-                const list = Array.isArray(result) ? result : (result?.list ?? []);
+                const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
                 const humans = list.filter((m: any) => !m.is_bot && !isBot(m.uid || m.user_id || ""));
+                // 限制最多 200 个，避免大量联系人导致 DOM 卡顿
+                const limited = humans.slice(0, 200);
                 this.setState({
                     memberRoles: new Map<string, number>(),
-                    candidates: humans.map((m: any) => ({
+                    candidates: limited.map((m: any) => ({
                         chat_id: m.uid || m.user_id || m.id,
                         chat_type: "direct" as const,
                         name: m.name || m.username || m.uid || m.user_id || m.id,
