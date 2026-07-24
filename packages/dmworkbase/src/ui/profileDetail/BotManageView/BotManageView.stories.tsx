@@ -95,6 +95,7 @@ function MentionFreeStory(args: Partial<MentionFreeListViewProps>) {
       <MentionFreeListView
         labels={labels}
         loading={false}
+        searching={false}
         backendMissing={false}
         loadError={false}
         searchKeyword={searchKeyword}
@@ -168,6 +169,10 @@ export const NoSearchResult: StoryObj<typeof MentionFreeStory> = {
 
 export const LoadingMore: StoryObj<typeof MentionFreeStory> = {
   render: () => <MentionFreeStory loadingMore />,
+};
+
+export const Searching: StoryObj<typeof MentionFreeStory> = {
+  render: () => <MentionFreeStory searchKeyword="eng" searching />,
 };
 
 export const LongGroupName: StoryObj<typeof MentionFreeStory> = {
