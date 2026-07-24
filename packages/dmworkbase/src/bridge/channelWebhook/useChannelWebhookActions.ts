@@ -36,11 +36,11 @@ export interface ChannelWebhookActionsRuntime {
 }
 
 export type ChannelWebhookRegenerateResult =
-  | { ok: true; response: IncomingWebhookCreateResp }
+  | { ok: true; response: IncomingWebhookCreateResp; stale?: boolean }
   | { ok: false; reason: "stale" };
 
 export type ChannelWebhookDeleteResult =
-  | { ok: true }
+  | { ok: true; stale?: boolean }
   | { ok: false; reason: "stale" };
 
 function defaultActionsRuntime(): ChannelWebhookActionsRuntime {
@@ -80,7 +80,7 @@ function runtimeOrDefault(runtime?: ChannelWebhookActionsRuntime) {
 export function useChannelWebhookActions(params: {
   channel: Channel;
   threadShortId?: string;
-  reload: () => void | Promise<void>;
+  reload: (options?: { silentError?: boolean }) => void | Promise<void>;
   runtime?: ChannelWebhookActionsRuntime;
 }) {
   const runtime = useMemo(
@@ -123,7 +123,7 @@ export function useChannelWebhookActions(params: {
     (actionScopeKey: string) => {
       if (!isCurrentScope(actionScopeKey)) return false;
       try {
-        void Promise.resolve(params.reload()).catch(() => {
+        void Promise.resolve(params.reload({ silentError: true })).catch(() => {
           // Refresh is best-effort; it must not replace a successful mutation.
         });
       } catch {
@@ -220,10 +220,10 @@ export function useChannelWebhookActions(params: {
         }
         throw error;
       }
-      if (refreshIfCurrentScope(actionScopeKey)) {
-        return { ok: true, response };
-      }
-      return { ok: false, reason: "stale" };
+      const refreshed = refreshIfCurrentScope(actionScopeKey);
+      return refreshed
+        ? { ok: true, response }
+        : { ok: true, response, stale: true };
     },
     [
       isCurrentScope,
@@ -250,10 +250,8 @@ export function useChannelWebhookActions(params: {
         }
         throw error;
       }
-      if (refreshIfCurrentScope(actionScopeKey)) {
-        return { ok: true };
-      }
-      return { ok: false, reason: "stale" };
+      const refreshed = refreshIfCurrentScope(actionScopeKey);
+      return refreshed ? { ok: true } : { ok: true, stale: true };
     },
     [
       isCurrentScope,

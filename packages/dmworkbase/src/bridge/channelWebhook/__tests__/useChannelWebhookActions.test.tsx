@@ -151,6 +151,7 @@ describe("useChannelWebhookActions", () => {
 
     expect(runtime.regenerate).toHaveBeenCalledWith("g1", "iwh_1", "t1");
     expect(runtime.delete).toHaveBeenCalledWith("g1", "iwh_1", "t1");
+    expect(reload).toHaveBeenCalledWith({ silentError: true });
     expect(reload).toHaveBeenCalledTimes(2);
   });
 
@@ -208,8 +209,13 @@ describe("useChannelWebhookActions", () => {
     });
 
     await expect(regeneratePromise).resolves.toEqual({
-      ok: false,
-      reason: "stale",
+      ok: true,
+      response: {
+        ...createWebhook(),
+        token: "token",
+        url: "/v1/incoming-webhooks/iwh_1/token",
+      },
+      stale: true,
     });
     expect(reload).not.toHaveBeenCalled();
 
@@ -225,8 +231,8 @@ describe("useChannelWebhookActions", () => {
     });
 
     await expect(deletePromise).resolves.toEqual({
-      ok: false,
-      reason: "stale",
+      ok: true,
+      stale: true,
     });
     expect(reload).not.toHaveBeenCalled();
   });

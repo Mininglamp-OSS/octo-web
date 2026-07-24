@@ -15,7 +15,12 @@ export type ChannelWebhookEditorSubmitResult =
   | { ok: true; status: "stale" }
   | { ok: true; status: "noop" }
   | { ok: true; status: "updated" }
-  | { ok: true; status: "created"; created: IncomingWebhookCreateResp }
+  | {
+      ok: true;
+      status: "created";
+      created: IncomingWebhookCreateResp;
+      stale?: boolean;
+    }
   | { ok: false; reason: "tooMany" | "tooLong" };
 
 export interface ChannelWebhookEditorRuntime {
@@ -171,7 +176,7 @@ export function useChannelWebhookEditor(params: {
           throw error;
         }
         if (!isCurrentRequest(requestSequence)) {
-          return { ok: true, status: "stale" };
+          return { ok: true, status: "created", created, stale: true };
         }
         return { ok: true, status: "created", created };
       } finally {
