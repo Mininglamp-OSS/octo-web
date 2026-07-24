@@ -1,4 +1,4 @@
-import React, { Component } from "react";
+import React, { Component, createRef } from "react";
 import { Checkbox, Spin, Empty, Tag } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
@@ -43,6 +43,8 @@ interface State {
     followedIds: Set<string>;
     recentIds: Set<string>;
     recentOrder: Map<string, number>;
+    visibleStart: number;
+    visibleEnd: number;
 }
 
 interface DisplayEntry {
@@ -66,21 +68,41 @@ export default class ChatSelectorModal extends Component<Props, State> {
         followedIds: new Set<string>(),
         recentIds: new Set<string>(),
         recentOrder: new Map<string, number>(),
+        visibleStart: 0,
+        visibleEnd: 20,
     };
 
     private reqSeq = 0;
+    private listScrollRef = createRef<HTMLDivElement>();
+    private readonly ITEM_HEIGHT = 40;
+
+    private handleListScroll = () => {
+        const el = this.listScrollRef.current;
+        if (!el) return;
+        const scrollTop = el.scrollTop;
+        const viewportHeight = el.clientHeight;
+        const totalItems = this.getDisplayList().length;
+        const start = Math.max(0, Math.floor(scrollTop / this.ITEM_HEIGHT) - 5);
+        const end = Math.min(totalItems, Math.ceil((scrollTop + viewportHeight) / this.ITEM_HEIGHT) + 5);
+        if (start !== this.state.visibleStart || end !== this.state.visibleEnd) {
+            this.setState({ visibleStart: start, visibleEnd: end });
+        }
+    };
 
     componentDidUpdate(prevProps: Props) {
         if (this.props.visible && !prevProps.visible) {
+            if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
             if (this.props.mode === "members") {
                 this.setState({
                     localSelectedMembers: [...(this.props.selectedMembers ?? [])],
                     keyword: "",
                     activeTab: "all_members",
+                    visibleStart: 0,
+                    visibleEnd: 20,
                 });
                 this.loadMembers();
             } else {
-                this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed", includeArchived: false });
+                this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed", includeArchived: false, visibleStart: 0, visibleEnd: 20 });
                 this.loadCandidates(false);
             }
         }
@@ -88,29 +110,55 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     async loadMembers() {
         const channel = this.props.channel;
-        if (!channel) return;
+        const seq = ++this.reqSeq;
         this.setState({ loading: true });
         try {
-            const sdk = WKSDK.shared();
-            await sdk.channelManager.syncSubscribes(channel);
-            const subscribers = sdk.channelManager.getSubscribes(channel) || [];
-            const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid));
-            const roles = new Map<string, number>();
-            for (const m of humans) {
-                if (m.role != null) roles.set(m.uid, m.role);
+            if (channel) {
+                // 有选中聊天：加载该群聊成员
+                const sdk = WKSDK.shared();
+                await sdk.channelManager.syncSubscribes(channel);
+                if (seq !== this.reqSeq) return;
+                const subscribers = sdk.channelManager.getSubscribes(channel) || [];
+                const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid));
+                const roles = new Map<string, number>();
+                for (const m of humans) {
+                    if (m.role != null) roles.set(m.uid, m.role);
+                }
+                this.setState({
+                    memberRoles: roles,
+                    candidates: humans.map((m: any) => ({
+                        chat_id: m.uid,
+                        chat_type: "direct" as const,
+                        name: m.name || m.uid,
+                        member_count: null,
+                    })),
+                });
+            } else {
+                // 无选中聊天：加载全局联系人
+                const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
+                if (seq !== this.reqSeq) return;
+                const humans = list.filter((m: any) => {
+                    // Contacts 类型用 robot 字段，不是 is_bot
+                    const isRobot = m.robot === true || m.is_bot === true || isBot(m.uid || m.user_id || "");
+                    // 过滤黑名单联系人 (ContactsStatus.Blacklist = 2)
+                    const isBlacklisted = m.status === 2;
+                    return !isRobot && !isBlacklisted;
+                });
+                this.setState({
+                    memberRoles: new Map<string, number>(),
+                    candidates: humans.map((m: any) => ({
+                        chat_id: m.uid || m.user_id || m.id,
+                        chat_type: "direct" as const,
+                        name: m.name || m.username || m.uid || m.user_id || m.id,
+                        member_count: null,
+                    })),
+                });
             }
-            this.setState({
-                memberRoles: roles,
-                candidates: humans.map((m: any) => ({
-                    chat_id: m.uid,
-                    chat_type: "direct" as const,
-                    name: m.name || m.uid,
-                    member_count: null,
-                })),
-            });
         } catch {
+            if (seq !== this.reqSeq) return;
             this.setState({ candidates: [] });
         } finally {
+            if (seq !== this.reqSeq) return;
             this.setState({ loading: false });
         }
     }
@@ -153,16 +201,19 @@ export default class ChatSelectorModal extends Component<Props, State> {
     }
 
     handleIncludeArchivedChange = (checked: boolean) => {
-        this.setState({ includeArchived: checked });
+        if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
+        this.setState({ includeArchived: checked, visibleStart: 0, visibleEnd: 20 });
         this.loadCandidates(checked);
     };
 
     handleKeywordChange = (val: string) => {
-        this.setState({ keyword: val });
+        if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
+        this.setState({ keyword: val, visibleStart: 0, visibleEnd: 20 });
     };
 
     handleTabChange = (tab: string) => {
-        this.setState({ activeTab: tab as State["activeTab"] });
+        if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
+        this.setState({ activeTab: tab as State["activeTab"], visibleStart: 0, visibleEnd: 20 });
     };
 
     handleToggle = (item: ChatCandidate) => {
@@ -427,11 +478,15 @@ export default class ChatSelectorModal extends Component<Props, State> {
             { key: "direct", label: t("summary.chatSelector.allDirects") },
         ];
 
-        const memberTabs = [
-            { key: "all_members", label: t("summary.chatSelector.allMembers") },
-            { key: "managers", label: t("summary.chatSelector.managers") },
-            { key: "normal_members", label: t("summary.chatSelector.normalMembers") },
-        ];
+        const memberTabs = this.props.channel
+            ? [
+                { key: "all_members", label: t("summary.chatSelector.allMembers") },
+                { key: "managers", label: t("summary.chatSelector.managers") },
+                { key: "normal_members", label: t("summary.chatSelector.normalMembers") },
+            ]
+            : [
+                { key: "all_members", label: t("summary.chatSelector.allMembers") },
+            ];
 
         const currentTabs = mode === "members" ? memberTabs : chatTabs;
 
@@ -461,17 +516,19 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                     onChange={(e) => this.handleKeywordChange(e.target.value)}
                                 />
                             </div>
-                            <div className="chat-selector-tabs">
-                                {currentTabs.map((tab) => (
-                                    <button
-                                        key={tab.key}
-                                        className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
-                                        onClick={() => this.handleTabChange(tab.key)}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
-                            </div>
+                            {currentTabs.length > 1 && (
+                                <div className="chat-selector-tabs">
+                                    {currentTabs.map((tab) => (
+                                        <button
+                                            key={tab.key}
+                                            className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
+                                            onClick={() => this.handleTabChange(tab.key)}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             {mode !== "members" && (activeTab === "group" || activeTab === "followed") && (
                                 <label className="chat-selector-archived-toggle">
                                     <Checkbox
@@ -481,15 +538,39 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                     <span>{t("summary.chatSelector.includeArchived")}</span>
                                 </label>
                             )}
-                            <div className="chat-selector-list">
+                            <div
+                                className="chat-selector-list"
+                                ref={this.listScrollRef}
+                                onScroll={this.handleListScroll}
+                            >
                                 {loading ? (
                                     <div className="chat-selector-loading"><Spin /></div>
                                 ) : mode === "members" ? (
-                                    displayList.map((entry) => this.renderMemberItem(entry))
+                                    displayList.length === 0 ? (
+                                        <Empty description={t("summary.chatSelector.noData")} />
+                                    ) : (
+                                        <>
+                                            <div style={{ height: displayList.length * 40, position: 'relative' }}>
+                                                {displayList.slice(this.state.visibleStart, this.state.visibleEnd).map((entry, i) => (
+                                                    <div key={entry.item.chat_id} style={{ position: 'absolute', top: (this.state.visibleStart + i) * 40, left: 0, right: 0, height: 40 }}>
+                                                        {this.renderMemberItem(entry)}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )
                                 ) : displayList.length === 0 ? (
                                     <Empty description={t("summary.chatSelector.noData")} />
                                 ) : (
-                                    displayList.map((entry) => this.renderItem(entry))
+                                    <>
+                                        <div style={{ height: displayList.length * 40, position: 'relative' }}>
+                                            {displayList.slice(this.state.visibleStart, this.state.visibleEnd).map((entry, i) => (
+                                                <div key={entry.item.chat_id} style={{ position: 'absolute', top: (this.state.visibleStart + i) * 40, left: 0, right: 0, height: 40 }}>
+                                                    {this.renderItem(entry)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
                                 )}
                             </div>
                         </div>

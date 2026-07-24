@@ -762,14 +762,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     handleOpenMemberSelector = () => {
         const { selectedChats } = this.state;
-        const { t } = this.context;
         const chat = selectedChats[0];
-        if (!chat) {
-            Toast.info(t("summary.create.selectChatFirst"));
-            return;
-        }
-        const channelType = chat.chat_type === "thread" ? 5 : chat.chat_type === "direct" ? 1 : 2;
-        const channel = new Channel(chat.chat_id, channelType);
+        const channel = chat
+            ? new Channel(chat.chat_id, chat.chat_type === "thread" ? 5 : chat.chat_type === "direct" ? 1 : 2)
+            : null;
         this.setState({
             showMemberSelector: true,
             memberSelectorChannel: channel,
@@ -1352,18 +1348,16 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 </button>
                             </div>
                         </div>
-                        {mode !== 'agent' && (
-                            <Button
-                                theme="solid"
-                                className="summary-workbench-start-btn"
-                                loading={submitting}
-                                disabled={!this.canSubmit() || submitting}
-                                onClick={this.handlePrimaryClick}
-                            >
-                                <Sparkles size={16} />
-                                {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
-                            </Button>
-                        )}
+                        <Button
+                            theme="solid"
+                            className="summary-workbench-start-btn"
+                            loading={submitting}
+                            disabled={!this.canSubmit() || submitting}
+                            onClick={this.handlePrimaryClick}
+                        >
+                            <Sparkles size={16} />
+                            {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                        </Button>
                     </div>
                 </div>
 
