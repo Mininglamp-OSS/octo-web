@@ -14,4 +14,12 @@ describe("validateSkillTags", () => {
   it("accepts distinct valid tags", () => {
     expect(validateSkillTags(["automation", "开发工具"])).toBeNull();
   });
+
+  it("allows an unchanged legacy tag longer than the current limit", () => {
+    expect(validateSkillTags(["productivity"], ["productivity"])).toBeNull();
+  });
+
+  it("rejects a newly added tag longer than the current limit", () => {
+    expect(validateSkillTags(["development"], ["productivity"])).not.toBeNull();
+  });
 });

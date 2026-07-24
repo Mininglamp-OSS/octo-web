@@ -89,18 +89,21 @@ export function validateSkillTag(value: string): string | null {
   return null;
 }
 
-export function validateSkillTags(tags: string[]): string | null {
+export function validateSkillTags(tags: string[], legacyTags: string[] = []): string | null {
   if (tags.length > MAX_SKILL_TAGS) {
     return t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } });
   }
   const normalized = new Set<string>();
+  const legacy = new Set(legacyTags.map((tag) => tag.trim()).filter(Boolean));
   for (const tag of tags) {
     const trimmed = tag.trim();
     if (!trimmed) return t("skillMarket.form.tagInvalidChars");
     if (normalized.has(trimmed)) return t("skillMarket.form.tagDuplicate");
     normalized.add(trimmed);
-    const error = validateSkillTag(tag);
-    if (error) return error;
+    if (tagLength(trimmed) > MAX_SKILL_TAG_LENGTH && !legacy.has(trimmed)) {
+      return t("skillMarket.form.tagLengthLimit", { values: { count: MAX_SKILL_TAG_LENGTH } });
+    }
+    if (!SKILL_TAG_PATTERN.test(trimmed)) return t("skillMarket.form.tagInvalidChars");
   }
   return null;
 }

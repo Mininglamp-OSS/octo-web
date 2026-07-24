@@ -181,7 +181,7 @@ describe("EditSkillModal", () => {
     expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
   });
 
-  it("blocks saving a legacy tag longer than 10 characters", () => {
+  it("allows unrelated edits while preserving an unchanged legacy long tag", async () => {
     const overflowTag = "overflow-testing-with-extremely-long-english-tag-content-for-ui-card";
     render(
       <EditSkillModal
@@ -193,8 +193,15 @@ describe("EditSkillModal", () => {
     );
 
     expect(screen.getByTitle(overflowTag)).toHaveClass("skill-market-tag-input__text");
-    expect(screen.getByText(/单个标签最多 10 个字符|skillMarket\.form\.tagLengthLimit/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
+    expect(screen.queryByText(/单个标签最多 10 个字符|skillMarket\.form\.tagLengthLimit/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "更新展示名" } });
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
+
+    await waitFor(() => expect(api.updateSkill).toHaveBeenCalledWith("meeting-note-cleaner", expect.objectContaining({
+      displayName: "更新展示名",
+      tags: [overflowTag],
+    })));
   });
 
   it("suggests current-space tags while editing and saves the selected tag", async () => {

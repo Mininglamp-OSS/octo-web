@@ -128,7 +128,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     return null;
   }
 
-  const tagSubmitError = tagError ?? validateSkillTags(tags) ?? getTagDraftError();
+  const tagSubmitError = tagError ?? validateSkillTags(tags, skill?.tags ?? []) ?? getTagDraftError();
   const canSave = Boolean(
     !busy &&
     uploadStage !== "error" &&
@@ -367,7 +367,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
       return;
     }
     const draftError = getTagDraftError();
-    const tagsError = validateSkillTags(tags);
+    const tagsError = validateSkillTags(tags, skill?.tags ?? []);
     if (tagError || tagsError || draftError) {
       setTagError(tagError ?? tagsError ?? draftError);
       return;
