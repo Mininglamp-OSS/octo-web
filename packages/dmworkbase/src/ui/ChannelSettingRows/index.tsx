@@ -1,6 +1,6 @@
 import { Button, Input, TextArea } from "@douyinfe/semi-ui";
 import { IconClear } from "@douyinfe/semi-icons";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import {
   ListItem,
@@ -98,6 +98,7 @@ export interface ChannelSettingInlineEditRowProps {
   allowEmpty?: boolean;
   multiline?: boolean;
   onStartEdit?: () => boolean | void;
+  /** Resolve false or reject to keep the editor open with its current draft. */
   onSave: (value: string) => Promise<void | boolean>;
 }
 
@@ -116,10 +117,17 @@ export function ChannelSettingInlineEditRow({
   const [currentValue, setCurrentValue] = useState(value);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
+  const editingRef = useRef(false);
+
+  useEffect(() => {
+    editingRef.current = editing;
+  }, [editing]);
 
   useEffect(() => {
     setCurrentValue(value);
-    setDraft(value);
+    if (!editingRef.current) {
+      setDraft(value);
+    }
   }, [value]);
 
   const exceeded = maxCount !== undefined && draft.length > maxCount;

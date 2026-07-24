@@ -9,7 +9,11 @@ vi.mock("@douyinfe/semi-icons", () => ({
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
-  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+  Button: ({
+    children,
+    loading: _loading,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean }) => (
     <button {...props}>{children}</button>
   ),
   Input: ({ suffix, onChange, ...props }: any) => (
@@ -30,7 +34,12 @@ vi.mock("@douyinfe/semi-ui", () => ({
 }));
 
 vi.mock("../../../Components/ListItem", () => ({
-  ListItem: ({ title, onClick }: any) => <button onClick={onClick}>{title}</button>,
+  ListItem: ({ title, subTitle, onClick }: any) => (
+    <button aria-label={title} onClick={onClick}>
+      {title}
+      <span>{subTitle}</span>
+    </button>
+  ),
   ListItemButton: vi.fn(),
   ListItemButtonType: { default: "default", warn: "warn" },
   ListItemIcon: vi.fn(),
@@ -90,6 +99,87 @@ describe("ChannelSettingInlineEditRow", () => {
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith("Unsaved draft"));
     expect(screen.getByDisplayValue("Unsaved draft")).toBe(input);
-    expect(screen.getByRole("button", { name: "base.common.cancel" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "base.common.cancel" })
+    ).toBeEnabled();
+  });
+
+  it("keeps the draft open when saving rejects", async () => {
+    const onSave = vi.fn(() => Promise.reject(new Error("request failed")));
+
+    render(
+      <ChannelSettingInlineEditRow
+        title="Remark"
+        value="Old remark"
+        allowEmpty
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remark" }));
+    fireEvent.change(screen.getByDisplayValue("Old remark"), {
+      target: { value: "Unsaved remark" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "base.common.save" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith("Unsaved remark"));
+    expect(screen.getByDisplayValue("Unsaved remark")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "base.common.cancel" })
+    ).toBeEnabled();
+  });
+
+  it("preserves an in-progress draft across external value updates", () => {
+    const onSave = vi.fn(() => Promise.resolve());
+    const { rerender } = render(
+      <ChannelSettingInlineEditRow
+        title="Group name"
+        value="Original name"
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Group name" }));
+    fireEvent.change(screen.getByDisplayValue("Original name"), {
+      target: { value: "Local draft" },
+    });
+
+    rerender(
+      <ChannelSettingInlineEditRow
+        title="Group name"
+        value="Remote name"
+        onSave={onSave}
+      />
+    );
+
+    expect(screen.getByDisplayValue("Local draft")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "base.common.cancel" }));
+    expect(screen.getByText("Remote name")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Group name" }));
+    expect(screen.getByDisplayValue("Remote name")).toBeInTheDocument();
+  });
+
+  it("keeps a successful save visible until the external value catches up", async () => {
+    const onSave = vi.fn(() => Promise.resolve());
+
+    render(
+      <ChannelSettingInlineEditRow
+        title="Group name"
+        value="Old name"
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Group name" }));
+    fireEvent.change(screen.getByDisplayValue("Old name"), {
+      target: { value: "Saved name" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "base.common.save" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith("Saved name"));
+    expect(screen.getByText("Saved name")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Saved name")).not.toBeInTheDocument();
   });
 });
