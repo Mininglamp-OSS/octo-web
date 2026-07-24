@@ -1,4 +1,5 @@
 import { Button, Input, TextArea } from "@douyinfe/semi-ui";
+import { IconClear } from "@douyinfe/semi-icons";
 import React, { useEffect, useState } from "react";
 
 import {
@@ -147,18 +148,39 @@ export function ChannelSettingInlineEditRow({
     value: draft,
     placeholder,
     disabled: saving,
-    showClear: true,
     onChange: (next: string) => setDraft(next),
-    onClear: () => setDraft(""),
   };
 
   return (
     <div className="wk-channelsetting-inline-edit">
       <div className="wk-channelsetting-inline-edit-title">{title}</div>
       {multiline ? (
-        <TextArea {...inputProps} autosize={{ minRows: 2, maxRows: 6 }} />
+        <TextArea
+          {...inputProps}
+          showClear
+          onClear={() => setDraft("")}
+          autosize={{ minRows: 2, maxRows: 6 }}
+        />
       ) : (
-        <Input {...inputProps} />
+        <Input
+          {...inputProps}
+          suffix={
+            draft && !saving ? (
+              <button
+                type="button"
+                className="wk-channelsetting-inline-edit-clear"
+                aria-label={`${title}-${t("base.common.clear")}`}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setDraft("");
+                }}
+              >
+                <IconClear />
+              </button>
+            ) : null
+          }
+        />
       )}
       <div className="wk-channelsetting-inline-edit-footer">
         {maxCount !== undefined ? (

@@ -18,6 +18,16 @@
   border-radius: var(--wk-r-sm);
 }
 
+.wk-channelsetting-inline-edit-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--wk-sp-1);
+  color: var(--wk-text-tertiary);
+  background: transparent;
+  border: 0;
+}
+
 .wk-channelsetting-inline-edit-footer {
   display: flex;
   align-items: center;
