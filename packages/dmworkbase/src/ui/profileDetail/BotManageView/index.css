@@ -118,6 +118,27 @@ button.wk-bot-manage-menu-row .wk-bot-manage-menu-right {
 .wk-bot-manage-search {
     padding: var(--wk-sp-3) var(--wk-sp-4) var(--wk-sp-2);
     flex-shrink: 0;
+    position: relative;
+}
+
+.wk-bot-manage-search-spinner {
+    position: absolute;
+    top: 50%;
+    right: calc(var(--wk-sp-4) + var(--wk-sp-3));
+    width: var(--wk-sp-4);
+    height: var(--wk-sp-4);
+    margin-top: calc(-1 * var(--wk-sp-2));
+    border: 2px solid var(--wk-border-subtle);
+    border-top-color: var(--wk-brand-primary);
+    border-radius: 50%;
+    animation: wk-bot-manage-spin 0.6s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes wk-bot-manage-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .wk-bot-manage-search-input {

@@ -31,6 +31,9 @@ export type { BotGroupItem } from "../../Service/BotManageService"
 /** 单页拉取条数。与后端 groupsListDefaultLimit 对齐。 */
 const GROUPS_PAGE_LIMIT = 30
 
+/** 搜索输入防抖：避免逐字符打后端。UX 首选 250ms。 */
+const SEARCH_DEBOUNCE_MS = 250
+
 /**
  * MentionFreeVM —— L3「免@回答」群列表 ViewModel。
  *
@@ -40,7 +43,9 @@ const GROUPS_PAGE_LIMIT = 30
  *   - isBackendMissing=true → 「功能即将上线」
  *   - 否则渲染列表（分区：已开启免@置顶 + 其他群）+ 触底 loadMore
  *
- * 搜索为客户端过滤（issue：搜索=客户端过滤已加载项），不发后端 q 参数。
+ * 搜索走后端 q 参数（g.name LIKE %q%）：命中该 bot 的全部管理群，不受当前已滚动
+ * 加载到哪一页影响。输入经 debounce 后以 cursor=null 重新拉首屏；loadMore 沿用同一
+ * 关键字翻页。搜索期间用 searching 标志（而非 loading）避免全屏 spinner 盖住输入框。
  */
 export class MentionFreeVM extends ProviderListener {
     /** 当前管理的 bot uid（= robot_id）。可被上层 setRobotId 更新以支持复用实例。 */
@@ -49,6 +54,12 @@ export class MentionFreeVM extends ProviderListener {
     groups: BotGroupItem[] = []
     loading: boolean = false
     loadingMore: boolean = false
+    /**
+     * 搜索/切关键字触发的重拉进行中标志（区别于首屏 loading）。
+     * UI 用它显示轻量顶部条 spinner，不清空已有列表、不盖住搜索输入框——否则
+     * 用户每敲一个字符整个列表都闪成全屏 spinner，无法连续输入。
+     */
+    searching: boolean = false
     loadError: boolean = false
     isBackendMissing: boolean = false
     toggleFailed: boolean = false
@@ -58,8 +69,13 @@ export class MentionFreeVM extends ProviderListener {
     nextCursor: string | null = null
     hasMore: boolean = false
 
-    /** 客户端搜索关键字（按群名过滤已加载项）。 */
+    /** 客户端搜索关键字（回显输入框，实际过滤走后端 q 参数）。 */
     searchKeyword: string = ""
+
+    /** 已发到后端并生效的关键字（loadMore 翻页沿用同一 q）。 */
+    private activeQuery: string = ""
+    /** searchKeyword debounce 定时器句柄（浏览器 setTimeout 返回 number）。 */
+    private searchDebounceHandle: ReturnType<typeof setTimeout> | null = null
 
     /**
      * 单调递增的请求世代号（防串台核心，codex review P1）。
@@ -93,12 +109,15 @@ export class MentionFreeVM extends ProviderListener {
         if (this.robotId === robotId) return
         this.robotId = robotId
         this.generation++
+        this.clearSearchDebounce()
+        this.activeQuery = ""
         this.groups = []
         this.nextCursor = null
         this.hasMore = false
         this.searchKeyword = ""
         this.loading = false
         this.loadingMore = false
+        this.searching = false
         this.loadError = false
         this.isBackendMissing = false
         this.toggleFailed = false
@@ -108,40 +127,72 @@ export class MentionFreeVM extends ProviderListener {
 
     setSearchKeyword(kw: string): void {
         this.searchKeyword = kw
-        this.notifyListener()
+        this.notifyListener() // 立刻回显输入框
+        this.clearSearchDebounce()
+        // debounce：输入稳定 SEARCH_DEBOUNCE_MS 后才以 cursor=null 重拉首屏，
+        // 关键字空/仅空白则回到无 q 的全量首屏。
+        this.searchDebounceHandle = setTimeout(() => {
+            this.searchDebounceHandle = null
+            void this.loadGroups({ search: true })
+        }, SEARCH_DEBOUNCE_MS)
+    }
+
+    /** 清掉在飞的搜索 debounce 定时器（切 bot / 重新输入 / 组件卸载时调用）。 */
+    private clearSearchDebounce(): void {
+        if (this.searchDebounceHandle !== null) {
+            clearTimeout(this.searchDebounceHandle)
+            this.searchDebounceHandle = null
+        }
+    }
+
+    /** 组件卸载时调用：清 debounce，避免定时器在实例销毁后回调泄漏。 */
+    dispose(): void {
+        this.clearSearchDebounce()
     }
 
     /**
-     * 客户端过滤 + 分区后的可见列表：
-     *   - 先按 searchKeyword（群名，大小写不敏感）过滤已加载项；
-     *   - 再分区：已开启免@（no_mention=true）置顶，其它群在后；
+     * 分区后的可见列表：
+     *   - 已开启免@（no_mention=true）置顶，其它群在后；
      *   - 分区内保持后端返回的相对顺序（gm.id 升序，稳定）。
+     *
+     * 关键字过滤已下沉到后端（q 参数），这里不再做本地 name 二次过滤——否则会
+     * 对后端已过滤好的结果再过滤一遍，且在 debounce 未触发的中间态短暂闪空。
      */
     visibleGroups(): { enabled: BotGroupItem[]; others: BotGroupItem[] } {
-        const kw = this.searchKeyword.trim().toLowerCase()
-        const filtered = kw
-            ? this.groups.filter((g) => (g.name || "").toLowerCase().includes(kw))
-            : this.groups
-        const enabled = filtered.filter((g) => g.no_mention)
-        const others = filtered.filter((g) => !g.no_mention)
+        const enabled = this.groups.filter((g) => g.no_mention)
+        const others = this.groups.filter((g) => !g.no_mention)
         return { enabled, others }
     }
 
     /**
      * 拉首屏群列表（cursor 从头）。
      *
+     * @param opts.search 由 setSearchKeyword 的 debounce 触发时为 true：翻转 searching
+     *   而非 loading，避免全屏 spinner 盖住输入框、清空已有列表。首屏 / 重试 / 切 bot
+     *   走默认（loading）分支。
+     *
+     * 关键字：始终取当前 searchKeyword.trim() 作为后端 q，成功后记录到 activeQuery
+     * 供 loadMore 翻页沿用。
+     *
      * 防串台：捕获调用时的 generation，await 之后用 isStale() 比对，过期则整段丢弃
      * （仿 BotDetailModal.loadBotInfo:169，但用 gen 替代裸 uid 比较以防 ABA）。
      */
-    async loadGroups(): Promise<void> {
+    async loadGroups(opts: { search?: boolean } = {}): Promise<void> {
         const requestedUid = this.robotId
         if (!requestedUid) return
         // 自增 gen 让此前在飞的 loadGroups/loadMore（同一 bot 的重复触发）也作废，
         // 避免重试 / 兜底首拉与首次 didMount 撞车后旧响应盖新响应。
         const gen = ++this.generation
         const isStale = () => this.generation !== gen
+        const q = this.searchKeyword.trim()
+        const isSearch = !!opts.search
 
-        this.loading = true
+        if (isSearch) {
+            // 搜索：保留已有列表 + 输入框，只显示轻量进行中标志。
+            this.searching = true
+        } else {
+            this.loading = true
+        }
         this.loadingMore = false
         this.loadError = false
         this.isBackendMissing = false
@@ -152,17 +203,21 @@ export class MentionFreeVM extends ProviderListener {
             const res = await BotManageService.listGroups({
                 robotId: requestedUid,
                 limit: GROUPS_PAGE_LIMIT,
+                q: q || undefined,
             })
             if (isStale()) return
             const { list, nextCursor, hasMore } = parseGroupsResp(res)
             this.groups = list
             this.nextCursor = nextCursor
             this.hasMore = hasMore
+            // 成功后记录已生效关键字，供 loadMore 翻页沿用同一 q。
+            this.activeQuery = q
         } catch (e: any) {
             if (isStale()) return
             this.groups = []
             this.nextCursor = null
             this.hasMore = false
+            this.activeQuery = q
             if (e && typeof e === "object" && "status" in e && (e as any).status === 404) {
                 this.isBackendMissing = true
             } else {
@@ -171,6 +226,7 @@ export class MentionFreeVM extends ProviderListener {
         } finally {
             if (!isStale()) {
                 this.loading = false
+                this.searching = false
                 this.notifyListener()
             }
         }
@@ -183,7 +239,7 @@ export class MentionFreeVM extends ProviderListener {
      * 否则会把旧请求的下一页拼到新列表里。
      */
     async loadMore(): Promise<void> {
-        if (this.loading || this.loadingMore) return
+        if (this.loading || this.loadingMore || this.searching) return
         if (!this.hasMore || !this.nextCursor) return
 
         const requestedUid = this.robotId
@@ -199,6 +255,8 @@ export class MentionFreeVM extends ProviderListener {
                 robotId: requestedUid,
                 limit: GROUPS_PAGE_LIMIT,
                 cursor: requestedCursor,
+                // 翻页沿用首屏已生效的关键字，保证下一页与当前搜索结果同源。
+                q: this.activeQuery || undefined,
             })
             if (isStale()) return
             const { list, nextCursor, hasMore } = parseGroupsResp(res)
