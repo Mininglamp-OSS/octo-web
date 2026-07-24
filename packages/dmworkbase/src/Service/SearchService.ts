@@ -20,6 +20,8 @@ import type {
   ChannelSearchQuery,
   ChannelSearchResponse,
   ChannelSearchTab,
+  DocSearchQuery,
+  DocSearchResponse,
   GlobalContentTab,
   GlobalSearchFileTypeCategory,
   GlobalSearchFilters,
@@ -423,6 +425,27 @@ const SearchService = {
         ? mapFilesResponse(resp, query, assets)
         : mapMessagesResponse(resp, query, assets);
     return foldResponse(items, pagination);
+  },
+
+  // Cloud-docs full-text search: octo-docs-backend `POST /api/v1/docs/search`.
+  // uid/spaceId are injected by the gateway (not sent from the client). The
+  // backend already applies MySQL-realtime visibility (incl. soft-delete
+  // exclusion), so the client renders items verbatim without any filtering.
+  async searchDocs(query: DocSearchQuery): Promise<DocSearchResponse> {
+    const body: Record<string, unknown> = {
+      q: query.keyword,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
+    if (query.docType !== undefined) body.docType = query.docType;
+    const resp = await APIClient.shared.post("docs/search", body, {
+      signal: query.signal,
+    });
+    const items = Array.isArray(resp?.items) ? resp.items : [];
+    return {
+      total: typeof resp?.total === "number" ? resp.total : items.length,
+      items,
+    };
   },
 
   async getGlobalFileTypes(
