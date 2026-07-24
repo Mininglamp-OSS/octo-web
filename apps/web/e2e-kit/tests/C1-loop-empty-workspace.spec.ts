@@ -17,8 +17,22 @@ test("@C1 @p0 @loop @workspace loop 空 workspace 引导 — 打开 /loop 空态
   await authedPage.goto("/loop?sid=e2etest");
 
   await expect(authedPage.getByText("还没有工作区")).toBeVisible();
-  await expect(authedPage.getByText("创建一个工作区开始使用回路。")).toBeVisible();
+  await expect(
+    authedPage.getByText("创建一个工作区开始使用回路。")
+  ).toBeVisible();
   await expect(
     authedPage.getByRole("button", { name: "创建工作区" })
   ).toBeVisible();
+});
+
+test("@C1v @visual @loop @workspace loop 空 workspace 视觉基线", async ({
+  authedPage,
+}) => {
+  await authedPage.goto("/loop?sid=e2etest");
+
+  await expect(authedPage.getByText("还没有工作区")).toBeVisible();
+  await expect(
+    authedPage.getByRole("button", { name: "创建工作区" })
+  ).toBeVisible();
+  await expect(authedPage).toHaveScreenshot("loop-empty-workspace.png");
 });
