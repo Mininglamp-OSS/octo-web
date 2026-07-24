@@ -1,4 +1,4 @@
-import React, { Component } from "react";
+import React, { Component, createRef } from "react";
 import { Checkbox, Spin, Empty, Tag } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
@@ -43,6 +43,8 @@ interface State {
     followedIds: Set<string>;
     recentIds: Set<string>;
     recentOrder: Map<string, number>;
+    visibleStart: number;
+    visibleEnd: number;
 }
 
 interface DisplayEntry {
@@ -66,9 +68,26 @@ export default class ChatSelectorModal extends Component<Props, State> {
         followedIds: new Set<string>(),
         recentIds: new Set<string>(),
         recentOrder: new Map<string, number>(),
+        visibleStart: 0,
+        visibleEnd: 20,
     };
 
     private reqSeq = 0;
+    private listScrollRef = createRef<HTMLDivElement>();
+    private readonly ITEM_HEIGHT = 40;
+
+    private handleListScroll = () => {
+        const el = this.listScrollRef.current;
+        if (!el) return;
+        const scrollTop = el.scrollTop;
+        const viewportHeight = el.clientHeight;
+        const totalItems = this.getDisplayList().length;
+        const start = Math.max(0, Math.floor(scrollTop / this.ITEM_HEIGHT) - 5);
+        const end = Math.min(totalItems, Math.ceil((scrollTop + viewportHeight) / this.ITEM_HEIGHT) + 5);
+        if (start !== this.state.visibleStart || end !== this.state.visibleEnd) {
+            this.setState({ visibleStart: start, visibleEnd: end });
+        }
+    };
 
     componentDidUpdate(prevProps: Props) {
         if (this.props.visible && !prevProps.visible) {
@@ -113,11 +132,9 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 // 无选中聊天：加载全局联系人
                 const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
                 const humans = list.filter((m: any) => !m.is_bot && !isBot(m.uid || m.user_id || ""));
-                // 限制最多 200 个，避免大量联系人导致 DOM 卡顿
-                const limited = humans.slice(0, 200);
                 this.setState({
                     memberRoles: new Map<string, number>(),
-                    candidates: limited.map((m: any) => ({
+                    candidates: humans.map((m: any) => ({
                         chat_id: m.uid || m.user_id || m.id,
                         chat_type: "direct" as const,
                         name: m.name || m.username || m.uid || m.user_id || m.id,
@@ -175,11 +192,11 @@ export default class ChatSelectorModal extends Component<Props, State> {
     };
 
     handleKeywordChange = (val: string) => {
-        this.setState({ keyword: val });
+        this.setState({ keyword: val, visibleStart: 0, visibleEnd: 20 });
     };
 
     handleTabChange = (tab: string) => {
-        this.setState({ activeTab: tab as State["activeTab"] });
+        this.setState({ activeTab: tab as State["activeTab"], visibleStart: 0, visibleEnd: 20 });
     };
 
     handleToggle = (item: ChatCandidate) => {
@@ -502,15 +519,35 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                     <span>{t("summary.chatSelector.includeArchived")}</span>
                                 </label>
                             )}
-                            <div className="chat-selector-list">
+                            <div
+                                className="chat-selector-list"
+                                ref={this.listScrollRef}
+                                onScroll={this.handleListScroll}
+                            >
                                 {loading ? (
                                     <div className="chat-selector-loading"><Spin /></div>
                                 ) : mode === "members" ? (
-                                    displayList.map((entry) => this.renderMemberItem(entry))
+                                    <>
+                                        <div style={{ height: displayList.length * 40, position: 'relative' }}>
+                                            {displayList.slice(this.state.visibleStart, this.state.visibleEnd).map((entry, i) => (
+                                                <div key={entry.item.chat_id} style={{ position: 'absolute', top: (this.state.visibleStart + i) * 40, left: 0, right: 0, height: 40 }}>
+                                                    {this.renderMemberItem(entry)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
                                 ) : displayList.length === 0 ? (
                                     <Empty description={t("summary.chatSelector.noData")} />
                                 ) : (
-                                    displayList.map((entry) => this.renderItem(entry))
+                                    <>
+                                        <div style={{ height: displayList.length * 40, position: 'relative' }}>
+                                            {displayList.slice(this.state.visibleStart, this.state.visibleEnd).map((entry, i) => (
+                                                <div key={entry.item.chat_id} style={{ position: 'absolute', top: (this.state.visibleStart + i) * 40, left: 0, right: 0, height: 40 }}>
+                                                    {this.renderItem(entry)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
                                 )}
                             </div>
                         </div>
