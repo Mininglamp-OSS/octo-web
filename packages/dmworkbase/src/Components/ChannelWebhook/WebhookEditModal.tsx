@@ -123,7 +123,11 @@ export default function WebhookEditModal({
         );
         return;
       }
-      if (result.status === "busy" || result.status === "stale") {
+      if (
+        result.status === "busy" ||
+        result.status === "stale" ||
+        (result.status === "created" && result.stale)
+      ) {
         return;
       }
       if (result.status === "noop") {

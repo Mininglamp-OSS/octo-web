@@ -128,7 +128,7 @@ export default function ChannelWebhookPanel({
       onOk: async () => {
         try {
           const result = await regenerateWebhook(item);
-          if (result.ok) {
+          if (result.ok && !result.stale) {
             setUrlResult(result.response);
           }
         } catch (e) {
