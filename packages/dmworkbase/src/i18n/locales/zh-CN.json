@@ -671,6 +671,7 @@
   "module.channelSettings.remark": "备注",
   "module.channelSettings.remarkPlaceholder": "群聊的备注仅自己可见",
   "module.channelSettings.removeMembers": "删除群成员",
+  "module.channelSettings.saveFailedRetry": "保存失败，请重试",
   "module.channelSettings.saveToContacts": "保存到通讯录",
   "module.channelSettings.transferOwner": "转让群主",
   "module.channelSettings.transferOwnerConfirm": "确定将群主转让给 {{name}} 吗？转让后你将成为普通成员。",

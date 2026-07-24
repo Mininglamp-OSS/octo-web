@@ -25,11 +25,14 @@ vi.mock("@douyinfe/semi-ui", () => ({
       {suffix}
     </label>
   ),
-  TextArea: ({ onChange, ...props }: any) => (
-    <textarea
-      {...props}
-      onChange={(event) => onChange(event.currentTarget.value)}
-    />
+  TextArea: ({ onChange, onClear, showClear: _showClear, ...props }: any) => (
+    <label>
+      <textarea
+        {...props}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      />
+      <button type="button" aria-label="textarea-clear" onClick={onClear} />
+    </label>
   ),
 }));
 
@@ -43,7 +46,12 @@ vi.mock("../../../Components/ListItem", () => ({
   ListItemButton: vi.fn(),
   ListItemButtonType: { default: "default", warn: "warn" },
   ListItemIcon: vi.fn(),
-  ListItemMuliteLine: vi.fn(),
+  ListItemMuliteLine: ({ title, subTitle, onClick }: any) => (
+    <button aria-label={title} onClick={onClick}>
+      {title}
+      <span>{subTitle}</span>
+    </button>
+  ),
   ListItemSwitch: vi.fn(),
 }));
 
@@ -181,5 +189,90 @@ describe("ChannelSettingInlineEditRow", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith("Saved name"));
     expect(screen.getByText("Saved name")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("Saved name")).not.toBeInTheDocument();
+  });
+
+  it("does not enter edit mode when the start guard rejects editing", () => {
+    const onStartEdit = vi.fn(() => false);
+
+    render(
+      <ChannelSettingInlineEditRow
+        title="Group name"
+        value="Protected name"
+        onStartEdit={onStartEdit}
+        onSave={vi.fn(() => Promise.resolve())}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Group name" }));
+
+    expect(onStartEdit).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByDisplayValue("Protected name")
+    ).not.toBeInTheDocument();
+  });
+
+  it("enters edit mode when the start guard returns void", () => {
+    const onStartEdit = vi.fn(() => undefined);
+
+    render(
+      <ChannelSettingInlineEditRow
+        title="Group name"
+        value="Editable name"
+        onStartEdit={onStartEdit}
+        onSave={vi.fn(() => Promise.resolve())}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Group name" }));
+
+    expect(onStartEdit).toHaveBeenCalledOnce();
+    expect(screen.getByDisplayValue("Editable name")).toBeInTheDocument();
+  });
+
+  it("disables saving for unchanged, empty, and over-limit values", () => {
+    render(
+      <ChannelSettingInlineEditRow
+        title="Group name"
+        value="Name"
+        maxCount={5}
+        onSave={vi.fn(() => Promise.resolve())}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Group name" }));
+    const input = screen.getByDisplayValue("Name");
+    const save = screen.getByRole("button", { name: "base.common.save" });
+
+    expect(save).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(save).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: "Too long" } });
+    expect(save).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: "Valid" } });
+    expect(save).toBeEnabled();
+  });
+
+  it("clears a multiline draft and saves the empty value", async () => {
+    const onSave = vi.fn(() => Promise.resolve());
+
+    render(
+      <ChannelSettingInlineEditRow
+        title="Group notice"
+        value="Old notice"
+        multiline
+        allowEmpty
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Group notice" }));
+    fireEvent.click(screen.getByRole("button", { name: "textarea-clear" }));
+
+    expect(screen.getByDisplayValue("")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "base.common.save" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(""));
   });
 });

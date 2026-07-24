@@ -671,6 +671,7 @@
   "module.channelSettings.remark": "Remark",
   "module.channelSettings.remarkPlaceholder": "Only you can see this group chat remark.",
   "module.channelSettings.removeMembers": "Remove group members",
+  "module.channelSettings.saveFailedRetry": "Failed to save. Please try again.",
   "module.channelSettings.saveToContacts": "Save to contacts",
   "module.channelSettings.transferOwner": "Transfer owner",
   "module.channelSettings.transferOwnerConfirm": "Transfer group ownership to {{name}}? You will become a regular member after the transfer.",

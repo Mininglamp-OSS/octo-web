@@ -1,3 +1,4 @@
+import { Toast } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import { describe, expect, it, vi } from "vitest";
 
@@ -231,6 +232,21 @@ describe("channel setting section builders", () => {
     );
   });
 
+  it("keeps the group nickname unchanged and reports a failed save", async () => {
+    vi.mocked(updateChannelSettingMyGroupNickname).mockRejectedValueOnce({
+      msg: "Nickname save failed",
+    });
+    const context = createContext();
+    const section = buildMyGroupNicknameSection(context, vi.fn());
+
+    const saved = await section?.rows?.[0].properties.onSave("New nickname");
+
+    expect(saved).toBe(false);
+    expect(Toast.error).toHaveBeenCalledWith("Nickname save failed");
+    expect(context.routeData().subscriberOfMe.remark).toBe("Ali");
+    expect(context.routeData().refresh).not.toHaveBeenCalled();
+  });
+
   it("builds danger rows only for active groups", () => {
     const normal = buildChannelDangerSection(createContext());
     const disbanded = buildChannelDangerSection(
@@ -299,9 +315,7 @@ describe("channel setting section builders", () => {
     expect(buildThreadInfoSection(context, inputEditPush)).toBeUndefined();
     expect(buildThreadMdSection(context)).toBeUndefined();
     expect(buildThreadWebhookSection(context)).toBeUndefined();
-    expect(
-      buildThreadOverviewSection(context, inputEditPush)
-    ).toBeUndefined();
+    expect(buildThreadOverviewSection(context, inputEditPush)).toBeUndefined();
     expect(buildThreadActionsSection(context)).toBeUndefined();
   });
 });

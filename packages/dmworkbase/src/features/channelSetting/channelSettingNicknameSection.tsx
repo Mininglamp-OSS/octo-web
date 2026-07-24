@@ -1,3 +1,4 @@
+import { Toast } from "@douyinfe/semi-ui";
 import { ChannelTypeGroup } from "wukongimjssdk";
 
 import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context";
@@ -37,10 +38,22 @@ export function buildMyGroupNicknameSection(
           maxCount: 10,
           allowEmpty: true,
           onSave: async (value: string) => {
-            await updateChannelSettingMyGroupNickname({
-              channel: data.channel,
-              remark: value,
-            });
+            try {
+              await updateChannelSettingMyGroupNickname({
+                channel: data.channel,
+                remark: value,
+              });
+            } catch (error) {
+              const message =
+                typeof error === "object" &&
+                error !== null &&
+                "msg" in error &&
+                typeof error.msg === "string"
+                  ? error.msg
+                  : t("base.module.channelSettings.saveFailedRetry");
+              Toast.error(message);
+              return false;
+            }
             if (data.subscriberOfMe) {
               data.subscriberOfMe.remark = value;
             }
