@@ -123,7 +123,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     const next = tagDraft.trim();
     if (!next) return null;
     if (validateSkillTag(next)) return validateSkillTag(next);
-    if (tags.includes(next)) return t("skillMarket.form.tagDuplicate");
+    if (tags.some((tag) => tag.trim() === next)) return t("skillMarket.form.tagDuplicate");
     if (tags.length >= MAX_SKILL_TAGS) return t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } });
     return null;
   }
@@ -203,14 +203,15 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   }
 
   function addTagValue(next: string) {
-    if (!next) return;
-    const validationError = validateSkillTag(next);
+    const normalized = next.trim();
+    if (!normalized) return;
+    const validationError = validateSkillTag(normalized);
     if (validationError) {
       setTagError(validationError);
       setTagSuggestOpen(false);
       return;
     }
-    if (tags.includes(next)) {
+    if (tags.some((tag) => tag.trim() === normalized)) {
       setTagError(t("skillMarket.form.tagDuplicate"));
       setTagSuggestOpen(false);
       return;
@@ -220,7 +221,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
       setTagSuggestOpen(false);
       return;
     }
-    setTags([...tags, next].slice(0, MAX_SKILL_TAGS));
+    setTags([...tags, normalized].slice(0, MAX_SKILL_TAGS));
     setTagDraft("");
     setTagSuggestOpen(false);
     setActiveTagSuggestion(0);

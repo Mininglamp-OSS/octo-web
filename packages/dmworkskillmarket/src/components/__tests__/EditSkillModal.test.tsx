@@ -20,6 +20,7 @@ const dirtyEditMessage = /确定离开？尚未完成编辑，已上传的文件
 const keepEditing = /继续编辑|skillMarket\.confirm\.keepEditing/;
 const leaveButton = /确认离开|skillMarket\.confirm\.leave/;
 const tagPlaceholder = /输入或选择标签|skillMarket\.form\.tagPlaceholder/;
+const tagDuplicate = /标签已存在|skillMarket\.form\.tagDuplicate/;
 
 const skill: Skill = {
   id: "meeting-note-cleaner",
@@ -214,6 +215,17 @@ describe("EditSkillModal", () => {
         tags: ["纪要", "协作", "效率"],
       }));
     });
+  });
+
+  it("trims suggested tags before checking duplicates", async () => {
+    vi.mocked(api.getSkillTags).mockResolvedValue([{ name: " 协作 " }]);
+    render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+
+    fireEvent.change(screen.getByPlaceholderText(tagPlaceholder), { target: { value: "协" } });
+    fireEvent.mouseDown(await screen.findByRole("option", { name: "协作" }));
+
+    expect(screen.getByText(tagDuplicate)).toBeInTheDocument();
+    expect(screen.getAllByTitle("协作")).toHaveLength(1);
   });
 
   it("guards closing after the form is changed and closes the confirm dialog after leaving", async () => {

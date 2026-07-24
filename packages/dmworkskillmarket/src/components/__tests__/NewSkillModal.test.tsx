@@ -38,6 +38,7 @@ const leaveButton = /确认离开|skillMarket\.confirm\.leave/;
 const tagLimit = /最多添加 10 个标签|skillMarket\.form\.tagLimit/;
 const tagLengthLimit = /单个标签最多 10 个字符|skillMarket\.form\.tagLengthLimit/;
 const tagInvalidChars = /标签仅支持文字、数字、空格和 - _ \. \/ # \+|skillMarket\.form\.tagInvalidChars/;
+const tagDuplicate = /标签已存在|skillMarket\.form\.tagDuplicate/;
 
 function zipFile(name = "skill-pack.zip", size = 1024 * 1024) {
   return new File(["x".repeat(Math.min(size, 1024))], name, { type: "application/zip" });
@@ -202,6 +203,24 @@ describe("NewSkillModal", () => {
     expect(
       screen.getAllByRole("button").some((button) => button.textContent?.trim() === "ui-case"),
     ).toBe(true);
+  });
+
+  it("trims suggested tags before checking duplicates", async () => {
+    vi.mocked(api.getSkillTags).mockResolvedValue([{ name: " Skill ", createdBy: "dev-user" }]);
+    render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), {
+        target: { files: [zipFile()] },
+      });
+    });
+    await waitFor(() => expect(screen.getByText("skill-pack.zip")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByPlaceholderText(tagPlaceholder), { target: { value: "ski" } });
+    fireEvent.mouseDown(await screen.findByRole("option", { name: "Skill" }));
+
+    expect(screen.getByText(tagDuplicate)).toBeInTheDocument();
+    expect(screen.getAllByTitle("Skill")).toHaveLength(1);
   });
 
   it("shows a tag limit hint when ten tags are already selected", async () => {
