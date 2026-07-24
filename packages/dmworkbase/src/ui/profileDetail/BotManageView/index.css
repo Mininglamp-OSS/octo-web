@@ -145,7 +145,9 @@ button.wk-bot-manage-menu-row .wk-bot-manage-menu-right {
     width: 100%;
     box-sizing: border-box;
     height: calc(var(--wk-sp-8) + var(--wk-sp-0-5));
-    padding: 0 var(--wk-sp-3);
+    /* 右侧常驻预留搜索 spinner 的空间（spinner 内嵌偏移 sp-3 + 宽 sp-4 + 间隙 sp-2），
+       避免搜索时输入文字被 spinner 盖住、且布局不因 spinner 出现/消失而跳动。 */
+    padding: 0 calc(var(--wk-sp-3) + var(--wk-sp-4) + var(--wk-sp-2)) 0 var(--wk-sp-3);
     border-radius: var(--wk-r-md);
     border: 1px solid var(--wk-border-subtle);
     background: var(--wk-bg-surface);

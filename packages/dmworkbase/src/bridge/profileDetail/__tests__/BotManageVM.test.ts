@@ -478,4 +478,45 @@ describe("MentionFreeVM 搜索接后端 q (debounce, WS-115)", () => {
         expect(hoisted.get).not.toHaveBeenCalled()
         expect(vm.searchKeyword).toBe("")
     })
+
+    it("D: unmount during the debounce window reverts searchKeyword to the applied query (back/reopen consistency)", async () => {
+        // reviewer #1082：在 debounce 窗口内输入后立刻导航返回，VM 被复用重新挂载时
+        // 输入框显示未生效关键字、列表却是旧结果。dispose 取消 debounce 时应回滚关键字。
+        hoisted.get.mockResolvedValue({
+            list: [grp({ group_no: "g1" }), grp({ group_no: "g2" })],
+            next_cursor: null,
+            has_more: false,
+        })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups() // 首屏未过滤，activeQuery=""
+        hoisted.get.mockClear()
+
+        // 输入关键字（排定 debounce）后立刻卸载，debounce 尚未触发
+        vm.setSearchKeyword("query")
+        expect(vm.searchKeyword).toBe("query")
+        vm.dispose()
+
+        // 关键字回滚到已生效的空串；且从未对 "query" 发起后端拉取
+        expect(vm.searchKeyword).toBe("")
+        await vi.advanceTimersByTimeAsync(500)
+        expect(hoisted.get).not.toHaveBeenCalled()
+
+        // 复用同一 VM 重新挂载：输入框(searchKeyword="") 与列表(未过滤)一致
+        const { enabled, others } = vm.visibleGroups()
+        expect([...enabled, ...others].map((g) => g.group_no)).toEqual(["g1", "g2"])
+    })
+
+    it("D2: unmount with no pending debounce leaves the applied keyword untouched", async () => {
+        // 关键字已生效（debounce 已触发成功）后卸载：无待定定时器，不应回滚关键字。
+        hoisted.get.mockResolvedValue({ list: [], next_cursor: null, has_more: false })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups()
+
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250) // debounce 触发，activeQuery 变为 "abc"
+        expect(vm.searchKeyword).toBe("abc")
+
+        vm.dispose() // 无待定 debounce
+        expect(vm.searchKeyword).toBe("abc")
+    })
 })

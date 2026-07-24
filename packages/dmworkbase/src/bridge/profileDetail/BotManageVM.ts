@@ -145,9 +145,21 @@ export class MentionFreeVM extends ProviderListener {
         }
     }
 
-    /** 组件卸载时调用：清 debounce，避免定时器在实例销毁后回调泄漏。 */
+    /**
+     * 组件卸载时调用：取消未触发的搜索 debounce。
+     *
+     * 关键：若取消时还有一个未生效的关键字（用户在 debounce 窗口内输入后立刻
+     * 导航返回），把 searchKeyword 回滚到已生效的 activeQuery。否则 VM 被上层
+     * Provider 复用、容器重新挂载（L3 pop 后再 push）时，输入框会显示这个从未
+     * 打到后端的关键字，而列表还是 activeQuery 对应的旧结果，造成「输入框 ↔ 列表」
+     * 不一致（reviewer #1082）。activeQuery 始终对应当前 groups，故回滚后二者一致。
+     */
     dispose(): void {
+        const hadPendingKeyword = this.searchDebounceHandle !== null
         this.clearSearchDebounce()
+        if (hadPendingKeyword) {
+            this.searchKeyword = this.activeQuery
+        }
     }
 
     /**
