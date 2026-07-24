@@ -14,7 +14,7 @@
   flex: 0 0 auto;
   align-items: center;
   gap: var(--wk-sp-2);
-  margin: var(--wk-sp-1) var(--wk-sp-4) var(--wk-sp-1);
+  margin: var(--wk-sp-3) var(--wk-sp-4) var(--wk-sp-2);
   padding: 0 var(--wk-sp-3);
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-sm);

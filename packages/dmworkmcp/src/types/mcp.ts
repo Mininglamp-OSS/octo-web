@@ -239,8 +239,6 @@ export interface CreateMcpParams {
   faqs?: McpFaq[];
   /** Cautions / notes rendered under ⚠️ on the detail page. */
   notes?: string[];
-  /** Visibility scope. */
-  visibility: McpVisibility;
 }
 
 export type McpVisibility = "public" | "private";
@@ -249,8 +247,9 @@ export type McpVisibility = "public" | "private";
  * Payload for updating an existing MCP server entry (PATCH /mcps/{id}).
  * Wire-wise the backend accepts partial updates (fields are pointer types,
  * omitted fields stay unchanged — mcp-v1.md §4.5). The UI always sends the
- * full form, so the shape is identical to CreateMcpParams and every field
- * gets rewritten. Kept as a distinct type alias so callers self-document
+ * full editable form, so the shape is identical to CreateMcpParams and every
+ * editable field gets rewritten. Visibility is intentionally absent and
+ * therefore preserved by the backend. Kept as a distinct type alias so callers self-document
  * "I'm editing" vs "I'm creating" — and so a future partial-update UI can
  * narrow to `Partial<CreateMcpParams>` without a signature churn.
  */

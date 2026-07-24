@@ -336,6 +336,7 @@ export class CollabSheet {
       // on macOS — cross-platform @font-face aliasing (for the ones we keep) is a follow-up.
       if (typeof fontSvc?.addFont === 'function') {
         const EXTRA_FONTS = [
+          { value: 'Calibri', label: 'Calibri', category: 'sans-serif' },
           { value: 'PingFang SC', label: t('docs.sheet.fontLabels.pingfang'), category: 'sans-serif' },
           { value: 'Hiragino Sans GB', label: t('docs.sheet.fontLabels.hiraginoSansGB'), category: 'sans-serif' },
           { value: 'STXihei', label: t('docs.sheet.fontLabels.stxihei'), category: 'sans-serif' },

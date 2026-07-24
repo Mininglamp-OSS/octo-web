@@ -26,7 +26,6 @@ import type {
   McpFaq,
   McpProbeRequest,
   McpTransport,
-  McpVisibility,
 } from "../types/mcp";
 import { isImageIcon } from "../utils/icon";
 
@@ -97,7 +96,6 @@ const EMPTY: CreateMcpParams = {
   usageExamples: [],
   faqs: [],
   notes: [],
-  visibility: "public",
 };
 
 const TRANSPORT_OPTIONS: McpTransport[] = ["stdio", "streamable-http", "sse"];
@@ -194,7 +192,6 @@ function detailToForm(detail: McpDetail): CreateMcpParams {
     usageExamples: detail.usageExamples,
     faqs: detail.faqs,
     notes: detail.notes,
-    visibility: detail.visibility ?? "public",
   };
 }
 
@@ -991,11 +988,6 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     label: t(`mcp.create.transport.${tr}`),
   }));
 
-  const visibilitySegments = [
-    { value: "public" as McpVisibility, label: t("mcp.create.visPublic") },
-    { value: "private" as McpVisibility, label: t("mcp.create.visPrivate") },
-  ];
-
   // Preview src: the freshly-picked file's object URL wins; otherwise the
   // stored icon (a persisted storage URL, or a legacy base64 icon on edit).
   const iconSrc = iconPreview || form.icon;
@@ -1684,15 +1676,6 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
               )}
             </Section>
 
-            {/* 7. 可见范围 */}
-            <Section full title={t("mcp.create.sectionVisibility")}>
-              <Segments
-                full
-                value={form.visibility}
-                options={visibilitySegments}
-                onChange={(v) => update("visibility", v)}
-              />
-            </Section>
           </>
         )}
         </>

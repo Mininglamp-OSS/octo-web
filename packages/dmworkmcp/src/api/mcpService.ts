@@ -12,6 +12,7 @@ import type {
   McpQuickStart,
   UpdateMcpParams,
 } from "../types/mcp";
+import { toWireParams } from "./mcpWireParams";
 import {
   MCP_CATEGORY_LABELS,
   MCP_CATEGORY_ORDER,
@@ -237,6 +238,7 @@ async function updateMcpMock(
   next.createdByType = prev.createdByType;
   next.createdByBotUid = prev.createdByBotUid;
   next.createdByBotName = prev.createdByBotName;
+  next.visibility = prev.visibility;
   MOCK_MCP_DETAILS[idx] = next;
   const listIdx = MOCK_MCP_LIST.findIndex((it) => it.id === id);
   if (listIdx !== -1) MOCK_MCP_LIST[listIdx] = projectListItem(next);
@@ -629,30 +631,6 @@ function mapDetail(raw: McpDetailWire): McpDetail {
     notes: raw.notes ?? [],
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
-  };
-}
-
-function toWireParams(params: CreateMcpParams | UpdateMcpParams) {
-  return {
-    name: params.name,
-    slug: params.slug,
-    slogan: params.slogan,
-    category: params.category,
-    icon: params.icon,
-    tags: params.tags,
-    transport: params.transport,
-    url: params.url,
-    command: params.command,
-    args: params.args,
-    env: params.env,
-    env_user_supplied: params.envUserSupplied,
-    headers: params.headers,
-    headers_user_supplied: params.headersUserSupplied,
-    tools: params.tools,
-    usage_examples: params.usageExamples,
-    faqs: params.faqs,
-    notes: params.notes,
-    visibility: params.visibility,
   };
 }
 
