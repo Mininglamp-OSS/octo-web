@@ -2329,6 +2329,27 @@ export default class ConversationVM extends ProviderListener {
         }
         animateScroll.scrollToBottom(opts);
 
+        // Programmatic scrolling does not always emit a DOM scroll event. This
+        // is especially common for short system rows (for example type 1003,
+        // "member left") when the viewport is already at the bottom. In that
+        // case updateBrowseToMessageSeq() is never called and the conversation
+        // stays unread even though the new row is visible.
+        //
+        // Only advance the cursor when this is the real end of the conversation;
+        // otherwise a partially loaded window must keep its unread state.
+        if (!this.pullupHasMore) {
+            let latestLoadedMessageSeq = 0
+            for (const message of this.messagesOfOrigin) {
+                if (message.messageSeq > latestLoadedMessageSeq) {
+                    latestLoadedMessageSeq = message.messageSeq
+                }
+            }
+            if (latestLoadedMessageSeq > this.browseToMessageSeq) {
+                this.browseToMessageSeq = latestLoadedMessageSeq
+                void this.refreshNewMsgCount()
+            }
+        }
+
     }
 
     // 获取当前发送中的消息
