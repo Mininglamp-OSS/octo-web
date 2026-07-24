@@ -1,4 +1,4 @@
-import React, { useContext, useMemo } from 'react';
+import React, { useContext, useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { Popover } from "@douyinfe/semi-ui";
 import { i18n, useI18n } from "@octo/base";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
@@ -9,6 +9,11 @@ import { ChannelTypeCommunityTopic } from "@octo/base/src/Service/Const";
 import CitationText, { CitationContext } from './CitationText';
 import { CitationItem, CitationContextMessage, TeamCitationItem, MemberStatus } from '../types/summary';
 import { formatGroupLabel } from './citationFormat';
+import './CitationBadge.css';
+
+/** Hover-preview delay (ms) tuned to match Perplexity/Kimi */
+const HOVER_OPEN_DELAY_MS = 400;
+const HOVER_CLOSE_DELAY_MS = 200;
 
 interface CitationBadgeProps {
     index: number;
@@ -225,54 +230,119 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
     );
 }
 
+/**
+ * Custom hook: delayed hover with an "always visible when pinned" override.
+ * Click pins the popover (survives mouseleave), click again unpins. Hover
+ * shows a temporary preview that fades on mouseleave.
+ */
+function useHoverPin(pinned: boolean) {
+    const [hovering, setHovering] = useState(false);
+    const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const clearTimers = useCallback(() => {
+        if (openTimer.current) { clearTimeout(openTimer.current); openTimer.current = null; }
+        if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+    }, []);
+
+    const onMouseEnter = useCallback(() => {
+        if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+        if (hovering || pinned) return;
+        openTimer.current = setTimeout(() => setHovering(true), HOVER_OPEN_DELAY_MS);
+    }, [hovering, pinned]);
+
+    const onMouseLeave = useCallback(() => {
+        if (openTimer.current) { clearTimeout(openTimer.current); openTimer.current = null; }
+        if (pinned) return;
+        closeTimer.current = setTimeout(() => setHovering(false), HOVER_CLOSE_DELAY_MS);
+    }, [pinned]);
+
+    useEffect(() => () => clearTimers(), [clearTimers]);
+    useEffect(() => { if (pinned && hovering) setHovering(false); }, [pinned, hovering]);
+
+    const visible = pinned || hovering;
+    return { visible, onMouseEnter, onMouseLeave };
+}
+
 const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, citations, badgeKey }) => {
     const { t } = useI18n();
     const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
     const citation = citations.find(c => c.index === index);
+    const shownIndex = displayIndex ?? index;
+
+    const pinned = activeKey === badgeKey;
+    const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
 
     if (!citation) {
-        return <sup style={badgeStyle}>[{index}]</sup>;
+        return <sup className="citation-badge">[{shownIndex}]</sup>;
     }
 
-    const isVisible = activeKey === badgeKey;
+    // Hover preview: compact card with sender + source + content snippet.
+    // Pinned view: full context (context_before + main + context_after + jump link).
+    const previewContent = !pinned ? (
+        <div className="citation-mini-preview">
+            <div className="citation-cited-msg">
+                <div className="citation-msg-header">
+                    <span className="citation-msg-sender">{citation.sender}</span>
+                    <span className="citation-msg-time">{formatTime(citation.sent_at)}</span>
+                </div>
+                {citation.source && (
+                    <div className="citation-msg-source">
+                        {t("summary.citation.source", { values: { source: citation.source } })}
+                    </div>
+                )}
+                <div className="citation-msg-body">{citation.content}</div>
+            </div>
+        </div>
+    ) : (
+        <div className="citation-popover">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '18px', color: '#1C1C23', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                    {citation.source || t("summary.citation.sourceDefault")}
+                </span>
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '18px', color: 'rgba(28, 28, 35, 0.6)', flexShrink: 0 }}>
+                    {formatTime(citation.sent_at)}
+                </span>
+            </div>
+            <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <ContextMessages messages={citation.context_before} />
+                <div style={citedMsgStyle}>
+                    <MessageHeader
+                        sender={citation.sender}
+                        sentAt={citation.sent_at}
+                        uid={citation.sender_uid}
+                        jumpLink={<JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />}
+                    />
+                    <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
+                        {citation.content}
+                    </div>
+                </div>
+                <ContextMessages messages={citation.context_after} />
+            </div>
+        </div>
+    );
 
     return (
         <Popover
             trigger="custom"
-            visible={isVisible}
+            visible={visible}
             position="top"
             showArrow
             onClickOutSide={() => closeKey(badgeKey)}
-            content={
-                <div style={{ width: 480, padding: 12, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 500, overflowY: 'auto' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '18px', color: '#1C1C23', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                            {citation.source || t("summary.citation.sourceDefault")}
-                        </span>
-                        <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '18px', color: 'rgba(28, 28, 35, 0.6)', flexShrink: 0 }}>
-                            {formatTime(citation.sent_at)}
-                        </span>
-                    </div>
-                    <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        <ContextMessages messages={citation.context_before} />
-                        <div style={citedMsgStyle}>
-                            <MessageHeader
-                                sender={citation.sender}
-                                sentAt={citation.sent_at}
-                                uid={citation.sender_uid}
-                                jumpLink={<JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />}
-                            />
-                            <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
-                                {citation.content}
-                            </div>
-                        </div>
-                        <ContextMessages messages={citation.context_after} />
-                    </div>
-                </div>
-            }
+            content={previewContent}
         >
-            <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[{displayIndex ?? index}]</sup>
+            <sup
+                className="citation-badge"
+                tabIndex={0}
+                onMouseEnter={onMouseEnter}
+                onMouseLeave={onMouseLeave}
+                onClick={() => onBadgeClick(badgeKey)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onBadgeClick(badgeKey); }
+                    if (e.key === 'Escape' && pinned) { e.preventDefault(); closeKey(badgeKey); }
+                }}
+            >[{shownIndex}]</sup>
         </Popover>
     );
 };
@@ -290,50 +360,77 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
     );
     const mergedMessages = useMemo(() => mergeGroupMessages(groupCitations), [groupCitations]);
 
+    const pinned = activeKey === badgeKey;
+    const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
+
     if (groupCitations.length === 0) {
-        return <sup style={badgeStyle}>[{label}]</sup>;
+        return <sup className="citation-badge">[{label}]</sup>;
     }
 
-    const isVisible = activeKey === badgeKey;
     const firstCitation = groupCitations[0];
+
+    // Hover preview: first up-to-3 cited messages compact. Pinned: full timeline + jump.
+    const previewContent = !pinned ? (
+        <div className="citation-mini-preview">
+            {groupCitations.slice(0, 3).map((c, i) => (
+                <div key={c.message_seq ?? i} className="citation-cited-msg">
+                    <div className="citation-msg-header">
+                        <span className="citation-msg-sender">{c.sender}</span>
+                        <span className="citation-msg-time">{formatTime(c.sent_at)}</span>
+                    </div>
+                    <div className="citation-msg-body">{c.content}</div>
+                </div>
+            ))}
+        </div>
+    ) : (
+        <div className="citation-popover">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '18px', color: '#1C1C23', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                    {firstCitation.source || t("summary.citation.sourceDefault")}
+                </span>
+            </div>
+            <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {mergedMessages.map((msg, i) => {
+                    const cit = groupCitations.find(c => c.index === msg.citation_index);
+                    return (
+                        <div key={msg.message_seq ?? i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
+                            <MessageHeader
+                                sender={msg.sender}
+                                sentAt={msg.sent_at}
+                                uid={msg.sender_uid}
+                                jumpLink={msg.cited && cit ? <JumpLink citation={cit} badgeKey={badgeKey} closeKey={closeKey} /> : undefined}
+                            />
+                            <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
+                                {msg.content}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
 
     return (
         <Popover
             trigger="custom"
-            visible={isVisible}
+            visible={visible}
             position="top"
             showArrow
             onClickOutSide={() => closeKey(badgeKey)}
-            content={
-                <div style={{ width: 480, padding: 12, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 500, overflowY: 'auto' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '18px', color: '#1C1C23', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                            {firstCitation.source || t("summary.citation.sourceDefault")}
-                        </span>
-                    </div>
-                    <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {mergedMessages.map((msg, i) => {
-                            const cit = groupCitations.find(c => c.index === msg.citation_index);
-                            return (
-                                <div key={msg.message_seq ?? i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
-                                    <MessageHeader
-                                        sender={msg.sender}
-                                        sentAt={msg.sent_at}
-                                        uid={msg.sender_uid}
-                                        jumpLink={msg.cited && cit ? <JumpLink citation={cit} badgeKey={badgeKey} closeKey={closeKey} /> : undefined}
-                                    />
-                                    <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
-                                        {msg.content}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            }
+            content={previewContent}
         >
-            <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[{label}]</sup>
+            <sup
+                className="citation-badge"
+                tabIndex={0}
+                onMouseEnter={onMouseEnter}
+                onMouseLeave={onMouseLeave}
+                onClick={() => onBadgeClick(badgeKey)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onBadgeClick(badgeKey); }
+                    if (e.key === 'Escape' && pinned) { e.preventDefault(); closeKey(badgeKey); }
+                }}
+            >[{label}]</sup>
         </Popover>
     );
 };
