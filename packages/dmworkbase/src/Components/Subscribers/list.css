@@ -4,19 +4,90 @@
     background-color: var(--wk-bg-surface);
     width: 100%;
     height: 100%;
-    overflow: scroll;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/*
+ * 成员列表返回时保留 animationend，让 WKViewQueue 继续按原逻辑清理栈顶，
+ * 但取消可见位移，避免标题已切回父页而内容仍横向退场造成闪动。
+ * 不改变 RoutePage/WKViewQueue 的入栈、退栈与数据刷新逻辑。
+ */
+.wk-viewqueue-view-out:has(.wk-subscrierlist) {
+    background: var(--wk-bg-surface);
+    animation-name: wk-subscriber-list-exit;
+    animation-duration: var(--wk-dur-fast);
+    animation-timing-function: var(--wk-ease);
+}
+
+@keyframes wk-subscriber-list-exit {
+    from,
+    to {
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+.wk-subscrierlist .wk-indextable-search-box {
+    height: auto;
+    margin: var(--wk-sp-2) var(--wk-sp-5);
+    padding: var(--wk-sp-1-5) var(--wk-sp-2);
+    align-items: center;
+    background: var(--wk-bg-base);
+    border: 1px solid var(--wk-border-subtle);
+    border-radius: var(--wk-r-sm);
+}
+
+.wk-subscrierlist .wk-indextable-search-icon {
+    margin-left: 0;
+    color: var(--wk-text-tertiary);
+}
+
+.wk-subscrierlist-search-icon {
+    width: var(--wk-sp-4);
+    height: var(--wk-sp-4);
+}
+
+.wk-subscrierlist .wk-indextable-search-input {
+    flex: 1;
+    max-width: none;
+    margin-left: var(--wk-sp-2);
+}
+
+.wk-subscrierlist .wk-indextable-search-input input {
+    width: 100%;
+    height: auto;
+    padding: 0;
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-md);
+    line-height: var(--wk-sp-5);
+}
+
+.wk-subscrierlist .wk-indextable-search-input input::placeholder {
+    color: var(--wk-text-tertiary);
 }
 
 .wk-subscrierlist-list-item {
     display: flex;
     align-items: center;
-    padding: 1rem;
+    gap: var(--wk-sp-3);
+    min-height: var(--wk-sp-12);
+    padding: var(--wk-sp-2) var(--wk-sp-5);
     cursor: pointer;
+    transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-subscrierlist-list-item:hover {
+    background: var(--wk-bg-hover);
 }
 
 .wk-subscrierlist-item-avatar {
     position: relative;
     flex-shrink: 0;
+}
+
+.wk-subscrierlist-item-avatar .wk-avatar {
+    width: var(--wk-sp-8);
+    height: var(--wk-sp-8);
 }
 
 .wk-subscrierlist-item-online-badge {
@@ -26,13 +97,17 @@
 }
 
 .wk-subscrierlist-item-name {
-    margin-left: 1rem;
+    min-width: 0;
+    margin-left: 0;
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
-    max-width: 10rem;
+    max-width: 16rem;
     display: flex;
     align-items: center;
+    gap: var(--wk-sp-1);
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-md);
 }
 
 .wk-subscrierlist-item-source {
@@ -57,13 +132,36 @@
 
 .wk-subscrierlist-item-content {
     display: flex;
+    min-width: 0;
     width: 100%;
-    justify-content: space-between;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--wk-sp-1-5);
 }
 
 .wk-subscrierlist-item-desc {
-    font-size: 14px;
+    display: none;
+    flex-shrink: 0;
+    padding: var(--wk-sp-0-5) var(--wk-sp-1);
+    font-size: var(--wk-text-size-tiny);
+    font-weight: 600;
+    line-height: var(--wk-text-size-base);
+    border-radius: var(--wk-r-xs);
+}
+
+.wk-subscrierlist-item-desc-owner,
+.wk-subscrierlist-item-desc-manager {
+    display: inline-flex;
+}
+
+.wk-subscrierlist-item-desc-owner {
+    color: var(--wk-color-warning);
+    background: var(--wk-color-warning-bg);
+}
+
+.wk-subscrierlist-item-desc-manager {
     color: var(--wk-text-secondary);
+    background: var(--wk-bg-elevated);
 }
 
 .wk-subscrierlist-item-action {

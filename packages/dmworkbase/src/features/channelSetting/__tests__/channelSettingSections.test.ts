@@ -1,3 +1,4 @@
+import { Toast } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import { describe, expect, it, vi } from "vitest";
 
@@ -5,6 +6,7 @@ import { ChannelTypeCommunityTopic } from "../../../Service/Const";
 import { ThreadStatus } from "../../../Service/Thread";
 import { GroupStatusDisband } from "../../../Utils/groupDisband";
 import { updateChannelSettingMyGroupNickname } from "../../../bridge/channelSetting/channelSettingActions";
+import { t } from "../../../i18n";
 import { buildChannelGroupInfoSection } from "../channelSettingGroupInfoSection";
 import {
   buildChannelDangerSection,
@@ -16,8 +18,27 @@ import {
   buildThreadActionsSection,
   buildThreadInfoSection,
   buildThreadMdSection,
+  buildThreadOverviewSection,
   buildThreadWebhookSection,
 } from "../channelSettingThreadSections";
+
+vi.mock("@douyinfe/semi-ui", () => ({
+  Button: vi.fn(),
+  Input: vi.fn(),
+  Switch: vi.fn(),
+  Tag: vi.fn(),
+  TextArea: vi.fn(),
+  Toast: {
+    error: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
+
+vi.mock("@douyinfe/semi-icons", () => ({
+  IconAlertTriangle: vi.fn(),
+  IconLink: vi.fn(),
+  IconPlus: vi.fn(),
+}));
 
 vi.mock("../../../App", () => ({
   default: {
@@ -178,9 +199,7 @@ describe("channel setting section builders", () => {
     const inputEditPush = vi.fn();
     const section = buildMyGroupNicknameSection(context, inputEditPush);
 
-    section?.rows?.[0].properties.onClick();
-    const onFinish = inputEditPush.mock.calls[0][2];
-    await onFinish("Alice Updated");
+    await section?.rows?.[0].properties.onSave("Alice Updated");
 
     expect(updateChannelSettingMyGroupNickname).toHaveBeenCalledWith({
       channel: context.routeData().channel,
@@ -188,6 +207,44 @@ describe("channel setting section builders", () => {
     });
     expect(context.routeData().subscriberOfMe.remark).toBe("Alice Updated");
     expect(context.routeData().refresh).toHaveBeenCalled();
+  });
+
+  it("keeps a cleared group nickname empty instead of falling back to the member name", async () => {
+    const context = createContext();
+    const inputEditPush = vi.fn();
+    const section = buildMyGroupNicknameSection(context, inputEditPush);
+
+    await section?.rows?.[0].properties.onSave("");
+
+    expect(updateChannelSettingMyGroupNickname).toHaveBeenCalledWith({
+      channel: context.routeData().channel,
+      remark: "",
+    });
+    expect(context.routeData().subscriberOfMe.remark).toBe("");
+
+    const refreshedSection = buildMyGroupNicknameSection(
+      context,
+      inputEditPush
+    );
+    expect(refreshedSection?.rows?.[0].properties.value).toBe("");
+    expect(refreshedSection?.rows?.[0].properties.displayValue).toBe(
+      t("base.common.notSet")
+    );
+  });
+
+  it("keeps the group nickname unchanged and reports a failed save", async () => {
+    vi.mocked(updateChannelSettingMyGroupNickname).mockRejectedValueOnce({
+      msg: "Nickname save failed",
+    });
+    const context = createContext();
+    const section = buildMyGroupNicknameSection(context, vi.fn());
+
+    const saved = await section?.rows?.[0].properties.onSave("New nickname");
+
+    expect(saved).toBe(false);
+    expect(Toast.error).toHaveBeenCalledWith("Nickname save failed");
+    expect(context.routeData().subscriberOfMe.remark).toBe("Ali");
+    expect(context.routeData().refresh).not.toHaveBeenCalled();
   });
 
   it("builds danger rows only for active groups", () => {
@@ -245,6 +302,9 @@ describe("channel setting section builders", () => {
     );
     expect(buildThreadMdSection(context)?.rows).toHaveLength(1);
     expect(buildThreadWebhookSection(context)?.rows).toHaveLength(1);
+    expect(
+      buildThreadOverviewSection(context, inputEditPush)?.rows
+    ).toHaveLength(5);
     expect(buildThreadActionsSection(context)?.rows).toHaveLength(2);
   });
 
@@ -255,6 +315,7 @@ describe("channel setting section builders", () => {
     expect(buildThreadInfoSection(context, inputEditPush)).toBeUndefined();
     expect(buildThreadMdSection(context)).toBeUndefined();
     expect(buildThreadWebhookSection(context)).toBeUndefined();
+    expect(buildThreadOverviewSection(context, inputEditPush)).toBeUndefined();
     expect(buildThreadActionsSection(context)).toBeUndefined();
   });
 });

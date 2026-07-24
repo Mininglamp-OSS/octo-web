@@ -124,8 +124,5 @@ export function buildThreadActionsSection(
     })
   );
 
-  return new Section({
-    title: t("base.module.thread.management"),
-    rows,
-  });
+  return new Section({ rows });
 }
