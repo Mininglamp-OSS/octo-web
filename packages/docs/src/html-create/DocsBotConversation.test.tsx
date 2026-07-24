@@ -44,7 +44,7 @@ const draft = (over: Partial<HtmlCreationDraft> = {}): HtmlCreationDraft => ({
   description: 'A launch page',
   files: [],
   spaceId: 's_1',
-  baseUrl: 'https://octo.example/docs-html/',
+  baseUrl: 'https://octo.example/api/',
   ...over,
 })
 
@@ -75,7 +75,7 @@ describe('DocsBotConversation', () => {
     const text = screen.getByTestId('conv-text').textContent || ''
     expect(text).toContain('[Octo HTML 创建任务]')
     expect(text).not.toContain('request_id:')
-    expect(text).toContain('publish_base_url: https://octo.example/docs-html/')
+    expect(text).toContain('publish_base_url: https://octo.example/api/')
     // No token anywhere in the auto-sent text.
     expect(text.toLowerCase()).not.toContain('authorization')
   })

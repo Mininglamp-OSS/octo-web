@@ -161,7 +161,7 @@ describe('CreateHtmlModal', () => {
   })
 
   it('validates the final encoded message against the shared transport limit', async () => {
-    render(<CreateHtmlModal open spaceId="s_1" publishBaseUrl="https://octo.example/docs-html/" onClose={() => {}} onSubmit={() => {}} />)
+    render(<CreateHtmlModal open spaceId="s_1" publishBaseUrl="https://octo.example/api/" onClose={() => {}} onSubmit={() => {}} />)
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
       target: { value: '\\'.repeat(3000) },

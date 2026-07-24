@@ -7,7 +7,7 @@ import { BoardSession } from '../board/BoardSession.tsx'
 import { HtmlDocView } from '../html/HtmlDocView.tsx'
 import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
 import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
-import { docsHtmlBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
+import { docsApiBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
 import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
 import { runMarkdownImport, runDocxImport, ImportContentCorruptError } from '../editor/importFlow.ts'
 import '../editor/styles.css'
@@ -1425,7 +1425,7 @@ export function DocsHome() {
 
   // Modal submit → finalise the draft (requestId + front-end-derived base_url) and open the chat.
   // crypto.randomUUID() is the one-shot idempotency id; base_url comes ONLY from the app origin
-  // (docsHtmlBaseUrl), never from user text/attachments (§5.6).
+  // (docsApiBaseUrl), never from user text/attachments (§5.6).
   const onSubmitHtml = useCallback(
     (partial: Omit<HtmlCreationDraft, 'requestId' | 'baseUrl'>) => {
       const requestId =
@@ -1436,7 +1436,7 @@ export function DocsHome() {
       const draft: HtmlCreationDraft = {
         ...partial,
         requestId,
-        baseUrl: docsHtmlBaseUrl(origin),
+        baseUrl: docsApiBaseUrl(origin),
       }
       setHtmlModalOpen(false)
       openHtmlChat(draft)
@@ -1879,7 +1879,7 @@ export function DocsHome() {
         <CreateHtmlModal
           open={htmlModalOpen}
           spaceId={space}
-          publishBaseUrl={docsHtmlBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
+          publishBaseUrl={docsApiBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
           onClose={() => setHtmlModalOpen(false)}
           onSubmit={onSubmitHtml}
         />
@@ -1915,7 +1915,7 @@ export function DocsHome() {
       <CreateHtmlModal
         open={htmlModalOpen}
         spaceId={space}
-        publishBaseUrl={docsHtmlBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
+        publishBaseUrl={docsApiBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
         onClose={() => setHtmlModalOpen(false)}
         onSubmit={onSubmitHtml}
       />
