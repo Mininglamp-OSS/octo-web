@@ -4,5 +4,10 @@
 // 本文件 re-export 供 apps/web/src/mocks/browser.ts 消费.
 import { loopEmptyHandlers } from "../../e2e-kit/msw-handlers/loop-empty";
 import { chatBaselineHandlers } from "../../e2e-kit/msw-handlers/chat-baseline";
+import { mcpOfficialHandlers } from "../../e2e-kit/msw-handlers/mcp-official";
 
-export const handlers = [...loopEmptyHandlers, ...chatBaselineHandlers];
+export const handlers = [
+  ...mcpOfficialHandlers,
+  ...loopEmptyHandlers,
+  ...chatBaselineHandlers,
+];
