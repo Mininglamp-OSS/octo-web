@@ -978,6 +978,7 @@
   "message.interactiveCard.inputTooLarge": "提交内容过大",
   "message.interactiveCard.copySuccess": "已复制",
   "message.interactiveCard.copyFailed": "复制失败",
+  "message.imagePreview.rotate": "旋转",
   "message.interactiveCard.copyTable": "复制",
   "message.interactiveCard.denyDialog.title": "拒绝文档访问申请",
   "message.interactiveCard.denyDialog.descWithContext": "拒绝后，{{actor}} 将无法获得“{{title}}”的查看权限。",

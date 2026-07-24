@@ -978,6 +978,7 @@
   "message.interactiveCard.inputTooLarge": "Submission is too large",
   "message.interactiveCard.copySuccess": "Copied",
   "message.interactiveCard.copyFailed": "Copy failed",
+  "message.imagePreview.rotate": "Rotate",
   "message.interactiveCard.copyTable": "Copy",
   "message.interactiveCard.denyDialog.title": "Deny document access request",
   "message.interactiveCard.denyDialog.descWithContext": "Once denied, {{actor}} will not get view access to \"{{title}}\".",
