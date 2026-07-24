@@ -4,3 +4,4 @@ export { SkillMarketModule } from "./module";
 // Keeps the coupling to a single named export instead of dmworkmcp reaching
 // into the internal folder tree.
 export { default as SkillListPage } from "./pages/SkillListPage";
+export { formatCount } from "./utils/format";

@@ -1,6 +1,7 @@
 import React from "react";
 import { Tooltip } from "@douyinfe/semi-ui";
-import { IconWrenchStroked } from "@douyinfe/semi-icons";
+import { IconEyeOpened, IconWrenchStroked } from "@douyinfe/semi-icons";
+import { formatCount } from "@dmwork/skillmarket";
 import { Bot, Pencil, Trash2, UserRound } from "lucide-react";
 import type { McpListItem } from "../types/mcp";
 import { t } from "@octo/base";
@@ -185,6 +186,14 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
       {item.matchReasons?.length ? <MatchReasons reasons={item.matchReasons} /> : null}
       <div className="wk-mcp-card__footer">
         <div className="wk-mcp-card__stats">
+          <span
+            className="wk-mcp-card__stat"
+            title={t("mcp.card.viewCount", { values: { count: item.viewCount } })}
+            aria-label={t("mcp.card.viewCount", { values: { count: item.viewCount } })}
+          >
+            <IconEyeOpened size="small" />
+            {formatCount(item.viewCount)}
+          </span>
           <span
             className="wk-mcp-card__stat"
             title={t("mcp.card.toolCount", { values: { count: item.toolCount } })}

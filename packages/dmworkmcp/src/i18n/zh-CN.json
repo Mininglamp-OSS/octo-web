@@ -98,6 +98,7 @@
       "other": "命中内容"
     },
     "toolCount": "工具数量: {{count}} 个",
+    "viewCount": "查看次数: {{count}} 次",
     "editAriaLabel": "编辑 {{name}}",
     "deleteAriaLabel": "删除 {{name}}",
     "edit": "编辑",

@@ -285,6 +285,7 @@ function buildDetailFromCreate(id: string, params: CreateMcpParams): McpDetail {
     category: params.category,
     tags: params.tags ?? [],
     toolCount: params.tools.length,
+    viewCount: 0,
     icon: params.icon,
     creatorName: WKApp.loginInfo?.name || "",
     quickStart,
@@ -306,6 +307,7 @@ function projectListItem(d: McpDetail): McpListItem {
     category: d.category,
     tags: d.tags,
     toolCount: d.toolCount,
+    viewCount: d.viewCount,
     icon: d.icon,
     createdByType: d.createdByType,
     createdByBotUid: d.createdByBotUid,
@@ -394,7 +396,10 @@ mcpAxios.interceptors.request.use((config) => {
 mcpAxios.interceptors.response.use(
   (resp) => resp,
   (err) => {
-    if (err?.response?.status === 401) {
+    const config = err?.config as (AxiosRequestConfig & {
+      skipGlobalAuthFailure?: boolean;
+    }) | undefined;
+    if (err?.response?.status === 401 && !config?.skipGlobalAuthFailure) {
       WKApp.shared.logout();
     }
     return Promise.reject(err);
@@ -508,6 +513,7 @@ interface McpListItemWire {
   icon: string;
   tags: string[];
   tool_count: number;
+  view_count?: number;
   visibility?: McpListItem["visibility"];
   creator_name?: string;
   created_by_type?: McpListItem["createdByType"];
@@ -566,6 +572,7 @@ function mapListItem(raw: McpListItemWire): McpListItem {
     icon: raw.icon,
     tags: raw.tags ?? [],
     toolCount: raw.tool_count ?? 0,
+    viewCount: normalizeCount(raw.view_count),
     visibility: raw.visibility,
     creatorName: raw.creator_name,
     createdByType: raw.created_by_type,
@@ -576,6 +583,12 @@ function mapListItem(raw: McpListItemWire): McpListItem {
     matchReasons: raw.match_reasons ?? [], relevance: raw.relevance,
     updatedAt: raw.updated_at,
   };
+}
+
+export function normalizeCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : 0;
 }
 
 function mapDetail(raw: McpDetailWire): McpDetail {
@@ -705,6 +718,16 @@ async function fetchMcpListPath(
 
 async function fetchMcpDetailReal(id: string): Promise<McpDetail> {
   return get<McpDetailWire>(`/mcps/${encodeURIComponent(id)}`).then(mapDetail);
+}
+
+async function trackMcpViewReal(id: string): Promise<void> {
+  await mcpAxios.post(
+    `${BASE}/metrics/track`,
+    { resource_type: "mcp", resource_id: id, event_type: "view" },
+    { skipGlobalAuthFailure: true } as AxiosRequestConfig & {
+      skipGlobalAuthFailure: boolean;
+    }
+  );
 }
 
 async function probeMcpToolsReal(
@@ -872,6 +895,11 @@ export function fetchMcpMine(
 
 export function fetchMcpDetail(id: string): Promise<McpDetail> {
   return USE_MOCK ? fetchMcpDetailMock(id) : fetchMcpDetailReal(id);
+}
+
+export async function trackMcpView(id: string): Promise<void> {
+  if (USE_MOCK) return;
+  await trackMcpViewReal(id);
 }
 
 /** One tag suggestion in the tag-filter popover (mcp-v1.md §4.8). */

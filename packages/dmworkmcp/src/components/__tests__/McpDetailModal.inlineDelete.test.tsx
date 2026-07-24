@@ -7,10 +7,12 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 // ── Mocks ──────────────────────────────────────────────────────────────────
 const deleteMcp = vi.fn();
 const fetchMcpDetail = vi.fn();
+const trackMcpView = vi.fn();
 
 vi.mock("../../api/mcpService", () => ({
   deleteMcp: (...a: unknown[]) => deleteMcp(...a),
   fetchMcpDetail: (...a: unknown[]) => fetchMcpDetail(...a),
+  trackMcpView: (...a: unknown[]) => trackMcpView(...a),
 }));
 vi.mock("../../api/quickStartTemplates", () => ({
   buildQuickStartTabs: () => [
@@ -89,6 +91,73 @@ function clickButtonByText(root: HTMLElement, text: string) {
 }
 
 describe("McpDetailModal 就地内联删除确认（方案A）", () => {
+  it("详情成功后每次打开仅上报一次查看", async () => {
+    fetchMcpDetail.mockResolvedValue({
+      id: "m1",
+      name: "MCP",
+      slogan: "",
+      category: "dev",
+      icon: "",
+      tags: [],
+      toolCount: 0,
+      viewCount: 12,
+      quickStart: { transport: "streamable-http", serverName: "MCP" },
+      tools: [],
+      usageExamples: [],
+      faqs: [],
+      notes: [],
+    });
+    trackMcpView.mockRejectedValue(new Error("metrics unavailable"));
+
+    let root!: HTMLElement;
+    await act(async () => {
+      root = render(React.createElement(McpDetailModal, { mcpId: "m1", onClose: vi.fn() }));
+      await Promise.resolve();
+    });
+    expect(root.textContent).toContain("12");
+    expect(trackMcpView).toHaveBeenCalledTimes(1);
+    expect(trackMcpView).toHaveBeenCalledWith("m1");
+
+    act(() => {
+      ReactDOM.unmountComponentAtNode(root);
+    });
+    root.remove();
+    container = null;
+    await act(async () => {
+      render(React.createElement(McpDetailModal, { mcpId: "m1", onClose: vi.fn() }));
+      await Promise.resolve();
+    });
+    expect(trackMcpView).toHaveBeenCalledTimes(2);
+  });
+
+  it("详情请求失败或已取消时不上报查看", async () => {
+    fetchMcpDetail.mockRejectedValueOnce(new Error("load failed"));
+    await act(async () => {
+      render(React.createElement(McpDetailModal, { mcpId: "failed", onClose: vi.fn() }));
+      await Promise.resolve();
+    });
+    expect(trackMcpView).not.toHaveBeenCalled();
+
+    let resolveDetail!: (value: unknown) => void;
+    fetchMcpDetail.mockReturnValueOnce(new Promise((resolve) => {
+      resolveDetail = resolve;
+    }));
+    const root = render(React.createElement(McpDetailModal, { mcpId: "cancelled", onClose: vi.fn() }));
+    act(() => {
+      ReactDOM.unmountComponentAtNode(root);
+    });
+    root.remove();
+    container = null;
+    await act(async () => {
+      resolveDetail({
+        id: "cancelled", name: "MCP", slogan: "", category: "dev", icon: "", tags: [], toolCount: 0, viewCount: 1,
+        quickStart: { transport: "streamable-http", serverName: "MCP" }, tools: [], usageExamples: [], faqs: [], notes: [],
+      });
+      await Promise.resolve();
+    });
+    expect(trackMcpView).not.toHaveBeenCalled();
+  });
+
   it("点删除→footer 就地切确认态，不弹新窗；确认→调用 deleteMcp", async () => {
     fetchMcpDetail.mockResolvedValue({
       id: "m1",
@@ -98,6 +167,7 @@ describe("McpDetailModal 就地内联删除确认（方案A）", () => {
       icon: "",
       tags: [],
       toolCount: 0,
+      viewCount: 12,
       visibility: "private",
       creatorName: "dev",
       quickStart: { transport: "streamable-http", serverName: "测试666" },

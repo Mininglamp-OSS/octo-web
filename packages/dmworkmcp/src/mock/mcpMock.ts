@@ -81,6 +81,7 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
     category: "dev",
     tags: ["官方", "热门"],
     toolCount: 8,
+    viewCount: 1280,
     icon: "🐙",
     quickStart: remoteQuickStart("github"),
     tools: tools([
@@ -121,6 +122,7 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
     category: "data",
     tags: ["数据库"],
     toolCount: 5,
+    viewCount: 999,
     icon: "🐘",
     quickStart: stdioQuickStart("postgres", [
       "-y",
@@ -154,6 +156,7 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
     category: "search",
     tags: ["官方", "联网"],
     toolCount: 3,
+    viewCount: 0,
     icon: "🦁",
     quickStart: stdioQuickStart(
       "brave-search",
@@ -182,6 +185,7 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
     category: "dev",
     tags: ["官方", "基础"],
     toolCount: 6,
+    viewCount: 24600,
     icon: "📁",
     quickStart: stdioQuickStart("filesystem", [
       "-y",
@@ -213,6 +217,7 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
     category: "productivity",
     tags: ["协作"],
     toolCount: 4,
+    viewCount: 412,
     icon: "💬",
     quickStart: stdioQuickStart(
       "slack",
@@ -243,6 +248,7 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
     category: "dev",
     tags: ["浏览器"],
     toolCount: 5,
+    viewCount: 7350,
     icon: "🎭",
     quickStart: stdioQuickStart("puppeteer", [
       "-y",
@@ -272,6 +278,7 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
     category: "productivity",
     tags: ["云盘"],
     toolCount: 3,
+    viewCount: 87,
     icon: "📄",
     quickStart: remoteQuickStart("gdrive"),
     tools: tools([
@@ -296,6 +303,7 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
     category: "ai",
     tags: ["官方"],
     toolCount: 4,
+    viewCount: 1600,
     icon: "🧠",
     quickStart: stdioQuickStart("memory", [
       "-y",
@@ -324,6 +332,7 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
     category: "search",
     tags: ["官方", "联网"],
     toolCount: 1,
+    viewCount: 14,
     icon: "🌐",
     quickStart: remoteQuickStart("fetch"),
     tools: tools([["fetch", "抓取 URL 并转为 Markdown"]]),
@@ -344,6 +353,7 @@ export const MOCK_MCP_DETAILS: McpDetail[] = [
     category: "data",
     tags: ["官方", "数据库"],
     toolCount: 4,
+    viewCount: 530,
     icon: "🗃️",
     quickStart: stdioQuickStart("sqlite", [
       "-y",
@@ -377,6 +387,7 @@ export const MOCK_MCP_LIST: McpListItem[] = MOCK_MCP_DETAILS.map((d) => ({
   category: d.category,
   tags: d.tags,
   toolCount: d.toolCount,
+  viewCount: d.viewCount,
   icon: d.icon,
   createdByType: d.createdByType,
   createdByBotUid: d.createdByBotUid,

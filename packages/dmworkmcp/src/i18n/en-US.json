@@ -98,6 +98,7 @@
       "other": "Matched content"
     },
     "toolCount": "Tools: {{count}}",
+    "viewCount": "Views: {{count}}",
     "editAriaLabel": "Edit {{name}}",
     "deleteAriaLabel": "Delete {{name}}",
     "edit": "Edit",

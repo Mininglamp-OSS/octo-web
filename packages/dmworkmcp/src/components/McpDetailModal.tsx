@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { WKModal, WKButton, t } from "@octo/base";
 import { Toast, Spin } from "@douyinfe/semi-ui";
-import { IconWrenchStroked } from "@douyinfe/semi-icons";
+import { IconEyeOpened, IconWrenchStroked } from "@douyinfe/semi-icons";
+import { formatCount } from "@dmwork/skillmarket";
 import { Bot, UserRound } from "lucide-react";
-import { deleteMcp, fetchMcpDetail } from "../api/mcpService";
+import { deleteMcp, fetchMcpDetail, trackMcpView } from "../api/mcpService";
 import { buildQuickStartTabs, TOKEN_PLACEHOLDER_RE } from "../api/quickStartTemplates";
 import type { McpDetail, McpQuickStart } from "../types/mcp";
 import { IconGlyph } from "../utils/icon";
@@ -139,7 +140,10 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
     setLoading(true);
     fetchMcpDetail(mcpId)
       .then((d) => {
-        if (!cancelled) setDetail(d);
+        if (!cancelled) {
+          setDetail(d);
+          void trackMcpView(mcpId).catch(() => undefined);
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -361,6 +365,18 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
           )}
           {/* 工具数量：与卡片 footer 及 dmworkskillmarket 的 stats 一致。 */}
           <div className="wk-mcp-detail__stats">
+            <span
+              className="wk-mcp-card__stat"
+              title={t("mcp.card.viewCount", {
+                values: { count: detail.viewCount },
+              })}
+              aria-label={t("mcp.card.viewCount", {
+                values: { count: detail.viewCount },
+              })}
+            >
+              <IconEyeOpened size="small" />
+              {formatCount(detail.viewCount)}
+            </span>
             <span
               className="wk-mcp-card__stat"
               title={t("mcp.card.toolCount", {

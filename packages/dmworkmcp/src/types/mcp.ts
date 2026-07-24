@@ -69,6 +69,8 @@ export interface McpListItem {
   tags: string[];
   /** Number of tools this server exposes (shown on the card footer). */
   toolCount: number;
+  /** Persisted detail-view count returned by Marketplace. */
+  viewCount: number;
   /** Icon: single emoji/char OR image URL / data URL. */
   icon: string;
   /** Visibility scope, echoed by the wire (mcp-v1.md §0). Optional so legacy
