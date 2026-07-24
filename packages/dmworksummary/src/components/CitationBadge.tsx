@@ -273,6 +273,16 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
     const pinned = activeKey === badgeKey;
     const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
 
+    // Document-level Escape: works regardless of focus (e.g. after clicking jump link)
+    useEffect(() => {
+        if (!pinned) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') { e.preventDefault(); closeKey(badgeKey); }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [pinned, closeKey, badgeKey]);
+
     if (!citation) {
         return <sup className="citation-badge">[{shownIndex}]</sup>;
     }
@@ -335,6 +345,8 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
             <sup
                 className="citation-badge"
                 tabIndex={0}
+                role="button"
+                aria-expanded={visible}
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
                 onClick={() => onBadgeClick(badgeKey)}
@@ -363,6 +375,16 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
     const pinned = activeKey === badgeKey;
     const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
 
+    // Document-level Escape: works regardless of focus (e.g. after clicking jump link)
+    useEffect(() => {
+        if (!pinned) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') { e.preventDefault(); closeKey(badgeKey); }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [pinned, closeKey, badgeKey]);
+
     if (groupCitations.length === 0) {
         return <sup className="citation-badge">[{label}]</sup>;
     }
@@ -378,6 +400,11 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                         <span className="citation-msg-sender">{c.sender}</span>
                         <span className="citation-msg-time">{formatTime(c.sent_at)}</span>
                     </div>
+                    {c.source && (
+                        <div className="citation-msg-source">
+                            {t("summary.citation.source", { values: { source: c.source } })}
+                        </div>
+                    )}
                     <div className="citation-msg-body">{c.content}</div>
                 </div>
             ))}
@@ -423,6 +450,8 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
             <sup
                 className="citation-badge"
                 tabIndex={0}
+                role="button"
+                aria-expanded={visible}
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
                 onClick={() => onBadgeClick(badgeKey)}
