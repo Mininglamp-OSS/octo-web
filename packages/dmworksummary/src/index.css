@@ -2049,6 +2049,41 @@
     margin-bottom: 16px;
 }
 
+/* Mode switch (normal/agent) */
+.summary-workbench-mode-switch {
+    margin-left: auto;
+    display: flex;
+    gap: 0;
+    background: var(--semi-color-fill-0);
+    border-radius: var(--semi-border-radius-full);
+    padding: 2px;
+    flex-shrink: 0;
+}
+
+.summary-workbench-mode-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: var(--semi-font-size-small);
+    font-weight: 600;
+    line-height: 20px;
+    padding: 4px 12px;
+    border-radius: var(--semi-border-radius-full);
+    color: var(--semi-color-text-2);
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+
+.summary-workbench-mode-btn--active {
+    background: var(--semi-color-bg-1);
+    color: var(--semi-color-text-0);
+}
+
+.summary-workbench-mode-btn:not(.summary-workbench-mode-btn--active):hover {
+    color: var(--semi-color-text-1);
+}
+
 .summary-workbench-header-emoji {
     font-size: 28px;
     line-height: 1;

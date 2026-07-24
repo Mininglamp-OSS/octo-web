@@ -1031,6 +1031,22 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 <div className="summary-workbench-header">
                     <span className="summary-workbench-header-emoji">🚀</span>
                     <span className="summary-workbench-title">{translate("summary.create.title")}</span>
+                    <div className="summary-workbench-mode-switch">
+                        <button
+                            type="button"
+                            className={`summary-workbench-mode-btn${mode === 'normal' ? ' summary-workbench-mode-btn--active' : ''}`}
+                            onClick={() => this.handleSelectMode('normal')}
+                        >
+                            {translate("summary.create.start")}
+                        </button>
+                        <button
+                            type="button"
+                            className={`summary-workbench-mode-btn${mode === 'agent' ? ' summary-workbench-mode-btn--active' : ''}`}
+                            onClick={() => this.handleSelectMode('agent')}
+                        >
+                            {translate("summary.create.agentStart")}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Content card */}
