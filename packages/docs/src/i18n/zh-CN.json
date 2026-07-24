@@ -47,6 +47,7 @@
       "copySuccess": "提示词已复制",
       "copySuccessWithFiles": "提示词已复制；附件未复制，请在转发时一并发送。",
       "copyFailed": "复制失败，请手动选择并复制提示词。",
+      "prerequisiteHint": "使用提示词新建 HTML 前，请先在本地安装 octo-cli，并为 Bot 安装 Octo HTML Skill。",
       "retry": "重试",
       "chatContext": "由 Bot 创建 HTML",
       "close": "关闭",

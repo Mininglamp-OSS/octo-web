@@ -4290,11 +4290,24 @@ div:has(> .octo-link-bubble) {
   margin-top: auto;
   min-height: 60px;
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
   padding: 16px;
   border-top: 1px solid var(--wk-black-alpha-08);
+}
+.octo-html-create-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.octo-html-create-prerequisite-hint {
+  margin: 0;
+  color: var(--wk-brand-alpha-60);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: right;
 }
 .octo-html-create-footer .octo-tb-btn {
   display: inline-flex;

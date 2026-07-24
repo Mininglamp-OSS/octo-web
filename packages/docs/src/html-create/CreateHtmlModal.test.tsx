@@ -193,6 +193,19 @@ describe('CreateHtmlModal', () => {
     expect(screen.getByText('docs.list.htmlCreate.copySuccessWithFiles')).toBeTruthy()
   })
 
+  it('falls back to execCommand when Clipboard API is unavailable', async () => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+    const execCommand = vi.fn().mockReturnValue(true)
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand })
+    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Fallback copy' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPrompt'))
+    await waitFor(() => expect(execCommand).toHaveBeenCalledWith('copy'))
+    expect(screen.getByText('docs.list.htmlCreate.copySuccess')).toBeTruthy()
+  })
+
   it('shows a localized failure when prompt copying fails', async () => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -236,11 +249,13 @@ describe('CreateHtmlModal', () => {
     await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
     expect(screen.getByText('docs.list.htmlCreate.cancel').closest('.octo-html-create-footer')).not.toBeNull()
     expect(screen.getByText('docs.list.htmlCreate.generatePrompt').closest('.octo-html-create-footer')).not.toBeNull()
+    expect(screen.getByText('docs.list.htmlCreate.prerequisiteHint')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Preview me' } })
     fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
     for (const key of ['backToEdit', 'copyPrompt', 'forwardToBot']) {
       expect(screen.getByText(`docs.list.htmlCreate.${key}`).closest('.octo-html-create-footer')).not.toBeNull()
     }
+    expect(screen.getByText('docs.list.htmlCreate.prerequisiteHint')).toBeTruthy()
   })
 
   it('reloads bots when the space changes (no stale bot carried over)', async () => {

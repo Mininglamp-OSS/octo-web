@@ -155,8 +155,20 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
 
   const copyPrompt = async () => {
     try {
-      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
-      await navigator.clipboard.writeText(prompt)
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(prompt)
+      } else {
+        const copyArea = document.createElement('textarea')
+        copyArea.value = prompt
+        copyArea.setAttribute('readonly', '')
+        copyArea.style.position = 'fixed'
+        copyArea.style.opacity = '0'
+        document.body.appendChild(copyArea)
+        copyArea.select()
+        const copied = document.execCommand?.('copy') ?? false
+        copyArea.remove()
+        if (!copied) throw new Error('copy unavailable')
+      }
       setCopyNotice(t(files.length ? 'docs.list.htmlCreate.copySuccessWithFiles' : 'docs.list.htmlCreate.copySuccess'))
     } catch {
       setCopyNotice(t('docs.list.htmlCreate.copyFailed'))
@@ -217,19 +229,22 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
                 {copyNotice && <p className="octo-html-create-hint" role="status">{copyNotice}</p>}
               </div>
               <footer className="octo-html-create-footer">
-                <button type="button" className="octo-tb-btn" onClick={() => { setCopyNotice(null); setPhase('edit') }}>
-                  {t('docs.list.htmlCreate.backToEdit')}
-                </button>
-                <button type="button" className="octo-tb-btn" onClick={() => void copyPrompt()}>
-                  {t('docs.list.htmlCreate.copyPrompt')}
-                </button>
-                <button
-                  type="button"
-                  className="octo-tb-btn octo-html-create-submit"
-                  onClick={() => { const draft = currentDraft(); if (draft) onSubmit(draft) }}
-                >
-                  {t('docs.list.htmlCreate.forwardToBot')}
-                </button>
+                <div className="octo-html-create-footer-actions">
+                  <button type="button" className="octo-tb-btn" onClick={() => { setCopyNotice(null); setPhase('edit') }}>
+                    {t('docs.list.htmlCreate.backToEdit')}
+                  </button>
+                  <button type="button" className="octo-tb-btn" onClick={() => void copyPrompt()}>
+                    {t('docs.list.htmlCreate.copyPrompt')}
+                  </button>
+                  <button
+                    type="button"
+                    className="octo-tb-btn octo-html-create-submit"
+                    onClick={() => { const draft = currentDraft(); if (draft) onSubmit(draft) }}
+                  >
+                    {t('docs.list.htmlCreate.forwardToBot')}
+                  </button>
+                </div>
+                <p className="octo-html-create-prerequisite-hint">{t('docs.list.htmlCreate.prerequisiteHint')}</p>
               </footer>
             </>
           ) : (
@@ -347,16 +362,19 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
           </div>
 
           <footer className="octo-html-create-footer">
-            <button type="button" className="octo-tb-btn" onClick={onClose}>
-              {t('docs.list.htmlCreate.cancel')}
-            </button>
-            <button
-              type="submit"
-              className="octo-tb-btn octo-html-create-submit"
-              disabled={!canSubmit}
-            >
-              {t('docs.list.htmlCreate.generatePrompt')}
-            </button>
+            <div className="octo-html-create-footer-actions">
+              <button type="button" className="octo-tb-btn" onClick={onClose}>
+                {t('docs.list.htmlCreate.cancel')}
+              </button>
+              <button
+                type="submit"
+                className="octo-tb-btn octo-html-create-submit"
+                disabled={!canSubmit}
+              >
+                {t('docs.list.htmlCreate.generatePrompt')}
+              </button>
+            </div>
+            <p className="octo-html-create-prerequisite-hint">{t('docs.list.htmlCreate.prerequisiteHint')}</p>
           </footer>
             </>
           )}

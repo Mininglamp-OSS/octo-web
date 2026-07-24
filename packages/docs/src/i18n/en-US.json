@@ -47,6 +47,7 @@
       "copySuccess": "Prompt copied",
       "copySuccessWithFiles": "Prompt copied. Attachments were not copied; forward them with the prompt.",
       "copyFailed": "Couldn't copy the prompt. Select and copy it manually.",
+      "prerequisiteHint": "Before creating HTML from this prompt, install octo-cli locally and the Octo HTML Skill for the Bot.",
       "retry": "Retry",
       "chatContext": "Create HTML with a bot",
       "close": "Close",
