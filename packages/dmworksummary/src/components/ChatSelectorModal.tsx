@@ -131,7 +131,11 @@ export default class ChatSelectorModal extends Component<Props, State> {
             } else {
                 // 无选中聊天：加载全局联系人
                 const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
-                const humans = list.filter((m: any) => !m.is_bot && !isBot(m.uid || m.user_id || ""));
+                const humans = list.filter((m: any) => {
+                    // Contacts 类型用 robot 字段，不是 is_bot
+                    const isRobot = m.robot === true || m.is_bot === true || isBot(m.uid || m.user_id || "");
+                    return !isRobot;
+                });
                 this.setState({
                     memberRoles: new Map<string, number>(),
                     candidates: humans.map((m: any) => ({
