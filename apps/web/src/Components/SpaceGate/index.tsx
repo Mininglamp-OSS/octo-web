@@ -160,7 +160,7 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
                             {canCreateSpace && (
                                 <Button type="secondary" size="large" style={{ width: "100%", height: 44 }}
                                     onClick={() => this.setState({ showCreate: true })}>
-                                    ✨ {t("app.spaceGate.createTeam")}
+                                    ✨ {t("app.spaceGate.createSpace")}
                                 </Button>
                             )}
                         </div>

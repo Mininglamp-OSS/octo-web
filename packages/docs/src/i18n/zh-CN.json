@@ -470,8 +470,8 @@
     "title": "链接分享范围",
     "restricted": "仅协作者",
     "restrictedHint": "仅协作者可访问",
-    "anyoneInSpace": "同空间任何人",
-    "anyoneInSpaceHint": "同空间任何人可访问",
+    "anyoneInSpace": "Space 内的任何人",
+    "anyoneInSpaceHint": "所有 Space 成员均可访问",
     "permission": "权限",
     "role": {
       "read": "可查看",

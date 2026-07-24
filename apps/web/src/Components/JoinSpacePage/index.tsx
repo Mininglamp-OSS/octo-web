@@ -145,7 +145,7 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
                                     className="wk-join-space-btn"
                                     onClick={() => setShowCreate(true)}
                                 >
-                                    ✨ {t("app.spaceGate.createTeam")}
+                                    ✨ {t("app.spaceGate.createSpace")}
                                 </Button>
                             )}
                         </div>
