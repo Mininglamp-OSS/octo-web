@@ -9,7 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const hoisted = vi.hoisted(() => ({
   wkConfirm: vi.fn(),
   regenerateWebhook: vi.fn(),
+  deleteWebhook: vi.fn(),
+  testWebhook: vi.fn(),
   reload: vi.fn(),
+  toastSuccess: vi.fn(),
+  toastError: vi.fn(),
   items: [
     {
       webhook_id: "iwh_1",
@@ -33,7 +37,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
       "data-checked": String(!!checked),
       onClick: () => onChange(!checked),
     }),
-  Toast: { success: vi.fn(), error: vi.fn() },
+  Toast: { success: hoisted.toastSuccess, error: hoisted.toastError },
 }));
 
 vi.mock("@douyinfe/semi-icons", () => ({
@@ -78,9 +82,9 @@ vi.mock("../../../bridge/channelWebhook/useChannelWebhookActions", () => ({
     togglingId: null,
     coolingTestId: null,
     toggleWebhook: vi.fn(),
-    testWebhook: vi.fn(),
+    testWebhook: hoisted.testWebhook,
     regenerateWebhook: hoisted.regenerateWebhook,
-    deleteWebhook: vi.fn(),
+    deleteWebhook: hoisted.deleteWebhook,
   }),
 }));
 
@@ -102,7 +106,11 @@ let container: HTMLDivElement;
 beforeEach(() => {
   hoisted.wkConfirm.mockReset();
   hoisted.regenerateWebhook.mockReset();
+  hoisted.deleteWebhook.mockReset();
+  hoisted.testWebhook.mockReset();
   hoisted.reload.mockReset();
+  hoisted.toastSuccess.mockReset();
+  hoisted.toastError.mockReset();
   hoisted.regenerateWebhook.mockResolvedValue({
     ok: true,
     response: {
@@ -112,6 +120,8 @@ beforeEach(() => {
     },
     stale: true,
   });
+  hoisted.deleteWebhook.mockResolvedValue({ ok: true, stale: true });
+  hoisted.testWebhook.mockResolvedValue(false);
   container = document.createElement("div");
   document.body.appendChild(container);
 });
@@ -124,7 +134,7 @@ afterEach(() => {
 });
 
 describe("ChannelWebhookPanel stale results", () => {
-  it("does not show regenerated secret URL when result is stale", async () => {
+  const renderPanel = () => {
     act(() => {
       ReactDOM.render(
         React.createElement(ChannelWebhookPanel, {
@@ -134,6 +144,10 @@ describe("ChannelWebhookPanel stale results", () => {
         container
       );
     });
+  };
+
+  it("does not show regenerated secret URL when result is stale", async () => {
+    renderPanel();
 
     act(() => {
       container
@@ -151,5 +165,41 @@ describe("ChannelWebhookPanel stale results", () => {
     expect(hoisted.regenerateWebhook).toHaveBeenCalledTimes(1);
     expect(container.querySelector('[data-testid="url-modal"]')).toBeNull();
     expect(container.textContent).not.toContain("secret-token");
+  });
+
+  it("does not show delete success toast when result is stale", async () => {
+    renderPanel();
+
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="base.channelWebhook.action.delete"]'
+        )!
+        .click();
+    });
+
+    const confirmConfig = hoisted.wkConfirm.mock.calls[0][0];
+    await act(async () => {
+      await confirmConfig.onOk();
+    });
+
+    expect(hoisted.deleteWebhook).toHaveBeenCalledTimes(1);
+    expect(hoisted.toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("does not show test success toast when result is stale", async () => {
+    renderPanel();
+
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="base.channelWebhook.action.test"]'
+        )!
+        .click();
+      await Promise.resolve();
+    });
+
+    expect(hoisted.testWebhook).toHaveBeenCalledTimes(1);
+    expect(hoisted.toastSuccess).not.toHaveBeenCalled();
   });
 });

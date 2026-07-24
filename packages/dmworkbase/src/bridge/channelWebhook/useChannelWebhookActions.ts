@@ -147,6 +147,11 @@ export function useChannelWebhookActions(params: {
           params.threadShortId
         );
         return refreshIfCurrentScope(actionScopeKey);
+      } catch (error) {
+        if (!isCurrentScope(actionScopeKey)) {
+          return false;
+        }
+        throw error;
       } finally {
         if (isCurrentScope(actionScopeKey)) {
           setTogglingId(null);
@@ -178,7 +183,12 @@ export function useChannelWebhookActions(params: {
           item.webhook_id,
           params.threadShortId
         );
-        return true;
+        return isCurrentScope(actionScopeKey);
+      } catch (error) {
+        if (!isCurrentScope(actionScopeKey)) {
+          return false;
+        }
+        throw error;
       } finally {
         if (isCurrentScope(actionScopeKey)) {
           setTestingId(null);

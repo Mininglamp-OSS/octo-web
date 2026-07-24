@@ -156,7 +156,7 @@ export default function ChannelWebhookPanel({
         let deleted = false;
         try {
           const result = await deleteWebhook(item);
-          deleted = result.ok;
+          deleted = result.ok && !result.stale;
         } catch (e) {
           Toast.error(
             extractErrorMsg(e) || t("base.channelWebhook.error.deleteFailed")

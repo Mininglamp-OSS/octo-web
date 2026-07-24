@@ -290,4 +290,79 @@ describe("useChannelWebhookActions", () => {
     });
     expect(reload).not.toHaveBeenCalled();
   });
+
+  it("suppresses test success and failure after scope changes", async () => {
+    let resolveTest!: () => void;
+    let rejectTest!: (reason: unknown) => void;
+    const runtime = createRuntime({
+      test: vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              resolveTest = resolve;
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((_, reject) => {
+              rejectTest = reject;
+            })
+        ),
+    });
+    const reload = vi.fn();
+    renderProbe({ runtime, reload, channelId: "g1" });
+
+    let testPromise!: ReturnType<typeof current.testWebhook>;
+    await act(async () => {
+      testPromise = current.testWebhook(createWebhook());
+      await Promise.resolve();
+    });
+    renderProbe({ runtime, reload, channelId: "g2" });
+    await act(async () => {
+      resolveTest();
+    });
+
+    await expect(testPromise).resolves.toBe(false);
+
+    renderProbe({ runtime, reload, channelId: "g1" });
+    let failedTestPromise!: ReturnType<typeof current.testWebhook>;
+    await act(async () => {
+      failedTestPromise = current.testWebhook(createWebhook());
+      await Promise.resolve();
+    });
+    renderProbe({ runtime, reload, channelId: "g2" });
+    await act(async () => {
+      rejectTest(new Error("test failed"));
+    });
+
+    await expect(failedTestPromise).resolves.toBe(false);
+  });
+
+  it("suppresses toggle failures after scope changes", async () => {
+    let rejectToggle!: (reason: unknown) => void;
+    const runtime = createRuntime({
+      updateStatus: vi.fn(
+        () =>
+          new Promise((_, reject) => {
+            rejectToggle = reject;
+          })
+      ),
+    });
+    const reload = vi.fn();
+    renderProbe({ runtime, reload, channelId: "g1" });
+
+    let togglePromise!: ReturnType<typeof current.toggleWebhook>;
+    await act(async () => {
+      togglePromise = current.toggleWebhook(createWebhook(), false);
+      await Promise.resolve();
+    });
+    renderProbe({ runtime, reload, channelId: "g2" });
+    await act(async () => {
+      rejectToggle(new Error("toggle failed"));
+    });
+
+    await expect(togglePromise).resolves.toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+  });
 });
