@@ -1301,7 +1301,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <span>{translate("summary.create.selectChat")}</span>
                                 </button>
                             )}
-                            {/* 选择参与者 */}
+                            {/* 选择参与者（仅 normal 模式） */}
+                            {mode !== 'agent' && (
                             <div className="summary-workbench-chat-row">
                                 {selectedMembers.length > 0 && (
                                     <div className="summary-workbench-chat-chips" ref={this.memberChipsContainerRef}>
@@ -1347,6 +1348,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <span>{translate("summary.create.selectMembers")}</span>
                                 </button>
                             </div>
+                            )}
                         </div>
                         {mode !== 'agent' && (
                             <Button
