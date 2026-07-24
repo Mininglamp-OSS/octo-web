@@ -88,6 +88,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: I18n check
         run: pnpm i18n:check
+      - name: Skill Market tests
+        run: pnpm --filter @dmwork/skillmarket test
       - name: Unified import/export unit tests
         run: >-
           pnpm --filter @octo/docs exec vitest run
