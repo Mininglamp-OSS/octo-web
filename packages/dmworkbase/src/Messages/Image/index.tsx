@@ -125,7 +125,7 @@ interface ImagePreviewLightboxProps {
     isMulti?: boolean
 }
 
-function ImagePreviewLightbox({ open, close, slides, index, filename, isMulti }: ImagePreviewLightboxProps) {
+export function ImagePreviewLightbox({ open, close, slides, index, filename, isMulti }: ImagePreviewLightboxProps) {
     const [rotation, setRotation] = React.useState(0)
     const resetRotation = () => setRotation(0)
 
@@ -147,7 +147,15 @@ function ImagePreviewLightbox({ open, close, slides, index, filename, isMulti }:
             }}
             toolbar={{ buttons: ["zoom", "close"] }}
             zoom={{ minZoom: 0.25, maxZoomPixelRatio: 4, zoomInMultiplier: 1.25, scrollToZoom: true }}
-            carousel={{ finite: true }}
+            carousel={{
+                finite: true,
+                imageProps: {
+                    style: {
+                        maxWidth: rotation % 180 ? "100cqh" : "100%",
+                        maxHeight: rotation % 180 ? "100cqw" : "100%",
+                    },
+                },
+            }}
             controller={{ closeOnBackdropClick: true }}
             on={{ entering: resetRotation, view: resetRotation }}
             styles={{

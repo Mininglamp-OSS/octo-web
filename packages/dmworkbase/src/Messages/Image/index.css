@@ -3,6 +3,7 @@
 }
 
 .wk-image-preview .yarl__slide {
+  container-type: size;
   padding: var(--wk-sp-6) var(--wk-sp-6) 88px;
 }
 

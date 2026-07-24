@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 
 const mocks = vi.hoisted(() => ({
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastWarning: vi.fn(),
   currentSlide: { src: 'https://cdn.example.com/photo.png' },
+  lightboxProps: undefined as any,
 }))
 
 vi.mock('wukongimjssdk', () => ({
@@ -28,7 +29,10 @@ vi.mock('wukongimjssdk', () => ({
 
 vi.mock('react', async () => await vi.importActual('react'))
 vi.mock('yet-another-react-lightbox', () => ({
-  default: () => null,
+  default: (props: any) => {
+    mocks.lightboxProps = props
+    return null
+  },
   isImageSlide: (slide: unknown) => !!slide,
   useLightboxState: () => ({ currentSlide: mocks.currentSlide }),
 }))
@@ -53,7 +57,7 @@ vi.mock('../../MessageCell', () => ({
   MessageCell: class {},
 }))
 
-import { ImageContent, ImagePreviewToolbar, getImageTransferState } from '../index'
+import { ImageContent, ImagePreviewLightbox, ImagePreviewToolbar, getImageTransferState } from '../index'
 import { MessageStatus, TaskStatus } from 'wukongimjssdk'
 
 describe('ImagePreviewToolbar', () => {
@@ -95,6 +99,35 @@ describe('ImagePreviewToolbar', () => {
       expect(onRotate).toHaveBeenCalled()
       expect(mocks.copyImageToClipboard).toHaveBeenCalledWith(mocks.currentSlide.src)
       expect(mocks.toastSuccess).toHaveBeenCalled()
+    })
+  })
+})
+
+describe('ImagePreviewLightbox', () => {
+  it('swaps image fit bounds for quarter-turn rotations', () => {
+    render(React.createElement(ImagePreviewLightbox, {
+      open: true,
+      close: vi.fn(),
+      slides: [{ src: 'https://cdn.example.com/landscape.png' }],
+    }))
+
+    expect(mocks.lightboxProps.carousel.imageProps.style).toEqual({
+      maxWidth: '100%',
+      maxHeight: '100%',
+    })
+
+    act(() => mocks.lightboxProps.render.buttonZoom({}).props.onRotate())
+
+    expect(mocks.lightboxProps.carousel.imageProps.style).toEqual({
+      maxWidth: '100cqh',
+      maxHeight: '100cqw',
+    })
+
+    act(() => mocks.lightboxProps.render.buttonZoom({}).props.onRotate())
+
+    expect(mocks.lightboxProps.carousel.imageProps.style).toEqual({
+      maxWidth: '100%',
+      maxHeight: '100%',
     })
   })
 })
