@@ -1021,6 +1021,8 @@
   "message.interactiveCard.copyFailed": "Copy failed",
   "message.imagePreview.rotate": "Rotate",
   "message.interactiveCard.copyTable": "Copy",
+  "message.interactiveCard.fallbackFinalized": "⚠️ Completed (no terminal update received)",
+  "message.interactiveCard.fallbackTag": "Client fallback",
   "message.interactiveCard.denyDialog.title": "Deny document access request",
   "message.interactiveCard.denyDialog.descWithContext": "Once denied, {{actor}} will not get view access to \"{{title}}\".",
   "message.interactiveCard.denyDialog.desc": "Once denied, the requester will not get view access to this document.",

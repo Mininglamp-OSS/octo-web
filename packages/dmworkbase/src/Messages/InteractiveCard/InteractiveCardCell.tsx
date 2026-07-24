@@ -186,9 +186,10 @@ export class InteractiveCardCell extends MessageCell {
       this.renderedKey = null;
       return;
     }
+    const fallbackFinalized = this.isFallbackFinalized(decision.card);
     const key = `${decision.renderProfile}:${
       decision.allowInteractive ? "v2" : "v1"
-    }:${JSON.stringify(decision.card)}`;
+    }:${fallbackFinalized ? "fb:" : ""}${JSON.stringify(decision.card)}`;
     if (key === this.renderedKey) return;
     this.renderedKey = key;
     // 新帧到达：作废在飞提交（响应/超时不再生效）并重置交互态（loading/错误/超时）。
@@ -205,6 +206,7 @@ export class InteractiveCardCell extends MessageCell {
         tableCopyLabel: t("base.message.interactiveCard.copyTable"),
         onTableCopy: (text) => this.handleTableCopy(text),
         renderProfile: decision.renderProfile,
+        fallbackFinalized,
       });
     } catch {
       // 已过 octo 预校验仍渲染失败属极端边角 → fail-safe 渲纯文本（不走 markdown/HTML）。
@@ -223,6 +225,16 @@ export class InteractiveCardCell extends MessageCell {
       });
   }
 
+  /**
+   * 该卡是否已被客户端兜底判定为「已完成（未收到显式终态）」。
+   * 仅 agent_progress 卡 + VM 置了 localFallbackApplied 时为 true。
+   */
+  private isFallbackFinalized(card: Record<string, unknown>): boolean {
+    return (
+      !!this.props.message.localFallbackApplied && isAgentProgressCard(card)
+    );
+  }
+
   private enhanceMountedCard() {
     const target = this.cardMountRef.current;
     if (!target) return;
@@ -235,6 +247,7 @@ export class InteractiveCardCell extends MessageCell {
       tableCopyLabel: t("base.message.interactiveCard.copyTable"),
       onTableCopy: (text) => this.handleTableCopy(text),
       renderProfile: decision.renderProfile,
+      fallbackFinalized: this.isFallbackFinalized(decision.card),
     });
   }
 
@@ -490,14 +503,28 @@ export class InteractiveCardCell extends MessageCell {
   ): React.ReactNode {
     switch (decision.kind) {
       case "card": {
+        const fallbackFinalized = this.isFallbackFinalized(decision.card);
         const cls =
           cardMountRootClass(decision.renderProfile) +
           (agentProgress ? " wk-interactive-card-sdk--agent-progress" : "") +
+          (fallbackFinalized
+            ? " wk-interactive-card-sdk--fallback-finalized"
+            : "") +
           (this.submitting ? " wk-interactive-card-sdk--submitting" : "") +
           // webhook 卡展示-only：输入置灰不可交互（提交侧另有 handleSubmit 双保险）。
           (decision.interactive ? "" : " wk-interactive-card-sdk--readonly");
         return (
           <>
+            {fallbackFinalized && (
+              <div className="wk-interactive-card-fallback" role="status">
+                <span className="wk-interactive-card-fallback__state">
+                  {t("base.message.interactiveCard.fallbackFinalized")}
+                </span>
+                <span className="wk-interactive-card-fallback__tag">
+                  {t("base.message.interactiveCard.fallbackTag")}
+                </span>
+              </div>
+            )}
             <div className={cls} ref={this.cardMountRef} />
             {this.submitError && (
               <div className="wk-interactive-card-error" role="alert">

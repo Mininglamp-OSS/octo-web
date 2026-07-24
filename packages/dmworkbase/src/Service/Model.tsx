@@ -220,6 +220,11 @@ export class MessageWrap {
     public message: Message
     public checked!: boolean // 是否选中
     public locateRemind?: boolean // 定位到消息后是否需要提醒
+    // ── type=17 progress 卡客户端兜底（本地 UI 态，不写回消息内容/服务端）──
+    /** 该 progress 卡最近一次帧到达（创建或 patch）的本地时刻（秒）。用于 final-text 兜底的空闲判定。 */
+    public progressUpdatedAtSec?: number
+    /** 已被 final-text 兜底判定为「已完成（未收到显式终态）」，渲染层据此降级显示。 */
+    public localFallbackApplied?: boolean
     constructor(message: Message) {
         this.message = message
         this.order = message.messageSeq > 0 ? message.messageSeq * OrderFactor : 0
