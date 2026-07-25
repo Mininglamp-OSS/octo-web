@@ -34,7 +34,10 @@ export function buildThreadInfoSection(
     isChannelDisbanded(new Channel(threadInfo.groupNo, ChannelTypeGroup));
   const thread = channelInfo?.orgData?.thread as any;
   const threadName = channelInfo?.title;
-  const canEdit = canRenameThread(thread, threadInfo?.groupNo);
+  // 服务端放开后（octo-server #542）任何父群活跃人类成员都可改子区名。
+  // canRenameThread 只判「登录用户是否父群活跃成员（非龙虾）」，不再收紧到
+  // 创建者/群主/管理员。与 ThreadPanel「更多菜单 → Edit name」同口径。
+  const canEdit = canRenameThread(threadInfo?.groupNo);
   const statusTitle =
     thread?.status === ThreadStatus.Archived
       ? t("base.module.thread.status.archived")
@@ -55,8 +58,9 @@ export function buildThreadInfoSection(
         value: threadName,
         onClick: () => {
           if (!threadInfo) return;
+          // 服务端放开后任何父群活跃人类成员都可改名，前端只挡龙虾/非成员；
+          // 失败提示以服务端返回错误为准（下方 Toast.error）。
           if (!canEdit) {
-            Toast.warning(t("base.module.thread.nameOnlyCreatorOrManager"));
             return;
           }
           inputEditPush(

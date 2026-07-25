@@ -9,6 +9,7 @@ import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { ChannelField } from "../../Service/DataSource/DataSource";
 import { GROUP_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import { Row } from "../../Service/Section";
+import { canRenameGroup } from "../../Service/threadPermission";
 import { updateChannelSettingField } from "../../bridge/channelSetting/channelSettingActions";
 import { t } from "../../i18n";
 import {
@@ -52,10 +53,10 @@ export function buildGroupProfileRows({
         title: t("base.module.channelSettings.groupName"),
         value: groupName,
         onClick: () => {
-          if (!data.isManagerOrCreatorOfMe) {
-            Toast.warning(
-              t("base.module.channelSettings.groupNameOnlyManager")
-            );
+          // 服务端放开后（octo-server #542）任何活跃人类成员都可改群名，
+          // 前端只挡龙虾（canRenameGroup 粗过滤），外部/黑名单成员放到弹窗
+          // 后由服务端裁决、经下方 Toast.error(err.msg) 呈现。
+          if (!canRenameGroup(data.subscriberOfMe)) {
             return;
           }
           inputEditPush(
