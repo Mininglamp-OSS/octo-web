@@ -5,15 +5,18 @@ import ItemContacts from "./item-contacts";
 import WKApp from "../../App";
 import { isBot } from "../WKAvatar";
 import BotDetailModal from "../BotDetailModal";
-import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from "wukongimjssdk";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { debounce } from "../../Utils/rateLimit";
+import { addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import "./tab-contacts.css"
 
 interface TabContactsProps {
     keyword?: string;
     friends?: any[];
     onClick?: (item: any) => void;
+    // #989: bot 名片"发送消息"跳转会话后，外层搜索弹窗需要一起关掉
+    hideModal?: () => void;
 }
 
 interface TabContactsState {
@@ -32,6 +35,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
     // 懒加载重构：使用 debounce 合批 forceUpdate，避免视口内多个 uid 集中返回
     // 时触发 N 次重渲；并用 fetchedUids 记录已发起过的 uid，避免重复请求。
     private _channelInfoListener!: ChannelInfoListener
+    private unsubscribeChannelInfoListener?: () => void
     private _forceUpdateDebounced = debounce(() => this.forceUpdate(), 150)
     private fetchedUids = new Set<string>()
     // Sticky friends：files tab 切换时父层会把 friends 置为 undefined 触发
@@ -45,13 +49,12 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
                 this._forceUpdateDebounced()
             }
         }
-        WKSDK.shared().channelManager.addListener(this._channelInfoListener)
+        this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(this._channelInfoListener)
     }
 
     componentWillUnmount() {
-        if (this._channelInfoListener) {
-            WKSDK.shared().channelManager.removeListener(this._channelInfoListener)
-        }
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
         this._forceUpdateDebounced.cancel()
     }
 
@@ -69,9 +72,9 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
         if (!(missingHome && missingLegacy)) return
         if (this.fetchedUids.has(friend.channel_id)) return
         const ch = new Channel(friend.channel_id, ChannelTypePerson)
-        if (WKSDK.shared().channelManager.getChannelInfo(ch)) return
+        if (getCurrentImChannelInfo(ch)) return
         this.fetchedUids.add(friend.channel_id)
-        WKSDK.shared().channelManager.fetchChannelInfo(ch)
+        void fetchCurrentImChannelInfo(ch)
     }
 
     /**
@@ -97,7 +100,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
             isExternalLegacy === undefined || isExternalLegacy === null
         if (missingHome && missingLegacy && friend?.channel_id) {
             const ch = new Channel(friend.channel_id, ChannelTypePerson)
-            const ci = WKSDK.shared().channelManager.getChannelInfo(ch)
+            const ci = getCurrentImChannelInfo(ch)
             const ciOrg = ci?.orgData
             if (ciOrg) {
                 homeId = ciOrg.home_space_id as string | undefined
@@ -145,6 +148,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
                 onChat={(channel) => {
                     WKApp.endpoints.showConversation(channel);
                     this.setState({ botDetailVisible: false });
+                    this.props.hideModal?.();
                 }}
             />
         </div>

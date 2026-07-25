@@ -33,6 +33,8 @@ import type {
     AgentDoneEvent,
     AgentErrorEvent,
     AgentStreamHandlers,
+    CreateSummarySharesResponse,
+    GetSummaryShareResponse,
 } from '../types/summary';
 import { SummaryMode } from '../types/summary';
 
@@ -530,6 +532,25 @@ export async function listSummaries(
 
 export async function getSummaryDetail(taskId: number | string): Promise<SummaryDetail> {
     return get(`/summaries/${encodeURIComponent(String(taskId))}`);
+}
+
+export async function createSummaryShares(
+    taskId: number | string,
+    idempotencyKey: string,
+    targets: Array<{ channel_id: string; channel_type: number }>,
+): Promise<CreateSummarySharesResponse> {
+    return post(`/summaries/${encodeURIComponent(String(taskId))}/shares`, {
+        idempotency_key: idempotencyKey,
+        targets,
+    });
+}
+
+export async function getSummaryShare(shareId: string): Promise<GetSummaryShareResponse> {
+    return get(`/summary-shares/${encodeURIComponent(shareId)}`);
+}
+
+export async function revokeSummaryShare(shareId: string): Promise<void> {
+    await del(`/summary-shares/${encodeURIComponent(shareId)}`);
 }
 
 export async function markSummaryRead(

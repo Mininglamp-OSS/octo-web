@@ -3,6 +3,7 @@ import { ChannelTypePerson, ChannelTypeGroup, Channel, Conversation, Message, WK
 import { hasSpacePrefix } from "./SpacePrefix"
 import { ChannelTypeCommunityTopic } from "./Const"
 import { parseThreadChannelId } from "./Thread"
+import { getImChannelInfo, getImChannelSubscribers } from "../im-runtime/channelRuntime"
 
 export type JoinSpaceStatus = "NEED_APPROVAL" | "PENDING"
 
@@ -90,7 +91,7 @@ function getMyMembershipSourceSpaceId(channel: Channel): string | undefined {
 
     const myUid = WKApp.loginInfo?.uid
     if (!myUid) return undefined
-    const subs = WKSDK.shared().channelManager.getSubscribes(channel)
+    const subs = getImChannelSubscribers(WKSDK.shared(), channel)
     if (!subs || subs.length === 0) return undefined
     const mine = subs.find((s: any) => s?.uid === myUid) as any
     if (!mine) return undefined
@@ -152,7 +153,7 @@ export function shouldSkipChannelForSpace(channel: Channel): boolean {
             return true
         }
         // 缓存未命中 → 尝试从已缓存的 channelInfo 获取 space_id
-        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
+        const channelInfo = getImChannelInfo(WKSDK.shared(), channel)
         const infoSpaceId = channelInfo?.orgData?.space_id
         if (infoSpaceId) {
             // 回填 channelSpaceMap 避免下次再查
@@ -186,7 +187,7 @@ export function shouldSkipChannelForSpace(channel: Channel): boolean {
         }
         // 父群 channelInfo 兜底
         const parentChannel = new Channel(parsed.groupNo, ChannelTypeGroup)
-        const parentInfo = WKSDK.shared().channelManager.getChannelInfo(parentChannel)
+        const parentInfo = getImChannelInfo(WKSDK.shared(), parentChannel)
         const parentInfoSpaceId = parentInfo?.orgData?.space_id
         if (parentInfoSpaceId) {
             WKApp.shared.channelSpaceMap.set(parentKey, parentInfoSpaceId)

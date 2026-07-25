@@ -1,4 +1,4 @@
-import { Convert, IModule, WKApp, hasSpacePrefix, ChannelTypeCommunityTopic } from "@octo/base"
+import { Convert, IModule, WKApp, hasSpacePrefix, ChannelTypeCommunityTopic, getImChannelInfo, getImSubscribeCacheMap, setImChannelInfoCache } from "@octo/base"
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import { ConversationProvider } from "./conversation";
 import { ChannelDataSource, CommonDataSource } from "./datasource";
@@ -23,6 +23,13 @@ export default class DataSourceModule implements IModule {
 
         WKApp.dataSource.channelDataSource = new ChannelDataSource()
         WKApp.dataSource.commonDataSource = new CommonDataSource()
+
+        // e2e: 有 mock-im-runtime 顶掉 provider callbacks 时, 不注册真实 IM callbacks,
+        // 否则 fake provider install 后再被真实 callback 覆盖回去 → SDK 又去发 HTTP.
+        // dev / prod 完全走 tree-shake 分支, 无副作用.
+        if (import.meta.env.VITE_E2E_MOCK_IM === "1") {
+            return
+        }
 
         this.setChannelInfoCallback() // 频道信息
         this.setSyncSubscribersCallback() // 订阅者同步
@@ -50,7 +57,7 @@ export default class DataSourceModule implements IModule {
             threadGet: (groupNo, shortId) =>
                 WKApp.dataSource.channelDataSource.threadGet(groupNo, shortId),
             extractUID: DataSourceModule.extractUID,
-            getSubscribeCacheMap: () => WKSDK.shared().channelManager.subscribeCacheMap,
+            getSubscribeCacheMap: () => getImSubscribeCacheMap(WKSDK.shared()),
         })
     }
 
@@ -59,9 +66,9 @@ export default class DataSourceModule implements IModule {
             getMembers: (path) => WKApp.apiClient.get(path),
             avatarUser: (uid) => WKApp.shared.avatarUser(uid),
             getPersonChannelInfo: (uid) =>
-                WKSDK.shared().channelManager.getChannelInfo(new Channel(uid, ChannelTypePerson)),
+                getImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson)),
             setChannelInfoForCache: (channelInfo) =>
-                WKSDK.shared().channelManager.setChannleInfoForCache(channelInfo),
+                setImChannelInfoCache(WKSDK.shared(), channelInfo),
         })
     }
 
@@ -118,7 +125,7 @@ export default class DataSourceModule implements IModule {
             toUserChannelInfo: (user) => Convert.userToChannelInfo(user),
             toGroupChannelInfo: (group) => Convert.groupToChannelInfo(group),
             setChannelInfoForCache: (channelInfo) =>
-                WKSDK.shared().channelManager.setChannleInfoForCache(channelInfo),
+                setImChannelInfoCache(WKSDK.shared(), channelInfo),
         })
     }
 }

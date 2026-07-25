@@ -31,15 +31,16 @@ describe('octoweb space-member seam', () => {
     expect(page).toEqual([{ uid: 'u_noname', name: 'u_noname' }])
   })
 
-  it('fetchAllSpaceMembers loops pages (size 50) until exhausted', async () => {
-    // 120 members -> three pages (50 + 50 + 20). The seam must aggregate all of them.
-    for (let i = 0; i < 120; i++) {
+  it('fetchAllSpaceMembers returns the FULL roster, past the old 1000-member page cap', async () => {
+    // 1100 members: the old 50×20=1000 page cap silently dropped everyone past 1000 (the
+    // 5760-member picker bug). The full-roster fetch (one big page) must return all of them.
+    for (let i = 0; i < 1100; i++) {
       wk.spaceMembers.push({ uid: `u_${i}`, name: `User ${i}` })
     }
     const all = await fetchAllSpaceMembers('s_1')
-    expect(all).toHaveLength(120)
+    expect(all).toHaveLength(1100)
     expect(all[0]).toEqual({ uid: 'u_0', name: 'User 0' })
-    expect(all[119]).toEqual({ uid: 'u_119', name: 'User 119' })
+    expect(all[1099]).toEqual({ uid: 'u_1099', name: 'User 1099' })
   })
 
   it('returns an empty list for a blank space id without touching the host', async () => {

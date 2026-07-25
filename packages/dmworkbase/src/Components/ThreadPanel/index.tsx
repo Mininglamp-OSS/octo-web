@@ -40,6 +40,7 @@ import { isChannelDisbanded } from "../../Utils/groupDisband";
 import FollowService from "../../Service/FollowService";
 import SidebarService from "../../Service/SidebarService";
 import CategoryService from "../../Service/CategoryService";
+import { createThreadByNameAndNotify } from "../../bridge/thread/createThread";
 import { syncThreadArchiveState } from "../../Service/threadArchiveSync";
 import { FilePreviewInfo } from "../FilePreviewPanel/types";
 import { fileRendererRegistry } from "../FilePreviewPanel/registry";
@@ -56,6 +57,7 @@ import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import { THREAD_NAME_MAX_LENGTH } from "../../Service/nameLimits";
+import ThreadCreateDialog, { ThreadCreateLabels } from "../../ui/ThreadCreateDialog";
 import {
   ArchiveAction,
   deriveArchiveAction,
@@ -69,13 +71,16 @@ import {
   restoreThreadWidth,
   persistThreadWidth,
 } from "../WKLayout/layoutWidth";
+import {
+  deleteImChannelInfo,
+  fetchImChannelInfo,
+  getImChannelInfo,
+} from "../../im-runtime/channelRuntime";
 import "./index.css";
 
-
-
 /**
- * 子区名称输入框 — 带字数计数器（当前/最大）
- * 用于 ThreadPanel 内创建/编辑子区名的 wkConfirm 弹窗。
+ * 子区名称输入框 — 带字数计数器（当前/最大）。
+ * 目前仍用于重命名子区的 legacy wkConfirm。
  */
 const ThreadNameInput = React.forwardRef<
   HTMLInputElement,
@@ -203,6 +208,9 @@ interface ThreadPanelComponentState {
   conversationFilesPage: number;
   /** 文件列表是否还有更多 */
   conversationFilesHasMore: boolean;
+  createDialogVisible: boolean;
+  createLoading: boolean;
+  createError: string | null;
 }
 
 export default class ThreadPanel extends Component<
@@ -268,6 +276,9 @@ export default class ThreadPanel extends Component<
       conversationFilesLoadingMore: false,
       conversationFilesPage: 1,
       conversationFilesHasMore: false,
+      createDialogVisible: false,
+      createLoading: false,
+      createError: null,
     };
   }
 
@@ -1013,8 +1024,8 @@ export default class ThreadPanel extends Component<
         : "");
     if (!channelID) return;
     const threadChannel = new Channel(channelID, ChannelTypeCommunityTopic);
-    WKSDK.shared().channelManager.deleteChannelInfo(threadChannel);
-    WKSDK.shared().channelManager.fetchChannelInfo(threadChannel);
+    deleteImChannelInfo(WKSDK.shared(), threadChannel);
+    void fetchImChannelInfo(WKSDK.shared(), threadChannel);
   }
 
   /**
@@ -1074,56 +1085,33 @@ export default class ThreadPanel extends Component<
     }
     if (!groupNo) return;
 
-    let threadName = "";
-    const inputRef = React.createRef<HTMLInputElement>();
-    wkConfirm({
-      title: t("base.module.createThread.title"),
-      okText: t("base.module.createThread.ok"),
-      cancelText: t("base.common.cancel"),
-      content: (
-        <div>
-          <div
-            style={{
-              marginBottom: "8px",
-              fontSize: "14px",
-              color: "var(--wk-text-secondary)",
-            }}
-          >
-            {t("base.module.createThread.nameLabel")}
-          </div>
-          <ThreadNameInput
-            ref={inputRef}
-            placeholder={t("base.module.createThread.namePlaceholder")}
-            autoFocus
-          />
-        </div>
-      ),
-      onOk: async () => {
-        threadName = inputRef.current?.value ?? "";
-        if (!threadName || threadName.trim() === "") {
-          Toast.error(t("base.module.createThread.nameRequired"));
-          return;
-        }
-        if (threadName.length > THREAD_NAME_MAX_LENGTH) {
-          Toast.warning(t("base.threadCreate.nameMaxLength"));
-          return;
-        }
-        try {
-          await WKApp.dataSource.channelDataSource.threadCreate(
-            groupNo,
-            threadName.trim()
-          );
-          Toast.success(t("base.module.createThread.success"));
-          this.loadThreads();
-        } catch (err: unknown) {
-          const msg =
-            err instanceof Error
-              ? err.message
-              : t("base.module.createThread.failed");
-          Toast.error(msg);
-        }
-      },
-    });
+    this.setState({ createDialogVisible: true, createError: null });
+  };
+
+  private handleSubmitCreateThread = async (threadName: string) => {
+    const { groupNo } = this.props;
+    if (!groupNo) return;
+
+    this.setState({ createLoading: true, createError: null });
+    try {
+      await createThreadByNameAndNotify(groupNo, threadName);
+      Toast.success(t("base.module.createThread.success"));
+      this.setState({ createDialogVisible: false, createLoading: false });
+      this.loadThreads();
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : t("base.module.createThread.failed");
+      Toast.error(msg);
+      this.setState({ createLoading: false, createError: msg });
+    }
+  };
+
+  private handleCreateThreadNameChange = () => {
+    if (this.state.createError) {
+      this.setState({ createError: null });
+    }
   };
 
   /** 文件选择回调：切换预览的文件（从 ConversationFile 构造 FilePreviewInfo） */
@@ -1427,8 +1415,22 @@ export default class ThreadPanel extends Component<
   }
 
   private renderListView() {
-    const { threads, threadsLoading, activeExpanded, archivedExpanded } =
-      this.state;
+    const {
+      threads,
+      threadsLoading,
+      activeExpanded,
+      archivedExpanded,
+      createDialogVisible,
+      createLoading,
+      createError,
+    } = this.state;
+    const createLabels: ThreadCreateLabels = {
+      cancel: t("base.common.cancel"),
+      create: t("base.module.createThread.ok"),
+      creating: t("base.threadCreate.creating"),
+      maxLength: t("base.threadCreate.nameMaxLength"),
+      nameRequired: t("base.module.createThread.nameRequired"),
+    };
 
     const activeThreads = threads.filter(
       (t) => t.status === ThreadStatus.Active
@@ -1536,6 +1538,23 @@ export default class ThreadPanel extends Component<
             )}
           </>
         )}
+        <ThreadCreateDialog
+          visible={createDialogVisible && !disbanded}
+          title={t("base.module.createThread.title")}
+          label={t("base.module.createThread.nameLabel")}
+          placeholder={t("base.module.createThread.namePlaceholder")}
+          maxLength={THREAD_NAME_MAX_LENGTH}
+          loading={createLoading}
+          error={createError}
+          labels={createLabels}
+          showCounter
+          formVariant="confirm"
+          onSubmit={this.handleSubmitCreateThread}
+          onChange={this.handleCreateThreadNameChange}
+          onCancel={() =>
+            this.setState({ createDialogVisible: false, createError: null })
+          }
+        />
       </div>
     );
   }
@@ -1545,7 +1564,8 @@ export default class ThreadPanel extends Component<
       return thread.creator_name;
     }
     if (thread.creator_uid) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+      const channelInfo = getImChannelInfo(
+        WKSDK.shared(),
         new Channel(thread.creator_uid, ChannelTypePerson)
       );
       return channelInfo?.title || thread.creator_uid;

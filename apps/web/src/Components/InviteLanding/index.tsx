@@ -275,11 +275,16 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
             if (!crossSpace && joinedSpaceId) {
                 localStorage.setItem('currentSpaceId', joinedSpaceId);
             }
-            // 跳转回主界面；sid 写入当前 tab 的 SessionScope，不再暴露到 URL。
+            // 跳转回主界面（sid-clean 派：先把 sid 存到 SessionScope
+            // sessionStorage，跳转 URL 就不再挂 `?sid=` 了。RouteManager 的
+            // ensureSessionSid() + stripSessionSidFromUrl() 会兜底读取和清理。
+            // 之前 append `?sid=` 到地址栏是 sid-in-URL 派做法，跟 fork 主流
+            // Layout/index.tsx 的 sid-clean 实现相反 —— 由 PR#851 定为
+            // sid-clean 之后统一收敛到这一处。
             const sid = this.findSid();
+            if (sid) setSessionSid(sid);
             // 使用安全的 basePath，避免当 pathname 为 /api/ 时跳到后端 API 路径（#1006）
             const basePath = this.getAppBasePath();
-            if (sid) setSessionSid(sid);
             window.location.href = `${window.location.origin}${basePath}/`;
         } catch (e: any) {
             const body = this.getApiErrorData(e);

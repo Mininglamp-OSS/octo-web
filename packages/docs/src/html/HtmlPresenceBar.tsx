@@ -8,18 +8,15 @@
 import { getCurrentUid } from '../octoweb/index.ts'
 import { colorFromId } from '../awareness/presence.ts'
 
-export function HtmlPresenceBar() {
+export function HtmlPresenceBar({ displayName }: { displayName?: string }) {
   const uid = getCurrentUid()
   // No identity → render nothing (the viewer isn't resolvable, so an avatar would be misleading).
   if (!uid) return null
-  // The viewer's display name is not exposed to the frontend (LoginInfo is uid/token only).
-  // NEVER fall back to the doc's publisher identity here — that would show the owner's name on
-  // an invited viewer's page (they'd appear to be the owner). uid initial is the safe identity.
-  const displayName = uid
-  const initial = displayName.slice(0, 1).toUpperCase()
+  const resolvedName = displayName || uid
+  const initial = resolvedName.slice(0, 1).toUpperCase()
   return (
     <div className="octo-html-doc-presence" data-testid="html-doc-presence">
-      <span className="octo-avatar" style={{ backgroundColor: colorFromId(uid) }} title={displayName}>
+      <span className="octo-avatar" style={{ backgroundColor: colorFromId(uid) }} title={resolvedName}>
         {initial}
       </span>
     </div>

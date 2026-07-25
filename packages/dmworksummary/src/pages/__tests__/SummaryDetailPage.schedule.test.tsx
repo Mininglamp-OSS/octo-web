@@ -2,7 +2,9 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 // SummaryDetailPage import wukongimjssdk，测试环境会拉起无关依赖导致解析失败，mock 掉。
 vi.mock('wukongimjssdk', () => ({
-    Channel: class {},
+    Channel: class {
+        constructor(public channelID: string, public channelType: number) {}
+    },
     ChannelTypeGroup: 2,
     ChannelTypePerson: 1,
     MessageText: class {},
@@ -26,6 +28,7 @@ vi.mock('@douyinfe/semi-ui', () => {
         Input: Passthrough,
         Checkbox: Passthrough,
         Empty: Passthrough,
+        Popconfirm: Passthrough,
         Dropdown,
         Toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
     };
@@ -46,9 +49,12 @@ vi.mock('@douyinfe/semi-icons', () => ({
     IconInfoCircle: () => null,
     IconHistory: () => null,
     IconSearch: () => null,
+    IconMinusCircle: () => null,
+    IconExit: () => null,
 }));
 
 import * as api from '../../api/summaryApi';
+import { WKApp } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 
 vi.mock('../../api/summaryApi');
@@ -61,6 +67,80 @@ function makePage(taskId: number | string) {
     };
     return page;
 }
+
+describe('SummaryDetailPage — 返回分享卡片所在群聊', () => {
+    it('分享入口打开原总结时通知左侧列表选中同一个 task', () => {
+        const page = new SummaryDetailPage({
+            taskId: 42,
+            emitSelection: true,
+            originChannel: { channelId: 'alice', channelType: 1 },
+        } as any);
+        (page as any).loadDetail = vi.fn();
+        const dispatchEvent = vi.spyOn(window, 'dispatchEvent');
+
+        try {
+            page.componentDidMount();
+
+            expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'summary-detail-active',
+                detail: { taskId: 42 },
+            }));
+        } finally {
+            page.componentWillUnmount();
+            dispatchEvent.mockRestore();
+        }
+    });
+
+    it('仅携带来源会话时展示入口，并返回该会话', () => {
+        const page = new SummaryDetailPage({
+            taskId: 1,
+            originChannel: { channelId: 'alice', channelType: 1 },
+        } as any);
+        (page as any).context = { t: (key: string) => key };
+        page.state = { ...page.state, detail: baseDetail() as any };
+        const showConversation = vi.fn();
+        const previous = (WKApp as any).endpoints.showConversation;
+        (WKApp as any).endpoints.showConversation = showConversation;
+
+        try {
+            const header = (page as any).renderHeader();
+            const inner = Array.isArray(header.props.children)
+                ? header.props.children[0]
+                : header.props.children;
+            const backButton = inner.props.children[0];
+            expect(backButton.props.children).toBe('summary.share.backToChat');
+
+            backButton.props.onClick();
+            expect(showConversation).toHaveBeenCalledWith(expect.objectContaining({
+                channelID: 'alice',
+                channelType: 1,
+            }));
+        } finally {
+            (WKApp as any).endpoints.showConversation = previous;
+        }
+    });
+
+    it('普通总结入口不展示返回群聊', () => {
+        const page = makePage(1);
+        page.state = { ...page.state, detail: baseDetail() as any };
+
+        const header = (page as any).renderHeader();
+        const inner = Array.isArray(header.props.children)
+            ? header.props.children[0]
+            : header.props.children;
+        expect(inner.props.children[0]).toBeNull();
+    });
+});
+
+it('keeps regeneration voice insertion within the 2000-character limit', () => {
+    const page = makePage(1);
+    page.state = { ...page.state, regenerateTopic: '总'.repeat(1999) };
+
+    (page as any).handleRegenerateTopicVoice('语音内容', 'insert', { from: 1999, to: 1999 });
+
+    expect(page.state.regenerateTopic).toHaveLength(2000);
+    expect(page.state.regenerateTopic.endsWith('语')).toBe(true);
+});
 
 const baseDetail = (over: any = {}) => ({
     task_id: 1,
@@ -460,6 +540,26 @@ describe('SummaryDetailPage — 续修2: startPersonalPoll 轮询回调 taskId �
         // taskId 未变 → 合法 tick 正常写入，不被误杀。
         expect((page.state as any).personalResult).not.toBeNull();
         expect((page.state as any).personalResult.content).toBe('同 task 最新报告');
+    });
+
+    it('个人总结轮询进入终态时通知左侧列表刷新待提交状态', async () => {
+        vi.mocked(api.getPersonalResult).mockResolvedValue(
+            { content: '已生成待提交', worker_status: 2, submitted_at: null } as any,
+        );
+        const listRefresh = vi.fn();
+        window.addEventListener('summary-task-regenerated', listRefresh);
+        try {
+            const page = makePage(1);
+            page.startPersonalPoll(1);
+            await vi.advanceTimersByTimeAsync(5000);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(listRefresh).toHaveBeenCalledTimes(1);
+            expect((listRefresh.mock.calls[0][0] as CustomEvent).detail).toEqual({ taskIds: [1] });
+        } finally {
+            window.removeEventListener('summary-task-regenerated', listRefresh);
+        }
     });
 });
 
@@ -1163,9 +1263,8 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
         expect((page as any).renderScheduleButton()).toBeNull();
     });
 
-    // 批次B need5（取代上一轮「header 无条件渲染定时按钮」）：定时按钮已从顶部 header 移除，
-    // 改放到团队框（多人）/ 编辑按钮左侧（单人）。故 header 不应再含定时按钮文案。
-    it('renderHeader no longer includes the schedule button (need5: moved out of top header)', () => {
+    // v2 对齐：定时按钮集中到 header actions，从团队框/个人区移除。
+    it('renderHeader now includes the schedule button (v2: moved into top header actions)', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1179,12 +1278,10 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
         };
         const header = (page as any).renderHeader();
         const json = JSON.stringify(header);
-        expect(json).not.toContain('summary.detail.setSchedule');
-        expect(json).not.toContain('summary.detail.editSchedule');
+        expect(json).toContain('summary.detail.setSchedule');
     });
 
-    // personal 区不再重复渲染定时按钮：renderPersonalSummary() 的节点树中
-    // 不应再出现 setSchedule/editSchedule 文案。
+    // personal 区不再渲染定时按钮（v2: 已集中到 header）。
     it('renderPersonalSummary no longer renders a duplicate schedule button', () => {
         const page = makePage(1);
         page.state = {
@@ -1605,11 +1702,11 @@ describe('回归修复：定时(scheduled)多人任务团队总结显示（按 s
     });
 });
 
-// ─── 需求5：定时按钮位置 ───
-describe('批次B 需求5：定时按钮位置（多人→团队框, 单人→编辑左侧, 顶部移除）', () => {
+// ─── v2 对齐：定时按钮统一放到 header actions ───
+describe('v2 对齐：定时按钮集中到 header（从团队框/个人区移除）', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('top header no longer renders the schedule button', () => {
+    it('top header now renders the schedule button (v2: centralized into header actions)', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1620,12 +1717,10 @@ describe('批次B 需求5：定时按钮位置（多人→团队框, 单人→�
             forwardingToMatter: false,
         };
         const json = JSON.stringify((page as any).renderHeader());
-        // header 不再含定时按钮文案（schedule summary 只读信息也因 scheduleItem=null 不出）。
-        expect(json).not.toContain('summary.detail.setSchedule');
-        expect(json).not.toContain('summary.detail.editSchedule');
+        expect(json).toContain('summary.detail.setSchedule');
     });
 
-    it('multi-collab: schedule button rendered inside renderTeamSummary (creator)', () => {
+    it('multi-collab: schedule button no longer rendered inside renderTeamSummary (moved to header)', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1636,12 +1731,12 @@ describe('批次B 需求5：定时按钮位置（多人→团队框, 单人→�
             members: [submittedMember('test-uid', '我', 'a'), submittedMember('u_b', '李四', 'b')],
         };
         const json = JSON.stringify((page as any).renderTeamSummary());
-        // 团队框内含定时按钮 + 编辑按钮。
-        expect(json).toContain('summary.detail.setSchedule');
+        expect(json).not.toContain('summary.detail.setSchedule');
+        expect(json).not.toContain('summary.detail.editSchedule');
         expect(json).toContain('summary.detail.editTeamSummary');
     });
 
-    it('single-person BY_PERSON: schedule button rendered in renderPersonalSummary (left of edit)', () => {
+    it('single-person BY_PERSON: schedule button no longer in renderPersonalSummary (moved to header)', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1657,12 +1752,11 @@ describe('批次B 需求5：定时按钮位置（多人→团队框, 单人→�
             members: [submittedMember('test-uid', '我', 'a')],
         };
         const json = JSON.stringify((page as any).renderPersonalSummary());
-        // 单人个人总结区含定时按钮（在编辑按钮左侧）。
-        expect(json).toContain('summary.detail.setSchedule');
-        expect(json).toContain('summary.common.edit');
+        expect(json).not.toContain('summary.detail.setSchedule');
+        expect(json).not.toContain('summary.detail.editSchedule');
     });
 
-    it('multi-collab: renderPersonalSummary does NOT render schedule button (it lives in team box)', () => {
+    it('multi-collab: renderPersonalSummary does NOT render schedule button (it lives in header)', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1968,9 +2062,17 @@ describe('SummaryDetailPage — 回归修复：多人协作页「提交给全部
             personalLoading: false,
             members: [member('test-uid'), member('u_b')],
         };
-        await (page as any).handleSubmitPersonal();
-        expect(api.submitPersonalResult).toHaveBeenCalledWith(1);
-        expect(api.getSummaryDetail).toHaveBeenCalled();
+        const listRefresh = vi.fn();
+        window.addEventListener('summary-task-regenerated', listRefresh);
+        try {
+            await (page as any).handleSubmitPersonal();
+            expect(api.submitPersonalResult).toHaveBeenCalledWith(1);
+            expect(api.getSummaryDetail).toHaveBeenCalled();
+            expect(listRefresh).toHaveBeenCalledTimes(1);
+            expect((listRefresh.mock.calls[0][0] as CustomEvent).detail).toEqual({ taskIds: [1] });
+        } finally {
+            window.removeEventListener('summary-task-regenerated', listRefresh);
+        }
     });
 });
 

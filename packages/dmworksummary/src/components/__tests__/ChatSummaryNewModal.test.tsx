@@ -72,11 +72,14 @@ vi.mock('../../utils/channelConvert', () => ({
 
 vi.mock('../../utils/channelType', () => ({
     getSourceType: () => 1,
+    getOriginChannelType: (ch: any) => (ch.channelType === 2 ? 1 : ch.channelType === 5 ? 2 : 3),
+    chatTypeToOriginChannelType: (t: string) => (t === 'group' ? 1 : t === 'thread' ? 2 : 3),
 }));
 
 vi.mock('../../api/summaryApi', () => ({
     getTopicTemplatesConfig: vi.fn().mockResolvedValue({ templates: [], custom_template_limit: 30 }),
     createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
+    createAgentSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
     agentChat: vi.fn(),
     getAgentChatHistory: vi.fn().mockResolvedValue({ session_id: '', messages: [] }),
 }));
@@ -149,9 +152,69 @@ describe('ChatSummaryNewModal', () => {
             await flushPromises();
         });
 
-        expect(screen.getByText('试试总结')).toBeInTheDocument();
+        expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
         expect(screen.getByTestId('template-weekly_report')).toBeInTheDocument();
         expect(screen.getByTestId('template-chat_content')).toBeInTheDocument();
+    });
+
+    it('allows up to 2000 characters in custom template summary content', async () => {
+        await act(async () => {
+            render(<ChatSummaryNewModal {...defaultProps} />);
+            await flushPromises();
+        });
+
+        fireEvent.click(screen.getByText('新建模板'));
+        const textarea = screen.getByPlaceholderText('例如：总结任务的进度和负责人') as HTMLTextAreaElement;
+        expect(textarea.maxLength).toBe(2000);
+
+        fireEvent.change(textarea, { target: { value: '总'.repeat(2001) } });
+        expect(textarea.value).toHaveLength(2000);
+    });
+
+    it('caps voice insertion at the 2000-character summary input limit', () => {
+        const modal = new ChatSummaryNewModal(defaultProps as any);
+        (modal as any).setState = function (this: any, patch: any) {
+            this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) };
+        };
+        modal.state = { ...modal.state, topic: '总'.repeat(1999), appliedTemplateLabel: '' };
+
+        (modal as any).handleVoiceTranscribed('语音内容', 'insert', { from: 1999, to: 1999 });
+
+        expect(modal.state.topic).toHaveLength(2000);
+        expect(modal.state.topic.endsWith('语')).toBe(true);
+    });
+
+    it('preserves a max-length template description when applying and submitting it', async () => {
+        const paragraphs = '第一段\n\n第二段\n';
+        const description = paragraphs + '总'.repeat(2000 - paragraphs.length);
+        vi.mocked(summaryApi.getTopicTemplatesConfig).mockResolvedValueOnce({ custom_template_limit: 30, templates: [
+            { id: 'custom_long', label: '长内容模板', icon: 'FileText', description, type: 'fixed', pattern: description, is_custom: true },
+        ] } as any);
+
+        await act(async () => {
+            render(<ChatSummaryNewModal {...defaultProps} />);
+            await flushPromises();
+        });
+
+        fireEvent.click(screen.getByTestId('template-custom_long'));
+        const textarea = screen.getByPlaceholderText('输入聊天内你想总结的主题') as HTMLTextAreaElement;
+        expect(textarea.value).toContain(description);
+        expect(textarea.value.length).toBeGreaterThan(1000);
+        const editedDescription = `已${description.slice(1)}`;
+        fireEvent.change(textarea, { target: { value: textarea.value.replace(description, editedDescription) } });
+        expect(textarea.value).toContain(editedDescription);
+        const submittedTopic = textarea.value;
+
+        await act(async () => {
+            const submit = document.querySelector('.chat-summary-modal-footer .chat-summary-modal-split > button') as HTMLButtonElement;
+            fireEvent.click(submit);
+            await flushPromises();
+        });
+
+        expect(summaryApi.createSummary).toHaveBeenCalledWith(expect.objectContaining({
+            topic: submittedTopic,
+            title: '已一段',
+        }));
     });
 
     it('hides templates when input has content', async () => {
@@ -163,7 +226,7 @@ describe('ChatSummaryNewModal', () => {
         const input = screen.getByPlaceholderText('输入聊天内你想总结的主题');
         fireEvent.change(input, { target: { value: '测试主题' } });
 
-        expect(screen.queryByText('试试总结')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
         expect(screen.queryByTestId('template-weekly_report')).not.toBeInTheDocument();
     });
 
@@ -175,12 +238,13 @@ describe('ChatSummaryNewModal', () => {
 
         const input = screen.getByPlaceholderText('输入聊天内你想总结的主题');
         fireEvent.change(input, { target: { value: '测试' } });
-        expect(screen.queryByText('试试总结')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
 
         fireEvent.change(input, { target: { value: '' } });
-        expect(screen.getByText('试试总结')).toBeInTheDocument();
+        expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
         expect(screen.getByTestId('template-weekly_report')).toBeInTheDocument();
     });
+
 
     it('renders templates inside the unified input-area container', async () => {
         await act(async () => {
@@ -197,7 +261,7 @@ describe('ChatSummaryNewModal', () => {
 
         const templatesLabel = inputArea!.querySelector('.chat-summary-modal-templates-label');
         expect(templatesLabel).toBeInTheDocument();
-        expect(templatesLabel!.textContent).toBe('试试总结');
+        expect(templatesLabel!.textContent).toBe('试试这些总结模板');
 
         const templatesContainer = inputArea!.querySelector('.chat-summary-modal-templates');
         expect(templatesContainer).toBeInTheDocument();
@@ -627,5 +691,39 @@ describe('ChatSummaryNewModal agent SSE session_id sync', () => {
         const lastMessage = instance.state.messages[instance.state.messages.length - 1];
         expect(lastMessage.role).toBe('assistant');
         expect(lastMessage.content).toBe('Server response');
+    });
+});
+
+describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('fills origin_channel_id + type from the channel prop (group → 1)', async () => {
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={vi.fn()}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-1' });
+        });
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        expect(summaryApi.createAgentSummary).toHaveBeenCalledWith(
+            expect.objectContaining({ origin_channel_id: 'ch1', origin_channel_type: 1 }),
+        );
     });
 });

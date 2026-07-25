@@ -1,20 +1,21 @@
 import React from "react";
 import { IconGithubLogo } from "@douyinfe/semi-icons";
-import { Popover } from "@douyinfe/semi-ui";
+import { Popover, Spin } from "@douyinfe/semi-ui";
 import { WKButton } from "@octo/base";
 import { QRCodeSVG } from "qrcode.react";
 import { loginT as t } from "./i18n";
+import {
+  resolveMobileUpdaterUrl,
+  useMobileDownloadUrl,
+} from "./mobileDownloadUpdater";
 import "./MobileDownloadPopover.css";
 
-export const ANDROID_APK_PATH = "/download/dmwork.apk";
+export const ANDROID_UPDATER_PATH = "common/updater/android/1.0";
 export const ANDROID_RELEASES_URL =
   "https://github.com/Mininglamp-OSS/octo-android/releases/latest";
 
-export function resolveAndroidApkUrl(
-  origin = typeof window === "undefined" ? "" : window.location.origin
-) {
-  if (!origin) return ANDROID_APK_PATH;
-  return new URL(ANDROID_APK_PATH, `${origin.replace(/\/$/, "")}/`).toString();
+export function resolveAndroidUpdaterUrl(apiUrl?: string) {
+  return resolveMobileUpdaterUrl(ANDROID_UPDATER_PATH, apiUrl);
 }
 
 export function openAndroidReleases() {
@@ -34,43 +35,72 @@ type PopoverHoverProps = Pick<
 
 export const AndroidDownloadPopoverContent: React.FC<PopoverHoverProps> = (
   hoverProps
-) => (
-  <div
-    className="wk-login-mobile-download-popover"
-    role="dialog"
-    aria-label={t("download.androidQrTitle")}
-    {...hoverProps}
-  >
+) => {
+  const { status, downloadUrl, retry } =
+    useMobileDownloadUrl(ANDROID_UPDATER_PATH);
+
+  return (
     <div
-      className="wk-login-mobile-popover-qr"
-      role="img"
+      className="wk-login-mobile-download-popover"
+      role="dialog"
       aria-label={t("download.androidQrTitle")}
+      {...hoverProps}
     >
-      <QRCodeSVG value={resolveAndroidApkUrl()} size={104} />
+      <div
+        className="wk-login-mobile-popover-qr"
+        data-status={status}
+        role={status === "ready" ? "img" : undefined}
+        aria-label={
+          status === "ready" ? t("download.androidQrTitle") : undefined
+        }
+        aria-busy={status === "loading" ? true : undefined}
+      >
+        {status === "loading" && (
+          <Spin aria-label={t("download.loadingAddress")} size="large" />
+        )}
+        {status === "error" && (
+          <div className="wk-login-mobile-download-state" role="alert">
+            <span>{t("download.addressLoadFailed")}</span>
+            <WKButton type="button" variant="ghost" size="sm" onClick={retry}>
+              {t("download.retry")}
+            </WKButton>
+          </div>
+        )}
+        {status === "ready" && <QRCodeSVG value={downloadUrl} size={104} />}
+      </div>
+      <strong className="wk-login-mobile-download-popover-title">
+        {t("download.androidQrTitle")}
+      </strong>
+      {status === "ready" ? (
+        <a
+          className="wk-login-mobile-download-direct-link"
+          href={downloadUrl}
+          download
+        >
+          {t("download.androidDirectDownload")}
+        </a>
+      ) : (
+        <span
+          className="wk-login-mobile-download-direct-link"
+          aria-disabled="true"
+        >
+          {t("download.androidDirectDownload")}
+        </span>
+      )}
+      <WKButton
+        type="button"
+        className="wk-login-android-popover-manual-download"
+        variant="ghost"
+        size="sm"
+        icon={<IconGithubLogo aria-hidden="true" />}
+        aria-label={t("download.openGithubReleases")}
+        onClick={openAndroidReleases}
+      >
+        {t("download.githubManualDownload")}
+      </WKButton>
     </div>
-    <strong className="wk-login-mobile-download-popover-title">
-      {t("download.androidQrTitle")}
-    </strong>
-    <a
-      className="wk-login-mobile-download-direct-link"
-      href={resolveAndroidApkUrl()}
-      download
-    >
-      {t("download.androidDirectDownload")}
-    </a>
-    <WKButton
-      type="button"
-      className="wk-login-android-popover-manual-download"
-      variant="ghost"
-      size="sm"
-      icon={<IconGithubLogo aria-hidden="true" />}
-      aria-label={t("download.openGithubReleases")}
-      onClick={openAndroidReleases}
-    >
-      {t("download.githubManualDownload")}
-    </WKButton>
-  </div>
-);
+  );
+};
 
 export const AndroidDownloadButton: React.FC = () => {
   const [hoverVisible, setHoverVisible] = React.useState(false);

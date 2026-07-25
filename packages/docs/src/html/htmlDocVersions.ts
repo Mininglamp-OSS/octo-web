@@ -2,7 +2,7 @@
 //
 // SEPARATE BACKEND: like htmlDocComments, versions live in octo-doc (not the /api/v1 Yjs
 // backend), so this is a raw credentialed fetch against resolveOctoDocBase(). The version
-// list is addressed by a PATH slug — GET <base>/docs/{slug}/versions — per the octo-doc
+// list is addressed by a PATH slug — GET <base>/v1/docs/{slug}/versions — per the octo-doc
 // contract {data:{slug,title,versions:[{n,created_at}]}}, distinct from the query-param
 // /comments endpoint.
 
@@ -21,9 +21,9 @@ export interface HtmlDocVersion {
   created_at?: string | null
 }
 
-/** GET <base>/docs/{slug}/versions → published version numbers (newest-first per backend). */
+/** GET <base>/v1/docs/{slug}/versions → published version numbers (newest-first per backend). */
 export async function listVersions(slug: string): Promise<HtmlDocVersion[]> {
-  const url = `${resolveOctoDocBase()}/docs/${encodeURIComponent(slug)}/versions`
+  const url = `${resolveOctoDocBase()}/v1/docs/${encodeURIComponent(slug)}/versions`
   const res = await fetch(url, {
     credentials: 'include',
     headers: octoDocHeaders({ Accept: 'application/json' }),

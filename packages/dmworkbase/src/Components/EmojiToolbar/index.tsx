@@ -207,6 +207,12 @@ interface EmojiPanelState {
 interface EmojiPanelProps {
     onEmoji?: (emoji: Emoji) => void
     onSticker?: (sticker: StickerItem) => void
+    /**
+     * 隐藏「我的贴纸」tab（含贴纸网格 / 上传按钮 / 空态占位），只保留 emoji tab。
+     * 用于 reaction 等只需 emoji 的场景。默认 undefined = 保留贴纸 tab（受全局
+     * remoteConfig.stickerCustomEnabled 灰度控制）。
+     */
+    hideStickerTab?: boolean
 }
 
 export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
@@ -518,7 +524,9 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         // stickerCustomEnabled 关闭时: 隐藏贴纸 tab, 并把 isSticker 强制视为 false, 兜住
         // 「面板已打开且当前在 sticker tab, 后端灰度关掉开关」的边界——避免 tab 消失但
         // 内容区仍渲染上传/删除入口。纯 render-time 计算, 不触碰 state。
-        const stickerCustomEnabled = WKApp.remoteConfig.stickerCustomEnabled
+        // hideStickerTab prop 提供本地关闭入口, reaction 等只需 emoji 的场景传 true 即可
+        // 一处收敛下游 isSticker / tab 渲染 / 上传按钮全部跟着关。
+        const stickerCustomEnabled = !this.props.hideStickerTab && WKApp.remoteConfig.stickerCustomEnabled
         const stickerUploadLimits = WKApp.remoteConfig.stickerUploadLimits
         const isSticker = stickerCustomEnabled && category === STICKER_CATEGORY
         // 放大预览层 portal 到 <body>，逃出 .wk-emojipanel-content 的 overflow:hidden 裁剪，

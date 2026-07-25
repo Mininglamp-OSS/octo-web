@@ -1,0 +1,17 @@
+.loop-webhook-issue-preview__state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-3);
+  min-height: 100%;
+  padding: var(--wk-sp-6);
+  text-align: center;
+}
+
+.loop-webhook-issue-preview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+}

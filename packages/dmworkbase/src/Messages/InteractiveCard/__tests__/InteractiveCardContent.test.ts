@@ -34,18 +34,21 @@ function decode(raw: unknown): InteractiveCardContent {
 }
 
 describe("InteractiveCardContent.decodeJSON", () => {
-  it("正常 payload：逐字段解析 card/plain/card_version/profile", () => {
+  it("正常 payload：逐字段解析 card/plain/card_version/profile/render_profile", () => {
     const c = decode({
       type: 17,
       card: { type: "AdaptiveCard", body: [] },
       plain: "订单已发货",
       card_version: "1.5",
       profile: "octo/v1",
+      render_profile: "octo-chat/v1",
     });
     expect(c.card).toEqual({ type: "AdaptiveCard", body: [] });
     expect(c.plain).toBe("订单已发货");
     expect(c.cardVersion).toBe("1.5");
     expect(c.profile).toBe("octo/v1");
+    expect(c.renderProfile).toBe("octo-chat/v1");
+    expect(c.encodeJSON().render_profile).toBe("octo-chat/v1");
   });
 
   it("缺 card：归一为空对象，不抛错", () => {
@@ -56,6 +59,12 @@ describe("InteractiveCardContent.decodeJSON", () => {
   it("缺 plain：归一为空串", () => {
     const c = decode({ card: {}, card_version: "1.5", profile: "octo/v1" });
     expect(c.plain).toBe("");
+  });
+
+  it("缺 render_profile：保持 legacy 语义且编码时不新增字段", () => {
+    const c = decode({ card: {}, card_version: "1.5", profile: "octo/v1" });
+    expect(c.renderProfile).toBe("");
+    expect(c.encodeJSON()).not.toHaveProperty("render_profile");
   });
 
   it("字段类型异常：非字符串 plain / 非对象 card 全部安全归一", () => {
@@ -130,6 +139,7 @@ describe("cloneInteractiveCardContentForForward", () => {
     expect(cloned.plain).toBe("展示卡");
     expect(cloned.cardVersion).toBe("1.5");
     expect(cloned.profile).toBe("octo/v1");
+    expect(cloned.renderProfile).toBe("");
     expect(cloned.cardSeq).toBe(9);
     expect(cloned.transient).toBe(true);
     expect(cloned.forwardedFromUID).toBe("iwh_original");

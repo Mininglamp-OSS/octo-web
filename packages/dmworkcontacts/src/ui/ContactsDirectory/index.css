@@ -1,0 +1,51 @@
+.wk-contacts-accordion {
+  margin-bottom: var(--wk-sp-1);
+  flex-shrink: 0;
+}
+.wk-contacts-accordion--expanded {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.wk-contacts-accordion-header {
+  display: flex;
+  align-items: center;
+  height: calc(var(--wk-sp-8) + var(--wk-sp-1));
+  padding: 0 var(--wk-sp-3);
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--wk-r-sm);
+  margin: 0 var(--wk-sp-2);
+  transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+.wk-contacts-accordion-header:hover {
+  background: var(--wk-bg-hover);
+}
+.wk-contacts-accordion-arrow {
+  display: inline-flex;
+  align-items: center;
+  color: var(--wk-text-tertiary);
+  margin-right: var(--wk-sp-2);
+  flex-shrink: 0;
+}
+.wk-contacts-accordion-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-5);
+  margin-right: var(--wk-sp-2);
+  color: var(--wk-text-secondary);
+  flex-shrink: 0;
+}
+.wk-contacts-accordion-label {
+  flex: 1;
+  font-size: var(--wk-text-size-base);
+  font-weight: 600;
+  color: var(--wk-text-secondary);
+  letter-spacing: 0.01em;
+}
+.wk-contacts-accordion-count {
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-tertiary);
+  font-weight: 400;
+}

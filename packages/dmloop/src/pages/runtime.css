@@ -240,3 +240,16 @@
     padding-left: var(--wk-sp-4);
   }
 }
+
+.loop-runtime-rename__desc {
+  margin: 0 0 var(--wk-sp-3);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 1.5;
+}
+
+.loop-runtime-rename__hint {
+  margin: var(--wk-sp-2) 0 0;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+}

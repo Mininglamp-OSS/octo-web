@@ -1,0 +1,368 @@
+/* 文档转发卡片。1:1 复刻 octo 原型 document-forward-card（V2 竞品同构版），全部走设计 token。 */
+
+.document-forward-card {
+  width: min(100%, 480px);
+  overflow: hidden;
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-brand-tint-03);
+}
+
+/* 自包含图标基线（不依赖全局 .icon）。 */
+.document-forward-card .icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.document-forward-card__header {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto 28px;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: 0 0 var(--wk-sp-3);
+}
+
+.document-forward-type-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-brand-primary);
+  background: var(--wk-bg-surface);
+}
+
+.document-forward-type-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.document-forward-heading {
+  min-width: 0;
+}
+
+.document-forward-heading h3 {
+  display: block;
+  margin: 0;
+  overflow: hidden;
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-md);
+  line-height: 20px;
+  font-weight: var(--wk-font-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-forward-heading p {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  margin: var(--wk-sp-1) 0 0;
+  overflow: hidden;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-permission {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  height: 20px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-elevated);
+  font-size: var(--wk-text-size-sm);
+  line-height: 18px;
+  font-weight: var(--wk-font-medium);
+  white-space: nowrap;
+}
+
+.document-permission.is-success {
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-elevated);
+}
+
+.document-permission.is-warning {
+  color: var(--wk-color-warning);
+  background: var(--wk-color-warning-bg);
+}
+
+.document-permission.is-error {
+  color: var(--wk-color-error);
+  background: var(--wk-color-error-bg);
+}
+
+.document-permission.is-neutral {
+  color: var(--wk-text-tertiary);
+  background: var(--wk-brand-tint-06);
+}
+
+.document-forward-copy {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--wk-r-full);
+  color: var(--wk-icon-default);
+  background: transparent;
+  cursor: pointer;
+}
+
+.document-forward-copy:hover {
+  background: var(--wk-bg-elevated);
+}
+
+.document-forward-copy .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.document-forward-preview {
+  display: block;
+  width: 100%;
+  height: 264px;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms var(--wk-ease), background 160ms var(--wk-ease);
+}
+
+.document-forward-preview:hover {
+  border-color: var(--wk-border-strong);
+  background: var(--wk-brand-tint-03);
+}
+
+.document-forward-preview:disabled {
+  cursor: default;
+}
+
+.document-preview-page,
+.document-preview-sheet,
+.document-preview-board,
+.document-preview-placeholder {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── doc: 文档页首屏 ── */
+.document-preview-page {
+  display: flex;
+  flex-direction: column;
+  padding: var(--wk-sp-6);
+  background: var(--wk-bg-surface);
+}
+
+.document-preview-page__label {
+  overflow: hidden;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-preview-page > strong {
+  margin-top: var(--wk-sp-5);
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-md);
+  line-height: 20px;
+  font-weight: var(--wk-font-semibold);
+}
+
+.document-preview-page > span:not(.document-preview-page__label):not(.document-preview-lines) {
+  display: -webkit-box;
+  margin-top: var(--wk-sp-2);
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 18px;
+}
+
+.document-preview-lines {
+  display: grid;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-4);
+}
+
+.document-preview-lines i {
+  height: 4px;
+  border-radius: var(--wk-r-full);
+  background: var(--wk-brand-tint-06);
+}
+
+.document-preview-lines i:nth-child(2) {
+  width: 84%;
+}
+
+.document-preview-lines i:nth-child(3) {
+  width: 64%;
+}
+
+/* ── board: 画板节点 ── */
+.document-preview-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, 112px);
+  grid-template-rows: repeat(2, 48px);
+  align-content: center;
+  justify-content: center;
+  gap: var(--wk-sp-10) 64px;
+  background: var(--wk-brand-tint-03);
+}
+
+.document-preview-board::before,
+.document-preview-board::after {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  background: var(--wk-border-strong);
+  content: "";
+}
+
+.document-preview-board::before {
+  width: 176px;
+  height: 1px;
+  transform: translate(-50%, -50%);
+}
+
+.document-preview-board::after {
+  width: 1px;
+  height: 88px;
+  transform: translate(-50%, -50%);
+}
+
+.document-preview-node {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 0 var(--wk-sp-2);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  font-size: var(--wk-text-size-sm);
+  line-height: 18px;
+  font-weight: var(--wk-font-medium);
+  text-align: center;
+}
+
+/* ── sheet: 表格首屏 ── */
+.document-preview-sheet {
+  display: flex;
+  flex-direction: column;
+  padding: var(--wk-sp-4);
+  background: var(--wk-bg-surface);
+}
+
+.document-preview-sheet__title {
+  margin-bottom: var(--wk-sp-3);
+  overflow: hidden;
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 18px;
+  font-weight: var(--wk-font-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-preview-table {
+  overflow: hidden;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-xs);
+}
+
+.document-preview-table__row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+}
+
+.document-preview-table__row + .document-preview-table__row {
+  border-top: 1px solid var(--wk-border-subtle);
+}
+
+.document-preview-table__row > span {
+  min-width: 0;
+  padding: var(--wk-sp-2);
+  overflow: hidden;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-preview-table__row > span + span {
+  border-left: 1px solid var(--wk-border-subtle);
+}
+
+.document-preview-table__row.is-header {
+  background: var(--wk-brand-tint-06);
+}
+
+.document-preview-table__row.is-header > span {
+  color: var(--wk-text-primary);
+  font-weight: var(--wk-font-medium);
+}
+
+/* ── placeholder: 无权限/失效/检查中 ── */
+.document-preview-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-4);
+  color: var(--wk-text-secondary);
+  background: var(--wk-brand-tint-03);
+  text-align: center;
+}
+
+.document-preview-placeholder__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--wk-r-circle);
+  color: var(--wk-icon-default);
+  background: var(--wk-bg-surface);
+}
+
+.document-preview-placeholder__icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.document-preview-placeholder strong {
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-md);
+  line-height: 20px;
+  font-weight: var(--wk-font-semibold);
+}
+
+.document-preview-placeholder > span:last-child {
+  font-size: var(--wk-text-size-sm);
+  line-height: 18px;
+}
+
+.document-preview-placeholder.is-error .document-preview-placeholder__icon {
+  color: var(--wk-color-error);
+  background: var(--wk-color-error-bg);
+}

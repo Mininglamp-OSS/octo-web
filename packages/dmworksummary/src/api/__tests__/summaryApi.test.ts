@@ -27,13 +27,16 @@ vi.mock('axios', () => ({
 }));
 
 import {
+    createSummaryShares,
     createCustomTopicTemplate,
     deleteCustomTopicTemplate,
+    getSummaryShare,
     getTopicTemplates,
     getTopicTemplatesConfig,
     getTemplates,
     listSummaries,
     removeMember,
+    revokeSummaryShare,
     updateCustomTopicTemplate,
 } from '../summaryApi';
 
@@ -98,6 +101,34 @@ describe('summaryApi baseURL resolution (GH #420)', () => {
 describe('summaryApi', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+    });
+
+    describe('summary shares', () => {
+        it('creates per-target grants with the idempotency key', async () => {
+            const response = { snapshot: { id: 1 }, grants: [{ share_id: 'share-1' }] };
+            mockPost.mockResolvedValue({ data: { data: response } });
+
+            await expect(createSummaryShares('ST/42', 'request-123', [
+                { channel_id: 'group-1', channel_type: 2 },
+            ])).resolves.toEqual(response);
+
+            expect(mockPost).toHaveBeenCalledWith('/summary/api/v1/summaries/ST%2F42/shares', {
+                idempotency_key: 'request-123',
+                targets: [{ channel_id: 'group-1', channel_type: 2 }],
+            });
+        });
+
+        it('loads and revokes a share by encoded id', async () => {
+            const response = { share_id: 'share/1', source_accessible: true, snapshot: { id: 1 } };
+            mockGet.mockResolvedValue({ data: { data: response } });
+            mockDelete.mockResolvedValue({ data: { data: { revoked: true } } });
+
+            await expect(getSummaryShare('share/1')).resolves.toEqual(response);
+            await expect(revokeSummaryShare('share/1')).resolves.toBeUndefined();
+
+            expect(mockGet).toHaveBeenCalledWith('/summary/api/v1/summary-shares/share%2F1', { params: undefined, signal: undefined });
+            expect(mockDelete).toHaveBeenCalledWith('/summary/api/v1/summary-shares/share%2F1');
+        });
     });
 
     describe('getTopicTemplates', () => {

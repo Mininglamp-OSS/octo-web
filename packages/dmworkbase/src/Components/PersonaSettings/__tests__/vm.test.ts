@@ -55,6 +55,20 @@ vi.mock("../../../App", () => ({
     __esModule: true,
 }))
 
+vi.mock("../../../Service/APIClient", () => ({
+    extractErrorMsg: (err: any) =>
+        err && typeof err === "object" && typeof err.msg === "string" ? err.msg : "",
+    default: {
+        shared: {
+            get: hoisted.get,
+            post: hoisted.post,
+            delete: hoisted.del,
+            put: hoisted.put,
+        },
+    },
+    __esModule: true,
+}))
+
 vi.mock("@douyinfe/semi-ui", () => ({
     Toast: {
         error: hoisted.toastError,
@@ -274,7 +288,7 @@ describe("PersonaEditVM", () => {
         const ok = await vm.toggleGlobal(true)
         expect(ok).toBe(true)
         expect(vm.grant.global_enabled).toBe(true)
-        expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", { global_enabled: true })
+        expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", { global_enabled: 1 })
     })
 
     it("addScope POST then reloads", async () => {

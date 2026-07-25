@@ -6,26 +6,27 @@
 // for the body and POSTs a root comment. A distinct pluginKey keeps it from clashing with the
 // formatting BubbleMenu in Toolbar.tsx.
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { encodeAnchorRange, type EncodedAnchor } from './anchor.ts'
-import { t, VoiceInputButton } from '../octoweb/index.ts'
+import { t } from '../octoweb/index.ts'
 import type { CreateRootInput } from './api.ts'
-import { applyVoiceTranscription } from './voiceText.ts'
+import { MentionComposer } from '../mentions/MentionComposer.tsx'
 
 export function CommentBubble({
   editor,
   onCreate,
+  spaceId,
 }: {
   editor: Editor
   onCreate: (input: CreateRootInput) => Promise<void>
+  spaceId?: string
 }) {
   const [pending, setPending] = useState<EncodedAnchor | null>(null)
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   function startComposing() {
     const { from, to } = editor.state.selection
@@ -46,6 +47,7 @@ export function CommentBubble({
   }
 
   async function submit() {
+    if (busy) return
     if (!pending || body.trim() === '') return
     setBusy(true)
     setError(null)
@@ -74,26 +76,14 @@ export function CommentBubble({
       <div className="octo-comment-bubble">
         {pending ? (
           <div className="octo-comment-compose">
-            <div style={{ position: 'relative' }}>
-              <textarea
-                ref={bodyRef}
-                className="octo-comment-input"
-                placeholder={t('docs.comment.composePlaceholder')}
-                value={body}
-                autoFocus
-                onChange={(e) => setBody(e.target.value)}
-              />
-              <VoiceInputButton
-                inputRef={bodyRef}
-                onTranscribed={(text, mode, savedRange) =>
-                  setBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
-                }
-                getCurrentText={() => body}
-                showModeMenu
-                size="sm"
-                className="wk-vib--textarea-corner"
-              />
-            </div>
+            <MentionComposer
+              spaceId={spaceId}
+              placeholder={t('docs.comment.composePlaceholder')}
+              autoFocus
+              onChange={setBody}
+              onSubmit={submit}
+              onCancel={cancel}
+            />
             <div className="octo-comment-compose-actions">
               <button
                 type="button"

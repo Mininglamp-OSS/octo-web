@@ -1,7 +1,9 @@
 import React from 'react';
-import { render as rtlRender, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import '@testing-library/jest-dom/vitest';
+import { cleanup, render as rtlRender, screen } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import SummaryCard from './SummaryCard';
+import { ParticipantStatus, TaskStatus } from '../types/summary';
 
 vi.mock('@octo/base', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('../__mocks__/dmworkBase');
@@ -28,7 +30,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
 }));
 
 vi.mock('./TaskStatusBadge', () => ({
-    default: () => <span data-testid="status-badge" />,
+    default: ({ status }: { status: number }) => <span data-testid="status-badge">{status}</span>,
 }));
 
 vi.mock('./OverflowTooltip', () => ({
@@ -66,6 +68,8 @@ function makeItem(overrides: Record<string, unknown> = {}) {
 
 const noop = () => {};
 
+afterEach(cleanup);
+
 describe('SummaryCard attention dot', () => {
     it('needs_attention=true 时显示关注红点', () => {
         const { container } = render(
@@ -79,6 +83,112 @@ describe('SummaryCard attention dot', () => {
             <SummaryCard task={makeItem({ needs_attention: false }) as any} onClick={noop} onDelete={noop} />,
         );
         expect(container.querySelector('.summary-card-attention-dot')).toBeNull();
+    });
+});
+
+describe('SummaryCard status badge', () => {
+    it('当前用户有待响应邀请时统一显示等待中，而不是任务的生成中', () => {
+        render(
+            <SummaryCard
+                task={makeItem({
+                    status: TaskStatus.PROCESSING,
+                    creator_id: 'someone-else',
+                    participants: [
+                        { user_id: 'someone-else', status: ParticipantStatus.CONFIRMED },
+                        { user_id: 'test-uid', status: ParticipantStatus.PENDING },
+                    ],
+                }) as any}
+                onClick={noop}
+                onDelete={noop}
+                onRespond={noop as any}
+            />,
+        );
+
+        expect(screen.getByTestId('status-badge')).toHaveTextContent(String(TaskStatus.PENDING));
+    });
+
+    it('无待响应邀请时仍显示任务本身的状态', () => {
+        render(
+            <SummaryCard
+                task={makeItem({ status: TaskStatus.PROCESSING }) as any}
+                onClick={noop}
+                onDelete={noop}
+            />,
+        );
+
+        expect(screen.getByTestId('status-badge')).toHaveTextContent(String(TaskStatus.PROCESSING));
+    });
+
+    it('定时任务首次邀请仅根据待邀请标记显示等待中', () => {
+        render(
+            <SummaryCard
+                task={makeItem({
+                    status: TaskStatus.PROCESSING,
+                    schedule_id: 10,
+                    has_pending_invitation: true,
+                    participants: [],
+                }) as any}
+                onClick={noop}
+                onDelete={noop}
+            />,
+        );
+
+        expect(screen.getByTestId('status-badge')).toHaveTextContent(String(TaskStatus.PENDING));
+    });
+
+    it('个人总结已生成但尚未提交时显示等待中', () => {
+        render(
+            <SummaryCard
+                task={makeItem({
+                    status: TaskStatus.PROCESSING,
+                    has_pending_submission: true,
+                    participants: [
+                        { user_id: 'test-uid', status: ParticipantStatus.CONFIRMED },
+                        { user_id: 'someone-else', status: ParticipantStatus.CONFIRMED },
+                    ],
+                }) as any}
+                onClick={noop}
+                onDelete={noop}
+            />,
+        );
+
+        expect(screen.getByTestId('status-badge')).toHaveTextContent(String(TaskStatus.PENDING));
+    });
+
+    it('单人总结不使用待提交标记覆盖任务完成状态', () => {
+        render(
+            <SummaryCard
+                task={makeItem({
+                    status: TaskStatus.COMPLETED,
+                    has_pending_submission: true,
+                    participants: [{ user_id: 'test-uid', status: ParticipantStatus.COMPLETED }],
+                }) as any}
+                onClick={noop}
+                onDelete={noop}
+            />,
+        );
+
+        expect(screen.getByTestId('status-badge')).toHaveTextContent(String(TaskStatus.COMPLETED));
+    });
+});
+
+describe('SummaryCard display title', () => {
+    it('uses the complete template content instead of the short stored title', () => {
+        render(
+            <SummaryCard
+                task={makeItem({
+                    title: '聊天内容总结',
+                    topic: '总结主题：聊天内容总结\n总结内容：总结聊天中的关键内容、核心结论、待办事项和需要关注的问题',
+                }) as any}
+                onClick={noop}
+                onDelete={noop}
+            />,
+        );
+
+        const title = screen.getByText('总结聊天中的关键内容、核心结论、待办事项和需要关注的问题');
+        expect(title).toHaveTextContent('总结聊天中的关键内容、核心结论、待办事项和需要关注的问题');
+        expect(title).not.toHaveTextContent('聊天内容总结');
+        expect(title).not.toHaveAttribute('title');
     });
 });
 

@@ -8,25 +8,29 @@
  *
  * React 17 + ReactDOM.render pattern (matches WebhookUrlModal.test.tsx).
  */
-import React from 'react';
-import ReactDOM from 'react-dom';
-import { act } from 'react-dom/test-utils';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { i18n } from '../../../i18n';
+import React from "react";
+import ReactDOM from "react-dom";
+import { act } from "react-dom/test-utils";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { i18n } from "../../../i18n";
 
 const hoisted = vi.hoisted(() => ({
-  create: vi.fn().mockResolvedValue({ webhook_id: 'iwh_new', token: 't', url: '/u' }),
+  create: vi
+    .fn()
+    .mockResolvedValue({ webhook_id: "iwh_new", token: "t", url: "/u" }),
   update: vi.fn().mockResolvedValue(undefined),
   subscribers: [] as any[],
+  toastSuccess: vi.fn(),
+  toastError: vi.fn(),
 }));
 
 // 自定义 Select mock：把每个 Option 渲染成可点击按钮（点击切换 value，多选语义）。
 // 若组件传了 renderOptionItem，则用它渲染按钮内容，覆盖真实下拉行（含 AI 徽章）。
-vi.mock('@douyinfe/semi-ui', () => {
+vi.mock("@douyinfe/semi-ui", () => {
   const Select: any = ({ value, onChange, children, renderOptionItem }: any) =>
     React.createElement(
-      'div',
-      { 'data-testid': 'select', 'data-value': (value || []).join(',') },
+      "div",
+      { "data-testid": "select", "data-value": (value || []).join(",") },
       React.Children.map(children, (child: any) => {
         const v = child.props.value;
         const toggle = () => {
@@ -44,43 +48,49 @@ vi.mock('@douyinfe/semi-ui', () => {
             })
           : child.props.children;
         return React.createElement(
-          'button',
-          { 'data-testid': `opt-${v}`, onClick: toggle },
+          "button",
+          { "data-testid": `opt-${v}`, onClick: toggle },
           content
         );
       })
     );
-  Select.Option = ({ children }: any) => React.createElement(React.Fragment, null, children);
+  Select.Option = ({ children }: any) =>
+    React.createElement(React.Fragment, null, children);
   const Switch = ({ checked, onChange }: any) =>
-    React.createElement('button', {
-      'data-testid': 'switch',
-      'data-checked': String(!!checked),
+    React.createElement("button", {
+      "data-testid": "switch",
+      "data-checked": String(!!checked),
       onClick: () => onChange(!checked),
     });
-  return { Select, Switch, Toast: { success: vi.fn(), error: vi.fn() } };
+  return {
+    Select,
+    Switch,
+    Toast: { success: hoisted.toastSuccess, error: hoisted.toastError },
+  };
 });
 
-vi.mock('@douyinfe/semi-icons', () => ({
-  IconAlertTriangle: () => React.createElement('span', { 'data-testid': 'icon-alert' }),
+vi.mock("@douyinfe/semi-icons", () => ({
+  IconAlertTriangle: () =>
+    React.createElement("span", { "data-testid": "icon-alert" }),
 }));
 
-vi.mock('../../WKModal', () => ({
+vi.mock("../../WKModal", () => ({
   default: ({ children, footer, visible }: any) =>
     visible
-      ? React.createElement('div', { 'data-testid': 'modal' }, children, footer)
+      ? React.createElement("div", { "data-testid": "modal" }, children, footer)
       : null,
   __esModule: true,
 }));
 
-vi.mock('../../WKButton', () => ({
+vi.mock("../../WKButton", () => ({
   default: ({ children, onClick }: any) =>
-    React.createElement('button', { onClick }, children),
+    React.createElement("button", { onClick }, children),
   __esModule: true,
 }));
 
-vi.mock('../../../App', () => ({
+vi.mock("../../../App", () => ({
   default: {
-    loginInfo: { uid: 'me' },
+    loginInfo: { uid: "me" },
     dataSource: {
       channelDataSource: {
         createIncomingWebhook: (...a: any[]) => hoisted.create(...a),
@@ -91,7 +101,7 @@ vi.mock('../../../App', () => ({
   __esModule: true,
 }));
 
-vi.mock('../../../Service/APIClient', () => ({
+vi.mock("../../../Service/APIClient", () => ({
   extractErrorMsg: (e: unknown) => String(e),
   default: {
     shared: {
@@ -101,7 +111,13 @@ vi.mock('../../../Service/APIClient', () => ({
   },
 }));
 
-vi.mock('wukongimjssdk', async (importOriginal) => {
+vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
+  getCurrentImChannelSubscribers: () => hoisted.subscribers,
+  syncCurrentImChannelSubscribers: () => Promise.resolve(),
+  getCurrentImChannelInfo: () => undefined,
+}));
+
+vi.mock("wukongimjssdk", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
@@ -117,31 +133,40 @@ vi.mock('wukongimjssdk', async (importOriginal) => {
   };
 });
 
-import WebhookEditModal from '../WebhookEditModal';
+import WebhookEditModal from "../WebhookEditModal";
 
 let container: HTMLDivElement;
 
 beforeEach(() => {
-  i18n.setLocale('zh-CN', { notify: false, persist: false });
-  hoisted.create.mockReset().mockResolvedValue({ webhook_id: 'iwh_new', token: 't', url: '/u' });
+  i18n.setLocale("zh-CN", { notify: false, persist: false });
+  hoisted.create
+    .mockReset()
+    .mockResolvedValue({ webhook_id: "iwh_new", token: "t", url: "/u" });
   hoisted.update.mockReset().mockResolvedValue(undefined);
+  hoisted.toastSuccess.mockReset();
+  hoisted.toastError.mockReset();
   // 注意：订阅列表故意不含 self('me')——验证组件会显式把当前用户补进候选。
   hoisted.subscribers = [
-    { uid: 'u1', name: 'Alice' },
-    { uid: 'u2', name: 'Bob' },
-    { uid: 'bot1', name: 'HelperBot', orgData: { robot: 1 } },
+    { uid: "u1", name: "Alice" },
+    { uid: "u2", name: "Bob" },
+    { uid: "bot1", name: "HelperBot", orgData: { robot: 1 } },
   ];
-  container = document.createElement('div');
+  container = document.createElement("div");
   document.body.appendChild(container);
 });
 
 afterEach(() => {
-  act(() => { ReactDOM.unmountComponentAtNode(container); });
+  act(() => {
+    ReactDOM.unmountComponentAtNode(container);
+  });
   container.remove();
 });
 
 const flush = async (): Promise<void> => {
-  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 };
 
 const render = async (props: any): Promise<void> => {
@@ -161,14 +186,16 @@ const render = async (props: any): Promise<void> => {
 };
 
 const clickSave = (): void => {
-  const saveBtn = Array.from(container.querySelectorAll('button')).find(
-    (b) => b.textContent === '保存'
+  const saveBtn = Array.from(container.querySelectorAll("button")).find(
+    (b) => b.textContent === "保存"
   )!;
-  act(() => { saveBtn.click(); });
+  act(() => {
+    saveBtn.click();
+  });
 };
 
-describe('WebhookEditModal mention_uids picker', () => {
-  it('lists group members and explicitly includes the current user (not in subscribers)', async () => {
+describe("WebhookEditModal mention_uids picker", () => {
+  it("lists group members and explicitly includes the current user (not in subscribers)", async () => {
     await render({});
     expect(container.querySelector('[data-testid="opt-u1"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="opt-u2"]')).not.toBeNull();
@@ -177,22 +204,26 @@ describe('WebhookEditModal mention_uids picker', () => {
     expect(container.querySelector('[data-testid="opt-me"]')).not.toBeNull();
   });
 
-  it('flags bot members with the AI badge', async () => {
+  it("flags bot members with the AI badge", async () => {
     await render({});
     const botOpt = container.querySelector('[data-testid="opt-bot1"]')!;
-    expect(botOpt.querySelector('.ai-badge')).not.toBeNull();
+    expect(botOpt.querySelector(".ai-badge")).not.toBeNull();
     const humanOpt = container.querySelector('[data-testid="opt-u1"]')!;
-    expect(humanOpt.querySelector('.ai-badge')).toBeNull();
+    expect(humanOpt.querySelector(".ai-badge")).toBeNull();
   });
 
-  it('create: selected members are sent as mention_uids', async () => {
+  it("create: selected members are sent as mention_uids", async () => {
     await render({});
     act(() => {
-      container.querySelector<HTMLButtonElement>('[data-testid="opt-u1"]')!.click();
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="opt-u1"]')!
+        .click();
     });
     await flush();
     act(() => {
-      container.querySelector<HTMLButtonElement>('[data-testid="opt-bot1"]')!.click();
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="opt-bot1"]')!
+        .click();
     });
     await flush();
     clickSave();
@@ -200,31 +231,65 @@ describe('WebhookEditModal mention_uids picker', () => {
 
     expect(hoisted.create).toHaveBeenCalledTimes(1);
     const req = hoisted.create.mock.calls[0][1];
-    expect(req.mention_uids).toEqual(['u1', 'bot1']);
+    expect(req.mention_uids).toEqual(["u1", "bot1"]);
   });
 
-  it('edit: clearing all selections sends an explicit empty array', async () => {
+  it("create: stale result after scope change is not surfaced", async () => {
+    let resolveCreate!: (value: unknown) => void;
+    hoisted.create.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        })
+    );
+    const onSaved = vi.fn();
+
+    await render({
+      channel: { channelID: "g1" },
+      onSaved,
+    });
+    clickSave();
+    await flush();
+
+    await render({
+      channel: { channelID: "g2" },
+      onSaved,
+    });
+    await act(async () => {
+      resolveCreate({ webhook_id: "iwh_new", token: "t", url: "/u" });
+    });
+    await flush();
+
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(hoisted.toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("edit: clearing all selections sends an explicit empty array", async () => {
     await render({
       webhook: {
-        webhook_id: 'iwh_1',
-        group_no: 'g',
-        name: 'CI',
-        avatar: '',
-        creator_uid: 'u9',
+        webhook_id: "iwh_1",
+        group_no: "g",
+        name: "CI",
+        avatar: "",
+        creator_uid: "u9",
         status: 1,
         last_used_at: 0,
         call_count: 0,
         created_at: 0,
-        mention_uids: ['u1', 'u2'],
+        mention_uids: ["u1", "u2"],
       },
     });
     // 取消两个已选 → 清空
     act(() => {
-      container.querySelector<HTMLButtonElement>('[data-testid="opt-u1"]')!.click();
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="opt-u1"]')!
+        .click();
     });
     await flush();
     act(() => {
-      container.querySelector<HTMLButtonElement>('[data-testid="opt-u2"]')!.click();
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="opt-u2"]')!
+        .click();
     });
     await flush();
     clickSave();
@@ -235,19 +300,19 @@ describe('WebhookEditModal mention_uids picker', () => {
     expect(req.mention_uids).toEqual([]);
   });
 
-  it('edit: no changes → no request (modal just closes)', async () => {
+  it("edit: no changes → no request (modal just closes)", async () => {
     await render({
       webhook: {
-        webhook_id: 'iwh_1',
-        group_no: 'g',
-        name: 'CI',
-        avatar: '',
-        creator_uid: 'u9',
+        webhook_id: "iwh_1",
+        group_no: "g",
+        name: "CI",
+        avatar: "",
+        creator_uid: "u9",
         status: 1,
         last_used_at: 0,
         call_count: 0,
         created_at: 0,
-        mention_uids: ['u1'],
+        mention_uids: ["u1"],
       },
     });
     clickSave();
@@ -256,15 +321,15 @@ describe('WebhookEditModal mention_uids picker', () => {
   });
 });
 
-describe('WebhookEditModal name input Enter / IME composition (#500)', () => {
+describe("WebhookEditModal name input Enter / IME composition (#500)", () => {
   const nameInput = (): HTMLInputElement =>
-    container.querySelectorAll<HTMLInputElement>('.wk-webhook-form__input')[0];
+    container.querySelectorAll<HTMLInputElement>(".wk-webhook-form__input")[0];
 
   const pressEnter = (isComposing: boolean): void => {
     act(() => {
       nameInput().dispatchEvent(
-        new KeyboardEvent('keydown', {
-          key: 'Enter',
+        new KeyboardEvent("keydown", {
+          key: "Enter",
           isComposing,
           bubbles: true,
           cancelable: true,
@@ -273,7 +338,7 @@ describe('WebhookEditModal name input Enter / IME composition (#500)', () => {
     });
   };
 
-  it('does NOT submit when Enter fires during IME composition (选词/上屏)', async () => {
+  it("does NOT submit when Enter fires during IME composition (选词/上屏)", async () => {
     await render({});
     // 中文拼音等输入法组字过程中的回车仅用于上屏候选，不应触发创建。
     pressEnter(true);
@@ -281,7 +346,7 @@ describe('WebhookEditModal name input Enter / IME composition (#500)', () => {
     expect(hoisted.create).not.toHaveBeenCalled();
   });
 
-  it('submits when Enter fires outside composition', async () => {
+  it("submits when Enter fires outside composition", async () => {
     await render({});
     // 非组字状态下的回车仍应正常提交创建（名称可留空，服务端自动命名）。
     pressEnter(false);

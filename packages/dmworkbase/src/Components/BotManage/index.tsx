@@ -1,12 +1,16 @@
+import { Toast } from "@douyinfe/semi-ui"
 import React, { Component, ReactNode } from "react"
 import RouteContext, { RouteContextConfig } from "../../Service/Context"
 import Provider, { IProviderListener } from "../../Service/Provider"
 import WKModal from "../WKModal"
 import RoutePage from "../RoutePage"
-import { MentionFreeVM } from "./vm"
-import BotManageMenu from "./BotManageMenu"
-import MentionFreeList from "./MentionFreeList"
+import { MentionFreeVM } from "../../bridge/profileDetail/BotManageVM"
 import { I18nContext } from "../../i18n"
+import BotManageView, {
+    MentionFreeListView,
+    type BotManageGroupItem,
+    type BotManageViewLabels,
+} from "../../ui/profileDetail/BotManageView"
 import "./index.css"
 
 /**
@@ -14,7 +18,7 @@ import "./index.css"
  *
  * 三级导航：
  *   L1 BotDetailModal（既有）──兄弟 WKModal──▶ L2 BotManageModal（本文件）
- *   L2 BotManageMenu ──模块内 RoutePage.push──▶ L3 MentionFreeList
+ *   L2 BotManageView ──模块内 RoutePage.push──▶ L3 MentionFreeListView
  *
  * L1→L2 走「兄弟 WKModal」（仿 ClawInfoModal 在 BotDetailModal:785-790 的渲染方式），
  * 而不是嵌套；L2↔L3 走模块自带的 RoutePage + push（仿 PersonaSettings standalone
@@ -56,6 +60,7 @@ export default class BotManageModal extends Component<BotManageModalProps> {
     render(): ReactNode {
         const { robotId, visible, onClose } = this.props
         const { t } = this.context
+        const labels = this.createLabels()
         return (
             <WKModal
                 title={null}
@@ -75,12 +80,21 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                             title={t("base.botManage.title")}
                             onClose={onClose}
                             render={(context: RouteContext<any>): ReactNode => (
-                                <BotManageMenu
+                                <BotManageView
+                                    labels={labels}
                                     onOpenMentionFree={() => {
                                         context.push(
-                                            <MentionFreeList vm={vm} />,
+                                            <MentionFreeListContainer
+                                                vm={vm}
+                                                labels={labels}
+                                                toggleFailedFallback={t(
+                                                    "base.botManage.mentionFree.toggleFailed",
+                                                )}
+                                            />,
                                             new RouteContextConfig({
-                                                title: t("base.botManage.mentionFree.title"),
+                                                title: t(
+                                                    "base.botManage.mentionFree.title",
+                                                ),
                                             }),
                                         )
                                     }}
@@ -92,8 +106,112 @@ export default class BotManageModal extends Component<BotManageModalProps> {
             </WKModal>
         )
     }
+
+    private createLabels(): BotManageViewLabels {
+        const { t } = this.context
+        return {
+            mentionFree: t("base.botManage.menu.mentionFree"),
+            mentionFreeHint: t("base.botManage.menu.mentionFreeHint"),
+            autoApprove: t("base.botManage.menu.autoApprove"),
+            autoApproveHint: t("base.botManage.menu.autoApproveHint"),
+            profileCommands: t("base.botManage.menu.profileCommands"),
+            profileCommandsHint: t("base.botManage.menu.profileCommandsHint"),
+            comingSoon: t("base.botManage.comingSoon"),
+            loading: t("base.botManage.loading"),
+            backendComingSoon: t("base.botManage.backendComingSoon"),
+            stayTuned: t("base.botManage.stayTuned"),
+            loadFailed: t("base.botManage.loadFailed"),
+            reload: t("base.botManage.reload"),
+            searchPlaceholder: t("base.botManage.mentionFree.searchPlaceholder"),
+            noSearchResult: t("base.botManage.mentionFree.noSearchResult"),
+            empty: t("base.botManage.mentionFree.empty"),
+            sectionEnabled: (count: number) =>
+                t("base.botManage.mentionFree.sectionEnabled", {
+                    values: { count },
+                }),
+            sectionOthers: t("base.botManage.mentionFree.sectionOthers"),
+            rowOn: t("base.botManage.mentionFree.rowOn"),
+            rowOff: t("base.botManage.mentionFree.rowOff"),
+            rowBlocked: t("base.botManage.mentionFree.rowBlocked"),
+        }
+    }
 }
 
 export { BotManageModal }
-export { MentionFreeVM } from "./vm"
-export type { BotGroupItem } from "./vm"
+export { MentionFreeVM } from "../../bridge/profileDetail/BotManageVM"
+export type { BotGroupItem } from "../../bridge/profileDetail/BotManageVM"
+
+interface MentionFreeListContainerProps {
+    vm: MentionFreeVM
+    labels: BotManageViewLabels
+    toggleFailedFallback: string
+}
+
+class MentionFreeListContainer extends Component<MentionFreeListContainerProps> {
+    private unsubscribe?: () => void
+
+    componentDidMount(): void {
+        const { vm } = this.props
+        this.unsubscribe = vm.addListener(() => this.forceUpdate())
+        if (
+            !vm.loading &&
+            vm.groups.length === 0 &&
+            !vm.loadError &&
+            !vm.isBackendMissing
+        ) {
+            void vm.loadGroups()
+        }
+    }
+
+    componentWillUnmount(): void {
+        if (this.unsubscribe) this.unsubscribe()
+    }
+
+    render(): ReactNode {
+        const { vm, labels } = this.props
+        const { enabled, others } = vm.visibleGroups()
+        return (
+            <MentionFreeListView
+                labels={labels}
+                loading={vm.loading}
+                backendMissing={vm.isBackendMissing}
+                loadError={vm.loadError}
+                searchKeyword={vm.searchKeyword}
+                enabledGroups={enabled.map(mapGroupItem)}
+                otherGroups={others.map(mapGroupItem)}
+                loadingMore={vm.loadingMore}
+                onSearchKeywordChange={(value) => vm.setSearchKeyword(value)}
+                onReload={() => void vm.loadGroups()}
+                onLoadMore={() => void vm.loadMore()}
+                onToggleMentionFree={(groupNo, next, ctx) => {
+                    if (ctx) ctx.loading = true
+                    void vm
+                        .toggleMentionFree(groupNo, next)
+                        .then((ok) => {
+                            if (!ok && vm.toggleFailed) {
+                                Toast.error(
+                                    vm.toggleErrorMessage ||
+                                        this.props.toggleFailedFallback,
+                                )
+                            }
+                        })
+                        .finally(() => {
+                            if (ctx) ctx.loading = false
+                        })
+                }}
+            />
+        )
+    }
+}
+
+function mapGroupItem(group: {
+    group_no: string
+    name: string
+    no_mention: boolean
+}): BotManageGroupItem {
+    return {
+        groupNo: group.group_no,
+        name: group.name,
+        noMention: group.no_mention,
+    }
+}

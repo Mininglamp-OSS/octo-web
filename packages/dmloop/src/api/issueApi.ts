@@ -14,7 +14,13 @@ import type {
   CommentTriggerAgent,
 } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
-import { ensureDirectory, actorName, actorAvatar, listAssigneeCandidates as dirCandidates } from "./directory";
+import {
+  ensureDirectory,
+  actorName,
+  actorAvatar,
+  listAssigneeCandidates as dirCandidates,
+  listAssigneeCandidateState as dirCandidateState,
+} from "./directory";
 import { arrayFilterQuery } from "./issueFilterQuery";
 
 // enrich 的同步核心:调用方已拿到 directory 时复用,避免每组重复 ensureDirectory。
@@ -71,8 +77,24 @@ export async function enrichIssue(issue: Issue): Promise<Issue> {
 }
 
 export async function getIssue(id: string): Promise<Issue> {
-  const issue = await httpGet<Issue>(`/issues/${id}`);
+  const issue = await httpGet<Issue>(`/issues/${encodeURIComponent(id)}`);
   return enrichIssue(issue);
+}
+
+export async function resolveIssueByIdentifier(identifier: string): Promise<Issue | null> {
+  const key = identifier.trim();
+  if (!key) return null;
+
+  const direct = await getIssue(key).catch(() => null);
+  if (direct?.identifier?.toLowerCase() === key.toLowerCase()) return direct;
+
+  const searched = await searchIssues(key, { limit: 50, includeClosed: true }).catch(
+    () => ({ issues: [] as Issue[], total: 0 })
+  );
+  return (
+    searched.issues.find((issue) => issue.identifier.toLowerCase() === key.toLowerCase()) ??
+    null
+  );
 }
 
 // 子 issue 列表(GET /issues/:id/children):后端包裹 { issues }。子项含 status,
@@ -233,4 +255,11 @@ export function updateComment(commentId: string, content: string): Promise<Issue
 /* ---------- 指派候选 ---------- */
 export function listAssigneeCandidates(): Promise<AssigneeCandidate[]> {
   return dirCandidates();
+}
+
+export function listAssigneeCandidateState(): Promise<{
+  candidates: AssigneeCandidate[];
+  succeeded: boolean;
+}> {
+  return dirCandidateState();
 }

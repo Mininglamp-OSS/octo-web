@@ -5,6 +5,7 @@ import {
   WKSDK,
 } from "wukongimjssdk";
 import WKApp from "../../App";
+import { getImChannelInfo } from "../../im-runtime/channelRuntime";
 import { createSearchAssetResolver } from "../search/createSearchAssetResolver";
 import {
   cleanFilters,
@@ -69,7 +70,7 @@ export function createChannelSearchApiDataSource(
           avatarUrl: selfUid ? WKApp.shared.avatarUser(selfUid) : undefined,
           isCurrentMember: true,
         };
-        const peerInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+        const peerInfo = getImChannelInfo(WKSDK.shared(), channel);
         const peer: ChannelSearchSender = {
           uid: channel.channelID,
           name: peerInfo?.title || channel.channelID,

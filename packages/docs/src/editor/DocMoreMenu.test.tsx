@@ -89,3 +89,35 @@ describe('DocMoreMenu', () => {
     expect(screen.queryByText(/docs\.moreMenu\.createdPrefix/)).toBeNull()
   })
 })
+describe('DocMoreMenu — creator avatar (OCT-194)', () => {
+  it('renders an <img> when creatorAvatarUrl is present', () => {
+    render(
+      <DocMoreMenu creatorName="Alice" creatorAvatarUrl="/api/v1/users/u1/avatar" items={[]} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'docs.toolbar.more' }))
+    const img = document.querySelector('img.octo-doc-more-avatar') as HTMLImageElement | null
+    expect(img).toBeTruthy()
+    expect(img?.getAttribute('src')).toBe('/api/v1/users/u1/avatar')
+    // Fallback initial chip is NOT rendered when the image is showing (avoid double head).
+    expect(document.querySelector('span.octo-doc-more-avatar')).toBeNull()
+  })
+
+  it('falls back to the initial-letter chip when the avatar image fails to load', () => {
+    render(
+      <DocMoreMenu creatorName="Alice" creatorAvatarUrl="/api/v1/users/u1/avatar" items={[]} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'docs.toolbar.more' }))
+    const img = document.querySelector('img.octo-doc-more-avatar') as HTMLImageElement
+    fireEvent.error(img)
+    expect(document.querySelector('img.octo-doc-more-avatar')).toBeNull()
+    expect(document.querySelector('span.octo-doc-more-avatar')?.textContent).toBe('A')
+  })
+
+  it('renders the initial-letter chip when creatorAvatarUrl is absent (existing behaviour)', () => {
+    render(<DocMoreMenu creatorName="Bob" items={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'docs.toolbar.more' }))
+    expect(document.querySelector('img.octo-doc-more-avatar')).toBeNull()
+    expect(document.querySelector('span.octo-doc-more-avatar')?.textContent).toBe('B')
+  })
+})
+

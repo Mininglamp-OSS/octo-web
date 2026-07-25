@@ -60,6 +60,86 @@ export function clearAgentChatSession(channelId?: string | null): void {
     }
 }
 
+// ─── Agent 对话 referencedTask 持久化（「退出不丢引用」） ──────────────
+// referencedTask 与 session_id 同生命周期：session 存活时它也存活，session
+// 清掉（新会话/保存成功）时它也被清。修 SUM-161 fast-follow：未保存的
+// 引用总结 chat 退出重进后，session_id 从 localStorage 恢复了、消息也
+// 通过 GET /agent/chat/history 拉回来了，但 referencedTask 只活在 React
+// state 里，重进后丢失。用户随后点保存 → 前端不发 referenced_task_ids
+// → 后端 CreateAgentSummary 走 fallback 借 origin 失败 → 40001。持久化
+// 它到 localStorage 让 refresh/重进后自动回填。
+//
+// 只存最小可恢复信息：task_id + title（UI 显示用）。task_id 是唯一必要
+// 键，title 是显示用的 snapshot（可能 stale，但不影响功能——后端保存时
+// 会用 task_id 走 canAccessTaskDB 校验）。
+const AGENT_CHAT_REFERENCED_KEY_PREFIX = 'agent-chat-referenced:';
+
+/** 持久化的引用总结精简结构（只存 UI 恢复必需的字段）。 */
+export interface PersistedReferencedTask {
+    task_id: number;
+    title: string;
+}
+
+/** 构造 referencedTask localStorage key。channelId 缺省时用统一兜底段。 */
+export function agentChatReferencedKey(channelId?: string | null): string {
+    return AGENT_CHAT_REFERENCED_KEY_PREFIX + (channelId || AGENT_CHAT_SESSION_FALLBACK);
+}
+
+/**
+ * 读取该入口已持久化的引用总结；无则返回 null。
+ * localStorage 在隐私模式/禁用时可能抛错、JSON 损坏时可能解析失败，
+ * 一律吞掉降级为「无引用」，不影响正常打开会话。
+ */
+export function readAgentChatReferenced(channelId?: string | null): PersistedReferencedTask | null {
+    try {
+        const raw = localStorage.getItem(agentChatReferencedKey(channelId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as unknown;
+        if (
+            parsed && typeof parsed === 'object'
+            && typeof (parsed as PersistedReferencedTask).task_id === 'number'
+            && typeof (parsed as PersistedReferencedTask).title === 'string'
+        ) {
+            return parsed as PersistedReferencedTask;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * 写入引用总结（null 清除）。异常静默降级。
+ * 传 null 时清除，与 clearAgentChatReferenced 等价——统一入口方便调用点。
+ */
+export function writeAgentChatReferenced(
+    channelId: string | null | undefined,
+    task: PersistedReferencedTask | null,
+): void {
+    if (!task) {
+        clearAgentChatReferenced(channelId);
+        return;
+    }
+    try {
+        localStorage.setItem(
+            agentChatReferencedKey(channelId),
+            JSON.stringify({ task_id: task.task_id, title: task.title }),
+        );
+    } catch {
+        // 同 writeAgentChatSession：localStorage 不可用（隐私模式/配额）
+        // 时静默降级，本次会话仍然可用，只是 refresh 后不恢复。
+    }
+}
+
+/** 清除该入口的引用总结（「新会话」或「保存成功」用）。异常静默降级。 */
+export function clearAgentChatReferenced(channelId?: string | null): void {
+    try {
+        localStorage.removeItem(agentChatReferencedKey(channelId));
+    } catch {
+        // 同上。
+    }
+}
+
 /** 周对应天数 */
 export const DAYS_PER_WEEK = 7;
 /** interval_days 上界（与后端 MaxIntervalDays 对齐） */

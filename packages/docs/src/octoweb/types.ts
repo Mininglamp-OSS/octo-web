@@ -159,6 +159,18 @@ export interface DocForwardGrantResult {
 export interface HostDocForward {
   messageTitle: string
   link: string
+  /** Send as a DocumentShareCard (type-18) — only the doc-share flow sets it; AI-instruction forward leaves unset. */
+  shareAsCard?: boolean
+  /** docId — host builds the DocumentShareCard payload from it (receiver fetches an ACL-safe preview). */
+  docId?: string
+  /** The doc's own space id. */
+  spaceId?: string
+  /** Resource kind — doc/board/sheet. */
+  kind?: 'doc' | 'board' | 'sheet'
+  /** Owner display name for the card eyebrow. */
+  ownerName?: string
+  /** Pre-formatted "updated at" for the card eyebrow. */
+  updatedAt?: string
   canGrant: boolean
   disabledReason?: string
   defaultRole?: 'reader' | 'writer'
@@ -186,6 +198,16 @@ export interface OpenDocForwardOptions {
   title: string
   /** Clickable link with the docId embedded. */
   link: string
+  /** Send as a DocumentShareCard (type-18). Only the doc-share entry sets it true. */
+  shareAsCard?: boolean
+  /** The doc's own space id — carried into the DocumentShareCard so the receiver's ACL-safe preview fetch addresses the right space. */
+  spaceId?: string
+  /** Resource kind — doc/board/sheet — drives the card icon + which preview endpoint the receiver calls. */
+  kind?: 'doc' | 'board' | 'sheet'
+  /** Pre-resolved owner display name for the card eyebrow (optional). */
+  ownerName?: string
+  /** Pre-formatted "updated at" string for the card eyebrow (optional). */
+  updatedAt?: string
   /** Precomputed: canManage(role) || currentUid === ownerId. */
   canGrant: boolean
   /** Grey-out hint for non-grantors. */
@@ -215,6 +237,19 @@ export interface SpaceMemberLite {
   avatar?: string
   /** True for an AI/robot member (host `robot === 1`); absent when unknown. */
   isBot?: boolean
+}
+
+/**
+ * Minimal shape of ONE bot returned by `GET /robot/owned_bots?space_id=` — the owner-scoped
+ * endpoint (octo-server modules/robot ownedBots) that returns only bots the current user CREATED,
+ * that are active and members of the given Space. The docs "new HTML" picker reads exactly these
+ * fields to render a choosable bot; it deliberately carries NO token / credential field — the Web
+ * layer never touches a Bot Token (plan §5.5).
+ */
+export interface OwnedBotLite {
+  uid: string
+  name: string
+  description?: string
 }
 
 /** The WKApp singleton surface the docs module touches. */

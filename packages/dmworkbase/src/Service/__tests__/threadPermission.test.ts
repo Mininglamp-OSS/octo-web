@@ -3,7 +3,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // 内存版父群成员缓存，测试通过它驱动 getSubscribes 返回值
 const subscribesByKey = new Map<string, Array<{ uid: string; role: number }>>();
 
+const sharedSdk = {
+  channelManager: {
+    getSubscribes: (channel: { getChannelKey: () => string }) =>
+      subscribesByKey.get(channel.getChannelKey()),
+  },
+};
+
 vi.mock("wukongimjssdk", () => ({
+  default: {
+    shared: () => sharedSdk,
+  },
   Channel: class {
     channelID: string;
     channelType: number;
@@ -17,12 +27,7 @@ vi.mock("wukongimjssdk", () => ({
   },
   ChannelTypeGroup: 2,
   WKSDK: {
-    shared: () => ({
-      channelManager: {
-        getSubscribes: (channel: { getChannelKey: () => string }) =>
-          subscribesByKey.get(channel.getChannelKey()),
-      },
-    }),
+    shared: () => sharedSdk,
   },
 }));
 

@@ -1,4 +1,4 @@
-import WKSDK, {
+import {
   Channel,
   ChannelInfo,
   ChannelInfoListener,
@@ -12,6 +12,7 @@ import { MessageContentTypeConst } from "../../Service/Const";
 import { ProviderListener } from "../../Service/Provider";
 import { debounce } from "../../Utils/rateLimit";
 import { t } from "../../i18n";
+import { addCurrentImChannelInfoListener, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
 /** Legacy contacts/groups bridge retained while the aggregated tabs migrate. */
 export default class GlobalSearchVM extends ProviderListener {
@@ -27,6 +28,7 @@ export default class GlobalSearchVM extends ProviderListener {
   public loadFinish = false; // 是否加载完成
   public contentTypes = new Array<number>(); // 内容类型
   private channelInfoListener!: ChannelInfoListener;
+  private unsubscribeChannelInfoListener?: () => void;
   public channel?: Channel; // 查询指定频道的消息
   private requestId = 0; // 请求计数器，用于处理竞态条件
   public searchError: string | null = null; // 搜索失败错误信息
@@ -62,7 +64,7 @@ export default class GlobalSearchVM extends ProviderListener {
   // 搜索标题
   public get searchTitle() {
     if (this.searchInChannel) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+      const channelInfo = getCurrentImChannelInfo(
         this.channel!
       );
       if (channelInfo) {
@@ -113,11 +115,14 @@ export default class GlobalSearchVM extends ProviderListener {
       }
     };
 
-    WKSDK.shared().channelManager.addListener(this.channelInfoListener);
+    this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(
+      this.channelInfoListener
+    );
   }
 
   didUnMount(): void {
-    WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
+    this.unsubscribeChannelInfoListener?.();
+    this.unsubscribeChannelInfoListener = undefined;
   }
 
   // 输入框输入事件 (debounced to reduce API calls)

@@ -1,0 +1,207 @@
+/* Keep the create-thread presentation aligned with the legacy ThreadCreate/ThreadCreateModal UI. */
+.wk-thread-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wk-thread-modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--wk-brand-tint-35);
+}
+
+.wk-thread-modal-content {
+  position: relative;
+  width: 360px;
+  background: var(--wk-bg-surface);
+  border-radius: var(--wk-r-lg);
+  box-shadow: var(--wk-shadow-lg);
+  animation: wkModalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes wkModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.wk-thread-modal-header {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-default);
+}
+
+.wk-thread-modal-icon {
+  color: var(--wk-brand-primary);
+  flex-shrink: 0;
+}
+
+.wk-thread-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--wk-text-primary);
+  flex: 1;
+}
+
+.wk-thread-modal-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  color: var(--wk-text-tertiary);
+  transition: background 0.15s, color 0.15s;
+}
+
+.wk-thread-modal-close:hover {
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-primary);
+}
+
+.wk-thread-modal-body {
+  padding: var(--wk-sp-4);
+}
+
+.wk-thread-create-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-thread-create-form__label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--wk-text-secondary);
+  margin-bottom: var(--wk-sp-2);
+}
+
+.wk-thread-create-form__input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wk-thread-create-form__input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  outline: none;
+  background: var(--wk-bg-base);
+  color: var(--wk-text-primary);
+  font-size: 14px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.wk-thread-create-form--confirm .wk-thread-create-form__input {
+  border-radius: 6px;
+}
+
+.wk-thread-create-form__input:focus {
+  border-color: var(--wk-brand-primary);
+  box-shadow: none;
+}
+
+.wk-thread-create-form__input::placeholder {
+  color: var(--wk-text-tertiary);
+}
+
+.wk-thread-create-form__input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wk-thread-create-form__input--error {
+  border-color: var(--wk-color-error);
+}
+
+.wk-thread-create-form__meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-1);
+}
+
+.wk-thread-create-form__error {
+  color: var(--wk-color-error);
+  font-size: 12px;
+}
+
+.wk-thread-create-form__counter {
+  flex-shrink: 0;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}
+
+.wk-thread-create-form__counter--error {
+  color: var(--wk-color-error);
+}
+
+.wk-thread-create-form__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+}
+
+.wk-thread-modal .wk-thread-create-form__footer,
+.wk-thread-create .wk-thread-create-form__footer {
+  margin: var(--wk-sp-4) calc(var(--wk-sp-4) * -1) calc(var(--wk-sp-4) * -1);
+  padding: var(--wk-sp-4);
+  border-top: 1px solid var(--wk-border-default);
+}
+
+.wk-thread-create-form__button {
+  padding: var(--wk-sp-2) var(--wk-sp-4);
+  border-radius: var(--wk-r-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  border: none;
+}
+
+.wk-thread-create-form__button--cancel {
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-secondary);
+}
+
+.wk-thread-create-form__button--cancel:hover {
+  background: var(--wk-bg-active);
+}
+
+.wk-thread-create-form__button--submit {
+  background: var(--wk-brand-primary);
+  color: white;
+}
+
+.wk-thread-create-form__button--submit:hover {
+  opacity: 0.9;
+}
+
+.wk-thread-create-form__button--submit:disabled,
+.wk-thread-create-form__button--cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

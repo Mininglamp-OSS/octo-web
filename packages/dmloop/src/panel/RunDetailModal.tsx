@@ -132,10 +132,12 @@ export default function RunDetailModal({
   run,
   visible,
   onClose,
+  workspaceSlug,
 }: {
   run: TaskRun | null;
   visible: boolean;
   onClose: () => void;
+  workspaceSlug?: string;
 }) {
   const { t } = useI18n();
   const [messages, setMessages] = useState<RunMessage[]>([]);
@@ -175,23 +177,23 @@ export default function RunDetailModal({
     const poll = () => {
       timer = setTimeout(async () => {
         if (cancelled) return;
-        await listRunMessages(run.id, lastSeqRef.current).then((b) => { if (!cancelled) apply(b ?? [], true); }).catch(() => {});
+        await listRunMessages(run.id, lastSeqRef.current, workspaceSlug).then((b) => { if (!cancelled) apply(b ?? [], true); }).catch(() => {});
         let stillActive = true;
         try {
-          const fresh = (await listRuns(run.issue_id)).find((r) => r.id === run.id);
+          const fresh = (await listRuns(run.issue_id, workspaceSlug)).find((r) => r.id === run.id);
           if (cancelled) return;
-          if (fresh) { setLiveRun(fresh); stillActive = isActiveRun(fresh.status); missRef.current = 0; }
+          if (fresh) { setLiveRun({ ...fresh, agent_name: fresh.agent_name ?? run.agent_name }); stillActive = isActiveRun(fresh.status); missRef.current = 0; }
           else { missRef.current += 1; stillActive = missRef.current < MAX_MISSES; if (!stillActive) setGone(true); } // 连续 miss 达阈值:判定 run 已消失,停轮询并提示
         } catch { /* ensureDirectory 等抛错:保持轮询 */ }
         if (!cancelled && stillActive) poll();
         // 终止前再做一次增量抓取:run 完成时的最后一批消息(result/error)常在上面抓取返回后、
         // status 翻转前才写入,不补一次会永久丢失最关键的收尾消息(#610 评审)。
-        else if (!cancelled) await listRunMessages(run.id, lastSeqRef.current).then((b) => { if (!cancelled) apply(b ?? [], true); }).catch(() => {});
+        else if (!cancelled) await listRunMessages(run.id, lastSeqRef.current, workspaceSlug).then((b) => { if (!cancelled) apply(b ?? [], true); }).catch(() => {});
       }, POLL_MS);
     };
 
     setLoading(true);
-    listRunMessages(run.id)
+    listRunMessages(run.id, undefined, workspaceSlug)
       .then((m) => { if (!cancelled) apply(m ?? [], false); })
       .catch(() => { if (!cancelled) setMessages([]); })
       .finally(() => {
@@ -201,7 +203,7 @@ export default function RunDetailModal({
       });
 
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [visible, run]);
+  }, [visible, run, workspaceSlug]);
 
   const shown = liveRun ?? run;
   const active = shown ? isActiveRun(shown.status) : false;

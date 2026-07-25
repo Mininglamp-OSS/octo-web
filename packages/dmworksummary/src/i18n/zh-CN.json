@@ -6,6 +6,7 @@
         "confirm": "确定",
         "createFailed": "创建失败",
         "createFailedRetry": "创建失败，请稍后重试",
+        "delete": "删除",
         "deleteFailed": "删除失败",
         "edit": "编辑",
         "loading": "加载中...",
@@ -74,7 +75,8 @@
         "thread": "子区",
         "directMessage": "私聊",
         "label": "来源：",
-        "selectedHeader": "📋 已选择的信息来源",
+        "selectedHeader": "已选择的信息来源",
+        "empty": "暂无来源",
         "idPlaceholder": "来源 ID",
         "namePlaceholder": "名称（可选）",
         "addSource": "添加来源"
@@ -155,6 +157,9 @@
         "searchPlaceholder": "搜索总结...",
         "deleteSuccess": "删除成功",
         "networkError": "网络连接异常，请检查网络后重试",
+        "noMore": "没有更多了",
+        "retrySuccess": "已重新提交总结任务",
+        "cancelSuccess": "已取消总结任务",
         "emptyTitle": "暂无总结记录",
         "emptyDesc": "快速生成群聊或个人工作总结，让 AI 帮你梳理重要信息",
         "createFirst": "创建第一份总结",
@@ -162,11 +167,12 @@
         "leaveFailed": "退出失败"
     },
     "create": {
-        "title": "智能总结",
+        "title": "邀请同事一起总结信息",
         "desc": "邀请同事一起总结信息，并根据聊天等内容自动总结",
-        "topicPlaceholder": "输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点...",
+        "topicPlaceholder": "请输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点",
         "topicPlaceholderInChat": "输入聊天内你想总结的主题",
-        "templatesTitle": "试试总结",
+        "placeholder": "请输入",
+        "templatesTitle": "试试下列模版",
         "submitting": "总结中...",
         "scheduleFailed": "总结已创建，但定时更新配置失败",
         "success": "总结任务已创建",
@@ -195,11 +201,13 @@
         "titleRequired": "标题不能为空",
         "saving": "保存中...",
         "noOutputToSave": "当前对话还没有可保存的总结，请先与 AI 对话产出内容",
-        "agentSummaryCreated": "AI 总结已保存"
+        "agentSummaryCreated": "AI 总结已保存",
+        "savedReferenceLostRetry": "保存失败：请重新选择引用总结，或点「新会话」重来"
     },
     "chatSummary": {
         "panelTitle": "聊天内的智能总结",
         "createNew": "新建总结",
+        "emptyDescription": "创建一个总结，开始整理当前聊天内容。",
         "back": "返回",
         "starTooltip": "智能总结"
     },
@@ -289,6 +297,9 @@
         "recent": "最近",
         "allGroups": "全部群聊",
         "allDirects": "全部私聊",
+        "allMembers": "全部成员",
+        "managers": "管理员",
+        "normalMembers": "普通成员",
         "noData": "暂无数据",
         "includeArchived": "包含已归档子区",
         "includeArchivedHelper": "默认不含已归档子区，开启后可选择归档子区",
@@ -395,6 +406,7 @@
         "forwardedToMatter": "已转发到「{{title}}」",
         "processingTitle": "正在生成总结...",
         "processingDesc": "这可能需要一些时间，请耐心等待",
+        "aiThinking": "AI正在思考中...",
         "workflowUnderstandQuestion": "理解总结问题",
         "workflowFindRelevantChats": "查找相关聊天",
         "workflowFilterUsefulContent": "筛选有效内容",
@@ -407,7 +419,7 @@
         "edited": "已编辑",
         "generatedAt": "生成于 {{time}}",
         "lastEditedAt": "最后编辑 {{time}}",
-        "mySummary": "👤 我的总结",
+        "mySummary": "我的总结",
         "mySummaryPlain": "我的总结",
         "submitToAll": "提交我的总结",
         "mySubmitHint": "你的个人总结已生成，提交后才会汇入团队总结。",
@@ -431,7 +443,7 @@
         "regenerate": "重新生成",
         "regenerateEditTitle": "修改提示词并重新生成",
         "regenerateTopicLabel": "提示词",
-        "adjustSummaryTitle": "调整总结",
+        "adjustSummaryTitle": "修改提示词并重新生成",
         "refineAction": "按意见调整",
         "refineSuccess": "修改成功，已更新到版本 {{version}}",
         "refineModeTitle": "按意见调整当前结果",
@@ -523,7 +535,25 @@
         "deleteScheduledContent": "「{{title}}」是定时更新的总结。删除后将停止定时更新，并移除该总结的全部历史记录，确定删除吗？",
         "leaveTitle": "退出多人协作",
         "leaveContent": "退出后将不再参与该多人协作，确定退出「{{title}}」吗？",
-        "aiGenerated": "对话生成"
+        "aiGenerated": "对话生成",
+        "sourceFrom": "来自{{name}}",
+        "sourceFromMultiple": "来自{{name}}等{{count}}个群聊",
+        "youStartedAt": "你发起于{{time}}",
+        "startedAt": "{{name}}于{{time}}",
+        "generating": "AI正在分析聊天记录...",
+        "justNow": "刚刚",
+        "minutesAgo": "{{count}}分钟前",
+        "hoursAgo": "{{count}}小时前",
+        "daysAgo": "{{count}}天前",
+        "cancelTask": "取消任务",
+        "regenerate": "重新生成",
+        "retry": "重试",
+        "edit": "编辑",
+        "leave": "退出",
+        "confirmDeleteTitle": "确认删除？",
+        "confirmDeleteDesc": "删除后无法恢复",
+        "confirmLeaveTitle": "确认退出？",
+        "confirmLeaveDesc": "退出后将不再参与该总结"
     },
     "editor": {
         "saveSuccess": "保存成功",
@@ -543,6 +573,7 @@
     "citation": {
         "jumpToOriginal": "跳转到原文 →",
         "source": "来源：{{source}}",
+        "sourceDefault": "未知来源",
         "member": "成员：{{name}}"
     },
     "matterPicker": {
@@ -551,6 +582,20 @@
         "searchPlaceholder": "搜索事项...",
         "empty": "暂无可用事项",
         "loadMore": "加载更多..."
+    },
+    "share": {
+        "backToChat": "返回群聊",
+        "defaultTitle": "智能总结",
+        "fullTitle": "总结全文",
+        "close": "关闭",
+        "loading": "正在加载总结…",
+        "unavailable": "该分享不存在、已失效或你无权查看",
+        "retry": "重试",
+        "viewDetails": "查看总结详情",
+        "source": "来自「{{source}}」",
+        "metaLabel": "总结范围",
+        "participantCount": "{{count}} 人",
+        "messageCount": "{{count}} 条消息"
     },
     "splitMessage": {
         "signature": "---\n_by Octo 智能总结_"

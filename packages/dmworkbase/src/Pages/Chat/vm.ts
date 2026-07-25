@@ -21,6 +21,11 @@ import {
     isImConnected,
     removeImConnectStatusListener,
 } from "../../im-runtime/connectStatus";
+import {
+    addImChannelInfoListener,
+    fetchImChannelInfo,
+    getImChannelInfo,
+} from "../../im-runtime/channelRuntime";
 
 
 const TOP_CONVERSATION_SCORE_BOOST = 1000000000000;
@@ -35,6 +40,7 @@ export class ChatVM extends ProviderListener {
     private connectStatusListener!: ConnectStatusListener
     private conversationListener!: ConversationListener
     private channelListener!: ChannelInfoListener
+    private unsubscribeChannelInfoListener?: () => void
     private messageDeleteListener!: MessageDeleteListener
     private conversationListID = "wk-conversationlist"
     private _showGlobalSearch = false // 是否显示全局搜索
@@ -154,8 +160,11 @@ export class ChatVM extends ProviderListener {
             this.selectedConversation = undefined // 清空选中的会话
             WKApp.shared.openChannel = undefined // 清空全局打开的频道
             this._showChannelSetting = false // 关闭频道设置面板
-            // 强制关闭右侧聊天窗口，防止跨 Space 消息污染
-            WKApp.routeRight.popToRoot()
+            // 强制关闭右侧聊天窗口，防止跨 Space 消息污染。routeRight 是全局共享右栏；
+            // Chat 常驻在隐藏 tab 时不能清空当前激活模块（如市场/Loop/Personal）的右栏。
+            if (WKApp.currentMenuId === "chat") {
+                WKApp.routeRight.popToRoot()
+            }
             WKApp.shared.notifyListener()
             this.requestConversationList()
         }
@@ -181,9 +190,9 @@ export class ChatVM extends ProviderListener {
         // ---------- 最近会话 ----------
         this.conversationListener = (conversation: Conversation, action: ConversationAction) => {
 
-            const channelInfo = WKSDK.shared().channelManager.getChannelInfo(conversation.channel)
+            const channelInfo = getImChannelInfo(WKSDK.shared(), conversation.channel)
             if (!channelInfo) {
-                WKSDK.shared().channelManager.fetchChannelInfo(conversation.channel)
+                void fetchImChannelInfo(WKSDK.shared(), conversation.channel)
             }
             if (action === ConversationAction.add) {
                 // 新群补写 channelSpaceMap 缓存（WS 推送新群时缓存可能未命中）
@@ -191,7 +200,7 @@ export class ChatVM extends ProviderListener {
                     const key = `${conversation.channel.channelID}_${conversation.channel.channelType}`
                     if (!WKApp.shared.channelSpaceMap.has(key)) {
                         // 尝试从多个来源同步获取 space_id
-                        const info = WKSDK.shared().channelManager.getChannelInfo(conversation.channel)
+                        const info = getImChannelInfo(WKSDK.shared(), conversation.channel)
                         const sid = info?.orgData?.space_id
                             || conversation.channelInfo?.orgData?.space_id
                             || (conversation as any).extra?.spaceId
@@ -204,7 +213,7 @@ export class ChatVM extends ProviderListener {
                             // 与 update handler 一致：暂存到待定队列，等 channelInfoListener
                             // 回调拿到权威 space_id 后再二次检查并展示。
                             this._pendingSpaceConversations.set(key, conversation)
-                            WKSDK.shared().channelManager.fetchChannelInfo(conversation.channel)
+                            void fetchImChannelInfo(WKSDK.shared(), conversation.channel)
                             return
                         }
                     }
@@ -219,7 +228,8 @@ export class ChatVM extends ProviderListener {
                     if (parsed) {
                         const parentKey = `${parsed.groupNo}_${ChannelTypeGroup}`
                         if (!WKApp.shared.channelSpaceMap.has(parentKey) && WKApp.shared.currentSpaceId) {
-                            WKSDK.shared().channelManager.fetchChannelInfo(
+                            void fetchImChannelInfo(
+                                WKSDK.shared(),
                                 new Channel(parsed.groupNo, ChannelTypeGroup),
                             )
                         }
@@ -247,7 +257,7 @@ export class ChatVM extends ProviderListener {
                     if (!WKApp.shared.channelSpaceMap.has(key)) {
                         // 缓存未命中：暂存 conversation，等 channelInfoListener 回调补写缓存后再处理
                         this._pendingSpaceConversations.set(key, conversation)
-                        WKSDK.shared().channelManager.fetchChannelInfo(conversation.channel)
+                        void fetchImChannelInfo(WKSDK.shared(), conversation.channel)
                         return // 等待 channelInfoListener 回调处理
                     }
                 } else if (conversation.channel.channelType === ChannelTypeCommunityTopic) {
@@ -259,7 +269,8 @@ export class ChatVM extends ProviderListener {
                     if (parsed) {
                         const parentKey = `${parsed.groupNo}_${ChannelTypeGroup}`
                         if (!WKApp.shared.channelSpaceMap.has(parentKey) && WKApp.shared.currentSpaceId) {
-                            WKSDK.shared().channelManager.fetchChannelInfo(
+                            void fetchImChannelInfo(
+                                WKSDK.shared(),
                                 new Channel(parsed.groupNo, ChannelTypeGroup),
                             )
                         }
@@ -357,7 +368,7 @@ export class ChatVM extends ProviderListener {
                 }
             }
         }
-        WKSDK.shared().channelManager.addListener(this.channelListener)
+        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this.channelListener)
 
         this.messageDeleteListener = (message: Message, preMessage?: Message) => {
             const conversation = WKSDK.shared().conversationManager.findConversation(message.channel)
@@ -374,7 +385,8 @@ export class ChatVM extends ProviderListener {
     didUnMount(): void {
         removeImConnectStatusListener(WKSDK.shared(), this.connectStatusListener)
         WKSDK.shared().conversationManager.removeConversationListener(this.conversationListener)
-        WKSDK.shared().channelManager.removeListener(this.channelListener)
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
         WKApp.shared.removeMessageDeleteListener(this.messageDeleteListener)
         if (this.spaceChangedHandler) {
             WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
@@ -509,7 +521,7 @@ export class ChatVM extends ProviderListener {
                 const extra: any = conv.extra
                 const sid = extra?.spaceId
                     || (conv as any).channelInfo?.orgData?.space_id
-                    || WKSDK.shared().channelManager.getChannelInfo(ch)?.orgData?.space_id
+                    || getImChannelInfo(WKSDK.shared(), ch)?.orgData?.space_id
                 if (sid && !WKApp.shared.channelSpaceMap.has(key)) {
                     WKApp.shared.channelSpaceMap.set(key, sid)
                 }

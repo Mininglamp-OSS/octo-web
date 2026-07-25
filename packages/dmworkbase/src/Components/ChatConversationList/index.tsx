@@ -21,6 +21,7 @@ import ConversationListGrouped, { ValidCategoryItem, isValidCategoryItem } from 
 import CreateCategoryModal from "../CreateCategoryModal"
 import { ContextMenusData } from "../ContextMenus"
 import { useI18n } from "../../i18n"
+import { getImChannelInfo } from "../../im-runtime/channelRuntime"
 
 export function isMutedForRecentConversation(conv: ConversationWrap): boolean {
     const isThread = conv.channel.channelType === ChannelTypeCommunityTopic
@@ -30,7 +31,8 @@ export function isMutedForRecentConversation(conv: ConversationWrap): boolean {
             (conv.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
             parseThreadChannelId(conv.channel.channelID)?.groupNo
         if (parentGroupNo) {
-            parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+            parentChannelInfo = getImChannelInfo(
+                WKSDK.shared(),
                 new Channel(parentGroupNo, ChannelTypeGroup)
             )
         }

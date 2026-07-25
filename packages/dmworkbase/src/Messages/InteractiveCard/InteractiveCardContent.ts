@@ -34,6 +34,7 @@ export class InteractiveCardContent extends MessageContent {
   plain = "";
   cardVersion = "";
   profile = "";
+  renderProfile = "";
   /** P2 tolerant-only，波 1 不读取行为，仅保留避免丢字段。 */
   cardSeq?: number;
   transient?: boolean;
@@ -50,6 +51,7 @@ export class InteractiveCardContent extends MessageContent {
     this.plain = asString(raw?.plain);
     this.cardVersion = asString(raw?.card_version);
     this.profile = asString(raw?.profile);
+    this.renderProfile = asString(raw?.render_profile);
     if (typeof raw?.card_seq === "number") this.cardSeq = raw.card_seq;
     if (typeof raw?.transient === "boolean") this.transient = raw.transient;
     this.forwardedFromUID = asString(raw?.forwarded_from_uid);
@@ -62,6 +64,9 @@ export class InteractiveCardContent extends MessageContent {
       plain: this.plain,
       card_version: this.cardVersion,
       profile: this.profile,
+      ...(this.renderProfile.trim() === ""
+        ? {}
+        : { render_profile: this.renderProfile }),
     };
     if (this.cardSeq !== undefined) out.card_seq = this.cardSeq;
     if (this.transient !== undefined) out.transient = this.transient;
@@ -97,6 +102,7 @@ export function cloneInteractiveCardContentForForward(
   cloned.plain = content.plain;
   cloned.cardVersion = content.cardVersion;
   cloned.profile = content.profile;
+  cloned.renderProfile = content.renderProfile;
   cloned.cardSeq = content.cardSeq;
   cloned.transient = content.transient;
   cloned.forwardedFromUID = forwardedFromUID;

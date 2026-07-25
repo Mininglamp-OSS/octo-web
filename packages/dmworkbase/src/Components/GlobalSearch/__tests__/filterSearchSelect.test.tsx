@@ -65,9 +65,9 @@ const MEMBERS: FilterSearchOption[] = [
   { id: "m2", name: "Niaj" },
 ];
 
-const openDropdown = () => fireEvent.focus(screen.getByRole("textbox"));
 const listbox = () => screen.getByRole("listbox");
 const field = () => screen.getByRole("combobox");
+const openDropdown = () => fireEvent.click(field());
 
 describe("FilterSearchSelect — 发送者 (multi)", () => {
   it("输入过滤候选：typing narrows the dropdown to matching options", () => {

@@ -1,0 +1,117 @@
+/**
+ * MessageReactionPicker — 极简 quick-pick popover 样式
+ *
+ * 参考企微「贴表情」二级子菜单：单一网格平铺 tokens + frequent + more，无搜索/tab/滚动。
+ * 视觉与 ContextMenus 同源（surface / 圆角 / 阴影）。
+ * 全部走 --wk-* 语义 token（亮/暗双主题各自定义），故无需 body[theme-mode=dark] 覆盖。
+ */
+
+.wk-msg-reaction-picker {
+  display: inline-flex;
+  flex-direction: column;
+  padding: var(--wk-sp-1-5);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-strong);
+  border-radius: var(--wk-r-md);
+  box-shadow: var(--wk-shadow-lg);
+  font-family: var(--wk-font-sans, -apple-system, "PingFang SC", sans-serif);
+  color: var(--wk-text-primary);
+  user-select: none;
+}
+
+/**
+ * 单一 grid：tokens + frequent + more 全部平铺
+ * 列数由 --wk-reaction-picker-cols 变量控制（default 6），严格对齐无空 slot
+ */
+.wk-msg-reaction-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--wk-reaction-picker-cols, 6), var(--wk-sp-10));
+  gap: var(--wk-sp-0-5);
+}
+
+.wk-msg-reaction-picker-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-10);
+  height: var(--wk-sp-10);
+  padding: 0;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  cursor: pointer;
+  /* 24px = emoji 字形展示尺寸，非文本/间距语义，无对应 token */
+  font-size: 24px;
+  line-height: 1;
+  transition: background-color 100ms ease, transform 100ms ease;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.wk-msg-reaction-picker-cell:hover {
+  background-color: var(--wk-bg-hover);
+  transform: scale(1.15);
+}
+
+.wk-msg-reaction-picker-cell:active {
+  transform: scale(1);
+}
+
+/**
+ * Token 表情（如 [收到]）：文字型，缩小字号并给个淡底。
+ * 生产走 <img>（--image 变体）后仅文字兜底用此样式。
+ */
+.wk-msg-reaction-picker-cell--token {
+  font-size: var(--wk-text-size-xs);
+  font-weight: 500;
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-hover);
+  border-radius: var(--wk-r-md);
+}
+
+.wk-msg-reaction-picker-cell--token:hover {
+  background: var(--wk-bg-active);
+}
+
+/** 图片型 cell（项目专属表情 png / 服务端下发 manifest）：无淡底，内部 img 撑满 */
+.wk-msg-reaction-picker-cell--image {
+  background: transparent;
+  color: inherit;
+}
+
+.wk-msg-reaction-picker-cell--image img {
+  /* 28px = 表情图片展示尺寸（略小于 40px cell 留呼吸），非间距 token 语义 */
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+
+.wk-msg-reaction-picker-cell--selected {
+  background-color: var(--wk-bg-selected);
+  outline: 1px solid var(--wk-border-glow);
+  outline-offset: -1px;
+}
+
+/* ── 更多按钮 ── 与 emoji 格子同重量：透明底 + 方角，仅 hover 显底色，不做常驻实心圆 */
+.wk-msg-reaction-picker-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-10);
+  height: var(--wk-sp-10);
+  padding: 0;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-tertiary);
+  cursor: pointer;
+  transition: background-color 100ms ease, color 100ms ease;
+  flex-shrink: 0;
+}
+
+.wk-msg-reaction-picker-more:hover {
+  background-color: var(--wk-bg-hover);
+  color: var(--wk-text-primary);
+}

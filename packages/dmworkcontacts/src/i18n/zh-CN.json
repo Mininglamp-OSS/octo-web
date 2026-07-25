@@ -44,5 +44,7 @@
   "section.groups": "群聊",
   "share.cardTitle": "分享名片",
   "share.success": "分享成功！",
+  "share.failed": "分享失败",
+  "share.partialFailed": "分享失败 {{failed}}/{{total}}",
   "tag.group": "群"
 }

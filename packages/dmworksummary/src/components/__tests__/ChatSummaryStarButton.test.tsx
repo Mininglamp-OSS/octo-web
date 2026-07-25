@@ -76,7 +76,7 @@ describe('ChatSummaryStarButton', () => {
         expect(icon.dataset.color).toBe('currentColor');
     });
 
-    it('opens summary modal when no summaries exist', async () => {
+    it('opens summary panel with "new" view when no summaries exist', async () => {
         mockListSummaries.mockResolvedValue({ total: 0 });
         render(<ChatSummaryStarButton channel={channel} />);
 
@@ -85,13 +85,14 @@ describe('ChatSummaryStarButton', () => {
             await flushPromises();
         });
 
-        expect(mockEmit).toHaveBeenCalledWith('wk:open-summary-modal', {
+        expect(mockEmit).toHaveBeenCalledWith('wk:toggle-summary-panel', {
             channelId: 'ch1',
             channelType: 2,
+            summaryPanelView: 'new',
         });
     });
 
-    it('does NOT open create modal when count query fails', async () => {
+    it('does NOT open panel when count query fails', async () => {
         mockListSummaries.mockRejectedValue(new Error('500'));
         render(<ChatSummaryStarButton channel={channel} />);
 
@@ -101,13 +102,12 @@ describe('ChatSummaryStarButton', () => {
         });
 
         // Load failure must not be treated as "no summaries".
-        expect(mockEmit).not.toHaveBeenCalledWith('wk:open-summary-modal', expect.anything());
         expect(mockEmit).not.toHaveBeenCalledWith('wk:toggle-summary-panel', expect.anything());
         // An error is surfaced to the user instead.
         expect(mockToastError).toHaveBeenCalledWith('加载失败');
     });
 
-    it('ignores a cancelled count query (no modal, no toast)', async () => {
+    it('ignores a cancelled count query (no panel, no toast)', async () => {
         const cancelErr = { __CANCEL__: true };
         mockIsCancel.mockImplementation((e: unknown) => e === cancelErr);
         mockListSummaries.mockRejectedValue(cancelErr);
@@ -118,7 +118,6 @@ describe('ChatSummaryStarButton', () => {
             await flushPromises();
         });
 
-        expect(mockEmit).not.toHaveBeenCalledWith('wk:open-summary-modal', expect.anything());
         expect(mockEmit).not.toHaveBeenCalledWith('wk:toggle-summary-panel', expect.anything());
         expect(mockToastError).not.toHaveBeenCalled();
     });

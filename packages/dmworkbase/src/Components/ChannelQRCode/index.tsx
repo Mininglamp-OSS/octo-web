@@ -1,13 +1,14 @@
 import React, { Component } from "react";
 import { QRCodeSVG } from 'qrcode.react';
 import "./index.css"
-import { Channel, WKSDK } from "wukongimjssdk";
+import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
 import Provider from "../../Service/Provider";
 import { ChannelQRCodeVM } from "./vm";
 import { Button, Spin, Toast } from "@douyinfe/semi-ui";
 import { copyToClipboard } from "../../Utils/clipboard";
 import { I18nContext } from "../../i18n";
+import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
 export interface ChannelQRCodeProps {
     channel: Channel
@@ -29,7 +30,7 @@ export default class ChannelQRCode extends Component<ChannelQRCodeProps> {
     render() {
         const { channel } = this.props
         const { t } = this.context
-        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
+        const channelInfo = getCurrentImChannelInfo(channel)
         return <Provider create={() => {
             return new ChannelQRCodeVM(channel)
         }} render={(vm: ChannelQRCodeVM) => {

@@ -344,44 +344,68 @@ export async function deleteDoc(docId: string): Promise<void> {
   await apiClient().delete(`/docs/${docId}`)
 }
 
-/**
- * POST /api/v1/docs/{docId}/export/pdf — server-side (Typst) PDF render.
- * Returns the PDF bytes as an ArrayBuffer.
- *
- * Goes through the shared host apiClient with `responseType: 'arraybuffer'` so
- * the binary PDF body is not decoded as UTF-8 text (which would turn every
- * non-ASCII byte into U+FFFD and corrupt the file). Using the host client keeps
- * this on the same axios instance as the rest of the app, so the global request
- * interceptor (token + X-Space-Id) and `/api/v1/` baseURL apply — docs does not
- * depend on axios directly. A longer per-request timeout covers big documents
- * that the shared 20s default would otherwise cut off mid-success.
- */
-export async function exportDocPdf(docId: string): Promise<ArrayBuffer> {
-  const { data } = await apiClient().post<ArrayBuffer>(
-    `/docs/${docId}/export/pdf`,
-    undefined,
+/** Downloadable rich-document formats served from the authoritative live Y.Doc. */
+export type DocExportFormat = 'md' | 'docx' | 'pdf'
+
+/** GET the unified backend file export through the authenticated host client. */
+export async function exportDocFile(docId: string, format: DocExportFormat): Promise<ArrayBuffer> {
+  const { data } = await apiClient().get<ArrayBuffer>(
+    `/docs/${encodeURIComponent(docId)}/export/file?format=${format}`,
     { responseType: 'arraybuffer', timeout: 120_000 },
   )
   return data
 }
 
-/**
- * Parsed ProseMirror document + non-fatal warnings returned by the server-side
- * .docx import. `doc` is a ProseMirror `doc` JSON ready to inject via setContent;
- * `warnings` surface best-effort degradations (e.g. an image that failed to
- * upload was replaced by a file-attachment placeholder).
- */
-export interface DocxImportResult {
-  doc: unknown
+/** @deprecated Use exportDocFile(docId, 'pdf'). */
+export async function exportDocPdf(docId: string): Promise<ArrayBuffer> {
+  return exportDocFile(docId, 'pdf')
+}
+
+/** Atomic import result. `doc` remains optional for compatibility with parse-only responses. */
+export interface DocumentImportResult {
+  /** Omitted when the backend atomically applied the import to the live Y.Doc. */
+  doc?: unknown
   warnings: string[]
+}
+
+export type DocxImportResult = DocumentImportResult
+export const MAX_MARKDOWN_IMPORT_BYTES = 25 * 1024 * 1024
+
+/** Upload bounded, strict UTF-8 Markdown to the backend importer. */
+export async function importMarkdown(
+  docId: string,
+  file: Pick<File, 'size' | 'arrayBuffer'>,
+): Promise<DocumentImportResult> {
+  if (file.size === 0) throw new Error('empty_upload')
+  if (file.size > MAX_MARKDOWN_IMPORT_BYTES) throw new Error('doc_too_large')
+  const bytes = await file.arrayBuffer()
+  if (bytes.byteLength === 0) throw new Error('empty_upload')
+  if (bytes.byteLength > MAX_MARKDOWN_IMPORT_BYTES) throw new Error('doc_too_large')
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    throw new Error('invalid_utf8')
+  }
+  const { data } = await apiClient().post<DocumentImportResult>(
+    `/docs/${encodeURIComponent(docId)}/import/markdown`,
+    bytes,
+    {
+      headers: {
+        'Content-Type': 'text/markdown; charset=utf-8',
+        'X-Octo-Import-Apply': 'true',
+      },
+      timeout: 120_000,
+    },
+  )
+  return data
 }
 
 /**
  * Import a .docx file into an (already created, empty) doc. The raw file bytes
  * are POSTed to the server-side importer, which parses the OOXML to ProseMirror
- * JSON, uploads embedded images as attachments scoped to `docId`, and returns
- * the document plus any degradation warnings. The caller injects `doc` into the
- * editor. Requires editor role on `docId` (import writes content).
+ * JSON, uploads embedded images as attachments scoped to `docId`, and atomically
+ * writes the live Y.Doc. The response may omit `doc`; callers load authoritative
+ * collaboration state. Requires editor role on `docId` (import writes content).
  *
  * Goes through the shared host apiClient so the global token / X-Space-Id
  * interceptor and `/api/v1/` baseURL apply. The docx content-type is set per
@@ -390,11 +414,12 @@ export interface DocxImportResult {
 export async function importDocx(docId: string, file: File): Promise<DocxImportResult> {
   const bytes = await file.arrayBuffer()
   const { data } = await apiClient().post<DocxImportResult>(
-    `/docs/${docId}/import/docx`,
+    `/docs/${encodeURIComponent(docId)}/import/docx`,
     bytes,
     {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'X-Octo-Import-Apply': 'true',
       },
       timeout: 120_000,
     },

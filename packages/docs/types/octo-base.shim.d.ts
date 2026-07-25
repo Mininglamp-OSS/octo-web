@@ -116,4 +116,43 @@ declare module '@octo/base' {
     folder?: string
   }
   export function buildDocLink(target: DocLinkTarget): string
+
+  // WuKongIM Channel primitives (plan Task 5), re-exported from @octo/base (which re-exports them
+  // from wukongimjssdk). The docs embedded-bot-DM shell constructs `new Channel(botUid,
+  // ChannelTypePerson)` and reads getChannelKey() for the React key.
+  export const ChannelTypePerson: number
+  export const MAX_MESSAGE_LENGTH: number
+  export class Channel {
+    constructor(channelID: string, channelType: number)
+    channelID: string
+    channelType: number
+    getChannelKey(): string
+    isEqual(other: Channel): boolean
+  }
+
+  // One-shot initial-compose contract (plan Task 4) surfaced on ConversationProps. The docs shell
+  // builds an InitialCompose and reads state changes back.
+  export interface InitialCompose {
+    requestId: string
+    text: string
+    files: File[]
+    autoSend: boolean
+  }
+  export type InitialComposeState = 'prepared' | 'sent' | 'failed'
+
+  // The host Conversation component (packages/dmworkbase/src/Components/Conversation). Only the
+  // props the docs embedded-bot-DM shell passes are declared here; the real component carries many
+  // more. Typed loosely (`any` return) to avoid pulling host react typings across the seam.
+  export interface ConversationProps {
+    channel: Channel
+    initialCompose?: InitialCompose
+    inputNotice?: unknown
+    onInitialComposeStateChange?: (
+      requestId: string,
+      state: InitialComposeState,
+      reason?: string,
+    ) => void
+    onMessageSent?: () => void
+  }
+  export function Conversation(props: ConversationProps): any
 }

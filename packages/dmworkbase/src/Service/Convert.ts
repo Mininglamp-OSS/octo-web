@@ -2,6 +2,8 @@ import BigNumber from "bignumber.js";
 import { Setting } from "wukongimjssdk";
 import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply } from "wukongimjssdk";
 import { displayName as resolveDisplayName } from "../Utils/displayName";
+import { getImChannelInfo, getImChannelSubscribers } from "../im-runtime/channelRuntime";
+import { normalizeMessageReactions } from "./MessageReactionService";
 
 
 /**
@@ -133,7 +135,7 @@ export function applyMsgLevelExternalFieldsWithFallback(target: any, msgMap: any
     const groupChannel = resolveGroupChannel(target, msgMap)
     if (groupChannel) {
         try {
-            const subs: any = WKSDK.shared().channelManager.getSubscribes(groupChannel)
+            const subs: any = getImChannelSubscribers(WKSDK.shared(), groupChannel)
             if (subs && typeof subs.length === "number" && subs.length > 0) {
                 const member = subs.find((s: any) => s && s.uid === fromUID)
                 fillHomeSpaceFromOrg(target, member?.orgData, need)
@@ -148,7 +150,7 @@ export function applyMsgLevelExternalFieldsWithFallback(target: any, msgMap: any
     // 3) Person 频道兜底（R4 原逻辑，保留为最后防线）：仅当 fromUID 对应的
     //    1v1 Channel 已缓存过才会有值（用户真的跟对方私聊过）。
     try {
-        const info = WKSDK.shared().channelManager.getChannelInfo(new Channel(fromUID, ChannelTypePerson))
+        const info = getImChannelInfo(WKSDK.shared(), new Channel(fromUID, ChannelTypePerson))
         fillHomeSpaceFromOrg(target, info?.orgData, need)
     } catch (_e) {
         // channelManager 未初始化或查询失败：静默兜底失败，上层保留既有字段
@@ -300,6 +302,7 @@ export class Convert {
         message.content = messageContent
 
         message.isDeleted = msgMap["is_deleted"] === 1
+        message.octoReactions = normalizeMessageReactions(msgMap["reactions"])
 
         // 外部群成员消息来源字段（dmwork-web#1069）：
         // /message/channel/sync 和 conversation/sync 响应在 msg-level 携带

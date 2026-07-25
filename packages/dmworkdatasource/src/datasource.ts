@@ -1,4 +1,4 @@
-import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId, IncomingWebhook, IncomingWebhookCreateResp, IncomingWebhookUpsertReq, IncomingWebhookService, StickerItem } from "@octo/base";
+import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId, IncomingWebhook, IncomingWebhookCreateResp, IncomingWebhookUpsertReq, IncomingWebhookService, StickerItem, deleteImChannelInfo, getImChannelInfo, syncImChannelSubscribers } from "@octo/base";
 import axios from "axios";
 import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContentType,ConversationExtra,Subscriber } from "wukongimjssdk";
 
@@ -132,7 +132,7 @@ export class ChannelDataSource implements IChannelDataSource {
         // itself (members are already removed on the server); worst case degrades back to
         // needing a manual refresh.
         try {
-            await WKSDK.shared().channelManager.syncSubscribes(channel)
+            await syncImChannelSubscribers(WKSDK.shared(), channel)
         } catch (e) {
             console.warn("[removeSubscribers] syncSubscribes failed", e)
         }
@@ -147,7 +147,7 @@ export class ChannelDataSource implements IChannelDataSource {
         // (members are already added on the server); worst case degrades back to needing a
         // manual refresh.
         try {
-            await WKSDK.shared().channelManager.syncSubscribes(channel)
+            await syncImChannelSubscribers(WKSDK.shared(), channel)
         } catch (e) {
             console.warn("[addSubscribers] syncSubscribes failed", e)
         }
@@ -350,7 +350,7 @@ export class ChannelDataSource implements IChannelDataSource {
         await WKApp.apiClient.delete(`groups/${groupNo}/threads/${shortId}`)
         const threadChannelId = buildThreadChannelId(groupNo, shortId)
         const threadChannel = new Channel(threadChannelId, ChannelTypeCommunityTopic)
-        WKSDK.shared().channelManager.deleteChannelInfo(threadChannel)
+        deleteImChannelInfo(WKSDK.shared(), threadChannel)
         WKSDK.shared().conversationManager.removeConversation(threadChannel)
         WKApp.mittBus.emit("wk:thread-deleted", {
             groupNo,
@@ -526,7 +526,7 @@ export class CommonDataSource implements ICommonDataSource {
         } else if (message.contentType === MessageContentType.image) {
             content = message.content.contentObj.url;
         }
-        const fromChannelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
+        const fromChannelInfo = getImChannelInfo(WKSDK.shared(), new Channel(message.fromUID, ChannelTypePerson))
         return WKApp.apiClient.post(`favorites`, {
             type: message.contentType,
             unique_key: message.messageID,

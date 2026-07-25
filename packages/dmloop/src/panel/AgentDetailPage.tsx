@@ -339,13 +339,6 @@ export default function AgentDetailPage({
     return cols;
   }, [contribs]);
 
-  // 贡献日历默认滚到最右（最新）：小屏放不下会横向溢出，用户只关心最近，故进页面对齐最新一列。
-  const calRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = calRef.current;
-    if (el) el.scrollLeft = el.scrollWidth;
-  }, [weeks, tab]);
-
   // ---- 履历标题/跳转：按 issue_id 二次拉取 issue（标题取 issue.title） ----
   useEffect(() => {
     const ids = Array.from(new Set(stats.recent.map((r) => r.issue_id).filter(Boolean)));
@@ -432,7 +425,7 @@ export default function AgentDetailPage({
                     {t("loop.agent.successAvg", { values: { pct: stats.successPct, avg: formatDurationMs(stats.avgMs) } })}
                   </div>
                 </div>
-                <div className="loop-adp__cal" ref={calRef}>
+                <div className="loop-adp__cal">
                   {weeks.map((w, wi) => (
                     <div key={wi} className="loop-adp__cal-col">
                       {w.map((d) => (

@@ -10,7 +10,7 @@
 
 import { Document, Packer, type ISectionOptions } from 'docx'
 import { resolveAttachments } from '../../attachments/api.ts'
-import { resolveAndFetchImages } from './images.ts'
+import { rasterizeSvgImageBuffers, resolveAndFetchImages } from './images.ts'
 import { convertBlocks, NUMBERING_CONFIG, ORDERED_LIST_CONFIG_INDEX } from './nodes.ts'
 import { DOCX_STYLES } from './styles.ts'
 import type { MdNode, DocxExportOptions, DocxContext } from './types.ts'
@@ -37,6 +37,9 @@ export async function exportDocToDocx(
     batchSize: opts.batchSize,
     resolve,
   })
+  // `convertBlocks` is intentionally synchronous (notably for recursive table
+  // conversion), so complete browser-side SVG → real PNG conversion up front.
+  await rasterizeSvgImageBuffers(doc, urls, imageBuffers)
 
   // Build the conversion context
   const ctx: DocxContext = {

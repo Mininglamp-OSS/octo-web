@@ -22,6 +22,7 @@ import MessageRow from "../../ui/message/MessageRow";
 import MergeforwardCard from "../../ui/message/MergeforwardCard";
 import { getMergeforwardMessageUI } from "../../bridge/message/useMergeforwardMessageUI";
 import { I18nContext, t } from "../../i18n";
+import { fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 import "./index.css";
 
@@ -273,12 +274,12 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
     }
     return newMsgs.map((m: Message) => {
       const channel = new Channel(m.fromUID, ChannelTypePerson);
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+      const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
       let name = "";
       if (channelInfo) {
         name = channelInfo.title;
       } else {
-        WKSDK.shared().channelManager.fetchChannelInfo(channel);
+        void fetchImChannelInfo(WKSDK.shared(), channel);
       }
       return (
         <div key={m.messageID} className="wk-mergeforwards-content-item">

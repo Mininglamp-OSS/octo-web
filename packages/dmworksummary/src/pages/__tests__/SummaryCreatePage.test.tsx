@@ -88,28 +88,24 @@ describe('SummaryCreatePage templates', () => {
         vi.clearAllMocks();
     });
 
-    it('renders the four fallback template cards when topic is empty', async () => {
+    it('renders all builtin template cards when topic is empty', async () => {
         await act(async () => {
             render(<SummaryCreatePage />);
             await flushPromises();
         });
 
-        expect(screen.getByText('试试总结')).toBeInTheDocument();
+        expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
+        // v2: all builtin templates render directly (no "more templates" modal)
         expect(screen.getByText('汇总项目进展')).toBeInTheDocument();
         expect(screen.getByText('跟踪任务进度')).toBeInTheDocument();
         expect(screen.getByText('总结团队周报')).toBeInTheDocument();
         expect(screen.getByText('总结聊天内容')).toBeInTheDocument();
-        expect(screen.getByText('更多模板')).toBeInTheDocument();
-        expect(screen.queryByText('生成个人工作周报')).not.toBeInTheDocument();
-
-        await act(async () => {
-            fireEvent.click(screen.getByText('更多模板'));
-        });
-
         expect(screen.getByText('生成个人工作周报')).toBeInTheDocument();
         expect(screen.getByText('OKR 进展对齐')).toBeInTheDocument();
         expect(screen.getByText('提取待办事项')).toBeInTheDocument();
         expect(screen.getByText('归类用户反馈')).toBeInTheDocument();
+        // "更多模板" modal button no longer exists
+        expect(screen.queryByText('更多模板')).not.toBeInTheDocument();
     });
 
     it('hides templates once the topic has content', async () => {
@@ -123,7 +119,7 @@ describe('SummaryCreatePage templates', () => {
             fireEvent.change(textarea, { target: { value: '总结本周进展' } });
         });
 
-        expect(screen.queryByText('试试总结')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
         expect(screen.queryByText('汇总项目进展')).not.toBeInTheDocument();
     });
 
@@ -140,7 +136,7 @@ describe('SummaryCreatePage templates', () => {
         const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
         expect(textarea.value).toBe('总结主题: 总结团队周报\n内容重点: 总结团队成员每周工作，按成员、重点进展、成果产出、风险问题、下周计划整理');
         // templates hidden after selection
-        expect(screen.queryByText('试试总结')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
     });
 
     it('fills the topic frame from a project progress template', async () => {
@@ -193,6 +189,61 @@ describe('SummaryCreatePage templates', () => {
         expect(screen.getByText('我的模板 1/1')).toBeInTheDocument();
         expect(screen.getByText('已达到模板数量上限，删除旧模板后可继续新建')).toBeInTheDocument();
         expect(screen.getByText('新建模板').closest('button')).toBeDisabled();
+    });
+
+    it('allows up to 2000 characters in template summary content', async () => {
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+
+        fireEvent.click(screen.getByText('新建模板'));
+        const textarea = screen.getByPlaceholderText('例如：总结任务的进度和负责人') as HTMLTextAreaElement;
+        expect(textarea.maxLength).toBe(2000);
+
+        fireEvent.change(textarea, { target: { value: '总'.repeat(2001) } });
+        expect(textarea.value).toHaveLength(2000);
+    });
+
+    it('preserves a max-length template description when applying and submitting it', async () => {
+        const pageRef = React.createRef<SummaryCreatePage>();
+        const paragraphs = '第一段\n\n第二段\n';
+        const description = paragraphs + '总'.repeat(2000 - paragraphs.length);
+        vi.mocked(getTopicTemplatesConfig).mockResolvedValueOnce({ custom_template_limit: 30, templates: [
+            { id: 'custom_long', label: '长内容模板', icon: 'FileText', description, type: 'fixed', pattern: description, is_custom: true },
+        ] });
+
+        await act(async () => {
+            render(<SummaryCreatePage ref={pageRef} />);
+            await flushPromises();
+        });
+
+        fireEvent.click(screen.getByText('长内容模板'));
+        const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
+        expect(textarea.value).toContain(description);
+        expect(textarea.value.length).toBeGreaterThan(1000);
+        const editedDescription = `已${description.slice(1)}`;
+        fireEvent.change(textarea, { target: { value: textarea.value.replace(description, editedDescription) } });
+        expect(textarea.value).toContain(editedDescription);
+
+        const voiceEditAt = textarea.value.indexOf(editedDescription) + 1;
+        await act(async () => {
+            pageRef.current?.handleVoiceTranscribed('语', 'selection', { from: voiceEditAt, to: voiceEditAt + 1 });
+        });
+        const voiceEditedDescription = `已语${editedDescription.slice(2)}`;
+        expect(textarea.value).toContain(voiceEditedDescription);
+        const submittedTopic = textarea.value;
+
+        await act(async () => {
+            const submit = document.querySelector('.summary-workbench-actions .chat-summary-modal-split > button') as HTMLButtonElement;
+            fireEvent.click(submit);
+            await flushPromises();
+        });
+
+        expect(api.createSummary).toHaveBeenCalledWith(expect.objectContaining({
+            topic: submittedTopic,
+            title: '已语段',
+        }));
     });
 
 });
@@ -507,5 +558,193 @@ describe('SummaryCreatePage agent SSE session_id sync', () => {
         const lastMessage = instance.state.messages[instance.state.messages.length - 1];
         expect(lastMessage.role).toBe('assistant');
         expect(lastMessage.content).toBe('Server response');
+    });
+});
+
+describe('SummaryCreatePage handleSubmit error handling', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('shows friendly toast for 40001 (referenced summary lost after refresh)', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+
+        // Mock createAgentSummary to reject with axios-style 40001 error.
+        // This is the exact shape the backend returns when
+        //   session_id has no fetch_channel tool trace AND
+        //   referenced_task_ids is empty AND
+        //   origin_channel_id was not supplied by the front-end.
+        // See internal/api/handler/agent_summary.go: "origin_channel_id 未传且无法从 session 反查".
+        const err = {
+            response: { data: { code: 40001, message: 'origin_channel_id 未传且无法从 session 反查' } },
+        };
+        (api.createAgentSummary as any).mockRejectedValueOnce(err);
+
+        const ref = React.createRef<any>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+
+        // Simulate a completed agent chat session ready to save.
+        await act(async () => {
+            instance.setState({
+                sessionId: 'session-abc',
+                mode: 'agent',
+                messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'summary' }],
+            });
+        });
+
+        (Toast.error as any).mockClear();
+
+        // Trigger the save flow directly on the instance.
+        let result: boolean | undefined;
+        await act(async () => {
+            result = await instance.handleSaveAsSummary('a title');
+            await flushPromises();
+        });
+
+        // Whichever method the component exposes, the 40001 branch should
+        // surface the friendly, actionable copy — NOT the raw backend message.
+        expect(Toast.error).toHaveBeenCalled();
+        const shown = (Toast.error as any).mock.calls[0]?.[0] ?? '';
+        expect(shown).toBe('保存失败：请重新选择引用总结，或点「新会话」重来');
+        expect(result).toBe(false);
+    });
+});
+
+describe('SummaryCreatePage derivedFromTask cross-session isolation (#907 P1 Jerry-Xin)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+    });
+
+    it('clears leftover workbench session_id + messages when mounted with derivedFromTask', async () => {
+        // Pre-seed leftover state from a previous chat about a DIFFERENT summary:
+        //   - session_id survived from earlier workbench chat
+        //   - referencedTask points to the old summary (task_id=99)
+        // This mirrors the exact bug scenario Jerry-Xin flagged:
+        //   user chats about A, closes without saving, opens "continue refine"
+        //   from summary B's detail page → new mount receives derivedFromTask=B
+        //   → old session_id (about A) must be discarded, else refresh-before-send
+        //   restores A's history alongside B's reference and save corrupts derivation.
+        localStorage.setItem('agent-chat-session:__workbench__', 'old-session-about-A');
+        localStorage.setItem(
+            'agent-chat-referenced:__workbench__',
+            JSON.stringify({ task_id: 99, title: 'Old Summary A' }),
+        );
+
+        const derivedFromTaskB = {
+            task_id: 42,
+            task_no: 'ST-B',
+            title: 'New Summary B',
+            summary_mode: 1 as const,
+            status: 3 as const,
+            trigger_type: 3,
+        };
+
+        const ref = React.createRef<any>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} derivedFromTask={derivedFromTaskB as any} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+
+        // 1. Old session_id storage key MUST be gone — no restore of the stale A chat.
+        expect(localStorage.getItem('agent-chat-session:__workbench__')).toBeNull();
+
+        // 2. Referenced storage key MUST point to B (the new derivation target), not A.
+        const storedRef = JSON.parse(localStorage.getItem('agent-chat-referenced:__workbench__') || 'null');
+        expect(storedRef).toEqual({ task_id: 42, title: 'New Summary B' });
+
+        // 3. React state must reflect a fresh session for B, not resumed A.
+        expect(instance.state.sessionId).toBe('');
+        expect(instance.state.messages).toEqual([]);
+        expect(instance.state.referencedTask?.task_id).toBe(42);
+        expect(instance.state.mode).toBe('agent');
+    });
+
+    it('when derivedFromTask is absent, does NOT touch existing workbench session (bare workbench entry unchanged)', async () => {
+        // Reverse guard: bare full-page workbench entry (no derivedFromTask prop)
+        // must NOT clear the user's in-progress session. This test protects the
+        // #158/#161 resume-after-refresh scenario from being broken by the
+        // #907 P1 fix — the two behaviours are orthogonal.
+        localStorage.setItem('agent-chat-session:__workbench__', 'in-progress-session');
+        localStorage.setItem(
+            'agent-chat-referenced:__workbench__',
+            JSON.stringify({ task_id: 7, title: 'Reference C' }),
+        );
+
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+
+        // Both storage keys survive the mount — enterAgentMode will restore them
+        // when the user actually switches into agent mode.
+        expect(localStorage.getItem('agent-chat-session:__workbench__')).toBe('in-progress-session');
+        expect(
+            JSON.parse(localStorage.getItem('agent-chat-referenced:__workbench__') || 'null'),
+        ).toEqual({ task_id: 7, title: 'Reference C' });
+    });
+});
+
+describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.spyOn(summaryHelpers, 'writeAgentChatSession').mockImplementation(() => {});
+    });
+
+    async function mountInstance() {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+        return ref.current as any;
+    }
+
+    it('passes group selectedChat[0] as origin_channel_id + type=1', async () => {
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({
+                sessionId: 'sess-1',
+                mode: 'agent',
+                selectedChats: [{ chat_id: 'grp-1', chat_type: 'group', name: 'G', member_count: 3 }],
+            });
+        });
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+        expect(api.createAgentSummary).toHaveBeenCalledWith(
+            expect.objectContaining({ origin_channel_id: 'grp-1', origin_channel_type: 1 }),
+        );
+    });
+
+    it('maps a thread selectedChat[0] to origin_channel_type=2', async () => {
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({
+                sessionId: 'sess-2',
+                mode: 'agent',
+                selectedChats: [{ chat_id: 'grp____thr', chat_type: 'thread', name: 'T', member_count: 2 }],
+            });
+        });
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+        expect(api.createAgentSummary).toHaveBeenCalledWith(
+            expect.objectContaining({ origin_channel_id: 'grp____thr', origin_channel_type: 2 }),
+        );
+    });
+
+    it('omits origin when no chat is selected (refine → backend infers)', async () => {
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({ sessionId: 'sess-3', mode: 'agent', selectedChats: [] });
+        });
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+        const arg = (api.createAgentSummary as any).mock.calls[0][0];
+        expect(arg.origin_channel_id).toBeUndefined();
+        expect(arg.origin_channel_type).toBeUndefined();
     });
 });

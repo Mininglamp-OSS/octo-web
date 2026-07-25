@@ -18,6 +18,7 @@ export interface RoutePageState {
 export interface RoutePageProps{
     title?: string
     onClose?: () => void
+    className?: string
     render: (context: RouteContext<any>) => React.ReactNode
 }
 
@@ -135,14 +136,14 @@ export default class RoutePage extends Component<RoutePageProps, RoutePageState>
 
     render() {
         const { pushViewCount, routeConfigs, finishButtonDisable, finishButtonLoading } = this.state
-        const { title, onClose } = this.props
+        const { title, onClose, className } = this.props
         let routeConfig: RouteContextConfig | undefined
         if (routeConfigs.length > 0) {
             routeConfig = routeConfigs[routeConfigs.length - 1]
         }
-        return <div className="wk-route">
+        return <div className={classNames("wk-route", className)}>
             <div className="wk-route-header">
-                <div className="wk-route-header-close" onClick={() => {
+                <div className={classNames("wk-route-header-close", pushViewCount > 0 ? "wk-route-header-close-back" : undefined)} onClick={() => {
                     if (pushViewCount > 0) {
                         this.pop()
                         return

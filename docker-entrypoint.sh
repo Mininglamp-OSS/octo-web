@@ -39,7 +39,20 @@ export DOC_APP_URL
 DOCS_BACKEND_URL="${DOCS_BACKEND_URL%/}"
 export DOCS_BACKEND_URL
 
-envsubst '${API_URL} ${SUMMARY_API_URL} ${MATTER_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+# octo-marketplace backend — dmworkmcp / dmworkskillmarket proxy through the
+# /market/api/v1/ location. Same blank-default + 503-fallback shape as
+# SUMMARY/MATTER above so a deployment without marketplace still boots.
+# Set MARKET_API_URL=http://octo-marketplace:8080 in the compose stack to
+# enable it. Trailing slash stripped: nginx `proxy_pass $var` (variable, no
+# URI part) with a rewrite-built URI would otherwise produce a double-slash
+# upstream. Missing from the envsubst allowlist would leave the literal
+# `${MARKET_API_URL}` in the generated config, defeating the blank-value
+# guard (`if ($market_api_url = "")`) — PR#851 Jerry-Xin 03:38 P0 fix.
+: "${MARKET_API_URL:=}"
+MARKET_API_URL="${MARKET_API_URL%/}"
+export MARKET_API_URL
+
+envsubst '${API_URL} ${SUMMARY_API_URL} ${MATTER_API_URL} ${MARKET_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"

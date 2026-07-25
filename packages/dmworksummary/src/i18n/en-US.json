@@ -6,6 +6,7 @@
         "confirm": "OK",
         "createFailed": "Failed to create",
         "createFailedRetry": "Failed to create. Please try again.",
+        "delete": "Delete",
         "deleteFailed": "Failed to delete",
         "edit": "Edit",
         "loading": "Loading...",
@@ -74,7 +75,8 @@
         "thread": "Thread",
         "directMessage": "Direct message",
         "label": "Source: ",
-        "selectedHeader": "📋 Selected sources",
+        "selectedHeader": "Selected sources",
+        "empty": "No sources",
         "idPlaceholder": "Source ID",
         "namePlaceholder": "Name (optional)",
         "addSource": "Add source"
@@ -155,6 +157,9 @@
         "searchPlaceholder": "Search summaries...",
         "deleteSuccess": "Deleted",
         "networkError": "Network connection error. Check your connection and retry.",
+        "noMore": "No more",
+        "retrySuccess": "Summary task resubmitted",
+        "cancelSuccess": "Summary task cancelled",
         "emptyTitle": "No summaries yet",
         "emptyDesc": "Generate group or personal work summaries quickly, and let AI organize key information for you.",
         "createFirst": "Create first summary",
@@ -162,11 +167,12 @@
         "leaveFailed": "Failed to leave"
     },
     "create": {
-        "title": "AI Summary",
+        "title": "Invite teammates to summarize together",
         "desc": "Invite teammates to summarize information together, with automatic summaries from chats and related content.",
-        "topicPlaceholder": "Enter a topic, for example: summarize this week's project progress, organize customer feedback...",
+        "topicPlaceholder": "Enter a topic to summarize, e.g., this week's project progress, customer feedback",
         "topicPlaceholderInChat": "Enter a topic to summarize in this chat",
-        "templatesTitle": "Try summarizing",
+        "placeholder": "Please enter",
+        "templatesTitle": "Try these templates",
         "submitting": "Summarizing...",
         "scheduleFailed": "Summary was created, but scheduled updates failed",
         "success": "Summary task created",
@@ -195,11 +201,13 @@
         "titleRequired": "Title is required",
         "saving": "Saving...",
         "noOutputToSave": "No summary content to save yet. Please chat with AI first to generate content.",
-        "agentSummaryCreated": "AI summary saved"
+        "agentSummaryCreated": "AI summary saved",
+        "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session"
     },
     "chatSummary": {
         "panelTitle": "Summaries in this chat",
         "createNew": "New summary",
+        "emptyDescription": "Create a summary to organize this conversation.",
         "back": "Back",
         "starTooltip": "AI Summary"
     },
@@ -289,6 +297,9 @@
         "recent": "Recent",
         "allGroups": "All groups",
         "allDirects": "All directs",
+        "allMembers": "All members",
+        "managers": "Managers",
+        "normalMembers": "Normal members",
         "noData": "No data",
         "includeArchived": "Include archived threads",
         "includeArchivedHelper": "Archived threads are excluded by default; enable to select them",
@@ -395,6 +406,7 @@
         "forwardedToMatter": "Forwarded to \"{{title}}\"",
         "processingTitle": "Generating summary...",
         "processingDesc": "This may take a little while. Please wait.",
+        "aiThinking": "AI is thinking...",
         "workflowUnderstandQuestion": "Understand the summary request",
         "workflowFindRelevantChats": "Find relevant chats",
         "workflowFilterUsefulContent": "Filter useful content",
@@ -407,7 +419,7 @@
         "edited": "Edited",
         "generatedAt": "Generated {{time}}",
         "lastEditedAt": "Last edited {{time}}",
-        "mySummary": "👤 My summary",
+        "mySummary": "My summary",
         "mySummaryPlain": "My summary",
         "submitToAll": "Submit my summary",
         "mySubmitHint": "Your personal summary is ready. Submit it so it can be merged into the team summary.",
@@ -431,7 +443,7 @@
         "regenerate": "Regenerate",
         "regenerateEditTitle": "Edit prompt and regenerate",
         "regenerateTopicLabel": "Prompt",
-        "adjustSummaryTitle": "Adjust summary",
+        "adjustSummaryTitle": "Modify prompt and regenerate",
         "refineAction": "Apply feedback",
         "refineSuccess": "Refinement successful, updated to version {{version}}",
         "refineModeTitle": "Adjust current result",
@@ -523,7 +535,25 @@
         "deleteScheduledContent": "\"{{title}}\" is a scheduled summary. Deleting it will stop the scheduled updates and remove all of its history. Delete it?",
         "leaveTitle": "Leave collaboration",
         "leaveContent": "You will no longer take part in this collaboration. Leave \"{{title}}\"?",
-        "aiGenerated": "Chat generated"
+        "aiGenerated": "Chat generated",
+        "sourceFrom": "From {{name}}",
+        "sourceFromMultiple": "From {{name}} and {{count}} other chats",
+        "youStartedAt": "You started {{time}}",
+        "startedAt": "{{name}} · {{time}}",
+        "generating": "AI is analyzing chat records...",
+        "justNow": "just now",
+        "minutesAgo": "{{count}}m ago",
+        "hoursAgo": "{{count}}h ago",
+        "daysAgo": "{{count}}d ago",
+        "cancelTask": "Cancel task",
+        "regenerate": "Regenerate",
+        "retry": "Retry",
+        "edit": "Edit",
+        "leave": "Leave",
+        "confirmDeleteTitle": "Delete?",
+        "confirmDeleteDesc": "This cannot be undone.",
+        "confirmLeaveTitle": "Leave?",
+        "confirmLeaveDesc": "You will no longer participate in this summary."
     },
     "editor": {
         "saveSuccess": "Saved",
@@ -543,6 +573,7 @@
     "citation": {
         "jumpToOriginal": "Open original →",
         "source": "Source: {{source}}",
+        "sourceDefault": "Unknown source",
         "member": "Member: {{name}}"
     },
     "matterPicker": {
@@ -551,6 +582,20 @@
         "searchPlaceholder": "Search matters...",
         "empty": "No available matters",
         "loadMore": "Load more..."
+    },
+    "share": {
+        "backToChat": "Back to chat",
+        "defaultTitle": "Smart summary",
+        "fullTitle": "Full summary",
+        "close": "Close",
+        "loading": "Loading summary…",
+        "unavailable": "This share is unavailable, expired, or you do not have access",
+        "retry": "Retry",
+        "viewDetails": "View summary details",
+        "source": "From “{{source}}”",
+        "metaLabel": "Summary scope",
+        "participantCount": "{{count}} participants",
+        "messageCount": "{{count}} messages"
     },
     "splitMessage": {
         "signature": "---\n_by Octo AI Summary_"

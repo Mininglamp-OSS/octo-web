@@ -1,0 +1,14 @@
+.wk-webhook-issue-preview__unavailable {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100%;
+  padding: var(--wk-sp-6);
+  color: var(--wk-text-secondary);
+  text-align: center;
+}
+
+.wk-webhook-issue-preview__unavailable a {
+  color: var(--wk-text-accent);
+}

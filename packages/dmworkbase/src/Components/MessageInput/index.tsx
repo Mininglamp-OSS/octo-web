@@ -6,7 +6,7 @@ import React, {
   useMemo,
 } from "react";
 import { X } from "lucide-react";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import TiptapMention from "@tiptap/extension-mention";
@@ -40,15 +40,25 @@ import {
   videoPlayIcon,
 } from "./AttachmentNode";
 import { t as translate, useI18n } from "../../i18n";
-import { runSendWithCleanup, SendResultDetail } from "./sendFlow";
+import {
+  announceContextAfterSendReady,
+  invokeReadySend,
+  runSendWithCleanup,
+  SendResultDetail,
+} from "./sendFlow";
 import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
 import {
   imageBlockToPasteFile,
   restoreOctoRichTextClipboardToEditor,
 } from "./richTextPaste";
 import { handleSecretPaste } from "./secretPasteDetect";
+import {
+  addImChannelInfoListener,
+  fetchImChannelInfo,
+  getImChannelInfo,
+} from "../../im-runtime/channelRuntime";
 
-const MAX_MESSAGE_LENGTH = 5000;
+import { MAX_MESSAGE_LENGTH } from "./constants";
 
 // placeholder 格式化所需的平台快捷键标识（模块级常量，避免重复计算）
 const ALT_KEY = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
@@ -135,7 +145,7 @@ function extractOrderedBlocks(
     }
 
     if (node.type === "text") {
-      pendingTextParts.push(stripTrustMark(node.text || ""));
+      pendingTextParts.push(serializeEditorTextNodeForSend(node));
       return;
     }
     if (node.type === "mention") {
@@ -237,7 +247,7 @@ interface MessageInputProps {
   onInsertText?: (fnc: OnInsertFnc) => void;
   onAddMention?: (fnc: OnAddMentionFnc) => void;
   onAddAttachment?: (
-    fnc: (files: File[], source?: "paste" | "upload") => void
+    fnc: (files: File[], source?: "paste" | "upload") => void | Promise<void>
   ) => void;
   onAddPendingAttachments?: (
     files: File[],
@@ -292,6 +302,7 @@ import {
 } from "../../Utils/mentionRender";
 import {
   parseSendMentionText,
+  serializeEditorTextNodeForSend,
   serializeMentionMarker,
   stripTrustMark,
   parseDraftToContent,
@@ -320,15 +331,29 @@ function formatMentionTextV2(text: string): {
 
 export interface MessageInputContext {
   insertText: (text: string) => void;
+  /** Insert structured Tiptap inline content at the current composer end. */
+  insertContent: (content: JSONContent | JSONContent[]) => void;
   /** Restore draft content (replaces editor content, parses @[uid:label] to mention nodes) */
   restoreDraft: (text: string) => void;
   addMention: (uid: string, name: string) => void;
-  addAttachment: (files: File[], source?: "paste" | "upload") => void;
+  addAttachment: (
+    files: File[],
+    source?: "paste" | "upload"
+  ) => void | Promise<void>;
   getAttachmentFiles: () => File[];
   text: () => string | undefined;
   focus: () => void;
-  /** Programmatically trigger send (same as pressing Enter) */
-  send: () => void;
+  /**
+   * Programmatically trigger send (same as pressing Enter).
+   *
+   * Returns the underlying send promise so an orchestrator (e.g. the Conversation initialCompose
+   * consumer) can await completion AND read the real outcome: the resolved boolean is
+   * `editorConsumed` — `true` when the compose was actually sent, `false` when the send was
+   * rejected / preserved as a draft (so the orchestrator can report 'failed' instead of a false
+   * 'sent'). `undefined` is only possible before the send handler is wired. Keyboard/Enter callers
+   * ignore the return value, so this does NOT change interactive send behaviour.
+   */
+  send: () => void | Promise<boolean | void> | undefined;
   /** Clear editor content without sending */
   clear: () => void;
 }
@@ -349,7 +374,9 @@ function extractMentionsFromEditor(editor: any, trusted = false): string {
 
   function traverse(node: any) {
     if (node.type === "text") {
-      result += stripTrustMark(node.text || "");
+      result += trusted
+        ? serializeEditorTextNodeForSend(node)
+        : stripTrustMark(node.text || "");
     } else if (node.type === "mention") {
       result += serializeMentionMarker(node.attrs.id, node.attrs.label, trusted);
     } else if (node.type === "hardBreak") {
@@ -410,11 +437,12 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const attachmentFilesRef = useRef<Map<string, File>>(new Map());
   // 顶部附件区的附件列表（非图片文件 + 上传的图片）
   const [topAttachments, setTopAttachments] = useState<TopAttachmentItem[]>([]);
+  const topAttachmentsRef = useRef<TopAttachmentItem[]>([]);
 
   // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
   const [placeholder, setPlaceholder] = useState(() => {
     const channel = props.context.channel();
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
     return buildPlaceholder(channel, channelInfo?.title || "", t);
   });
 
@@ -433,19 +461,19 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         updateName(channelInfo.title || "");
       }
     };
-    WKSDK.shared().channelManager.addListener(listener);
+    const unsubscribeChannelInfo = addImChannelInfoListener(WKSDK.shared(), listener);
 
     // 检查本地缓存；没有则主动 fetch（fetch 完成后 listener 会收到通知）
-    const cached = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const cached = getImChannelInfo(WKSDK.shared(), channel);
     if (cached) {
       updateName(cached.title || "");
     } else {
-      WKSDK.shared().channelManager.fetchChannelInfo(channel).catch(() => {});
+      fetchImChannelInfo(WKSDK.shared(), channel).catch(() => {});
     }
 
     return () => {
       aborted = true;
-      WKSDK.shared().channelManager.removeListener(listener);
+      unsubscribeChannelInfo();
     };
   }, [props.context, t]);
 
@@ -458,7 +486,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const isDirectChannelRef = useRef(
     props.context.channel().channelType === ChannelTypePerson,
   );
-  const sendRef = useRef<(() => void | Promise<void>) | null>(null);
+  const sendRef = useRef<(() => Promise<boolean>) | null>(null);
   // 发送进行中标志：onSend 现在被 await，发送窗口内防止重复触发 (octo-web#227)。
   const sendingRef = useRef(false);
   const mentionActiveRef = useRef(false);
@@ -501,6 +529,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         horizontalRule: false,
         codeBlock: false,
         strike: false,
+        // StarterKit 3.x 内置 Link 扩展的 linkifyjs 会把 xxx.md / README.md
+        // 识别为 .md 顶级域名并补成超链接（issue #870）。输入框只保留纯文本，
+        // 链接由消息渲染层的 markdown 解析生成。
+        link: false,
       }),
       Placeholder.configure({
         placeholder,
@@ -712,7 +744,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             previewUrl,
           };
 
-          setTopAttachments((prev) => [...prev, item]);
+          topAttachmentsRef.current = [...topAttachmentsRef.current, item];
+          setTopAttachments(topAttachmentsRef.current);
         }
       }
 
@@ -765,13 +798,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
   // 移除顶部附件区的附件
   const removeTopAttachment = useCallback((id: string) => {
-    setTopAttachments((prev) => {
-      const item = prev.find((a) => a.id === id);
-      if (item?.previewUrl) {
-        URL.revokeObjectURL(item.previewUrl);
-      }
-      return prev.filter((a) => a.id !== id);
-    });
+    const item = topAttachmentsRef.current.find((a) => a.id === id);
+    if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    topAttachmentsRef.current = topAttachmentsRef.current.filter((a) => a.id !== id);
+    setTopAttachments(topAttachmentsRef.current);
   }, []);
 
   // 监听顶部附件区变化，更新多行模式状态
@@ -801,7 +831,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // 组件卸载时清理顶部附件区的预览 URL，避免内存泄漏
   useEffect(() => {
     return () => {
-      topAttachments.forEach((item) => {
+      topAttachmentsRef.current.forEach((item) => {
         if (item.previewUrl) {
           URL.revokeObjectURL(item.previewUrl);
         }
@@ -839,43 +869,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       : [];
 
     // 顶部附件区的附件
-    const topFiles = topAttachments.map((a) => a.file);
+    const topFiles = topAttachmentsRef.current.map((a) => a.file);
 
     return [...editorFiles, ...topFiles];
-  }, [editor, topAttachments]);
+  }, [editor]);
 
-  // 导出 context 方法
-  useEffect(() => {
-    if (props.onInsertText) {
-      props.onInsertText(insertText);
-    }
-    if (props.onContext) {
-      props.onContext({
-        insertText,
-        restoreDraft,
-        addMention,
-        addAttachment,
-        getAttachmentFiles,
-        text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
-        focus: () => editor?.commands.focus(),
-        send: () => sendRef.current?.(),
-        clear: () => {
-          editor?.commands.clearContent(true);
-          setTopAttachments((prev) => {
-            prev.forEach((item) => { if (item.previewUrl) URL.revokeObjectURL(item.previewUrl); });
-            return [];
-          });
-          attachmentFilesRef.current.clear();
-        },
-      });
-    }
-  }, [
-    editor,
-    props.onInsertText,
-    props.onContext,
-    addAttachment,
-    getAttachmentFiles,
-  ]);
 
   // 导出 addMention 方法
   useEffect(() => {
@@ -923,18 +921,18 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     [editor]
   );
 
-  const send = useCallback(async () => {
-    if (!editor) return;
+  const send = useCallback(async (): Promise<boolean> => {
+    if (!editor) return false;
     // 重入保护：onSend 现在被 await，发送期间可能再次触发 Enter/快捷键，
     // 避免同一份草稿被发送两次 (octo-web#227)。
-    if (sendingRef.current) return;
+    if (sendingRef.current) return false;
 
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
       Notification.error({
         content: t("base.messageInput.validation.maxLength", { values: { max: MAX_MESSAGE_LENGTH } }),
       });
-      return;
+      return false;
     }
 
     // 从编辑器提取附件（粘贴的图片）
@@ -950,7 +948,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       .filter((a): a is AttachmentFile => a !== null);
 
     // 顶部附件区文件（通过上传按钮添加）
-    const topAttachmentFiles: AttachmentFile[] = topAttachments.map((a) => ({
+    const topAttachmentFiles: AttachmentFile[] = topAttachmentsRef.current.map((a) => ({
       id: a.id,
       file: a.file,
     }));
@@ -962,8 +960,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const hasAttachments = allAttachments.length > 0;
 
     // 没有 onSend 或没有任何内容时无需发送，直接退出（不清空，保持现状）。
+    // 视为未发送（editorConsumed=false），供编排器判定真实结果。
     if (!props.onSend || (!hasText && !hasAttachments)) {
-      return;
+      return false;
     }
 
     // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）。
@@ -988,11 +987,14 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 编排逻辑在纯函数 runSendWithCleanup，便于单测覆盖各竞态场景。
     const editorSnapshot = JSON.stringify(editor.getJSON());
     const consumedAttachmentAttrs = attachmentAttrs;
-    const topItemsAtSend = topAttachments;
+    const topItemsAtSend = topAttachmentsRef.current;
     const allTopIds = topItemsAtSend.map((item) => item.id);
     sendingRef.current = true;
     try {
-      await runSendWithCleanup(
+      // runSendWithCleanup 返回 editor 是否被消费（true=发送成功，false=保留草稿/发送失败）。
+      // 把真实结果 return 出去，供 initialCompose 编排器区分 sent / failed；
+      // 键盘/Enter 发送路径忽略返回值，行为不变。
+      const editorConsumed = await runSendWithCleanup(
         () =>
           props.onSend!(
             content,
@@ -1027,9 +1029,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                 URL.revokeObjectURL(item.previewUrl);
               }
             });
-            setTopAttachments((prev: TopAttachmentItem[]) =>
-              prev.filter((a: TopAttachmentItem) => !idSet.has(a.id))
+            topAttachmentsRef.current = topAttachmentsRef.current.filter(
+              (a: TopAttachmentItem) => !idSet.has(a.id)
             );
+            setTopAttachments(topAttachmentsRef.current);
           },
           collapseExpanded: () => {
             if (expanded) {
@@ -1039,15 +1042,51 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
           },
         }
       );
+      return editorConsumed;
     } finally {
       sendingRef.current = false;
     }
-  }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange, t]);
+  }, [editor, expanded, props.onSend, props.onExpandChange, t]);
 
-  // 更新 sendRef
+  // 先接好 sendRef，再导出 context。Conversation 会在 onContext 回调里同步消费
+  // initialCompose；两步必须处于同一 effect，避免首次无附件自动发送撞上空 sendRef。
   useEffect(() => {
-    sendRef.current = send;
-  }, [send]);
+    announceContextAfterSendReady(sendRef, send, () => {
+      props.onInsertText?.(insertText);
+      props.onContext?.({
+        insertText,
+        insertContent: (content) => {
+          editor?.chain().focus("end").insertContent(content).run();
+        },
+        restoreDraft,
+        addMention,
+        addAttachment,
+        getAttachmentFiles,
+        text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
+        focus: () => editor?.commands.focus(),
+        send: () => invokeReadySend(sendRef.current),
+        clear: () => {
+          editor?.commands.clearContent(true);
+          topAttachmentsRef.current.forEach((item) => {
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+          });
+          topAttachmentsRef.current = [];
+          setTopAttachments([]);
+          attachmentFilesRef.current.clear();
+        },
+      });
+    });
+  }, [
+    send,
+    editor,
+    props.onInsertText,
+    props.onContext,
+    insertText,
+    restoreDraft,
+    addMention,
+    addAttachment,
+    getAttachmentFiles,
+  ]);
 
   const getFilteredSlashCommands = useCallback((): BotCommand[] => {
     const { botCommands } = props;

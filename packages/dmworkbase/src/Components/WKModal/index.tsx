@@ -108,8 +108,8 @@ const WKModal: React.FC<WKModalProps> = ({
   footerConfig,
   options,
   style,
-  zIndex,
   bodyStyle,
+  zIndex,
   header: customHeader,
   className,
   children,
@@ -136,10 +136,10 @@ const WKModal: React.FC<WKModalProps> = ({
       mask={mask}
       closeOnEsc={closeOnEsc}
       centered
+      zIndex={zIndex}
       className={cls}
       modalContentClass="wk-modal-content"
       style={style}
-      zIndex={zIndex}
     >
       <div className="wk-modal-shell">
         {closable && (

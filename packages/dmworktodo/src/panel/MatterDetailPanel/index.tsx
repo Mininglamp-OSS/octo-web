@@ -44,7 +44,7 @@ import { OutputsPanel } from "../../ui/OutputsPanel";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import WKSDK, { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import type { ChannelInfoListener } from "wukongimjssdk";
-import { WKApp, i18n, useI18n, t as translate } from "@octo/base";
+import { WKApp, i18n, useI18n, t as translate, addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from "@octo/base";
 import { downloadFile } from "@octo/base/src/Utils/download";
 import {
   getFileIcon,
@@ -744,17 +744,17 @@ export default function MatterDetailPanel({
       );
       if (matched) setChannelNameTick((t) => t + 1);
     };
-    WKSDK.shared().channelManager.addListener(listener);
+    const unsubscribe = addImChannelInfoListener(WKSDK.shared(), listener);
     // 缓存没命中的群主动 fetch, 防止 listener 永远不触发
     for (const c of channels) {
       const ch = new Channel(c.channel_id, c.channel_type);
-      const cached = WKSDK.shared().channelManager.getChannelInfo(ch);
+      const cached = getImChannelInfo(WKSDK.shared(), ch);
       if (!cached?.title) {
-        WKSDK.shared().channelManager.fetchChannelInfo(ch).catch(() => {});
+        fetchImChannelInfo(WKSDK.shared(), ch).catch(() => {});
       }
     }
     return () => {
-      WKSDK.shared().channelManager.removeListener(listener);
+      unsubscribe();
     };
   }, [matter?.channels]);
 
@@ -764,7 +764,8 @@ export default function MatterDetailPanel({
     void channelNameTick;
     const map = new Map<string, string>();
     for (const ch of matter?.channels || []) {
-      const live = WKSDK.shared().channelManager.getChannelInfo(
+      const live = getImChannelInfo(
+        WKSDK.shared(),
         new Channel(ch.channel_id, ch.channel_type),
       )?.title;
       const name = live || ch.channel_name || "";

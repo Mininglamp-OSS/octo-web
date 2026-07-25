@@ -1,1 +1,19 @@
+.wk-message-revoke {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
 
+.wk-message-revoke-reedit {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  color: var(--wk-color-theme);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wk-message-revoke-reedit:hover {
+  text-decoration: underline;
+}

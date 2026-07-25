@@ -4,12 +4,14 @@ import '@octo/base/src/theme/tokens.css';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import  { BaseModule, I18nProvider, ensureSessionSid, i18n, stripSessionSidFromUrl, WKApp } from '@octo/base';
+import  { BaseModule, I18nProvider, i18n, WKApp } from '@octo/base';
 import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
 import { MatterModule } from '@octo/todo';
 import { SummaryModule } from '@dmwork/summary';
+import { McpMarketModule } from '@dmwork/mcp';
+import { SkillMarketModule } from '@dmwork/skillmarket';
 import { AppBotModule } from '@dmwork/appbot';
 import { DocsModule } from '@octo/docs';
 import { LoopModule } from '@octo/loop';
@@ -53,8 +55,6 @@ WKApp.apiClient.config.spaceIdCallback = () => {
 WKApp.config.appVersion = import.meta.env.VITE_VERSION || pkgVersion
 WKApp.config.appName = "Octo"
 
-ensureSessionSid()
-stripSessionSidFromUrl()
 WKApp.loginInfo.load() // 加载登录信息
 i18n.registerNamespace("app", {
   "zh-CN": appZhCN,
@@ -75,22 +75,74 @@ WKApp.shared.registerModule(new BindModule()); // OIDC 自助绑定页 (/oidc/bi
 WKApp.shared.registerModule(new ContactsModule()); // 联系模块
 WKApp.shared.registerModule(new MatterModule()); // Matter module
 WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
+WKApp.shared.registerModule(new McpMarketModule()); // MCP 市场模块
+WKApp.shared.registerModule(new SkillMarketModule()); // Skill 市场模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
 WKApp.shared.registerModule(new DocsModule()); // Docs module
 WKApp.shared.registerModule(new LoopModule()); // Loop 面板（Issue/Skill/Project/Agent/Squad/Runtime）
 WKApp.shared.registerModule(new PersonalModule()); // 我的（Runtimes/Skills）
 
-WKApp.shared.startup() // app启动
+// e2e mock: 仅在 VITE_E2E_MOCK=1 时启动 MSW Service Worker.
+// dev / prod 完全走 tree-shake 分支, 无副作用. 必须在 startup() 之前 await,
+// 否则第一发 fetch (common/appconfig) 会漏 mock.
+// 暴露 worker + http/HttpResponse 到 window, 让 e2e spec 用 worker.use(...)
+// 动态覆盖 handler 支持有状态场景 (page.route 拦不到 MSW SW 层).
+async function enableMocksIfE2E(): Promise<void> {
+  if (import.meta.env.VITE_E2E_MOCK !== "1") return;
+  try {
+    const { worker } = await import("./mocks/browser");
+    const msw = await import("msw");
+    await worker.start({ onUnhandledRequest: "bypass" });
+    const w = window as unknown as {
+      __MSW_READY__: boolean;
+      __msw?: { worker: typeof worker; http: typeof msw.http; HttpResponse: typeof msw.HttpResponse };
+    };
+    w.__msw = { worker, http: msw.http, HttpResponse: msw.HttpResponse };
+    w.__MSW_READY__ = true;
+  } catch (e) {
+    // MSW SW 拿不到 (如 e2e no-mock scenario 拦了 mockServiceWorker.js): 静默继续,
+    // 让 app 正常启动. __MSW_READY__ 不 set, no-mock spec 也不 wait 它.
+    console.warn("[e2e] MSW disabled:", e);
+  }
+}
+
+// e2e mock: 仅在 VITE_E2E_MOCK_IM=1 时挂 fake IM provider 钩子, 让 spec 里
+// installMockImRuntime(page, seed) 能生效. DataSourceModule.init() 和
+// App.connectIM 已用同一 flag 跳过真实 IM callback / connect.
+// dev / prod 完全走 tree-shake 分支, 无副作用.
+async function enableMockImIfE2E(): Promise<void> {
+  if (import.meta.env.VITE_E2E_MOCK_IM !== "1") return;
+  try {
+    const mod = await import("../e2e-kit/_kit/mock-im-runtime/fake-provider");
+    const wksdk = await import("wukongimjssdk");
+    (window as unknown as {
+      __installMockImRuntime__: (s: unknown) => void;
+      WKSDK: typeof wksdk.WKSDK;
+    }).__installMockImRuntime__ = mod.installFakeProvider as unknown as (s: unknown) => void;
+    // 暴露 WKSDK 让 spec / fixture 直接调 shared().connectManager.notifyConnectStatusListeners 等
+    (window as unknown as { WKSDK: typeof wksdk.WKSDK }).WKSDK = wksdk.WKSDK;
+  } catch (e) {
+    console.warn("[e2e] mock-im-runtime disabled:", e);
+  }
+}
+
+async function main(): Promise<void> {
+  await enableMocksIfE2E();
+  await enableMockImIfE2E();
+  WKApp.shared.startup(); // app启动
+
+  const container = document.getElementById("root")!;
+  const root = createRoot(container);
+  root.render(
+    <React.StrictMode>
+      <I18nProvider>
+        <App />
+      </I18nProvider>
+    </React.StrictMode>
+  );
+  reportWebVitals();
+}
 
 // Initialize Electron notification bridge if running in Electron
 
-const container = document.getElementById('root')!
-const root = createRoot(container)
-root.render(
-  <React.StrictMode>
-    <I18nProvider>
-      <App />
-    </I18nProvider>
-  </React.StrictMode>
-);
-reportWebVitals();
+void main();

@@ -1,12 +1,15 @@
 import { Modal, Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
-import WKSDK, { Channel, ChannelTypePerson, MessageText } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, MessageText } from "wukongimjssdk";
 import React, { Component, HTMLProps, ReactNode } from "react";
 import ConversationSelect from "../ConversationSelect";
 import type { ConversationSelectGrant } from "../ConversationSelect";
 import type { DocForwardOpen, ForwardGrant } from "../ForwardModal/grant";
 import { buildForwardMessageText } from "../ForwardModal/forwardMessageText";
+import { DocumentShareCardContent } from "../../Messages/DocumentShareCard/DocumentShareCardContent";
 import { isConversationDisbanded } from "../../Utils/groupDisband";
+import { ForwardService } from "../../Service/ForwardService";
+import { interpretForwardResult } from "../../Service/forwardResultToast";
 import UserInfo from "../UserInfo";
 import BotDetailModal from "../BotDetailModal";
 import WKApp from "../../App";
@@ -20,6 +23,10 @@ import {
 } from "./userInfoRouter";
 import { I18nContext } from "../../i18n";
 import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
+import {
+  getCurrentImChannelSubscribers,
+  syncCurrentImChannelSubscribers,
+} from "../../im-runtime/currentChannelRuntime";
 import "./index.css";
 
 /**
@@ -48,11 +55,8 @@ export function createDefaultExternalViewerGate(): ExternalViewerGate {
     isExternal: (uid, fromChannel, channelInfo) => {
       // 1) Group subscriber orgData (primary source, matches UserInfoVM step 1).
       if (fromChannel && fromChannel.channelType !== ChannelTypePerson) {
-        const subscribers =
-          (WKSDK.shared().channelManager.getSubscribes(fromChannel) as
-            | { uid?: string; orgData?: ChannelInfoOrgDataLike }[]
-            | null
-            | undefined) ?? [];
+        const subscribers = getCurrentImChannelSubscribers(fromChannel) as
+          { uid?: string; orgData?: ChannelInfoOrgDataLike }[];
         const sub = subscribers.find((s) => s && s.uid === uid);
         const org = sub?.orgData;
         if (org) {
@@ -278,15 +282,11 @@ export default class WKBase
         continue;
       }
       try {
-        await Promise.resolve(WKSDK.shared().channelManager.syncSubscribes(ch));
+        await syncCurrentImChannelSubscribers(ch);
       } catch {
         // best-effort: fall back to whatever is already cached
       }
-      const subs =
-        (WKSDK.shared().channelManager.getSubscribes(ch) as
-          | { uid?: string }[]
-          | null
-          | undefined) ?? [];
+      const subs = getCurrentImChannelSubscribers(ch) as { uid?: string }[];
       for (const s of subs) {
         if (s?.uid) uids.add(s.uid);
       }
@@ -303,13 +303,9 @@ export default class WKBase
     const { t } = this.context;
     let grantFailures: string[] | undefined;
 
-    // 0) disband guard. runDocForward calls chatManager.send directly (below),
-    // bypassing ConversationVM.sendMessage's central isConversationDisbanded
-    // guard (vm.ts). A disbanded group / topic is read-only, so we must neither
-    // grant nor send to it — decide up front. Blocked targets count as failed
-    // forwards so the user still gets an accurate partial-failure Toast.
+    // 0) disband guard 提前一次，仅为 grant 阶段决定是否有可授权目标。真正的 send 阶段
+    // disband 计入交给 ForwardService（它同样过滤 disband 并计入 failedTargets）。
     const sendable = channels.filter((ch) => !isConversationDisbanded(ch));
-    const disbandedCount = channels.length - sendable.length;
     if (sendable.length === 0) {
       Toast.error(t("base.forwardModal.grant.sendFailed"));
       forward.onResult?.({ sent: 0, failed: channels.length, grantFailures: undefined });
@@ -331,47 +327,47 @@ export default class WKBase
       }
     }
 
-    // 2) send the message to each (non-disbanded) target (reuses the Summary
-    // forward send/toast pattern). Title + link are escaped so a user-controlled
-    // title cannot break out of the card structure (see forwardMessageText).
-    const text = buildForwardMessageText(forward.messageTitle, forward.link);
-    const errors: string[] = [];
-    let sent = 0;
-    for (const ch of sendable) {
-      try {
-        const msg = new MessageText(text);
-        // Inject space_id for person channels (matching ConversationVM.sendMessage / Summary).
-        const spaceId = WKApp.shared.currentSpaceId;
-        if (spaceId && ch.channelType === ChannelTypePerson) {
-          const originalEncodeJSON = msg.encodeJSON.bind(msg);
-          msg.encodeJSON = () => {
-            const obj = originalEncodeJSON();
-            obj.space_id = spaceId;
-            return obj;
-          };
-          msg.contentObj = { ...(msg.contentObj || {}), space_id: spaceId };
+    // 2) send the message to each target via ForwardService (统一 disband 守卫、
+    // space_id / mention 注入、错误隔离)。原先手写的 encodeJSON monkey-patch
+    // 由 wrapSendContentForInjection + opts.spaceId 代替。
+    //
+    // 只有**文档分享转发**（startDocForward，显式 shareAsCard=true）才发文档卡片
+    // （DocumentShareCardContent=18）。其它复用同一转发通道但语义不同的流程——尤其
+    // html-doc「让 AI 处理」的**指令转发**（带 docId + 专属锚点链接）——绝不能因带 docId
+    // 被误转成卡片而丢失指令链接/锚点，一律回退纯文本 markdown（Jerry-Xin blocker）。
+    const contentFactory = forward.shareAsCard
+      ? () => {
+          const card = new DocumentShareCardContent();
+          card.docId = forward.docId ?? "";
+          // 严格用文档自身 space：绝不回退到发送者当前 space（文档可能不在该 space），
+          // 否则接收端预览会带错 X-Space-Id 触发 ACL/403。缺失时留空，让后端按 docId 解析。
+          card.spaceId = forward.spaceId ?? "";
+          card.kind = forward.kind ?? "doc";
+          card.title = forward.messageTitle;
+          card.ownerName = forward.ownerName ?? "";
+          card.updatedAt = forward.updatedAt ?? "";
+          card.url = forward.link;
+          card.permission = (grant?.role ?? forward.defaultRole ?? "reader") === "writer" ? "writer" : "reader";
+          return card;
         }
-        await WKSDK.shared().chatManager.send(msg, ch);
-        sent++;
-      } catch {
-        errors.push(ch.channelID);
-      }
-    }
+      : () => new MessageText(buildForwardMessageText(forward.messageTitle, forward.link));
+    const result = await ForwardService.send(
+      channels,
+      contentFactory,
+      { spaceId: WKApp.shared.currentSpaceId },
+    );
 
-    // 3) partial-failure Toast (reuse the dmworksummary范式). Disbanded targets
-    // that were skipped in step 0 are folded into the failed total against the
-    // original channel count.
-    const failed = errors.length + disbandedCount;
-    if (failed > 0) {
-      if (failed === channels.length) {
-        Toast.error(t("base.forwardModal.grant.sendFailed"));
-      } else {
-        Toast.error(
-          t("base.forwardModal.grant.partialSendFailed", {
-            values: { failed, total: channels.length },
-          })
-        );
-      }
+    // 3) partial-failure Toast (reuse the dmworksummary范式). 分母维度用 targets，
+    // 保留旧的用户可见语义（原代码 total=channels.length，即 result.targets）。
+    const state = interpretForwardResult(result, "targets");
+    if (state.kind === "all-failed") {
+      Toast.error(t("base.forwardModal.grant.sendFailed"));
+    } else if (state.kind === "partial") {
+      Toast.error(
+        t("base.forwardModal.grant.partialSendFailed", {
+          values: { failed: state.failed, total: state.total },
+        })
+      );
     } else if (grantFailures && grantFailures.length > 0) {
       Toast.warning(
         t("base.forwardModal.grant.partialGrantFailed", {
@@ -382,7 +378,8 @@ export default class WKBase
       Toast.success(t("base.forwardModal.grant.forwarded"));
     }
 
-    forward.onResult?.({ sent, failed, grantFailures });
+    const sent = state.total - state.failed;
+    forward.onResult?.({ sent, failed: state.failed, grantFailures });
   }
 
   hideUserInfo() {

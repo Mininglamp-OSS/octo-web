@@ -4,19 +4,42 @@ import { httpGet, httpPost } from "./http";
 import { ensureDirectory } from "./directory";
 
 /** 某 issue 的执行记录列表（runs）。 */
-export async function listRuns(issueId: string): Promise<TaskRun[]> {
-  const [rows, dir] = await Promise.all([
-    httpGet<TaskRun[]>(`/issues/${issueId}/task-runs`).catch(() => [] as TaskRun[]),
-    ensureDirectory(),
-  ]);
+export async function listRuns(
+  issueId: string,
+  workspaceSlug?: string
+): Promise<TaskRun[]> {
+  const rows = await httpGet<TaskRun[]>(
+    `/issues/${issueId}/task-runs`,
+    undefined,
+    workspaceSlug ? { workspaceSlug } : undefined
+  ).catch(() => [] as TaskRun[]);
+  // A chat preview can point at a workspace other than the Loop page's global
+  // selection. Its snapshot has already enriched agent names, so avoid reading
+  // the global directory while polling only for fresh run status.
+  if (workspaceSlug) {
+    return (rows ?? []).sort((a, b) =>
+      (b.created_at ?? b.dispatched_at ?? "").localeCompare(
+        a.created_at ?? a.dispatched_at ?? ""
+      )
+    );
+  }
+  const dir = await ensureDirectory();
   return (rows ?? [])
     .map((r) => ({ ...r, agent_name: r.agent_id ? dir.agentName.get(r.agent_id) ?? null : null }))
     .sort((a, b) => (b.created_at ?? b.dispatched_at ?? "").localeCompare(a.created_at ?? a.dispatched_at ?? ""));
 }
 
 /** 某次执行的消息流（run-messages）。since 给出后只取 seq 更大的增量（clean 会剔除 undefined）。 */
-export function listRunMessages(taskId: string, since?: number): Promise<RunMessage[]> {
-  return httpGet<RunMessage[]>(`/tasks/${taskId}/messages`, { since });
+export function listRunMessages(
+  taskId: string,
+  since?: number,
+  workspaceSlug?: string
+): Promise<RunMessage[]> {
+  return httpGet<RunMessage[]>(
+    `/tasks/${taskId}/messages`,
+    { since },
+    workspaceSlug ? { workspaceSlug } : undefined
+  );
 }
 
 /** 重跑 issue：不带 task_id 按当前 assignee 重跑，带则重跑该 task 的 agent。后端返回新建 task。 */

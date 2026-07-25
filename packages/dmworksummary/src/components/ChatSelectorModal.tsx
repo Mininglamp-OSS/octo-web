@@ -1,13 +1,23 @@
-import React, { Component } from "react";
-import { Modal, Input, Tabs, TabPane, Checkbox, Button, Spin, Empty, Tag, Switch } from "@douyinfe/semi-ui";
+import React, { Component, createRef } from "react";
+import { Checkbox, Spin, Empty, Tag } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
+import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
+import WKAvatar, { isBot } from "@octo/base/src/Components/WKAvatar";
+import AiBadge from "@octo/base/src/Components/AiBadge";
+import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
-import AiBadge from "@octo/base/src/Components/AiBadge";
 import WKApp from "@octo/base/src/App";
 import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT } from "../constants/limits";
+
+interface MemberCandidate {
+    uid: string;
+    name: string;
+    avatar?: string;
+    is_bot?: boolean;
+}
 
 interface Props {
     visible: boolean;
@@ -15,18 +25,26 @@ interface Props {
     onConfirm: (selected: ChatCandidate[]) => void;
     onCancel: () => void;
     maxSelect?: number;
+    mode?: "chat" | "members";
+    channel?: Channel | null;
+    selectedMembers?: MemberCandidate[];
+    onConfirmMembers?: (members: MemberCandidate[]) => void;
 }
 
 interface State {
     keyword: string;
-    activeTab: "followed" | "recent" | "group" | "direct";
+    activeTab: "followed" | "recent" | "group" | "direct" | "all_members" | "managers" | "normal_members";
     candidates: ChatCandidate[];
+    memberRoles: Map<string, number>;
     loading: boolean;
     localSelected: ChatCandidate[];
+    localSelectedMembers: MemberCandidate[];
     includeArchived: boolean;
     followedIds: Set<string>;
     recentIds: Set<string>;
     recentOrder: Map<string, number>;
+    visibleStart: number;
+    visibleEnd: number;
 }
 
 interface DisplayEntry {
@@ -42,20 +60,106 @@ export default class ChatSelectorModal extends Component<Props, State> {
         keyword: "",
         activeTab: "followed",
         candidates: [],
+        memberRoles: new Map<string, number>(),
         loading: false,
         localSelected: [],
+        localSelectedMembers: [],
         includeArchived: false,
         followedIds: new Set<string>(),
         recentIds: new Set<string>(),
         recentOrder: new Map<string, number>(),
+        visibleStart: 0,
+        visibleEnd: 20,
     };
 
     private reqSeq = 0;
+    private listScrollRef = createRef<HTMLDivElement>();
+    private readonly ITEM_HEIGHT = 40;
+
+    private handleListScroll = () => {
+        const el = this.listScrollRef.current;
+        if (!el) return;
+        const scrollTop = el.scrollTop;
+        const viewportHeight = el.clientHeight;
+        const totalItems = this.getDisplayList().length;
+        const start = Math.max(0, Math.floor(scrollTop / this.ITEM_HEIGHT) - 5);
+        const end = Math.min(totalItems, Math.ceil((scrollTop + viewportHeight) / this.ITEM_HEIGHT) + 5);
+        if (start !== this.state.visibleStart || end !== this.state.visibleEnd) {
+            this.setState({ visibleStart: start, visibleEnd: end });
+        }
+    };
 
     componentDidUpdate(prevProps: Props) {
         if (this.props.visible && !prevProps.visible) {
-            this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed", includeArchived: false });
-            this.loadCandidates(false);
+            if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
+            if (this.props.mode === "members") {
+                this.setState({
+                    localSelectedMembers: [...(this.props.selectedMembers ?? [])],
+                    keyword: "",
+                    activeTab: "all_members",
+                    visibleStart: 0,
+                    visibleEnd: 20,
+                });
+                this.loadMembers();
+            } else {
+                this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed", includeArchived: false, visibleStart: 0, visibleEnd: 20 });
+                this.loadCandidates(false);
+            }
+        }
+    }
+
+    async loadMembers() {
+        const channel = this.props.channel;
+        const seq = ++this.reqSeq;
+        this.setState({ loading: true });
+        try {
+            if (channel) {
+                // 有选中聊天：加载该群聊成员
+                const sdk = WKSDK.shared();
+                await sdk.channelManager.syncSubscribes(channel);
+                if (seq !== this.reqSeq) return;
+                const subscribers = sdk.channelManager.getSubscribes(channel) || [];
+                const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid));
+                const roles = new Map<string, number>();
+                for (const m of humans) {
+                    if (m.role != null) roles.set(m.uid, m.role);
+                }
+                this.setState({
+                    memberRoles: roles,
+                    candidates: humans.map((m: any) => ({
+                        chat_id: m.uid,
+                        chat_type: "direct" as const,
+                        name: m.name || m.uid,
+                        member_count: null,
+                    })),
+                });
+            } else {
+                // 无选中聊天：加载全局联系人
+                const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
+                if (seq !== this.reqSeq) return;
+                const humans = list.filter((m: any) => {
+                    // Contacts 类型用 robot 字段，不是 is_bot
+                    const isRobot = m.robot === true || m.is_bot === true || isBot(m.uid || m.user_id || "");
+                    // 过滤黑名单联系人 (ContactsStatus.Blacklist = 2)
+                    const isBlacklisted = m.status === 2;
+                    return !isRobot && !isBlacklisted;
+                });
+                this.setState({
+                    memberRoles: new Map<string, number>(),
+                    candidates: humans.map((m: any) => ({
+                        chat_id: m.uid || m.user_id || m.id,
+                        chat_type: "direct" as const,
+                        name: m.name || m.username || m.uid || m.user_id || m.id,
+                        member_count: null,
+                    })),
+                });
+            }
+        } catch {
+            if (seq !== this.reqSeq) return;
+            this.setState({ candidates: [] });
+        } finally {
+            if (seq !== this.reqSeq) return;
+            this.setState({ loading: false });
         }
     }
 
@@ -64,8 +168,6 @@ export default class ChatSelectorModal extends Component<Props, State> {
         const seq = ++this.reqSeq;
         this.setState({ loading: true });
         const deviceUuid = WKApp.shared.deviceId || "";
-        // device_uuid 为空时后端 validateSidebarRequest 必拒（SidebarService.ts），
-        // 跳过注定失败的 sidebar 请求，followed/recent 退化为空集。
         const skipSidebar = deviceUuid === "";
         try {
             const params = includeArchived ? { include_archived: true } : {};
@@ -99,16 +201,19 @@ export default class ChatSelectorModal extends Component<Props, State> {
     }
 
     handleIncludeArchivedChange = (checked: boolean) => {
-        this.setState({ includeArchived: checked });
+        if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
+        this.setState({ includeArchived: checked, visibleStart: 0, visibleEnd: 20 });
         this.loadCandidates(checked);
     };
 
     handleKeywordChange = (val: string) => {
-        this.setState({ keyword: val });
+        if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
+        this.setState({ keyword: val, visibleStart: 0, visibleEnd: 20 });
     };
 
     handleTabChange = (tab: string) => {
-        this.setState({ activeTab: tab as State["activeTab"] });
+        if (this.listScrollRef.current) this.listScrollRef.current.scrollTop = 0;
+        this.setState({ activeTab: tab as State["activeTab"], visibleStart: 0, visibleEnd: 20 });
     };
 
     handleToggle = (item: ChatCandidate) => {
@@ -124,10 +229,25 @@ export default class ChatSelectorModal extends Component<Props, State> {
     };
 
     handleConfirm = () => {
-        this.props.onConfirm(this.state.localSelected);
+        if (this.props.mode === "members") {
+            this.props.onConfirmMembers?.(this.state.localSelectedMembers);
+        } else {
+            this.props.onConfirm(this.state.localSelected);
+        }
     };
 
-    // chat_type → SidebarTargetType 映射，用于构建类型安全的复合 key
+    handleToggleMember = (member: MemberCandidate) => {
+        const { localSelectedMembers } = this.state;
+        const maxSelect = this.props.maxSelect ?? MAX_CHAT_SELECT;
+        const existing = localSelectedMembers.find((m) => m.uid === member.uid);
+        if (existing) {
+            this.setState({ localSelectedMembers: localSelectedMembers.filter((m) => m.uid !== member.uid) });
+        } else {
+            if (localSelectedMembers.length >= maxSelect) return;
+            this.setState({ localSelectedMembers: [...localSelectedMembers, member] });
+        }
+    };
+
     static chatTypeToTargetType(chatType: string): number {
         switch (chatType) {
             case "direct": return SidebarTargetType.DM;
@@ -136,7 +256,6 @@ export default class ChatSelectorModal extends Component<Props, State> {
         }
     }
 
-    // 构建复合 key：${target_type}::${id}，防止跨类型 id 碰撞
     static compositeKey(chatType: string, chatId: string): string {
         return `${ChatSelectorModal.chatTypeToTargetType(chatType)}::${chatId}`;
     }
@@ -144,6 +263,21 @@ export default class ChatSelectorModal extends Component<Props, State> {
     getDisplayList(): DisplayEntry[] {
         const { candidates, activeTab, keyword } = this.state;
         const kw = keyword.trim().toLowerCase();
+
+        // members 模式：按 tab 过滤角色 + 搜索
+        if (this.props.mode === "members") {
+            const { memberRoles } = this.state;
+            return candidates
+                .filter((c) => {
+                    if (activeTab === "all_members") return true;
+                    const role = memberRoles.get(c.chat_id);
+                    if (activeTab === "managers") return role === 1 || role === 2; // owner=1, manager=2
+                    if (activeTab === "normal_members") return role == null || role === 0; // normal
+                    return true;
+                })
+                .filter((c) => !kw || c.name.toLowerCase().includes(kw))
+                .map((c) => ({ item: c, indent: false }));
+        }
 
         if (activeTab === "direct") {
             return candidates
@@ -161,7 +295,6 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 .map((c) => ({ item: c, indent: false }));
         }
 
-        // followed：纯前端按本地集合过滤，切 tab 不重新请求后端。
         const { followedIds } = activeTab === "followed" ? this.state : { followedIds: null };
         const inScope = (c: ChatCandidate): boolean => {
             if (followedIds) return followedIds.has(ChatSelectorModal.compositeKey(c.chat_type, c.chat_id));
@@ -243,6 +376,38 @@ export default class ChatSelectorModal extends Component<Props, State> {
         return result;
     }
 
+    getChannelTypeNum(chatType: string): number {
+        switch (chatType) {
+            case "direct": return 1;
+            case "thread": return 5;
+            default: return 2;
+        }
+    }
+
+    renderMemberItem = (entry: DisplayEntry) => {
+        const { localSelectedMembers } = this.state;
+        const maxSelect = this.props.maxSelect ?? MAX_CHAT_SELECT;
+        const { item } = entry;
+        const checked = !!localSelectedMembers.find((m) => m.uid === item.chat_id);
+        const disabled = !checked && localSelectedMembers.length >= maxSelect;
+        return (
+            <div
+                key={item.chat_id}
+                className={`chat-selector-item${disabled ? " chat-selector-item--disabled" : ""}`}
+                onClick={() => !disabled && this.handleToggleMember({ uid: item.chat_id, name: item.name })}
+            >
+                <Checkbox checked={checked} disabled={disabled} />
+                <WKAvatar
+                    channel={new Channel(item.chat_id, ChannelTypePerson)}
+                    style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }}
+                />
+                <div className="chat-selector-item-info">
+                    <span className="chat-selector-item-name">{item.name}</span>
+                </div>
+            </div>
+        );
+    };
+
     renderItem = (entry: DisplayEntry) => {
         const { localSelected } = this.state;
         const maxSelect = this.props.maxSelect ?? MAX_CHAT_SELECT;
@@ -253,112 +418,205 @@ export default class ChatSelectorModal extends Component<Props, State> {
         return (
             <div
                 key={item.chat_id}
+                className={`chat-selector-item${indent ? " chat-selector-item--indent" : ""}${disabled ? " chat-selector-item--disabled" : ""}`}
                 onClick={() => !disabled && this.handleToggle(item)}
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: indent ? "6px 0" : "10px 0",
-                    paddingLeft: indent ? 32 : 0,
-                    borderBottom: "1px solid var(--semi-color-border)",
-                    cursor: disabled ? "not-allowed" : "pointer",
-                    opacity: disabled ? 0.5 : 1,
-                }}
             >
-                <Checkbox checked={checked} disabled={disabled} style={{ marginRight: 10 }} />
-                <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: indent ? 13 : 14, display: "flex", alignItems: "center" }}>
+                <Checkbox checked={checked} disabled={disabled} />
+                <WKAvatar
+                    channel={new Channel(item.chat_id, this.getChannelTypeNum(item.chat_type))}
+                    style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }}
+                />
+                <div className="chat-selector-item-info">
+                    <span className="chat-selector-item-name">
                         {item.name}
                         {item.chat_type === "direct" && item.is_bot && (
-                            <span style={{ marginLeft: 4 }}><AiBadge size="small" /></span>
+                            <AiBadge size="small" />
                         )}
                         {item.is_archived && (
-                            <Tag size="small" color="grey" style={{ marginLeft: 6 }}>
-                                {t("summary.chatSelector.archivedTag")}
-                            </Tag>
+                            <Tag size="small" color="grey">{t("summary.chatSelector.archivedTag")}</Tag>
                         )}
-                    </div>
+                    </span>
                     {item.member_count !== null && (
-                        <div style={{ fontSize: 12, color: "var(--semi-color-text-2)" }}>
+                        <span className="chat-selector-item-meta">
                             {t("summary.common.peopleCount", { values: { count: item.member_count } })}
-                        </div>
+                        </span>
                     )}
                 </div>
-                <Tag size="small" color={
-                    item.chat_type === "group" ? "blue" :
-                    item.chat_type === "thread" ? "green" :
-                    "cyan"
-                }>
-                    {item.chat_type === "group" ? t("summary.source.groupChat") :
-                     item.chat_type === "thread" ? t("summary.source.thread") :
-                     t("summary.source.directMessage")}
-                </Tag>
+            </div>
+        );
+    };
+
+    renderSelected = (item: ChatCandidate) => {
+        return (
+            <div key={item.chat_id} className="chat-selector-selected-item">
+                <WKAvatar
+                    channel={new Channel(item.chat_id, this.getChannelTypeNum(item.chat_type))}
+                    style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }}
+                />
+                <span className="chat-selector-selected-name">{item.name}</span>
+                <button
+                    type="button"
+                    className="chat-selector-selected-remove"
+                    onClick={() => this.handleToggle(item)}
+                >
+                    <X size={16} />
+                </button>
             </div>
         );
     };
 
     render() {
-        const { visible, onCancel, maxSelect = MAX_CHAT_SELECT } = this.props;
-        const { keyword, activeTab, loading, localSelected, includeArchived } = this.state;
+        const { visible, onCancel, mode } = this.props;
+        const { keyword, activeTab, loading, localSelected, localSelectedMembers, includeArchived } = this.state;
         const { t } = this.context;
         const displayList = this.getDisplayList();
 
-        const footer = (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-                <span style={{ fontSize: 13, color: "var(--semi-color-text-2)" }}>
-                    {t("summary.common.selectedCount", { values: { count: localSelected.length, max: maxSelect } })}
-                </span>
-                <div>
-                    <Button onClick={onCancel} style={{ marginRight: 8 }}>{t("summary.common.cancel")}</Button>
-                    <Button theme="solid" onClick={this.handleConfirm}>{t("summary.common.confirm")}</Button>
-                </div>
-            </div>
-        );
+        const chatTabs = [
+            { key: "followed", label: t("summary.chatSelector.followed") },
+            { key: "recent", label: t("summary.chatSelector.recent") },
+            { key: "group", label: t("summary.chatSelector.allGroups") },
+            { key: "direct", label: t("summary.chatSelector.allDirects") },
+        ];
+
+        const memberTabs = this.props.channel
+            ? [
+                { key: "all_members", label: t("summary.chatSelector.allMembers") },
+                { key: "managers", label: t("summary.chatSelector.managers") },
+                { key: "normal_members", label: t("summary.chatSelector.normalMembers") },
+            ]
+            : [
+                { key: "all_members", label: t("summary.chatSelector.allMembers") },
+            ];
+
+        const currentTabs = mode === "members" ? memberTabs : chatTabs;
+
+        if (!visible) return null;
 
         return (
-            <Modal
-                title={t("summary.chatSelector.title")}
-                visible={visible}
-                onCancel={onCancel}
-                footer={footer}
-                width={480}
-                bodyStyle={{ padding: "0 24px" }}
-            >
-                <Input
-                    prefix={<IconSearch />}
-                    placeholder={t("summary.chatSelector.searchPlaceholder")}
-                    value={keyword}
-                    onChange={this.handleKeywordChange}
-                    showClear
-                    style={{ marginBottom: 12 }}
-                />
-                <Tabs activeKey={activeTab} onChange={this.handleTabChange} size="small">
-                    <TabPane tab={t("summary.chatSelector.followed")} itemKey="followed" />
-                    <TabPane tab={t("summary.chatSelector.recent")} itemKey="recent" />
-                    <TabPane tab={t("summary.chatSelector.allGroups")} itemKey="group" />
-                    <TabPane tab={t("summary.chatSelector.allDirects")} itemKey="direct" />
-                </Tabs>
-                <div style={{ display: "flex", alignItems: "center", padding: "8px 0", gap: 8 }}>
-                    <Switch
-                        checked={includeArchived}
-                        onChange={this.handleIncludeArchivedChange}
-                        size="small"
-                        aria-label={t("summary.chatSelector.includeArchived")}
-                    />
-                    <span style={{ fontSize: 13 }}>{t("summary.chatSelector.includeArchived")}</span>
-                    <span style={{ fontSize: 12, color: "var(--semi-color-text-2)" }}>
-                        {t("summary.chatSelector.includeArchivedHelper")}
-                    </span>
+            <div className="chat-selector-overlay" onClick={onCancel}>
+                <div className="chat-selector-modal" onClick={(e) => e.stopPropagation()}>
+                    {/* Header */}
+                    <div className="chat-selector-header">
+                        <span className="chat-selector-title">{mode === "members" ? t("summary.create.selectMembers") : t("summary.chatSelector.title")}</span>
+                        <button type="button" className="chat-selector-close" onClick={onCancel}>
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    {/* Content: two columns */}
+                    <div className="chat-selector-content">
+                        {/* Left column */}
+                        <div className="chat-selector-left">
+                            <div className="chat-selector-search">
+                                <IconSearch className="chat-selector-search-icon" />
+                                <input
+                                    className="chat-selector-search-input"
+                                    placeholder={t("summary.chatSelector.searchPlaceholder")}
+                                    value={keyword}
+                                    onChange={(e) => this.handleKeywordChange(e.target.value)}
+                                />
+                            </div>
+                            {currentTabs.length > 1 && (
+                                <div className="chat-selector-tabs">
+                                    {currentTabs.map((tab) => (
+                                        <button
+                                            key={tab.key}
+                                            className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
+                                            onClick={() => this.handleTabChange(tab.key)}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {mode !== "members" && (activeTab === "group" || activeTab === "followed") && (
+                                <label className="chat-selector-archived-toggle">
+                                    <Checkbox
+                                        checked={includeArchived}
+                                        onChange={(e) => this.handleIncludeArchivedChange(e.target.checked)}
+                                    />
+                                    <span>{t("summary.chatSelector.includeArchived")}</span>
+                                </label>
+                            )}
+                            <div
+                                className="chat-selector-list"
+                                ref={this.listScrollRef}
+                                onScroll={this.handleListScroll}
+                            >
+                                {loading ? (
+                                    <div className="chat-selector-loading"><Spin /></div>
+                                ) : mode === "members" ? (
+                                    displayList.length === 0 ? (
+                                        <Empty description={t("summary.chatSelector.noData")} />
+                                    ) : (
+                                        <>
+                                            <div style={{ height: displayList.length * 40, position: 'relative' }}>
+                                                {displayList.slice(this.state.visibleStart, this.state.visibleEnd).map((entry, i) => (
+                                                    <div key={entry.item.chat_id} style={{ position: 'absolute', top: (this.state.visibleStart + i) * 40, left: 0, right: 0, height: 40 }}>
+                                                        {this.renderMemberItem(entry)}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )
+                                ) : displayList.length === 0 ? (
+                                    <Empty description={t("summary.chatSelector.noData")} />
+                                ) : (
+                                    <>
+                                        <div style={{ height: displayList.length * 40, position: 'relative' }}>
+                                            {displayList.slice(this.state.visibleStart, this.state.visibleEnd).map((entry, i) => (
+                                                <div key={entry.item.chat_id} style={{ position: 'absolute', top: (this.state.visibleStart + i) * 40, left: 0, right: 0, height: 40 }}>
+                                                    {this.renderItem(entry)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Right column */}
+                        <div className="chat-selector-right">
+                            <div className="chat-selector-right-header">
+                                {mode === "members"
+                                    ? t("summary.common.selectedCount", { values: { count: localSelectedMembers.length, max: this.props.maxSelect ?? MAX_CHAT_SELECT } })
+                                    : t("summary.common.selectedCount", { values: { count: localSelected.length, max: this.props.maxSelect ?? MAX_CHAT_SELECT } })}
+                            </div>
+                            <div className="chat-selector-right-list">
+                                {mode === "members"
+                                    ? localSelectedMembers.map((m) => (
+                                        <div key={m.uid} className="chat-selector-selected-item">
+                                            <WKAvatar
+                                                channel={new Channel(m.uid, ChannelTypePerson)}
+                                                style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }}
+                                            />
+                                            <span className="chat-selector-selected-name">{m.name}</span>
+                                            <button
+                                                type="button"
+                                                className="chat-selector-selected-remove"
+                                                onClick={() => this.handleToggleMember(m)}
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        </div>
+                                    ))
+                                    : localSelected.map((item) => this.renderSelected(item))
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="chat-selector-footer">
+                        <button type="button" className="chat-selector-btn chat-selector-btn--cancel" onClick={onCancel}>
+                            {t("summary.common.cancel")}
+                        </button>
+                        <button type="button" className="chat-selector-btn chat-selector-btn--confirm" onClick={this.handleConfirm}>
+                            {t("summary.common.confirm")}
+                        </button>
+                    </div>
                 </div>
-                <div style={{ minHeight: 240, maxHeight: 360, overflowY: "auto" }}>
-                    {loading ? (
-                        <div style={{ textAlign: "center", paddingTop: 60 }}><Spin /></div>
-                    ) : displayList.length === 0 ? (
-                        <Empty description={t("summary.chatSelector.noData")} style={{ paddingTop: 40 }} />
-                    ) : (
-                        displayList.map((entry) => this.renderItem(entry))
-                    )}
-                </div>
-            </Modal>
+            </div>
         );
     }
 }

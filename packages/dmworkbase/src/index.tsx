@@ -19,11 +19,32 @@ export { default as ChatPage } from "./Pages/Chat"
 export * from './Components/ChannelSetting/context'
 export * from './Service/DataSource/DataSource'
 export * from './Service/IncomingWebhook'
+export * from './Service/ForwardService'
+export * from './Service/forwardResultToast'
+export { SummaryCardContent } from './Messages/SummaryCard/SummaryCardContent'
+export * from './im-runtime/channelRuntime'
+export * from './im-runtime/currentChannelRuntime'
+export * from './im-runtime/chatRuntime'
+export * from './im-runtime/currentChatRuntime'
+export * from './im-runtime/conversationRuntime'
+export * from './im-runtime/currentConversationRuntime'
+export * from './im-runtime/messageContentRuntime'
+export * from './im-runtime/currentMessageContentRuntime'
+export * from './im-runtime/reminderRuntime'
+export * from './im-runtime/currentReminderRuntime'
+export * from './im-runtime/taskRuntime'
+export * from './im-runtime/currentTaskRuntime'
 export * from './Components/WKLayout'
 
 export * from './Components/Conversation/context'
+export { MAX_MESSAGE_LENGTH } from './Components/MessageInput/constants'
 export type { default as ConversationContext} from './Components/Conversation/context'
 export { Conversation } from './Components/Conversation'
+export type { ConversationProps } from './Components/Conversation'
+export type {
+  InitialCompose,
+  InitialComposeState,
+} from './Components/Conversation/initialCompose'
 export { default as Search } from './Components/Search'
 export { default as WKNavMainHeader } from './Components/WKNavHeader'
 export { default as WKViewQueueHeader } from './Components/WKViewQueueHeader'
@@ -76,6 +97,8 @@ export { default as WKButton } from "./Components/WKButton"
 export { default as WKInput } from "./Components/WKInput"
 export { default as WKModal } from "./Components/WKModal"
 export type { WKModalProps, WKModalSize, WKModalFooterConfig } from "./Components/WKModal"
+export { wkConfirm } from "./Components/WKModal"
+export type { WKConfirmProps } from "./Components/WKModal"
 export { default as GroupAvatarPreview } from "./Components/GroupAvatarPreview"
 export type { GroupAvatarPreviewProps } from "./Components/GroupAvatarPreview"
 export { default as GroupAvatarEditModal } from "./Components/GroupAvatarEditModal"
@@ -89,6 +112,8 @@ export { default as ActionListItem } from "./Components/ActionListItem"
 export { default as SpaceMembers } from "./Components/SpaceMembers"
 export { default as SpaceSettings } from "./Components/SpaceSettings"
 export * from "./Service/SpaceService"
+export { default as UserService } from "./Service/UserService"
+export type { UserProfile } from "./Service/UserService"
 
 export type { JoinApprovalStatus } from "./EndpointCommon"
 export { toJoinApprovalStatus } from "./EndpointCommon"
@@ -117,3 +142,8 @@ export { default as ClawHealthCheckItem } from './Components/ClawHealthCheckItem
 export type { ClawHealthCheckItemProps, HealthStatus } from './Components/ClawHealthCheckItem'
 export { default as AgentCardService } from './Service/AgentCardService'
 export type { AgentCardData, FileGroup, FileItem, FileContent, FileContentResponse } from './Service/AgentCardService'
+
+// Re-export the WuKongIM Channel primitives docs' embedded bot DM needs (plan Task 5) so the docs
+// package can construct `new Channel(botUid, ChannelTypePerson)` through the @octo/base boundary
+// without taking a direct wukongimjssdk dependency (only @octo/base imports the SDK).
+export { Channel, ChannelTypePerson } from 'wukongimjssdk'

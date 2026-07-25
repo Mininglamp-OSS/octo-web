@@ -229,6 +229,37 @@ describe("decideCardBody — 协商（第二道闸，可信 sender 前提）", (
   });
 });
 
+describe("decideCardBody — Render Profile 协商", () => {
+  const base = {
+    fromUID: "iwh_x",
+    profile: "octo/v1",
+    cardVersion: "1.5",
+    card: validCard,
+  };
+
+  it("缺 render_profile 永久走 legacy", () => {
+    const decision = decideCardBody(base);
+    expect(decision.kind).toBe("card");
+    if (decision.kind === "card") {
+      expect(decision.renderProfile).toBe("legacy");
+    }
+  });
+
+  it("octo-chat/v1 显式选择 Forge", () => {
+    const decision = decideCardBody({ ...base, renderProfile: "octo-chat/v1" });
+    expect(decision.kind).toBe("card");
+    if (decision.kind === "card") {
+      expect(decision.renderProfile).toBe("octo-chat/v1");
+    }
+  });
+
+  it("未知非空 render_profile 不回退 legacy", () => {
+    expect(
+      decideCardBody({ ...base, renderProfile: "octo-chat/v2" }).kind
+    ).toBe("hint");
+  });
+});
+
 describe("decideCardBody — card_version 1.6（对齐 SDK 上限，版本放宽但元素门禁不放松）", () => {
   const trusted = { fromUID: "iwh_x", profile: "octo/v1" as const };
 

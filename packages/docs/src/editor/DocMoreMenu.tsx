@@ -23,6 +23,11 @@ export interface DocMoreMenuItem {
 export interface DocMoreMenuProps {
   /** Resolved creator display name. The parent handles the resolution + fallback (short uid). */
   creatorName: string
+  /**
+   * Optional avatar URL for the creator (parent-resolved). Rendered as an <img>; falls back to
+   * the initial-letter chip when absent or when the image fails to load (e.g. missing user).
+   */
+  creatorAvatarUrl?: string | null
   /** Creation timestamp (RFC3339). Rendered as "Created on YYYY-MM-DD"; omitted when absent/invalid. */
   createdAt?: string
   /** Neutral action rows, rendered top-to-bottom in the given order. */
@@ -175,6 +180,22 @@ function MenuRow({ item, onSelect }: { item: DocMoreMenuItem; onSelect: () => vo
   )
 }
 
+/** Avatar cell for the ≡ menu head: <img> when URL loads, initial-letter chip otherwise (also on onError). */
+function CreatorAvatar({ name, url }: { name: string; url?: string | null }) {
+  const [failed, setFailed] = useState(false)
+  const showImg = !!url && !failed
+  if (showImg) {
+    return (
+      <img className="octo-doc-more-avatar" src={url} alt="" title={name} onError={() => setFailed(true)} />
+    )
+  }
+  return (
+    <span className="octo-doc-more-avatar" aria-hidden="true">
+      {avatarInitial(name)}
+    </span>
+  )
+}
+
 /**
  * Header "more" (≡) dropdown for the document editor. Collapses the low-frequency title-bar
  * actions (open in new page / version history / export / delete) behind a single ≡ affordance at
@@ -183,7 +204,7 @@ function MenuRow({ item, onSelect }: { item: DocMoreMenuItem; onSelect: () => vo
  * Self-contained plain-React popover (no antd, no portal): a relatively-positioned wrapper anchors
  * an absolutely-positioned panel below the trigger. Closes on outside pointer-down and on Escape.
  */
-export function DocMoreMenu({ creatorName, createdAt, items, dangerItem }: DocMoreMenuProps) {
+export function DocMoreMenu({ creatorName, creatorAvatarUrl, createdAt, items, dangerItem }: DocMoreMenuProps) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const close = () => setOpen(false)
@@ -223,9 +244,7 @@ export function DocMoreMenu({ creatorName, createdAt, items, dangerItem }: DocMo
         <div className="octo-doc-more-panel" role="menu">
           <div className="octo-doc-more-head">
             <div className="octo-doc-more-creator">
-              <span className="octo-doc-more-avatar" aria-hidden="true">
-                {avatarInitial(creatorName)}
-              </span>
+              <CreatorAvatar name={creatorName} url={creatorAvatarUrl} />
               <span className="octo-doc-more-name" title={creatorName}>
                 {creatorName}
               </span>

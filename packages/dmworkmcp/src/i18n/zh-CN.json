@@ -1,0 +1,290 @@
+{
+  "menu": {
+    "title": "工具"
+  },
+  "sidebar": {
+    "header": "市场",
+    "mcp": "MCP",
+    "skills": "Skills"
+  },
+  "common": {
+    "loadFailed": "加载失败"
+  },
+  "errors": {
+    "nameTaken": "此名称已被占用",
+    "slugTaken": "此服务标识 (slug) 在当前空间已被占用",
+    "slugInvalid": "服务标识 (slug) 只能包含小写字母、数字与连字符，且 1-64 位",
+    "forbidden": "无权操作该 MCP",
+    "notFound": "MCP 不存在或已被删除",
+    "invalidVisibility": "可见范围只能是「公开」或「仅自己」",
+    "invalidTransport": "传输方式不支持",
+    "invalidRequest": "请求参数不合法",
+    "probeUnsupported": "服务器不支持此传输方式的探测（stdio 需在桌面客户端探测）",
+    "unauthorized": "登录已过期，请重新登录",
+    "forbiddenSpace": "当前空间无权访问",
+    "internal": "服务器繁忙，请稍后重试"
+  },
+  "category": {
+    "all": "全部",
+    "dev": "开发工具",
+    "data": "数据服务",
+    "search": "搜索检索",
+    "productivity": "效率协作",
+    "ai": "AI 能力"
+  },
+  "source": {
+    "bot": "Bot 创建"
+  },
+  "list": {
+    "desc": "浏览并接入 MCP 服务，为你的智能体扩展工具能力。",
+    "create": "上架 MCP",
+    "searchPlaceholder": "搜索名称、描述...",
+    "searchClear": "清除",
+    "errorTitle": "加载 MCP 失败",
+    "retry": "重试",
+    "error": {
+      "auth": "登录已失效，请重新登录后重试",
+      "forbidden": "你没有访问 MCP 市场的权限",
+      "network": "网络连接失败，请检查网络后重试",
+      "server": "服务暂时不可用，请稍后重试",
+      "unknown": "加载失败，请稍后重试"
+    },
+    "empty": "没有匹配的 MCP 服务",
+    "loadMore": "向下滚动加载更多",
+    "reachedEnd": "已经到底了",
+    "total": "共 {{count}} 个 MCP",
+    "navLabel": "MCP 市场导航",
+    "mode": {
+      "all": "全部",
+      "mine": "我的"
+    }
+  },
+  "publishMenu": {
+    "botTitle": "Bot 上架",
+    "botHint": "复制提示词给 Agent",
+    "manualTitle": "手动上架",
+    "manualHint": "填写表单创建 MCP"
+  },
+  "botPublish": {
+    "title": "Bot 上架",
+    "hint": "复制提示词给 Agent，让它帮你完成上架",
+    "copyBtn": "复制提示词",
+    "copied": "已复制",
+    "copyFailed": "复制失败，请手动选中文本复制",
+    "copyUnavailable": "当前环境不支持自动复制，请手动选中文本复制"
+  },
+  "form": {
+    "tagLimit": "最多添加 {{count}} 个标签",
+    "tagLengthLimit": "单个标签最多 {{count}} 个字符",
+    "tagInvalidChars": "标签仅支持文字、数字、空格和 - _ . / # +"
+  },
+  "filter": {
+    "tags": "标签",
+    "searchTags": "搜索标签",
+    "noTags": "还没有可选标签",
+    "noTagsSelected": "未选择标签",
+    "tagsSelected": "已选 {{count}} 个标签",
+    "clear": "清空"
+  },
+  "card": {
+    "officialPublisher": "官方发布",
+    "matchReason": {
+      "name": "命中名称",
+      "description": "命中简介",
+      "tool": "命中工具",
+      "tag": "命中标签",
+      "category": "命中分类",
+      "usage": "命中使用示例",
+      "creator": "命中发布者",
+      "other": "命中内容"
+    },
+    "toolCount": "工具数量: {{count}} 个",
+    "editAriaLabel": "编辑 {{name}}",
+    "deleteAriaLabel": "删除 {{name}}",
+    "edit": "编辑",
+    "delete": "删除"
+  },
+  "detail": {
+    "title": "MCP 详情",
+    "updatedAt": "{{time}}更新",
+    "quickAccess": "快速接入",
+    "qsTab": {
+      "prompt": "提示词",
+      "json": "JSON"
+    },
+    "prompt": {
+      "remote": "帮我接入一个 MCP server：\n- 名称：{{serverName}}\n- 传输方式：{{transport}}\n- 地址：{{url}}{{extraHeaders}}{{auth}}\n请把它加到我的 MCP 配置里并确认连接可用。",
+      "stdio": "帮我接入一个本地（stdio）MCP server：\n- 名称：{{serverName}}\n- 启动命令：{{command}} {{args}}{{env}}\n请把它加到我的 MCP 配置里并确认连接可用。",
+      "authBearer": "\n鉴权：请求头 Authorization: Bearer {{token}}",
+      "headersLabel": "\n请求头：",
+      "envLabel": "\n环境变量："
+    },
+    "tokenHint": "配置里的 <把这里换成你的 …> 请替换成你自己的值后再使用。",
+    "copy": "复制",
+    "copied": "已复制到剪贴板",
+    "copyFailed": "复制失败",
+    "tools": "工具清单",
+    "example": "使用示例",
+    "faq": "常见问题",
+    "notes": "注意事项",
+    "edit": "编辑",
+    "delete": "删除"
+  },
+  "edit": {
+    "title": "编辑 MCP",
+    "submit": "保存修改",
+    "success": "已保存",
+    "failed": "保存失败"
+  },
+  "delete": {
+    "confirmTitle": "删除该 MCP？",
+    "confirmBody": "删除后将无法在市场中被找到，已复制的接入配置仍可使用。",
+    "ok": "删除",
+    "cancel": "取消",
+    "success": "已删除",
+    "failed": "删除失败"
+  },
+  "create": {
+    "title": "上架 MCP",
+    "sectionBasics": "基本信息",
+    "sectionBasicsDesc": "展示在市场卡片和详情页顶部",
+    "sectionConnect": "接入方式",
+    "sectionConnectDesc": "MCP 服务器如何被启动和调用",
+    "sectionTools": "工具清单",
+    "sectionToolsDesc": "接入后智能体可用的工具集",
+    "sectionExamples": "使用示例",
+    "sectionExamplesDesc": "示范用户可能怎么使用（选填）",
+    "emptyExamples": "还没有示例，点击右上角「+ 新增一条」添加",
+    "sectionFaqs": "常见问题",
+    "sectionFaqsDesc": "预置的问题与解答（选填）",
+    "emptyFaqs": "还没有常见问题，点击右上角「+ 新增一条」添加",
+    "sectionNotes": "注意事项",
+    "sectionNotesDesc": "使用前的提醒（选填）",
+    "emptyNotes": "还没有注意事项，点击右上角「+ 新增一条」添加",
+    "stepBasic": "基本信息",
+    "stepConnect": "接入配置",
+    "stepDocs": "文档",
+    "prev": "上一步",
+    "next": "下一步",
+    "advancedShow": "显示高级设置",
+    "advancedHide": "收起高级设置",
+    "tagsInputPlaceholder": "输入后按回车添加",
+    "name": "名称",
+    "namePlaceholder": "例如 GitHub MCP",
+    "nameRequired": "请填写名称",
+    "slug": "服务标识 (slug)",
+    "slugHint": "生成 mcpServers JSON 时用作 key，仅限英文小写、数字、连字符；留空自动根据名称生成",
+    "slugPlaceholder": "例如 github-mcp",
+    "urlRequired": "请填写服务地址",
+    "commandRequired": "请填写启动命令",
+    "argTooLong": "单条命令参数长度不能超过 {{max}} 个字符",
+    "headerKeyTooLong": "单个 Header 名称长度不能超过 {{max}} 个字符",
+    "headerValueTooLong": "单个 Header 值长度不能超过 {{max}} 个字符",
+    "iconUploadFailed": "图标上传失败，请稍后重试",
+    "category": "分类",
+    "transportLabel": "传输方式",
+    "transport": {
+      "stdio": "本地命令 (stdio)",
+      "streamable-http": "远程 HTTP (streamable-http)",
+      "sse": "远程 SSE (sse)"
+    },
+    "slogan": "简介",
+    "sloganPlaceholder": "一句话描述这个 MCP 能做什么",
+    "url": "服务地址",
+    "urlPlaceholder": "例如 https://mcp.example.com/xxx/mcp",
+    "command": "启动命令",
+    "commandPlaceholder": "例如 npx",
+    "args": "命令参数",
+    "argsPlaceholder": "一行一个参数\n-y\n@modelcontextprotocol/server-xxx",
+    "argsHint": "每行一个参数，行内前后空白会被自动去除；空行会被忽略",
+    "env": "环境变量",
+    "envHint": "为每个环境变量添加一行；打开开关表示由使用者本地填写。",
+    "envKeyPlaceholder": "KEY",
+    "envValuePlaceholder": "VALUE",
+    "envAdd": "添加",
+    "envRemove": "删除",
+    "headers": "请求头",
+    "headersHint": "为每个请求头添加一行；打开开关表示由使用者本地填写。",
+    "headerKeyPlaceholder": "Header 名",
+    "headerValuePlaceholder": "值",
+    "headerAdd": "添加",
+    "headerRemove": "删除",
+    "kvUserSuppliedToggle": "需要用户自行配置",
+    "sharedSecretWarning": "{{keys}} 将以明文公开发布",
+    "icon": "图标",
+    "iconEmpty": "点击上传",
+    "iconUpload": "上传图片",
+    "iconChange": "更换",
+    "iconRemove": "移除",
+    "iconTypeError": "请选择图片文件",
+    "iconSizeError": "图片不能超过 2MB",
+    "iconHint": "支持 png / jpg / gif；也可保持默认 emoji",
+    "tags": "标签",
+    "usageExamples": "使用示例",
+    "usageExampleAdd": "新增一条",
+    "usageExampleRemove": "删除",
+    "usageExamplePlaceholder": "示范用户会怎么调用这个 MCP",
+    "faqs": "常见问题",
+    "faqAdd": "新增一条",
+    "faqRemove": "删除",
+    "faqQuestion": "问题",
+    "faqQuestionPlaceholder": "用户可能会问什么",
+    "faqAnswer": "回答",
+    "faqAnswerPlaceholder": "答案",
+    "notes": "注意事项",
+    "notesAdd": "新增一条",
+    "notesRemove": "删除",
+    "notesPlaceholder": "一条注意事项",
+    "tools": "工具清单",
+    "toolAdd": "新增一条",
+    "toolRemove": "删除",
+    "toolNamePlaceholder": "工具名，例如 create_issue",
+    "toolDescPlaceholder": "简要描述这个工具能做什么",
+    "probe": "试连 / 获取工具列表",
+    "probeSuccess": "已获取 {{count}} 个工具",
+    "probeFailed": "探测失败",
+    "probeTruncated": "已将 {{count}} 个工具的描述截断为 {{max}} 字，请检查后再保存",
+    "probeError": {
+      "command_not_found": "找不到启动命令，请检查命令是否正确。",
+      "timeout": "探测超时，请稍后重试。",
+      "init_failed": "连接配置不完整，无法探测工具列表。",
+      "no_tools_capability": "该 MCP 未提供工具列表能力。"
+    },
+    "toolsEmpty": "尚未获取工具，可点击「试连 / 获取工具列表」自动探测，或手动补充。",
+    "toolsHint": "点击「试连 / 获取工具列表」，探测远端服务并同步工具清单。",
+    "modeManual": "手动填写",
+    "modeJson": "从 JSON 导入",
+    "import": {
+      "desc": "粘贴 Claude Desktop / Cursor 的 mcpServers 配置或 server.json 片段，快速填充下方表单。环境变量与 Header 的值不会导入，需在下一步手动补齐。",
+      "placeholder": "{\n  \"mcpServers\": {\n    \"github\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@modelcontextprotocol/server-github\"],\n      \"env\": { \"GITHUB_PERSONAL_ACCESS_TOKEN\": \"<YOUR_TOKEN>\" }\n    }\n  }\n}",
+      "apply": "解析并填充",
+      "applied": "已填充 {{count}} 个字段",
+      "format": "格式化",
+      "formatFailed": "无法格式化：JSON 格式不合法",
+      "warning": {
+        "multipleServers": "检测到多个 MCP 配置，仅导入第一条。",
+        "envValuesDropped": "环境变量的值已忽略，请在下一步重新填写。",
+        "headerValuesDropped": "Header 的值已忽略，请在下一步重新填写。"
+      },
+      "error": {
+        "empty": "请粘贴 JSON 内容",
+        "invalidJson": "JSON 格式不合法",
+        "notObject": "JSON 根节点必须是对象",
+        "mcpServersInvalid": "mcpServers 字段必须是对象",
+        "mcpServersEmpty": "mcpServers 为空",
+        "serverConfigInvalid": "MCP 配置结构不正确",
+        "noRecognizedFields": "未识别到 name / command / url 字段",
+        "unknownFormat": "无法识别的 JSON 结构，请检查是否为 mcpServers 或 server.json"
+      }
+    },
+    "submit": "提交",
+    "success": "创建成功",
+    "failed": "创建失败"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "daysAgo": "{{count}} 天前"
+  }
+}

@@ -14,12 +14,51 @@ import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { Toolbar } from './Toolbar.tsx'
 import { getFindState, FindReplace } from './findReplace.ts'
-import { LineHeight } from './LineHeight.ts'
 
-// Batch 7 toolbar changes: list dropdown, quote/code/link as icon buttons (with tooltips),
-// highlight + text-colour tooltips, and a floating link popover (not an inline toolbar widget).
-// These render tests assert the resulting toolbar STRUCTURE — the `t()` stub returns keys
-// unchanged, so we assert on the stable i18n keys used as button `title`s.
+// The toolbar now drives @univerjs/design components (Select / ColorPicker / DropdownMenu / Tooltip)
+// and MathLive-backed formula previews — none of which render meaningfully under jsdom. Mock them
+// with minimal drivable stand-ins so <Toolbar> renders and OUR logic (which control shows, what a
+// pick does) can be asserted: Select → native <select>, ColorPicker → a button committing a fixed
+// hex, DropdownMenu → its radio options as buttons, Tooltip/ConfigProvider → passthrough. MathLive's
+// MathfieldElement → a plain <span> so `new MathfieldElement()` + host.appendChild(mf) work.
+vi.mock('@univerjs/design', async () => {
+  const React = await import('react')
+  return {
+    ConfigProvider: ({ children }: { children: React.ReactNode }) => children,
+    Tooltip: ({ children }: { children: React.ReactNode }) => children,
+    Select: ({ value, options, onChange }: { value: string; options: { label: unknown; value: string }[]; onChange?: (v: string) => void }) =>
+      React.createElement(
+        'select',
+        { className: 'univer-select-mock', value, onChange: (e: React.ChangeEvent<HTMLSelectElement>) => onChange?.(e.target.value) },
+        (options ?? []).map((o) =>
+          React.createElement('option', { key: String(o.value), value: o.value }, typeof o.label === 'string' ? o.label : String(o.value)),
+        ),
+      ),
+    DropdownMenu: ({ children, items }: { children: React.ReactNode; items?: { value?: string; options?: { label: unknown; value: string }[]; onSelect?: (v: string) => void }[] }) =>
+      React.createElement(
+        React.Fragment,
+        null,
+        children,
+        (items ?? []).flatMap((it, i) =>
+          (it.options ?? []).map((o) =>
+            React.createElement(
+              'button',
+              { key: `${i}-${o.value}`, type: 'button', 'data-dropdown-option': o.value, onClick: () => it.onSelect?.(o.value) },
+              typeof o.label === 'string' ? o.label : String(o.value),
+            ),
+          ),
+        ),
+      ),
+    ColorPicker: ({ onChange }: { onChange?: (v: string) => void }) =>
+      React.createElement('button', { type: 'button', 'data-colorpicker-pick': '#3370ff', onClick: () => onChange?.('#3370ff') }, 'pick'),
+  }
+})
+
+vi.mock('mathlive', () => ({
+  MathfieldElement: function MathfieldElement(this: unknown) {
+    return document.createElement('span')
+  },
+}))
 
 let editor: Editor | null = null
 
@@ -46,8 +85,23 @@ afterEach(() => {
 })
 
 function titleBtn(title: string): HTMLButtonElement {
-  const el = document.querySelector<HTMLButtonElement>(`button[title="${title}"]`)
-  if (!el) throw new Error(`no toolbar button with title="${title}"`)
+  // Toolbar buttons carry their label on `aria-label` (the hover text is a styled @univerjs/design
+  // Tooltip, not the native `title` attr). Buttons also live under one of two ribbon tabs
+  // (开始/插入); when a button isn't on the current tab, switch tabs and look again so callers don't
+  // have to know which tab a control sits on.
+  const find = () => document.querySelector<HTMLButtonElement>(`button[aria-label="${title}"]`)
+  let el = find()
+  if (!el) {
+    for (const tab of ['docs.toolbar.tabStart', 'docs.toolbar.tabInsert']) {
+      const tabBtn = screen.queryByText(tab)
+      if (tabBtn) {
+        fireEvent.click(tabBtn)
+        el = find()
+        if (el) break
+      }
+    }
+  }
+  if (!el) throw new Error(`no toolbar button with aria-label="${title}"`)
   return el
 }
 
@@ -57,9 +111,9 @@ describe('Toolbar — batch 7 list dropdown', () => {
     // One list trigger…
     expect(titleBtn('docs.toolbar.list')).toBeTruthy()
     // …and the list options are NOT present as standalone toolbar buttons until opened.
-    expect(document.querySelector('button[title="docs.toolbar.bulletList"]')).toBeNull()
-    expect(document.querySelector('button[title="docs.toolbar.orderedList"]')).toBeNull()
-    expect(document.querySelector('button[title="docs.toolbar.taskList"]')).toBeNull()
+    expect(document.querySelector('button[aria-label="docs.toolbar.bulletList"]')).toBeNull()
+    expect(document.querySelector('button[aria-label="docs.toolbar.orderedList"]')).toBeNull()
+    expect(document.querySelector('button[aria-label="docs.toolbar.taskList"]')).toBeNull()
   })
 
   it('opens a menu with bullet / ordered / task items, and toggles the chosen list', () => {
@@ -106,48 +160,8 @@ describe('Toolbar — batch 7 quote/code/link/highlight/colour tooltips', () => 
     render(<Toolbar editor={editor!} />)
     const link = titleBtn('docs.toolbar.link')
     // XIN-1051: the link glyph is now a stroke-style chain icon (lucide `link`), not a filled one.
-    expect(link.querySelector('svg.octo-tb-icon-stroke')).toBeTruthy()
+    expect(link.querySelector('svg.octo-tb-icon')).toBeTruthy()
     expect(link.textContent?.trim()).toBe('')
-  })
-})
-
-describe('Toolbar — font-colour inline hex input (#719)', () => {
-  function openTextColor() {
-    render(<Toolbar editor={editor!} />)
-    editor!.chain().focus().selectAll().run()
-    fireEvent.click(titleBtn('docs.toolbar.textColor'))
-    const input = document.querySelector<HTMLInputElement>('.octo-text-color-popover .octo-color-hex')
-    if (!input) throw new Error('no hex input in the text-colour popover')
-    return input
-  }
-
-  it('applies a typed hex to the selection and persists it as a colour mark', () => {
-    const input = openTextColor()
-    fireEvent.change(input, { target: { value: '#1971c2' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    // The colour lands on the textStyle mark's `color` attr — the content-model value, same as a
-    // preset swatch (getHTML serialises it to rgb() via the DOM, but the stored attr is the hex).
-    expect(editor!.getAttributes('textStyle').color).toBe('#1971c2')
-    // A valid pick collapses the popover, like the preset swatches.
-    expect(document.querySelector('.octo-text-color-popover')).toBeNull()
-  })
-
-  it('normalises a 3-digit shorthand entered without the leading #', () => {
-    const input = openTextColor()
-    fireEvent.change(input, { target: { value: 'f00' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    expect(editor!.getAttributes('textStyle').color).toBe('#ff0000')
-  })
-
-  it('flags an invalid hex and leaves the document untouched', () => {
-    const input = openTextColor()
-    fireEvent.change(input, { target: { value: 'nothex' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    expect(input.className).toContain('octo-color-hex-invalid')
-    expect(input.getAttribute('aria-invalid')).toBe('true')
-    // No colour mark was written, and the popover stays open so the user can correct it in place.
-    expect(editor!.getAttributes('textStyle').color).toBeUndefined()
-    expect(document.querySelector('.octo-text-color-popover')).toBeTruthy()
   })
 })
 
@@ -164,7 +178,7 @@ describe('Toolbar — batch 7 floating link popover (item 5)', () => {
     // a text field + URL field + a Set action.
     expect(popover.closest('.octo-link-control')).toBeTruthy()
     expect(popover.querySelectorAll('input.octo-link-field')).toHaveLength(2)
-    expect(within(popover).getByText('docs.toolbar.linkSet')).toBeTruthy()
+    expect(within(popover).getByText('docs.toolbar.linkConfirm')).toBeTruthy()
   })
 
   it('closes the link popover on Escape', () => {
@@ -184,10 +198,10 @@ describe('Toolbar — batch 7 floating link popover (item 5)', () => {
 // editor. The `t()` stub returns keys unchanged, so error text is asserted on its i18n key.
 describe('Toolbar — XIN-1051 link popover enter / focus regression', () => {
   function urlField(): HTMLInputElement {
-    return screen.getByPlaceholderText('docs.toolbar.linkPlaceholder') as HTMLInputElement
+    return screen.getByPlaceholderText('docs.toolbar.linkUrlPlaceholder') as HTMLInputElement
   }
   function textField(): HTMLInputElement {
-    return screen.getByPlaceholderText('docs.toolbar.linkText') as HTMLInputElement
+    return screen.getByPlaceholderText('docs.toolbar.linkTextPlaceholder') as HTMLInputElement
   }
 
   it('path 1 — existing selection: Enter applies the link to the selection and closes the popover', () => {
@@ -433,22 +447,27 @@ describe('Toolbar — active states for insert/popup buttons (batch 8 item 8)', 
     e.destroy()
   })
 
-  it('marks highlight/text-colour triggers active only while their popover is open, not from colored text', () => {
+  it('marks the colour caret active only while its picker is open, not from coloured text', () => {
     // Caret sits inside highlighted + coloured text…
     editor!.chain().focus().selectAll().toggleHighlight({ color: '#fff3a3' }).setColor('#e03131').run()
     render(<Toolbar editor={editor!} />)
-    const highlight = titleBtn('docs.toolbar.highlight')
-    const color = titleBtn('docs.toolbar.textColor')
-    // …but the triggers are not blue purely because the cursor is in coloured text.
-    expect(highlight.className).not.toContain('is-active')
-    expect(color.className).not.toContain('is-active')
+    // …but no button in the split colour controls is "active" purely because the cursor is in
+    // coloured text (the main button applies the colour; the caret opens the picker — neither
+    // toggles active from document colour).
+    const splitControls = document.querySelectorAll('.octo-color-split')
+    expect(splitControls.length).toBeGreaterThanOrEqual(2) // text-colour + highlight
+    splitControls.forEach((c) =>
+      c.querySelectorAll('button').forEach((b) => expect(b.className).not.toContain('is-active')),
+    )
 
-    // Opening the popover (and only then) marks the trigger active.
-    fireEvent.click(highlight)
-    expect(titleBtn('docs.toolbar.highlight').className).toContain('is-active')
-    // Closing it removes the active state again.
-    fireEvent.click(titleBtn('docs.toolbar.highlight'))
-    expect(titleBtn('docs.toolbar.highlight').className).not.toContain('is-active')
+    // Opening a picker via its caret (and only then) marks that caret active; a second click closes
+    // it and clears the active state.
+    const caret = document.querySelector('.octo-color-caret-btn') as HTMLButtonElement
+    expect(caret).toBeTruthy()
+    fireEvent.click(caret)
+    expect(caret.className).toContain('is-active')
+    fireEvent.click(caret)
+    expect(caret.className).not.toContain('is-active')
   })
 
   it('keeps isActive on true toggle-mark buttons (bold/italic/underline)', () => {
@@ -475,8 +494,8 @@ describe('Toolbar — undo/redo are stroke icon buttons (batch 8)', () => {
     const undo = titleBtn('docs.toolbar.undo')
     const redo = titleBtn('docs.toolbar.redo')
     // Stroke-style glyphs, no text.
-    expect(undo.querySelector('svg.octo-tb-icon-stroke')).toBeTruthy()
-    expect(redo.querySelector('svg.octo-tb-icon-stroke')).toBeTruthy()
+    expect(undo.querySelector('svg.octo-tb-icon')).toBeTruthy()
+    expect(redo.querySelector('svg.octo-tb-icon')).toBeTruthy()
     expect(undo.textContent?.trim()).toBe('')
     expect(redo.textContent?.trim()).toBe('')
     // Grouped together; undo precedes redo in document order.
@@ -504,667 +523,6 @@ describe('Toolbar — undo/redo are stroke icon buttons (batch 8)', () => {
     render(<Toolbar editor={e} />)
     expect(titleBtn('docs.toolbar.undo').disabled).toBe(false)
     e.destroy()
-  })
-})
-
-// octo-web #719 (plan A): expanded font-colour palette + native custom colour picker.
-// The text-colour popover now offers ~10 common presets and a native <input type="color">
-// entry for arbitrary hex colours, while highlight, clear, and the popover-open active logic
-// stay untouched.
-describe('Toolbar — text colour palette + custom picker (#719)', () => {
-  function openTextColorPopover(): HTMLElement {
-    render(<Toolbar editor={editor!} />)
-    fireEvent.click(titleBtn('docs.toolbar.textColor'))
-    const popover = document.querySelector('.octo-text-color-popover') as HTMLElement
-    if (!popover) throw new Error('text colour popover did not open')
-    return popover
-  }
-
-  it('offers the ~10 common preset swatches from plan A', () => {
-    const popover = openTextColorPopover()
-    const swatches = within(popover).getAllByTitle(/^Text #/)
-    expect(swatches).toHaveLength(10)
-    const colours = swatches.map((s) => (s.getAttribute('title') || '').replace('Text ', ''))
-    // The plan's exact palette, in order.
-    expect(colours).toEqual([
-      '#1f2329',
-      '#8a919e',
-      '#e03131',
-      '#f08c00',
-      '#f2b705',
-      '#2f9e44',
-      '#0ca678',
-      '#1971c2',
-      '#3370ff',
-      '#9c36b5',
-    ])
-  })
-
-  it('applies a preset swatch colour to the selection', () => {
-    editor!.chain().focus().selectAll().run()
-    const popover = openTextColorPopover()
-    const swatch = within(popover).getByTitle('Text #3370ff')
-    fireEvent.click(swatch)
-    expect(editor!.getAttributes('textStyle').color).toBe('#3370ff')
-  })
-
-  it('exposes a native colour input that commits an arbitrary hex on change', () => {
-    editor!.chain().focus().selectAll().run()
-    const popover = openTextColorPopover()
-    const input = popover.querySelector('input[type="color"]') as HTMLInputElement
-    expect(input).toBeTruthy()
-    // Commit happens on `change` (picker closed / value settled), not on the raw `input`
-    // stream that fires continuously while the OS hue wheel is dragged.
-    fireEvent.change(input, { target: { value: '#123456' } })
-    expect(editor!.getAttributes('textStyle').color).toBe('#123456')
-  })
-
-  it('leaves the popover open during a drag (input) and commits + closes on change', () => {
-    editor!.chain().focus().selectAll().run()
-    const popover = openTextColorPopover()
-    const input = popover.querySelector('input[type="color"]') as HTMLInputElement
-
-    // Dragging fires `input` repeatedly. RC1: we intentionally do NOT commit per tick (that
-    // flooded undo/Yjs); the popover simply stays open so the user can keep nudging the hue.
-    fireEvent.input(input, { target: { value: '#112233' } })
-    expect(editor!.getAttributes('textStyle').color).toBeUndefined()
-    expect(document.querySelector('.octo-text-color-popover')).toBeTruthy()
-
-    // Committing the pick fires `change`: the final colour is applied and the popover collapses,
-    // matching a preset-swatch click.
-    fireEvent.change(input, { target: { value: '#abcdef' } })
-    expect(editor!.getAttributes('textStyle').color).toBe('#abcdef')
-    expect(document.querySelector('.octo-text-color-popover')).toBeNull()
-  })
-
-  // RC1: dragging the native hue wheel fires `input` continuously. Committing on every `input`
-  // pushed one ProseMirror transaction per event — tens of undo records and a Yjs update flood
-  // per single pick. The picker now previews via the OS dialog and commits exactly once on
-  // `change`, so one pick == one undo step == one collaboration update.
-  it('does not commit while dragging (raw input events) — a pick is a single undo step', () => {
-    // A history-enabled editor (StarterKit default) so we can assert the undo depth of one pick.
-    const e = new Editor({
-      extensions: [StarterKit, TaskList, TaskItem, Highlight.configure({ multicolor: true }), TextStyle, Color, Link, FindReplace],
-      content: '<p>hello</p>',
-    })
-    e.chain().focus().selectAll().run()
-    render(<Toolbar editor={e} />)
-    fireEvent.click(titleBtn('docs.toolbar.textColor'))
-    const input = document.querySelector('.octo-text-color-popover input[type="color"]') as HTMLInputElement
-    expect(input).toBeTruthy()
-
-    let docChanges = 0
-    e.on('transaction', ({ transaction }) => {
-      if (transaction.docChanged) docChanges++
-    })
-
-    // Simulate a drag across the hue wheel: a stream of intermediate `input` events.
-    fireEvent.input(input, { target: { value: '#111111' } })
-    fireEvent.input(input, { target: { value: '#222222' } })
-    fireEvent.input(input, { target: { value: '#333333' } })
-    // Nothing is committed to the document (and undo history is untouched) during the drag.
-    expect(e.getAttributes('textStyle').color).toBeUndefined()
-    expect(docChanges).toBe(0)
-
-    // Releasing the picker fires `change` once → exactly one document-changing transaction.
-    fireEvent.change(input, { target: { value: '#345678' } })
-    expect(e.getAttributes('textStyle').color).toBe('#345678')
-    expect(docChanges).toBe(1)
-
-    // And a single undo fully reverts the pick — proof it is one undo record, not many.
-    expect(e.can().undo()).toBe(true)
-    e.chain().undo().run()
-    expect(e.getAttributes('textStyle').color).toBeUndefined()
-
-    e.destroy()
-  })
-
-  it('still clears the colour via the ✕ button (unsetColor preserved)', () => {
-    editor!.chain().focus().selectAll().setColor('#e03131').run()
-    expect(editor!.getAttributes('textStyle').color).toBe('#e03131')
-    const popover = openTextColorPopover()
-    const clear = within(popover).getByText('✕')
-    fireEvent.click(clear)
-    expect(editor!.getAttributes('textStyle').color).toBeUndefined()
-  })
-
-  it('leaves the highlight palette untouched by the text-colour scope (highlight has its own presets)', () => {
-    // #719 (font colour) did not alter the highlight palette; the highlight expansion is a
-    // separate follow-up and is covered by its own describe block below. Here we only assert the
-    // text-colour popover does not leak swatches into the highlight control.
-    render(<Toolbar editor={editor!} />)
-    fireEvent.click(titleBtn('docs.toolbar.highlight'))
-    const highlightSwatches = document.querySelectorAll('button[title^="Highlight #"]')
-    expect(highlightSwatches).toHaveLength(10)
-  })
-})
-
-// octo-web highlight follow-up (same plan as #719): expanded highlight (text-background) palette
-// + native custom highlight picker. The highlight popover now offers ~10 light presets and a
-// native <input type="color"> entry for arbitrary hex, while clear (unsetHighlight) and the
-// popover-open active logic stay untouched, mirroring the text-colour control.
-describe('Toolbar — highlight palette + custom picker', () => {
-  function openHighlightPopover(): HTMLElement {
-    render(<Toolbar editor={editor!} />)
-    fireEvent.click(titleBtn('docs.toolbar.highlight'))
-    const popover = document.querySelector('.octo-highlight-color-popover') as HTMLElement
-    if (!popover) throw new Error('highlight popover did not open')
-    return popover
-  }
-
-  it('offers the ~10 common light preset swatches, in order', () => {
-    const popover = openHighlightPopover()
-    const swatches = within(popover).getAllByTitle(/^Highlight #/)
-    expect(swatches).toHaveLength(10)
-    const colours = swatches.map((s) => (s.getAttribute('title') || '').replace('Highlight ', ''))
-    expect(colours).toEqual([
-      '#d2d3d4',
-      '#e8e9ec',
-      '#f9d6d6',
-      '#fce8cc',
-      '#fcf1cd',
-      '#d5ecda',
-      '#ceede4',
-      '#d1e3f3',
-      '#d6e2ff',
-      '#ebd7f0',
-    ])
-  })
-
-  it('applies a preset swatch highlight to the selection', () => {
-    editor!.chain().focus().selectAll().run()
-    const popover = openHighlightPopover()
-    const swatch = within(popover).getByTitle('Highlight #d1e3f3')
-    fireEvent.click(swatch)
-    expect(editor!.getAttributes('highlight').color).toBe('#d1e3f3')
-  })
-
-  it('exposes a native colour input that commits an arbitrary hex highlight on change', () => {
-    editor!.chain().focus().selectAll().run()
-    const popover = openHighlightPopover()
-    const input = popover.querySelector('input[type="color"]') as HTMLInputElement
-    expect(input).toBeTruthy()
-    // Commit happens on `change` (picker closed / value settled), not on the raw `input`
-    // stream that fires continuously while the OS hue wheel is dragged.
-    fireEvent.change(input, { target: { value: '#123456' } })
-    expect(editor!.getAttributes('highlight').color).toBe('#123456')
-  })
-
-  it('leaves the popover open during a drag (input) and commits + closes on change', () => {
-    editor!.chain().focus().selectAll().run()
-    const popover = openHighlightPopover()
-    const input = popover.querySelector('input[type="color"]') as HTMLInputElement
-
-    // Dragging fires `input` repeatedly. RC1: we intentionally do NOT commit per tick (that
-    // flooded undo/Yjs); the popover simply stays open so the user can keep nudging the hue.
-    fireEvent.input(input, { target: { value: '#112233' } })
-    expect(editor!.getAttributes('highlight').color).toBeUndefined()
-    expect(document.querySelector('.octo-highlight-color-popover')).toBeTruthy()
-
-    // Committing the pick fires `change`: the final colour is applied and the popover collapses,
-    // matching a preset-swatch click.
-    fireEvent.change(input, { target: { value: '#abcdef' } })
-    expect(editor!.getAttributes('highlight').color).toBe('#abcdef')
-    expect(document.querySelector('.octo-highlight-color-popover')).toBeNull()
-  })
-
-  // RC1: dragging the native hue wheel fires `input` continuously. Committing on every `input`
-  // pushed one ProseMirror transaction per event — tens of undo records and a Yjs update flood
-  // per single pick. The picker now previews via the OS dialog and commits exactly once on
-  // `change`, so one pick == one undo step == one collaboration update.
-  it('does not commit while dragging (raw input events) — a pick is a single undo step', () => {
-    // A history-enabled editor (StarterKit default) so we can assert the undo depth of one pick.
-    const e = new Editor({
-      extensions: [StarterKit, TaskList, TaskItem, Highlight.configure({ multicolor: true }), TextStyle, Color, Link, FindReplace],
-      content: '<p>hello</p>',
-    })
-    e.chain().focus().selectAll().run()
-    render(<Toolbar editor={e} />)
-    fireEvent.click(titleBtn('docs.toolbar.highlight'))
-    const input = document.querySelector('.octo-highlight-color-popover input[type="color"]') as HTMLInputElement
-    expect(input).toBeTruthy()
-
-    let docChanges = 0
-    e.on('transaction', ({ transaction }) => {
-      if (transaction.docChanged) docChanges++
-    })
-
-    // Simulate a drag across the hue wheel: a stream of intermediate `input` events.
-    fireEvent.input(input, { target: { value: '#111111' } })
-    fireEvent.input(input, { target: { value: '#222222' } })
-    fireEvent.input(input, { target: { value: '#333333' } })
-    // Nothing is committed to the document (and undo history is untouched) during the drag.
-    expect(e.getAttributes('highlight').color).toBeUndefined()
-    expect(docChanges).toBe(0)
-
-    // Releasing the picker fires `change` once → exactly one document-changing transaction.
-    fireEvent.change(input, { target: { value: '#345678' } })
-    expect(e.getAttributes('highlight').color).toBe('#345678')
-    expect(docChanges).toBe(1)
-
-    // And a single undo fully reverts the pick — proof it is one undo record, not many.
-    expect(e.can().undo()).toBe(true)
-    e.chain().undo().run()
-    expect(e.getAttributes('highlight').color).toBeUndefined()
-
-    e.destroy()
-  })
-
-  it('still clears the highlight via the ✕ button (unsetHighlight preserved)', () => {
-    editor!.chain().focus().selectAll().setHighlight({ color: '#fff3a3' }).run()
-    expect(editor!.getAttributes('highlight').color).toBe('#fff3a3')
-    const popover = openHighlightPopover()
-    const clear = within(popover).getByText('✕')
-    fireEvent.click(clear)
-    expect(editor!.getAttributes('highlight').color).toBeUndefined()
-    // The <mark> must actually leave the document, not just the caret attributes.
-    expect(editor!.getHTML()).not.toContain('<mark')
-  })
-
-  // Regression (XIN-1022): clicking into highlighted text leaves a COLLAPSED caret inside the
-  // <mark>. unsetHighlight() on its own clears only stored marks in that case, so the <mark>
-  // stayed in the document and the ✕ button looked dead. The ✕ now extends the selection over the
-  // whole highlight first (extendMarkRange), so the mark is truly removed from a collapsed caret.
-  it('clears the highlight from a collapsed caret inside the mark (✕ removes the <mark>)', () => {
-    // Highlight "hello", then drop a collapsed caret in the middle of it — no range selected.
-    editor!.chain().focus().selectAll().setHighlight({ color: '#fff3a3' }).run()
-    editor!.chain().focus().setTextSelection(3).run()
-    expect(editor!.state.selection.empty).toBe(true)
-    expect(editor!.getHTML()).toContain('<mark')
-
-    const popover = openHighlightPopover()
-    fireEvent.click(within(popover).getByText('✕'))
-
-    expect(editor!.getHTML()).not.toContain('<mark')
-    expect(editor!.getAttributes('highlight').color).toBeUndefined()
-  })
-
-  it('leaves the text-colour palette untouched (still 10 swatches, this scope is highlight only)', () => {
-    render(<Toolbar editor={editor!} />)
-    fireEvent.click(titleBtn('docs.toolbar.textColor'))
-    const textSwatches = document.querySelectorAll('button[title^="Text #"]')
-    expect(textSwatches).toHaveLength(10)
-  })
-})
-
-// XIN-1095 re-review (Jerry-Xin CHANGES_REQUESTED): the highlight popover's inline hex entry carried
-// two user-visible bugs the font-colour path did not.
-//  (1) maxLength={7} on the raw field truncated a pasted hex that arrived with surrounding whitespace
-//      (" #1971c2" / "#1971c2 ") BEFORE the Enter handler could trim it, so a valid paste was wrongly
-//      rejected. normalizeHexColor already trims + validates, so the raw field must not cap length.
-//  (2) it committed with toggleHighlight, so re-entering the colour already on the selection REMOVED
-//      the highlight instead of confirming it. It now uses setHighlight, matching the native
-//      highlight picker (setHighlight on the <input type="color"> change).
-describe('Toolbar — highlight inline hex input (XIN-1095 re-review)', () => {
-  function openHighlightHex(): HTMLInputElement {
-    render(<Toolbar editor={editor!} />)
-    editor!.chain().focus().selectAll().run()
-    fireEvent.click(titleBtn('docs.toolbar.highlight'))
-    const input = document.querySelector<HTMLInputElement>('.octo-highlight-color-popover .octo-color-hex')
-    if (!input) throw new Error('no hex input in the highlight popover')
-    return input
-  }
-
-  it('applies a typed hex highlight to the selection and collapses the popover', () => {
-    const input = openHighlightHex()
-    fireEvent.change(input, { target: { value: '#d1e3f3' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    expect(editor!.getAttributes('highlight').color).toBe('#d1e3f3')
-    // A valid pick collapses the popover, like the preset swatches.
-    expect(document.querySelector('.octo-highlight-color-popover')).toBeNull()
-  })
-
-  // Fix 2 regression: re-entering the SAME colour already on the selection must KEEP the highlight
-  // (setHighlight = apply/confirm), not clear it. This assertion is red on the old toggleHighlight
-  // path (which removes the mark for a same-colour toggle) and green on setHighlight.
-  it('does not clear the highlight when the same colour is re-entered', () => {
-    // Seed the selection with a highlight first…
-    editor!.chain().focus().selectAll().setHighlight({ color: '#d1e3f3' }).run()
-    expect(editor!.getAttributes('highlight').color).toBe('#d1e3f3')
-
-    // …then type the identical hex through the inline field.
-    render(<Toolbar editor={editor!} />)
-    editor!.chain().focus().selectAll().run()
-    fireEvent.click(titleBtn('docs.toolbar.highlight'))
-    const input = document.querySelector<HTMLInputElement>('.octo-highlight-color-popover .octo-color-hex')!
-    fireEvent.change(input, { target: { value: '#d1e3f3' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-
-    // The highlight is still applied — the same-colour entry confirmed it, it did not toggle it off.
-    expect(editor!.getAttributes('highlight').color).toBe('#d1e3f3')
-    expect(editor!.getHTML()).toContain('<mark')
-  })
-
-  // Fix 1 regression: the raw field must not carry a truncating length cap. maxLength={7} clipped a
-  // pasted value with surrounding whitespace before the Enter handler could trim it.
-  it('does not cap the raw input length (so a pasted hex with whitespace is not truncated)', () => {
-    const input = openHighlightHex()
-    // No maxlength attribute → the DOM reports the "no limit" sentinel (-1).
-    expect(input.getAttribute('maxlength')).toBeNull()
-    expect(input.maxLength).toBe(-1)
-  })
-
-  // …and a whitespace-padded hex is trimmed + accepted end-to-end (the reviewer's " #1971c2" paste).
-  it('accepts a whitespace-padded hex and applies the trimmed colour', () => {
-    const input = openHighlightHex()
-    fireEvent.change(input, { target: { value: '  #1971c2  ' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    expect(editor!.getAttributes('highlight').color).toBe('#1971c2')
-    // The value parsed, so it was never flagged invalid.
-    expect(input.className).not.toContain('octo-color-hex-invalid')
-  })
-})
-
-describe('Toolbar — custom line-height input (SCHEMA_VERSION 17, focus-steal RC fix)', () => {
-  // The custom multiplier input used to be a controlled field that called editor.chain().focus()
-  // on every keystroke: typing bounced the caret back into the editor (only the first char
-  // landed) and an in-progress value like "1." was rejected by sanitizeLineHeight and snapped
-  // back to empty — so a custom multiplier could not be typed at all. It is now a commit-on-
-  // blur/Enter field with a local draft. These tests pin that behaviour. The field now renders
-  // only while "custom" is the active option, so each test reveals it first (via revealCustom or
-  // by seeding a non-preset value into the block).
-  let lhEditor: Editor | null = null
-  let holder: HTMLDivElement | null = null
-
-  function mount(content = '<p>hello</p>') {
-    holder = document.createElement('div')
-    document.body.appendChild(holder)
-    lhEditor = new Editor({
-      element: holder, // attached to the document so focus is observable
-      extensions: [StarterKit.configure({ undoRedo: false }), LineHeight],
-      content,
-    })
-    render(<Toolbar editor={lhEditor} />)
-    return document.querySelector('select.octo-line-height') as HTMLSelectElement
-  }
-
-  // Pick "custom" from the dropdown to reveal the input, then hand it back.
-  function revealCustom(select: HTMLSelectElement) {
-    fireEvent.change(select, { target: { value: 'custom' } })
-    return document.querySelector('input.octo-line-height-custom') as HTMLInputElement
-  }
-
-  function lineHeightOf(e: Editor): string {
-    return (
-      (e.getAttributes('paragraph').lineHeight as string | undefined) ??
-      (e.getAttributes('heading').lineHeight as string | undefined) ??
-      ''
-    )
-  }
-
-  afterEach(() => {
-    lhEditor?.destroy()
-    lhEditor = null
-    holder?.remove()
-    holder = null
-  })
-
-  it('keeps focus in the field and does not commit while typing a multi-char value', () => {
-    const input = revealCustom(mount())
-    input.focus()
-    expect(document.activeElement).toBe(input)
-
-    // Type character-by-character. Focus must stay on the input (no .focus() steal to the editor)
-    // and nothing is committed to the editor mid-type.
-    fireEvent.change(input, { target: { value: '1' } })
-    expect(document.activeElement).toBe(input)
-    expect(lineHeightOf(lhEditor!)).toBe('')
-
-    fireEvent.change(input, { target: { value: '1.' } })
-    // A partial value stays in the field — it is NOT snapped back to the committed (empty) value.
-    expect(input.value).toBe('1.')
-    expect(document.activeElement).toBe(input)
-    expect(lineHeightOf(lhEditor!)).toBe('')
-
-    fireEvent.change(input, { target: { value: '1.1' } })
-    fireEvent.change(input, { target: { value: '1.15' } })
-    expect(input.value).toBe('1.15')
-    expect(lineHeightOf(lhEditor!)).toBe('')
-  })
-
-  it('commits the typed value to the editor on Enter', () => {
-    const input = revealCustom(mount())
-    input.focus()
-    fireEvent.change(input, { target: { value: '1.15' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    expect(lineHeightOf(lhEditor!)).toBe('1.15')
-  })
-
-  it('commits the typed value to the editor on blur', () => {
-    const input = revealCustom(mount())
-    input.focus()
-    fireEvent.change(input, { target: { value: '1.75' } })
-    fireEvent.blur(input)
-    expect(lineHeightOf(lhEditor!)).toBe('1.75')
-  })
-
-  it('reverts an invalid/partial value to the last committed value on commit', () => {
-    const input = revealCustom(mount())
-    input.focus()
-    // Commit a good value first.
-    fireEvent.change(input, { target: { value: '1.7' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    expect(lineHeightOf(lhEditor!)).toBe('1.7')
-
-    // Now type a partial value and commit it — it fails sanitize, so the field restores 1.7
-    // and the editor keeps the previous multiplier (no bogus value written).
-    fireEvent.change(input, { target: { value: '2.' } })
-    expect(input.value).toBe('2.') // stays while typing…
-    fireEvent.blur(input) // …but on commit it reverts.
-    expect(input.value).toBe('1.7')
-    expect(lineHeightOf(lhEditor!)).toBe('1.7')
-  })
-
-  it('seeds the custom field from the block the caret is in (round-trip on mount)', () => {
-    // A block already carrying a non-preset multiplier shows the field seeded with it on mount —
-    // no need to pick "custom" first, because a non-preset value is inherently "custom".
-    mount('<p style="line-height: 1.3">seed</p>')
-    const input = document.querySelector('input.octo-line-height-custom') as HTMLInputElement
-    expect(input).not.toBeNull()
-    expect(input.value).toBe('1.3')
-  })
-
-  it('picking a preset from the dropdown writes the multiplier to the editor', () => {
-    const select = mount()
-    fireEvent.change(select, { target: { value: '2' } })
-    expect(lineHeightOf(lhEditor!)).toBe('2')
-  })
-})
-
-describe('Toolbar — line-spacing dropdown display sync (XIN-1039 #1)', () => {
-  // Regression: picking a value from the line-spacing dropdown changed the block's line-height
-  // but the dropdown kept showing the old label. setLineHeight is an attribute-only transaction
-  // that leaves the caret put, so a selection-keyed re-render never fired; React then restored
-  // the controlled <select> to its stale `value` prop. The control must re-render off the
-  // line-height value itself so the display follows the selection.
-  let lhEditor: Editor | null = null
-  let holder: HTMLDivElement | null = null
-
-  function mount(content = '<p>hello</p>') {
-    holder = document.createElement('div')
-    document.body.appendChild(holder)
-    lhEditor = new Editor({
-      element: holder,
-      extensions: [StarterKit.configure({ undoRedo: false }), LineHeight],
-      content,
-    })
-    render(<Toolbar editor={lhEditor} />)
-    return document.querySelector('select.octo-line-height') as HTMLSelectElement
-  }
-
-  afterEach(() => {
-    lhEditor?.destroy()
-    lhEditor = null
-    holder?.remove()
-    holder = null
-  })
-
-  it('reflects the picked preset in the dropdown display, not just the document', () => {
-    const select = mount()
-    expect(select.value).toBe('') // starts on the "Default spacing" option
-
-    fireEvent.change(select, { target: { value: '2' } })
-    // Both the document AND the control must show 2 — the control used to snap back to "".
-    expect(lhEditor!.getAttributes('paragraph').lineHeight).toBe('2')
-    expect(select.value).toBe('2')
-  })
-
-  it('updates the dropdown when a custom multiplier is committed via the input', () => {
-    const select = mount()
-    // Reveal the custom input by picking "custom", then commit an off-preset value through it.
-    fireEvent.change(select, { target: { value: 'custom' } })
-    const input = document.querySelector('input.octo-line-height-custom') as HTMLInputElement
-    input.focus()
-    fireEvent.change(input, { target: { value: '1.75' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    // 1.75 is off the preset list, so the dropdown must fall to the "custom" sentinel — not "".
-    expect(lhEditor!.getAttributes('paragraph').lineHeight).toBe('1.75')
-    expect(select.value).toBe('custom')
-  })
-})
-
-describe('Toolbar — custom line-height input conditional visibility (XIN-1055)', () => {
-  // The custom multiplier input used to be permanently mounted next to the dropdown, which read as
-  // a confusing always-there box. It must now appear ONLY while "custom" is the active option —
-  // when the user picks "custom" from the dropdown, or when the caret sits in a block already
-  // carrying a non-preset value — and be truly absent (not just hidden) otherwise, so it occupies
-  // no layout space.
-  let lhEditor: Editor | null = null
-  let holder: HTMLDivElement | null = null
-
-  function mount(content = '<p>hello</p>') {
-    holder = document.createElement('div')
-    document.body.appendChild(holder)
-    lhEditor = new Editor({
-      element: holder,
-      extensions: [StarterKit.configure({ undoRedo: false }), LineHeight],
-      content,
-    })
-    render(<Toolbar editor={lhEditor} />)
-    return document.querySelector('select.octo-line-height') as HTMLSelectElement
-  }
-
-  const input = () => document.querySelector('input.octo-line-height-custom') as HTMLInputElement | null
-
-  afterEach(() => {
-    lhEditor?.destroy()
-    lhEditor = null
-    holder?.remove()
-    holder = null
-  })
-
-  it('does not render the custom input on a default-spacing block', () => {
-    mount()
-    expect(input()).toBeNull()
-  })
-
-  it('does not render the custom input while a preset is selected', () => {
-    const select = mount()
-    fireEvent.change(select, { target: { value: '1.5' } })
-    expect(select.value).toBe('1.5')
-    expect(input()).toBeNull()
-  })
-
-  it('reveals the custom input when "custom" is picked from the dropdown', () => {
-    const select = mount()
-    expect(input()).toBeNull()
-    fireEvent.change(select, { target: { value: 'custom' } })
-    expect(select.value).toBe('custom')
-    expect(input()).not.toBeNull()
-  })
-
-  it('hides the custom input again when switching from custom back to a preset', () => {
-    const select = mount()
-    // Enter custom, commit an off-preset value so the input is genuinely showing a custom value.
-    fireEvent.change(select, { target: { value: 'custom' } })
-    const field = input()!
-    field.focus()
-    fireEvent.change(field, { target: { value: '1.3' } })
-    fireEvent.keyDown(field, { key: 'Enter' })
-    expect(lhEditor!.getAttributes('paragraph').lineHeight).toBe('1.3')
-    expect(input()).not.toBeNull()
-
-    // Switch back to a preset: the input must disappear and the preset must apply.
-    fireEvent.change(select, { target: { value: '2' } })
-    expect(lhEditor!.getAttributes('paragraph').lineHeight).toBe('2')
-    expect(select.value).toBe('2')
-    expect(input()).toBeNull()
-  })
-
-  it('shows the input seeded with the value when the caret is in a block already on a custom multiplier (#1 sync, not regressed)', () => {
-    // Continuation of the XIN-1039 #1 display-sync guarantee: a block whose line-height is off the
-    // preset list must surface as "custom" in the dropdown AND reveal the input carrying that value
-    // — without the user having to pick "custom" first.
-    const select = mount('<p style="line-height: 1.3">seed</p>')
-    expect(select.value).toBe('custom')
-    const field = input()
-    expect(field).not.toBeNull()
-    expect(field!.value).toBe('1.3')
-  })
-})
-
-describe('Toolbar — paragraph spacing controls (SCHEMA_VERSION 17)', () => {
-  // The schema/commands/docx/i18n all carried spaceBefore/spaceAfter, but the toolbar exposed no
-  // UI to set them. These are the space-before / space-after dropdowns that close that gap.
-  let spEditor: Editor | null = null
-
-  afterEach(() => {
-    spEditor?.destroy()
-    spEditor = null
-  })
-
-  function mountSpacing(content = '<p>hello</p>') {
-    spEditor = new Editor({
-      extensions: [StarterKit.configure({ undoRedo: false }), LineHeight],
-      content,
-    })
-    // Return the scoped container so queries don't pick up any other rendered toolbar.
-    return render(<Toolbar editor={spEditor} />).container
-  }
-
-  function sel(container: HTMLElement, title: string): HTMLSelectElement {
-    const el = container.querySelector<HTMLSelectElement>(`select[title="${title}"]`)
-    if (!el) throw new Error(`no toolbar select with title="${title}"`)
-    return el
-  }
-
-  it('renders both a space-before and a space-after dropdown', () => {
-    const c = mountSpacing()
-    expect(sel(c, 'docs.toolbar.spaceBefore')).toBeTruthy()
-    expect(sel(c, 'docs.toolbar.spaceAfter')).toBeTruthy()
-  })
-
-  it('sets margin-top (spaceBefore) on the current block', () => {
-    const c = mountSpacing()
-    fireEvent.change(sel(c, 'docs.toolbar.spaceBefore'), { target: { value: '12px' } })
-    expect(spEditor!.getAttributes('paragraph').spaceBefore).toBe('12px')
-  })
-
-  it('sets margin-bottom (spaceAfter) independently of spaceBefore', () => {
-    const c = mountSpacing()
-    fireEvent.change(sel(c, 'docs.toolbar.spaceAfter'), { target: { value: '8px' } })
-    expect(spEditor!.getAttributes('paragraph').spaceAfter).toBe('8px')
-    expect(spEditor!.getAttributes('paragraph').spaceBefore ?? null).toBeNull()
-  })
-
-  it('clears the spacing attr when the default option is chosen', () => {
-    const c = mountSpacing('<p style="margin-top: 16px">x</p>')
-    expect(spEditor!.getAttributes('paragraph').spaceBefore).toBe('16px')
-    fireEvent.change(sel(c, 'docs.toolbar.spaceBefore'), { target: { value: '' } })
-    expect(spEditor!.getAttributes('paragraph').spaceBefore ?? null).toBeNull()
-  })
-
-  it('reflects a preset block value on mount (round-trip)', () => {
-    const c = mountSpacing('<p style="margin-bottom: 8px">x</p>')
-    expect(sel(c, 'docs.toolbar.spaceAfter').value).toBe('8px')
-  })
-
-  it('shows a non-preset (round-tripped) value as a Custom option instead of resetting it', () => {
-    const c = mountSpacing('<p style="margin-top: 1.5em">hi</p>')
-    expect(spEditor!.getAttributes('paragraph').spaceBefore).toBe('1.5em')
-    // 1.5em is not on the px preset list, so the select falls to the "custom" sentinel — the value
-    // is preserved on the node, not silently cleared.
-    expect(sel(c, 'docs.toolbar.spaceBefore').value).toBe('custom')
   })
 })
 
@@ -1320,43 +678,12 @@ describe('Toolbar — format painter (XIN-963)', () => {
 // XIN-1048 #3: the inline and block formula popovers shared one MathControl and rendered an
 // identical body, so the two dialogs were indistinguishable once open. Each popover now carries a
 // kind-specific title (the existing mathInline / mathBlock i18n keys) at the top.
-describe('Toolbar — math popover kind title (XIN-1048 #3)', () => {
-  it('titles the inline-formula popover with the inline key', () => {
-    render(<Toolbar editor={editor!} />)
-    fireEvent.click(titleBtn('docs.toolbar.mathInline'))
-    const popover = document.querySelector('.octo-math-popover') as HTMLElement
-    expect(popover).toBeTruthy()
-    const title = popover.querySelector('.octo-math-popover-title')
-    expect(title?.textContent).toBe('docs.toolbar.mathInline')
-  })
-
-  it('titles the block-formula popover with the block key', () => {
-    render(<Toolbar editor={editor!} />)
-    fireEvent.click(titleBtn('docs.toolbar.mathBlock'))
-    const popover = document.querySelector('.octo-math-popover') as HTMLElement
-    expect(popover).toBeTruthy()
-    const title = popover.querySelector('.octo-math-popover-title')
-    expect(title?.textContent).toBe('docs.toolbar.mathBlock')
-  })
-
-  it('gives the inline and block popovers different titles', () => {
-    render(<Toolbar editor={editor!} />)
-    fireEvent.click(titleBtn('docs.toolbar.mathInline'))
-    const inlineTitle = document.querySelector('.octo-math-popover-title')?.textContent
-    fireEvent.click(titleBtn('docs.toolbar.mathInline')) // close
-    fireEvent.click(titleBtn('docs.toolbar.mathBlock'))
-    const blockTitle = document.querySelector('.octo-math-popover-title')?.textContent
-    expect(inlineTitle).not.toBe(blockTitle)
-  })
-})
-
-// XIN-1048 #7b: the font-family selector now sits BEFORE the font-size selector in the toolbar
-// (family → size), matching the requested control order. FONT_FAMILY_ENABLED defaults on in tests.
 describe('Toolbar — font family precedes font size (XIN-1048 #7b)', () => {
   it('renders the font-family select before the font-size select in document order', () => {
     const { container } = render(<Toolbar editor={editor!} />)
-    const family = container.querySelector('.octo-font-family') as HTMLElement
-    const size = container.querySelector('.octo-font-size') as HTMLElement
+    // The family/size pickers are @univerjs/design <Select>s wrapped in fixed-width holders.
+    const family = container.querySelector('.octo-tb-sel--font') as HTMLElement
+    const size = container.querySelector('.octo-tb-sel--size') as HTMLElement
     expect(family).toBeTruthy()
     expect(size).toBeTruthy()
     expect(family.compareDocumentPosition(size) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

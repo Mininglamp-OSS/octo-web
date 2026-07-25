@@ -12,11 +12,11 @@ function octoDocHeaders(base: Record<string, string>): Record<string, string> {
   return tok ? { ...base, token: tok } : base
 }
 
-/** DELETE <base>/docs-admin/{slug} — remove the published doc (nginx rewrites to the doc's
- * /v1/docs/{slug} and attaches the octo token; the bare /v1/ path is proxied to octo-server,
- * which has no doc delete endpoint). Throws on a non-ok response. */
+/** DELETE <base>/v1/docs/{slug} — remove the published doc (nginx strips the /docs-html prefix
+ * and forwards to octo-doc's /v1/docs/{slug}, attaching the octo token). Throws on a non-ok
+ * response. */
 export async function deleteDoc(slug: string): Promise<void> {
-  const url = `${resolveOctoDocBase()}/docs-admin/${encodeURIComponent(slug)}`
+  const url = `${resolveOctoDocBase()}/v1/docs/${encodeURIComponent(slug)}`
   const res = await fetch(url, {
     method: 'DELETE',
     credentials: 'include',

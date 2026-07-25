@@ -20,6 +20,8 @@ import {
 } from "wukongimjssdk";
 import React, { Component, HTMLProps } from "react";
 import { isConversationDisbanded } from "../../Utils/groupDisband";
+import { ForwardService, ForwardOptions, ForwardResult } from "../../Service/ForwardService";
+import { interpretForwardResult, ForwardToastScope } from "../../Service/forwardResultToast";
 
 import Provider from "../../Service/Provider";
 import ConversationVM from "./vm";
@@ -29,6 +31,13 @@ import MarkdownContent from "../../Messages/Text/MarkdownContent";
 import { MessageWrap, Part, PartType } from "../../Service/Model";
 import WKApp from "../../App";
 import { RevokeCell } from "../../Messages/Revoke";
+import {
+  MAX_REEDIT_FILE_BYTES,
+  canReeditRevokedMessage,
+  getReeditableMessageBlocks,
+  remoteReeditFileToFile,
+  restoreReeditableMessageBlocks,
+} from "../../Messages/Revoke/reeditableMessage";
 import {
   MessageContentTypeConst,
   ChannelTypeCommunityTopic,
@@ -45,6 +54,12 @@ import MessageInput, {
   EditorContentBlock,
 } from "../MessageInput";
 import { SendResultDetail } from "../MessageInput/sendFlow";
+import {
+  tryConsumeInitialCompose,
+  type ComposeHost,
+  type InitialCompose,
+  type InitialComposeState,
+} from "./initialCompose";
 import { BotCommand } from "../SlashCommandMenu";
 import ContextMenus, { ContextMenusContext } from "../ContextMenus";
 import classNames from "classnames";
@@ -83,6 +98,7 @@ import {
 } from "../../Messages/RichText/RichTextContent";
 import { formatMessageTimestamp } from "../../Utils/time";
 import { isSafeUrl } from "../../Utils/security";
+import { imageBlockToPasteFile } from "../MessageInput/richTextPaste";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -103,9 +119,11 @@ import {
 } from "../../Service/UploadCredentials";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
+import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
+  finishRichTextMixedSend,
   isImageFileForRichTextMixed,
 } from "./richTextMixedSend";
 import {
@@ -118,6 +136,26 @@ import {
   classifyCardSender,
   isTrustedCardSender,
 } from "../../Messages/InteractiveCard/senderTrust";
+import {
+  addImChannelInfoListener,
+  fetchImChannelInfo,
+  getImChannelInfo,
+  getImChannelSubscribers,
+} from "../../im-runtime/channelRuntime";
+import {
+  SummaryCardContent,
+  SummaryCardForwardBlockedError,
+} from "../../Messages/SummaryCard/SummaryCardContent";
+
+function forwardBlockedMessageKey(error: unknown): string | null {
+  if (error instanceof InteractiveCardForwardBlockedError) {
+    return "base.conversation.forward.interactiveCardBlocked";
+  }
+  if (error instanceof SummaryCardForwardBlockedError) {
+    return "base.conversation.forward.cardBlocked";
+  }
+  return null;
+}
 
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
@@ -145,6 +183,9 @@ function getEffectiveContent(message: Message): MessageContent {
         trustedForwardSource
       );
     }
+  }
+  if (content instanceof SummaryCardContent && content.shareId) {
+    throw new SummaryCardForwardBlockedError();
   }
   return content;
 }
@@ -292,7 +333,7 @@ function offsetMentionEntities(
  * WuKongIM SDK 的 Message 只带 fromUID, 不带 fromName; name 必须前端自己解析。
  * 参考 useMessageRow.ts + Messages/Base/index.tsx 的群成员名字解析路径:
  *
- *   1. 群消息: 从 channelManager.getSubscribes(groupChannel) 拉群成员列表,
+ *   1. 群消息: 从 channel runtime 拉群成员列表,
  *      按 uid 匹配后用 subscriberDisplayName (real_name(verified) > remark > name)
  *      — 群内用户大概率没开过 1v1, Person channelInfo 缓存常 miss,
  *      群成员列表缓存命中率高得多, 是主路径
@@ -310,7 +351,7 @@ function resolveFromUName(m: Message | undefined | null): string {
   try {
     const ch = m.channel;
     if (ch && ch.channelType === ChannelTypeGroup) {
-      const subs = WKSDK.shared().channelManager.getSubscribes(ch) as
+      const subs = getImChannelSubscribers(WKSDK.shared(), ch) as
         | {
             uid?: string;
             name?: string;
@@ -331,7 +372,8 @@ function resolveFromUName(m: Message | undefined | null): string {
 
   // 2. Person channelInfo 兜底
   try {
-    const info = WKSDK.shared().channelManager.getChannelInfo(
+    const info = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(fromUID, ChannelTypePerson)
     );
     if (info?.title) return info.title;
@@ -372,6 +414,7 @@ export interface ConversationProps {
   initLocateMessageSeq?: number;
   onContext?: (ctx: ConversationContext) => void;
   onOpenThreadPanel?: (threadChannelId: string, threadName: string) => void;
+  onOpenWebhookPreview?: (target: WebhookIssuePreviewTarget) => void;
   onSelectionStateChange?: (state: {
     editOn: boolean;
     checkedCount: number;
@@ -380,6 +423,17 @@ export interface ConversationProps {
   inputNotice?: React.ReactNode;
   /** 当前会话发送完成后的回调。 */
   onMessageSent?: () => void;
+  /**
+   * 一次性初始编排（plan Task 4）：挂载/就绪后按 restoreDraft → addPendingAttachments → send
+   * 顺序装入并可自动发送恰好一次。同一 requestId 只消费一次；已有草稿/待发送附件则拒绝覆盖。
+   */
+  initialCompose?: InitialCompose;
+  /** 初始编排状态变化回调（prepared/sent/failed）。 */
+  onInitialComposeStateChange?: (
+    requestId: string,
+    state: InitialComposeState,
+    reason?: string
+  ) => void;
   /** 当前正在预览的文件消息 ID（用于文件卡片激活态） */
   activePreviewMessageId?: string | null;
 }
@@ -433,16 +487,23 @@ export class Conversation
   private _guardId: symbol = Symbol("pendingAttachmentGuard");
   // 监听 channelInfo 变化：群解散时 status 翻转为 2，需重渲染以隐藏成员栏/置灰发送框
   private _channelInfoListener?: (channelInfo: ChannelInfo) => void;
+  private _unsubscribeChannelInfoListener?: () => void;
   private draftSaveGeneration = 0;
   private latestSavedDraft = "";
   private _addAttachmentFn?: (
     files: File[],
     source?: "paste" | "upload"
-  ) => void;
+  ) => void | Promise<void>;
+  // plan Task 4: instance-level one-shot guard so a re-render / remount / prop re-pass of the
+  // SAME requestId never re-loads or re-sends the initial compose (§5 risk 1).
+  private _consumedComposeIds: Set<string> = new Set();
+  private _initialComposeGeneration = 0;
+  private _initialComposeMounted = false;
   private onOpenThreadPanel?: (
     threadChannelId: string,
     threadName: string
   ) => void;
+  private onOpenWebhookPreview?: (target: WebhookIssuePreviewTarget) => void;
 
   constructor(props: any) {
     super(props);
@@ -451,6 +512,7 @@ export class Conversation
       contextMenuMessageID: null as string | null,
     };
     this.onOpenThreadPanel = props.onOpenThreadPanel;
+    this.onOpenWebhookPreview = props.onOpenWebhookPreview;
     this._beforeUnloadHandler = () => {
       // Use sendBeacon for reliable delivery during page unload
       if (this.vm && this.vm.needSetUnread) {
@@ -493,83 +555,67 @@ export class Conversation
   }
 
   // 统一上报转发结果。区分「全部失败」与「部分失败（带计数）」，全部成功不提示。
-  private showForwardResult(failed: number, total: number): void {
-    if (failed <= 0) {
+  // scope 决定分母维度：'targets' 对齐 fowardMessageUI / onMergeForward 的历史语义
+  // （分母 = 目标 channel 数）；'messages' 对齐 onForward 多选（分母 = messages × channels）。
+  private showForwardResult(
+    result: ForwardResult,
+    scope: ForwardToastScope,
+  ): void {
+    const state = interpretForwardResult(result, scope);
+    if (state.kind === "success") return;
+    if (state.kind === "all-failed") {
+      Toast.error(t("base.conversation.forward.allFailed"));
       return;
     }
-    if (failed >= total) {
-      Toast.error(t("base.conversation.forward.allFailed"));
-    } else {
-      Toast.error(
-        t("base.conversation.forward.partialFailed", {
-          values: { failed, total },
-        }),
-      );
-    }
+    Toast.error(
+      t("base.conversation.forward.partialFailed", {
+        values: { failed: state.failed, total: state.total },
+      }),
+    );
+  }
+
+  // 转发到当前会话时，需要保留本地"发送中"气泡（vm.fillOrder + addSendMessageToQueue）。
+  // 转发到其他会话时不入本地 sendQueue —— 静态 sendQueue 只服务当前会话的乐观 UI，
+  // 塞入非当前会话消息属历史噪声（老 vm.sendMessage 无条件入队，遗留至今）。本次
+  // ForwardService 重构一并修正。
+  private buildForwardOptions(overrides?: Partial<ForwardOptions>): ForwardOptions {
+    return {
+      spaceId: WKApp.shared.currentSpaceId,
+      onSent: (message, channel) => {
+        if (channel.isEqual(this.props.channel)) {
+          const wrap = new MessageWrap(message);
+          this.vm.fillOrder(wrap);
+          this.vm.addSendMessageToQueue(wrap);
+        }
+      },
+      ...overrides,
+    };
   }
 
   fowardMessageUI(message: Message): void {
     WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
-      // getEffectiveContent 放在最外层 try：它同步抛错也不会逃逸成 unhandled
-      // rejection（此回调是 async）。
       try {
-        const cloneContent = getEffectiveContent(message);
-        // 并发投递，单目标失败不影响其余（目标上限已放宽到 30，串行会线性放大耗时）。
-        // 用 Promise.all + 每个任务 .catch 兜底（语义等价 Promise.allSettled，但本
-        // 包 tsconfig target=es2019 没有 allSettled 类型，手写更稳）。
-        //
-        // 加固边界（#273）：此处捕获的是「内容构造 / 编码 / 同步 send 调用」异常；
-        // WKSDK.chatManager.send() 是本地乐观语义——packet 入队后立即 resolve，真正
-        // 的投递失败在 ack 阶段异步回调（notifyMessageStatusListeners），不会在这里
-        // 被 catch 到。hook ack 超出本次修复范围。
-        const failed = await this.forwardToChannels(
+        // buildContent 每 channel 调一次；InteractiveCardForwardBlockedError 从
+        // getEffectiveContent 抛出会被 ForwardService Phase 1 abort 上抛到此处。
+        const result = await ForwardService.send(
           channels,
-          () => cloneContent,
+          () => getEffectiveContent(message),
+          this.buildForwardOptions(),
         );
-        this.showForwardResult(failed, channels.length);
+        this.showForwardResult(result, "targets");
       } catch (e) {
         console.error("[forward] build content failed", e);
-        Toast.error(
-          e instanceof InteractiveCardForwardBlockedError
-            ? t("base.conversation.forward.interactiveCardBlocked")
-            : t("base.conversation.forward.allFailed")
-        );
+        const blockedMessageKey = forwardBlockedMessageKey(e);
+        Toast.error(t(blockedMessageKey ?? "base.conversation.forward.allFailed"));
       }
     });
   }
 
-  // 把同一 content 并发转发到多个目标，返回失败目标数。getContent 每个目标调用
-  // 一次（merge / 多消息场景按需返回不同 content）。单目标失败被隔离、计数，不影响
-  // 其余目标。见 fowardMessageUI 处关于 send() 乐观语义与捕获边界的说明。
-  private async forwardToChannels(
-    channels: Channel[],
-    getContent: (channel: Channel) => MessageContent,
-  ): Promise<number> {
-    type SendOutcome = { ok: true } | { ok: false; channelID: string; reason: unknown };
-    const outcomes = await Promise.all(
-      channels.map((channel): Promise<SendOutcome> =>
-        this.sendMessage(getContent(channel), channel)
-          .then((): SendOutcome => ({ ok: true }))
-          .catch(
-            (reason: unknown): SendOutcome => ({
-              ok: false,
-              channelID: channel.channelID,
-              reason,
-            }),
-          ),
-      ),
-    );
-    let failed = 0;
-    for (const o of outcomes) {
-      if (!o.ok) {
-        failed++;
-        console.error("[forward] send failed", o.channelID, o.reason);
-      }
-    }
-    return failed;
-  }
   openThreadPanel(threadChannelId: string, threadName: string): void {
     this.onOpenThreadPanel?.(threadChannelId, threadName);
+  }
+  openWebhookPreview(target: WebhookIssuePreviewTarget): void {
+    this.onOpenWebhookPreview?.(target);
   }
   getActivePreviewMessageId(): string | null {
     return this.props.activePreviewMessageId ?? null;
@@ -588,7 +634,8 @@ export class Conversation
     ) {
       return;
     }
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+    const channelInfo = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(fromUID, ChannelTypePerson)
     );
     this._messageInputContext?.addMention(fromUID, channelInfo?.title || "");
@@ -645,6 +692,66 @@ export class Conversation
       message.channel
     );
     return newMessage;
+  }
+
+  async reeditRevokedMessage(message: MessageWrap): Promise<void> {
+    if (!canReeditRevokedMessage(message, WKApp.loginInfo.uid)) return;
+    const input = this.messageInputContext();
+    if (!input) return;
+
+    await restoreReeditableMessageBlocks(
+      getReeditableMessageBlocks(message),
+      {
+        restoreBlock: async (block) => {
+          if (block.type === "content") {
+            input.insertContent(block.content);
+            return;
+          }
+          if (block.type === "image") {
+            const file = await imageBlockToPasteFile(
+              block,
+              WKApp.dataSource.commonDataSource.getImageURL.bind(
+                WKApp.dataSource.commonDataSource
+              )
+            );
+            if (!file) {
+              input.insertContent([
+                { type: "text", text: RichTextImagePlaceholder },
+              ]);
+              Toast.error(t("base.revoke.reeditAttachmentFailed"));
+              return;
+            }
+            await input.addAttachment([file], "paste");
+            return;
+          }
+
+          const fileUrl = resolveSafeFileUrl(block);
+          const file = fileUrl
+            ? await remoteReeditFileToFile({ ...block, url: fileUrl })
+            : null;
+          if (!file) {
+            Toast.error(
+              t("base.revoke.reeditFileFailed", {
+                values: {
+                  name: block.name,
+                  max: formatFileSize(MAX_REEDIT_FILE_BYTES),
+                },
+              })
+            );
+            return;
+          }
+          await input.addAttachment([file], "upload");
+        },
+        onBlockError: (block, error) => {
+          console.error(
+            `[revoke] failed to restore ${block.type} block`,
+            error
+          );
+          Toast.error(t("base.revoke.reeditBlockFailed"));
+        },
+        onComplete: () => input.focus(),
+      }
+    );
   }
 
   /**
@@ -1142,7 +1249,10 @@ export class Conversation
   showUser(uid: string) {
     let fromChannel: Channel | undefined;
     let vercode: string | undefined;
-    if (this.vm.channel.channelType === ChannelTypeGroup) {
+    if (
+      this.vm.channel.channelType === ChannelTypeGroup ||
+      this.vm.channel.channelType === ChannelTypeCommunityTopic
+    ) {
       fromChannel = this.vm.channel;
       const subscriber = this.vm.subscriberWithUID(uid);
       if (subscriber?.orgData?.vercode) {
@@ -1178,10 +1288,10 @@ export class Conversation
     return this._messageInputContext?.getAttachmentFiles() || [];
   }
 
-  addPendingAttachments(
+  async addPendingAttachments(
     files: File[],
     source: "paste" | "upload" = "upload"
-  ): string | null {
+  ): Promise<string | null> {
     const BLOCKED_EXTENSIONS = [
       "exe",
       "bat",
@@ -1235,7 +1345,7 @@ export class Conversation
 
     // 调用编辑器的 addAttachment 方法插入附件节点
     if (this._addAttachmentFn) {
-      this._addAttachmentFn(incoming, source);
+      await this._addAttachmentFn(incoming, source);
     }
     return null;
   }
@@ -1248,6 +1358,47 @@ export class Conversation
   clearPendingAttachments(): void {
     // 附件现在由编辑器管理，清空编辑器内容时会自动清除
     // 此方法保留以兼容接口
+  }
+
+  /**
+   * 尝试消费一次性 initialCompose（plan Task 4）。
+   *
+   * 在 MessageInput 就绪（onContext 设好 _messageInputContext / _addAttachmentFn）后、以及收到新
+   * requestId 的 componentDidUpdate 中调用。真正的原子装入 + 去重逻辑在 initialCompose.ts 里，
+   * 这里只把 Conversation 的 MessageInput/附件能力适配成 ComposeHost。绝不绕过 MessageInput 直接 sendMessage。
+   */
+  private tryConsumeInitialCompose(): void {
+    const compose = this.props.initialCompose;
+    if (!compose) return;
+    if (this._consumedComposeIds.has(compose.requestId)) return;
+    // 未就绪（onContext 尚未回调）时不消费，等待下一次 ready-retry。
+    if (!this._messageInputContext) return;
+
+    const generation = this._initialComposeGeneration;
+    const channelKey = `${this.props.channel.channelID}:${this.props.channel.channelType}`;
+    const isLive = () =>
+      this._initialComposeMounted &&
+      generation === this._initialComposeGeneration &&
+      this.props.initialCompose?.requestId === compose.requestId &&
+      `${this.props.channel.channelID}:${this.props.channel.channelType}` === channelKey;
+    const host: ComposeHost = {
+      isReady: () => !!this._messageInputContext,
+      isLive,
+      currentDraftText: () => this._messageInputContext?.text() ?? "",
+      pendingAttachmentCount: () => this.getPendingAttachments().length,
+      restoreDraft: (text: string) => this._messageInputContext?.restoreDraft(text),
+      // 复用唯一附件权威校验（扩展名/100MB 总量），失败返回错误描述。
+      addPendingAttachments: (files: File[]) => this.addPendingAttachments(files),
+      // 经 MessageInput 发送（与回车发送同一路径），保留上传/ACK/失败保留语义。
+      send: () => this._messageInputContext?.send(),
+    };
+
+    void tryConsumeInitialCompose(
+      compose,
+      host,
+      this._consumedComposeIds,
+      this.props.onInitialComposeStateChange
+    );
   }
 
   channel(): Channel {
@@ -1320,6 +1471,7 @@ export class Conversation
   }
 
   componentDidMount() {
+    this._initialComposeMounted = true;
     const { channel, onContext } = this.props;
     if (onContext) {
       onContext(this);
@@ -1391,15 +1543,19 @@ export class Conversation
         this.forceUpdate();
       }
     };
-    WKSDK.shared().channelManager.addListener(this._channelInfoListener);
+    this._unsubscribeChannelInfoListener = addImChannelInfoListener(
+      WKSDK.shared(),
+      this._channelInfoListener
+    );
     // 进入会话时主动拉取一次最新 channelInfo，确保解散状态(status)不依赖陈旧缓存。
     // 群聊查自身；子区(CommunityTopic)解散状态在父群上，需拉父群。
     if (channel.channelType === ChannelTypeGroup) {
-      WKSDK.shared().channelManager.fetchChannelInfo(channel);
+      fetchImChannelInfo(WKSDK.shared(), channel);
     } else if (channel.channelType === ChannelTypeCommunityTopic) {
       const parsed = parseThreadChannelId(channel.channelID);
       if (parsed) {
-        WKSDK.shared().channelManager.fetchChannelInfo(
+        fetchImChannelInfo(
+          WKSDK.shared(),
           new Channel(parsed.groupNo, ChannelTypeGroup)
         );
       }
@@ -1414,7 +1570,26 @@ export class Conversation
     this.vm.markUnread();
   }
 
+  componentDidUpdate(prevProps: ConversationProps) {
+    // 收到新的 initialCompose.requestId 时再次尝试消费（plan Task 4）。ready 前只记录 pending：
+    // tryConsumeInitialCompose 内部已判断 _messageInputContext 是否 ready 与 requestId 是否已消费，
+    // 所以相同 requestId 的重渲染不会重发。
+    const prev = prevProps.initialCompose?.requestId;
+    const next = this.props.initialCompose?.requestId;
+    const channelChanged =
+      prevProps.channel.channelID !== this.props.channel.channelID ||
+      prevProps.channel.channelType !== this.props.channel.channelType;
+    if (channelChanged || prev !== next) {
+      this._initialComposeGeneration += 1;
+    }
+    if (next && next !== prev) {
+      this.tryConsumeInitialCompose();
+    }
+  }
+
   componentWillUnmount() {
+    this._initialComposeMounted = false;
+    this._initialComposeGeneration += 1;
     if (this._matterSendMessageHandler) {
       WKApp.mittBus.off(
         "wk:matter-created-from-input",
@@ -1428,7 +1603,8 @@ export class Conversation
     }
     window.removeEventListener("beforeunload", this._beforeUnloadHandler);
     if (this._channelInfoListener) {
-      WKSDK.shared().channelManager.removeListener(this._channelInfoListener);
+      this._unsubscribeChannelInfoListener?.();
+      this._unsubscribeChannelInfoListener = undefined;
       this._channelInfoListener = undefined;
     }
     // 注销附件守卫：只清除自己注册的，防止新实例 guard 被旧实例 unmount 覆盖
@@ -2441,7 +2617,7 @@ export class Conversation
     if (this._dragDepth === 0) this.dragEnd();
   }
 
-  private handleConversationDrop(event: React.DragEvent): void {
+  private async handleConversationDrop(event: React.DragEvent): Promise<void> {
     // 无论拖入的是什么，drop 都强制复位计数与遮罩，杜绝遮罩残留。
     this._dragDepth = 0;
     this.dragEnd();
@@ -2449,7 +2625,7 @@ export class Conversation
     event.preventDefault();
 
     const items = Array.from(event.dataTransfer.items);
-    const files = Array.from(event.dataTransfer.files);
+    const files: File[] = Array.from(event.dataTransfer.files);
     if (files.length === 0) return; // types 声称有文件但实际取不到，安全兜底
     const hasDirectory = items.length
       ? items.some((it) => {
@@ -2461,14 +2637,14 @@ export class Conversation
       Toast.error(t("base.conversation.upload.folderUnsupported"));
       return;
     }
-    const err = this.addPendingAttachments(files);
+    const err = await this.addPendingAttachments(files);
     if (err) Toast.error(err);
   }
 
   render() {
     const { chatBg, channel, initLocateMessageSeq } = this.props;
 
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
 
     // 群已解散（企业微信式只读态）：保留历史，但禁发消息/建子区、收起成员栏。
     // 覆盖群聊与子区（子区随父群解散一并只读）。
@@ -2604,59 +2780,20 @@ export class Conversation
                       WKApp.shared.baseContext.showConversationSelect(
                         async (channels: Channel[]) => {
                           try {
-                            // 每条选中消息 × 每个目标，全部并发投递（详见
-                            // forwardToChannels / fowardMessageUI 处关于 send()
-                            // 乐观语义的说明）。getEffectiveContent 同步抛错会被
-                            // 最外层 try 兜住。
-                            const tasks: {
-                              content: MessageContent;
-                              channel: Channel;
-                            }[] = [];
-                            for (const message of messages) {
-                              const cloneContent = getEffectiveContent(
-                                message.message,
-                              );
-                              for (const channel of channels) {
-                                tasks.push({ content: cloneContent, channel });
-                              }
-                            }
-                            type SendOutcome =
-                              | { ok: true }
-                              | { ok: false; channelID: string; reason: unknown };
-                            const outcomes = await Promise.all(
-                              tasks.map((task): Promise<SendOutcome> =>
-                                this.sendMessage(task.content, task.channel)
-                                  .then((): SendOutcome => ({ ok: true }))
-                                  .catch(
-                                    (reason: unknown): SendOutcome => ({
-                                      ok: false,
-                                      channelID: task.channel.channelID,
-                                      reason,
-                                    }),
-                                  ),
-                              ),
+                            // 每 channel 一次 buildContent，返回 N 条 content（每条选中消息 1 条）。
+                            // messageMode='parallel' 保留 messages × channels 并发语义（对齐旧行为）。
+                            // getEffectiveContent 同步抛 InteractiveCardForwardBlockedError → Phase 1 abort。
+                            const result = await ForwardService.send(
+                              channels,
+                              () => messages.map((m) => getEffectiveContent(m.message)),
+                              this.buildForwardOptions({ messageMode: "parallel" }),
                             );
-                            let failed = 0;
-                            for (const o of outcomes) {
-                              if (!o.ok) {
-                                failed++;
-                                console.error(
-                                  "[forward] send failed",
-                                  o.channelID,
-                                  o.reason,
-                                );
-                              }
-                            }
-                            this.showForwardResult(failed, tasks.length);
+                            // 多选 Toast 分母保持 messages × channels 语义（scope='messages'）。
+                            this.showForwardResult(result, "messages");
                           } catch (e) {
                             console.error("[forward] build content failed", e);
-                            Toast.error(
-                              e instanceof InteractiveCardForwardBlockedError
-                                ? t(
-                                    "base.conversation.forward.interactiveCardBlocked"
-                                  )
-                                : t("base.conversation.forward.allFailed"),
-                            );
+                            const blockedMessageKey = forwardBlockedMessageKey(e);
+                            Toast.error(t(blockedMessageKey ?? "base.conversation.forward.allFailed"));
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();
@@ -2673,28 +2810,24 @@ export class Conversation
                       }
                       WKApp.shared.baseContext.showConversationSelect(
                         async (channels: Channel[]) => {
-                          // 最外层 try：sendMergeforward 的同步前置段
-                          // （getCheckedMessages().map / getChannelInfo /
-                          // new MergeforwardContent）在 await 之前，若抛错会让此
-                          // async 回调 reject 成 unhandled rejection，且清理逻辑
-                          // 不执行、UI 卡在多选态。与 onForward / fowardMessageUI
-                          // 两处路径对称兜底（#273）。
                           try {
-                            const { failed, total } =
-                              await vm.sendMergeforward(channels);
-                            this.showForwardResult(failed, total);
+                            // buildMergeforwardContent 内部保留 InteractiveCard 校验 →
+                            // 抛 InteractiveCardForwardBlockedError；ForwardService Phase 1
+                            // abort 时向上冒到此处 catch。合并转发每 channel 只发 1 条
+                            // MergeforwardContent，Toast 分母 targets 与 messages 等价。
+                            const result = await ForwardService.send(
+                              channels,
+                              () => vm.buildMergeforwardContent(vm.getCheckedMessages()),
+                              this.buildForwardOptions(),
+                            );
+                            this.showForwardResult(result, "targets");
                           } catch (e) {
                             console.error(
                               "[merge-forward] build content failed",
                               e,
                             );
-                            Toast.error(
-                              e instanceof InteractiveCardForwardBlockedError
-                                ? t(
-                                    "base.conversation.forward.interactiveCardBlocked"
-                                  )
-                                : t("base.conversation.forward.allFailed"),
-                            );
+                            const blockedMessageKey = forwardBlockedMessageKey(e);
+                            Toast.error(t(blockedMessageKey ?? "base.conversation.forward.allFailed"));
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();
@@ -2837,13 +2970,13 @@ export class Conversation
                         addFn: (
                           files: File[],
                           source?: "paste" | "upload"
-                        ) => void
+                        ) => void | Promise<void>
                       ) => {
                         // 存储 addAttachment 方法，供外部调用
                         this._addAttachmentFn = addFn;
                       }}
-                      onAddPendingAttachments={(files, source) => {
-                        const err = this.addPendingAttachments(files, source);
+                      onAddPendingAttachments={async (files, source) => {
+                        const err = await this.addPendingAttachments(files, source);
                         if (err) {
                           Toast.error(err);
                           return false;
@@ -2872,8 +3005,10 @@ export class Conversation
                           channel.channelType !== ChannelTypeCommunityTopic
                         )
                           return;
-                        const channelInfo =
-                          WKSDK.shared().channelManager.getChannelInfo(channel);
+                        const channelInfo = getImChannelInfo(
+                          WKSDK.shared(),
+                          channel
+                        );
                         // 传原始文本（含 @[uid:name] 占位符），由 GlobalMatterModal 先 parse 再截断
                         // 避免 slice 截断位置落在占位符中间导致 mention 残留乱码
                         const rawText = (
@@ -2902,6 +3037,9 @@ export class Conversation
                           ctx.insertText(this._pendingInsertText);
                           this._pendingInsertText = undefined;
                         }
+                        // MessageInput 就绪（context + _addAttachmentFn 已设）后才尝试一次性初始编排，
+                        // 避免在 componentDidMount 时 onContext / _addAttachmentFn 尚未 ready 就发送（plan Task 4）。
+                        this.tryConsumeInitialCompose();
                       }}
                       toolbar={this.chatToolbarUI()}
                       context={this}
@@ -2909,8 +3047,10 @@ export class Conversation
                         const { channel } = this.props;
                         await this.vm.ensureSubscribersLoaded();
 
-                        const channelInfo =
-                          WKSDK.shared().channelManager.getChannelInfo(channel);
+                        const channelInfo = getImChannelInfo(
+                          WKSDK.shared(),
+                          channel
+                        );
                         let groupName: string | undefined;
                         let threadName: string | undefined;
 
@@ -2920,10 +3060,10 @@ export class Conversation
                             channel.channelID
                           );
                           if (parsed) {
-                            const parentInfo =
-                              WKSDK.shared().channelManager.getChannelInfo(
-                                new Channel(parsed.groupNo, ChannelTypeGroup)
-                              );
+                            const parentInfo = getImChannelInfo(
+                              WKSDK.shared(),
+                              new Channel(parsed.groupNo, ChannelTypeGroup)
+                            );
                             groupName = parentInfo?.title;
                           }
                         } else if (channel.channelType === ChannelTypeGroup) {
@@ -2940,7 +3080,8 @@ export class Conversation
                           loginUID: WKApp.loginInfo.uid,
                           channelInfo:
                             channel.channelType === ChannelTypePerson
-                              ? (WKSDK.shared().channelManager.getChannelInfo(
+                              ? (getImChannelInfo(
+                                  WKSDK.shared(),
                                   channel
                                 ) as ChatContextChannelInfo | null)
                               : undefined,
@@ -2995,13 +3136,13 @@ export class Conversation
                           reply.messageID = vm.currentReplyMessage.messageID;
                           reply.messageSeq = vm.currentReplyMessage.messageSeq;
                           reply.fromUID = vm.currentReplyMessage.fromUID;
-                          const channelInfo =
-                            WKSDK.shared().channelManager.getChannelInfo(
-                              new Channel(
-                                vm.currentReplyMessage.fromUID,
-                                ChannelTypePerson
-                              )
-                            );
+                          const channelInfo = getImChannelInfo(
+                            WKSDK.shared(),
+                            new Channel(
+                              vm.currentReplyMessage.fromUID,
+                              ChannelTypePerson
+                            )
+                          );
                           if (channelInfo) {
                             reply.fromName = channelInfo.title;
                           }
@@ -3232,11 +3373,12 @@ export class Conversation
                               remoteDraftAtSend
                             );
                           }
-                          this.props.onMessageSent?.();
-                          return {
-                            editorConsumed: mixedSent,
+                          return finishRichTextMixedSend(
+                            anyMessageSent,
+                            mixedSent,
                             consumedTopIds,
-                          };
+                            this.props.onMessageSent
+                          );
                         }
 
                         for (const { id, file } of topFilesToSend) {
@@ -3310,7 +3452,6 @@ export class Conversation
                                 remoteDraftAtSend
                               );
                             }
-                            this.props.onMessageSent?.();
                             // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
                             // 第二轮)：
                             //   • editorConsumed=mixedSent：混排失败时保留编辑器
@@ -3318,10 +3459,12 @@ export class Conversation
                             //   • consumedTopIds：本次已发出的顶部附件 id。即使
                             //     混排失败，这些文件也已发出，让 MessageInput 只
                             //     清掉它们、不随编辑器草稿一起保留，避免重试重复。
-                            return {
-                              editorConsumed: mixedSent,
+                            return finishRichTextMixedSend(
+                              anyMessageSent,
+                              mixedSent,
                               consumedTopIds,
-                            };
+                              this.props.onMessageSent
+                            );
                           }
                           let isFirstTextBlock = true;
                           for (const block of editorBlocks) {
@@ -3390,7 +3533,7 @@ export class Conversation
                             remoteDraftAtSend
                           );
                         }
-                        this.props.onMessageSent?.();
+                        if (anyMessageSent) this.props.onMessageSent?.();
                         // 与 clearDraftAfterSend 同口径：只有确实发出消息时才让
                         // MessageInput 清空编辑器；全部失败/被预检拒绝时返回 false
                         // 保留草稿可重试。
@@ -3441,8 +3584,10 @@ export class Conversation
                         this.vm.selectUID,
                         ChannelTypePerson
                       );
-                      const channelInfo =
-                        WKSDK.shared().channelManager.getChannelInfo(channel);
+                      const channelInfo = getImChannelInfo(
+                        WKSDK.shared(),
+                        channel
+                      );
 
                       this.messageInputContext()?.addMention(
                         this.vm.selectUID,
@@ -3458,7 +3603,10 @@ export class Conversation
                       }
                       let fromChannel: Channel | undefined;
                       let vercode: string | undefined;
-                      if (this.vm.channel.channelType === ChannelTypeGroup) {
+                      if (
+                        this.vm.channel.channelType === ChannelTypeGroup ||
+                        this.vm.channel.channelType === ChannelTypeCommunityTopic
+                      ) {
                         fromChannel = this.vm.channel;
                         const subscriber = this.vm.subscriberWithUID(
                           this.vm.selectUID
@@ -3645,7 +3793,8 @@ interface ReplyViewProps {
 class ReplyView extends Component<ReplyViewProps> {
   render(): React.ReactNode {
     const { message, onClose, vm } = this.props;
-    const fromChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+    const fromChannelInfo = getImChannelInfo(
+      WKSDK.shared(),
       new Channel(message.fromUID, ChannelTypePerson)
     );
     const isEdit = vm.currentHandlerType === 2;

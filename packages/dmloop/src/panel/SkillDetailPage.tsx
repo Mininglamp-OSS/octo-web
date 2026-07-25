@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Typography, Input, Spin, Toast, Banner, Tooltip } from "@douyinfe/semi-ui";
+import { Typography, Input, Button, Spin, Toast, Banner, Tooltip } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
 import { ArrowLeft, BookOpen, Clock3, ExternalLink, Save, Trash2, Plus, Users } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
@@ -180,7 +180,7 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
   if (loading) return <div className="loop-sd"><div className="loop-sd__center"><Spin /></div></div>;
   if (error || !row) return (
     <div className="loop-sd">
-      <div className="loop-sd__topbar"><LoopButton variant="ghost" icon={<ArrowLeft size={16} />} onClick={back}>{t("loop.detail.back")}</LoopButton></div>
+      <div className="loop-sd__topbar"><Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={back}>{t("loop.detail.back")}</Button></div>
       <div className="loop-sd__center">{error ? <Banner type="danger" description={error} /> : <Text type="tertiary">{t("loop.detail.notFound")}</Text>}</div>
     </div>
   );
@@ -190,10 +190,10 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
   return (
     <div className="loop-sd">
       <div className="loop-sd__topbar">
-        <LoopButton variant="ghost" icon={<ArrowLeft size={16} />} onClick={back}>{t("loop.detail.back")}</LoopButton>
+        <Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={back}>{t("loop.detail.back")}</Button>
         <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.detail.skillTitle")}</Text>
         <div style={{ flex: 1 }} />
-        <LoopButton variant="danger" icon={<Trash2 size={14} />} onClick={remove}>{t("loop.action.delete")}</LoopButton>
+        <Button theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={remove}>{t("loop.action.delete")}</Button>
         <LoopButton icon={<Save size={14} />} disabled={!dirty} onClick={save}>{t("loop.action.save")}</LoopButton>
       </div>
 
@@ -246,7 +246,7 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
             <div className="loop-skill-files__head">
               <span className="loop-skill-files__label">{t("loop.skill.detail.files")}（{filePaths.length}）</span>
               <Tooltip content={t("loop.skill.detail.addFile.add")}>
-                <LoopButton variant="ghost" size="sm" icon={<Plus size={14} />} onClick={() => setAddingFile(true)} />
+                <Button theme="borderless" size="small" icon={<Plus size={14} />} onClick={() => setAddingFile(true)} />
               </Tooltip>
             </div>
             {addingFile && (
@@ -262,7 +262,7 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
                 {addError && <div className="loop-skill-files__adderr">{addError}</div>}
                 <div className="loop-skill-files__addbtns">
                   <LoopButton size="sm" onClick={submitNewFile}>{t("loop.skill.detail.addFile.add")}</LoopButton>
-                  <LoopButton variant="ghost" size="sm" onClick={cancelNewFile}>{t("loop.action.cancel")}</LoopButton>
+                  <Button size="small" theme="borderless" onClick={cancelNewFile}>{t("loop.action.cancel")}</Button>
                 </div>
               </div>
             )}
@@ -276,9 +276,9 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
             </div>
             {selectedPath !== SKILL_MD && (
               <div className="loop-skill-files__foot">
-                <LoopButton variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={deleteSelectedFile}>
+                <Button theme="borderless" type="danger" size="small" icon={<Trash2 size={13} />} onClick={deleteSelectedFile}>
                   {t("loop.skill.detail.deleteFile")}
-                </LoopButton>
+                </Button>
               </div>
             )}
           </section>

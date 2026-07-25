@@ -2,6 +2,7 @@ import { flushSync } from "react-dom";
 
 type OnboardingViewTransitionOptions = {
     duration?: number;
+    onFinished?: () => void;
     onTransition: () => void;
 };
 
@@ -16,7 +17,11 @@ function getCircleClipPaths(cx: number, cy: number, maxRadius: number): [string,
     return [`circle(0px at ${cx}px ${cy}px)`, `circle(${maxRadius}px at ${cx}px ${cy}px)`];
 }
 
-export function runOnboardingViewTransition({ duration = 1240, onTransition }: OnboardingViewTransitionOptions) {
+export function runOnboardingViewTransition({
+    duration = 1240,
+    onFinished,
+    onTransition,
+}: OnboardingViewTransitionOptions) {
     const transitionDocument = document as ViewTransitionDocument;
 
     if (typeof transitionDocument.startViewTransition !== "function") {
@@ -52,10 +57,15 @@ export function runOnboardingViewTransition({ duration = 1240, onTransition }: O
         return false;
     }
 
-    if (typeof transition.finished?.finally === "function") {
-        transition.finished.finally(cleanup).catch(() => {});
-    } else {
+    const finish = () => {
         cleanup();
+        onFinished?.();
+    };
+
+    if (typeof transition.finished?.finally === "function") {
+        transition.finished.finally(finish).catch(() => {});
+    } else {
+        finish();
     }
     transition.ready?.then(() => {
         document.documentElement.animate(

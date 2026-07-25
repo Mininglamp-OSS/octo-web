@@ -5,7 +5,16 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act, Simulate } from "react-dom/test-utils";
 import { i18n } from "@octo/base/src/i18n/instance";
 
+const { apiFetchJsonMock } = vi.hoisted(() => ({
+  apiFetchJsonMock: vi.fn(),
+}));
+
 vi.mock("@douyinfe/semi-ui", () => ({
+  Spin: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) =>
+    React.createElement("span", {
+      "data-spin": "true",
+      "aria-label": ariaLabel,
+    }),
   Popover: ({
     children,
     position,
@@ -65,6 +74,12 @@ type MockWKButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 vi.mock("@octo/base", () => ({
+  apiFetchJson: apiFetchJsonMock,
+  WKApp: {
+    apiClient: {
+      config: { apiURL: "/api/v1/" },
+    },
+  },
   WKButton: ({ children, icon, iconOnly, ...props }: MockWKButtonProps) =>
     React.createElement(
       "button",
@@ -79,12 +94,12 @@ vi.mock("@octo/base", () => ({
 }));
 
 import {
-  ANDROID_APK_PATH,
   ANDROID_RELEASES_URL,
+  ANDROID_UPDATER_PATH,
   AndroidDownloadButton,
   AndroidDownloadPopoverContent,
   openAndroidReleases,
-  resolveAndroidApkUrl,
+  resolveAndroidUpdaterUrl,
 } from "../AndroidDownloadButton";
 
 const mountedContainers: HTMLDivElement[] = [];
@@ -103,6 +118,7 @@ describe("AndroidDownloadButton", () => {
   beforeEach(() => {
     i18n.setLocale("zh-CN", { persist: false });
     vi.restoreAllMocks();
+    apiFetchJsonMock.mockReset();
     vi.useFakeTimers();
   });
 
@@ -122,10 +138,13 @@ describe("AndroidDownloadButton", () => {
     );
   });
 
-  it("resolves the legacy APK path against the current deployment origin", () => {
-    expect(ANDROID_APK_PATH).toBe("/download/dmwork.apk");
-    expect(resolveAndroidApkUrl("https://octo.example.com")).toBe(
-      "https://octo.example.com/download/dmwork.apk"
+  it("resolves the Android updater endpoint against the configured API URL", () => {
+    expect(ANDROID_UPDATER_PATH).toBe("common/updater/android/1.0");
+    expect(resolveAndroidUpdaterUrl("/api/v1/")).toBe(
+      "/api/v1/common/updater/android/1.0"
+    );
+    expect(resolveAndroidUpdaterUrl("https://api.example.com/v1")).toBe(
+      "https://api.example.com/v1/common/updater/android/1.0"
     );
   });
 
@@ -201,21 +220,21 @@ describe("AndroidDownloadButton", () => {
     expect(popover?.getAttribute("data-visible")).toBe("false");
   });
 
-  it("renders the same-origin APK URL as a scannable QR code", () => {
+  it("renders a fixed-size loading state without an old QR code or link", () => {
     const html = renderToStaticMarkup(
       React.createElement(AndroidDownloadPopoverContent)
     );
 
-    expect(html).toContain('role="img"');
-    expect(html).toContain(
-      `data-qr-value="${window.location.origin}${ANDROID_APK_PATH}"`
-    );
     expect(html).toContain("wk-login-mobile-popover-qr");
-    expect(html).not.toContain("wk-login-android-popover-placeholder");
-    expect(html).not.toContain("二维码图片待提供");
+    expect(html).not.toContain('role="img"');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('data-spin="true"');
+    expect(html).toContain('aria-label="正在获取下载地址"');
+    expect(html).not.toContain("data-qr-value");
     expect(html).toContain(">扫码下载</strong>");
-    expect(html).not.toContain("手机扫码下载");
-    expect(html).not.toContain("扫码直接下载 Android 客户端");
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).not.toContain("/download/dmwork.apk");
+    expect(html).not.toContain(" download");
     expect(html).toContain("或前往 GitHub 手动下载");
     expect(html).toContain('data-icon="github"');
     expect(html).toContain("wk-btn");
@@ -226,20 +245,93 @@ describe("AndroidDownloadButton", () => {
     expect(html).toContain('aria-label="打开 GitHub Releases"');
   });
 
-  it("provides a direct APK download action for same-device mobile users", () => {
+  it("uses one updater-provided APK URL for the QR code and direct action", async () => {
+    const updaterUrl = "https://cdn.example.com/releases/octo-latest.apk";
+    apiFetchJsonMock.mockResolvedValue({ url: updaterUrl });
     const container = document.createElement("div");
-    container.innerHTML = renderToStaticMarkup(
-      React.createElement(AndroidDownloadPopoverContent)
-    );
+    document.body.appendChild(container);
+    mountedContainers.push(container);
+    act(() => {
+      ReactDOM.render(
+        React.createElement(AndroidDownloadPopoverContent),
+        container
+      );
+    });
 
-    const directDownload = container.querySelector<HTMLAnchorElement>(
-      ".wk-login-mobile-download-direct-link"
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(apiFetchJsonMock).toHaveBeenCalledWith(
+      "/api/v1/common/updater/android/1.0"
     );
-    expect(directDownload?.href).toBe(
-      `${window.location.origin}${ANDROID_APK_PATH}`
+    expect(
+      container.querySelector("[data-qr-value]")?.getAttribute("data-qr-value")
+    ).toBe(updaterUrl);
+    expect(
+      container
+        .querySelector(".wk-login-mobile-popover-qr")
+        ?.getAttribute("role")
+    ).toBe("img");
+    expect(
+      container.querySelector<HTMLAnchorElement>(
+        ".wk-login-mobile-download-direct-link"
+      )?.href
+    ).toBe(updaterUrl);
+    expect(
+      container
+        .querySelector<HTMLAnchorElement>(
+          ".wk-login-mobile-download-direct-link"
+        )
+        ?.hasAttribute("download")
+    ).toBe(true);
+    expect(apiFetchJsonMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows an error without a stale QR code and retries the updater", async () => {
+    const updaterUrl = "https://cdn.example.com/releases/octo-latest.apk";
+    apiFetchJsonMock
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockResolvedValueOnce({ url: updaterUrl });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    mountedContainers.push(container);
+    act(() => {
+      ReactDOM.render(
+        React.createElement(AndroidDownloadPopoverContent),
+        container
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector("[data-qr-value]")).toBeNull();
+    expect(container.textContent).toContain("下载地址获取失败");
+    expect(
+      container
+        .querySelector(".wk-login-mobile-download-direct-link")
+        ?.getAttribute("aria-disabled")
+    ).toBe("true");
+
+    const retryButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "重试"
     );
-    expect(directDownload?.hasAttribute("download")).toBe(true);
-    expect(directDownload?.textContent).toBe("直接下载 APK");
+    expect(retryButton?.tagName).toBe("BUTTON");
+    expect(retryButton?.closest('[role="img"]')).toBeNull();
+
+    act(() => {
+      Simulate.click(retryButton as Element);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      container.querySelector("[data-qr-value]")?.getAttribute("data-qr-value")
+    ).toBe(updaterUrl);
+    expect(apiFetchJsonMock).toHaveBeenCalledTimes(2);
   });
 
   it("opens GitHub Releases safely in a new tab", () => {

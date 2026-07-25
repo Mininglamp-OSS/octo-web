@@ -4,8 +4,13 @@ import { describe, it, expect } from 'vitest'
  * Unit tests for the InviteLanding redirect basePath logic (fix for #1006).
  *
  * Reproduces the bug where `window.location.pathname === "/api/"` leads to the
- * post-join redirect landing on `https://host/api/?sid=xxx` → 404. The fix
- * strips any `/api` or `/api/vN` prefix before treating pathname as basePath.
+ * post-join redirect landing on `https://host/api/` → 404. The fix strips any
+ * `/api` or `/api/vN` prefix before treating pathname as basePath.
+ *
+ * Post PR#851 (sid-clean, Jerry-Xin 🟡): the redirect URL no longer carries
+ * `?sid=` — the InviteLanding component now calls `setSessionSid(sid)` to
+ * stash the sid in SessionScope sessionStorage and navigates to a clean URL.
+ * These tests mirror that production shape.
  */
 
 // Mirrors the private helper in apps/web/src/Components/InviteLanding/index.tsx.
@@ -27,7 +32,7 @@ describe('InviteLanding redirect basePath (#1006)', () => {
   })
 
   it('"/api/" pathname no longer lands on backend 404 route', () => {
-    // Bug repro: before the fix this returned "/api/?sid=abc" → 404.
+    // Bug repro: before the fix this returned "/api/" → 404.
     expect(buildRedirect('/api/')).toBe('https://host/')
   })
 
@@ -42,8 +47,6 @@ describe('InviteLanding redirect basePath (#1006)', () => {
   it('"/api/v2/space/invite/xxx" strips the /api/vN prefix only', () => {
     // Only the /api[/vN] segment is removed — the remainder is kept so we
     // never accidentally chop off a legitimate sibling deployment path.
-    // For the #1006 repro, this branch is defensive; the user normally lands
-    // on /api/?invite=xxx, which fully collapses to '/' (covered above).
     expect(buildRedirect('/api/v2/space/invite/xxx')).toBe(
       'https://host/space/invite/xxx/'
     )

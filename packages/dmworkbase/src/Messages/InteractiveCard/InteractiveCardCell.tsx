@@ -3,6 +3,10 @@ import { type Action, type AdaptiveCard } from "adaptivecards";
 import { Toast } from "@douyinfe/semi-ui";
 import WKApp from "../../App";
 import { getMessageRow } from "../../bridge/message/useMessageRow";
+import {
+  parseWebhookIssuePreviewTarget,
+  webhookPreviewClickHandler,
+} from "../../bridge/message/webhookPreview";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import MessageRow from "../../ui/message/MessageRow";
@@ -31,6 +35,9 @@ import {
 } from "./sdk/renderOctoCard";
 import { classifyCardSender, fetchSenderChannelInfo } from "./senderTrust";
 import "./index.css";
+import "@mlt-org/octo-card-profile-octo-chat/theme.css";
+import "@mlt-org/octo-card-profile-octo-chat/styles.css";
+import { cardMountRootClass } from "./renderProfile";
 
 export { InteractiveCardContent } from "./InteractiveCardContent";
 
@@ -158,6 +165,7 @@ export class InteractiveCardCell extends MessageCell {
       profile: effective.profile,
       cardVersion: effective.cardVersion,
       card: effective.card,
+      renderProfile: effective.renderProfile,
     });
     return { plain, decision };
   }
@@ -178,9 +186,9 @@ export class InteractiveCardCell extends MessageCell {
       this.renderedKey = null;
       return;
     }
-    const key = `${decision.allowInteractive ? "v2" : "v1"}:${JSON.stringify(
-      decision.card
-    )}`;
+    const key = `${decision.renderProfile}:${
+      decision.allowInteractive ? "v2" : "v1"
+    }:${JSON.stringify(decision.card)}`;
     if (key === this.renderedKey) return;
     this.renderedKey = key;
     // 新帧到达：作废在飞提交（响应/超时不再生效）并重置交互态（loading/错误/超时）。
@@ -196,6 +204,7 @@ export class InteractiveCardCell extends MessageCell {
         onAction: (action, card) => this.handleCardAction(action, card),
         tableCopyLabel: t("base.message.interactiveCard.copyTable"),
         onTableCopy: (text) => this.handleTableCopy(text),
+        renderProfile: decision.renderProfile,
       });
     } catch {
       // 已过 octo 预校验仍渲染失败属极端边角 → fail-safe 渲纯文本（不走 markdown/HTML）。
@@ -225,6 +234,7 @@ export class InteractiveCardCell extends MessageCell {
       onAction: (action, card) => this.handleCardAction(action, card),
       tableCopyLabel: t("base.message.interactiveCard.copyTable"),
       onTableCopy: (text) => this.handleTableCopy(text),
+      renderProfile: decision.renderProfile,
     });
   }
 
@@ -247,7 +257,18 @@ export class InteractiveCardCell extends MessageCell {
   private handleCardAction(action: Action, card: AdaptiveCard) {
     const type = action.getJsonTypeName();
     if (type === "Action.OpenUrl") {
+      const { message, context } = this.props;
       const url = (action as unknown as { url?: unknown }).url;
+      if (classifyCardSender(message.fromUID) === "webhook") {
+        const target =
+          typeof url === "string"
+            ? parseWebhookIssuePreviewTarget(url)
+            : null;
+        if (target) {
+          context.openWebhookPreview?.(target);
+          return;
+        }
+      }
       if (typeof url === "string") openUrl(url);
       return;
     }
@@ -432,6 +453,10 @@ export class InteractiveCardCell extends MessageCell {
         isActive={context.isContextMenuOpen(message.message)}
         onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
         onSenderNameClick={() => context.showUser(message.fromUID)}
+        onBodyClick={webhookPreviewClickHandler(
+          message,
+          context.openWebhookPreview?.bind(context)
+        )}
       >
         <div
           className={
@@ -466,7 +491,7 @@ export class InteractiveCardCell extends MessageCell {
     switch (decision.kind) {
       case "card": {
         const cls =
-          "wk-interactive-card-sdk" +
+          cardMountRootClass(decision.renderProfile) +
           (agentProgress ? " wk-interactive-card-sdk--agent-progress" : "") +
           (this.submitting ? " wk-interactive-card-sdk--submitting" : "") +
           // webhook 卡展示-only：输入置灰不可交互（提交侧另有 handleSubmit 双保险）。

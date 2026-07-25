@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
-import { render, fireEvent, cleanup, act } from '@testing-library/react'
+import { render, fireEvent, cleanup, act, screen } from '@testing-library/react'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Toolbar } from './Toolbar.tsx'
@@ -39,8 +39,23 @@ afterEach(() => {
 })
 
 function btn(title: string): HTMLButtonElement {
-  const el = document.querySelector<HTMLButtonElement>(`button[title="${title}"]`)
-  if (!el) throw new Error(`no toolbar button with title="${title}"`)
+  // Toolbar buttons carry their label on `aria-label` (the hover text is a styled @univerjs/design
+  // Tooltip, not the native `title` attr). Buttons also live under one of two ribbon tabs
+  // (开始/插入); when a button isn't on the current tab, switch tabs and look again so callers don't
+  // have to know which tab the indent controls sit on.
+  const find = () => document.querySelector<HTMLButtonElement>(`button[aria-label="${title}"]`)
+  let el = find()
+  if (!el) {
+    for (const tab of ['docs.toolbar.tabStart', 'docs.toolbar.tabInsert']) {
+      const tabBtn = screen.queryByText(tab)
+      if (tabBtn) {
+        fireEvent.click(tabBtn)
+        el = find()
+        if (el) break
+      }
+    }
+  }
+  if (!el) throw new Error(`no toolbar button with aria-label="${title}"`)
   return el
 }
 

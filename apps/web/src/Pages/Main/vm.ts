@@ -68,16 +68,24 @@ export default class MainVM extends ProviderListener {
     this.syncMenuFromBrowserPath();
   };
 
+  private findMenuForRoute(routePath: string): Menus | undefined {
+    return this.menusList
+      .filter((menus) => {
+        if (menus.routePath === routePath) return true;
+        if (menus.routePath === "/") return false;
+        return routePath.startsWith(`${menus.routePath}/`);
+      })
+      .sort((a, b) => b.routePath.length - a.routePath.length)[0];
+  }
+
   didMount(): void {
     let found = false;
     const bootPath = normalizeRoutePath(window.location.pathname || WKApp.route.currentPath);
     if (bootPath) {
-      for (const menus of this.menusList) {
-        if (menus.routePath === bootPath) {
-          this.currentMenus = menus;
-          found = true;
-          break;
-        }
+      const menus = this.findMenuForRoute(bootPath);
+      if (menus) {
+        this.currentMenus = menus;
+        found = true;
       }
     }
     // 默认选中第一个菜单（消息模块）
@@ -193,7 +201,7 @@ export default class MainVM extends ProviderListener {
 
   private syncMenuFromBrowserPath(): boolean {
     const routePath = normalizeRoutePath(window.location.pathname);
-    const target = this.menusList.find((menus) => menus.routePath === routePath);
+    const target = this.findMenuForRoute(routePath);
     if (!target) {
       if (routePath !== "/") {
         this._pendingRouteActivation = routePath;
@@ -323,6 +331,13 @@ export default class MainVM extends ProviderListener {
         this._historyRoutePaths.push(menus.routePath);
       }
     }
+    // Mirror the active id onto the app-global slot. onMenuClick / switchToMenuById /
+    // syncMenuFromBrowserPath already set it explicitly, but didMount (cold-load / refresh /
+    // bookmark open) goes through this setter without any such explicit write — leaving the
+    // global stuck at undefined during boot. MarketSidebar reads WKApp.currentMenuId in its own
+    // componentDidMount to decide whether to mount the right-pane page (see MarketSidebar.tsx:66),
+    // so a missing id here is exactly why refreshing /mcp-market/mcp lands on an empty right pane.
+    WKApp.currentMenuId = menus?.id;
     // An explicit menu selection (user click via onMenuClick, or switchToMenuById) cancels any
     // pending boot-route activation: the user has chosen a view, so a config-gated menu that
     // resolves later must not yank them off it. didMount sets _pendingRouteActivation only AFTER

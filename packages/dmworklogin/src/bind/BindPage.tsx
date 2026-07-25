@@ -66,7 +66,8 @@ function deriveCreateState(info: BindInfoResp): CreateState {
 interface BindPageProps {
   // 由 BindModule.init() 在 RouteManager 的 pageshow handler 冲掉 URL 之前
   // 抓到的 location.search 快照. 不直接读 window.location.search 是因为
-  // RouteManager 曾在 pageshow 时改写 URL, 可能把 bind 入口参数全部丢掉.
+  // RouteManager 会在 pageshow 时 push 一个带 sid= 的 URL, 把 bind 入口参数
+  // 全部丢掉.
   initialSearch: string
 }
 

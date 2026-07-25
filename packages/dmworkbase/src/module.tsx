@@ -1,7 +1,6 @@
 import {
   Channel,
   ChannelTypePerson,
-  WKSDK,
   Message,
   MessageContentType,
   ConversationAction,
@@ -20,22 +19,9 @@ import { Howl, Howler } from "howler";
 import WKApp, { FriendApply, FriendApplyState, ThemeMode } from "./App";
 import { isChannelSearchEnabled } from "./features/channelSearch/feature";
 import ChatSearchEntryButton from "./features/channelSearch/ChatSearchEntryButton";
-import ChannelQRCode from "./Components/ChannelQRCode";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
-import { IndexTableItem } from "./Components/IndexTable";
 import { InputEdit } from "./Components/InputEdit";
-import {
-  ListItem,
-  ListItemButton,
-  ListItemButtonType,
-  ListItemIcon,
-  ListItemMuliteLine,
-  ListItemSwitch,
-  ListItemSwitchContext,
-  ListItemTip,
-} from "./Components/ListItem";
-import { Subscribers } from "./Components/Subscribers";
-import UserSelect, { ContactsSelect } from "./Components/UserSelect";
+import { ListItem, ListItemTip } from "./Components/ListItem";
 import { Card, CardCell } from "./Messages/Card";
 import { GifCell, GifContent } from "./Messages/Gif";
 import { HistorySplitCell, HistorySplitContent } from "./Messages/HistorySplit";
@@ -73,7 +59,6 @@ import RouteContext, {
   FinishButtonContext,
   RouteContextConfig,
 } from "./Service/Context";
-import { ChannelField } from "./Service/DataSource/DataSource";
 import { IModule } from "./Service/Module";
 import { Row, Section } from "./Service/Section";
 import { VoiceCell, VoiceContent } from "./Messages/Voice";
@@ -81,55 +66,101 @@ import { VideoCell, VideoContent } from "./Messages/Video";
 import { TypingCell } from "./Messages/Typing";
 import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
 import { buildAddStickerMenu } from "./Messages/LottieSticker/collectMenu";
+import { canWriteMessageReaction } from "./Service/featureFlags";
+import {
+  disablePointerTracking,
+  enablePointerTracking,
+  reactionPickerOverlay,
+} from "./ui/message/MessageReactionPicker/ReactionPickerOverlay";
+import { messageReactionController } from "./features/messageReaction/runtime";
+import { isMessageReactionChannelSupported } from "./features/messageReaction/controller";
 import { LocationCell, LocationContent } from "./Messages/Location";
-import { Toast, Tag } from "@douyinfe/semi-ui";
-import { ChannelSettingManager } from "./Service/ChannelSetting";
+import { Toast } from "@douyinfe/semi-ui";
 import { DefaultEmojiService } from "./Service/EmojiService";
 import IconClick from "./Components/IconClick";
 import EmojiToolbar from "./Components/EmojiToolbar";
 import MergeforwardContent, { MergeforwardCell } from "./Messages/Mergeforward";
 import { wkConfirm } from "./Components/WKModal";
-import { UserInfoRouteData } from "./Components/UserInfo/vm";
+import { UserInfoRouteData } from "./bridge/profileDetail/UserInfoVM";
+import {
+  userInfoMembershipCreatedAt,
+  userInfoMembershipOrgData,
+} from "./bridge/profileDetail/userInfoMembership";
 import { IconAlertCircle } from "@douyinfe/semi-icons";
 import { TypingManager } from "./Service/TypingManager";
 import APIClient from "./Service/APIClient";
 import { patchSdkDecodeForExternalFields } from "./Service/Convert";
 import { isMessageSelectable } from "./Service/messageSelection";
 import ConversationVM from "./Components/Conversation/vm";
-import { ChannelAvatar } from "./Components/ChannelAvatar";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
 import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
-import { SubscriberList } from "./Components/Subscribers/list";
-import { GroupMdEditor } from "./Components/GroupMdEditor";
-import { GroupManagement } from "./Components/GroupManagement";
-import ChannelWebhookPanel from "./Components/ChannelWebhook";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
 import { notificationUtil } from "./Utils/NotificationUtil";
 import { resolveExternalForViewer } from "./Utils/externalViewer";
-import { isGroupDisbanded, isChannelDisbanded, isConversationDisbanded } from "./Utils/groupDisband";
+import {
+  isChannelDisbanded,
+  isConversationDisbanded,
+  isGroupDisbanded,
+} from "./Utils/groupDisband";
 import {
   copyImageToClipboard,
   copyRichTextToClipboard,
 } from "./Utils/clipboard";
 import { shouldSkipMessageForSpace } from "./Service/SpaceService";
-import { t, I18nText } from "./i18n";
-import { GROUP_NAME_MAX_LENGTH, THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
+import { t } from "./i18n";
+import { THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
+import ThreadService from "./Service/ThreadService";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
 } from "./Messages/ThreadCreated";
 import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
-import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
-import {
-  shouldShowThreadArchiveAction,
-  canRenameGroup,
-  canRenameThread,
-  isParentGroupManager,
-} from "./Service/threadPermission";
-import { runChannelSettingThreadArchive } from "./Service/threadArchiveAction";
+import { DocumentShareCardContent } from "./Messages/DocumentShareCard/DocumentShareCardContent";
+import { DocumentShareCardCell } from "./Messages/DocumentShareCard";
+import { parseThreadChannelId } from "./Service/Thread";
 import { canShowRevokeMenu } from "./Service/revokePermission";
+import {
+  addCurrentImChannelInfoListener,
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+  getCurrentImChannelSubscriberOfMe,
+  getCurrentImChannelSubscribers,
+  notifyCurrentImChannelInfoListeners,
+  notifyCurrentImSubscriberChangeListeners,
+  setCurrentImChannelSubscribersCache,
+  syncCurrentImChannelSubscribers,
+} from "./im-runtime/currentChannelRuntime";
+import {
+  addCurrentImCommandListener,
+  addCurrentImMessageListener,
+} from "./im-runtime/currentChatRuntime";
+import {
+  findCurrentImConversation,
+  notifyCurrentImConversationListeners,
+  removeCurrentImConversation,
+  syncCurrentImConversationExtra,
+} from "./im-runtime/currentConversationRuntime";
+import {
+  isCurrentImSystemMessage,
+  registerCurrentImMessageContent,
+} from "./im-runtime/currentMessageContentRuntime";
+import { syncCurrentImReminders } from "./im-runtime/currentReminderRuntime";
+import { addCurrentImTaskListener } from "./im-runtime/currentTaskRuntime";
+import {
+  buildChannelDangerSection,
+  buildChannelPreferenceSection,
+  buildMyGroupNicknameSection,
+} from "./features/channelSetting/channelSettingSections";
+import { buildChannelMembersSection } from "./features/channelSetting/channelSettingMemberSection";
+import { buildChannelGroupInfoSection } from "./features/channelSetting/channelSettingGroupInfoSection";
+import {
+  buildThreadActionsSection,
+  buildThreadInfoSection,
+  buildThreadMdSection,
+  buildThreadWebhookSection,
+} from "./features/channelSetting/channelSettingThreadSections";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
 function fallbackCopy(text: string) {
@@ -146,31 +177,15 @@ function fallbackCopy(text: string) {
   }
 }
 
-function removeLocalConversationAndCloseIfOpen(channel: Channel) {
-  WKSDK.shared().conversationManager.removeConversation(channel);
-  const isOpen = WKApp.shared.openChannel?.isEqual(channel);
-  if (isOpen) {
-    WKApp.shared.openChannel = undefined;
-    WKApp.routeRight.popToRoot();
-  }
-  WKApp.shared.notifyListener();
-}
-
 const pendingRevokeRoleFetches = new Set<string>();
 
 function findSubscriber(channel: Channel, uid: string): Subscriber | undefined {
-  const subscribers = WKSDK.shared().channelManager.getSubscribes(channel) as
-    | Subscriber[]
-    | null
-    | undefined;
-  return subscribers?.find(
-    (subscriber) => subscriber && subscriber.uid === uid
-  );
+  const subscribers = getCurrentImChannelSubscribers(channel) as Subscriber[];
+  return subscribers.find((subscriber) => subscriber && subscriber.uid === uid);
 }
 
 function mergeSubscriberIntoCache(channel: Channel, subscriber: Subscriber) {
-  const channelManager = WKSDK.shared().channelManager;
-  const cached = (channelManager.getSubscribes(channel) || []) as Subscriber[];
+  const cached = getCurrentImChannelSubscribers(channel) as Subscriber[];
   const nextSubscribers = [...cached];
   const index = nextSubscribers.findIndex(
     (item) => item.uid === subscriber.uid
@@ -186,11 +201,8 @@ function mergeSubscriberIntoCache(channel: Channel, subscriber: Subscriber) {
     nextSubscribers.push(subscriber);
   }
 
-  channelManager.subscribeCacheMap.set(
-    channel.getChannelKey(),
-    nextSubscribers
-  );
-  channelManager.notifySubscribeChangeListeners(channel);
+  setCurrentImChannelSubscribersCache(channel, nextSubscribers);
+  notifyCurrentImSubscriberChangeListeners(channel);
 }
 
 function warmRevokeTargetRole(channel: Channel, uid: string) {
@@ -305,6 +317,8 @@ export default class BaseModule implements IModule {
             return ApproveGroupMemberCell;
           case 15: // 智能总结卡片
             return SummaryCardCell;
+          case MessageContentTypeConst.docShareCard: // 文档转发卡片
+            return DocumentShareCardCell;
           case 98:
             return SignalMessageCell;
           default:
@@ -315,68 +329,78 @@ export default class BaseModule implements IModule {
       }
     );
 
-    WKSDK.shared().register(MessageContentType.image, () => new ImageContent()); // 图片
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
+      MessageContentType.image,
+      () => new ImageContent()
+    ); // 图片
+    registerCurrentImMessageContent(
       MessageContentTypeConst.file,
       () => new FileContent()
     ); // 文件
 
-    WKSDK.shared().register(MessageContentTypeConst.card, () => new Card()); // 名片
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.card,
+      () => new Card()
+    ); // 名片
+    registerCurrentImMessageContent(
       MessageContentTypeConst.interactiveCard,
       () => new InteractiveCardContent()
     ); // 互动卡片（Adaptive Cards octo/v1）
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.gif,
       () => new GifContent()
     ); // gif动图
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.voice,
       () => new VoiceContent()
     ); // 语音正文
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.smallVideo,
       () => new VideoContent()
     ); // 视频正文
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.historySplit,
       () => new HistorySplitContent()
     ); // 历史分割线
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.location,
       () => new LocationContent()
     ); // 定位
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.lottieSticker,
       () => new LottieSticker()
     ); // 动图
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.lottieEmojiSticker,
       () => new LottieSticker()
     ); // 动图
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.mergeForward,
       () => new MergeforwardContent()
     ); // 合并转发
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.screenshot,
       () => new ScreenshotContent()
     );
     // 加入组织
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.joinOrganization,
       () => new JoinOrganizationContent()
     );
     // 子区创建通知
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.threadCreated,
       () => new ThreadCreatedContent()
     );
     // 智能总结卡片
-    WKSDK.shared().register(15, () => new SummaryCardContent());
+    registerCurrentImMessageContent(15, () => new SummaryCardContent());
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.docShareCard,
+      () => new DocumentShareCardContent()
+    );
 
     // 富文本（图文混排）
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.richText,
       () => new RichTextContent()
     );
@@ -391,7 +415,7 @@ export default class BaseModule implements IModule {
 
     // 不支持的消息
     for (const unsupportMessageType of unsupportMessageTypes) {
-      WKSDK.shared().register(
+      registerCurrentImMessageContent(
         unsupportMessageType,
         () => new UnsupportContent()
       );
@@ -403,7 +427,7 @@ export default class BaseModule implements IModule {
       );
     }
 
-    WKSDK.shared().chatManager.addCMDListener((message: Message) => {
+    addCurrentImCommandListener((message: Message) => {
       const cmdContent = message.content as CMDContent;
       const param = cmdContent.param;
 
@@ -413,7 +437,7 @@ export default class BaseModule implements IModule {
         // 不能盲目调用 syncGroupDisbandState（会把正常群标记为已解散）。
         // 操作者本人的解散走 GroupManagement.handleDisband → syncGroupDisbandState
         // （本地直写规避 SDK 去重竞态），远程端依赖服务端推送的 channelUpdate 事件。
-        WKSDK.shared().channelManager.fetchChannelInfo(
+        void fetchCurrentImChannelInfo(
           new Channel(param.channel_id, param.channel_type)
         );
       } else if (cmdContent.cmd === "typing") {
@@ -431,21 +455,20 @@ export default class BaseModule implements IModule {
           new Channel(param.group_no, ChannelTypeGroup)
         );
         // 通过触发channelInfoListener来更新UI
-        WKSDK.shared().channelManager.fetchChannelInfo(
+        void fetchCurrentImChannelInfo(
           new Channel(param.group_no, ChannelTypeGroup)
         );
       } else if (cmdContent.cmd === "unreadClear") {
         // 清除最近会话未读数量
         const channel = new Channel(param.channel_id, param.channel_type);
-        const conversation =
-          WKSDK.shared().conversationManager.findConversation(channel);
+        const conversation = findCurrentImConversation(channel);
         let unread = 0;
         if (param.unread > 0) {
           unread = param.unread;
         }
         if (conversation) {
           conversation.unread = unread;
-          WKSDK.shared().conversationManager.notifyConversationListeners(
+          notifyCurrentImConversationListeners(
             conversation,
             ConversationAction.update
           );
@@ -453,7 +476,7 @@ export default class BaseModule implements IModule {
       } else if (cmdContent.cmd === "conversationDeleted") {
         // 最近会话删除
         const channel = new Channel(param.channel_id, param.channel_type);
-        WKSDK.shared().conversationManager.removeConversation(channel);
+        removeCurrentImConversation(channel);
       } else if (cmdContent.cmd === "friendRequest") {
         // 好友申请
         // Space 隔离：不属于当前 Space 的好友申请不显示、不播提示音
@@ -479,7 +502,7 @@ export default class BaseModule implements IModule {
           return;
         }
         if (param.from_uid) {
-          WKSDK.shared().channelManager.fetchChannelInfo(
+          void fetchCurrentImChannelInfo(
             new Channel(param.from_uid, ChannelTypePerson)
           );
         }
@@ -508,34 +531,32 @@ export default class BaseModule implements IModule {
           cmdContent.param.group_no,
           ChannelTypeGroup
         );
-        WKSDK.shared().channelManager.syncSubscribes(channel);
+        void syncCurrentImChannelSubscribers(channel);
       } else if (cmdContent.cmd === "onlineStatus") {
         // 好友在线状态改变
         const channel = new Channel(cmdContent.param.uid, ChannelTypePerson);
         const online = param.online === 1;
-        const onlineChannelInfo =
-          WKSDK.shared().channelManager.getChannelInfo(channel);
+        const onlineChannelInfo = getCurrentImChannelInfo(channel);
         if (onlineChannelInfo) {
           onlineChannelInfo.online = online;
           if (!online) {
             onlineChannelInfo.lastOffline = new Date().getTime() / 1000;
           }
-          WKSDK.shared().channelManager.notifyListeners(onlineChannelInfo);
+          notifyCurrentImChannelInfoListeners(onlineChannelInfo);
         } else {
-          WKSDK.shared().channelManager.fetchChannelInfo(channel);
+          void fetchCurrentImChannelInfo(channel);
         }
       } else if (cmdContent.cmd === "syncConversationExtra") {
         // 同步最近会话扩展
-        WKSDK.shared().conversationManager.syncExtra();
+        syncCurrentImConversationExtra();
       } else if (cmdContent.cmd === "syncReminders") {
         // 同步提醒项
-        WKSDK.shared().reminderManager.sync();
+        syncCurrentImReminders();
       } else if (cmdContent.cmd === "messageRevoke") {
         // 消息撤回
         const channel = message.channel;
         const messageID = param.message_id;
-        let conversation =
-          WKSDK.shared().conversationManager.findConversation(channel);
+        let conversation = findCurrentImConversation(channel);
         if (
           conversation &&
           conversation.lastMessage &&
@@ -543,7 +564,7 @@ export default class BaseModule implements IModule {
         ) {
           conversation.lastMessage.remoteExtra.revoke = true;
           conversation.lastMessage.remoteExtra.revoker = message.fromUID;
-          WKSDK.shared().conversationManager.notifyConversationListeners(
+          notifyCurrentImConversationListeners(
             conversation,
             ConversationAction.update
           );
@@ -557,7 +578,7 @@ export default class BaseModule implements IModule {
       }
     });
 
-    WKSDK.shared().chatManager.addMessageListener((message: Message) => {
+    addCurrentImMessageListener((message: Message) => {
       if (TypingManager.shared.hasTyping(message.channel)) {
         TypingManager.shared.removeTyping(message.channel);
       }
@@ -565,18 +586,18 @@ export default class BaseModule implements IModule {
         case MessageContentTypeConst.channelUpdate:
           // 同 CMD channelUpdate：通用事件，无法区分是否解散，fetch 最新态。
           // 操作者本人的解散走 GroupManagement.handleDisband → syncGroupDisbandState。
-          WKSDK.shared().channelManager.fetchChannelInfo(message.channel);
+          void fetchCurrentImChannelInfo(message.channel);
           break;
         case MessageContentTypeConst.addMembers:
         case MessageContentTypeConst.removeMembers:
-          WKSDK.shared().channelManager.syncSubscribes(message.channel);
+          void syncCurrentImChannelSubscribers(message.channel);
           break;
       }
 
       if (this.allowNotify(message)) {
         let from = "";
         if (message.channel.channelType === ChannelTypeGroup) {
-          const fromChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+          const fromChannelInfo = getCurrentImChannelInfo(
             new Channel(message.fromUID, ChannelTypePerson)
           );
           if (fromChannelInfo) {
@@ -591,7 +612,7 @@ export default class BaseModule implements IModule {
       }
     });
 
-    WKSDK.shared().channelManager.addListener((channelInfo: ChannelInfo) => {
+    addCurrentImChannelInfoListener((channelInfo: ChannelInfo) => {
       if (channelInfo.channel.channelType === ChannelTypePerson) {
         if (WKApp.loginInfo.uid === channelInfo.channel.channelID) {
           WKApp.loginInfo.name = channelInfo.title;
@@ -617,7 +638,7 @@ export default class BaseModule implements IModule {
 
     // 全局订阅 taskManager：上传失败时把 sendQueue 里对应消息标为 Fail 并触发 UI 刷新
     // 放在 module.init() 里保证只注册一次，避免多 ConversationVM 实例重复处理
-    WKSDK.shared().taskManager.addListener((task: Task) => {
+    addCurrentImTaskListener((task: Task) => {
       if (task.status !== TaskStatus.fail && task.status !== TaskStatus.cancel)
         return;
 
@@ -664,7 +685,7 @@ export default class BaseModule implements IModule {
         if (!isChannelSearchEnabled(channel)) return undefined;
         return <ChatSearchEntryButton channel={channel} />;
       },
-      4900, // 排在 matter (5000) / summary (5100) 之前
+      4900 // 排在 matter (5000) / summary (5100) 之前
     );
   }
 
@@ -685,7 +706,7 @@ export default class BaseModule implements IModule {
       // 用户关闭了通知
       return false;
     }
-    if (WKSDK.shared().isSystemMessage(message.contentType)) {
+    if (isCurrentImSystemMessage(message.contentType)) {
       // 系统消息不发通知
       return false;
     }
@@ -708,9 +729,7 @@ export default class BaseModule implements IModule {
     }
 
     // 已屏蔽（免打扰）的 channel 不播提示音、不发通知
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
-      message.channel
-    );
+    const channelInfo = getCurrentImChannelInfo(message.channel);
     if (channelInfo?.mute) {
       return false;
     }
@@ -719,7 +738,7 @@ export default class BaseModule implements IModule {
       | string
       | undefined;
     if (parentGroupNo) {
-      const parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+      const parentChannelInfo = getCurrentImChannelInfo(
         new Channel(parentGroupNo, ChannelTypeGroup)
       );
       if (parentChannelInfo?.mute) {
@@ -888,6 +907,55 @@ export default class BaseModule implements IModule {
     );
 
     WKApp.endpoints.registerMessageContextMenus(
+      "contextmenus.reaction",
+      (message, context) => {
+        if (
+          !canWriteMessageReaction() ||
+          !isMessageReactionChannelSupported(message.channel.channelType)
+        ) {
+          return null;
+        }
+        // 服务端本期只接受纯文本；尚未拿到服务端 message_id 的本地待发送消息也不展示。
+        if (
+          message.contentType !== MessageContentType.text ||
+          !message.messageID
+        ) {
+          return null;
+        }
+        return {
+          title: t("base.module.contextMenus.react"),
+          onClick: () => {
+            reactionPickerOverlay.openAtLastPointer({
+              messageId: message.messageID,
+              selectedKeys: messageReactionController.selectedKeys(message),
+              onSelect: (emoji) => {
+                void messageReactionController.toggle(
+                  message,
+                  emoji,
+                  context.channel()
+                );
+              },
+            });
+          },
+        };
+      },
+      1200
+    );
+
+    // appconfig 可在运行时切换 write：开放时启用右键定位，收紧时立刻拆除监听并
+    // 关闭已打开的 picker。BaseModule 与应用同生命周期，因此只需注册一次。
+    const syncReactionPointerTracking = () => {
+      if (canWriteMessageReaction()) {
+        enablePointerTracking();
+        return;
+      }
+      disablePointerTracking();
+      reactionPickerOverlay.close();
+    };
+    syncReactionPointerTracking();
+    WKApp.remoteConfig.addConfigChangeListener(syncReactionPointerTracking);
+
+    WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.forward",
       (message, context) => {
         if (WKApp.shared.notSupportForward.includes(message.contentType)) {
@@ -950,7 +1018,7 @@ export default class BaseModule implements IModule {
         // Bot 创建者可撤回自己创建的 Bot 发送的消息（与群管理员同等待遇，
         // 不受 message.send 和 24h 时间窗口限制，与后端行为一致）
         let isBotOwner = false;
-        const fromChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+        const fromChannelInfo = getCurrentImChannelInfo(
           new Channel(message.fromUID, ChannelTypePerson)
         );
         if (fromChannelInfo?.orgData?.robot === 1) {
@@ -976,8 +1044,7 @@ export default class BaseModule implements IModule {
 
         if (isGroup || isThread) {
           // 获取当前用户在群/子区父群中的角色
-          const sub =
-            WKSDK.shared().channelManager.getSubscribeOfMe(roleChannel);
+          const sub = getCurrentImChannelSubscriberOfMe(roleChannel);
           myRole = sub?.role;
 
           // 管理员撤回别人消息时必须确认发送者不是群主/管理员；角色未知时默认隐藏。
@@ -1023,7 +1090,7 @@ export default class BaseModule implements IModule {
           return null;
         }
         // 系统消息不显示
-        if (WKSDK.shared().isSystemMessage(message.contentType)) {
+        if (isCurrentImSystemMessage(message.contentType)) {
           return null;
         }
         // 群已解散则隐藏「创建子区」——解散后全员只读，不得新建子区。
@@ -1092,14 +1159,12 @@ export default class BaseModule implements IModule {
                     ...message.content.encodeJSON(),
                     type: message.content.contentType,
                   };
-                  const resp = await WKApp.apiClient.post(
-                    `groups/${message.channel.channelID}/threads`,
-                    {
-                      name: threadName.trim(),
-                      source_message_id: parseInt(message.messageID),
-                      source_message_payload: sourcePayload,
-                    }
-                  );
+                  const resp = await ThreadService.createThreadFromMessage({
+                    groupNo: message.channel.channelID,
+                    name: threadName.trim(),
+                    sourceMessageId: parseInt(message.messageID),
+                    sourceMessagePayload: sourcePayload,
+                  });
                   Toast.success(t("base.module.createThread.success"));
                   if (resp && resp.channel_id) {
                     WKApp.mittBus.emit("wk:thread-created", {
@@ -1164,27 +1229,30 @@ export default class BaseModule implements IModule {
             },
           })
         );
-        if (fromSubscriberOfUser) {
-          let joinDesc = `${fromSubscriberOfUser.orgData.created_at.substr(
-            0,
-            10
-          )}`;
+        const membershipOrgData = userInfoMembershipOrgData({
+          fromChannel: data.fromChannel,
+          channelInfo,
+          fromSubscriberOfUser,
+        });
+        const membershipCreatedAt =
+          userInfoMembershipCreatedAt(membershipOrgData);
+        if (membershipCreatedAt) {
+          let joinDesc = `${membershipCreatedAt.substr(0, 10)}`;
           if (
-            fromSubscriberOfUser.orgData?.invite_uid &&
-            fromSubscriberOfUser.orgData?.invite_uid !== ""
+            membershipOrgData?.invite_uid &&
+            membershipOrgData?.invite_uid !== ""
           ) {
             const inviterChannel = new Channel(
-              fromSubscriberOfUser.orgData?.invite_uid,
+              membershipOrgData?.invite_uid,
               ChannelTypePerson
             );
-            const inviteChannelInfo =
-              WKSDK.shared().channelManager.getChannelInfo(inviterChannel);
+            const inviteChannelInfo = getCurrentImChannelInfo(inviterChannel);
             if (inviteChannelInfo) {
               joinDesc += t("base.module.userInfo.invitedBy", {
                 values: { name: inviteChannelInfo.title },
               });
             } else {
-              WKSDK.shared().channelManager.fetchChannelInfo(inviterChannel);
+              void fetchCurrentImChannelInfo(inviterChannel);
             }
           } else {
             joinDesc += t("base.module.userInfo.joinedGroup");
@@ -1262,23 +1330,19 @@ export default class BaseModule implements IModule {
                             ChannelTypePerson
                           );
                           const conversation =
-                            WKSDK.shared().conversationManager.findConversation(
-                              channel
-                            );
+                            findCurrentImConversation(channel);
                           if (conversation) {
                             WKApp.conversationProvider.clearConversationMessages(
                               conversation
                             );
                           }
-                          WKSDK.shared().conversationManager.removeConversation(
-                            channel
-                          );
+                          removeCurrentImConversation(channel);
                           WKApp.endpointManager.invoke(
                             EndpointID.clearChannelMessages,
                             channel
                           );
 
-                          WKSDK.shared().channelManager.fetchChannelInfo(
+                          void fetchCurrentImChannelInfo(
                             new Channel(data.uid, ChannelTypePerson)
                           );
                         })
@@ -1463,12 +1527,14 @@ export default class BaseModule implements IModule {
     placeholder?: string,
     maxCount?: number,
     allowEmpty?: boolean,
-    allowWrap?: boolean
+    allowWrap?: boolean,
+    className?: string
   ) {
     let value: string;
     let finishButtonContext: FinishButtonContext;
     context.push(
       <InputEdit
+        className={className}
         defaultValue={defaultValue}
         placeholder={placeholder}
         onChange={(v, exceeded) => {
@@ -1502,493 +1568,39 @@ export default class BaseModule implements IModule {
     );
   }
 
+  channelSettingInputEditPush(
+    context: RouteContext<any>,
+    defaultValue: string,
+    onFinish: (value: string) => Promise<void>,
+    placeholder?: string,
+    maxCount?: number,
+    allowEmpty?: boolean,
+    allowWrap?: boolean
+  ) {
+    this.inputEditPush(
+      context,
+      defaultValue,
+      onFinish,
+      placeholder,
+      maxCount,
+      allowEmpty,
+      allowWrap,
+      "wk-channelsetting-input-edit"
+    );
+  }
+
   registerChannelSettings() {
     WKApp.shared.channelSettingRegister("channel.subscribers", (context) => {
-      const data = context.routeData() as ChannelSettingRouteData;
-      const channel = data.channel;
-
-      // 客服频道和子区不显示成员管理
-      if (
-        channel.channelType === ChannelTypeCustomerService ||
-        channel.channelType === ChannelTypeCommunityTopic
-      ) {
-        return;
-      }
-
-      // 群已解散（企业微信式只读态）：隐藏成员栏，视觉上"群里没人了"，
-      // 但后端实际保留成员以支撑历史可看（A 数据 + B 皮肤）。
-      if (isGroupDisbanded(data.channelInfo)) {
-        return;
-      }
-
-      let addFinishButtonContext: FinishButtonContext;
-      let removeFinishButtonContext: FinishButtonContext;
-      let addSelectItems: IndexTableItem[];
-      let removeSelectItems: Subscriber[];
-      const disableSelectList = data.subscribers.map((subscriber) => {
-        return subscriber.uid;
-      });
-      return new Section({
-        rows: [
-          new Row({
-            cell: Subscribers,
-            properties: {
-              context: context,
-              channel: channel,
-              key: channel.getChannelKey(),
-              canManageBotAdmin:
-                !!data.channelInfo?.orgData?.can_manage_bot_admin,
-              onAdd: () => {
-                context.push(
-                  <ContactsSelect
-                    onSelect={(items) => {
-                      addSelectItems = items;
-                      addFinishButtonContext.disable(items.length === 0);
-                    }}
-                    disableSelectList={disableSelectList}
-                  ></ContactsSelect>,
-                  {
-                    title: t("base.module.channelSettings.contactSelect"),
-                    showFinishButton: true,
-                    onFinish: async () => {
-                      addFinishButtonContext.loading(true);
-
-                      if (channel.channelType === ChannelTypePerson) {
-                        const uids = new Array();
-                        uids.push(WKApp.loginInfo.uid || "");
-                        uids.push(channel.channelID);
-                        for (const item of addSelectItems) {
-                          uids.push(item.id);
-                        }
-
-                        const result = await WKApp.dataSource.channelDataSource
-                          .createChannel(uids)
-                          .catch((err) => {
-                            Toast.error(err.msg);
-                          });
-                        if (result) {
-                          WKApp.endpoints.showConversation(
-                            new Channel(result.group_no, ChannelTypeGroup)
-                          );
-                        }
-                      } else {
-                        await WKApp.dataSource.channelDataSource.addSubscribers(
-                          channel,
-                          addSelectItems.map((item) => {
-                            return item.id;
-                          })
-                        );
-                        context.pop();
-                      }
-                      addFinishButtonContext.loading(false);
-                    },
-                    onFinishContext: (context) => {
-                      addFinishButtonContext = context;
-                      addFinishButtonContext.disable(true);
-                    },
-                  }
-                );
-              },
-              onRemove: () => {
-                context.push(
-                  <SubscriberList
-                    channel={channel}
-                    onSelect={(items) => {
-                      removeSelectItems = items;
-                      removeFinishButtonContext.disable(items.length === 0);
-                    }}
-                    canSelect={true}
-                  ></SubscriberList>,
-                  {
-                    title: t("base.module.channelSettings.removeMembers"),
-                    showFinishButton: true,
-                    onFinish: async () => {
-                      removeFinishButtonContext.loading(true);
-                      WKApp.dataSource.channelDataSource
-                        .removeSubscribers(
-                          channel,
-                          removeSelectItems.map((item) => {
-                            return item.uid;
-                          })
-                        )
-                        .then(() => {
-                          removeFinishButtonContext.loading(false);
-                          context.pop();
-                        })
-                        .catch((err) => {
-                          Toast.error(err.msg);
-                        });
-                    },
-                    onFinishContext: (context) => {
-                      removeFinishButtonContext = context;
-                      removeFinishButtonContext.disable(true);
-                    },
-                  }
-                );
-              },
-            },
-          }),
-        ],
-      });
+      return buildChannelMembersSection(context);
     });
 
     WKApp.shared.channelSettingRegister(
       "channel.base.setting",
       (context) => {
-        const data = context.routeData() as ChannelSettingRouteData;
-        const channelInfo = data.channelInfo;
-        const channel = data.channel;
-        if (channel.channelType !== ChannelTypeGroup) {
-          return undefined;
-        }
-        const rows = new Array();
-        // 企业微信式解散：解散后该 Section 只保留「备注」这一纯个人本地项，
-        // 其余群管理类入口（群名/头像/二维码/公告/转让群主/GROUP.md/群消息推送
-        // /群管理）全部隐藏。与成员栏隐藏（channel.subscribers 段）同源判定。
-        const disbanded = isGroupDisbanded(channelInfo);
-        const isExternalGroup = channelInfo?.orgData?.is_external_group === 1;
-        const groupNameSubTitle = isExternalGroup ? (
-          <span>
-            {channelInfo?.title}
-            <Tag color="orange" size="small" style={{ marginLeft: 6 }}>
-              {t("base.module.channelSettings.externalGroup")}
-            </Tag>
-          </span>
-        ) : (
-          channelInfo?.title
+        return buildChannelGroupInfoSection(
+          context,
+          this.channelSettingInputEditPush.bind(this)
         );
-        if (!disbanded) {
-          rows.push(
-            new Row({
-              cell: ListItem,
-              properties: {
-                title: t("base.module.channelSettings.groupName"),
-                subTitle: groupNameSubTitle,
-                onClick: () => {
-                  // 服务端放开后（octo-server #542）任何活跃人类成员都可改群名，
-                  // 前端只挡龙虾（canRenameGroup 粗过滤），外部/黑名单成员放到弹窗
-                  // 后由服务端裁决、经下方 Toast.error(err.msg) 呈现。
-                  if (!canRenameGroup(data.subscriberOfMe)) {
-                    return;
-                  }
-                  this.inputEditPush(
-                    context,
-                    channelInfo?.title || "",
-                    (value: string) => {
-                      return WKApp.dataSource.channelDataSource
-                        .updateField(channel, ChannelField.channelName, value)
-                        .catch((err) => {
-                          Toast.error(err.msg);
-                        });
-                    },
-                    t("base.module.channelSettings.groupNamePlaceholder"),
-                    GROUP_NAME_MAX_LENGTH
-                  );
-                },
-              },
-            })
-          );
-
-        rows.push(
-          new Row({
-            cell: ListItemIcon,
-            properties: {
-              title: t("base.module.channelSettings.groupAvatar"),
-              icon: (
-                <img
-                  style={{ width: "24px", height: "24px", borderRadius: "var(--wk-avatar-radius, 50%)" }}
-                  src={WKApp.shared.avatarChannel(channel)}
-                  alt=""
-                />
-              ),
-              onClick: () => {
-                context.push(
-                  <ChannelAvatar
-                    showUpload={data.isManagerOrCreatorOfMe}
-                    channel={channel}
-                  ></ChannelAvatar>,
-                  { title: t("base.module.channelSettings.groupAvatar") }
-                );
-              },
-            },
-          })
-        );
-
-        rows.push(
-          new Row({
-            cell: ListItemIcon,
-            properties: {
-              title: t("base.module.channelSettings.groupQrCode"),
-              icon: (
-                <img
-                  style={{ width: "24px", height: "24px" }}
-                  src={require("./assets/icon_qrcode.png")}
-                  alt=""
-                />
-              ),
-              onClick: () => {
-                context.push(
-                  <ChannelQRCode channel={channel}></ChannelQRCode>,
-                  new RouteContextConfig({
-                    title: t("base.module.channelSettings.groupQrCard"),
-                  })
-                );
-              },
-            },
-          })
-        );
-        rows.push(
-          new Row({
-            cell: ListItemMuliteLine,
-            properties: {
-              title: t("base.module.channelSettings.groupNotice"),
-              subTitle: channelInfo?.orgData?.notice,
-              onClick: () => {
-                if (!data.isManagerOrCreatorOfMe) {
-                  Toast.warning(
-                    t("base.module.channelSettings.groupNoticeOnlyManager")
-                  );
-                  return;
-                }
-                this.inputEditPush(
-                  context,
-                  channelInfo?.orgData?.notice || "",
-                  (value: string) => {
-                    return WKApp.dataSource.channelDataSource
-                      .updateField(channel, ChannelField.notice, value)
-                      .catch((err) => {
-                        Toast.error(err.msg);
-                      });
-                  },
-                  t("base.module.channelSettings.groupNotice"),
-                  400,
-                  true,
-                  true
-                );
-              },
-            },
-          })
-        );
-        } // end if (!disbanded) — 群名/头像/二维码/公告 仅正常群显示
-        if (!disbanded && data.subscriberOfMe?.role === GroupRole.owner) {
-          let transferOwnerFinishButtonContext: FinishButtonContext;
-          let transferOwnerSelectedItems: Subscriber[] = [];
-          rows.push(
-            new Row({
-              cell: ListItem,
-              properties: {
-                title: t("base.module.channelSettings.transferOwner"),
-                onClick: () => {
-                  context.push(
-                    <SubscriberList
-                      channel={channel}
-                      canSelect={true}
-                      singleSelect={true}
-                      disableSelectList={[WKApp.loginInfo.uid || ""]}
-                      filter={(subscriber) =>
-                        subscriber.uid !== WKApp.loginInfo.uid &&
-                        (subscriber.orgData?.robot === 1) !== true
-                      }
-                      onSelect={(items) => {
-                        transferOwnerSelectedItems = items;
-                        transferOwnerFinishButtonContext?.disable(
-                          items.length !== 1
-                        );
-                      }}
-                    />,
-                    new RouteContextConfig({
-                      title: t(
-                        "base.module.channelSettings.transferOwnerSelect"
-                      ),
-                      showFinishButton: true,
-                      finishButtonTitle: t("base.common.ok"),
-                      onFinishContext: (finishButtonContext) => {
-                        transferOwnerFinishButtonContext = finishButtonContext;
-                        transferOwnerFinishButtonContext.disable(true);
-                      },
-                      onFinish: () => {
-                        const selected = transferOwnerSelectedItems[0];
-                        if (!selected) {
-                          Toast.warning(
-                            t(
-                              "base.module.channelSettings.transferOwnerSelectOne"
-                            )
-                          );
-                          return;
-                        }
-                        const name =
-                          selected.remark || selected.name || selected.uid;
-                        wkConfirm({
-                          title: t(
-                            "base.module.channelSettings.transferOwner"
-                          ),
-                          content: t(
-                            "base.module.channelSettings.transferOwnerConfirm",
-                            { values: { name } }
-                          ),
-                          okText: t("base.common.ok"),
-                          cancelText: t("base.common.cancel"),
-                          onOk: async () => {
-                            try {
-                              await WKApp.dataSource.channelDataSource.channelTransferOwner(
-                                channel,
-                                selected.uid
-                              );
-                              Toast.success(
-                                t(
-                                  "base.module.channelSettings.transferOwnerSuccess"
-                                )
-                              );
-                              context.pop();
-                              void WKSDK.shared().channelManager.syncSubscribes(
-                                channel
-                              );
-                              void WKSDK.shared().channelManager.fetchChannelInfo(
-                                channel
-                              );
-                              data.refresh();
-                            } catch (err: any) {
-                              Toast.error(
-                                err?.msg ||
-                                  t(
-                                    "base.module.channelSettings.transferOwnerFailed"
-                                  )
-                              );
-                              throw err;
-                            }
-                          },
-                        });
-                      },
-                    })
-                  );
-                },
-              },
-            })
-          );
-        }
-        if (channel.channelType === ChannelTypeGroup && !disbanded) {
-          const hasGroupMd = channelInfo?.orgData?.has_group_md;
-          const mdVersion = channelInfo?.orgData?.group_md_version || 0;
-          rows.push(
-            new Row({
-              cell: ListItem,
-              properties: {
-                title: "GROUP.md",
-                subTitle: hasGroupMd
-                  ? t("base.module.channelSettings.configuredVersion", {
-                      values: { version: mdVersion },
-                    })
-                  : t("base.module.channelSettings.notConfigured"),
-                onClick: () => {
-                  // Fall back to role check: creator (role=1) or manager (role=2) can edit GROUP.md
-                  const latestData =
-                    context.routeData() as ChannelSettingRouteData;
-                  const subscriberOfMe = latestData?.subscriberOfMe;
-                  const isOwnerOrManager =
-                    subscriberOfMe &&
-                    (subscriberOfMe.role === 1 || subscriberOfMe.role === 2);
-                  const canEditMd =
-                    !!latestData?.channelInfo?.orgData?.can_edit_group_md ||
-                    isOwnerOrManager;
-                  context.push(
-                    <GroupMdEditor channel={channel} canEdit={canEditMd} />,
-                    new RouteContextConfig({
-                      title: "GROUP.md",
-                    })
-                  );
-                },
-              },
-            })
-          );
-
-          // 群入站 Webhook：列表对全员只读可见，操作权限由面板内按
-          // 「管理员 / 自己创建」矩阵控制（服务端兜底裁决）
-          rows.push(
-            new Row({
-              cell: ListItem,
-              properties: {
-                title: t("base.module.channelSettings.incomingWebhook"),
-                onClick: () => {
-                  const rd = context.routeData() as ChannelSettingRouteData;
-                  const me = rd?.subscriberOfMe;
-                  const isManager =
-                    me?.role === GroupRole.owner ||
-                    me?.role === GroupRole.manager;
-                  context.push(
-                    <ChannelWebhookPanel
-                      channel={channel}
-                      isManager={!!isManager}
-                    />,
-                    new RouteContextConfig({
-                      title: (
-                        <I18nText k="base.module.channelSettings.incomingWebhook" />
-                      ),
-                    })
-                  );
-                },
-              },
-            })
-          );
-
-          const latestData2 = context.routeData() as ChannelSettingRouteData;
-          const subscriberOfMe2 = latestData2?.subscriberOfMe;
-          if (
-            subscriberOfMe2 &&
-            (subscriberOfMe2.role === 1 || subscriberOfMe2.role === 2)
-          ) {
-            rows.push(
-              new Row({
-                cell: ListItem,
-                properties: {
-                  title: t("base.module.channelSettings.groupManagement"),
-                  onClick: () => {
-                    const rd = context.routeData() as ChannelSettingRouteData;
-                    const me = rd?.subscriberOfMe;
-                    const isCreator = me?.role === 1;
-                    context.push(
-                      <GroupManagement
-                        channel={channel}
-                        isCreator={isCreator}
-                        context={context}
-                      />,
-                      new RouteContextConfig({
-                        title: t("base.module.channelSettings.groupManagement"),
-                      })
-                    );
-                  },
-                },
-              })
-            );
-          }
-        }
-        rows.push(
-          new Row({
-            cell: ListItem,
-            properties: {
-              title: t("base.module.channelSettings.remark"),
-              subTitle: channelInfo?.orgData?.remark,
-              onClick: () => {
-                this.inputEditPush(
-                  context,
-                  channelInfo?.orgData?.remark || "",
-                  (value: string) => {
-                    return ChannelSettingManager.shared
-                      .remark(value, channel)
-                      .then(() => {
-                        data.refresh();
-                      });
-                  },
-                  t("base.module.channelSettings.remarkPlaceholder"),
-                  15,
-                  true
-                );
-              },
-            },
-          })
-        );
-        return new Section({
-          rows: rows,
-        });
       },
       1000
     );
@@ -1996,98 +1608,7 @@ export default class BaseModule implements IModule {
     WKApp.shared.channelSettingRegister(
       "channel.base.setting2",
       (context) => {
-        const data = context.routeData() as ChannelSettingRouteData;
-        const channelInfo = data.channelInfo;
-        const channel = data.channel;
-        const rows = new Array<Row>();
-
-        // 客服频道和子区使用各自的设置
-        if (
-          channel.channelType === ChannelTypeCustomerService ||
-          channel.channelType === ChannelTypeCommunityTopic
-        ) {
-          return;
-        }
-
-        // 解散后隐藏「消息免打扰」（群管理类通知设置）；置顶 / 保存到通讯录
-        // 属个人本地项，仍保留。
-        const disbanded = isGroupDisbanded(channelInfo);
-
-        if (!disbanded) {
-          rows.push(
-            new Row({
-              cell: ListItemSwitch,
-              properties: {
-                title: t("base.module.channelSettings.mute"),
-                checked: channelInfo?.mute,
-                onCheck: (v: boolean, ctx: ListItemSwitchContext) => {
-                  ctx.loading = true;
-                  ChannelSettingManager.shared
-                    .mute(v, channel)
-                    .then(() => {
-                      ctx.loading = false;
-                      data.refresh();
-                    })
-                    .catch(() => {
-                      ctx.loading = false;
-                    });
-                },
-              },
-            })
-          );
-        }
-
-        rows.push(
-          new Row({
-            cell: ListItemSwitch,
-            properties: {
-              title: t("base.module.channelSettings.pin"),
-              checked: channelInfo?.top,
-              onCheck: (v: boolean, ctx: ListItemSwitchContext) => {
-                ctx.loading = true;
-                ChannelSettingManager.shared
-                  .top(v, channel)
-                  .then(() => {
-                    ctx.loading = false;
-                    data.refresh();
-                  })
-                  .catch(() => {
-                    ctx.loading = false;
-                  });
-              },
-            },
-          })
-        );
-
-        if (channel.channelType === ChannelTypeGroup) {
-          rows.push(
-            new Row({
-              cell: ListItemSwitch,
-              properties: {
-                title: t("base.module.channelSettings.saveToContacts"),
-                checked: channelInfo?.orgData.save === 1,
-                onCheck: (v: boolean, ctx: ListItemSwitchContext) => {
-                  ctx.loading = true;
-                  ChannelSettingManager.shared
-                    .save(v, channel)
-                    .then(() => {
-                      ctx.loading = false;
-                      data.refresh();
-                    })
-                    .catch(() => {
-                      ctx.loading = false;
-                    });
-                },
-              },
-            })
-          );
-        }
-
-        // 群级「允许群内 Bot 免@回答」总开关已移至「群管理」界面（GroupManagement），
-        // 不再挂在频道设置区。见 Components/GroupManagement/index.tsx。
-        return new Section({
-          rows: rows,
-        });
+        return buildChannelPreferenceSection(context);
       },
       3000
     );
@@ -2095,47 +1616,10 @@ export default class BaseModule implements IModule {
     WKApp.shared.channelSettingRegister(
       "channel.base.setting3",
       (context) => {
-        const data = context.routeData() as ChannelSettingRouteData;
-        if (data.channel.channelType !== ChannelTypeGroup) {
-          return undefined;
-        }
-        // 解散后隐藏「我在本群的昵称」——群成员属性类项，群已解散无意义。
-        if (isGroupDisbanded(data.channelInfo)) {
-          return undefined;
-        }
-
-        let name = data.subscriberOfMe?.remark;
-        if (!name || name === "") {
-          name = data.subscriberOfMe?.name;
-        }
-
-        return new Section({
-          rows: [
-            new Row({
-              cell: ListItem,
-              properties: {
-                title: t("base.module.channelSettings.myGroupNickname"),
-                subTitle: name,
-                onClick: () => {
-                  this.inputEditPush(
-                    context,
-                    name || "",
-                    (value: string) => {
-                      return WKApp.dataSource.channelDataSource.subscriberAttrUpdate(
-                        data.channel,
-                        WKApp.loginInfo.uid || "",
-                        { remark: value }
-                      );
-                    },
-                    t("base.module.channelSettings.myGroupNicknamePlaceholder"),
-                    10,
-                    true
-                  );
-                },
-              },
-            }),
-          ],
-        });
+        return buildMyGroupNicknameSection(
+          context,
+          this.channelSettingInputEditPush.bind(this)
+        );
       },
       4000
     );
@@ -2182,98 +1666,7 @@ export default class BaseModule implements IModule {
     WKApp.shared.channelSettingRegister(
       "channel.base.setting6",
       (context) => {
-        const data = context.routeData() as ChannelSettingRouteData;
-        if (data.channel.channelType !== ChannelTypeGroup) {
-          return undefined;
-        }
-        // 群解散后隐藏「清空聊天记录 / 删除并退出」整段，与企业微信解散态对齐。
-        if (isGroupDisbanded(data.channelInfo)) {
-          return undefined;
-        }
-        return new Section({
-          rows: [
-            new Row({
-              cell: ListItemButton,
-              properties: {
-                title: t("base.module.channelSettings.clearMessages"),
-                type: ListItemButtonType.warn,
-                onClick: () => {
-                  WKApp.shared.baseContext.showAlert({
-                    content: t(
-                      "base.module.channelSettings.clearMessagesConfirm"
-                    ),
-                    onOk: async () => {
-                      const conversation =
-                        WKSDK.shared().conversationManager.findConversation(
-                          data.channel
-                        );
-                      if (!conversation) {
-                        return;
-                      }
-                      await WKApp.conversationProvider.clearConversationMessages(
-                        conversation
-                      );
-                      conversation.lastMessage = undefined;
-                      WKApp.endpointManager.invoke(
-                        EndpointID.clearChannelMessages,
-                        data.channel
-                      );
-                    },
-                  });
-                },
-              },
-            }),
-            new Row({
-              cell: ListItemButton,
-              properties: {
-                title: t("base.module.channelSettings.deleteAndExit"),
-                type: ListItemButtonType.warn,
-                onClick: () => {
-                  if (data.subscriberOfMe?.role === GroupRole.owner) {
-                    WKApp.shared.baseContext.showAlert({
-                      title: t(
-                        "base.module.channelSettings.ownerLeaveBlockedTitle"
-                      ),
-                      content: t(
-                        "base.module.channelSettings.ownerLeaveBlockedContent"
-                      ),
-                    });
-                    return;
-                  }
-                  WKApp.shared.baseContext.showAlert({
-                    content: t(
-                      "base.module.channelSettings.deleteAndExitConfirm"
-                    ),
-                    onOk: async () => {
-                      try {
-                        await WKApp.dataSource.channelDataSource.exitChannel(
-                          data.channel
-                        );
-                        await WKApp.conversationProvider
-                          .deleteConversation(data.channel)
-                          .catch((err) => {
-                            console.warn(
-                              "[ChannelSetting] delete conversation after leaving failed:",
-                              err
-                            );
-                          });
-                        removeLocalConversationAndCloseIfOpen(data.channel);
-                      } catch (err: any) {
-                        Toast.error(
-                          err?.msg ||
-                            t(
-                              "base.module.channelSettings.deleteAndExitFailed"
-                            )
-                        );
-                        throw err;
-                      }
-                    },
-                  });
-                },
-              },
-            }),
-          ],
-        });
+        return buildChannelDangerSection(context);
       },
       90000
     );
@@ -2282,132 +1675,10 @@ export default class BaseModule implements IModule {
     WKApp.shared.channelSettingRegister(
       "thread.base.info",
       (context) => {
-        const data = context.routeData() as ChannelSettingRouteData;
-        const channel = data.channel;
-        if (channel.channelType !== ChannelTypeCommunityTopic) {
-          return undefined;
-        }
-        const threadInfo = parseThreadChannelId(channel.channelID);
-        // 父群是否已解散（子区解散态在父群上）。企业微信式解散后右侧面板精简：
-        // 只留「子区名称」+「所属群聊」，隐藏「子区状态」行（其余 section 各自隐藏）。
-        const disbanded =
-          !!threadInfo &&
-          isChannelDisbanded(new Channel(threadInfo.groupNo, ChannelTypeGroup));
-
-        // data.channelInfo 由 ChannelSettingVM 通过 channelInfoListener 维护：
-        // vm.didMount → fetchChannelInfo(channel) → channelInfoCallback（子区分支）
-        // → title = thread.name → notifyListeners → reloadChannelInfo → routeData.channelInfo 更新
-        // sections() 重跑时 data.channelInfo 已有正确数据，直接读即可。
-        const channelInfo = data.channelInfo;
-        const threadName = channelInfo?.title;
-
-        // 权限：服务端放开后（octo-server #542）任何父群活跃人类成员都可改子区名。
-        // canRenameThread 只判「登录用户是否父群活跃成员（非龙虾）」——与服务端口径对齐，
-        // 不再收紧到创建者/群主/管理员。data.isManagerOrCreatorOfMe 读的是子区频道成员
-        // 缓存，从未同步、对普通成员恒 false，会误拦他们（见 issue #394）。
-        const thread = channelInfo?.orgData?.thread as any;
-        const canEdit = canRenameThread(threadInfo?.groupNo);
-        const statusTitle =
-          thread?.status === ThreadStatus.Archived
-            ? t("base.module.thread.status.archived")
-            : thread?.status === ThreadStatus.Deleted
-            ? t("base.module.thread.status.deleted")
-            : t("base.module.thread.status.active");
-        const statusColor =
-          thread?.status === ThreadStatus.Archived
-            ? "grey"
-            : thread?.status === ThreadStatus.Deleted
-            ? "red"
-            : "green";
-
-        const rows = new Array<Row>();
-        rows.push(
-          new Row({
-            cell: ListItem,
-            properties: {
-              title: t("base.module.thread.name"),
-              subTitle: threadName,
-              onClick: () => {
-                if (!threadInfo) return;
-                // 服务端放开后（octo-server #542）任何父群活跃人类成员都可改子区名，
-                // 前端只挡龙虾/非成员；失败提示以服务端返回错误为准（下方 Toast.error）。
-                if (!canEdit) {
-                  return;
-                }
-                this.inputEditPush(
-                  context,
-                  threadName || "",
-                  async (value: string) => {
-                    try {
-                      await WKApp.dataSource.channelDataSource.threadUpdate(
-                        threadInfo.groupNo,
-                        threadInfo.shortId,
-                        { name: value }
-                      );
-                    } catch (err: any) {
-                      Toast.error(
-                        err?.msg || t("base.module.thread.saveFailedRetry")
-                      );
-                      return; // 失败时 inputEditPush 正常关闭，不刷新缓存
-                    }
-                    // 清除缓存后重新拉取，拿到新数据再刷新 UI
-                    WKSDK.shared().channelManager.deleteChannelInfo(channel);
-                    await WKSDK.shared().channelManager.fetchChannelInfo(
-                      channel
-                    );
-                    data.refresh();
-                  },
-                  t("base.module.thread.name"),
-                  THREAD_NAME_MAX_LENGTH
-                );
-              },
-            },
-          })
+        return buildThreadInfoSection(
+          context,
+          this.channelSettingInputEditPush.bind(this)
         );
-        // 父群解散后隐藏「子区状态」行（企业微信式只读，活跃/归档状态 Tag 失去意义）。
-        if (!disbanded) {
-          rows.push(
-            new Row({
-              cell: ListItem,
-              properties: {
-                title: t("base.module.thread.status.title"),
-                subTitle: (
-                  <Tag color={statusColor} size="small">
-                    {statusTitle}
-                  </Tag>
-                ),
-              },
-            })
-          );
-        }
-        if (threadInfo) {
-          const groupChannel = new Channel(
-            threadInfo.groupNo,
-            ChannelTypeGroup
-          );
-          const groupInfo =
-            WKSDK.shared().channelManager.getChannelInfo(groupChannel);
-          if (!groupInfo) {
-            WKSDK.shared().channelManager.fetchChannelInfo(groupChannel);
-          }
-          const groupName = groupInfo?.title || threadInfo.groupNo;
-          rows.push(
-            new Row({
-              cell: ListItem,
-              properties: {
-                title: t("base.module.thread.parentGroup"),
-                subTitle: groupName,
-                onClick: () => {
-                  WKApp.endpoints.showConversation(groupChannel);
-                },
-              },
-            })
-          );
-        }
-        return new Section({
-          title: t("base.module.thread.info"),
-          rows: rows,
-        });
       },
       500
     );
@@ -2416,76 +1687,7 @@ export default class BaseModule implements IModule {
     WKApp.shared.channelSettingRegister(
       "thread.md.setting",
       (context) => {
-        const data = context.routeData() as ChannelSettingRouteData;
-        const channel = data.channel;
-        const channelInfo = data.channelInfo;
-        if (channel.channelType !== ChannelTypeCommunityTopic) {
-          return undefined;
-        }
-        const threadInfo = parseThreadChannelId(channel.channelID);
-        if (!threadInfo) {
-          return undefined;
-        }
-        // 父群解散后整段隐藏 GROUP.md（解散只读；后端 UpdateThreadMd 走 canOperate
-        // 的解散守卫亦会拒写，前端不再暴露入口）。
-        if (
-          isChannelDisbanded(new Channel(threadInfo.groupNo, ChannelTypeGroup))
-        ) {
-          return undefined;
-        }
-
-        const hasThreadMd = channelInfo?.orgData?.has_thread_md;
-        const mdVersion = channelInfo?.orgData?.thread_md_version || 0;
-
-        return new Section({
-          rows: [
-            new Row({
-              cell: ListItem,
-              properties: {
-                title: "GROUP.md",
-                subTitle: hasThreadMd
-                  ? t("base.module.channelSettings.configuredVersion", {
-                      values: { version: mdVersion },
-                    })
-                  : t("base.module.channelSettings.notConfigured"),
-                onClick: () => {
-                  // 延迟获取最新数据
-                  const latestData =
-                    context.routeData() as ChannelSettingRouteData;
-                  const subscriberOfMe = latestData?.subscriberOfMe;
-                  const latestChannelInfo = latestData?.channelInfo;
-
-                  // 后端权限字段优先
-                  const backendCanEdit =
-                    !!latestChannelInfo?.orgData?.thread?.can_edit_thread_md;
-
-                  // 父群群主/管理员
-                  const isGroupOwnerOrManager =
-                    subscriberOfMe &&
-                    (subscriberOfMe.role === 1 || subscriberOfMe.role === 2);
-
-                  // 子区创建者
-                  const isThreadCreator =
-                    latestChannelInfo?.orgData?.thread?.creator_uid ===
-                    WKApp.loginInfo.uid;
-
-                  const canEditMd = !!(
-                    backendCanEdit ||
-                    isThreadCreator ||
-                    isGroupOwnerOrManager
-                  );
-
-                  context.push(
-                    <GroupMdEditor channel={channel} canEdit={canEditMd} />,
-                    new RouteContextConfig({
-                      title: "GROUP.md",
-                    })
-                  );
-                },
-              },
-            }),
-          ],
-        });
+        return buildThreadMdSection(context);
       },
       1000
     );
@@ -2500,50 +1702,7 @@ export default class BaseModule implements IModule {
     WKApp.shared.channelSettingRegister(
       "thread.webhook",
       (context) => {
-        const data = context.routeData() as ChannelSettingRouteData;
-        const channel = data.channel;
-        if (channel.channelType !== ChannelTypeCommunityTopic) {
-          return undefined;
-        }
-        const threadInfo = parseThreadChannelId(channel.channelID);
-        if (!threadInfo) {
-          return undefined;
-        }
-        const thread = data.channelInfo?.orgData?.thread as any;
-        if (thread?.status !== ThreadStatus.Active) {
-          return undefined;
-        }
-        const parentGroupChannel = new Channel(
-          threadInfo.groupNo,
-          ChannelTypeGroup
-        );
-        // 父群解散后隐藏 webhook 入口 —— webhook 写操作（create/update/regenerate/delete/test）
-        // 与 read-only 合约冲突，与 thread.actions 同模式。
-        if (isChannelDisbanded(parentGroupChannel)) {
-          return undefined;
-        }
-        return new Section({
-          rows: [
-            new Row({
-              cell: ListItem,
-              properties: {
-                title: t("base.threadPanel.webhook"),
-                onClick: () => {
-                  context.push(
-                    <ChannelWebhookPanel
-                      channel={parentGroupChannel}
-                      isManager={isParentGroupManager(threadInfo.groupNo)}
-                      threadShortId={threadInfo.shortId}
-                    />,
-                    new RouteContextConfig({
-                      title: <I18nText k="base.threadPanel.webhook" />,
-                    })
-                  );
-                },
-              },
-            }),
-          ],
-        });
+        return buildThreadWebhookSection(context);
       },
       2000
     );
@@ -2554,134 +1713,7 @@ export default class BaseModule implements IModule {
     WKApp.shared.channelSettingRegister(
       "thread.actions",
       (context) => {
-        const data = context.routeData() as ChannelSettingRouteData;
-        const channel = data.channel;
-        if (channel.channelType !== ChannelTypeCommunityTopic) {
-          return undefined;
-        }
-        const threadInfo = parseThreadChannelId(channel.channelID);
-        // 父群解散后整段隐藏子区管理（归档/取消归档/离开均为写操作，后端解散守卫会拒）。
-        if (
-          threadInfo &&
-          isChannelDisbanded(new Channel(threadInfo.groupNo, ChannelTypeGroup))
-        ) {
-          return undefined;
-        }
-        const thread = data.channelInfo?.orgData?.thread as any;
-        // 角色/权限判定统一走 shouldShowThreadArchiveAction（内部调用
-        // canArchiveThread → canManageThread，从【父群】成员列表解析
-        // owner/manager，与 ThreadPanel.canEditThread 完全一致，见 issue #283），
-        // 并统一「状态须为 Active/Archived」的门槛，避免与入口 B 产生平行副本。
-        // data.isManagerOrCreatorOfMe 读的是子区频道自身成员缓存，从未同步，
-        // 非创建者的群主/管理员恒为 false，仅作兜底。
-        const showArchiveAction = shouldShowThreadArchiveAction({
-          thread,
-          groupNo: threadInfo?.groupNo,
-          isManagerOrCreatorOfMeFallback: data.isManagerOrCreatorOfMe,
-        });
-        // isArchived 用于决定显示「归档」还是「取消归档」文案。
-        const isArchived = thread?.status === ThreadStatus.Archived;
-        const rows = new Array<Row>();
-
-        if (threadInfo && showArchiveAction) {
-          rows.push(
-            new Row({
-              cell: ListItemButton,
-              properties: {
-                title: isArchived
-                  ? t("base.module.thread.unarchive")
-                  : t("base.module.thread.archive"),
-                type: ListItemButtonType.default,
-                onClick: () => {
-                  const threadDisplayName =
-                    thread?.name ||
-                    data.channelInfo?.title ||
-                    t("base.module.thread.fallbackName");
-                  wkConfirm({
-                    title: isArchived
-                      ? t("base.module.thread.unarchiveConfirmTitle", {
-                          values: { name: threadDisplayName },
-                        })
-                      : t("base.module.thread.archiveConfirmTitle", {
-                          values: { name: threadDisplayName },
-                        }),
-                    okText: isArchived
-                      ? t("base.module.thread.unarchive")
-                      : t("base.module.thread.archiveOk"),
-                    cancelText: t("base.common.cancel"),
-                    content: isArchived
-                      ? t("base.module.thread.unarchiveConfirmContent")
-                      : t("base.module.thread.archiveConfirmContent"),
-                    onOk: async () => {
-                      try {
-                        // 收口到共享 helper：打接口 → Toast → 用操作后的权威 status
-                        // 走 syncThreadArchiveState 同步左侧 sidebar（issue #345）。
-                        // 权威状态写回 channelInfo 缓存，避免被在途旧 fetch 覆盖
-                        // （B1 去重竞态）。data.refresh() 仍保留，刷新面板本身。
-                        await runChannelSettingThreadArchive({
-                          channel,
-                          groupNo: threadInfo.groupNo,
-                          shortId: threadInfo.shortId,
-                          isArchived,
-                        });
-                        data.refresh();
-                      } catch (err: any) {
-                        Toast.error(
-                          err?.msg ||
-                            (isArchived
-                              ? t("base.module.thread.unarchiveFailedRetry")
-                              : t("base.module.thread.archiveFailedRetry"))
-                        );
-                      }
-                    },
-                  });
-                },
-              },
-            })
-          );
-        }
-
-        rows.push(
-          new Row({
-            cell: ListItemButton,
-            properties: {
-              title: t("base.module.thread.leave"),
-              type: ListItemButtonType.warn,
-              onClick: () => {
-                WKApp.shared.baseContext.showAlert({
-                  content: t("base.module.thread.leaveConfirm"),
-                  onOk: async () => {
-                    if (threadInfo) {
-                      try {
-                        await WKApp.apiClient.post(
-                          `threads/${threadInfo.shortId}/leave`
-                        );
-                        await WKApp.conversationProvider
-                          .deleteConversation(data.channel)
-                          .catch((err) => {
-                            console.warn(
-                              "[ChannelSetting] delete thread conversation after leaving failed:",
-                              err
-                            );
-                          });
-                        removeLocalConversationAndCloseIfOpen(data.channel);
-                      } catch (err: any) {
-                        Toast.error(
-                          err?.msg || t("base.module.thread.leaveFailed")
-                        );
-                        throw err;
-                      }
-                    }
-                  },
-                });
-              },
-            },
-          })
-        );
-        return new Section({
-          title: t("base.module.thread.management"),
-          rows,
-        });
+        return buildThreadActionsSection(context);
       },
       90000
     );

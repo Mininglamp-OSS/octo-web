@@ -99,3 +99,33 @@ export function excelSheetName(raw: string | undefined, used: Set<string>): stri
   return n
 }
 
+/**
+ * Degrade a float-DOM (DRAWING_DOM) drawing to the plain text that xlsx export writes into its
+ * anchor cell — xlsx has no formula/mention-object concept. Extracted from SheetView.buildWs so
+ * the "mention chips must survive export" regression (P1) is unit-testable without XLSX/Univer:
+ *   • math formula → its raw LaTeX (`data.latex`)
+ *   • @-mention chip → `@label` (has `data.type` + `data.label`, but NO latex)
+ * Returns undefined for anything with no text representation (so the caller skips it).
+ */
+export function drawingExportText(data: {
+  latex?: string
+  label?: string
+  type?: string
+}): string | undefined {
+  if (typeof data?.latex === 'string' && data.latex) return data.latex
+  if (data?.type && data?.label) return `@${data.label}`
+  return undefined
+}
+
+/** Merge a drawing's degraded text into a cell that may ALREADY hold a value (or an earlier
+ * drawing's text). A mention chip commonly anchors an occupied cell (button-mode insert preserves
+ * the cell) and multiple chips can share one cell — export must APPEND, never skip, or those
+ * mentions are silently lost (P1). Newline-joined; a non-string existing value is coerced. */
+export function mergeDrawingText(
+  existing: string | number | boolean | null | undefined,
+  text: string,
+): string {
+  const prev = existing == null || existing === '' ? '' : String(existing)
+  return prev ? `${prev}\n${text}` : text
+}
+

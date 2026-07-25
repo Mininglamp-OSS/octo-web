@@ -8,6 +8,7 @@
 
 import { WKApp, i18n, t, useI18n, Menus, SpaceService } from '@octo/base'
 import { VoiceInputButton } from '@octo/base'
+import { Conversation, Channel, ChannelTypePerson, MAX_MESSAGE_LENGTH } from '@octo/base'
 import type { ReplaceMode, SelectionRange } from '@octo/base'
 import type {
   APIClient,
@@ -104,10 +105,19 @@ export function onNavMenuActivated(menuId: string, cb: () => void): () => void {
   return () => bus.off('wk:nav-menu-activated', handler)
 }
 
-/** Page size for space-member fetches — mirrors the host useMemberList pattern (default 50). */
+/** Page size for a single member page (getSpaceMembers default). */
 const SPACE_MEMBERS_PAGE_SIZE = 50
-/** Cap total pages so an unexpectedly huge space can't loop unbounded (1000 members). */
+/** Safety cap on page count so a pathological space can't loop unbounded. */
 const SPACE_MEMBERS_MAX_PAGES = 20
+/**
+ * Full-roster page size. `fetchAllSpaceMembers` pulls the WHOLE space in as few requests as
+ * possible — matching the Contacts page's one-shot `getMembers(spaceId, 1, 10000)`
+ * (dmworkcontacts Contacts/index.tsx `loadAllData`). The host honors up to 10000 per request
+ * (backend caps there), so a typical space (5760 members) comes back in ONE request. This is
+ * what lets the member picker filter the FULL roster client-side; the old 50×20=1000 page cap
+ * silently dropped every member past 1000 in a large space (the 5760-member picker bug).
+ */
+const SPACE_MEMBERS_FULL_PAGE_SIZE = 10000
 
 /** Minimal view of the host SpaceService the docs seam touches (uid + name + avatar/robot). */
 interface HostSpaceMember {
@@ -163,19 +173,21 @@ export async function getSpaceMembers(
 }
 
 /**
- * Fetch ALL members of a space, looping pages until exhausted (page size 50), mirroring the
- * host useMemberList "loop to fetch all pages" pattern. Bounded by SPACE_MEMBERS_MAX_PAGES so
- * a very large space can't loop forever. Returns `{ uid, name }` pairs.
+ * Fetch ALL members of a space and return `{ uid, name }` pairs. Pulls the full roster in as few
+ * requests as possible (one big page of SPACE_MEMBERS_FULL_PAGE_SIZE, same as the Contacts page's
+ * getMembers(spaceId, 1, 10000)); the loop only guards the rare space larger than one page. This
+ * replaces the old 50×20=1000-member page cap, which silently truncated large spaces so the member
+ * picker could not surface anyone past 1000 (the 5760-member-space bug).
  */
 export async function fetchAllSpaceMembers(spaceId: string): Promise<SpaceMemberLite[]> {
   if (!spaceId) return []
   const all: SpaceMemberLite[] = []
   let page = 1
   while (page <= SPACE_MEMBERS_MAX_PAGES) {
-    const batch = await getSpaceMembers(spaceId, page, SPACE_MEMBERS_PAGE_SIZE)
+    const batch = await getSpaceMembers(spaceId, page, SPACE_MEMBERS_FULL_PAGE_SIZE)
     if (!batch || batch.length === 0) break
     all.push(...batch)
-    if (batch.length < SPACE_MEMBERS_PAGE_SIZE) break // last page
+    if (batch.length < SPACE_MEMBERS_FULL_PAGE_SIZE) break // last page
     page++
   }
   return all
@@ -247,6 +259,44 @@ export async function fetchMyBots(spaceId?: string): Promise<SpaceMemberLite[]> 
   return bots
     .filter((b): b is HostMyBot => !!b && !!b.uid)
     .map((b) => ({ uid: b.uid, name: b.name || b.uid, isBot: true }))
+}
+
+/** Minimal view of a `/robot/owned_bots` entry the docs "new HTML" picker reads. */
+interface HostOwnedBot {
+  uid: string
+  name?: string
+  description?: string
+}
+
+/**
+ * Fetch the bots the CURRENT user owns in a Space via `GET /robot/owned_bots?space_id=<encoded>`
+ * (octo-server modules/robot ownedBots) for the docs "new HTML" picker.
+ *
+ * WHY a dedicated endpoint: `my_bots` is friend-dimension and `space_bots` is space-wide, so
+ * neither expresses "bots I created, active, in THIS space" — the exact owner semantics the HTML
+ * creation flow needs (a user may only drive HTML creation through a bot they own; plan Task 1 /
+ * §5.4). The server enforces the owner + Space + active filter; the Web layer just maps the
+ * response to the choosable shape and NEVER reads a token/credential field (plan §5.5).
+ *
+ * Returns `{ uid, name, description? }` triples (name falls back to the uid so a bot with no
+ * display name is never blank; description is carried through only when present). Resolves to an
+ * EMPTY list on a non-array body, and drops entries with no uid — so the caller can render an
+ * "empty"/"error" state without a broken row.
+ */
+export async function fetchOwnedBots(spaceId: string): Promise<import('./types.ts').OwnedBotLite[]> {
+  if (!spaceId) return []
+  const { data } = await apiClient().get<HostOwnedBot[]>(
+    `/robot/owned_bots?space_id=${encodeURIComponent(spaceId)}`,
+  )
+  const bots = Array.isArray(data) ? data : []
+  return bots
+    .filter((b): b is HostOwnedBot => !!b && !!b.uid)
+    .map((b) => {
+      const lite: import('./types.ts').OwnedBotLite = { uid: b.uid, name: b.name || b.uid }
+      // Carry description only when the server actually sent one — no `description: undefined` noise.
+      if (b.description) lite.description = b.description
+      return lite
+    })
 }
 
 /**
@@ -357,6 +407,12 @@ export function openDocForward(opts: OpenDocForwardOptions): void {
   host.showConversationSelect(undefined, opts.modalTitle, {
     messageTitle: opts.title,
     link: opts.link,
+    shareAsCard: opts.shareAsCard,
+    docId: opts.docId,
+    spaceId: opts.spaceId,
+    kind: opts.kind,
+    ownerName: opts.ownerName,
+    updatedAt: opts.updatedAt,
     canGrant: opts.canGrant,
     disabledReason: opts.disabledReason,
     defaultRole: opts.defaultRole,
@@ -408,5 +464,14 @@ export { Menus }
  * can wire voice input without importing @octo/base subpaths directly (tests alias the seam). */
 export { VoiceInputButton }
 export type { ReplaceMode, SelectionRange }
+
+/**
+ * Re-export the host `Conversation` component + WuKongIM `Channel` primitives through the docs seam
+ * (plan Task 5). The docs "new HTML" right-pane shell builds `new Channel(botUid, ChannelTypePerson)`
+ * and renders `<Conversation initialCompose=... />` — all via @octo/base so docs never imports
+ * wukongimjssdk directly and tests/typecheck resolve them through the single seam boundary.
+ */
+export { Conversation, Channel, ChannelTypePerson, MAX_MESSAGE_LENGTH }
+export type { InitialCompose, InitialComposeState, ConversationProps } from '@octo/base'
 
 export * from './types.ts'

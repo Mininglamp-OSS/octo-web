@@ -26,7 +26,7 @@ import Underline from '@tiptap/extension-underline'
 import Superscript from '@tiptap/extension-superscript'
 import Subscript from '@tiptap/extension-subscript'
 import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details'
-import { Mathematics } from '@tiptap/extension-mathematics'
+import { InlineMathStyled, BlockMathStyled } from './mathExtended.ts'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
 import { BlockDragHandle } from './BlockDragHandle.ts'
@@ -166,8 +166,11 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
       // Sanitize at parse and render: only http/https/mailto links survive (§3.7).
     }).configure({
       autolink: true,
+      // openOnClick off: a click lands the caret in the link and surfaces the LinkBubbleMenu (the
+      // sheet-style link card with open/copy/edit/unlink) instead of navigating away — see
+      // Toolbar.tsx LinkBubbleMenu. The card's own URL anchor carries target=_blank to open safely.
       openOnClick: false,
-      HTMLAttributes: { rel: 'noopener noreferrer' },
+      HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
       validate: (href) => sanitizeLinkHref(href) !== null,
     }),
     TaskList,
@@ -292,7 +295,8 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // SCHEMA-SPEC §14 (SCHEMA_VERSION 13): math via KaTeX. The Mathematics meta-extension bundles
     // the inlineMath + blockMath nodes and the `$…$` / `$$…$$` input rules. throwOnError:false so a
     // malformed formula renders as red source text instead of throwing during collaboration.
-    Mathematics.configure({ katexOptions: { throwOnError: false } }),
+    InlineMathStyled.configure({ katexOptions: { throwOnError: false } }),
+    BlockMathStyled.configure({ katexOptions: { throwOnError: false } }),
     // SCHEMA-SPEC §15 (SCHEMA_VERSION 14): self-built fileAttachment block atom. Reuses the image
     // presign flow (backend opened non-image mimes); docId is threaded for presign/read REST.
     FileAttachment.configure({ docId }),
@@ -335,8 +339,9 @@ export function buildPreviewExtensions(docId: string): Extensions {
     }),
     Link.configure({
       autolink: true,
-      openOnClick: false,
-      HTMLAttributes: { rel: 'noopener noreferrer' },
+      // Preview is read-only, so a link click should just open it (new tab, so the preview stays put).
+      openOnClick: true,
+      HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
       validate: (href) => sanitizeLinkHref(href) !== null,
     }),
     TaskList,
@@ -395,7 +400,8 @@ export function buildPreviewExtensions(docId: string): Extensions {
     DetailsSummary,
     DetailsContent,
     Callout,
-    Mathematics.configure({ katexOptions: { throwOnError: false } }),
+    InlineMathStyled.configure({ katexOptions: { throwOnError: false } }),
+    BlockMathStyled.configure({ katexOptions: { throwOnError: false } }),
     // Mirror the v14/v15 nodes read-only: render the file card + bookmark card from stored attrs.
     // No upload affordance is shown (the live editor's toolbar/slash are absent here); the file
     // download still resolves a signed read URL (a read, not an edit). The bookmark insert flow

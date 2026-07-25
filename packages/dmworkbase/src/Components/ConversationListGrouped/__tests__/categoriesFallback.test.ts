@@ -92,7 +92,7 @@ describe("computeEffectiveCategories", () => {
         const [virtualCat] = result
         expect(virtualCat.category_id).toBe(VIRTUAL_DEFAULT_CATEGORY_ID)
         expect(virtualCat.is_default).toBe(true)
-        expect(virtualCat.name).toBe("默认")
+        expect(virtualCat.name).toBe("分组")
         expect(virtualCat.groups).toEqual([])
         expect(isVirtualCategory(virtualCat.category_id)).toBe(true)
     })

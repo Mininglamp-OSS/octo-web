@@ -12,8 +12,8 @@
     max-height: min(calc(var(--wk-sp-12) * 14 + var(--wk-sp-2)), 78vh);
     background: var(--wk-bg-base);
     color: var(--wk-text-primary);
-    --wk-bot-detail-avatar-size: calc(var(--wk-sp-12) + var(--wk-sp-2));
-    --wk-bot-detail-avatar-image-size: calc(var(--wk-sp-12) + var(--wk-sp-1));
+    --wk-bot-detail-avatar-size: var(--wk-profile-detail-avatar-size);
+    --wk-bot-detail-avatar-image-size: var(--wk-profile-detail-avatar-image-size);
 }
 
 .wk-bot-detail-route-header {
@@ -85,19 +85,19 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: var(--wk-sp-3) 0 var(--wk-sp-4);
+    padding: var(--wk-sp-2) 0 var(--wk-sp-3);
 }
 
 .wk-bot-detail-header {
     display: flex;
     align-items: flex-start;
     gap: var(--wk-sp-4);
-    margin: 0 var(--wk-sp-4) var(--wk-sp-3);
-    padding: var(--wk-sp-5);
-    border: 1px solid var(--wk-border-subtle);
-    border-radius: var(--wk-r-md);
-    background: var(--wk-bg-surface);
-    box-shadow: var(--wk-shadow-sm);
+    margin: 0;
+    padding: 0 var(--wk-sp-6) var(--wk-sp-4);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
 }
 
 .wk-bot-detail-heading {
@@ -134,11 +134,11 @@
 
 .wk-bot-detail-section {
     overflow: hidden;
-    margin: var(--wk-sp-3) var(--wk-sp-4) 0;
+    margin: 0 var(--wk-sp-4) var(--wk-sp-2);
     border: 1px solid var(--wk-border-subtle);
     border-radius: var(--wk-r-md);
     background: var(--wk-bg-surface);
-    box-shadow: var(--wk-shadow-sm);
+    box-shadow: none;
 }
 
 .wk-bot-detail-section:first-of-type {
@@ -373,20 +373,20 @@
 }
 
 .wk-bot-detail-actions {
-    flex: 0 0 auto;
-    padding: var(--wk-sp-3) var(--wk-sp-5);
-    border-top: 1px solid var(--wk-border-subtle);
-    background: var(--wk-bg-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .wk-bot-detail-actions .wk-bot-detail-primary-action,
 .wk-bot-detail-actions .wk-btn {
     width: 100%;
-    min-height: var(--wk-sp-10);
+    height: var(--wk-profile-detail-action-height, var(--wk-sp-10));
 }
 
 .wk-bot-detail-apply {
     display: flex;
+    width: 100%;
     flex-direction: column;
     gap: var(--wk-sp-3);
 }
@@ -412,6 +412,13 @@
     background: var(--wk-bg-elevated);
     box-shadow: var(--wk-shadow-sm);
     line-height: 0;
+}
+
+.wk-bot-detail-header-avatar .wk-bot-detail-avatar {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    box-shadow: none;
 }
 
 .wk-bot-detail-avatar--owner {

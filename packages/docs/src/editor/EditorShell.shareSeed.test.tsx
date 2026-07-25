@@ -32,7 +32,7 @@ vi.mock('../collab/useCollabEditor.ts', () => ({
 
 // Stub presentational children that take the live editor/provider — not under test here.
 vi.mock('@tiptap/react', () => ({ EditorContent: () => null }))
-vi.mock('./Toolbar.tsx', () => ({ Toolbar: () => null, EditorBubbleMenu: () => null }))
+vi.mock('./Toolbar.tsx', () => ({ Toolbar: () => null, EditorBubbleMenu: () => null, LinkBubbleMenu: () => null, MathBubbleMenu: () => null }))
 vi.mock('./TableControls.tsx', () => ({ TableContextMenu: () => null }))
 vi.mock('./Outline.tsx', () => ({ Outline: () => null }))
 vi.mock('./StatusBar.tsx', () => ({ StatusBar: () => null }))
@@ -42,6 +42,7 @@ vi.mock('../comments/CommentPanel.tsx', () => ({ CommentPanel: () => null }))
 vi.mock('../versions/VersionPanel.tsx', () => ({ VersionPanel: () => null }))
 vi.mock('../comments/useDocComments.ts', () => ({
   useDocComments: () => ({ threads: [], createRoot: vi.fn() }),
+  useRefreshCommentsOnOpen: () => undefined,
 }))
 vi.mock('../comments/useCommentHighlights.ts', () => ({ useCommentHighlights: () => undefined }))
 vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: () => new Map<string, string>() }))

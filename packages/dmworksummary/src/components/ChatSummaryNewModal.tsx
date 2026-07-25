@@ -5,16 +5,16 @@ import { WKApp, I18nContext } from '@octo/base';
 import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
 import type { ReplaceMode, SelectionRange } from '@octo/base/src/Components/VoiceInputButton';
 import type { TopicTemplate, ChatCandidate, ScheduleConfig, CreateAgentSummaryParams, ChatMessage } from '../types/summary';
-import { SourceType, SummaryMode } from '../types/summary';
-import { getSourceType, getOriginChannelType } from '../utils/channelType';
+import { SummaryMode } from '../types/summary';
+import { getSourceType, getOriginChannelType, chatTypeToOriginChannelType } from '../utils/channelType';
 import { channelToChatCandidate } from '../utils/channelConvert';
-import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, type ResolvableTemplate } from '../utils/templateResolver';
+import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from '../utils/templateResolver';
 
 import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession } from '../utils/summaryHelpers';
 import * as summaryApi from '../api/summaryApi';
 import { getTopicTemplatesConfig } from '../api/summaryApi';
 import { TOPIC_TEMPLATES } from '../constants/templates';
-import { MAX_CHAT_SELECT } from '../constants/limits';
+import { MAX_CHAT_SELECT, SUMMARY_INPUT_MAX_LENGTH, TEMPLATE_CONTENT_MAX_LENGTH, TEMPLATE_NAME_MAX_LENGTH } from '../constants/limits';
 import TemplateCard from './TemplateCard';
 import AgentChatPanel from './AgentChatPanel';
 import ChatSelectorModal from './ChatSelectorModal';
@@ -26,6 +26,9 @@ interface ChatSummaryNewModalProps {
     channel: { channelID: string; channelType: number };
     onClose: () => void;
     onSubmit: (taskId: number) => void;
+    /** When true, render only the form content (no Modal shell) so the panel
+     *  can embed this component inline. */
+    embedded?: boolean;
 }
 
 interface ChatSummaryNewModalState {
@@ -67,18 +70,30 @@ export default class ChatSummaryNewModal extends Component<
         mode: ReplaceMode,
         savedRange?: SelectionRange
     ) => {
+        const limitTopic = (topic: string, appliedTemplateLabel: string) => appliedTemplateLabel
+            ? limitTemplateSummaryContent(topic, TEMPLATE_CONTENT_MAX_LENGTH)
+            : topic.slice(0, SUMMARY_INPUT_MAX_LENGTH);
         if (mode === 'all') {
-            this.setState({ topic: text, templatePlaceholderRange: null });
+            this.setState((prev) => ({
+                topic: limitTopic(text, prev.appliedTemplateLabel),
+                templatePlaceholderRange: null,
+            }));
         } else if (mode === 'selection' && savedRange) {
             this.setState((prev) => ({
-                topic: prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to),
+                topic: limitTopic(
+                    prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to),
+                    prev.appliedTemplateLabel,
+                ),
                 templatePlaceholderRange: null,
             }));
         } else {
             this.setState((prev) => {
                 const pos = savedRange?.from ?? prev.topic.length;
                 return {
-                    topic: prev.topic.slice(0, pos) + text + prev.topic.slice(pos),
+                    topic: limitTopic(
+                        prev.topic.slice(0, pos) + text + prev.topic.slice(pos),
+                        prev.appliedTemplateLabel,
+                    ),
                     templatePlaceholderRange: null,
                 };
             });
@@ -379,11 +394,7 @@ export default class ChatSummaryNewModal extends Component<
                 // 不传 source_name：让后端按 source_id 现查 IM 库最新群名（带类型后缀），
                 // 与下方 fallback 分支一致，避免把群名冻结进配置。
                 ? selectedChats.map((c) => ({
-                    source_type: (c.chat_type === 'group'
-                        ? SourceType.GROUP_CHAT
-                        : c.chat_type === 'thread'
-                        ? SourceType.THREAD
-                        : SourceType.DIRECT_MESSAGE),
+                    source_type: chatTypeToOriginChannelType(c.chat_type),
                     source_id: c.chat_id,
                 }))
                 : [{
@@ -580,12 +591,11 @@ export default class ChatSummaryNewModal extends Component<
 
     /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。
      *
-     * origin_channel_id / origin_channel_type 不再由前端传入 —— agent 对话入口在
-     * e5a8eee 起就特意隐藏了"选择聊天/参与者/定时更新"三个控件,前端此时既没有
-     * currentChannel 也没有让用户手选来源的地方。后端 handler 会按 session_id 从
-     * agent_message 的 tool_calls 记录反查 agent 实际读过的第一个 channel_id
-     * 作为 origin(见 agent_summary.go inferOriginChannelFromToolCalls),这样
-     * 用户完全无感,来源和 agent 实际引用的数据严格一致。
+     * origin_channel_id / origin_channel_type：本入口是从群/子区右上角触发,channel
+     * prop 天然就是用户心里的 origin —— 直接明确传给后端(#930,入口即语义),不再依赖
+     * 后端从 tool_calls 反查。若前端没传(如整页入口),后端仍会按 session_id 从
+     * agent_message 的 tool_calls 反查作为 fallback(见 agent_summary.go
+     * resolveOriginChannelFromSession)。
      */
     handleSaveAsSummary = async (title: string): Promise<boolean> => {
         const { sessionId, selectedChats } = this.state;
@@ -599,31 +609,32 @@ export default class ChatSummaryNewModal extends Component<
 
         this.setState({ savingSummary: true });
         try {
-            // sources 保留原逻辑:若用户在别处显式选过 chats,把它们透传成 sources;
-            // 否则不传,后端会自己从 tool_calls 反推 origin,sources 留空由后续版本
-            // 的 deliverable_context 快照补齐。
+            // sources：若用户在别处显式选过 chats,把它们透传成 sources;否则不传。
             const sources = selectedChats.length > 0
                 ? selectedChats.map((c) => ({
-                    source_type: (c.chat_type === 'group'
-                        ? SourceType.GROUP_CHAT
-                        : c.chat_type === 'thread'
-                        ? SourceType.THREAD
-                        : SourceType.DIRECT_MESSAGE),
+                    source_type: chatTypeToOriginChannelType(c.chat_type),
                     source_id: c.chat_id,
                 }))
                 : undefined;
 
+            // origin_channel_id / origin_channel_type：本入口是从群/子区右上角触发,
+            // channel prop 天然就是用户心里的 origin —— 直接明确传给后端(#930,入口即
+            // 语义),不再依赖后端从 tool_calls 反查。映射与传统路径 (getOriginChannelType)
+            // 完全一致。
+            const { channel } = this.props;
             const res = await summaryApi.createAgentSummary({
                 session_id: sessionId,
                 title,
                 sources,
+                origin_channel_id: channel.channelID,
+                origin_channel_type: getOriginChannelType(channel),
             });
 
             Toast.success(t('summary.create.agentSummaryCreated'));
 
-            // dispatch 刷新事件。agent 保存路径下前端已不再持有具体 channel
-            // (origin 由后端从 tool_calls 反查),下游刷新监听按 taskId 走即可,
-            // channelId 传空串以保持事件字段结构不变、避免 undefined 引用崩溃。
+            // dispatch 刷新事件。下游刷新监听按 taskId 走即可;channelId 传空串以
+            // 保持事件字段结构不变、避免 undefined 引用崩溃(origin 已在上面的
+            // createAgentSummary 请求里显式传给后端,与此刷新事件无关)。
             window.dispatchEvent(
                 new CustomEvent('chat-summary-created', {
                     detail: { taskId: res.task_id, channelId: '' },
@@ -659,7 +670,7 @@ export default class ChatSummaryNewModal extends Component<
     };
 
     render() {
-        const { visible, onClose } = this.props;
+        const { visible, onClose, embedded } = this.props;
         const {
             topic, appliedTemplateLabel, customTemplateLimit, mode, templates, selectedChats, showChatSelector, submitting, agentSubmitting, scheduleConfig, showScheduleConfig, showMoreTemplates,
             editingTemplate, creatingCustomTemplate,
@@ -733,27 +744,17 @@ export default class ChatSummaryNewModal extends Component<
             </div>
         );
 
-        return (
+        const modalContent = (
             <>
-                <Modal
-                    visible={visible}
-                    onCancel={onClose}
-                    footer={footer}
-                    width={640}
-                    closable
-                    title={null}
-                    bodyStyle={{ padding: '24px 24px 0' }}
-                    className="chat-summary-new-modal"
-                >
-                    <div className="chat-summary-modal-header">
-                        <span className="chat-summary-modal-title">{t('summary.create.title')}</span>
-                        <span className="chat-summary-modal-ai-badge">AI+</span>
-                    </div>
-                    <div className="chat-summary-modal-desc">
-                        {t('summary.create.desc')}
-                    </div>
+                <div className="chat-summary-modal-header">
+                    <span className="chat-summary-modal-title">{t('summary.create.title')}</span>
+                    <span className="chat-summary-modal-ai-badge">AI+</span>
+                </div>
+                <div className="chat-summary-modal-desc">
+                    {t('summary.create.desc')}
+                </div>
 
-                    <div className="chat-summary-modal-input-area">
+                <div className="chat-summary-modal-input-area">
                         {isAgent ? (
                             // 弹窗内高度受限：固定面板高度让内部消息列表滚动。
                             <div className="chat-summary-modal-agent-chat" style={{ height: 360 }}>
@@ -770,6 +771,7 @@ export default class ChatSummaryNewModal extends Component<
                                     onSaveAsSummary={this.handleSaveAsSummary}
                                     savingSummary={this.state.savingSummary}
                                     onNewSession={this.handleNewSession}
+                                    selectedChannels={selectedChats}
                                 />
                             </div>
                         ) : (
@@ -780,7 +782,13 @@ export default class ChatSummaryNewModal extends Component<
                                         className="chat-summary-modal-input"
                                         placeholder={t('summary.create.topicPlaceholderInChat')}
                                         value={topic}
-                                        onChange={(e) => this.setState({ topic: e.target.value, templatePlaceholderRange: null })}
+                                        onChange={(e) => {
+                                            const nextTopic = appliedTemplateLabel
+                                                ? limitTemplateSummaryContent(e.target.value, TEMPLATE_CONTENT_MAX_LENGTH)
+                                                : e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH);
+                                            this.setState({ topic: nextTopic, templatePlaceholderRange: null });
+                                        }}
+                                        maxLength={appliedTemplateLabel ? undefined : SUMMARY_INPUT_MAX_LENGTH}
                                         onFocus={this.handleInputFocus}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter' && !e.shiftKey && !submitting) {
@@ -946,7 +954,30 @@ export default class ChatSummaryNewModal extends Component<
                             </div>
                         )}
                     </div>
-                </Modal>
+            </>
+        );
+
+        return (
+            <>
+                {embedded ? (
+                    <div className="chat-summary-modal-embedded">
+                        {modalContent}
+                        {footer}
+                    </div>
+                ) : (
+                    <Modal
+                        visible={visible}
+                        onCancel={onClose}
+                        footer={footer}
+                        width={640}
+                        closable
+                        title={null}
+                        bodyStyle={{ padding: '24px 24px 0' }}
+                        className="chat-summary-new-modal"
+                    >
+                        {modalContent}
+                    </Modal>
+                )}
 
                 <ChatSelectorModal
                     visible={showChatSelector}
@@ -1006,10 +1037,10 @@ export default class ChatSummaryNewModal extends Component<
                         <input
                             className="summary-template-edit-input"
                             value={editingTemplateLabel}
-                            maxLength={100}
+                            maxLength={TEMPLATE_NAME_MAX_LENGTH}
                             disabled={savingTemplate}
                             placeholder={t('summary.templates.custom.namePlaceholder')}
-                            onChange={(e) => this.setState({ editingTemplateLabel: e.target.value.slice(0, 100) })}
+                            onChange={(e) => this.setState({ editingTemplateLabel: e.target.value.slice(0, TEMPLATE_NAME_MAX_LENGTH) })}
                         />
                     </div>
                     <div className="summary-template-edit-field">
@@ -1019,10 +1050,10 @@ export default class ChatSummaryNewModal extends Component<
                         <textarea
                             className="summary-template-edit-input summary-template-edit-desc"
                             value={editingTemplateDescription}
-                            maxLength={200}
+                            maxLength={TEMPLATE_CONTENT_MAX_LENGTH}
                             disabled={savingTemplate}
                             placeholder={t('summary.templates.custom.descriptionPlaceholder')}
-                            onChange={(e) => this.setState({ editingTemplateDescription: e.target.value.slice(0, 200) })}
+                            onChange={(e) => this.setState({ editingTemplateDescription: e.target.value.slice(0, TEMPLATE_CONTENT_MAX_LENGTH) })}
                         />
                     </div>
                     <div className="summary-template-edit-hint">

@@ -357,10 +357,12 @@ export class EndpointCommon {
   chatSummaryPanel(
     channel: Channel,
     onClose: () => void,
+    summaryPanelView?: "history" | "new",
   ): JSX.Element | undefined {
     return EndpointManager.shared.invoke(EndpointCategory.chatSummaryPanel, {
       channel,
       onClose,
+      summaryPanelView,
     });
   }
 
@@ -375,6 +377,34 @@ export class EndpointCommon {
       },
       {
         category: EndpointCategory.chatSummaryPanel,
+      }
+    );
+  }
+
+  chatWebhookIssuePreview(target: {
+    workspaceSlug: string;
+    issueIdentifier: string;
+    sourceUrl: string;
+  }): JSX.Element | undefined {
+    return EndpointManager.shared.invoke(
+      EndpointCategory.chatWebhookIssuePreview,
+      target
+    );
+  }
+
+  registerChatWebhookIssuePreview(
+    sid: string,
+    callback: (target: {
+      workspaceSlug: string;
+      issueIdentifier: string;
+      sourceUrl: string;
+    }) => JSX.Element | undefined
+  ) {
+    EndpointManager.shared.setMethod(
+      EndpointCategory.chatWebhookIssuePreview,
+      callback,
+      {
+        category: EndpointCategory.chatWebhookIssuePreview,
       }
     );
   }

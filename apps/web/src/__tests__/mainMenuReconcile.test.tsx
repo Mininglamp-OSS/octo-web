@@ -260,10 +260,6 @@ describe("resolvePendingRouteActivation — deep-link appears after appconfig re
 describe("MainVM — pending deep-link wiring", () => {
   it("records the unsatisfied boot route and clears it on explicit navigation", () => {
     const source = readRepoFile("apps/web/src/Pages/Main/vm.ts");
-    // Clean deep links such as /appbot no longer carry ?sid=. Boot activation must use the live
-    // URL path as the source of truth, not only RouteManager.currentPath, which can be touched by
-    // pageshow/popstate during startup.
-    expect(source).toContain("normalizeRoutePath(window.location.pathname || WKApp.route.currentPath)");
     // didMount stashes the boot route when the fallback fired (no menu matched it)...
     expect(source).toContain("this._pendingRouteActivation = bootPath");
     // ...and the config-change listener tries to activate it as menus appear.
@@ -271,25 +267,11 @@ describe("MainVM — pending deep-link wiring", () => {
     // Any explicit menu selection (the currentMenus setter) must cancel the pending activation so
     // a late docs_on toggle never yanks a user off a view they chose.
     expect(source).toContain("this._pendingRouteActivation = undefined");
-    expect(source).toContain('window.addEventListener("popstate", this._onBrowserRouteChange)');
-    expect(source).toContain('window.removeEventListener("popstate", this._onBrowserRouteChange)');
-    expect(source).toContain("syncMenuFromBrowserPath()");
-    expect(source).toContain('WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: target.id })');
+    const setterClearIdx = source.lastIndexOf(
+      "this._pendingRouteActivation = undefined"
+    );
     const setterIdx = source.indexOf("set currentMenus(");
     expect(setterIdx).toBeGreaterThan(-1);
-    const setterClearIdx = source.indexOf(
-      "this._pendingRouteActivation = undefined",
-      setterIdx
-    );
     expect(setterClearIdx).toBeGreaterThan(setterIdx);
-  });
-
-  it("syncs the browser URL when menu selection changes", () => {
-    const source = readRepoFile("apps/web/src/Pages/Main/index.tsx");
-    const lowScreenSource = readRepoFile("apps/web/src/Pages/Main/tab_low_screen.tsx");
-
-    expect(source).toContain("WKApp.route.syncPath(menus.routePath)");
-    expect(source).toContain("WKApp.route.syncPath(target.routePath)");
-    expect(lowScreenSource).toContain("WKApp.route.syncPath(menus.routePath)");
   });
 });

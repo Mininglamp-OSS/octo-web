@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Spin, Toast, Switch, Avatar, Dropdown } from "@douyinfe/semi-ui";
+import { Typography, Button, Spin, Toast, Switch, Avatar, Dropdown } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
 import { Zap, Plus, MoreHorizontal, Play, Trash2 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
@@ -16,6 +16,7 @@ import { formatNextRunAt } from "../ui/autopilotSchedule";
 import CreateAutomationModal from "../ui/CreateAutomationModal";
 import AutopilotDetailPage from "../panel/AutopilotDetailPage";
 
+const { Text } = Typography;
 
 export default function AutomationPage() {
   const { t } = useI18n();
@@ -117,6 +118,7 @@ export default function AutomationPage() {
     <div className="loop-page">
       <div className="loop-page__head">
         <h2 className="loop-page__title">{t("loop.nav.automation")}</h2>
+        <Text type="tertiary" style={{ fontSize: 13 }}>{rows.length}</Text>
         <div className="loop-page__spacer" />
         <LoopButton icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.automation.create")}</LoopButton>
       </div>

@@ -15,8 +15,7 @@ playwright-report
 .next/
 out/
 build
-
-# TypeScript incremental build cache
+build-e2e
 *.tsbuildinfo
 
 # misc
@@ -66,6 +65,7 @@ package-lock.json
 **/rawdata.txt
 .kiro/handoff-*.md
 .claude/
+.codex/
 .zed/
 .ftre/memory/
 .vscode/settings.json
@@ -92,3 +92,4 @@ packages/docs/dev/colhover-out/
 # Loop V1 内部设计文档仅保留在本地 workspace，不纳入版本库
 docs/loop-v1/
 .omx
+.idea/

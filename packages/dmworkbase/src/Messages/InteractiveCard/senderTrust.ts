@@ -1,5 +1,6 @@
 import WKSDK, { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
+import { fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 /**
  * InteractiveCard(=17) 发送者信任分类（render gate）。
@@ -31,7 +32,8 @@ export function classifyCardSender(
   if (!fromUID) {
     return "human";
   }
-  const info = WKSDK.shared().channelManager.getChannelInfo(
+  const info = getImChannelInfo(
+    WKSDK.shared(),
     new Channel(fromUID, ChannelTypePerson)
   );
   // cache miss：fail-closed。返回 pending，调用方负责 fetch + 到达后重渲。
@@ -48,7 +50,8 @@ export function isTrustedCardSender(trust: CardSenderTrust): boolean {
 
 /** pending 时需主动拉取发送者 channelInfo；到达后由 MessageCell 基类 listener 重渲。 */
 export function fetchSenderChannelInfo(fromUID: string): void {
-  WKSDK.shared().channelManager.fetchChannelInfo(
+  void fetchImChannelInfo(
+    WKSDK.shared(),
     new Channel(fromUID, ChannelTypePerson)
   );
 }

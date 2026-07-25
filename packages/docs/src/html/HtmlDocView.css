@@ -141,6 +141,12 @@
 .octo-html-doc-comment-reply-text {
   margin: 2px 0;
 }
+/* Owner-only 转 AI 按钮：右靠齐，避免改父容器为 flex 影响 quote/meta/text 既有排布。 */
+.octo-html-doc-comment-ai {
+  display: block;
+  margin-left: auto;
+  width: fit-content;
+}
 /* Single viewer avatar in the title bar (no connection state). */
 .octo-html-doc-presence {
   display: flex;

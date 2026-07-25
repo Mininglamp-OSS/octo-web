@@ -200,11 +200,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     return !!config.intro.enabled;
   });
   const [introLeaving, setIntroLeaving] = useState(false);
+  const [isIntroSkipTransitionTarget, setIsIntroSkipTransitionTarget] =
+    useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const finishButtonRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const completionStartedRef = useRef(false);
+  const introTransitionStartedRef = useRef(false);
   const completionTimerRef = useRef<number | null>(null);
   const introFallbackTimerRef = useRef<number | null>(null);
   const focusTimerRef = useRef<number | null>(null);
@@ -264,12 +267,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     onDismiss?.();
   };
 
-  const dismissOnEscape = () => {
-    if (isCompleting) return;
-    persistDismissed();
-    hideOnboarding();
-  };
-
   const handleClose = () => {
     if (isCompleting) return;
 
@@ -296,13 +293,15 @@ export const Onboarding: React.FC<OnboardingProps> = ({
   };
 
   const handleIntroContinue = () => {
-    if (introLeaving) return;
+    if (introLeaving || introTransitionStartedRef.current) return;
+    introTransitionStartedRef.current = true;
 
     const transitioned = runOnboardingViewTransition({
       duration: 1240,
       onTransition: () => {
         setShowIntro(false);
         setIntroLeaving(false);
+        introTransitionStartedRef.current = false;
       },
     });
     if (transitioned) return;
@@ -312,21 +311,26 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       introFallbackTimerRef.current = null;
       setShowIntro(false);
       setIntroLeaving(false);
+      introTransitionStartedRef.current = false;
     }, 620);
   };
 
   const handleIntroSkip = () => {
-    if (introLeaving) return;
+    if (introLeaving || introTransitionStartedRef.current) return;
+    introTransitionStartedRef.current = true;
 
     const closeIntro = () => {
-      persistDismissed();
       hideOnboarding();
+      setIsIntroSkipTransitionTarget(false);
       setIntroLeaving(false);
+      introTransitionStartedRef.current = false;
     };
 
+    persistDismissed();
     const transitioned = runOnboardingViewTransition({
       duration: 1240,
-      onTransition: closeIntro,
+      onTransition: () => setIsIntroSkipTransitionTarget(true),
+      onFinished: closeIntro,
     });
     if (transitioned) return;
 
@@ -338,13 +342,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({
   };
 
   const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      dismissOnEscape();
-      return;
-    }
-
     if (event.key !== "Tab") return;
 
     const dialog = dialogRef.current;
@@ -362,7 +359,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     const activeElement = document.activeElement;
 
     if (event.shiftKey) {
-      if (activeElement === firstElement || !dialog.contains(activeElement)) {
+      if (
+        activeElement === firstElement ||
+        activeElement === dialog ||
+        !dialog.contains(activeElement)
+      ) {
         event.preventDefault();
         focusElement(lastElement);
       }
@@ -404,6 +405,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       const dialog = dialogRef.current;
       if (!dialog) return;
 
+      if (showIntro) {
+        focusElement(dialog);
+        return;
+      }
+
       focusElement(getFocusableElements(dialog)[0] || dialog);
     }, 0);
   }, [showIntro, visible]);
@@ -422,9 +428,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({
         ref={dialogRef}
         className={`wk-onboarding-overlay wk-onboarding-overlay-intro${
           introLeaving ? " is-intro-leaving" : ""
-        }`}
+        }${isIntroSkipTransitionTarget ? " is-skip-transition-target" : ""}`}
         role="dialog"
         aria-modal="true"
+        aria-hidden={isIntroSkipTransitionTarget ? true : undefined}
         aria-label={t("app.onboarding.dialog.introAria")}
         tabIndex={-1}
         onKeyDown={handleDialogKeyDown}

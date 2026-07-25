@@ -115,18 +115,11 @@ export default class ChatSummaryStarButton extends Component<
 
     private emitForHasSummaries(hasSummaries: boolean) {
         const { channel } = this.props;
-        if (hasSummaries) {
-            WKApp.mittBus.emit('wk:toggle-summary-panel', {
-                channelId: channel.channelID,
-                channelType: channel.channelType,
-                summaryPanelView: 'history',
-            });
-        } else {
-            WKApp.mittBus.emit('wk:open-summary-modal', {
-                channelId: channel.channelID,
-                channelType: channel.channelType,
-            });
-        }
+        WKApp.mittBus.emit('wk:toggle-summary-panel', {
+            channelId: channel.channelID,
+            channelType: channel.channelType,
+            summaryPanelView: hasSummaries ? 'history' : 'new',
+        });
     }
 
     render() {

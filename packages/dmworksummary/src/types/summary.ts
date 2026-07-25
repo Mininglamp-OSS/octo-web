@@ -63,6 +63,7 @@ export interface TimeRange {
 /** Citation 上下文消息 */
 export interface CitationContextMessage {
     sender: string;
+    sender_uid?: string;
     content: string;
     sent_at: string;
     message_seq?: number;
@@ -72,6 +73,7 @@ export interface CitationContextMessage {
 export interface CitationItem {
     index: number;
     sender: string;
+    sender_uid?: string;
     content: string;
     sent_at: string;
     source: string;
@@ -169,6 +171,7 @@ export interface SummaryListItem {
     task_id: number;
     task_no: string;
     title: string;
+    topic?: string;
     summary_mode: SummaryModeType;
     status: TaskStatusType;
     trigger_type: number;
@@ -188,6 +191,7 @@ export interface SummaryListItem {
     completed_at: string | null;
     is_unread?: boolean;
     has_pending_invitation?: boolean;
+    has_pending_submission?: boolean;
     needs_attention?: boolean;
     current_result_id?: number | null;
     current_personal_version_id?: number | null;
@@ -199,6 +203,7 @@ export interface SummaryDetail {
     task_id: number;
     task_no: string;
     title: string;
+    topic?: string;
     summary_mode: SummaryModeType;
     status: TaskStatusType;
     trigger_type: number;
@@ -234,6 +239,42 @@ export interface SummaryDetail {
         /** 移除成员入口（仅 creator）。 */
         can_remove_member?: boolean;
     };
+}
+
+export interface SummaryShareSnapshot {
+    id: number;
+    task_id: number;
+    task_no: string;
+    space_id: string;
+    title: string;
+    source_name: string;
+    source_count: number;
+    participant_count: number;
+    message_count: number;
+    time_range_start: string;
+    time_range_end: string;
+    summary_mode: number;
+    result_version: number;
+    preview: string;
+    content: string;
+    created_at: string;
+}
+
+export interface SummaryShareGrant {
+    share_id: string;
+    channel_id: string;
+    channel_type: number;
+}
+
+export interface CreateSummarySharesResponse {
+    snapshot: SummaryShareSnapshot;
+    grants: SummaryShareGrant[];
+}
+
+export interface GetSummaryShareResponse {
+    share_id: string;
+    source_accessible: boolean;
+    snapshot: SummaryShareSnapshot;
 }
 
 /** 创建请求 */
@@ -299,6 +340,8 @@ export interface AgentChatParams {
      * 后续轮次此字段被忽略(引用一次锁定)。见 CHAT-REFERENCE-BASED-DESIGN-v1。
      */
     referenced_task_ids?: number[];
+    /** 用户在 UI 中明确选定、希望 agent 默认处理的聊天。 */
+    selected_channels?: Array<Pick<ChatCandidate, 'chat_id' | 'chat_type' | 'name' | 'is_archived'>>;
 }
 
 /** Agent 对话响应（post() 已解包 data） */

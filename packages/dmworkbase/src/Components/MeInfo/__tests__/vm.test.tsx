@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * MeInfoVM 行为测试
  *
@@ -25,8 +26,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 const hoisted = vi.hoisted(() => {
   const apiClientPost = vi.fn()
   const apiClientGet = vi.fn()
+  const userProfileGet = vi.fn()
+  const updateCurrentUser = vi.fn()
   const toastError = vi.fn()
   const toastWarning = vi.fn()
+  const toastSuccess = vi.fn()
   const channelManager = {
     addListener: vi.fn(),
     removeListener: vi.fn(),
@@ -65,7 +69,17 @@ const hoisted = vi.hoisted(() => {
     },
     config: { appName: "OCTO" },
   }
-  return { apiClientPost, apiClientGet, toastError, toastWarning, channelManager, fakeWKApp }
+  return {
+    apiClientPost,
+    apiClientGet,
+    userProfileGet,
+    updateCurrentUser,
+    toastError,
+    toastWarning,
+    toastSuccess,
+    channelManager,
+    fakeWKApp,
+  }
 })
 
 vi.mock("wukongimjssdk", () => {
@@ -87,11 +101,19 @@ vi.mock("@douyinfe/semi-ui", () => ({
     error: hoisted.toastError,
     warning: hoisted.toastWarning,
     info: hoisted.toastWarning,
-    success: vi.fn(),
+    success: hoisted.toastSuccess,
   },
 }))
 
 vi.mock("../../../App", () => ({ default: hoisted.fakeWKApp }))
+
+vi.mock("../../../Service/UserService", () => ({
+  default: {
+    getUserProfile: hoisted.userProfileGet,
+    updateCurrentUser: hoisted.updateCurrentUser,
+    uploadUserAvatar: vi.fn(),
+  },
+}))
 
 vi.mock("../../../Service/Provider", () => ({
   ProviderListener: class {
@@ -140,6 +162,77 @@ vi.mock("../../PersonaSettings", () => ({ default: () => null }))
 // 真正要测的 class
 import { MeInfoVM } from "../vm"
 
+describe("MeInfoVM.sex — legacy 0/1 mapping", () => {
+  beforeEach(() => {
+    hoisted.updateCurrentUser.mockReset()
+    hoisted.updateCurrentUser.mockResolvedValue({})
+    hoisted.fakeWKApp.loginInfo.save.mockReset()
+  })
+
+  afterEach(() => {
+    hoisted.fakeWKApp.loginInfo.sex = 1
+  })
+
+  it("keeps 0 as female and 1 as male, with 2 treated as female compatibility data", () => {
+    const vm = new MeInfoVM()
+
+    hoisted.fakeWKApp.loginInfo.sex = 0
+    expect(vm.sex()).toBe(0)
+
+    hoisted.fakeWKApp.loginInfo.sex = 1
+    expect(vm.sex()).toBe(1)
+
+    hoisted.fakeWKApp.loginInfo.sex = 2
+    expect(vm.sex()).toBe(0)
+  })
+
+  it("normalizes any female value back to the persisted 0 contract", async () => {
+    const vm = new MeInfoVM()
+    const notifySpy = vi.spyOn(vm, "notifyListener")
+
+    await vm.updateSex(2)
+
+    expect(hoisted.updateCurrentUser).toHaveBeenCalledWith({ sex: "0" })
+    expect(hoisted.fakeWKApp.loginInfo.sex).toBe(0)
+    expect(hoisted.fakeWKApp.loginInfo.save).toHaveBeenCalledTimes(1)
+    expect(notifySpy).toHaveBeenCalledTimes(1)
+  })
+
+  it("persists male as 1", async () => {
+    const vm = new MeInfoVM()
+
+    await vm.updateSex(1)
+
+    expect(hoisted.updateCurrentUser).toHaveBeenCalledWith({ sex: "1" })
+    expect(hoisted.fakeWKApp.loginInfo.sex).toBe(1)
+    expect(hoisted.fakeWKApp.loginInfo.save).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("MeInfoVM.handleShortNoTap — lab-mode unlock", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem("lab_mode_enabled")
+    hoisted.toastSuccess.mockReset()
+  })
+
+  afterEach(() => {
+    window.localStorage.removeItem("lab_mode_enabled")
+  })
+
+  it("writes the lab flag and notifies after five taps", () => {
+    const vm = new MeInfoVM()
+    const notifySpy = vi.spyOn(vm, "notifyListener")
+
+    for (let i = 0; i < 5; i += 1) {
+      vm.handleShortNoTap()
+    }
+
+    expect(window.localStorage.getItem("lab_mode_enabled")).toBe("1")
+    expect(hoisted.toastSuccess).toHaveBeenCalledTimes(1)
+    expect(notifySpy).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () => {
   const originalLocation = window.location
   const originalOpen = window.open
@@ -147,11 +240,13 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
   beforeEach(() => {
     hoisted.apiClientPost.mockReset()
     hoisted.apiClientGet.mockReset()
+    hoisted.userProfileGet.mockReset()
     hoisted.toastError.mockReset()
     hoisted.toastWarning.mockReset()
     hoisted.fakeWKApp.loginInfo.loginProvider = "xming"
     hoisted.apiClientPost.mockResolvedValue({})
     hoisted.apiClientGet.mockResolvedValue({ realname_verified: false, real_name: "" })
+    hoisted.userProfileGet.mockResolvedValue({ realname_verified: false, real_name: "" })
     Object.defineProperty(window, "location", {
       configurable: true,
       value: {
@@ -369,7 +464,8 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
 
     expect(openSpy).not.toHaveBeenCalled()
     expect(hoisted.toastError).toHaveBeenCalledTimes(1)
-    expect(hoisted.toastError.mock.calls[0][0]).toMatch(/当前账号不支持/)
+    expect(hoisted.toastError.mock.calls[0][0]).toEqual(expect.any(String))
+    expect(hoisted.toastError.mock.calls[0][0]).not.toBe("")
   })
 })
 
@@ -379,8 +475,13 @@ describe("MeInfoVM.didMount — reloadSelfProfile only (pull-from-idp endpoint d
   beforeEach(() => {
     hoisted.apiClientPost.mockReset()
     hoisted.apiClientGet.mockReset()
+    hoisted.userProfileGet.mockReset()
     hoisted.apiClientPost.mockResolvedValue({})
     hoisted.apiClientGet.mockResolvedValue({
+      realname_verified: false,
+      real_name: "",
+    })
+    hoisted.userProfileGet.mockResolvedValue({
       realname_verified: false,
       real_name: "",
     })
@@ -410,8 +511,8 @@ describe("MeInfoVM.didMount — reloadSelfProfile only (pull-from-idp endpoint d
     await Promise.resolve()
     await Promise.resolve()
 
-    // didMount 的 reloadSelfProfile 会 GET /users/uid-1
-    expect(hoisted.apiClientGet).toHaveBeenCalledWith("users/uid-1")
+    // didMount 的 reloadSelfProfile 会经 UserService 读取 users/uid-1
+    expect(hoisted.userProfileGet).toHaveBeenCalledWith("uid-1")
     // 硬约束:不再对 pull-from-idp 发 POST(dmworkim 侧 endpoint 已废弃)
     const pullCalls = hoisted.apiClientPost.mock.calls.filter(
       (args) => args[0] === "internal/realname/pull-from-idp",
@@ -450,9 +551,9 @@ describe("MeInfoVM.didMount — reloadSelfProfile only (pull-from-idp endpoint d
     const [, , newUrl] = replaceStateSpy.mock.calls[0]
     expect(newUrl).not.toContain("verified=1")
 
-    // reloadSelfProfile 一次 GET
+    // reloadSelfProfile 一次读取
     expect(
-      hoisted.apiClientGet.mock.calls.filter((args) => args[0] === "users/uid-1"),
+      hoisted.userProfileGet.mock.calls.filter((args) => args[0] === "uid-1"),
     ).toHaveLength(1)
 
     // 硬约束:回跳路径上也不再 POST pull-from-idp

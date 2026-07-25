@@ -201,6 +201,7 @@ export default class GlobalSearch extends Component<
             friends={vm.searchResult?.friends}
             keyword={vm.keyword}
             onClick={onClickOf("contacts")}
+            hideModal={this.props.hideModal}
           />
         </div>
         <div className="wk-search-tabs__panel" style={panelStyle("groups")}>

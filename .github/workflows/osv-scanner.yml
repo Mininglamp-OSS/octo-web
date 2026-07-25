@@ -26,11 +26,16 @@ jobs:
 
   scan-pr:
     if: github.event_name == 'pull_request'
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+    # Pinned to a main-branch SHA (not a tag) because the export-results input is not yet
+    # in a released tag; re-pin to v2.3.9+ once the flag ships in a tagged release.
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@a82132c0bd6c7261ffcb78e754c46c70ab57ad9a # main
     with:
       scan-args: |-
         -r
         ./
+      # Gate exporting base/head scan results as job outputs. On large repos the combined
+      # JSON exceeds GitHub's ~1MB per-output limit and fails the job (upstream #129).
+      export-results: false
       # Skip SARIF upload when GITHUB_TOKEN is read-only:
       # - Fork PRs: token is inherently read-only
       # - Dependabot PRs: GitHub enforces read-only token for dependabot[bot]

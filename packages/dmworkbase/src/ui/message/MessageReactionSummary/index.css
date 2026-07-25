@@ -1,0 +1,154 @@
+/**
+ * MessageReactionSummary 样式
+ *
+ * 视觉基线：与 ThreadBadge 同源，挂在 .wk-msg-row-body 内作为下一个 sibling。
+ * 项目消息是 Slack/飞书 无气泡风格，chip 必须克制才不与朴素文本消息打架：
+ * - 静止态 chip 透明底 + hairline 边框；
+ * - hover 时才轻微涌起（底色/边框/文字加深）；
+ * - hasMine 用项目 accent（--wk-color-accent / --wk-bg-selected / --wk-border-glow），
+ *   与 Thread 链接、AI 标签同源；
+ * - "+" 添加入口跟随 .wk-msg-row hover 显隐，静止时不占视觉噪声。
+ *
+ * 全部走 --wk-* 语义 token（亮/暗双主题各自定义），故无需 body[theme-mode=dark] 覆盖。
+ */
+
+.wk-msg-reaction-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-0-5) 0 0;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.wk-msg-reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  max-width: 100%;
+  min-width: 0;
+  height: 22px;
+  padding: 0 var(--wk-sp-2);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-full);
+  background-color: transparent;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 20px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  font-family: inherit;
+}
+
+.wk-msg-reaction-chip:hover {
+  background-color: var(--wk-bg-hover);
+  border-color: var(--wk-border-strong);
+  color: var(--wk-text-primary);
+}
+
+/** 当前用户参与过：项目 accent 高亮 */
+.wk-msg-reaction-chip--mine {
+  background-color: var(--wk-bg-selected);
+  border-color: var(--wk-border-glow);
+  color: var(--wk-color-accent);
+  font-weight: 500;
+}
+
+.wk-msg-reaction-chip--mine:hover {
+  background-color: var(--wk-bg-selected);
+  border-color: var(--wk-border-glow);
+  color: var(--wk-color-accent-hover);
+}
+
+.wk-msg-reaction-chip[disabled],
+.wk-msg-reaction-chip[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.wk-msg-reaction-chip[disabled]:hover,
+.wk-msg-reaction-chip[aria-disabled="true"]:hover {
+  background-color: transparent;
+  border-color: var(--wk-border-subtle);
+  color: var(--wk-text-secondary);
+}
+
+.wk-msg-reaction-chip--mine[disabled]:hover,
+.wk-msg-reaction-chip--mine[aria-disabled="true"]:hover {
+  background-color: var(--wk-bg-selected);
+  border-color: var(--wk-border-glow);
+  color: var(--wk-color-accent);
+}
+
+.wk-msg-reaction-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: var(--wk-text-size-2xl);
+  line-height: 1;
+}
+
+.wk-msg-reaction-chip-icon img,
+.wk-msg-reaction-chip-icon svg {
+  /* 18px = 表情图标展示尺寸，与 unicode 字形（--wk-text-size-2xl）视觉对齐；
+     非间距语义，无对应 spacing token */
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  display: block;
+}
+
+.wk-msg-reaction-chip-text {
+  display: inline-block;
+  min-width: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/**
+ * 添加 reaction 入口（+ 号）
+ * 只在消息行 hover / 右键激活 / summary 内 focus 时显现，静止态不占视觉。
+ * 联动依赖上层 .wk-msg-row 类；无 .wk-msg-row 上下文时（如独立 story）默认可见。
+ */
+.wk-msg-reaction-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-full);
+  background-color: transparent;
+  color: var(--wk-text-tertiary);
+  cursor: pointer;
+  transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  font-family: inherit;
+}
+
+.wk-msg-row .wk-msg-reaction-add {
+  opacity: 0;
+}
+
+.wk-msg-row:hover .wk-msg-reaction-add,
+.wk-msg-row--active .wk-msg-reaction-add,
+.wk-msg-reaction-summary:focus-within .wk-msg-reaction-add,
+.wk-msg-reaction-add:focus-visible {
+  opacity: 1;
+}
+
+.wk-msg-reaction-add:hover {
+  background-color: var(--wk-bg-hover);
+  border-color: var(--wk-border-strong);
+  color: var(--wk-text-primary);
+}
+
+.wk-msg-reaction-add svg {
+  width: 12px;
+  height: 12px;
+}

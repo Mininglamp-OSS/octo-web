@@ -30,8 +30,10 @@ import {
   ChevronRight,
   ChevronDown,
   SlidersHorizontal,
+  ExternalLink,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
+import { currentWorkspaceSlug } from "../api/http";
 import type {
   Issue,
   IssueComment,
@@ -44,6 +46,7 @@ import type {
   IssuePriority,
   Project,
   CommentTriggerAgent,
+  Workspace,
 } from "../api/types";
 import {
   getIssue,
@@ -69,6 +72,7 @@ import { listProjects } from "../api/projectApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
 import LabelEditor from "../ui/LabelEditor";
+import LabelChips from "../ui/LabelChips";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
@@ -78,6 +82,10 @@ import { useCommentTriggerPreview } from "../ui/useCommentTriggerPreview";
 import { buildRepliesByParent, collectThreadReplies } from "../ui/threadReplies";
 import LoopAttachments from "../ui/LoopAttachments";
 import { confirmDelete } from "../ui/confirmDelete";
+import {
+  pushFleetIssueDeepLink,
+  replaceFleetIssueDeepLink,
+} from "../issueDeepLink";
 import RunDetailModal from "./RunDetailModal";
 import CreateIssueModal from "../ui/CreateIssueModal";
 import {
@@ -261,26 +269,41 @@ function fmt(iso?: string | null): string {
 export interface IssueDetailPageProps {
   issueId: string;
   onChanged?: () => void;
+  onClose?: () => boolean | void;
+  /** Read-only scoped data for surfaces outside the Loop route. */
+  snapshot?: IssueDetailSnapshot;
+  presentation?: "page" | "panel";
+  sourceUrl?: string;
+}
+
+export interface IssueDetailSnapshot {
+  workspace: Workspace;
+  issue: Issue;
+  comments: IssueComment[];
+  children: Issue[];
+  timeline: TimelineEntry[];
+  runs: TaskRun[];
 }
 
 /**
  * Issue 独立详情页（对齐产品设计）：主体(标题/描述/评论) + 右侧属性栏 + 执行日志。
  * 渲染在右主栏（routeRight.push），顶部返回按钮 pop 回列表/看板。
  */
-export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageProps) {
+export default function IssueDetailPage({ issueId, onChanged, onClose, snapshot, presentation = "page", sourceUrl }: IssueDetailPageProps) {
   const { t } = useI18n();
-  const [issue, setIssue] = useState<Issue | null>(null);
-  const [comments, setComments] = useState<IssueComment[]>([]);
+  const readOnly = !!snapshot;
+  const [issue, setIssue] = useState<Issue | null>(snapshot?.issue ?? null);
+  const [comments, setComments] = useState<IssueComment[]>(snapshot?.comments ?? []);
   const [subscribers, setSubscribers] = useState<IssueSubscriber[]>([]);
   // 订阅者列表是否已成功加载:未加载/加载失败时"我是否已订阅"不可判定,菜单回退到两项都显示。
   const [subLoaded, setSubLoaded] = useState(false);
-  const [children, setChildren] = useState<Issue[]>([]);
+  const [children, setChildren] = useState<Issue[]>(snapshot?.children ?? []);
   const [childCreateOpen, setChildCreateOpen] = useState(false); // 新建子 issue 弹窗
   const [propsOpen, setPropsOpen] = useState(false); // 「编辑属性」弹窗(标签/父回路/日期/阶段)
   const [parentCands, setParentCands] = useState<Issue[]>([]); // 父 issue 选择器候选(懒加载)
   const [projects, setProjects] = useState<Project[]>([]); // 项目候选(内联项目 popup)
-  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
-  const [runs, setRuns] = useState<TaskRun[]>([]);
+  const [timeline, setTimeline] = useState<TimelineEntry[]>(snapshot?.timeline ?? []);
+  const [runs, setRuns] = useState<TaskRun[]>(snapshot?.runs ?? []);
   const [activeRun, setActiveRun] = useState<TaskRun | null>(null);
   const [runOpen, setRunOpen] = useState(false);
   const [showRuns, setShowRuns] = useState(false); // 「执行日志」折叠展开
@@ -290,11 +313,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [expandedActs, setExpandedActs] = useState<Set<string>>(new Set());
   const [collapsedActs, setCollapsedActs] = useState<Set<string>>(new Set());
   const [editingDesc, setEditingDesc] = useState(false);
-  const cands = useAssigneeCandidates();
+  const cands = useAssigneeCandidates(!readOnly);
   const { requestAssign, requestStatus, runConfirmModal } = useRunConfirm();
-  const [loading, setLoading] = useState(true);
-  const [titleDraft, setTitleDraft] = useState("");
-  const [descDraft, setDescDraft] = useState("");
+  const [loading, setLoading] = useState(!snapshot);
+  const [titleDraft, setTitleDraft] = useState(snapshot?.issue.title ?? "");
+  const [descDraft, setDescDraft] = useState(snapshot?.issue.description ?? "");
   const [commentDraft, setCommentDraft] = useState("");
   const mainComposerRef = useRef<CommentComposerHandle>(null);
   const triggerAgents = useCommentTriggerPreview(issueId, commentDraft, null); // 这条评论会唤醒的 agent
@@ -336,12 +359,27 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     listTimeline(issueId).then((tl) => { if (fresh()) setTimeline(tl); }).catch(() => {});
   };
 
-  useEffect(reload, [issueId]);
+  useEffect(() => {
+    if (!snapshot) {
+      reload();
+      return;
+    }
+    ++reqRef.current;
+    setIssue(snapshot.issue);
+    setComments(snapshot.comments);
+    setChildren(snapshot.children);
+    setTimeline(snapshot.timeline);
+    setRuns(snapshot.runs);
+    setTitleDraft(snapshot.issue.title);
+    setDescDraft(snapshot.issue.description ?? "");
+    setLoading(false);
+  }, [issueId, snapshot]);
 
   // 项目候选:内联「项目」popup 用;工作区级、随详情挂载取一次。
   useEffect(() => {
+    if (readOnly) return;
     listProjects().then(setProjects).catch(() => {});
-  }, []);
+  }, [readOnly]);
 
   const patch = async (p: Parameters<typeof updateIssue>[1]) => {
     if (!issue) return;
@@ -496,7 +534,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   // 走 LoopAttachments:带鉴权取字节转 object URL —— download_url 是 auth-only,
   // 原生 <img src> 带不上 token,且 octo-web 下 /api 代理到别的后端会 404(裂图)。
   const renderAttachments = (atts: Attachment[] | null | undefined) => (
-    <LoopAttachments attachments={atts} />
+    <LoopAttachments attachments={atts} workspaceSlug={snapshot?.workspace.slug} />
   );
 
   const submitComment = async () => {
@@ -607,7 +645,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     });
   };
 
-  const back = () => WKApp.routeRight.pop();
+  const back = () => {
+    if (onClose?.() === false) return;
+    WKApp.routeRight.pop();
+  };
 
   const openRun = (run: TaskRun) => {
     setActiveRun(run);
@@ -616,7 +657,22 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   // 打开子回路详情（递归复用本页，key 隔离跨 issue 陈旧写入）。
   const openChild = (id: string) => {
-    WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={onChanged} />);
+    const workspaceSlug = currentWorkspaceSlug();
+    const child = children.find((item) => item.id === id);
+    if (workspaceSlug && child?.identifier) {
+      pushFleetIssueDeepLink(workspaceSlug, child.identifier);
+    }
+    WKApp.routeRight.push(
+      <IssueDetailPage
+        key={id}
+        issueId={id}
+        onChanged={onChanged}
+        onClose={() => {
+          if (workspaceSlug && issue?.identifier) replaceFleetIssueDeepLink(workspaceSlug, issue.identifier);
+          else onClose?.();
+        }}
+      />
+    );
   };
 
   const reloadRuns = () => listRuns(issueId).then(setRuns).catch(() => {});
@@ -739,7 +795,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         <Text strong style={{ fontSize: 13 }}>{c.author_name}</Text>
         <time>{fmt(c.created_at)}</time>
         {c.resolved_at && <span className="loop-cmt__resolved">{t("loop.comment.resolved")}</span>}
-        <div className="loop-cmt__actions">
+        {!readOnly && <div className="loop-cmt__actions">
           <Dropdown
             trigger="click"
             position="bottomRight"
@@ -761,9 +817,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           >
             <Button size="small" theme="borderless" icon={<MoreHorizontal size={15} />} aria-label={t("loop.action.more")} />
           </Dropdown>
-        </div>
+        </div>}
       </div>
-      <div className="loop-cmt__body"><LoopMarkdown content={c.content} /></div>
+      <div className="loop-cmt__body"><LoopMarkdown content={c.content} workspaceSlug={snapshot?.workspace.slug} /></div>
       {renderAttachments(c.attachments)}
     </div>
   );
@@ -772,14 +828,14 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     <div key={root.id} className="loop-cmt">
       {renderRow(root, true, root.id)}
       {repliesOf(root.id).map((r) => renderRow(r, false, root.id))}
-      <ThreadReply
+      {!readOnly && <ThreadReply
         onSubmit={(content, files, suppressIds) => replyToThread(root.id, content, files, suppressIds)}
         placeholder={t("loop.comment.replyPlaceholder")}
         sendLabel={t("loop.comment.send")}
         candidates={cands}
         issueId={issueId}
         parentId={root.id}
-      />
+      />}
     </div>
   );
 
@@ -824,7 +880,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             {t(`loop.taskStatus.${r.status}`)}
           </span>
         </button>
-        <Button
+        {!readOnly && <Button
           size="small"
           theme="borderless"
           type={active ? "danger" : "tertiary"}
@@ -832,7 +888,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           icon={active ? <Square size={13} /> : <RotateCcw size={13} />}
           aria-label={t(active ? "loop.run.stop" : "loop.run.rerun")}
           onClick={() => (active ? cancelRun(r.id) : rerun(r.id))}
-        />
+        />}
       </div>
     );
   };
@@ -904,12 +960,14 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   };
 
   return (
-    <div className="loop-idp">
+    <div className={`loop-idp${readOnly ? " loop-idp--readonly" : ""}${presentation === "panel" ? " loop-idp--panel" : ""}`}>
       <div className="loop-idp__topbar">
         <div className="loop-idp__crumbs">
-          <button className="loop-idp__crumb" onClick={back}>
-            {issue.project_name ?? t("loop.nav.issue")}
-          </button>
+          {readOnly ? (
+            <span className="loop-idp__crumb">{snapshot?.workspace.name ?? issue.project_name ?? t("loop.nav.issue")}</span>
+          ) : (
+            <button className="loop-idp__crumb" onClick={back}>{issue.project_name ?? t("loop.nav.issue")}</button>
+          )}
           <ChevronRight size={14} className="loop-idp__crumb-sep" />
           <span className="loop-idp__crumb-cur">
             <span className="loop-idp__crumb-id">{issue.identifier}</span>
@@ -917,12 +975,16 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           </span>
         </div>
         <div style={{ flex: 1 }} />
-        <Button className="loop-idp__boardbtn" theme="borderless" onClick={back}>
-          {t("loop.detail.board")}
-        </Button>
-        <Dropdown trigger="click" position="bottomRight" render={renderMoreMenu()} clickToHide>
-          <Button icon={<MoreHorizontal size={18} />} theme="borderless" aria-label="more" />
-        </Dropdown>
+        {readOnly ? (
+          sourceUrl && <a className="loop-idp__source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label={t("loop.preview.openSource")}><ExternalLink size={15} /></a>
+        ) : (
+          <>
+            <Button className="loop-idp__boardbtn" theme="borderless" onClick={back}>{t("loop.detail.board")}</Button>
+            <Dropdown trigger="click" position="bottomRight" render={renderMoreMenu()} clickToHide>
+              <Button icon={<MoreHorizontal size={18} />} theme="borderless" aria-label="more" />
+            </Dropdown>
+          </>
+        )}
       </div>
 
       <div className="loop-idp__body">
@@ -931,12 +993,13 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           <input
             className="loop-field loop-field--lg loop-idp__title"
             value={titleDraft}
-            onChange={(e) => setTitleDraft(e.target.value)}
-            onBlur={() => titleDraft.trim() && titleDraft !== issue.title && patch({ title: titleDraft.trim() })}
+            readOnly={readOnly}
+            onChange={readOnly ? undefined : (e) => setTitleDraft(e.target.value)}
+            onBlur={readOnly ? undefined : () => titleDraft.trim() && titleDraft !== issue.title && patch({ title: titleDraft.trim() })}
           />
 
           {/* 描述：紧贴标题的段落（点击进入编辑），无独立分区标题，对齐 Figma */}
-          {editingDesc ? (
+          {!readOnly && editingDesc ? (
             <AutoGrowTextarea
               className="loop-field-textarea loop-field-textarea--lg loop-field-textarea--auto"
               value={descDraft}
@@ -946,9 +1009,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               placeholder={t("loop.field.descriptionPlaceholder")}
             />
           ) : (
-            <div className="loop-idp__desc" onClick={() => setEditingDesc(true)}>
+            <div className="loop-idp__desc" onClick={readOnly ? undefined : () => setEditingDesc(true)}>
               {issue.description ? (
-                <LoopMarkdown content={issue.description} />
+                <LoopMarkdown content={issue.description} workspaceSlug={snapshot?.workspace.slug} />
               ) : (
                 <span className="loop-idp__desc-empty">{t("loop.field.descriptionPlaceholder")}</span>
               )}
@@ -957,7 +1020,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
           {/* issue 附件 + 工具栏（附件上传） */}
           {issueAtts.length > 0 && renderAttachments(issueAtts)}
-          <div className="loop-idp__toolbar">
+          {!readOnly && <div className="loop-idp__toolbar">
             <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
               {uploading ? <Spin size="small" /> : <Paperclip size={15} />}
               <input
@@ -968,7 +1031,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                 onChange={(e) => { uploadForIssue(e.target.files); e.target.value = ""; }}
               />
             </label>
-          </div>
+          </div>}
 
           {/* 子回路：仅当确有子回路时才展示整个模块(空则不显示,避免突兀的孤零标题) */}
           {children.length > 0 && (
@@ -978,20 +1041,20 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   {t("loop.subIssue.title")}
                   <em className="loop-idp__count"> {childrenDone} / {children.length}</em>
                 </span>
-                <Button
+                {!readOnly && <Button
                   theme="borderless"
                   size="small"
                   icon={<Plus size={14} />}
                   aria-label={t("loop.subIssue.create")}
                   onClick={() => setChildCreateOpen(true)}
-                />
+                />}
               </div>
               <div className="loop-subissues">
                 {children.map((c) => {
                   const SIcon = ISSUE_STATUS_ICON[c.status];
                   const PIcon = PRIORITY_ICON[c.priority];
                   return (
-                    <div key={c.id} className="loop-subissue" onClick={() => openChild(c.id)}>
+                    <div key={c.id} className="loop-subissue" onClick={readOnly ? undefined : () => openChild(c.id)}>
                       <SIcon size={14} strokeWidth={2} style={{ color: ISSUE_STATUS_HEX[c.status] }} />
                       <span className="loop-subissue__id">{c.identifier}</span>
                       <span className="loop-subissue__title">{c.title}</span>
@@ -1008,14 +1071,14 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           <div className="loop-idp__section loop-idp__feed-sec">
             <div className="loop-idp__feed-head">
               <span className="loop-idp__stitle">{t("loop.activity.title")}</span>
-              <button
+              {!readOnly && <button
                 type="button"
                 className="loop-idp__subbtn"
                 onClick={() => toggleSubscribe(!(selfKnown && amSubscribed))}
               >
                 {selfKnown && amSubscribed ? <BellOff size={13} /> : <Bell size={13} />}
                 {selfKnown && amSubscribed ? t("loop.subscribe.unsubscribe") : t("loop.subscribe.subscribe")}
-              </button>
+              </button>}
             </div>
 
             <div className="loop-feed">
@@ -1029,7 +1092,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             </div>
 
             {/* 新建评论：独立区块(分割线 + 多行 textarea),明确区别于上方逐条回复 */}
-            <div className="loop-idp__newcomment">
+            {!readOnly && <div className="loop-idp__newcomment">
               <CommentComposer
                 ref={mainComposerRef}
                 candidates={cands}
@@ -1060,7 +1123,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         </div>
 
@@ -1076,7 +1139,12 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                 {/* 状态：点击值弹 popup 改(对标产品设计) */}
                 <div className="loop-idp__prop loop-idp__prop--inline">
                   <span className="loop-idp__prop-k">{t("loop.field.status")}</span>
-                  <Dropdown
+                  {readOnly ? (
+                    <span className="loop-idp__prop-edit loop-idp__prop-edit--static">
+                      <StatusIcon size={14} strokeWidth={2} style={{ color: ISSUE_STATUS_HEX[issue.status] }} />
+                      {t(`loop.status.${issue.status}`)}
+                    </span>
+                  ) : <Dropdown
                     trigger="click"
                     position="bottomRight"
                     clickToHide
@@ -1095,12 +1163,17 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                       {t(`loop.status.${issue.status}`)}
                       <ChevronDown size={12} className="loop-idp__prop-caret" />
                     </button>
-                  </Dropdown>
+                  </Dropdown>}
                 </div>
                 {/* 优先级 */}
                 <div className="loop-idp__prop loop-idp__prop--inline">
                   <span className="loop-idp__prop-k">{t("loop.field.priority")}</span>
-                  <Dropdown
+                  {readOnly ? (
+                    <span className="loop-idp__prop-edit loop-idp__prop-edit--static">
+                      <PriIcon size={14} strokeWidth={2} style={{ color: PRIORITY_HEX[issue.priority] }} />
+                      {t(`loop.priority.${issue.priority}`)}
+                    </span>
+                  ) : <Dropdown
                     trigger="click"
                     position="bottomRight"
                     clickToHide
@@ -1119,22 +1192,26 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                       {t(`loop.priority.${issue.priority}`)}
                       <ChevronDown size={12} className="loop-idp__prop-caret" />
                     </button>
-                  </Dropdown>
+                  </Dropdown>}
                 </div>
                 {/* 负责人：复用 AssigneePicker(自带点击 popup + 三态) */}
                 <div className="loop-idp__prop loop-idp__prop--inline">
                   <span className="loop-idp__prop-k">{t("loop.field.assignee")}</span>
-                  <AssigneePicker
+                  {readOnly ? (
+                    <span className="loop-idp__prop-v">{issue.assignee_name ?? t("loop.assignee.unassigned")}</span>
+                  ) : <AssigneePicker
                     size="small"
                     value={issue.assignee_id}
                     valueName={issue.assignee_name ?? null}
                     onChange={(id, type, name) => requestAssign(issue, type, id, name, (extra) => patch({ assignee_id: id, assignee_type: type, ...extra }))}
-                  />
+                  />}
                 </div>
                 {/* 项目 */}
                 <div className="loop-idp__prop loop-idp__prop--inline">
                   <span className="loop-idp__prop-k">{t("loop.field.project")}</span>
-                  <Dropdown
+                  {readOnly ? (
+                    <span className="loop-idp__prop-v">{issue.project_name ?? t("loop.field.noProject")}</span>
+                  ) : <Dropdown
                     trigger="click"
                     position="bottomRight"
                     clickToHide
@@ -1156,7 +1233,22 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                       {issue.project_name ?? t("loop.field.noProject")}
                       <ChevronDown size={12} className="loop-idp__prop-caret" />
                     </button>
-                  </Dropdown>
+                  </Dropdown>}
+                </div>
+                <div className="loop-idp__prop loop-idp__prop--inline loop-idp__prop--labels">
+                  <span className="loop-idp__prop-k">{t("loop.field.labels")}</span>
+                  {readOnly ? (
+                    <span className={`loop-idp__prop-v loop-idp__prop-labels${issue.labels?.length ? "" : " loop-idp__prop-v--muted"}`}>
+                      {issue.labels?.length ? <LabelChips labels={issue.labels} /> : t("loop.label.add")}
+                    </span>
+                  ) : (
+                    <LabelEditor
+                      issueId={issue.id}
+                      labels={issue.labels}
+                      className="loop-idp__label-editor"
+                      onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }}
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -1225,9 +1317,14 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         </aside>
       </div>
 
-      <RunDetailModal run={activeRun} visible={runOpen} onClose={() => setRunOpen(false)} />
-      {runConfirmModal}
-      <CreateIssueModal
+      <RunDetailModal
+        run={activeRun}
+        visible={runOpen}
+        onClose={() => setRunOpen(false)}
+        workspaceSlug={snapshot?.workspace.slug}
+      />
+      {!readOnly && runConfirmModal}
+      {!readOnly && <CreateIssueModal
         visible={childCreateOpen}
         parentIssueId={issueId}
         onClose={() => setChildCreateOpen(false)}
@@ -1238,10 +1335,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           // 通知父级:新子 issue 改变了父看板的子进度/计数,不刷父会陈旧。
           onChanged?.();
         }}
-      />
+      />}
 
       {/* 编辑属性弹窗：标签 / 父回路 / 开始/截止日期 / 阶段（侧栏保持只读，编辑走 ⋯ → 此弹窗） */}
-      <Modal
+      {!readOnly && <Modal
         className="loop-modal"
         title={t("loop.menu.editProps")}
         visible={propsOpen}
@@ -1250,10 +1347,6 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         width={460}
       >
         <div className="loop-fields">
-          <div className="loop-fields__row">
-            <div className="loop-fields__label">{t("loop.field.labels")}</div>
-            <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
-          </div>
           <div className="loop-fields__row">
             <div className="loop-fields__label">{t("loop.field.parent")}</div>
             <Select
@@ -1304,7 +1397,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             />
           </div>
         </div>
-      </Modal>
+      </Modal>}
     </div>
   );
 }

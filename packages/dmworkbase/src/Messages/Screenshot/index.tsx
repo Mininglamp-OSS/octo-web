@@ -4,6 +4,7 @@ import WKApp from "../../App";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { MessageCell } from "../MessageCell";
 import { t } from "../../i18n";
+import { getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 
 export class ScreenshotContent extends MessageContent {
@@ -16,7 +17,7 @@ export class ScreenshotContent extends MessageContent {
         if (this.fromUID === WKApp.loginInfo.uid) {
             name = t("base.message.screenshot.you")
         } else {
-            let channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(this.fromUID, ChannelTypePerson))
+            let channelInfo = getImChannelInfo(WKSDK.shared(), new Channel(this.fromUID, ChannelTypePerson))
             if (channelInfo) {
                 name = channelInfo?.orgData?.displayName
             } else {

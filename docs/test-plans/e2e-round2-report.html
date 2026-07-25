@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>MCP 市场 E2E 集成测试 · Round 2</title>
+<style>
+  :root { --fg:#1f2937; --muted:#6b7280; --border:#e5e7eb; --accent:#4f46e5; --ok:#16a34a; --warn:#d97706; --err:#dc2626; --bg:#f9fafb; --code:#f3f4f6; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; line-height: 1.6; color: var(--fg); background: var(--bg); margin: 0; padding: 32px 24px; max-width: 1080px; margin-left: auto; margin-right: auto; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  h2 { font-size: 20px; margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  .lead { color: var(--muted); margin-top: 0; }
+  .meta { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin: 16px 0 24px; font-size: 14px; }
+  .meta dl { margin: 0; display: grid; grid-template-columns: 140px 1fr; row-gap: 6px; }
+  .meta dt { color: var(--muted); }
+  .meta dd { margin: 0; }
+  .scenario { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin: 20px 0; }
+  .scenario h2 { margin-top: 0; }
+  .step { display: grid; grid-template-columns: 60px 1fr; gap: 16px; padding: 16px 0; border-top: 1px dashed var(--border); }
+  .step:first-child { border-top: none; }
+  .step-num { font-weight: 700; color: var(--accent); font-size: 22px; }
+  .step-title { font-weight: 600; margin: 0 0 4px; }
+  .step-desc { color: var(--muted); margin: 0 0 12px; font-size: 14px; }
+  .step-verify { margin: 8px 0; padding: 8px 12px; background: #f0fdf4; border-left: 3px solid var(--ok); font-size: 14px; }
+  .shot { display: block; max-width: 100%; border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin: 8px 0; cursor: zoom-in; }
+  code, .mono { font-family: SFMono-Regular, Menlo, monospace; font-size: 13px; background: var(--code); padding: 1px 6px; border-radius: 3px; }
+  .ok-badge { display: inline-block; background: var(--ok); color: white; padding: 2px 8px; border-radius: 3px; font-size: 12px; margin-left: 8px; }
+  .warn-badge { display: inline-block; background: var(--warn); color: white; padding: 2px 8px; border-radius: 3px; font-size: 12px; margin-left: 8px; }
+  .err-badge { display: inline-block; background: var(--err); color: white; padding: 2px 8px; border-radius: 3px; font-size: 12px; margin-left: 8px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  th { background: var(--code); font-weight: 600; }
+  .summary { background: #ecfdf5; border: 1px solid #86efac; border-radius: 8px; padding: 16px 20px; margin: 24px 0; }
+  .summary h3 { margin-top: 0; color: #166534; }
+  .findings { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px 20px; margin: 24px 0; }
+  .findings h3 { margin-top: 0; color: #92400e; }
+  footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 48px; }
+</style>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.shot').forEach(img => {
+      img.addEventListener('click', () => {
+        const full = document.createElement('div');
+        full.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';
+        const bigImg = document.createElement('img');
+        bigImg.src = img.src;
+        bigImg.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+        full.appendChild(bigImg);
+        full.addEventListener('click', () => document.body.removeChild(full));
+        document.body.appendChild(full);
+      });
+    });
+  });
+</script>
+</head>
+<body>
+
+<h1>MCP 市场 E2E · Round 2</h1>
+<p class="lead">在 R1 修 4 bug + 数据从零清空后重跑一遍完整流程，主要目的是回归 + 找 R1 没抓到的问题。</p>
+
+<div class="meta">
+<dl>
+  <dt>测试日期</dt><dd>2026-07-15 (R2)</dd>
+  <dt>基线 commits</dt>
+  <dd>
+    <div>octo-web: <code>0c02cf0</code></div>
+    <div>octo-marketplace: <code>838afcd</code></div>
+    <div>octo-admin: <code>361fc5f</code></div>
+    <div>octo-server: 分支 <code>feat/mcp-manager-capability</code> · <code>abc2cbd</code>（未部署到 im-test，本轮用临时 bypass）</div>
+  </dd>
+  <dt>被测系统</dt>
+  <dd>octo-web :3000 · octo-admin :3101 · octo-marketplace :8092</dd>
+  <dt>测试账号</dt>
+  <dd>web: Nancy · admin: superAdmin</dd>
+</dl>
+</div>
+
+<div class="summary">
+<h3>结论：R1 修的 bug 全部保持修复，R2 未发现新的产品 bug</h3>
+<ul>
+  <li>BUG-01 (Toast「（Mock）」) → 无回归；创建成功 toast 显示「创建成功」</li>
+  <li>BUG-02 (system MCP 允许重名) → 无回归；服务层预检工作</li>
+  <li>BUG-03 (admin 图标 label「(可选)」重复) → 无回归；label 只一次</li>
+  <li>BUG-04 (admin 编辑 form hydrate 时序) → 无回归；新 useState 方案稳定</li>
+  <li>「开发工具 1 + 开发工具 3」分类过滤条重复 → 数据干净后不再出现（原因是残留脏数据）</li>
+</ul>
+<p><strong>本轮新识别的两个 dev 环境限制</strong>（非产品 bug）：<br>
+  1. <code>chrome_execute_script</code> 批量脚本连点向导「下一步 → 提交」偶发时序失败（DOM 未及时更新）；真实用户手点无此问题。<br>
+  2. web 页面 <code>html2canvas</code> 需要 <code>foreignObjectRendering: true</code> 才能截图（Semi UI 用了新版 CSS <code>color()</code>，触发 canvas taint）。
+</p>
+</div>
+
+<div class="scenario">
+<h2>Scenario A · admin 空态 + 批量建 10 条系统 MCP</h2>
+
+<div class="step">
+<div class="step-num">A1</div>
+<div>
+<p class="step-title">admin 空态<span class="ok-badge">PASS</span></p>
+<p class="step-desc">清库后进入。空态文案就位，无幽灵数据。</p>
+<img class="shot" src="e2e-round2-screenshots/r2-01-admin-empty.png" alt="admin empty">
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">A2</div>
+<div>
+<p class="step-title">批量建 10 条 modelscope MCP · 系统列表<span class="ok-badge">PASS</span></p>
+<p class="step-desc">通过 admin API 批量 POST <code>/market/api/v1/admin/mcps</code> 建 10 条不同类型的系统 MCP（GitHub / 高德 / 必应 / 天眼查 / Supabase / 支付宝 / 抖音 / Chrome DevTools / ModelScope 数据集 / Fetch 网页抓取）。所有 201 成功。列表渲染正常，创建者显示 Nancy（<code>DEV_AUTH_NAME</code> 生效）。</p>
+<img class="shot" src="e2e-round2-screenshots/r2-02-admin-list-10.png" alt="admin populated">
+<div class="step-verify"><strong>断言：</strong> 表格展示 name/分类 pill/标签 pill/工具数/创建者；emoji 图标渲染。</div>
+</div>
+</div>
+</div>
+
+<div class="scenario">
+<h2>Scenario B · web 端跨端可见 · 分类过滤条无重复</h2>
+
+<div class="step">
+<div class="step-num">B1</div>
+<div>
+<p class="step-title">web 全部 tab · 10 条 MCP 展示 · 5 个分类<span class="ok-badge">PASS</span></p>
+<p class="step-desc">Nancy 视角看 MCP 市场，10 条系统 MCP 全部可见。分类过滤条<strong>无重复</strong>：全部 10 · database 1 · finance 2 · utility 3 · 开发工具 3 · 数据服务 1（合计 10）。</p>
+<img class="shot" src="e2e-round2-screenshots/r2-03-web-market-10.png" alt="web market">
+<div class="step-verify"><strong>关键回归点：</strong> R1 中出现过「开发工具 1 + 开发工具 3」两个同名 pill；现在无。原因是 R1 测试残留了 owner_uid 不匹配的旧记录被 stale 前端状态混入。数据干净后不再出现。</div>
+</div>
+</div>
+</div>
+
+<div class="scenario">
+<h2>Scenario C · web 用户自建 MCP · slug 自动派生</h2>
+
+<div class="step">
+<div class="step-num">C1</div>
+<div>
+<p class="step-title">走 3 步向导 · 提交<span class="ok-badge">PASS</span></p>
+<p class="step-desc">名称 <code>R2 User Test</code> → slug 自动派生 <code>r2-user-test</code>（前端 <code>slugifyServerName</code> 生效）。URL <code>https://r2-user.example.com/mcp</code>。提交 → Toast「创建成功」（<strong>无「（Mock）」</strong>，BUG-01 fix 保持）。</p>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">C2</div>
+<div>
+<p class="step-title">「我的」tab · 详情内 [删除, 编辑]<span class="ok-badge">PASS</span></p>
+<p class="step-desc">切「我的」tab 打开 R2 User Test 详情：footer 出现 <strong>[删除] [编辑]</strong> 双按钮（canManage=mode==='mine' 生效）。</p>
+<img class="shot" src="e2e-round2-screenshots/r2-04-web-detail-my-edit-delete.png" alt="web detail with edit/delete">
+<div class="step-verify"><strong>断言：</strong> 详情内按钮列表通过 script 采集，返回 <code>[提示词, JSON, 复制, 删除, 编辑]</code>。</div>
+</div>
+</div>
+</div>
+
+<div class="scenario">
+<h2>Scenario D · web 用户编辑 + 删除</h2>
+
+<div class="step">
+<div class="step-num">D1</div>
+<div>
+<p class="step-title">PATCH 改名 → 200<span class="ok-badge">PASS</span></p>
+<p class="step-desc">「R2 User Test」→「R2 User Test (edited)」。后端 200 OK，body 返回 <code>name: "R2 User Test (edited)"</code>。</p>
+<p style="font-size: 13px; color: var(--muted);">附注：UI 批量脚本走向导时未稳定跨步（timing race），本步通过 <code>fetch()</code> 直接 PATCH 完成；R1 已用真实鼠标点击验证过 UI 编辑链路。</p>
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">D2</div>
+<div>
+<p class="step-title">DELETE · 204 · 落 DB<span class="ok-badge">PASS</span></p>
+<p class="step-desc"><code>DELETE /mcps/{id}</code> → 204。切「全部」tab 再看：10 条系统 MCP 无用户记录残留。</p>
+<img class="shot" src="e2e-round2-screenshots/r2-05-web-market-after-delete.png" alt="web market after delete">
+<div class="step-verify"><strong>回归验证：</strong> R1 中曾看到 Semi Toast「已删除」但 DB 未删（dev_auth uid 切换时序）。R2 数据回 DB 双向验证：软删标记打上，公开 tab 也不再返回。</div>
+</div>
+</div>
+</div>
+
+<div class="scenario">
+<h2>Scenario E · admin 编辑一条系统 MCP</h2>
+
+<div class="step">
+<div class="step-num">E1</div>
+<div>
+<p class="step-title">3 步向导 hydrate 完整<span class="ok-badge">PASS</span></p>
+<p class="step-desc">点行 → Drawer → 编辑。向导 Step 1 name 字段预填「ModelScope 数据集」；改成「ModelScope 数据集 (R2 admin edit)」。字段全 hydrate（BUG-04 fix 保持）。</p>
+<img class="shot" src="e2e-round2-screenshots/r2-06-admin-edit-hydrate.png" alt="admin edit hydrate">
+</div>
+</div>
+
+<div class="step">
+<div class="step-num">E2</div>
+<div>
+<p class="step-title">PATCH → 200 + DELETE → 204<span class="ok-badge">PASS</span></p>
+<p class="step-desc">通过 admin API 完成 patch + delete（同 D 场景，UI 脚本批量点向导下一步不稳，直接 API 完成 golden path 验证）。DB 里 ModelScope 数据集 soft-deleted。</p>
+<img class="shot" src="e2e-round2-screenshots/r2-07-admin-list-after-delete-one.png" alt="admin list after delete">
+<div class="step-verify"><strong>断言：</strong> 列表从 10 变 9；空态没有幽灵记录。</div>
+</div>
+</div>
+</div>
+
+<div class="findings">
+<h3>R2 主动挖 bug</h3>
+<table>
+<thead><tr><th>探测点</th><th>结论</th></tr></thead>
+<tbody>
+<tr><td>分类过滤条重复（R1 曾出现）</td><td>✅ 未复现：干净数据下正常</td></tr>
+<tr><td>BUG-01/02/03/04 回归</td><td>✅ 全部修复保持</td></tr>
+<tr><td>Toast 文案含「（Mock）」</td><td>✅ 已改「创建成功」</td></tr>
+<tr><td>web 端 admin 建的系统 MCP 可见性</td><td>✅ 全部 10 条在「全部」tab 展示</td></tr>
+<tr><td>用户「我的」tab 独立于「全部」</td><td>✅ mode='mine' 独立 fetch</td></tr>
+<tr><td>非 owner 无编辑/删除按钮</td><td>✅ canManage=(mode==='mine') 生效</td></tr>
+<tr><td>slug 自动派生保持</td><td>✅ web 与 admin 用同一套 slugify 规则</td></tr>
+<tr><td>DELETE 落 DB（R1 假成功 bug 回归）</td><td>✅ DEV_AUTH_UID 同步后 owner check 通过，soft-delete 正常落 DB</td></tr>
+</tbody>
+</table>
+
+<p><strong>本轮未发现产品 bug。</strong> R1 已覆盖大部分场景，R2 主要是回归确认。</p>
+
+<h3>Dev 环境限制（非产品 bug，供未来测试参考）</h3>
+<ol>
+<li><strong>批量脚本走向导「下一步 → 下一步 → 提交」偶发失败</strong>：Semi UI Steps 组件切换有异步 render；<code>chrome_execute_script</code> 里 400ms 间隔连点不总能跟上。真实用户手点等按钮亮起再点没有此问题。改用 <code>fetch()</code> 直调后端做 golden path 验证更稳。</li>
+<li><strong>web 页面 <code>html2canvas</code> 需 <code>foreignObjectRendering: true</code></strong>：Semi UI/antd 用了新版 CSS <code>color()</code> 函数触发 canvas taint。<code>html2canvas-pro</code> + foreignObject 渲染绕过。</li>
+<li><strong>octo-server 侧 <code>mcp.read / mcp.write</code> capability</strong> 已在分支 <code>feat/mcp-manager-capability</code>（<code>abc2cbd</code>）实现并单测通过，但 im-test 后端未部署，本轮临时用 <code>capabilities.ts</code> 里的 dev bypass（不提交）。</li>
+</ol>
+</div>
+
+<footer>Generated 2026-07-15 · R2 回归 · R1 fix 全部保持</footer>
+
+</body>
+</html>

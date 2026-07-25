@@ -9,7 +9,8 @@
 //   - xl/worksheets/sheetM.xml          add <drawing r:id="…"/> (+ xmlns:r if missing)
 //   - [Content_Types].xml               Default for each image ext + Override for each drawing
 //
-// Univer stores images as base64 (OSS image service), so the binary rides in `dataUrl` — no host.
+// Univer normally stores images as base64 (OSS image service); transient blob URLs are resolved
+// during export. SVG is rasterized to PNG because SVG media support varies across Excel versions.
 // Cell images are exported degraded to floating images (WPS DISPIMG is proprietary; a floating
 // image anchored at the cell is the portable equivalent Excel/WPS both render).
 //
@@ -17,13 +18,14 @@
 // surprising xlsx layout can never break the export — you just get the styled sheet without images.
 
 import JSZip from 'jszip'
+import { blobToDataUrl, rasterizeSvgToPng } from '../export/imageRasterize.ts'
 
 /** EMU (English Metric Units) per CSS pixel — OOXML drawing anchors/extents are in EMU. */
 const EMU_PER_PX = 9525
 
 /** One floating image to inject, anchored top-left at (col,row)+offset, sized width×height px. */
 export interface ExportImage {
-  /** `data:image/<ext>;base64,<data>` */
+  /** `data:image/<ext>;base64,<data>` or a browser-local `blob:` URL. */
   dataUrl: string
   col: number
   row: number
@@ -42,6 +44,8 @@ const MIME_EXT: Record<string, string> = {
   'image/bmp': 'bmp',
 }
 
+const SVG_MIMES = new Set(['image/svg', 'image/svg+xml'])
+
 const CONTENT_TYPE: Record<string, string> = {
   png: 'image/png',
   jpeg: 'image/jpeg',
@@ -57,6 +61,49 @@ function parseDataUrl(dataUrl: string): { ext: string; base64: string } | null {
   const ext = MIME_EXT[m[1].toLowerCase()]
   if (!ext) return null
   return { ext, base64: m[2] }
+}
+
+type RasterizeSvg = (source: string, width: number, height: number) => Promise<string>
+
+/** Rasterize SVG in the browser. OOXML/Excel support for SVG media is version-dependent, so the
+ * portable export representation is a real PNG (never SVG bytes with a .png suffix). */
+async function browserRasterizeSvg(source: string, width: number, height: number): Promise<string> {
+  return blobToDataUrl(await rasterizeSvgToPng(source, width, height))
+}
+
+async function resolveMedia(
+  source: string,
+  width: number,
+  height: number,
+  rasterizeSvg: RasterizeSvg,
+): Promise<{ ext: string; base64: string } | null> {
+  let mime = ''
+  if (source.startsWith('data:')) {
+    mime = /^data:([^;,]+)/i.exec(source)?.[1]?.toLowerCase() ?? ''
+  } else if (source.startsWith('blob:')) {
+    // A blob URL is only useful in the browser session that created it. Resolve it while exporting;
+    // this also handles Univer snapshots produced before FileReader converted the source to BASE64.
+    const response = await fetch(source)
+    if (!response.ok) return null
+    const blob = await response.blob()
+    mime = blob.type.toLowerCase()
+    if (!SVG_MIMES.has(mime)) {
+      const ext = MIME_EXT[mime]
+      if (!ext) return null
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      let binary = ''
+      for (const byte of bytes) binary += String.fromCharCode(byte)
+      return { ext, base64: btoa(binary) }
+    }
+  } else {
+    return null
+  }
+
+  if (SVG_MIMES.has(mime)) {
+    const png = parseDataUrl(await rasterizeSvg(source, width, height))
+    return png?.ext === 'png' ? png : null
+  }
+  return parseDataUrl(source)
 }
 
 const px2emu = (px: number): number => Math.max(0, Math.round(px * EMU_PER_PX))
@@ -195,7 +242,7 @@ export function floatingToExportImage(raw: unknown): ExportImage | null {
     sheetTransform?: { from?: { column?: number; columnOffset?: number; row?: number; rowOffset?: number } }
   }
   const source = typeof d?.source === 'string' ? d.source : ''
-  if (!source.startsWith('data:')) return null
+  if (!source.startsWith('data:') && !source.startsWith('blob:')) return null
   const from = d.sheetTransform?.from
   return {
     dataUrl: source,
@@ -225,7 +272,7 @@ export function cellPToExportImages(p: unknown, col: number, row: number): Expor
       transform?: { width?: number; height?: number }
     }
     const source = typeof dr?.source === 'string' ? dr.source : ''
-    if (!source.startsWith('data:')) continue
+    if (!source.startsWith('data:') && !source.startsWith('blob:')) continue
     const size = dr.docTransform?.size
     out.push({
       dataUrl: source,
@@ -248,6 +295,7 @@ export function cellPToExportImages(p: unknown, col: number, row: number): Expor
 export async function injectImagesIntoXlsx(
   buf: ArrayBuffer,
   imagesBySheetIndex: Map<number, ExportImage[]>,
+  rasterizeSvg: RasterizeSvg = browserRasterizeSvg,
 ): Promise<ArrayBuffer> {
   // Nothing to do → skip the whole zip round-trip.
   let total = 0
@@ -275,7 +323,7 @@ export async function injectImagesIntoXlsx(
       // Materialize each image's media part; collect the resolved list (skip bad data URLs).
       const resolved: Array<ExportImage & { mediaName: string }> = []
       for (const img of images) {
-        const parsed = parseDataUrl(img.dataUrl)
+        const parsed = await resolveMedia(img.dataUrl, img.widthPx, img.heightPx, rasterizeSvg)
         if (!parsed) continue
         mediaCounter++
         const mediaName = `image${mediaCounter}.${parsed.ext}`

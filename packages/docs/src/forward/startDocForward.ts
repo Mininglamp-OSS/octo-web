@@ -33,6 +33,12 @@ export interface StartDocForwardInput {
   ownerId?: string
   space?: string
   folder?: string
+  /** Resource kind — doc/board/sheet — carried into the DocumentShareCard (defaults to 'doc'). */
+  kind?: 'doc' | 'board' | 'sheet'
+  /** Owner display name for the card eyebrow (optional). */
+  ownerName?: string
+  /** Pre-formatted "updated at" string for the card eyebrow (optional). */
+  updatedAt?: string
 }
 
 /**
@@ -42,7 +48,7 @@ export interface StartDocForwardInput {
  * double-checks (E-10).
  */
 export function startDocForward(input: StartDocForwardInput): void {
-  const { docId, title, role, currentUid, ownerId, space, folder } = input
+  const { docId, title, role, currentUid, ownerId, space, folder, kind, ownerName, updatedAt } = input
   const canGrant = computeCanGrant(role, currentUid, ownerId)
   const link = buildDocLink({ docId, space, folder })
   const safeTitle = title?.trim() || t('docs.state.untitled')
@@ -51,6 +57,11 @@ export function startDocForward(input: StartDocForwardInput): void {
     docId,
     title: safeTitle,
     link,
+    shareAsCard: true,
+    spaceId: space,
+    kind: kind ?? 'doc',
+    ownerName,
+    updatedAt,
     canGrant,
     disabledReason: t('docs.forward.grantDisabledReason'),
     defaultRole: 'reader',

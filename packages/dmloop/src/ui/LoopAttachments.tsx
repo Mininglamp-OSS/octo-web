@@ -17,12 +17,12 @@ import { useAuthedAttachmentUrl, triggerAuthedDownload } from "./useAuthedAttach
  * via the client and wrapping it in an object URL loads it with auth against
  * the correct backend (lifecycle isolated in useAuthedAttachmentUrl).
  */
-function AuthedImage({ att }: { att: Attachment }) {
-  const { url, failed } = useAuthedAttachmentUrl(att.id);
+function AuthedImage({ att, workspaceSlug }: { att: Attachment; workspaceSlug?: string }) {
+  const { url, failed } = useAuthedAttachmentUrl(att.id, workspaceSlug);
 
   if (failed) {
     // Fall back to a click-to-download link so the attachment is still reachable.
-    return <AuthedDownload att={att} />;
+    return <AuthedDownload att={att} workspaceSlug={workspaceSlug} />;
   }
   if (!url) {
     // Visible placeholder while bytes load (not loop-att--img, which zeroes
@@ -57,7 +57,7 @@ function NativeImage({ att }: { att: Attachment }) {
  * endpoint, so we fetch the Blob on click (triggerAuthedDownload) and trigger a
  * download from an object URL.
  */
-function AuthedDownload({ att }: { att: Attachment }) {
+function AuthedDownload({ att, workspaceSlug }: { att: Attachment; workspaceSlug?: string }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
 
@@ -65,7 +65,7 @@ function AuthedDownload({ att }: { att: Attachment }) {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
-    await triggerAuthedDownload(att.id, att.filename);
+    await triggerAuthedDownload(att.id, att.filename, workspaceSlug);
     setBusy(false);
   };
 
@@ -86,19 +86,21 @@ function AuthedDownload({ att }: { att: Attachment }) {
 /** Renders a list of attachments (shared between issue-level and comment-level). */
 export default function LoopAttachments({
   attachments,
+  workspaceSlug,
 }: {
   attachments: Attachment[] | null | undefined;
+  workspaceSlug?: string;
 }) {
   if (!attachments?.length) return null;
   return (
     <div className="loop-atts">
       {attachments.map((a) =>
         !canPreviewInline(a.content_type) ? (
-          <AuthedDownload key={a.id} att={a} />
+          <AuthedDownload key={a.id} att={a} workspaceSlug={workspaceSlug} />
         ) : isPublicAbsoluteUrl(a.download_url) ? (
           <NativeImage key={a.id} att={a} />
         ) : (
-          <AuthedImage key={a.id} att={a} />
+          <AuthedImage key={a.id} att={a} workspaceSlug={workspaceSlug} />
         ),
       )}
     </div>

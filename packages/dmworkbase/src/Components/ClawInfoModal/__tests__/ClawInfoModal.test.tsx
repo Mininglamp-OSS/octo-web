@@ -1,18 +1,18 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import "@testing-library/jest-dom";
 import ClawInfoModal from "../ClawInfoModal";
-import type { AgentCardData } from "../../Service/AgentCardService";
+import type { AgentCardData, RuntimeInfo } from "../../../Service/AgentCardService";
 
 // Mock AgentCardService
-vi.mock("../../Service/AgentCardService", () => ({
+vi.mock("../../../Service/AgentCardService", () => ({
   default: {
     getAgentCard: vi.fn(),
   },
 }));
 
-import AgentCardService from "../../Service/AgentCardService";
+import AgentCardService from "../../../Service/AgentCardService";
 
 // Mock WKModal
 vi.mock("../../WKModal", () => ({
@@ -25,6 +25,28 @@ vi.mock("../../ClawSessionItem", () => ({
     <div data-testid="claw-session-card">{session.key}</div>
   ),
 }));
+
+const mockRuntimeInfo: RuntimeInfo = {
+  os_version: "macOS 13.2.1",
+  arch: "arm64",
+  disk_space_gb: 68,
+  memory_gb: 32,
+  app_data_dir: ".octopush/octopush-58d651",
+  claw_version: "v2026.4.11",
+  admin_url: "http://localhost:3100",
+  team_name: "DeepMiner Team",
+  process_status: "running",
+  gateway_status: "connected",
+  gateway_name: "Gateway-1",
+  claw_id: "claw-a8f3d2e1",
+  gateway_total_agents: 10,
+  gateway_alive_agents: 8,
+  nodejs_version: "v22.22.2",
+  network_latency_ms: 45.2,
+  last_heartbeat_at: "2026-05-07T10:31:00Z",
+  memory_retention_count: 50,
+  memory_retention_note: "保留最近50天记忆，已清理3条过期记录",
+};
 
 describe("ClawInfoModal", () => {
   beforeEach(() => {
@@ -40,7 +62,7 @@ describe("ClawInfoModal", () => {
       session_total: 3,
       session_running_count: 2,
       last_report_at: "2026-05-07T10:30:00Z",
-      runtime_info: {} as any,
+      runtime_info: mockRuntimeInfo,
       sessions: [
         {
           session_id: "s1",
@@ -95,6 +117,7 @@ describe("ClawInfoModal", () => {
     vi.mocked(AgentCardService.getAgentCard).mockResolvedValueOnce(mockData);
 
     render(<ClawInfoModal botId="test_bot" visible={true} onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId("tab-session"));
 
     // 等待数据加载
     await waitFor(() => {
@@ -119,7 +142,7 @@ describe("ClawInfoModal", () => {
       session_total: 0,
       session_running_count: 0,
       last_report_at: "2026-05-07T10:30:00Z",
-      runtime_info: {} as any,
+      runtime_info: mockRuntimeInfo,
       sessions: [],
       core_files: [],
       memory_files: [],
@@ -128,6 +151,7 @@ describe("ClawInfoModal", () => {
     vi.mocked(AgentCardService.getAgentCard).mockResolvedValueOnce(mockData);
 
     render(<ClawInfoModal botId="empty_bot" visible={true} onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId("tab-session"));
 
     await waitFor(() => {
       expect(screen.getByText(/0 running/)).toBeInTheDocument();
@@ -135,7 +159,7 @@ describe("ClawInfoModal", () => {
 
     // 检查空态文案
     expect(
-      screen.getByText(/最近 1 小时内没有活跃的会话，有新对话产生后会出现在这里/)
+      screen.getByText(/暂无活跃的会话，有新对话产生后会出现在这里/)
     ).toBeInTheDocument();
   });
 
@@ -160,6 +184,7 @@ describe("ClawInfoModal", () => {
     vi.mocked(AgentCardService.getAgentCard).mockRejectedValueOnce(new Error("网络错误"));
 
     render(<ClawInfoModal botId="error_bot" visible={true} onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId("tab-session"));
 
     await waitFor(() => {
       expect(screen.getByText(/网络错误/)).toBeInTheDocument();
@@ -175,7 +200,7 @@ describe("ClawInfoModal", () => {
       session_total: 3,
       session_running_count: 2,
       last_report_at: "2026-05-07T10:30:00Z",
-      runtime_info: {} as any,
+      runtime_info: mockRuntimeInfo,
       sessions: [
         {
           session_id: "idle_1",
@@ -230,6 +255,7 @@ describe("ClawInfoModal", () => {
     vi.mocked(AgentCardService.getAgentCard).mockResolvedValueOnce(mockData);
 
     render(<ClawInfoModal botId="sort_bot" visible={true} onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId("tab-session"));
 
     await waitFor(() => {
       const sessionCards = screen.getAllByTestId("claw-session-card");

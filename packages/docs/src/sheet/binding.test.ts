@@ -464,6 +464,54 @@ describe('UniverYjsBinding — column/row dimensions', () => {
     expect(dimMap.get('default:r5')).toBe(30)
   })
 
+  it('persists an auto-recomputed row height (e.g. from toggling text-wrap) — WS-28', () => {
+    // Toggling 自动换行 grows the row to fit; Univer emits set-worksheet-row-auto-height (NOT the
+    // manual set-worksheet-row-height), carrying per-row heights in rowsAutoHeightInfo keyed by the
+    // mutation's own subUnitId. Without syncing it the grown height never reaches the Y.Doc and the
+    // row snaps back on reload.
+    const { univer, dimMap } = setup()
+    univer.fire({
+      id: 'sheet.mutation.set-worksheet-row-auto-height',
+      params: {
+        subUnitId: 'local-1', // the first sheet, logical 'default'
+        rowsAutoHeightInfo: [
+          { row: 0, autoHeight: 48 },
+          { row: 2, autoHeight: 66 },
+        ],
+      },
+    })
+    expect(dimMap.get('default:r0')).toBe(48)
+    expect(dimMap.get('default:r2')).toBe(66)
+  })
+
+  it('routes an auto-height mutation to its OWN subUnitId sheet, not the active sheet — WS-28', () => {
+    // An auto-height recompute can fire against a non-focused sheet. The mutation's subUnitId is the
+    // authoritative target; using the active sheet would persist the height under the wrong sheet's
+    // key (right sheet stays clipped on reload, wrong sheet gets over-tall).
+    const { univer, dimMap } = setup()
+    const s2 = univer.addSheet('Sheet2')
+    univer.setActive(s2.getSheetId())
+    univer.fire({ id: 'sheet.command.insert-sheet' }) // register Sheet2 into the logical map
+    univer.setActive('local-1') // active sheet is now the FIRST sheet ('default')
+    // Auto-height targets Sheet2 while 'default' is active.
+    univer.fire({
+      id: 'sheet.mutation.set-worksheet-row-auto-height',
+      params: { subUnitId: s2.getSheetId(), rowsAutoHeightInfo: [{ row: 1, autoHeight: 52 }] },
+    })
+    expect(dimMap.get(`${s2.getSheetId()}:r1`)).toBe(52) // written under Sheet2's logical id
+    expect(dimMap.has('default:r1')).toBe(false) // NOT under the active sheet
+  })
+
+  it('ignores an auto-height mutation whose subUnitId maps to no known sheet — WS-28', () => {
+    const { univer, dimMap } = setup()
+    univer.fire({
+      id: 'sheet.mutation.set-worksheet-row-auto-height',
+      params: { subUnitId: 'ghost-sheet', rowsAutoHeightInfo: [{ row: 0, autoHeight: 48 }] },
+    })
+    expect(dimMap.has('default:r0')).toBe(false)
+    expect(dimMap.has('ghost-sheet:r0')).toBe(false)
+  })
+
   it('applies a remote column width into the sheet', () => {
     const { univer, doc } = setup()
     applyRemote(doc, (peer) => peer.getMap(SHEET_DIMS_FIELD).set('default:c1', 88))

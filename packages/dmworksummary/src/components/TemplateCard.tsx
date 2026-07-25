@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, ListChecks, Calendar, MessageSquare } from 'lucide-react';
+import { FileText, ListChecks, Calendar, MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import type { TopicTemplate } from '../types/summary';
 
 const ICON_MAP: Record<string, React.FC<{ size?: number }>> = {
@@ -26,14 +26,18 @@ const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, onEdit, 
             className={`chat-summary-template-card${template.is_custom ? ' chat-summary-template-card-custom' : ''}`}
             onClick={() => onClick(template)}
         >
-            <div className="chat-summary-template-card-icon">
-                <IconComponent size={20} />
-            </div>
-            <div className="chat-summary-template-card-title">
-                {template.label}
-            </div>
-            <div className="chat-summary-template-card-desc">
-                {template.description}
+            <div className="chat-summary-template-card-content">
+                <div className="chat-summary-template-card-header">
+                    <span className="chat-summary-template-card-icon">
+                        <IconComponent size={16} />
+                    </span>
+                    <span className="chat-summary-template-card-title">
+                        {template.label}
+                    </span>
+                </div>
+                <div className="chat-summary-template-card-desc">
+                    {template.description}
+                </div>
             </div>
             {(onEdit || onDelete) && (
                 <div className="chat-summary-template-actions">
@@ -47,7 +51,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, onEdit, 
                             }}
                             aria-label={editLabel}
                         >
-                            {editLabel}
+                            <Pencil size={14} />
                         </button>
                     )}
                     {onDelete && (
@@ -60,7 +64,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, onEdit, 
                             }}
                             aria-label={deleteLabel}
                         >
-                            {deleteLabel}
+                            <Trash2 size={14} />
                         </button>
                     )}
                 </div>

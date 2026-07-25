@@ -100,6 +100,10 @@ vi.mock("../../../Utils/const", () => ({ SuperGroup: 1 }))
 vi.mock("../foldSessionSummary", () => ({ getFoldSessionExpandedMessages: () => [] }))
 vi.mock("../historyScroll", () => ({ getPulldownRestoredScrollTop: () => 0 }))
 vi.mock("../../../Service/Convert", () => ({ applyMsgLevelExternalFieldsWithFallback: () => {} }))
+vi.mock("../../../i18n", () => ({
+    t: (key: string) => key,
+    useI18n: () => ({ t: (key: string) => key }),
+}))
 
 import ConversationVM from "../vm"
 import { Channel } from "wukongimjssdk"

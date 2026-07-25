@@ -7,6 +7,7 @@ import { visit } from 'unist-util-visit';
 import { useI18n } from '@octo/base';
 import CitationBadge, { CitationGroupBadge, TeamCitationBadge } from './CitationBadge';
 import { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
+import { buildDisplayIndexMap } from './citationFormat';
 
 export interface CitationContextValue {
     activeKey: string | null;
@@ -45,8 +46,8 @@ const citationSchema = {
     tagNames: [...(defaultSchema.tagNames || []), 'citation', 'citationgroup', 'teamcitation'],
     attributes: {
         ...defaultSchema.attributes,
-        citation: ['index', 'badgekey'],
-        citationgroup: ['indices', 'badgekey'],
+        citation: ['index', 'displayindex', 'badgekey'],
+        citationgroup: ['indices', 'displayindices', 'badgekey'],
         teamcitation: ['index', 'badgekey'],
     },
 };
@@ -55,6 +56,14 @@ function remarkCitation(citations: CitationItem[]) {
     const getChannelId = (idx: number) => citations.find(c => c.index === idx)?.channel_id;
 
     return (tree: any) => {
+        // Build the reading-order display map from the visible text nodes only
+        // (visit 'text' never enters code / inlineCode), in document order — so
+        // numbering matches exactly what renders as a badge below (#1003 P1).
+        const textSegments: string[] = [];
+        visit(tree, 'text', (node: any) => { textSegments.push(node.value); });
+        const displayIndexMap = buildDisplayIndexMap(textSegments);
+        const resolveDisplay = (raw: number) => displayIndexMap.get(raw) ?? raw;
+
         let occurrence = 0;
         visit(tree, 'text', (node: any, index: number | undefined, parent: any) => {
             if (!parent || index === undefined) return;
@@ -108,7 +117,11 @@ function remarkCitation(citations: CitationItem[]) {
                         type: 'citation',
                         data: {
                             hName: 'citation',
-                            hProperties: { index: ci, badgekey: `c-${ci}-${occurrence++}` },
+                            hProperties: {
+                                index: ci,
+                                displayindex: resolveDisplay(ci),
+                                badgekey: `c-${ci}-${occurrence++}`,
+                            },
                         },
                         children: [],
                     });
@@ -121,6 +134,7 @@ function remarkCitation(citations: CitationItem[]) {
                             hName: 'citationgroup',
                             hProperties: {
                                 indices: group.indices.join(','),
+                                displayindices: group.indices.map(resolveDisplay).join(','),
                                 badgekey: `cg-${firstIdx}-${lastIdx}-${occurrence++}`,
                             },
                         },
@@ -201,16 +215,21 @@ function markdownComponents(
     return {
         citation: ({ node, ...props }: any) => {
             const idx = node?.properties?.index ?? props?.index;
+            const displayIdx = node?.properties?.displayindex ?? props?.displayindex;
             const badgeKey = node?.properties?.badgekey ?? props?.badgekey ?? `c-${idx}-fallback`;
             if (idx === undefined) return null;
-            return <CitationBadge index={idx} citations={citations} badgeKey={badgeKey} />;
+            return <CitationBadge index={idx} displayIndex={displayIdx} citations={citations} badgeKey={badgeKey} />;
         },
         citationgroup: ({ node, ...props }: any) => {
             const indicesStr = node?.properties?.indices ?? props?.indices;
+            const displayIndicesStr = node?.properties?.displayindices ?? props?.displayindices;
             const badgeKey = node?.properties?.badgekey ?? props?.badgekey ?? 'cg-fallback';
             if (!indicesStr) return null;
             const indices = String(indicesStr).split(',').map(Number);
-            return <CitationGroupBadge indices={indices} citations={citations} badgeKey={badgeKey} />;
+            const displayIndices = displayIndicesStr
+                ? String(displayIndicesStr).split(',').map(Number)
+                : undefined;
+            return <CitationGroupBadge indices={indices} displayIndices={displayIndices} citations={citations} badgeKey={badgeKey} />;
         },
         teamcitation: ({ node, ...props }: any) => {
             const idx = node?.properties?.index ?? props?.index;
@@ -260,6 +279,11 @@ const CitationText: React.FC<CitationTextProps> = ({
 
     const hasCitations = !hidePlainCitations && citations && citations.length > 0;
     const hasTeamCitations = teamCitations && teamCitations.length > 0;
+    // Build display-index map from the raw source (reading-order rank starting
+    // at 1) so users don't see raw pool positions like [37]. Data is unchanged
+    // — only the label the badge renders differs from the internal index. The
+    // reading-order map is built inside remarkCitation from the AST text nodes
+    // (so code-span `[n]` never pollutes numbering — #1003 P1).
     const citationPlugin = () => remarkCitation(citations);
     const remarkPlugins: any[] = [remarkGfm, remarkBreaks];
     if (hasCitations) remarkPlugins.push(citationPlugin);

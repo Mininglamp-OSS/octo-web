@@ -4,15 +4,9 @@ import { Cloud, Monitor, Lock, Check } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { RuntimeDevice } from "../api/types";
 import { ProviderLogo } from "../ui/providerLogo";
-import EllipsisText from "../ui/EllipsisText";
+import { deviceName } from "../pages/runtimeDevices";
 
 type Filter = "mine" | "all";
-
-// 设备（机器）标签：device_info 的首段（"host · 2.1.121 (Claude Code)" → "host"），回落到 runtime 名。
-function deviceLabel(r: RuntimeDevice): string {
-  const head = r.device_info?.split("·")[0]?.trim();
-  return head || r.name;
-}
 
 /**
  * Agent 详情页运行时下拉（对齐产品设计）：
@@ -64,12 +58,15 @@ export default function RuntimePicker({
       if (aLocked !== bLocked) return aLocked ? 1 : -1;
       return 0;
     });
-    const map = new Map<string, { label: string; items: RuntimeDevice[] }>();
+    const map = new Map<string, { key: string; label: string; items: RuntimeDevice[] }>();
     for (const r of sorted) {
-      const key = r.daemon_id || deviceLabel(r);
+      const key = r.daemon_id || deviceName(r);
       let g = map.get(key);
       if (!g) {
-        g = { label: deviceLabel(r), items: [] };
+        // Prefer the machine's custom name (set via the runtime page's rename),
+        // falling back to the device hostname — so a renamed machine is
+        // recognizable here too.
+        g = { key, label: r.custom_name || deviceName(r), items: [] };
         map.set(key, g);
       }
       g.items.push(r);
@@ -98,7 +95,7 @@ export default function RuntimePicker({
     return (
       <span className="loop-adp__rt-ro">
         <TriggerIcon size={13} className="loop-adp__rt-ico" />
-        <EllipsisText className="loop-adp__edit-val loop-mono-text" text={selected?.name ?? "—"} />
+        <span className="loop-adp__edit-val loop-mono-text">{selected?.name ?? "—"}</span>
         {selected && dot(selected.status === "online")}
       </span>
     );
@@ -129,7 +126,7 @@ export default function RuntimePicker({
           <p className="loop-rtp__empty">{t("loop.agent.runtimeEmpty")}</p>
         ) : (
           groups.map((g) => (
-            <div key={g.label} className="loop-rtp__group">
+            <div key={g.key} className="loop-rtp__group">
               <div className="loop-rtp__group-head">
                 <Monitor size={11} className="loop-rtp__group-ico" />
                 <span className="loop-rtp__group-name">{g.label}</span>
@@ -174,7 +171,7 @@ export default function RuntimePicker({
     <Dropdown trigger="click" position="bottomRight" visible={open} onVisibleChange={setOpen} render={menu}>
       <button type="button" className="loop-adp__edit loop-adp__rt-trigger" aria-label={t("loop.agent.runtime")}>
         <TriggerIcon size={13} className="loop-adp__rt-ico" />
-        <EllipsisText className="loop-adp__edit-val loop-mono-text" text={selected?.name ?? "—"} />
+        <span className="loop-adp__edit-val loop-mono-text">{selected?.name ?? "—"}</span>
         {selected && dot(selected.status === "online")}
       </button>
     </Dropdown>

@@ -73,7 +73,14 @@
 //        migration). parseDOM reads an integer px back from the `tr` inline `style="height:Npx"`.
 //        Unlike the v4 cell `colwidth` (a `number[]` across the spanned columns), this is a single
 //        integer SCALAR per row. Byte-aligned with the backend stub + SCHEMA-SPEC.md at v19.
-export const SCHEMA_VERSION = 19
+//   v20 — SCHEMA-SPEC §14: add `fontSize` + `color` ATTRIBUTES to the `inlineMath` + `blockMath`
+//        nodes (not new nodes/marks) — per-formula font size (px) and text colour, applied by the
+//        docs math NodeView and round-tripped via data-font-size / data-color. Same class of change
+//        as v5 textAlign / v7 fontSize / v16 fontFamily: attribute-only additions to existing
+//        collaborative nodes still bump SCHEMA_VERSION in lockstep with the backend stub + SCHEMA-SPEC
+//        so an older client can't silently strip the new attrs (the cross-version data-loss the v16
+//        note guards against). Both default to null; missing attr = unstyled formula (no migration).
+export const SCHEMA_VERSION = 20
 
 // Node names present in the schema at the current SCHEMA_VERSION. Mirrors the
 // backend stub's node set (SCHEMA-SPEC); kept here so the set is auditable against
@@ -103,8 +110,8 @@ export const SCHEMA_NODES = [
   'detailsSummary', // v11 — the always-visible summary line of a details block
   'detailsContent', // v11 — the collapsible body of a details block
   'callout', // v12 — block+ container; attr variant info/warn/tip/success; data-variant
-  'inlineMath', // v13 — inline KaTeX formula; attr latex; `$…$`
-  'blockMath', // v13 — block KaTeX formula; attr latex; `$$…$$`
+  'inlineMath', // v13 — inline KaTeX formula; attr latex; `$…$`; v20 adds fontSize/color attrs
+  'blockMath', // v13 — block KaTeX formula; attr latex; `$$…$$`; v20 adds fontSize/color attrs
   'fileAttachment', // v14 — block atom; attrs attachId/fileName/mime/sizeBytes; data-* round-trip; presign upload
   'bookmark', // v15 — block atom; attrs url/title/description/image/siteName/fetchedAt; data-* round-trip; OG link-card
 ] as const
@@ -114,10 +121,11 @@ export const SCHEMA_NODES = [
 // against the spec without importing the editor extensions.
 //
 // NOTE: v5 `textAlign`, v7 `fontSize`, v16 `fontFamily`, v17 `lineHeight`/`spaceBefore`/
-// `spaceAfter`, v18 `indent`, and v19 `height` (on tableRow) are ATTRIBUTES (textAlign + line-spacing
-// + indent on heading/paragraph, fontSize + fontFamily on the textStyle mark, height on tableRow),
-// not new nodes/marks, so they add no entry here — only a version bump. They still round-trip through
-// the Y.Doc as node/mark attrs.
+// `spaceAfter`, v18 `indent`, v19 `height` (on tableRow), and v20 `fontSize`/`color` (on
+// inlineMath/blockMath) are ATTRIBUTES (textAlign + line-spacing + indent on heading/paragraph,
+// fontSize + fontFamily on the textStyle mark, height on tableRow, fontSize + color on the math
+// nodes), not new nodes/marks, so they add no entry here — only a version bump. They still round-trip
+// through the Y.Doc as node/mark attrs.
 export const SCHEMA_MARKS = [
   'bold',
   'italic',

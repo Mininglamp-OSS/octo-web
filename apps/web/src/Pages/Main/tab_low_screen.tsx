@@ -20,6 +20,17 @@ export class TabLowScreen extends Component<TabLowScreenProps> {
                             return <li key={menus.id} onClick={() => {
                                 vm.currentMenus = menus
                                 if (menus.onPress) {
+                                    // Sync the URL before firing the custom
+                                    // onPress. Some menu items only swap the
+                                    // right pane in onPress (e.g. Summary /
+                                    // Skill market) and never touch the
+                                    // address bar themselves — without this
+                                    // sync the URL stays on the previous
+                                    // route, so refresh / copied links /
+                                    // browser history reopen the wrong
+                                    // module (PR#851 Jerry-Xin 02:22 P1).
+                                    // Mirrors the desktop-path NavRail
+                                    // handler in Main/index.tsx.
                                     WKApp.route.syncPath(menus.routePath)
                                     menus.onPress()
                                 } else {

@@ -171,8 +171,8 @@ export const DOC_TARGET_STORAGE_KEY = 'octo.docs.target'
  *
  * A forwarded-doc link is `${origin}/docs?...&doc=<docId>`, but the octo host's self-built
  * RouteManager (dmworkbase Service/Route.tsx) handles `pageshow`/`popstate` by re-pushing
- * `window.location.pathname` ONLY — it drops the query and can wipe `?doc=` before the docs
- * module mounts. The recipient's mirror is empty (they never
+ * `window.location.pathname` ONLY — it drops the query and re-stamps the URL to `/docs?sid=…`,
+ * wiping `?doc=` before the docs module mounts. The recipient's mirror is empty (they never
  * opened the doc), so resolveDocTarget fell through to the empty document list — the XIN-328
  * symptom (link opens the list, not the document).
  *

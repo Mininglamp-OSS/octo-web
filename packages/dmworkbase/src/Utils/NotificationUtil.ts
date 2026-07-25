@@ -2,6 +2,7 @@ import { Message, Channel, ChannelTypeGroup } from "wukongimjssdk";
 import WKApp from "../App";
 import WKSDK from "wukongimjssdk";
 import { t } from "../i18n";
+import { getImChannelInfo } from "../im-runtime/channelRuntime";
 
 // Extend window interface for Electron APIs
 declare global {
@@ -188,7 +189,7 @@ export class NotificationUtil {
    * Send a message notification
    */
   public async sendMessageNotification(message: Message, description?: string): Promise<void> {
-    let channelInfo = WKSDK.shared().channelManager.getChannelInfo(message.channel);
+    let channelInfo = getImChannelInfo(WKSDK.shared(), message.channel);
 
     // Check if channel is muted
     if (channelInfo && channelInfo.mute) {
@@ -199,7 +200,7 @@ export class NotificationUtil {
     const parentGroupNo = channelInfo?.orgData?.parentGroupNo as string | undefined
     if (parentGroupNo) {
       const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup)
-      const parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(parentChannel)
+      const parentChannelInfo = getImChannelInfo(WKSDK.shared(), parentChannel)
       if (parentChannelInfo?.mute) {
         return
       }

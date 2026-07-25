@@ -1,5 +1,5 @@
-import { WKSDK, Message, CMDContent } from "wukongimjssdk";
-import { FriendApplyState, WKApp, ProviderListener } from "@octo/base";
+import { Message, CMDContent } from "wukongimjssdk";
+import { FriendApplyState, WKApp, ProviderListener, addCurrentImCommandListener, removeCurrentImCommandListener } from "@octo/base";
 import { FriendApply } from "@octo/base";
 
 export class NewFriendVM extends ProviderListener {
@@ -16,12 +16,12 @@ export class NewFriendVM extends ProviderListener {
     }
     this.notifyListener();
     // 监听好友申请
-    WKSDK.shared().chatManager.addCMDListener(this.friendRequestCMDListener);
+    addCurrentImCommandListener(this.friendRequestCMDListener);
   }
 
   didUnMount(): void {
     // 监听好友申请
-    WKSDK.shared().chatManager.removeCMDListener(this.friendRequestCMDListener);
+    removeCurrentImCommandListener(this.friendRequestCMDListener);
   }
 
   friendSure(apply: FriendApply) {

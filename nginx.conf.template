@@ -19,6 +19,7 @@ server {
         # string that the corresponding location block tests for.
         set $summary_api_url "${SUMMARY_API_URL}";
         set $matter_api_url "${MATTER_API_URL}";
+        set $market_api_url "${MARKET_API_URL}";
         # octo-doc (DOC_APP_URL) + octo-docs-backend (DOCS_BACKEND_URL) upstreams, as
         # runtime nginx variables so the doc/backend hosts resolve per-request (with a
         # resolver) instead of at config load — an unset/unresolvable host then 503s its
@@ -104,71 +105,21 @@ server {
             client_max_body_size 100m;
         }
 
-        # octo-doc HTML render + agent-auth token passthrough. Upstream is env-driven
-        # ($doc_app_url) so the image ports to any environment via .env, no conf edit.
-        # The `token` header carries the octo login token for doc-side identity verify.
-        # resolver + runtime-variable proxy_pass: the doc host resolves per-request, so an
+        # ── octo-doc HTML: single unified prefix /docs-html/* ─────────────────────
+        # All web→octo-doc traffic is namespaced under ONE prefix. The frontend now builds
+        # octo-doc's REAL backend paths under this prefix (resolveOctoDocBase + /v1/...):
+        #   /docs-html/v1/comments, /docs-html/v1/reactions, /docs-html/v1/docs/{slug}/grants,
+        #   /docs-html/v1/docs/{slug}, /docs-html/v1/docs/{slug}/versions, and the render page
+        #   /docs-html/d/{slug}/v/{ver}.
+        # So this block only STRIPS the /docs-html prefix and forwards the already-correct path
+        # to $doc_app_url with the octo `token` header for identity — no per-path alias rewrites.
+        # resolver + runtime-variable proxy_pass: doc host resolves per-request, so an
         # unset/unresolvable DOC_APP_URL 503s this route instead of failing nginx startup.
-        location /d/ {
+        location /docs-html/ {
             resolver 127.0.0.11 ipv6=off valid=30s;
             if ($doc_app_url = "") { return 503 '{"status":503,"msg":"octo-doc is not configured"}'; }
-            # No location-prefix rewrite happens with a variable proxy_pass; forward the
-            # original URI verbatim so /d/... reaches the doc unchanged.
-            rewrite ^ $request_uri break;
-            proxy_pass $doc_app_url;
-            proxy_set_header token $http_token;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-
-        # octo-doc HTML comments/reactions: frontend calls same-origin /comments|/reactions
-        # (no /v1); rewrite to the doc's /v1/* and pass the octo token for identity.
-        location /comments {
-            resolver 127.0.0.11 ipv6=off valid=30s;
-            if ($doc_app_url = "") { return 503 '{"status":503,"msg":"octo-doc is not configured"}'; }
-            rewrite ^/comments(.*)$ /v1/comments$1 break;
-            proxy_pass $doc_app_url;
-            proxy_set_header token $http_token;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-        location /reactions {
-            resolver 127.0.0.11 ipv6=off valid=30s;
-            if ($doc_app_url = "") { return 503 '{"status":503,"msg":"octo-doc is not configured"}'; }
-            rewrite ^/reactions(.*)$ /v1/reactions$1 break;
-            proxy_pass $doc_app_url;
-            proxy_set_header token $http_token;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-
-        # octo-doc HTML per-doc reader grants: frontend calls same-origin
-        # /grants/{slug}[/{uid}]; rewrite to the doc's /v1/docs/{slug}/grants[/{uid}]
-        # and pass the octo token for identity. Top-level /grants prefix avoids the
-        # SPA's own /docs route. DELETE .../{uid} rewrite must precede GET/PUT.
-        location /grants/ {
-            resolver 127.0.0.11 ipv6=off valid=30s;
-            if ($doc_app_url = "") { return 503 '{"status":503,"msg":"octo-doc is not configured"}'; }
-            rewrite ^/grants/([^/]+)/(.+)$ /v1/docs/$1/grants/$2 break;
-            rewrite ^/grants/([^/]+)$      /v1/docs/$1/grants      break;
-            proxy_pass $doc_app_url;
-            proxy_set_header token $http_token;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-
-        # octo-doc HTML doc admin (delete): frontend calls same-origin /docs-admin/{slug};
-        # rewrite to the doc's /v1/docs/{slug} and pass the octo token for identity. Top-level
-        # /docs-admin prefix avoids the SPA's /docs route and the /v1/ block below (proxied to
-        # octo-server, which has no doc delete endpoint).
-        location /docs-admin/ {
-            resolver 127.0.0.11 ipv6=off valid=30s;
-            if ($doc_app_url = "") { return 503 '{"status":503,"msg":"octo-doc is not configured"}'; }
-            rewrite ^/docs-admin/(.+)$ /v1/docs/$1 break;
+            # Single strip: /docs-html/<real-path> → /<real-path> (already /v1/... or d/...).
+            rewrite ^/docs-html/(.*)$ /$1 break;
             proxy_pass $doc_app_url;
             proxy_set_header token $http_token;
             proxy_set_header Host $host;
@@ -188,8 +139,11 @@ server {
         location /api/v1/docs {
             resolver 127.0.0.11 ipv6=off valid=30s;
             if ($docs_backend_url = "") { return 503 '{"status":503,"msg":"octo-docs-backend is not configured"}'; }
-            rewrite ^ $request_uri break;
-            proxy_pass $docs_backend_url;
+            # Variable proxy_pass: append the original URI (incl. query) directly.
+            # A `rewrite ^ $request_uri break` would URL-encode the `?` into %3F
+            # (breaking list?owner=me → 404); appending $request_uri to the
+            # variable forwards path+query verbatim, matching the pre-rewrite behavior.
+            proxy_pass $docs_backend_url$request_uri;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -223,6 +177,27 @@ server {
             client_max_body_size 100m;
         }
 
+        # octo-marketplace MCP catalog API — the MCP market page targets
+        # /market/api/v1/mcps* via this prefix. Set MARKET_API_URL (e.g.
+        # http://octo-marketplace:8080) at container start; blank yields a 503
+        # so a missing marketplace does not break nginx startup.
+        location /market/api/v1/ {
+            default_type application/json;
+            if ($market_api_url = "") {
+                return 503 '{"status":503,"msg":"marketplace API is not configured"}';
+            }
+            resolver 127.0.0.11 ipv6=off valid=30s;
+            # Same variable-in-proxy_pass caveat as /summary/: rewrite to the
+            # upstream URI first, then proxy_pass without a URI.
+            rewrite ^/market/api/v1/(.*)$ /api/v1/$1 break;
+            proxy_pass  $market_api_url;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size 100m;
+        }
+
         # OIDC SSO endpoints (authcode/authstatus/authorize/callback).
         # Backend mounts these under /v1/ directly (no /api/ prefix), so we
         # forward /v1/* without the strip-then-prepend dance the /api/ rule does.
@@ -238,5 +213,9 @@ server {
         location / {
             root   /usr/share/nginx/html;
             index  index.html index.htm;
+            # SPA fallback: unknown paths (client-side routes like the docs "my
+            # files" view, deep links, refresh) fall through to index.html so
+            # React Router can handle them, instead of a hard 404.
+            try_files $uri $uri/ /index.html;
         }
 }

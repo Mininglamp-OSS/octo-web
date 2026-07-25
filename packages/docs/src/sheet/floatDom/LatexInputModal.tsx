@@ -92,6 +92,7 @@ export function LatexInputModal({
   initialLatex,
   initialFontSize = 20,
   showPalette = true,
+  showFontSize = true,
   title,
   onConfirm,
   onCancel,
@@ -100,6 +101,9 @@ export function LatexInputModal({
   initialFontSize?: number
   /** Show the structure/symbol palette (builder mode). Off = raw-LaTeX box only. */
   showPalette?: boolean
+  /** Show the A⁻/A⁺ font-size stepper. Off for hosts (docs) whose math nodes have no per-formula
+   * font size, so the control isn't a no-op the user can click to no effect. */
+  showFontSize?: boolean
   /** Modal heading; defaults to the generic "插入公式". */
   title?: string
   onConfirm: (latex: string, fontSize: number) => void
@@ -235,11 +239,13 @@ export function LatexInputModal({
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '12px 0 4px' }}>
           <span style={{ fontSize: 12, color: 'var(--octo-muted,#8a919e)' }}>{t('docs.sheet.latexPreview')}</span>
+          {showFontSize && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <button type="button" className="octo-tb-btn" title={t('docs.sheet.formula.zoomOut')} onClick={() => bumpFont(-2)}>A⁻</button>
             <span style={{ fontSize: 12, minWidth: 34, textAlign: 'center', color: 'var(--octo-muted,#8a919e)' }}>{fontSize}px</span>
             <button type="button" className="octo-tb-btn" title={t('docs.sheet.formula.zoomIn')} onClick={() => bumpFont(2)}>A⁺</button>
           </span>
+          )}
         </div>
         <div
           ref={previewRef}

@@ -108,6 +108,14 @@ beforeAll(async () => {
     t: (k: string) => k,
     toSimplized: (s: string) => s,
     getPinyin: () => "#",
+    addCurrentImChannelInfoListener: (listener: any) => {
+      channelManager.addListener(listener);
+      return () => channelManager.removeListener(listener);
+    },
+    fetchCurrentImChannelInfo: (channel: any) =>
+      channelManager.fetchChannelInfo(channel),
+    getCurrentImChannelInfo: (channel: any) =>
+      channelManager.getChannelInfo(channel),
   }));
 
   vi.doMock("@octo/base/src/Messages/Card", () => ({ Card: class {} }));

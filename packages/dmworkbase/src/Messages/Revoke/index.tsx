@@ -6,6 +6,12 @@ import React from 'react'
 import "./index.css"
 import { ChannelInfoListener } from "wukongimjssdk"
 import { I18nContext, t } from "../../i18n"
+import {
+    addImChannelInfoListener,
+    fetchImChannelInfo,
+    getImChannelInfo,
+} from "../../im-runtime/channelRuntime"
+import { canReeditRevokedMessage } from "./reeditableMessage"
 
 
 export class RevokeCell extends MessageCell {
@@ -13,6 +19,7 @@ export class RevokeCell extends MessageCell {
     declare context: React.ContextType<typeof I18nContext>
 
     channelInfoListener!:ChannelInfoListener
+    private unsubscribeChannelInfoListener?: () => void
 
     componentDidMount() {
         super.componentDidMount()
@@ -23,12 +30,13 @@ export class RevokeCell extends MessageCell {
                 this.setState({})
             }
         }
-        WKSDK.shared().channelManager.addListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this.channelInfoListener)
     }
 
     componentWillUnmount() {
         super.componentWillUnmount()
-        WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
     }
 
     static tip(message: MessageWrap) {
@@ -40,7 +48,7 @@ export class RevokeCell extends MessageCell {
                 if (message.from) {
                     memberFromName = message.from.title;
                 } else {
-                    WKSDK.shared().channelManager.fetchChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
+                    void fetchImChannelInfo(WKSDK.shared(), new Channel(message.fromUID, ChannelTypePerson))
                 }
                 return t("base.revoke.revokedMemberMessageByYou", {
                     values: { member: memberFromName },
@@ -50,11 +58,11 @@ export class RevokeCell extends MessageCell {
 
         } else {
             const channel = new Channel(revoker ?? "", ChannelTypePerson)
-            let channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(revoker ?? "", ChannelTypePerson))
+            let channelInfo = getImChannelInfo(WKSDK.shared(), channel)
             if (channelInfo) {
                 name = channelInfo.title
             } else {
-                WKSDK.shared().channelManager.fetchChannelInfo(channel)
+                void fetchImChannelInfo(WKSDK.shared(), channel)
                 name = "--"
             }
             if (revoker !== message.fromUID) {
@@ -65,8 +73,21 @@ export class RevokeCell extends MessageCell {
     }
 
     render() {
-        const { message } = this.props
+        const { message, context } = this.props
         this.context.locale
-        return <div className="wk-message-system">{RevokeCell.tip(message)}</div>
+        const canReedit = canReeditRevokedMessage(message, WKApp.loginInfo.uid)
+        return <div className="wk-message-system wk-message-revoke">
+            <span>{RevokeCell.tip(message)}</span>
+            {canReedit ? <button
+                type="button"
+                className="wk-message-revoke-reedit"
+                onClick={(event) => {
+                    event.stopPropagation()
+                    void context.reeditRevokedMessage(message)
+                }}
+            >
+                {t("base.revoke.reedit")}
+            </button> : null}
+        </div>
     }
 }

@@ -42,6 +42,7 @@ export function ShareScopePanel({
   docId,
   seed,
   onCommitted,
+  allowedRoles,
 }: {
   docId: string
   seed?: ShareSeed
@@ -54,6 +55,11 @@ export function ShareScopePanel({
    * access-control indicator.
    */
   onCommitted?: (next: ShareSettings) => void
+  /**
+   * Restrict the selectable permission tiers under anyone_in_space (OCT-195: html surface must not
+   * hand out write). Omit / empty → full SHARE_ROLES; rich-doc callers see no behavior change.
+   */
+  allowedRoles?: ShareRole[]
 }) {
   // A valid seed scope means the caller (EditorShell) already carried the state in from getDoc —
   // trust it and skip the GET. The seed can also arrive LATER (EditorShell sets it after getDoc
@@ -62,6 +68,10 @@ export function ShareScopePanel({
     ? (seed!.shareScope as ShareScope)
     : undefined
   const seededRole: ShareRole = normalizeShareRole(seed?.shareRole)
+  // Effective role menu after the html-side filter; falls back to the full set so an omitted /
+  // empty allowedRoles preserves the rich-doc behavior exactly.
+  const roles: readonly ShareRole[] =
+    allowedRoles && allowedRoles.length > 0 ? allowedRoles : SHARE_ROLES
 
   // `null` scope = unknown (no authoritative value yet); it is never rendered as a checked radio,
   // so an unknown/failed read cannot masquerade as a confident "Restricted".
@@ -286,7 +296,7 @@ export function ShareScopePanel({
             disabled={controlsDisabled}
             onChange={(e) => onRoleChange(e.target.value as ShareRole)}
           >
-            {SHARE_ROLES.map((r) => (
+            {roles.map((r) => (
               <option key={r} value={r}>
                 {t(`docs.share.role.${r}`)}
               </option>

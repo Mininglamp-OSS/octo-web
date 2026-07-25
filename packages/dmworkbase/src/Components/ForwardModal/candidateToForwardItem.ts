@@ -1,8 +1,9 @@
-import { WKSDK, Channel, ChannelInfo, ChannelTypeGroup } from "wukongimjssdk"
+import { Channel, ChannelInfo, ChannelTypeGroup } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import { parseThreadChannelId } from "../../Service/Thread"
 import { chatTypeToChannelType } from "./chatTypeToChannelType"
 import type { ForwardItem } from "./ForwardModal"
+import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime"
 
 /** searchChatCandidates 后端返回的单条候选（只取本模块用到的字段）。 */
 export interface SearchChatCandidate {
@@ -28,7 +29,7 @@ export interface SearchChatCandidate {
 export function candidateToForwardItem(
   candidate: SearchChatCandidate,
   getCachedChannelInfo: (channel: Channel) => ChannelInfo | undefined = (ch) =>
-    WKSDK.shared().channelManager.getChannelInfo(ch),
+    getCurrentImChannelInfo<Channel, ChannelInfo>(ch),
 ): ForwardItem {
   const chType = chatTypeToChannelType(candidate.chat_type)
   const ch = new Channel(candidate.chat_id, chType)
@@ -47,6 +48,7 @@ export function candidateToForwardItem(
     displayName: candidate.name || candidate.chat_id,
     isAI: false,
     isThread,
+    isPinned: cachedInfo?.top === true,
     parentChannelID,
     isExternal,
   }

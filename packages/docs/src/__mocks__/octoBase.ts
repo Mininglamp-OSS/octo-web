@@ -104,3 +104,32 @@ export function VoiceInputButton() {
 }
 export type ReplaceMode = 'all' | 'selection' | 'insert'
 export type SelectionRange = { from: number; to: number }
+
+// WuKongIM Channel primitives (plan Task 5). The docs embedded-bot-DM shell constructs
+// `new Channel(botUid, ChannelTypePerson)` and reads getChannelKey() for the React key. The real
+// primitives live in wukongimjssdk (re-exported from @octo/base); this lightweight stub mirrors the
+// surface docs touches so tests resolve them through the @octo/base alias without the SDK.
+export const ChannelTypePerson = 1
+export class Channel {
+  channelID: string
+  channelType: number
+  constructor(channelID: string, channelType: number) {
+    this.channelID = channelID
+    this.channelType = channelType
+  }
+  getChannelKey(): string {
+    return `${this.channelID}-${this.channelType}`
+  }
+  isEqual(other: Channel): boolean {
+    return !!other && other.channelID === this.channelID && other.channelType === this.channelType
+  }
+}
+
+// Conversation stub (plan Task 5): the real component pulls WKSDK + the whole chat runtime into
+// jsdom. DocsBotConversation.test.tsx replaces this with its own marker via vi.mock on the seam;
+// this fallback renders nothing so a test that forgot to mock still mounts cleanly.
+export function Conversation() {
+  return null
+}
+
+export const MAX_MESSAGE_LENGTH = 5000

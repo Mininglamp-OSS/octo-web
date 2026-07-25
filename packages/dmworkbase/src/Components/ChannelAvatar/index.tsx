@@ -1,6 +1,6 @@
 import { Button, Toast } from "@douyinfe/semi-ui";
 import axios from "axios";
-import { Channel, WKSDK } from "wukongimjssdk";
+import { Channel } from "wukongimjssdk";
 import React from "react";
 import { Component } from "react";
 import WKApp from "../../App";
@@ -9,6 +9,7 @@ import { WKAvatarEditor } from "../WKAvatarEditor";
 import { I18nContext } from "../../i18n";
 import { canvasToPngFile, isAvatarFileTooLarge } from "../avatarUpload";
 import WKModal from "../WKModal";
+import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import "./index.css"
 
 export interface ChannelAvatarProps {
@@ -90,7 +91,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 await this.uploadAvatar(file)
                 WKApp.shared.changeChannelAvatarTag(channel)
                 // 触发 channelInfoListener，通知 Chat 等组件刷新头像
-                WKSDK.shared().channelManager.fetchChannelInfo(channel)
+                void fetchCurrentImChannelInfo(channel)
             }
             this.setState({ cropFile: null })
         } catch {

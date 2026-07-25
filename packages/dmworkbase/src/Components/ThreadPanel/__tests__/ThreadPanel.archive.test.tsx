@@ -36,6 +36,10 @@ vi.mock("../../../App", () => ({
       },
     },
     loginInfo: { uid: "owner-uid" },
+    remoteConfig: {
+      messagesSearchOn: false,
+      addConfigChangeListener: vi.fn(() => vi.fn()),
+    },
     shared: { deviceId: "dev-1", currentSpaceId: "space-1" },
     mittBus: { emit: hoisted.emit },
     endpoints: { showConversation: vi.fn() },
@@ -53,6 +57,11 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Popover: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
+vi.mock("react-virtuoso", () => ({
+  Virtuoso: () => null,
+  TableVirtuoso: () => null,
+}));
+
 vi.mock("wukongimjssdk", () => {
   class Channel {
     channelID: string;
@@ -62,22 +71,26 @@ vi.mock("wukongimjssdk", () => {
       this.channelType = type;
     }
   }
+  const sdk = {
+    shared: () => ({
+      channelManager: {
+        getSubscribes: hoisted.getSubscribes,
+        getChannelInfo: hoisted.getChannelInfo,
+        deleteChannelInfo: hoisted.deleteChannelInfo,
+        fetchChannelInfo: hoisted.fetchChannelInfo,
+        setChannleInfoForCache: hoisted.setChannleInfoForCache,
+        notifyListeners: hoisted.notifyListeners,
+      },
+    }),
+  };
   return {
+    default: sdk,
     Channel,
+    MessageContent: class {},
+    MediaMessageContent: class {},
     ChannelTypePerson: 1,
     ChannelTypeGroup: 2,
-    WKSDK: {
-      shared: () => ({
-        channelManager: {
-          getSubscribes: hoisted.getSubscribes,
-          getChannelInfo: hoisted.getChannelInfo,
-          deleteChannelInfo: hoisted.deleteChannelInfo,
-          fetchChannelInfo: hoisted.fetchChannelInfo,
-          setChannleInfoForCache: hoisted.setChannleInfoForCache,
-          notifyListeners: hoisted.notifyListeners,
-        },
-      }),
-    },
+    WKSDK: sdk,
   };
 });
 
@@ -92,6 +105,13 @@ vi.mock("../../FilePreviewPanel/renderers/ImageRenderer", () => ({ ImageRenderer
 vi.mock("../../../Service/SidebarService", () => ({ __esModule: true, default: { sync: vi.fn().mockResolvedValue(null) } }));
 vi.mock("../../../Service/FollowService", () => ({ __esModule: true, default: {} }));
 vi.mock("../../../Service/CategoryService", () => ({ __esModule: true, default: {} }));
+vi.mock("../../../bridge/thread/createThread", () => ({
+  createThreadByNameAndNotify: vi.fn(),
+}));
+vi.mock("../../../ui/ThreadCreateDialog", () => ({
+  __esModule: true,
+  default: () => null,
+}));
 
 import ThreadPanel from "../index";
 
@@ -221,9 +241,9 @@ describe("ThreadPanel inline archive button", () => {
       })
     );
     // 已归档分组默认折叠，需先展开
-    await waitFor(() => expect(screen.getByText("Archived")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("已归档")).toBeTruthy());
     await act(async () => {
-      fireEvent.click(screen.getByText("Archived"));
+      fireEvent.click(screen.getByText("已归档"));
     });
     await waitFor(() => expect(archiveButton()).toBeTruthy());
 
@@ -391,9 +411,9 @@ describe("ThreadPanel inline archive button", () => {
         onThreadSelect: vi.fn(),
       })
     );
-    await waitFor(() => expect(screen.getByText("Archived")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("已归档")).toBeTruthy());
     await act(async () => {
-      fireEvent.click(screen.getByText("Archived"));
+      fireEvent.click(screen.getByText("已归档"));
     });
     await waitFor(() => expect(archiveButton()).toBeTruthy());
 
@@ -554,9 +574,9 @@ describe("ThreadPanel inline archive sidebar sync (issue #345)", () => {
         onThreadSelect: vi.fn(),
       })
     );
-    await waitFor(() => expect(screen.getByText("Archived")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("已归档")).toBeTruthy());
     await act(async () => {
-      fireEvent.click(screen.getByText("Archived"));
+      fireEvent.click(screen.getByText("已归档"));
     });
     await waitFor(() => expect(archiveButton()).toBeTruthy());
 

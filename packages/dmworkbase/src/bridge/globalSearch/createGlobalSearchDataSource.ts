@@ -1,6 +1,8 @@
-import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import WKApp from "../../App";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
+import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
+import { getCurrentImConversationsDirectly } from "../../im-runtime/currentConversationRuntime";
 import type { ChannelSearchSender } from "../../Service/SearchTypes";
 import SearchService from "../../Service/SearchService";
 import { createSearchAssetResolver } from "../search/createSearchAssetResolver";
@@ -49,7 +51,7 @@ async function loadReadableChannelOptions(
     if (!out.has(key)) out.set(key, option);
   };
 
-  const conversations = WKSDK.shared().conversationManager.conversations ?? [];
+  const conversations = getCurrentImConversationsDirectly();
   for (const conv of conversations) {
     const channel = conv.channel;
     if (!channel?.channelID) continue;
@@ -61,7 +63,7 @@ async function loadReadableChannelOptions(
     ) {
       continue;
     }
-    const info = WKSDK.shared().channelManager.getChannelInfo(channel);
+    const info = getCurrentImChannelInfo(channel);
     const name =
       info?.orgData?.displayName || (info as any)?.title || channel.channelID;
     push({

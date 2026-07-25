@@ -7,6 +7,7 @@ import WebhookBadge from "../../Components/WebhookBadge";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { resolveWebhookRowDisplay, webhookFromOfMessage } from "../../Service/IncomingWebhook";
+import { getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 const titleColors = ["#8C8DFF", "#7983C2", "#6D8DDE", "#5979F0", "#6695DF", "#8F7AC5",
     "#9D77A5", "#8A64D0", "#AA66C3", "#A75C96", "#C8697D", "#B74D62",
@@ -69,7 +70,7 @@ export default class MessageHead extends Component<MessageHeadProps> {
                 ) : null}
             </>
         }
-        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
+        const channelInfo = getImChannelInfo(WKSDK.shared(), new Channel(message.fromUID, ChannelTypePerson))
         const isGroupMsg = message.channel.channelType === ChannelTypeGroup
         const isBot = channelInfo?.orgData?.robot === 1
         // 外部群成员来源标记：

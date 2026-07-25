@@ -238,6 +238,116 @@
     color: var(--wk-icon-default);
 }
 
+/* ── Changelog markdown ── */
+.wk-navrail__changelog-content {
+    max-height: calc(var(--wk-sp-10) * 10);
+    overflow: auto;
+    padding: var(--wk-sp-2) 0;
+}
+
+.wk-navrail__changelog-meta {
+    margin-bottom: var(--wk-sp-3);
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-base);
+}
+
+.wk-navrail__changelog-markdown {
+    color: var(--wk-text-primary);
+    font: var(--wk-text-body);
+    overflow-wrap: anywhere;
+}
+
+.wk-navrail__changelog-markdown > :first-child {
+    margin-top: 0;
+}
+
+.wk-navrail__changelog-markdown > :last-child {
+    margin-bottom: 0;
+}
+
+.wk-navrail__changelog-markdown h1,
+.wk-navrail__changelog-markdown h2,
+.wk-navrail__changelog-markdown h3,
+.wk-navrail__changelog-markdown h4,
+.wk-navrail__changelog-markdown h5,
+.wk-navrail__changelog-markdown h6 {
+    margin: var(--wk-sp-4) 0 var(--wk-sp-2);
+    color: var(--wk-text-primary);
+    font: var(--wk-text-h4);
+}
+
+.wk-navrail__changelog-markdown p,
+.wk-navrail__changelog-markdown ul,
+.wk-navrail__changelog-markdown ol,
+.wk-navrail__changelog-markdown blockquote,
+.wk-navrail__changelog-markdown pre,
+.wk-navrail__changelog-markdown table {
+    margin: 0 0 var(--wk-sp-3);
+}
+
+.wk-navrail__changelog-markdown ul,
+.wk-navrail__changelog-markdown ol {
+    padding-left: var(--wk-sp-6);
+}
+
+.wk-navrail__changelog-markdown li + li {
+    margin-top: var(--wk-sp-1);
+}
+
+.wk-navrail__changelog-markdown a {
+    color: var(--wk-text-accent);
+    text-decoration: none;
+}
+
+.wk-navrail__changelog-markdown a:hover {
+    text-decoration: underline;
+}
+
+.wk-navrail__changelog-markdown code {
+    padding: var(--wk-sp-0-5) var(--wk-sp-1);
+    border-radius: var(--wk-r-xs);
+    background: var(--wk-bg-elevated);
+    font: var(--wk-text-code);
+}
+
+.wk-navrail__changelog-markdown pre {
+    overflow-x: auto;
+    padding: var(--wk-sp-3);
+    border: 1px solid var(--wk-border-default);
+    border-radius: var(--wk-r-md);
+    background: var(--wk-code-bg);
+    color: var(--wk-text-inverse);
+}
+
+.wk-navrail__changelog-markdown pre code {
+    padding: 0;
+    background: transparent;
+    color: inherit;
+}
+
+.wk-navrail__changelog-markdown blockquote {
+    padding-left: var(--wk-sp-3);
+    border-left: var(--wk-sp-1) solid var(--wk-border-glow);
+    color: var(--wk-text-secondary);
+}
+
+.wk-navrail__changelog-markdown table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.wk-navrail__changelog-markdown th,
+.wk-navrail__changelog-markdown td {
+    padding: var(--wk-sp-2);
+    border: 1px solid var(--wk-border-default);
+    text-align: left;
+}
+
+.wk-navrail__changelog-markdown th {
+    background: var(--wk-bg-elevated);
+    font-weight: var(--wk-font-semibold);
+}
+
 .wk-navrail__language .semi-icon {
     display: inline-flex;
     font-size: 20px;

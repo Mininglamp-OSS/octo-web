@@ -114,7 +114,14 @@
     "installTokenPlaceholder": "<generated when you click Copy>",
     "installPrompt": "Please install and configure the octo-daemon runtime on this machine. Run these steps in order:\n\n1. Install:\n{{install}}\n\n2. Configure permissions (login):\n{{auth}}\n\n3. Start / restart to apply:\n{{start}}\n\n4. Refer to octo-daemon --help to install the built-in skills.\n\nWhen done, confirm the daemon shows as online in the runtime list.",
     "headlessNoBackend": "The administrator has not configured a public backend URL; install instructions unavailable",
-    "headlessFailed": "Failed to generate install instructions, please retry"
+    "headlessFailed": "Failed to generate install instructions, please retry",
+    "rename": {
+      "title": "Rename machine",
+      "description": "Give this machine a name you'll recognize. It applies to every runtime on the machine and shows when picking a runtime for an expert.",
+      "hint": "Leave empty to use the device's default name.",
+      "saved": "Machine renamed",
+      "failed": "Failed to rename the machine"
+    }
   },
   "view": {
     "board": "Board",
@@ -148,6 +155,7 @@
     "creator": "Creator",
     "project": "Project",
     "label": "Label",
+    "tag": "Tag",
     "dateRange": "Date range",
     "noProject": "Incl. no project",
     "noAssignee": "Incl. no assignee"
@@ -300,6 +308,16 @@
     "board": "Board",
     "detailsTitle": "Details"
   },
+  "preview": {
+    "openSource": "Open full page",
+    "retry": "Retry",
+    "loading": "Loading task…",
+    "loadError": "The task could not be loaded or you do not have access",
+    "description": "Description",
+    "updatedAt": "Updated",
+    "empty": "No content",
+    "runOutput": "Run output"
+  },
   "comment": {
     "reply": "Reply",
     "deleteConfirm": "Delete this comment?",
@@ -447,7 +465,24 @@
   "label": {
     "add": "Add labels",
     "newPlaceholder": "New label",
-    "create": "Create label"
+    "create": "Create label",
+    "manage": "Manage labels...",
+    "manageTitle": "Workspace labels",
+    "selectPlaceholder": "Select tags",
+    "color": "Label color",
+    "empty": "No labels yet",
+    "edit": "Edit label",
+    "delete": "Delete label",
+    "remove": "Remove label {{name}}",
+    "deleteConfirm": "Delete this label?",
+    "deleteConfirmDesc": "The label will be removed from every task that uses it. This cannot be undone.",
+    "created": "Label created",
+    "updated": "Label updated",
+    "deleted": "Label deleted",
+    "createFailed": "Failed to create label",
+    "updateFailed": "Failed to update label",
+    "deleteFailed": "Failed to delete label",
+    "attachPartialFailed": "Task created, but {{count}} label(s) failed to attach"
   },
   "subscribe": {
     "label": "Subscribers",

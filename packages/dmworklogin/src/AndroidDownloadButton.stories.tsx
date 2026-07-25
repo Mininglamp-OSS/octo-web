@@ -13,7 +13,7 @@ const meta: Meta<typeof AndroidDownloadButton> = {
     docs: {
       description: {
         component:
-          "登录页 Android 下载入口。悬停入口展示当前部署域名下的 APK 下载二维码，并保留 GitHub 最新 Release 备用入口。",
+          "登录页 Android 下载入口。二维码与直接下载按钮共用 updater 接口返回的 APK 地址，并保留 GitHub 最新 Release 备用入口。",
       },
     },
   },

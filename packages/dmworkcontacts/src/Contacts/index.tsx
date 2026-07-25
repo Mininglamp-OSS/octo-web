@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t } from "@octo/base"
+import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
 import { Toast, Tooltip } from "@douyinfe/semi-ui";
-import { ChevronRight, ChevronDown, Users, Bot, UsersRound, Search as SearchIcon } from "lucide-react";
+import { ChevronRight, Users, Bot, UsersRound } from "lucide-react";
 
-import { Channel, ChannelTypePerson, ChannelTypeGroup, WKSDK, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, ChannelTypeGroup, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
 import { ContactsListManager } from "../Service/ContactsListManager";
 import { Card } from "@octo/base/src/Messages/Card";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
@@ -21,6 +21,15 @@ import { debounce } from "@octo/base/src/Utils/rateLimit";
 import { OnlineStatusBadge, needShowOnlineStatus, getOnlineTip } from "@octo/base/src/Components/ConversationList";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { shouldShowOnlineStatus, selectOnlineStatusUids } from "./onlineStatusGate";
+import ContactsSearch from "../ui/ContactsSearch";
+import { ContactsDirectory, ContactsDirectorySection } from "../ui/ContactsDirectory";
+import type { ContactsDirectorySectionKey } from "../ui/ContactsDirectory/types";
+import {
+    buildContactsSearchIndex,
+    createEmptyContactsSearchIndex,
+    searchContacts,
+} from "../bridge/contactsSearch/searchContacts";
+import type { ContactsSearchIndex } from "../bridge/contactsSearch/types";
 
 function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
     const [visible, setVisible] = useState(false)
@@ -207,9 +216,11 @@ export default class ContactsList extends Component<any, ContactsState> {
     private spaceChangedHandler!: (space: any) => void
     private flatItems: Contacts[] = []
     private indexCache = new Map<ContactFilterMode, ContactIndexData>()
+    private contactsSearchIndex: ContactsSearchIndex = createEmptyContactsSearchIndex()
     private filterScrollTops: Record<ContactFilterMode, number> = { all: 0, bots: 0, humans: 0 }
     // 已预取过 channelInfo（含在线态）的 uid 集合，跨 filter/滚动去重，避免重复请求
     private prefetchedUids = new Set<string>()
+    private unsubscribeChannelInfoListener?: () => void
     private visibilityHandler!: () => void
     // 组件是否仍挂载：refreshTrackedOnlineStatus 是异步的，回包后 setState 前需确认未卸载
     private mounted = false
@@ -229,10 +240,14 @@ export default class ContactsList extends Component<any, ContactsState> {
             )
             if (idx !== -1) {
                 const members = [...this.state.spaceMembers]
+                const nameChanged = members[idx].name !== channelInfo.title
                 members[idx] = { ...members[idx], name: channelInfo.title }
                 this.setState({ spaceMembers: members }, () => {
-                    this.clearIndexCache()
-                    this.rebuildIndex()
+                    if (nameChanged) {
+                        this.rebuildContactsSearchIndex()
+                        this.clearIndexCache()
+                        this.rebuildIndex()
+                    }
                 })
                 return
             }
@@ -247,6 +262,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         this.spaceChangedHandler = (space: any) => {
             const sp = space as Space | undefined
             this.clearIndexCache()
+            this.contactsSearchIndex = createEmptyContactsSearchIndex()
             this.resetFilterScrollTops()
             this.prefetchedUids.clear()
             if (sp) {
@@ -260,7 +276,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             }
         }
         WKApp.mittBus.on('space-changed', this.spaceChangedHandler)
-        WKSDK.shared().channelManager.addListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(this.channelInfoListener)
 
         // 页面重新可见时对已追踪的 AI 在线态做一次自愈重拉：正常情况下在线态靠
         // WKSDK 的 onlineStatus WS 回调实时重渲，但推送若因断连/节流被延迟或丢失，
@@ -297,7 +313,8 @@ export default class ContactsList extends Component<any, ContactsState> {
     componentWillUnmount() {
         this.mounted = false
         ContactsListManager.shared.setRefreshList = undefined
-        WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
+        this.unsubscribeChannelInfoListener?.()
+        this.unsubscribeChannelInfoListener = undefined
         WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
         if (typeof document !== 'undefined' && this.visibilityHandler) {
             document.removeEventListener('visibilitychange', this.visibilityHandler)
@@ -316,8 +333,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         if (uids.length === 0) return
         await Promise.all(
             uids.map((uid) =>
-                WKSDK.shared().channelManager
-                    .fetchChannelInfo(new Channel(uid, ChannelTypePerson))
+                fetchCurrentImChannelInfo(new Channel(uid, ChannelTypePerson))
                     .catch(() => undefined)
             )
         )
@@ -326,10 +342,27 @@ export default class ContactsList extends Component<any, ContactsState> {
         }
     }
 
+    // 翻页拉取空间全部成员。宿主 getMembers 单次 limit 上限 10000，超大空间若只请求一页会把
+    // 第 10000 名之后的成员静默丢弃（与文档成员选择器同源的问题）。这里 10000/页循环到取尽为止；
+    // MAX_PAGES 兜底防异常空间无限循环（20×10000=20 万，远超任何真实空间）。同一 getMembers
+    // 接口、page/limit 传参不变，不碰后端、不影响移动端。
+    private async fetchAllSpaceMembers(spaceId: string): Promise<any[]> {
+        const PAGE_SIZE = 10000
+        const MAX_PAGES = 20
+        const all: any[] = []
+        for (let page = 1; page <= MAX_PAGES; page++) {
+            const batch = await SpaceService.shared.getMembers(spaceId, page, PAGE_SIZE)
+            if (!batch || batch.length === 0) break
+            all.push(...batch)
+            if (batch.length < PAGE_SIZE) break // 最后一页
+        }
+        return all
+    }
+
     private async loadAllData(spaceId: string) {
         try {
             const [members, myBots, spaceBots, myGroups] = await Promise.all([
-                SpaceService.shared.getMembers(spaceId, 1, 10000),
+                this.fetchAllSpaceMembers(spaceId),
                 WKApp.apiClient.get("/robot/my_bots", { param: { space_id: spaceId } }).catch(() => []),
                 WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).catch(() => []),
                 WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).catch(() => []),
@@ -341,6 +374,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                 myGroups: myGroups || [],
                 loading: false,
             }, () => {
+                this.rebuildContactsSearchIndex()
                 this.clearIndexCache()
                 this.rebuildIndex()
                 // 「已添加AI」列表数量有界，数据就绪时整批预取一次在线态。
@@ -353,6 +387,15 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private clearIndexCache() {
         this.indexCache.clear()
+    }
+
+    private rebuildContactsSearchIndex() {
+        this.contactsSearchIndex = buildContactsSearchIndex({
+            spaceMembers: this.state.spaceMembers,
+            spaceBots: this.state.spaceBots,
+            myGroups: this.state.myGroups,
+            currentUid: WKApp.loginInfo.uid || "",
+        })
     }
 
     private resetFilterScrollTops() {
@@ -369,8 +412,8 @@ export default class ContactsList extends Component<any, ContactsState> {
             if (this.prefetchedUids.has(uid)) continue
             this.prefetchedUids.add(uid)
             const ch = new Channel(uid, ChannelTypePerson)
-            if (!WKSDK.shared().channelManager.getChannelInfo(ch)) {
-                WKSDK.shared().channelManager.fetchChannelInfo(ch)
+            if (!getCurrentImChannelInfo(ch)) {
+                void fetchCurrentImChannelInfo(ch)
             }
         }
     }
@@ -385,9 +428,7 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     // 复用会话列表/群成员列表同一份在线态判定与文案，渲染在线绿点。
     private renderOnlineBadge(uid: string): React.ReactNode {
-        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
-            new Channel(normalizeOnlineUid(uid), ChannelTypePerson)
-        )
+        const channelInfo = getCurrentImChannelInfo(new Channel(normalizeOnlineUid(uid), ChannelTypePerson))
         if (!needShowOnlineStatus(channelInfo)) return null
         return <OnlineStatusBadge tip={getOnlineTip(channelInfo!)} />
     }
@@ -480,7 +521,8 @@ export default class ContactsList extends Component<any, ContactsState> {
         const pinyinCache = new Map<string, string>()
         for (const item of items) {
             let name = (item.remark || item.name || '').replace(/\*\*/g, '')
-            pinyinCache.set(item.uid, getPinyin(toSimplized(name)).toUpperCase())
+            const cachedPinyin = this.contactsSearchIndex.pinyinByUid.get(item.uid)
+            pinyinCache.set(item.uid, (cachedPinyin || getPinyin(toSimplized(name))).toUpperCase())
         }
 
         // 按拼音排序
@@ -534,23 +576,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             return
         }
 
-        const { spaceMembers, spaceBots, myGroups } = this.state
-        const myUID = WKApp.loginInfo.uid || ""
-        const kw = keyword.toLowerCase()
-
-        const memberUids = new Set(spaceMembers.map(m => m.uid))
-        const memberResults = spaceMembers
-            .filter(m => m.uid !== myUID)
-            .filter(m => m.name.replace(/\*\*/g, '').toLowerCase().includes(kw))
-        // spaceBots 中不在 members 里的 AI 也参与搜索
-        const extraBotResults = (spaceBots || [])
-            .filter((b: any) => b.uid !== myUID && !memberUids.has(b.uid))
-            .filter((b: any) => (b.name || '').toLowerCase().includes(kw))
-            .map((b: any) => ({ ...b, robot: 1 }))
-        const contacts = [...memberResults, ...extraBotResults]
-
-        const groups = (myGroups || [])
-            .filter((g: any) => g.name && g.name.toLowerCase().includes(kw))
+        const { contacts, groups } = searchContacts(keyword, this.contactsSearchIndex)
 
         this.setState({
             isSearching: true,
@@ -568,7 +594,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         this.setState({ keyword: '', isSearching: false, searchContacts: [], searchGroups: [] })
     }
 
-    private toggleSection = (section: 'groups' | 'myBots' | 'allContacts') => {
+    private toggleSection = (section: ContactsDirectorySectionKey) => {
         const willExpand = this.state.expandedSection !== section
         this.setState({
             expandedSection: willExpand ? section : null,
@@ -630,43 +656,25 @@ export default class ContactsList extends Component<any, ContactsState> {
         )
     }
 
-    renderSearchBox() {
-        return (
-            <div className="wk-contacts-search">
-                <div className="wk-contacts-search-input">
-                    <SearchIcon size={14} className="wk-contacts-search-icon" />
-                    <input
-                        type="text"
-                        placeholder={t("contacts.search.placeholder")}
-                        value={this.state.keyword || ''}
-                        onChange={(e) => this.handleSearchChange(e.target.value)}
-                    />
-                    {this.state.keyword && (
-                        <span className="wk-contacts-search-clear" onClick={this.handleClearSearch}>&times;</span>
-                    )}
-                </div>
-            </div>
-        )
-    }
-
-    renderSearchResults() {
+    renderSearch() {
         const { searchContacts, searchGroups } = this.state
-
-        if (searchContacts.length === 0 && searchGroups.length === 0) {
-            return (
-                <div className="wk-contacts-empty">
-                    <SearchIcon size={28} className="wk-contacts-empty-icon" />
-                    <div className="wk-contacts-empty-text">{t("contacts.search.noResults")}</div>
-                </div>
-            )
-        }
-
         return (
-            <div className="wk-contacts-search-results">
-                {searchContacts.length > 0 && (
-                    <div className="wk-contacts-search-section">
-                        <div className="wk-contacts-search-section-title">{t("contacts.section.contacts")}</div>
-                        {searchContacts.map((m: any) => (
+            <ContactsSearch
+                copy={{
+                    placeholder: t("contacts.search.placeholder"),
+                    emptyText: t("contacts.search.noResults"),
+                    contactsTitle: t("contacts.section.contacts"),
+                    groupsTitle: t("contacts.section.groups"),
+                }}
+                state={{
+                    keyword: this.state.keyword || '',
+                    isSearching: this.state.isSearching,
+                    hasResults: searchContacts.length > 0 || searchGroups.length > 0,
+                }}
+                onKeywordChange={this.handleSearchChange}
+                onClear={this.handleClearSearch}
+                results={{
+                    contacts: searchContacts.length > 0 ? searchContacts.map((m: any) => (
                             <div key={m.uid} className="wk-contacts-section-item" onClick={() => {
                                 this.handleContactClick(m.uid, m.robot === 1)
                             }}>
@@ -678,13 +686,8 @@ export default class ContactsList extends Component<any, ContactsState> {
                                     {m.robot === 1 && <AiBadge />}
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                )}
-                {searchGroups.length > 0 && (
-                    <div className="wk-contacts-search-section">
-                        <div className="wk-contacts-search-section-title">{t("contacts.section.groups")}</div>
-                        {searchGroups.map((g: any) => (
+                        )) : undefined,
+                    groups: searchGroups.length > 0 ? searchGroups.map((g: any) => (
                             <div key={g.group_no} className="wk-contacts-section-item" onClick={() => {
                                 this.handleGroupClick(g.group_no, g.name, g.member_count)
                             }}>
@@ -695,10 +698,9 @@ export default class ContactsList extends Component<any, ContactsState> {
                                     <span className="wk-contacts-group-tag">{t("contacts.tag.group")}</span>
                                 </OverflowTooltip>
                             </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+                        )) : undefined,
+                }}
+            />
         )
     }
 
@@ -731,27 +733,13 @@ export default class ContactsList extends Component<any, ContactsState> {
         )
     }
 
-    renderAccordionHeader(section: 'groups' | 'myBots' | 'allContacts', icon: React.ReactNode, label: string, count: number) {
-        const isExpanded = this.state.expandedSection === section
-        return (
-            <div className="wk-contacts-accordion-header" onClick={() => this.toggleSection(section)}>
-                <span className="wk-contacts-accordion-arrow">{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
-                <span className="wk-contacts-accordion-icon">{icon}</span>
-                <span className="wk-contacts-accordion-label">{label}</span>
-                {count > 0 && <span className="wk-contacts-accordion-count">({count})</span>}
-            </div>
-        )
-    }
-
     renderGroupsSection() {
         const { expandedSection, myGroups } = this.state
         const isExpanded = expandedSection === 'groups'
         const groups = myGroups || []
 
         return (
-            <div className={classnames("wk-contacts-accordion", isExpanded && "wk-contacts-accordion--expanded")}>
-                {this.renderAccordionHeader('groups', <UsersRound size={16} />, t("contacts.section.groups"), groups.length)}
-                {isExpanded && (
+            <ContactsDirectorySection sectionKey="groups" expanded={isExpanded} icon={<UsersRound size={16} />} label={t("contacts.section.groups")} count={groups.length} onToggle={this.toggleSection}>
                     <div className="wk-contacts-accordion-body">
                         {groups.length === 0 ? (
                             <div className="wk-contacts-empty">
@@ -771,8 +759,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             </div>
                         ))}
                     </div>
-                )}
-            </div>
+            </ContactsDirectorySection>
         )
     }
 
@@ -782,9 +769,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         const bots = myBots || []
 
         return (
-            <div className={classnames("wk-contacts-accordion", isExpanded && "wk-contacts-accordion--expanded")}>
-                {this.renderAccordionHeader('myBots', <Bot size={16} />, t("contacts.section.addedAi"), bots.length)}
-                {isExpanded && (
+            <ContactsDirectorySection sectionKey="myBots" expanded={isExpanded} icon={<Bot size={16} />} label={t("contacts.section.addedAi")} count={bots.length} onToggle={this.toggleSection}>
                     <div className="wk-contacts-accordion-body">
                         {bots.length === 0 ? (
                             <div className="wk-contacts-empty">
@@ -806,8 +791,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             </div>
                         ))}
                     </div>
-                )}
-            </div>
+            </ContactsDirectorySection>
         )
     }
 
@@ -817,9 +801,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         const totalCount = this.flatItems.length
 
         return (
-            <div className={classnames("wk-contacts-accordion", isExpanded && "wk-contacts-accordion--expanded")}>
-                {this.renderAccordionHeader('allContacts', <Users size={16} />, t("contacts.section.allContacts"), totalCount)}
-                {isExpanded && (
+            <ContactsDirectorySection sectionKey="allContacts" expanded={isExpanded} icon={<Users size={16} />} label={t("contacts.section.allContacts")} count={totalCount} onToggle={this.toggleSection}>
                     <>
                         {this.renderFilterChips()}
                         {totalCount === 0 ? (
@@ -829,8 +811,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             </div>
                         ) : this.renderContactListWithLetters()}
                     </>
-                )}
-            </div>
+            </ContactsDirectorySection>
         )
     }
 
@@ -910,16 +891,14 @@ export default class ContactsList extends Component<any, ContactsState> {
                 <div className="wk-contacts">
                     <div className="wk-contacts-content">
                         {this.renderBotFatherBanner()}
-                        {this.renderSearchBox()}
+                        {this.renderSearch()}
 
-                        {isSearching ? (
-                            this.renderSearchResults()
-                        ) : (
-                            <>
+                        {!isSearching && (
+                            <ContactsDirectory>
                                 {this.renderGroupsSection()}
                                 {this.renderMyBotsSection()}
                                 {this.renderAllContactsSection()}
-                            </>
+                            </ContactsDirectory>
                         )}
                     </div>
 
@@ -932,16 +911,32 @@ export default class ContactsList extends Component<any, ContactsState> {
                         }
                     }, {
                         title: t("contacts.context.shareToFriend"), onClick: () => {
-                            WKApp.shared.baseContext.showConversationSelect((channels: Channel[]) => {
+                            WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
                                 const { selectedItem } = this.state
-                                if (channels && channels.length > 0) {
-                                    for (const channel of channels) {
+                                if (!channels || channels.length === 0) return
+                                // buildContent 每 channel 调一次 —— 名片本身无 per-channel 差异，
+                                // 但生成新实例避免 wrapSendContentForInjection 复用同一 content 引用。
+                                //
+                                // 注意行为变化：ForwardService 会给 person channel 注入 space_id
+                                // （与 vm.sendMessage / Summary 转发对齐，服务端 BotFather 依赖此字段
+                                // 识别用户当前 Space）。老代码走裸 chatManager.send 未注入 —— 属修正。
+                                const result = await ForwardService.send(
+                                    channels,
+                                    () => {
                                         const card = new Card()
                                         card.uid = selectedItem?.uid || ""
                                         card.name = selectedItem?.name || ""
                                         card.vercode = selectedItem?.vercode || ""
-                                        WKSDK.shared().chatManager.send(card, channel)
-                                    }
+                                        return card
+                                    },
+                                    { spaceId: WKApp.shared.currentSpaceId },
+                                )
+                                const state = interpretForwardResult(result, "targets")
+                                if (state.kind === "all-failed") {
+                                    Toast.error(t("contacts.share.failed"))
+                                } else if (state.kind === "partial") {
+                                    Toast.error(t("contacts.share.partialFailed", { values: { failed: state.failed, total: state.total } }))
+                                } else {
                                     Toast.success(t("contacts.share.success"))
                                 }
                             }, t("contacts.share.cardTitle"))
@@ -972,7 +967,11 @@ export default class ContactsList extends Component<any, ContactsState> {
                             const spaceId = WKApp.shared.currentSpaceId
                             if (spaceId) {
                                 WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).then((res: any) => {
-                                    this.setState({ spaceBots: res || [] }, () => this.rebuildIndex())
+                                    this.setState({ spaceBots: res || [] }, () => {
+                                        this.rebuildContactsSearchIndex()
+                                        this.clearIndexCache()
+                                        this.rebuildIndex()
+                                    })
                                 }).catch(() => {})
                             }
                         }}

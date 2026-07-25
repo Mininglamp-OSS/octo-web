@@ -36,6 +36,63 @@ describe('AgentChatPanel SSE Mode', () => {
         vi.clearAllMocks();
     });
 
+    it('forwards structured selected channels on stream and fallback requests', async () => {
+        const selectedChannels = [
+            { chat_id: 'group-1', chat_type: 'group' as const, name: '项目群', member_count: 3 },
+            { chat_id: 'group-1____thread-1', chat_type: 'thread' as const, name: '归档复盘', member_count: 2, is_archived: true },
+        ];
+        (summaryApi.agentChatStream as any).mockImplementation((params: any, handlers: any) => {
+            expect(params.selected_channels).toEqual([
+                { chat_id: 'group-1', chat_type: 'group', name: '项目群' },
+                { chat_id: 'group-1____thread-1', chat_type: 'thread', name: '归档复盘', is_archived: true },
+            ]);
+            setImmediate(() => handlers.onError({ code: 0, message: 'transport closed', transient: true }));
+            return { close: vi.fn() };
+        });
+        (summaryApi.agentChat as any).mockResolvedValue({ reply: 'ok', session_id: 'selected-session' });
+
+        render(
+            <I18nContext.Provider value={{ t: mockT, locale: 'zh-CN' }}>
+                <AgentChatPanel
+                    messages={[]}
+                    onSend={vi.fn()}
+                    sending={false}
+                    useStream
+                    sessionId="selected-session"
+                    profile="summary"
+                    selectedChannels={selectedChannels}
+                    onUserMessage={vi.fn()}
+                    onAssistantMessage={vi.fn()}
+                />
+            </I18nContext.Provider>,
+        );
+
+        fireEvent.change(screen.getByPlaceholderText('summary.create.agentChatPlaceholder'), { target: { value: '总结它们' } });
+        fireEvent.click(screen.getByText('summary.create.send'));
+
+        await waitFor(() => expect(summaryApi.agentChat).toHaveBeenCalledWith(expect.objectContaining({
+            selected_channels: [
+                { chat_id: 'group-1', chat_type: 'group', name: '项目群' },
+                { chat_id: 'group-1____thread-1', chat_type: 'thread', name: '归档复盘', is_archived: true },
+            ],
+        })), { timeout: 2000 });
+    });
+
+    it('keeps old request behavior when no chat is selected', async () => {
+        (summaryApi.agentChatStream as any).mockImplementation((params: any) => {
+            expect(params.selected_channels).toBeUndefined();
+            return { close: vi.fn() };
+        });
+        render(
+            <I18nContext.Provider value={{ t: mockT, locale: 'zh-CN' }}>
+                <AgentChatPanel messages={[]} onSend={vi.fn()} sending={false} useStream sessionId="empty-selection" profile="summary" />
+            </I18nContext.Provider>,
+        );
+        fireEvent.change(screen.getByPlaceholderText('summary.create.agentChatPlaceholder'), { target: { value: '你好' } });
+        fireEvent.click(screen.getByText('summary.create.send'));
+        await waitFor(() => expect(summaryApi.agentChatStream).toHaveBeenCalled(), { timeout: 1000 });
+    });
+
     it('should handle backend error without fallback (P2.4)', async () => {
         const onUserMessage = vi.fn();
         const onAssistantMessage = vi.fn();
