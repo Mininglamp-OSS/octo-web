@@ -44,11 +44,19 @@ interface MarkdownContentProps {
   emojis?: EmojiInfo[];
   /**
    * 是否启用数学公式渲染（KaTeX），默认 true。
-   * 消息正文默认渲染 `$...$`（行内）/ `$$...$$`（块级），与 iOS 端保持一致
-   * （只要一端渲染所有端都渲染）。remark-math 已正确处理单 `$` 货币场景
-   * （如「价格是 $100」不会误触发公式）。仅在明确不需要公式的场景传 false。
+   * 消息正文默认渲染 `$$...$$`（行内 + 块级），与 iOS 端保持一致
+   * （只要一端渲染所有端都渲染）。单 `$` 行内公式默认关闭，见 {@link allowSingleDollarMath}。
+   * 仅在明确不需要公式的场景传 false。
    */
   enableMath?: boolean;
+  /**
+   * 是否额外识别单 `$...$` 行内公式，默认 false。
+   * 默认关闭是因为聊天正文里成对单 `$`（货币区间 `$5-$10`、费用 `$5 and $10`、
+   * shell/环境变量 `$HOME/bin:$PATH`）会被 remark-math 误配对成公式、损坏正文，
+   * 而单 `$` 与这些语义天然歧义、无可靠 heuristic 区分。仅文档/编辑器等
+   * 明确需要单 `$` 且可接受该风险的场景才显式传 true。
+   */
+  allowSingleDollarMath?: boolean;
   /**
    * 是否启用 Markdown 语法渲染，默认 true。
    * RichText(=14) MVP 锁纯文本：传 false 时按纯文本渲染（保留换行/链接/emoji/mention），
@@ -165,8 +173,27 @@ const baseRemarkPlugins: any[] = [
   remarkBreaks,
 ];
 
-/** 含 math 的 remark 插件 */
+/**
+ * 含 math 的 remark 插件（仅 `$$...$$`）。
+ * `singleDollarTextMath: false` 关掉单 `$` 行内公式：聊天正文里的货币区间
+ * （`$5-$10`）、费用对比（`$5 and $10`）、shell/环境变量（`$HOME/bin:$PATH`）
+ * 都含成对单 `$`，若开启单 `$` 行内公式会被 remark-math 误配对、损坏正文。
+ * 单 `$` 与货币/变量语义天然歧义，无可靠 heuristic 区分，故聊天默认只认 `$$`
+ * （`$$...$$` 行内与块级均可渲染，覆盖真实公式消息）。
+ */
 const mathRemarkPlugins: any[] = [
+  rawHtmlAsTextPlugin,
+  remarkGfm,
+  remarkBreaks,
+  [remarkMath, { singleDollarTextMath: false }],
+];
+
+/**
+ * 含 math 的 remark 插件（`$...$` 与 `$$...$$` 都认）。
+ * 仅供文档/编辑器等明确需要单 `$` 行内公式、且不担心货币误渲的场景显式开启
+ * （`allowSingleDollarMath`），聊天消息不用。
+ */
+const mathRemarkPluginsSingleDollar: any[] = [
   rawHtmlAsTextPlugin,
   remarkGfm,
   remarkBreaks,
@@ -527,6 +554,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
   onMentionClick,
   emojis = [],
   enableMath = true,
+  allowSingleDollarMath = false,
   enableMarkdown = true,
 }) => {
   const normalized = useMemo(
@@ -608,7 +636,9 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
   const remarkPlugins = !enableMarkdown
     ? plainRemarkPlugins
     : enableMath
-    ? mathRemarkPlugins
+    ? allowSingleDollarMath
+      ? mathRemarkPluginsSingleDollar
+      : mathRemarkPlugins
     : baseRemarkPlugins;
   const rehypePlugins = !enableMarkdown
     ? plainRehypePlugins
