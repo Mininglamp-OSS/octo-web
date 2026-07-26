@@ -42,7 +42,12 @@ interface MarkdownContentProps {
   mentions?: MentionInfo[];
   onMentionClick?: (uid: string) => void;
   emojis?: EmojiInfo[];
-  /** 是否启用数学公式渲染（KaTeX），默认 false */
+  /**
+   * 是否启用数学公式渲染（KaTeX），默认 true。
+   * 消息正文默认渲染 `$...$`（行内）/ `$$...$$`（块级），与 iOS 端保持一致
+   * （只要一端渲染所有端都渲染）。remark-math 已正确处理单 `$` 货币场景
+   * （如「价格是 $100」不会误触发公式）。仅在明确不需要公式的场景传 false。
+   */
   enableMath?: boolean;
   /**
    * 是否启用 Markdown 语法渲染，默认 true。
@@ -521,7 +526,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
   mentions = [],
   onMentionClick,
   emojis = [],
-  enableMath = false,
+  enableMath = true,
   enableMarkdown = true,
 }) => {
   const normalized = useMemo(
