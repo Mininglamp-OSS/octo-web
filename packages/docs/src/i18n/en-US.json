@@ -410,6 +410,7 @@
     "deleteConfirm": "Delete this comment?",
     "errorAnchor": "Could not anchor a comment here.",
     "errorAdd": "Failed to add comment.",
+    "errorVersion": "Could not verify the current document version. Refresh and try again.",
     "anchorDoc": "Document-level comment",
     "targetDoc": "Document-level comment",
     "targetAnchor": "Comment will be anchored to",

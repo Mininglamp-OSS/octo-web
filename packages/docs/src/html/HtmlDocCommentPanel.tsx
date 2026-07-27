@@ -31,7 +31,10 @@ export interface HtmlDocCommentPanelProps {
    *  see the "让 AI 处理" entry at all — it is an author-only forward to chat, not a viewer action. */
   isAuthor?: boolean
   slug: string
-  version: string
+  /** Route selector used for listing comments (`latest` or `vN`). */
+  listVersion: string
+  /** Concrete version injected by the rendered document; required for mutations. */
+  mutationVersion?: number | null
   /**
    * A pending selection anchor lifted from HtmlDocView's selection watcher. When set, the
    * composer pre-targets it (划词评论); cleared once the comment posts. null = doc-level note.
@@ -101,7 +104,8 @@ export function HtmlDocCommentPanel({
   space,
   isAuthor,
   slug,
-  version,
+  listVersion,
+  mutationVersion,
   pendingAnchor,
   resolveAnchorText,
   onClearPendingAnchor,
@@ -114,12 +118,12 @@ export function HtmlDocCommentPanel({
 
   const reload = useCallback(async () => {
     try {
-      setThreads(await listComments(slug, version))
+      setThreads(await listComments(slug, listVersion))
       setError(null)
     } catch {
       setError(t('docs.state.error'))
     }
-  }, [slug, version])
+  }, [slug, listVersion])
 
   useEffect(() => {
     void reload()
@@ -127,6 +131,11 @@ export function HtmlDocCommentPanel({
 
   async function submit() {
     if (draft.trim() === '') return
+    const version = mutationVersion
+    if (typeof version !== 'number' || !Number.isInteger(version) || version <= 0) {
+      setError(t('docs.comment.errorVersion'))
+      return
+    }
     setBusy(true)
     try {
       await createComment(slug, {
@@ -147,7 +156,7 @@ export function HtmlDocCommentPanel({
   // "让 AI 处理" bridge availability (feature #511 seam). Gated: the standalone /d/ page has no
   // host IM surface, so we disable the control there instead of rendering a dead button.
   const canForward = canForwardToChat()
-  const instructionDoc: AgentInstructionDoc = { docId, slug, space, version }
+  const instructionDoc: AgentInstructionDoc = { docId, slug, space, version: listVersion }
 
   function handleWithAI(thread: OctoDocCommentThread) {
     if (!canForward) return

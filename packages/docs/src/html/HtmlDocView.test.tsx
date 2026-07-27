@@ -452,13 +452,15 @@ describe('HtmlDocView — read-only rendering', () => {
     expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a2')
   })
 
-  it('submits a comment with the locked anchor after the selection collapses', async () => {
+  it('uses the rendered numeric version when posting from the latest route with an element anchor', async () => {
     const spy = stubFetch((url, init) => {
       if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'new1' })
       if (url.includes('/comments')) return jsonResponse({ data: [] })
-      return htmlResponse('<p data-odoc-aid="a3">post anchored words</p>')
+      return htmlResponse(
+        '<script>window.__ODOC__ = {"version":4};</script><p data-odoc-aid="a3">post anchored words</p>'
+      )
     })
-    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" version="v4" />)
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" />)
     const frame = await waitForFrame(container)
     const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a3">post anchored words</p>')
     const anchored = frameDoc.querySelector('p') as HTMLElement
@@ -482,6 +484,12 @@ describe('HtmlDocView — read-only rendering', () => {
       RequestInit
     ]
     const body = JSON.parse(String(post[1].body))
+    expect(
+      spy.mock.calls.some(([url, init]) =>
+        (init?.method ?? 'GET') === 'GET' && String(url).includes('/v1/comments?slug=slug-1&version=latest')
+      )
+    ).toBe(true)
+    expect(body.version).toBe(4)
     expect(body.anchor).toMatchObject({ kind: 'element', aid: 'a3' })
   })
 })

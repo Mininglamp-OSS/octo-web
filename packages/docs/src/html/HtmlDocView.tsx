@@ -731,7 +731,8 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
               space={space}
               isAuthor={isAuthor}
               slug={effectiveSlug}
-              version={version}
+              listVersion={version}
+              mutationVersion={meta?.version}
               pendingAnchor={pendingAnchor}
               resolveAnchorText={resolveAnchorText}
               onClearPendingAnchor={() => setPendingAnchor(null)}

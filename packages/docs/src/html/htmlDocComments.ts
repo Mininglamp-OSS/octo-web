@@ -126,7 +126,7 @@ export async function listComments(
 
 export interface CreateCommentInput {
   text: string
-  version: string
+  version: number
   /** Selection anchor for a NEW root comment; omit for a doc-level note or a reply. */
   anchor?: Anchor | null
   /** Set when replying under an existing comment (replies carry no anchor). */

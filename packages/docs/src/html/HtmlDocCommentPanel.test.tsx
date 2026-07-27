@@ -48,7 +48,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         ],
       })
     )
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" />)
     await waitFor(() => expect(screen.getByText('first comment')).toBeTruthy())
     expect(screen.getByText('a reply')).toBeTruthy()
     // Anchor label shows the aid.
@@ -68,7 +68,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         ],
       })
     )
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" />)
 
     await waitFor(() => expect(screen.getByText('please revise this')).toBeTruthy())
     expect(screen.getByTestId('comment-quote').textContent).toBe('Original selected words')
@@ -93,7 +93,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         ],
       })
     )
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" resolveAnchorText={resolveAnchorText} />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" resolveAnchorText={resolveAnchorText} />)
 
     await waitFor(() => expect(screen.getByText('comment on paragraph')).toBeTruthy())
     expect(resolveAnchorText).toHaveBeenCalledWith({
@@ -112,7 +112,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         data: [{ id: 'c1', text: 'doc-level note', anchor: null, replies: [] }],
       })
     )
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" />)
 
     await waitFor(() => expect(screen.getByText('doc-level note')).toBeTruthy())
     expect(screen.queryByTestId('comment-quote')).toBeNull()
@@ -128,7 +128,8 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         docId="d1"
         space="sp"
         slug="my-slug"
-        version="v2"
+        listVersion="v2"
+        mutationVersion={2}
         pendingAnchor={{ kind: 'text', text: 'selected words' }}
       />
     )
@@ -151,9 +152,35 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
     expect(body).toMatchObject({
       slug: 'my-slug',
       text: 'my new comment',
-      version: 'v2',
+      version: 2,
       anchor: { kind: 'text', text: 'selected words' },
     })
+  })
+
+  it.each([
+    ['missing', undefined],
+    ['zero', 0],
+    ['fractional', 1.5],
+  ])('does not POST and shows an error when the rendered version is %s', async (_label, mutationVersion) => {
+    const spy = stubFetch(() => jsonResponse({ data: [] }))
+    render(
+      <HtmlDocCommentPanel
+        docId="d1"
+        space="sp"
+        slug="s"
+        listVersion="latest"
+        mutationVersion={mutationVersion}
+      />
+    )
+
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('docs.comment.placeholder'), {
+      target: { value: 'must not post' },
+    })
+    fireEvent.click(screen.getByText('docs.comment.send'))
+
+    expect(screen.getByRole('alert').textContent).toContain('docs.comment.errorVersion')
+    expect(spy.mock.calls.some((call) => (call[1] as RequestInit)?.method === 'POST')).toBe(false)
   })
 
   it('shows the composer target and emits an explicit clear-anchor action', async () => {
@@ -164,7 +191,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         docId="d1"
         space="sp"
         slug="s"
-        version="v1"
+        listVersion="v1"
         pendingAnchor={{ kind: 'text', text: 'selected words' }}
         onClearPendingAnchor={onClearPendingAnchor}
       />
@@ -181,7 +208,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
 
   it('shows doc-level target state when there is no pending anchor', async () => {
     stubFetch(() => jsonResponse({ data: [] }))
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" />)
 
     await waitFor(() => expect(screen.getByTestId('pending-anchor')).toBeTruthy())
 
@@ -210,7 +237,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         ],
       })
     )
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" />)
 
     await waitFor(() => expect(screen.getByText('root with author')).toBeTruthy())
     // Display name prefers author.name, falls back to login.
@@ -240,7 +267,7 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
         ],
       })
     )
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="the-slug" version="v5" isAuthor />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="the-slug" listVersion="v5" isAuthor />)
     await waitFor(() => expect(screen.getByText('make this formal')).toBeTruthy())
 
     const btn = screen.getByText('docs.comment.handleWithAI') as HTMLButtonElement
@@ -268,7 +295,7 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
     setWKApp(wk)
 
     stubFetch(() => jsonResponse({ data: [{ id: 'c1', text: 'x', replies: [] }] }))
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" isAuthor />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" isAuthor />)
     await waitFor(() => expect(screen.getByText('x')).toBeTruthy())
 
     const btn = screen.getByText('docs.comment.handleWithAI') as HTMLButtonElement
@@ -280,14 +307,14 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
 
   it('hides "让 AI 处理" from non-authors (read-only viewers): button not rendered at all', async () => {
     stubFetch(() => jsonResponse({ data: [{ id: 'c1', text: 'viewer sees no AI btn', replies: [] }] }))
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" isAuthor={false} />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" isAuthor={false} />)
     await waitFor(() => expect(screen.getByText('viewer sees no AI btn')).toBeTruthy())
     expect(screen.queryByText('docs.comment.handleWithAI')).toBeNull()
   })
 
   it('renders "让 AI 处理" for authors', async () => {
     stubFetch(() => jsonResponse({ data: [{ id: 'c1', text: 'author sees AI btn', replies: [] }] }))
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" version="v1" isAuthor />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" isAuthor />)
     await waitFor(() => expect(screen.getByText('author sees AI btn')).toBeTruthy())
     expect(screen.getByText('docs.comment.handleWithAI')).toBeTruthy()
   })
