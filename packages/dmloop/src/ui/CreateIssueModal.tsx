@@ -282,7 +282,7 @@ export default function CreateIssueModal({
           onChange={(e) => setTitle(e.target.value)}
           placeholder={t("loop.field.titlePlaceholder")}
           onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) submit();
           }}
         />
         <AutoGrowTextarea
@@ -349,7 +349,11 @@ export default function CreateIssueModal({
               style={{ flex: 1 }}
             >
               {labels.map((label) => (
-                <Select.Option key={label.id} value={label.id} label={label.name}>
+                <Select.Option
+                  key={label.id}
+                  value={label.id}
+                  label={label.name}
+                >
                   <LabelChips labels={[label]} />
                 </Select.Option>
               ))}
