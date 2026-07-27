@@ -1170,7 +1170,7 @@ function DocsList({
  *
  * Selecting a list item opens the editor INLINE in the right pane via state (selectedDocId),
  * NOT a full navigation — so the left list never disappears, matching the
- * octo-smart-summary / matter list+detail layout. The selection is mirrored to `?doc=` +
+ * octo-smart-summary list+detail layout. The selection is mirrored to `?doc=` +
  * sessionStorage (mirrorDocToUrl + persistDocTarget) for shareable/deep-link/refresh, using
  * history.replaceState (no host re-push) so `?doc=` is no longer wiped.
  */
@@ -1272,7 +1272,7 @@ export function DocsHome() {
 
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
-  // full-width list+detail layout Matter/Summary use. When absent (tests / standalone), we
+  // full-width list+detail layout Summary uses. When absent (tests / standalone), we
   // fall back to rendering the editor inline in a CSS split pane.
   const routeRight = getRouteRight()
 

@@ -326,7 +326,7 @@ function slugify(s: string): string {
 // ─── Real implementations (octo-marketplace MCP catalog v1) ─────────────────
 // Wire contract: octo-marketplace/docs/api/mcp-v1.md. The catalog is mounted at
 // <origin>/market/api/v1 (nginx / vite proxy strips the /market prefix to the
-// service's own /api/v1), mirroring the summary + matter service convention.
+// service's own /api/v1), mirroring the summary service convention.
 
 /** Serialise axios request params as repeated keys (`?a=1&a=2`) instead of
  *  axios 0.25's default `?a[]=1&a[]=2`. gin's QueryArray on the marketplace

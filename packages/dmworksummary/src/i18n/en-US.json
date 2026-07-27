@@ -401,9 +401,7 @@
         "partialForwardFailed": "Failed to forward to some channels ({{failed}}/{{total}})",
         "forwarded": "Forwarded",
         "forwardToChat": "Forward to chat",
-        "forwardToMatter": "Forward to Matters",
         "noForwardContent": "No content to forward",
-        "forwardedToMatter": "Forwarded to \"{{title}}\"",
         "processingTitle": "Generating summary...",
         "processingDesc": "This may take a little while. Please wait.",
         "aiThinking": "AI is thinking...",
@@ -575,13 +573,6 @@
         "source": "Source: {{source}}",
         "sourceDefault": "Unknown source",
         "member": "Member: {{name}}"
-    },
-    "matterPicker": {
-        "loadFailed": "Failed to load matters",
-        "title": "Select target matter",
-        "searchPlaceholder": "Search matters...",
-        "empty": "No available matters",
-        "loadMore": "Load more..."
     },
     "share": {
         "backToChat": "Back to chat",

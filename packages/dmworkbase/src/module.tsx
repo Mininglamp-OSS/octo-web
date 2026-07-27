@@ -672,7 +672,7 @@ export default class BaseModule implements IModule {
   }
 
   /**
-   * 频道头右侧入口按钮。dmworksummary / dmworktodo 各自注册了「智能总结」/「事项」
+   * 频道头右侧入口按钮。dmworksummary 注册了「智能总结」
    * 图标；这里注册「查找聊天内容」的唯一入口，通过 feature 门禁后用 mittBus
    * 事件 wk:open-channel-search 通知 Pages/Chat 调 _openChannelSearchPanel()。
    */
@@ -683,7 +683,7 @@ export default class BaseModule implements IModule {
         if (!isChannelSearchEnabled(channel)) return undefined;
         return <ChatSearchEntryButton channel={channel} />;
       },
-      4900 // 排在 matter (5000) / summary (5100) 之前
+      4900 // 排在 summary (5100) 之前
     );
   }
 

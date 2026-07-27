@@ -44,7 +44,7 @@ export function getWKApp(): WKAppShape {
 
 /**
  * The host's RIGHT (main) route pane manager. Production: the real static WKApp.routeRight
- * (a ContextRouteManager) — the same one Matter/Summary push their detail panel into so it
+ * (a ContextRouteManager) — the same one Summary pushes its detail panel into so it
  * fills the main content area while the list stays in the left route slot. Tests: the
  * override's routeRight stub if provided, else null (DocsHome falls back to inline render).
  */

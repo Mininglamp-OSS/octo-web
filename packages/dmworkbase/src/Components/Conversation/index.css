@@ -772,24 +772,6 @@ body[theme-mode="dark"] .wk-conversation-disband-bar {
   background: rgba(255, 86, 59, 0.08);
 }
 
-/* 添加到事项按钮 */
-.wk-multiplepanel-btn--matter {
-  color: var(--wk-text-primary, #1c1c23);
-}
-
-.wk-multiplepanel-btn--matter.is-active {
-  background: var(--wk-bg-hover, rgba(28, 28, 35, 0.08));
-}
-
-.wk-multiplepanel-btn--matter:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.wk-multiplepanel-btn--matter:disabled:hover {
-  background: transparent;
-}
-
 /* 竖线分隔符 */
 .wk-multiplepanel-sep {
   width: 1px;

@@ -28,11 +28,6 @@ export interface FilePreviewInfo {
   fromUID?: string;
   /** 消息摘要（用于回复功能显示） */
   conversationDigest?: string;
-  /**
-   * 来源事项 ID（从事项详情面板触发预览时携带）。
-   * Chat 页面用于在关闭/返回预览时回到对应事项详情，而不是退化到子区列表。
-   */
-  originMatterId?: string;
 }
 
 /** 渲染器状态数据（内部使用） */

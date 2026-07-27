@@ -52,8 +52,6 @@ import {
 import CitationText from "../components/CitationText";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
-import MatterPickerModal from "../components/MatterPickerModal";
-import * as matterBridge from "../api/matterBridge";
 import SummaryEditor from "../components/SummaryEditor";
 import SummaryVersionHistory from "../components/SummaryVersionHistory";
 
@@ -66,9 +64,6 @@ interface SummaryDetailPageProps {
      *  list selection state. */
     emitSelection?: boolean;
 }
-
-// Matters 转发入口暂时隐藏，保留相关代码和弹窗，后续需要时打开此开关即可。
-const SHOW_FORWARD_TO_MATTER = false;
 
 type RegenerateMode = "refine" | "full";
 type RefineLoadingTarget = "personal" | "team" | "summary";
@@ -97,8 +92,6 @@ interface SummaryDetailPageState {
     editingTeamSummary: boolean;
     /** OCT-21：提交前编辑「我自己的个人报告」草稿中（行内编辑器接管「我（未提交）」行）。 */
     editingMyDraft: boolean;
-    showMatterPicker: boolean;
-    forwardingToMatter: boolean;
     showRegenerateModal: boolean;
     regenerateMode: RegenerateMode;
     regenerateTopic: string;
@@ -190,8 +183,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         editingPersonalReport: false,
         editingTeamSummary: false,
         editingMyDraft: false,
-        showMatterPicker: false,
-        forwardingToMatter: false,
         showRegenerateModal: false,
         regenerateMode: "refine",
         regenerateTopic: "",
@@ -2020,42 +2011,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }, t("summary.detail.forwardToChat"));
     };
 
-    handleForwardToMatter = () => {
-        const { detail, personalResult } = this.state;
-        if (!detail || detail.status !== TaskStatus.COMPLETED) return;
-
-        // #907 review (yujiawei P2): mirror handleForwardToChat's agent
-        // summary fallback so this path won't ship broken when
-        // SHOW_FORWARD_TO_MATTER is flipped back on. See handleForwardToChat
-        // for the full rationale (agent workflow only writes personal_result).
-        const content = detail.result?.content ?? personalResult?.content;
-        if (!content?.trim()) {
-            Toast.warning(t("summary.detail.noForwardContent"));
-            return;
-        }
-
-        this.setState({ showMatterPicker: true });
-    };
-
-    handleMatterSelected = async (matterId: string, matterTitle: string) => {
-        const { detail, personalResult } = this.state;
-        if (!detail) return;
-
-        // Same fallback as handleForwardToMatter (they must stay in sync).
-        const content = detail.result?.content ?? personalResult?.content;
-        if (!content?.trim()) return;
-
-        this.setState({ forwardingToMatter: true, showMatterPicker: false });
-        try {
-            await matterBridge.addComment(matterId, content);
-            Toast.success(t("summary.detail.forwardedToMatter", { values: { title: matterTitle } }));
-        } catch (err: any) {
-            Toast.error(err.message || t("summary.detail.forwardFailed"));
-        } finally {
-            this.setState({ forwardingToMatter: false });
-        }
-    };
-
     /**
      * Whether the personal summary content is already visible in BY_PERSON mode.
      * Mirrors the content-display predicate in renderPersonalSummary (shows when content is non-empty),
@@ -3396,7 +3351,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const waitingForFallback = !!detail && isAgent && !detail.result?.content?.trim() && !agentContentReady;
 
         const showForwardToChat = !!detail && detail.status === TaskStatus.COMPLETED;
-        const showForwardToMatter = SHOW_FORWARD_TO_MATTER && !!detail && detail.status === TaskStatus.COMPLETED;
         const showRegenerate = !!detail && canRegenerate(detail.status) && !isAgent;
         const showRetry = !!detail && detail.status === TaskStatus.FAILED;
         const showCancel = !!detail && canCancel(detail.status);
@@ -3407,7 +3361,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const scheduleItem = this.state.scheduleItem;
         const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
         const showSchedule = canSchedule;
-        const hasMoreActions = showForwardToChat || showForwardToMatter || showRegenerate || showRetry || showCancel || showDelete || showLeave || showEdit || showSchedule;
+        const hasMoreActions = showForwardToChat || showRegenerate || showRetry || showCancel || showDelete || showLeave || showEdit || showSchedule;
 
         return (
             <>
@@ -3458,15 +3412,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                                 disabled={waitingForFallback}
                                             >
                                                 {t("summary.detail.forwardToChat")}
-                                            </Dropdown.Item>
-                                        )}
-                                        {showForwardToMatter && (
-                                            <Dropdown.Item
-                                                icon={<IconExit />}
-                                                onClick={this.handleForwardToMatter}
-                                                disabled={this.state.forwardingToMatter}
-                                            >
-                                                {t("summary.detail.forwardToMatter")}
                                             </Dropdown.Item>
                                         )}
                                         {showRegenerate && !showRetry && (
@@ -3746,11 +3691,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     hasExisting={!!this.state.scheduleItem && this.state.scheduleItem.is_active !== false}
                     onDisable={this.handleScheduleDisable}
                     disabling={this.state.scheduleDisabling}
-                />
-                <MatterPickerModal
-                    visible={this.state.showMatterPicker}
-                    onSelect={this.handleMatterSelected}
-                    onCancel={() => this.setState({ showMatterPicker: false })}
                 />
                 {/* need7：添加成员复用 SubscriberList 路由页面，见 handleOpenAddMember */}
                 {this.renderVersionDetailModal()}

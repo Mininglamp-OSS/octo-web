@@ -71,7 +71,6 @@
     "@octo/login": "workspace:*",
     "@octo/loop": "workspace:*",
     "@octo/personal": "workspace:*",
-    "@octo/todo": "workspace:*",
     "@react-pdf-viewer/core": "^3.12.0",
     "@react-pdf-viewer/page-navigation": "^3.12.0",
     "@react-pdf-viewer/thumbnail": "^3.12.0",

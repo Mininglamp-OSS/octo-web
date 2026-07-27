@@ -2819,7 +2819,7 @@ body.octo-row-resizing {
 }
 
 /* ── Split-pane docs layout (left list resident + right editor) ──────────────
-   Mirrors the octo-smart-summary / matter list+detail layout: the document list
+   Mirrors the octo-smart-summary list+detail layout: the document list
    stays resident on the left; selecting an item opens the editor inline on the
    right (state-driven, no full navigation), so the list never disappears. */
 .octo-docs-split {
@@ -2872,7 +2872,7 @@ body.octo-row-resizing {
 }
 
 /* Production path: the docs route slot renders ONLY the resident list (the editor is pushed
-   to the host's main/right pane via WKApp.routeRight, like Matter/Summary). Let the list fill
+   to the host's main/right pane via WKApp.routeRight, like Summary). Let the list fill
    the route slot. */
 .octo-docs-list-only {
   max-width: none;

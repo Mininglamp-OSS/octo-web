@@ -267,7 +267,7 @@ export interface WKAppShape {
   remoteConfig?: RemoteConfigLite
   /**
    * The host's RIGHT (main) route pane manager (App.routeRight, a ContextRouteManager).
-   * Matter/Summary push their detail view here so it fills the main content area while the
+   * Summary pushes its detail view here so it fills the main content area while the
    * list stays in the left route slot. Optional in the shape because the test mock provides
    * a lightweight stub; in production this is the real static WKApp.routeRight.
    */

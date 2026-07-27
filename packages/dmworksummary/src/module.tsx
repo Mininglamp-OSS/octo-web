@@ -63,7 +63,7 @@ function bootstrapSummaryAttentionCount(attempt = 0) {
 }
 
 /**
- * NavRail 顶层菜单图标（智能总结）。与 dmworktodo / dmworkappbot 的菜单图标同构：
+ * NavRail 顶层菜单图标（智能总结）。与 dmworkappbot 的菜单图标同构：
  * 纯 SVG、随 active 变色，不引入额外依赖。
  */
 function SummaryMenuIcon({ active }: { active?: boolean }) {
@@ -190,7 +190,7 @@ export class SummaryModule implements IModule {
             return <ScheduleListPage />;
         });
 
-        // 顶层 NavRail 菜单入口（sort=4002，紧跟在 contacts=4000 / matter=4001 之后）。
+        // 顶层 NavRail 菜单入口（sort=4002，紧跟在 contacts=4000 之后）。
         // 背景：之前 summary 只挂了路由 + 聊天窗口星标按钮，没有顶层可见菜单，
         // 导致「多人协作 / 多人定时」入口在主导航上找不到。菜单 id 须为 "summary"，
         // 与 WKApp.switchToMenuById("summary") 及 SummaryListPage 监听的 wk:nav-menu-activated

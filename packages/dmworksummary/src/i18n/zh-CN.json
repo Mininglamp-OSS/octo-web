@@ -401,9 +401,7 @@
         "partialForwardFailed": "部分频道转发失败 ({{failed}}/{{total}})",
         "forwarded": "已转发",
         "forwardToChat": "转发到聊天",
-        "forwardToMatter": "转发到 Matters",
         "noForwardContent": "暂无可转发的内容",
-        "forwardedToMatter": "已转发到「{{title}}」",
         "processingTitle": "正在生成总结...",
         "processingDesc": "这可能需要一些时间，请耐心等待",
         "aiThinking": "AI正在思考中...",
@@ -575,13 +573,6 @@
         "source": "来源：{{source}}",
         "sourceDefault": "未知来源",
         "member": "成员：{{name}}"
-    },
-    "matterPicker": {
-        "loadFailed": "加载事项失败",
-        "title": "选择目标事项",
-        "searchPlaceholder": "搜索事项...",
-        "empty": "暂无可用事项",
-        "loadMore": "加载更多..."
     },
     "share": {
         "backToChat": "返回群聊",
