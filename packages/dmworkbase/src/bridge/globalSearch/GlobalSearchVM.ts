@@ -12,7 +12,23 @@ import { MessageContentTypeConst } from "../../Service/Const";
 import { ProviderListener } from "../../Service/Provider";
 import { debounce } from "../../Utils/rateLimit";
 import { t } from "../../i18n";
-import { addCurrentImChannelInfoListener, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
+import {
+  addCurrentImChannelInfoListener,
+  getCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime";
+import type {
+  LegacyGlobalSearchContact,
+  LegacyGlobalSearchResponse,
+} from "../../Service/SearchService";
+import {
+  createEmptyGlobalSearchPinyinIndex,
+  globalSearchContactsToLegacy,
+  rebuildGlobalSearchPinyinIndex,
+  refreshGlobalSearchGroupCandidates,
+  replaceGlobalSearchPinyinMatches,
+  searchGlobalSearchPinyinIndex,
+  type GlobalSearchPinyinIndex,
+} from "./globalSearchPinyin";
 
 /** Legacy contacts/groups bridge retained while the aggregated tabs migrate. */
 export default class GlobalSearchVM extends ProviderListener {
@@ -31,7 +47,27 @@ export default class GlobalSearchVM extends ProviderListener {
   private unsubscribeChannelInfoListener?: () => void;
   public channel?: Channel; // 查询指定频道的消息
   private requestId = 0; // 请求计数器，用于处理竞态条件
+  private pinyinCandidateRequestId = 0;
+  private pinyinIndex: GlobalSearchPinyinIndex =
+    createEmptyGlobalSearchPinyinIndex();
+  private pinyinGroupCandidates: LegacyGlobalSearchContact[] = [];
+  private serverContactGroupResult: Pick<
+    LegacyGlobalSearchResponse,
+    "friends" | "groups"
+  > = { friends: [], groups: [] };
+  private mounted = false;
   public searchError: string | null = null; // 搜索失败错误信息
+  private readonly contactsChangeListener = () => {
+    this.rebuildPinyinIndexWithCurrentContacts();
+    this.applyPinyinMatches();
+    this.notifyListener();
+  };
+  private readonly spaceChangedListener = () => {
+    this.pinyinIndex = createEmptyGlobalSearchPinyinIndex();
+    this.pinyinGroupCandidates = [];
+    this.serverContactGroupResult = { friends: [], groups: [] };
+    void this.refreshPinyinIndex();
+  };
   // tab数据列表
   public get tabList() {
     if (this.searchInChannel) {
@@ -64,9 +100,7 @@ export default class GlobalSearchVM extends ProviderListener {
   // 搜索标题
   public get searchTitle() {
     if (this.searchInChannel) {
-      const channelInfo = getCurrentImChannelInfo(
-        this.channel!
-      );
+      const channelInfo = getCurrentImChannelInfo(this.channel!);
       if (channelInfo) {
         return t("base.globalSearch.chatHistoryWith", {
           values: { name: channelInfo.title },
@@ -96,6 +130,10 @@ export default class GlobalSearchVM extends ProviderListener {
   }
 
   didMount(): void {
+    this.mounted = true;
+    WKApp.dataSource.addContactsChangeListener(this.contactsChangeListener);
+    WKApp.mittBus.on("space-changed", this.spaceChangedListener);
+    void this.refreshPinyinIndex();
     this.requestSearch();
 
     this.channelInfoListener = (channelInfo: ChannelInfo) => {
@@ -121,6 +159,11 @@ export default class GlobalSearchVM extends ProviderListener {
   }
 
   didUnMount(): void {
+    this.mounted = false;
+    this.pinyinCandidateRequestId++;
+    this.handleInputChange.cancel();
+    WKApp.dataSource.removeContactsChangeListener(this.contactsChangeListener);
+    WKApp.mittBus.off("space-changed", this.spaceChangedListener);
     this.unsubscribeChannelInfoListener?.();
     this.unsubscribeChannelInfoListener = undefined;
   }
@@ -139,7 +182,60 @@ export default class GlobalSearchVM extends ProviderListener {
     this.loadFinish = false;
     this.loadMoreing = false;
     this.searchResult = null;
+    this.serverContactGroupResult = { friends: [], groups: [] };
     this.notifyListener();
+  }
+
+  private async refreshPinyinIndex() {
+    if (this.searchInChannel) return;
+    const requestId = ++this.pinyinCandidateRequestId;
+    const spaceId = WKApp.shared.currentSpaceId;
+    let groups: ChannelInfo[] | undefined;
+    try {
+      groups = await WKApp.dataSource.channelDataSource.groupSaveList();
+    } catch {
+      // The existing server search remains authoritative when local candidates
+      // cannot be loaded.
+    }
+    if (
+      !this.mounted ||
+      requestId !== this.pinyinCandidateRequestId ||
+      spaceId !== WKApp.shared.currentSpaceId
+    ) {
+      return;
+    }
+    this.pinyinGroupCandidates = refreshGlobalSearchGroupCandidates(
+      this.pinyinGroupCandidates,
+      groups
+    );
+    this.rebuildPinyinIndexWithCurrentContacts();
+    this.applyPinyinMatches();
+    this.notifyListener();
+  }
+
+  private rebuildPinyinIndexWithCurrentContacts() {
+    const contacts = globalSearchContactsToLegacy(
+      WKApp.dataSource.contactsList || []
+    );
+    this.pinyinIndex = rebuildGlobalSearchPinyinIndex(this.pinyinIndex, {
+      friends: contacts,
+      groups: this.pinyinGroupCandidates,
+    });
+  }
+
+  private applyPinyinMatches() {
+    if (this.searchInChannel || !this.keyword.trim() || !this.searchResult) {
+      return;
+    }
+    const localResult = searchGlobalSearchPinyinIndex(
+      this.keyword,
+      this.pinyinIndex
+    );
+    this.searchResult = replaceGlobalSearchPinyinMatches(
+      this.searchResult,
+      this.serverContactGroupResult,
+      localResult
+    );
   }
 
   // 请求搜索
@@ -179,8 +275,14 @@ export default class GlobalSearchVM extends ProviderListener {
             this.searchResult = res;
           }
         } else {
+          this.serverContactGroupResult = {
+            friends: res.friends || [],
+            groups: res.groups || [],
+          };
           this.searchResult = res;
         }
+
+        this.applyPinyinMatches();
 
         // 替换备注如果有备注的话
         this.searchResult.friends?.forEach((v: any) => {

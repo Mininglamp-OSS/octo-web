@@ -1,6 +1,7 @@
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import WKApp from "../../App";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
+import { ContactsStatus } from "../../Service/DataSource/DataSource";
 import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import { getCurrentImConversationsDirectly } from "../../im-runtime/currentConversationRuntime";
 import type { ChannelSearchSender } from "../../Service/SearchTypes";
@@ -13,6 +14,11 @@ import type {
   GlobalSearchFileTypeCategory,
   GlobalSearchQuery,
 } from "../../Service/SearchTypes";
+import {
+  createNamedPinyinSearchIndex,
+  extendNamedPinyinSearchIndex,
+  searchNamedPinyinIndex,
+} from "./globalSearchPinyin";
 
 const PAGE_SIZE_SENDERS = 50;
 
@@ -42,9 +48,9 @@ function selfSender(): ChannelSearchSender {
 // of the user's groups — a full group-scoped thread picker is deferred. Thread
 // hits from a picked *group* now expand to «group + all its threads» server-
 // side under the YUJ-30 unified rule (see 01-backend-search-global.md §3/§6).
-async function loadReadableChannelOptions(
-  keyword: string
-): Promise<GlobalSearchChannelOption[]> {
+async function loadReadableChannelOptions(): Promise<
+  GlobalSearchChannelOption[]
+> {
   const out = new Map<string, GlobalSearchChannelOption>();
   const push = (option: GlobalSearchChannelOption) => {
     const key = `${option.channelType}:${option.channelId}`;
@@ -84,7 +90,12 @@ async function loadReadableChannelOptions(
       push({
         channelId,
         channelType,
-        name: g?.displayName || g?.name || channelId,
+        name:
+          g?.orgData?.displayName ||
+          g?.title ||
+          g?.displayName ||
+          g?.name ||
+          channelId,
         avatarUrl: WKApp.shared.avatarChannel(
           new Channel(channelId, channelType)
         ),
@@ -94,10 +105,38 @@ async function loadReadableChannelOptions(
     // Failing to load "my groups" is non-fatal — we still return recents.
   }
 
-  const kw = keyword.trim().toLowerCase();
   const options = Array.from(out.values());
-  if (!kw) return options.slice(0, 60);
-  return options.filter((o) => o.name.toLowerCase().includes(kw)).slice(0, 60);
+  return options;
+}
+
+function localContactSenders(): ChannelSearchSender[] {
+  const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
+  return list.flatMap((contact) => {
+    const uid = contact?.uid;
+    if (!uid || contact?.status === ContactsStatus.Blacklist) return [];
+    return [
+      {
+        uid,
+        name: contact?.remark || contact?.name || uid,
+        avatarUrl: contact?.avatar || WKApp.shared.avatarUser(uid),
+        isCurrentMember: true,
+      },
+    ];
+  });
+}
+
+function localContactSignature(): string {
+  const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
+  return list
+    .map((contact) =>
+      [
+        contact?.uid || "",
+        contact?.remark || contact?.name || "",
+        contact?.status ?? "",
+      ].join(":")
+    )
+    .sort()
+    .join("\n");
 }
 
 // RC #554 blocker (Jerry-Xin + OctoBoooot @ 2026-07-09): the previous
@@ -197,6 +236,12 @@ export function createGlobalSearchApiDataSource(
   options: CreateGlobalSearchApiDataSourceOptions = {}
 ): GlobalSearchDataSource {
   const senderCache = new Map<string, ChannelSearchSender>();
+  let senderPinyinIndex = createNamedPinyinSearchIndex<ChannelSearchSender>();
+  let channelPinyinIndex =
+    createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
+  let channelCandidateSignature = "";
+  let indexedSpaceId = WKApp.shared.currentSpaceId;
+  let senderCandidateSignature = "";
   const rememberSender = (sender?: ChannelSearchSender) => {
     if (!sender?.uid) return;
     senderCache.set(sender.uid, sender);
@@ -205,26 +250,109 @@ export function createGlobalSearchApiDataSource(
   // (and the "发送人" chip always resolves self's display name).
   rememberSender(selfSender());
 
+  const resetScopedPinyinIndexes = () => {
+    const currentSpaceId = WKApp.shared.currentSpaceId;
+    const nextSenderCandidateSignature = localContactSignature();
+    const spaceChanged = currentSpaceId !== indexedSpaceId;
+    const senderPoolChanged =
+      nextSenderCandidateSignature !== senderCandidateSignature;
+    if (!spaceChanged && !senderPoolChanged) return;
+    indexedSpaceId = currentSpaceId;
+    senderCandidateSignature = nextSenderCandidateSignature;
+    senderCache.clear();
+    senderPinyinIndex = createNamedPinyinSearchIndex<ChannelSearchSender>();
+    if (spaceChanged) {
+      channelPinyinIndex =
+        createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
+      channelCandidateSignature = "";
+    }
+    rememberSender(selfSender());
+  };
+
   return {
-    getSenders: () => Array.from(senderCache.values()),
-    getSender: (uid) =>
-      senderCache.get(uid) || {
-        uid,
-        name: uid,
-      },
+    getSenders: () => {
+      resetScopedPinyinIndexes();
+      return Array.from(senderCache.values());
+    },
+    getSender: (uid) => {
+      resetScopedPinyinIndexes();
+      return (
+        senderCache.get(uid) || {
+          uid,
+          name: uid,
+        }
+      );
+    },
     getSelfUid: () => WKApp.loginInfo.uid || "",
     searchSenders: async (keyword: string) => {
+      resetScopedPinyinIndexes();
+      const requestSpaceId = WKApp.shared.currentSpaceId;
       const remote = await loadSenderCandidates(keyword);
+      if (requestSpaceId !== WKApp.shared.currentSpaceId) return [];
+      // Preserve the existing remote/fallback result. The blacklist snapshot
+      // only limits the new local pinyin supplement.
+      const blacklistedUids = new Set(
+        (((WKApp.dataSource as any)?.contactsList ?? []) as any[])
+          .filter((contact) => contact?.status === ContactsStatus.Blacklist)
+          .map((contact) => contact?.uid)
+          .filter(Boolean)
+      );
       remote.forEach(rememberSender);
-      const kw = keyword.trim().toLowerCase();
       const combined = Array.from(senderCache.values());
-      if (!kw) return combined.slice(0, PAGE_SIZE_SENDERS);
-      return combined
-        .filter((s) => `${s.name}${s.uid}`.toLowerCase().includes(kw))
-        .slice(0, PAGE_SIZE_SENDERS);
+      const normalizedKeyword = keyword.trim().toLowerCase();
+      const existingResult = normalizedKeyword
+        ? combined.filter((sender) =>
+            `${sender.name}${sender.uid}`
+              .toLowerCase()
+              .includes(normalizedKeyword)
+          )
+        : combined;
+      const pinyinCandidates = new Map(
+        [...combined, ...localContactSenders()]
+          .filter((sender) => !blacklistedUids.has(sender.uid))
+          .map((sender) => [sender.uid, sender])
+      );
+      extendNamedPinyinSearchIndex(
+        senderPinyinIndex,
+        Array.from(pinyinCandidates.values()),
+        (sender) => sender.uid,
+        (sender) => [sender.name, sender.uid]
+      );
+      const pinyinResult = searchNamedPinyinIndex(keyword, senderPinyinIndex);
+      const result = Array.from(
+        new Map(
+          [...existingResult, ...pinyinResult].map((sender) => [
+            sender.uid,
+            sender,
+          ])
+        ).values()
+      ).slice(0, PAGE_SIZE_SENDERS);
+      result.forEach(rememberSender);
+      return result;
     },
     searchChannels: async (keyword: string) => {
-      return loadReadableChannelOptions(keyword);
+      resetScopedPinyinIndexes();
+      const requestSpaceId = WKApp.shared.currentSpaceId;
+      const options = await loadReadableChannelOptions();
+      if (requestSpaceId !== WKApp.shared.currentSpaceId) return [];
+      const nextSignature = options
+        .map(
+          (option) => `${option.channelType}:${option.channelId}:${option.name}`
+        )
+        .sort()
+        .join("\n");
+      if (nextSignature !== channelCandidateSignature) {
+        channelCandidateSignature = nextSignature;
+        channelPinyinIndex =
+          createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
+        extendNamedPinyinSearchIndex(
+          channelPinyinIndex,
+          options,
+          (option) => `${option.channelType}:${option.channelId}`,
+          (option) => [option.name, option.channelId]
+        );
+      }
+      return searchNamedPinyinIndex(keyword, channelPinyinIndex).slice(0, 60);
     },
     getFileTypeCategories: async () => {
       const cache = options.fileTypeCategoriesCache;
