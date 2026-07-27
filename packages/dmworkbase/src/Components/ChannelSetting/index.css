@@ -87,6 +87,26 @@
     background: var(--wk-bg-surface);
 }
 
+/*
+ * 头像和二维码子页返回时仍保留 animationend，让 WKViewQueue 正常清理栈顶；
+ * 只取消可见位移，避免标题先切回父页、内容仍横向退场造成的闪动。
+ * 该规则不改变 RoutePage/WKViewQueue 的退栈和数据刷新逻辑。
+ */
+.wk-viewqueue-view-out:has(.wk-channelavatar),
+.wk-viewqueue-view-out:has(.wk-channelqrcode) {
+    background: var(--wk-bg-surface);
+    animation-name: wk-channelsetting-child-exit;
+    animation-duration: var(--wk-dur-fast);
+    animation-timing-function: var(--wk-ease);
+}
+
+@keyframes wk-channelsetting-child-exit {
+    from,
+    to {
+        transform: translate3d(0, 0, 0);
+    }
+}
+
 /* 仅作用于 ChannelSetting，避免影响其他 Sections/ListItem 调用方。 */
 .wk-channelsetting-content > .wk-sections {
     display: flex;

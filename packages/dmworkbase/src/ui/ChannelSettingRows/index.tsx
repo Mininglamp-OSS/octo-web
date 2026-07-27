@@ -116,6 +116,7 @@ export function ChannelSettingInlineEditRow({
   const [editing, setEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(value);
   const [draft, setDraft] = useState(value);
+  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const editingRef = useRef(false);
 
@@ -132,12 +133,12 @@ export function ChannelSettingInlineEditRow({
 
   const exceeded = maxCount !== undefined && draft.length > maxCount;
   const emptyInvalid = !allowEmpty && draft.trim().length === 0;
-  const unchanged = draft === currentValue;
-  const saveDisabled = saving || exceeded || emptyInvalid || unchanged;
+  const saveDisabled = saving || exceeded || emptyInvalid || !dirty;
 
   const startEdit = () => {
     if (onStartEdit?.() === false) return;
     setDraft(currentValue);
+    setDirty(false);
     setEditing(true);
   };
 
@@ -156,7 +157,10 @@ export function ChannelSettingInlineEditRow({
     value: draft,
     placeholder,
     disabled: saving,
-    onChange: (next: string) => setDraft(next),
+    onChange: (next: string) => {
+      setDraft(next);
+      setDirty(true);
+    },
   };
 
   return (
@@ -166,7 +170,10 @@ export function ChannelSettingInlineEditRow({
         <TextArea
           {...inputProps}
           showClear
-          onClear={() => setDraft("")}
+          onClear={() => {
+            setDraft("");
+            setDirty(true);
+          }}
           autosize={{ minRows: 2, maxRows: 6 }}
         />
       ) : (
@@ -182,6 +189,7 @@ export function ChannelSettingInlineEditRow({
                   event.preventDefault();
                   event.stopPropagation();
                   setDraft("");
+                  setDirty(true);
                 }}
               >
                 <IconClear />
@@ -205,6 +213,7 @@ export function ChannelSettingInlineEditRow({
           disabled={saving}
           onClick={() => {
             setDraft(currentValue);
+            setDirty(false);
             setEditing(false);
           }}
         >
@@ -220,6 +229,7 @@ export function ChannelSettingInlineEditRow({
               const saved = await onSave(draft);
               if (saved !== false) {
                 setCurrentValue(draft);
+                setDirty(false);
                 setEditing(false);
               }
             } catch {

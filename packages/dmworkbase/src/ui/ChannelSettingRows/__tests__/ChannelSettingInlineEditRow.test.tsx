@@ -88,6 +88,29 @@ describe("ChannelSettingInlineEditRow", () => {
     expect(onSave).toHaveBeenCalledWith("");
   });
 
+  it("enables saving after clearing and retyping the original nickname", () => {
+    render(
+      <ChannelSettingInlineEditRow
+        title="My nickname"
+        value="Alice"
+        allowEmpty
+        onSave={vi.fn(() => Promise.resolve())}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "My nickname" }));
+    fireEvent.mouseDown(
+      screen.getByRole("button", { name: "My nickname-base.common.clear" })
+    );
+
+    const input = screen.getByDisplayValue("");
+    fireEvent.change(input, { target: { value: "Alice" } });
+
+    expect(
+      screen.getByRole("button", { name: "base.common.save" })
+    ).toBeEnabled();
+  });
+
   it("keeps the draft open when saving fails", async () => {
     const onSave = vi.fn(() => Promise.resolve(false));
 
@@ -109,6 +132,9 @@ describe("ChannelSettingInlineEditRow", () => {
     expect(screen.getByDisplayValue("Unsaved draft")).toBe(input);
     expect(
       screen.getByRole("button", { name: "base.common.cancel" })
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "base.common.save" })
     ).toBeEnabled();
   });
 
@@ -167,6 +193,9 @@ describe("ChannelSettingInlineEditRow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Group name" }));
     expect(screen.getByDisplayValue("Remote name")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "base.common.save" })
+    ).toBeDisabled();
   });
 
   it("keeps a successful save visible until the external value catches up", async () => {
