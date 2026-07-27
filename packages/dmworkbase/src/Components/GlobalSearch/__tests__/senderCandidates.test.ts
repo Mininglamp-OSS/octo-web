@@ -274,4 +274,37 @@ describe("loadSenderCandidates (via searchSenders)", () => {
     mockState.contactsList = [];
     await expect(ds.searchSenders("jia")).resolves.toEqual([]);
   });
+
+  it("removes stale sender candidates when the contact pool shrinks in the same space", async () => {
+    mockState.commonDataSource = {
+      searchFriends: vi.fn().mockResolvedValue([]),
+    };
+    mockState.contactsList = [{ uid: "old-uid", name: "贾小明" }];
+    const ds = createGlobalSearchApiDataSource();
+    await expect(ds.searchSenders("jia")).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ uid: "old-uid" })])
+    );
+
+    mockState.contactsList = [];
+    await expect(ds.searchSenders("jia")).resolves.toEqual([]);
+    expect(ds.getSenders().some((sender) => sender.uid === "old-uid")).toBe(
+      false
+    );
+  });
+
+  it("removes renamed sender pinyin and excludes blacklisted contacts", async () => {
+    mockState.commonDataSource = {
+      searchFriends: vi.fn().mockResolvedValue([]),
+    };
+    mockState.contactsList = [{ uid: "user-1", name: "贾小明" }];
+    const ds = createGlobalSearchApiDataSource();
+    await expect(ds.searchSenders("jia")).resolves.toHaveLength(1);
+
+    mockState.contactsList = [{ uid: "user-1", name: "张小明" }];
+    await expect(ds.searchSenders("jia")).resolves.toEqual([]);
+    await expect(ds.searchSenders("zhang")).resolves.toHaveLength(1);
+
+    mockState.contactsList = [{ uid: "user-1", name: "张小明", status: 2 }];
+    await expect(ds.searchSenders("zhang")).resolves.toEqual([]);
+  });
 });

@@ -1,6 +1,7 @@
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import WKApp from "../../App";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
+import { ContactsStatus } from "../../Service/DataSource/DataSource";
 import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import { getCurrentImConversationsDirectly } from "../../im-runtime/currentConversationRuntime";
 import type { ChannelSearchSender } from "../../Service/SearchTypes";
@@ -107,7 +108,7 @@ function localContactSenders(): ChannelSearchSender[] {
   const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
   return list.flatMap((contact) => {
     const uid = contact?.uid;
-    if (!uid) return [];
+    if (!uid || contact?.status === ContactsStatus.Blacklist) return [];
     return [
       {
         uid,
@@ -180,7 +181,7 @@ async function loadSenderCandidates(
     const kwLower = kw.toLowerCase();
     for (const c of list) {
       const uid = c?.uid;
-      if (!uid) continue;
+      if (!uid || c?.status === ContactsStatus.Blacklist) continue;
       const name = c?.remark || c?.name || uid;
       if (kwLower && !`${name}${uid}`.toLowerCase().includes(kwLower)) {
         continue;
@@ -221,6 +222,7 @@ export function createGlobalSearchApiDataSource(
     createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
   let channelCandidateSignature = "";
   let indexedSpaceId = WKApp.shared.currentSpaceId;
+  let senderCandidateSignature = "";
   const rememberSender = (sender?: ChannelSearchSender) => {
     if (!sender?.uid) return;
     senderCache.set(sender.uid, sender);
@@ -229,20 +231,33 @@ export function createGlobalSearchApiDataSource(
   // (and the "发送人" chip always resolves self's display name).
   rememberSender(selfSender());
 
-  const resetPinyinIndexesForSpace = () => {
+  const resetScopedPinyinIndexes = () => {
     const currentSpaceId = WKApp.shared.currentSpaceId;
-    if (currentSpaceId === indexedSpaceId) return;
+    const nextSenderCandidateSignature = localContactSenders()
+      .map((sender) => `${sender.uid}:${sender.name}`)
+      .sort()
+      .join("\n");
+    const spaceChanged = currentSpaceId !== indexedSpaceId;
+    const senderPoolChanged =
+      nextSenderCandidateSignature !== senderCandidateSignature;
+    if (!spaceChanged && !senderPoolChanged) return;
     indexedSpaceId = currentSpaceId;
+    senderCandidateSignature = nextSenderCandidateSignature;
     senderCache.clear();
     senderPinyinIndex.entries.clear();
-    channelPinyinIndex =
-      createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
-    channelCandidateSignature = "";
+    if (spaceChanged) {
+      channelPinyinIndex =
+        createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
+      channelCandidateSignature = "";
+    }
     rememberSender(selfSender());
   };
 
   return {
-    getSenders: () => Array.from(senderCache.values()),
+    getSenders: () => {
+      resetScopedPinyinIndexes();
+      return Array.from(senderCache.values());
+    },
     getSender: (uid) =>
       senderCache.get(uid) || {
         uid,
@@ -250,9 +265,20 @@ export function createGlobalSearchApiDataSource(
       },
     getSelfUid: () => WKApp.loginInfo.uid || "",
     searchSenders: async (keyword: string) => {
-      resetPinyinIndexesForSpace();
+      resetScopedPinyinIndexes();
       const remote = await loadSenderCandidates(keyword);
-      [...localContactSenders(), ...remote].forEach(rememberSender);
+      // The local snapshot is authoritative for explicit blacklist state even
+      // if a lagging server search still returns that uid.
+      const blacklistedUids = new Set(
+        (((WKApp.dataSource as any)?.contactsList ?? []) as any[])
+          .filter((contact) => contact?.status === ContactsStatus.Blacklist)
+          .map((contact) => contact?.uid)
+          .filter(Boolean)
+      );
+      resetScopedPinyinIndexes();
+      [...localContactSenders(), ...remote]
+        .filter((sender) => !blacklistedUids.has(sender.uid))
+        .forEach(rememberSender);
       const combined = Array.from(senderCache.values());
       extendNamedPinyinSearchIndex(
         senderPinyinIndex,
@@ -266,7 +292,7 @@ export function createGlobalSearchApiDataSource(
       );
     },
     searchChannels: async (keyword: string) => {
-      resetPinyinIndexesForSpace();
+      resetScopedPinyinIndexes();
       const options = await loadReadableChannelOptions();
       const nextSignature = options
         .map(
