@@ -15,9 +15,11 @@ import type {
   GlobalSearchQuery,
 } from "../../Service/SearchTypes";
 import {
+  appendUniqueByKey,
   createNamedPinyinSearchIndex,
-  extendNamedPinyinSearchIndex,
+  rebuildNamedPinyinSearchIndex,
   searchNamedPinyinIndex,
+  type NamedPinyinSearchIndex,
 } from "./globalSearchPinyin";
 
 const PAGE_SIZE_SENDERS = 50;
@@ -48,9 +50,13 @@ function selfSender(): ChannelSearchSender {
 // of the user's groups — a full group-scoped thread picker is deferred. Thread
 // hits from a picked *group* now expand to «group + all its threads» server-
 // side under the YUJ-30 unified rule (see 01-backend-search-global.md §3/§6).
-async function loadReadableChannelOptions(): Promise<
-  GlobalSearchChannelOption[]
-> {
+async function loadReadableChannelOptions(
+  keyword: string,
+  currentIndex: NamedPinyinSearchIndex<GlobalSearchChannelOption>
+): Promise<{
+  index: NamedPinyinSearchIndex<GlobalSearchChannelOption>;
+  result: GlobalSearchChannelOption[];
+}> {
   const out = new Map<string, GlobalSearchChannelOption>();
   const push = (option: GlobalSearchChannelOption) => {
     const key = `${option.channelType}:${option.channelId}`;
@@ -90,12 +96,7 @@ async function loadReadableChannelOptions(): Promise<
       push({
         channelId,
         channelType,
-        name:
-          g?.orgData?.displayName ||
-          g?.title ||
-          g?.displayName ||
-          g?.name ||
-          channelId,
+        name: g?.displayName || g?.name || channelId,
         avatarUrl: WKApp.shared.avatarChannel(
           new Channel(channelId, channelType)
         ),
@@ -106,37 +107,30 @@ async function loadReadableChannelOptions(): Promise<
   }
 
   const options = Array.from(out.values());
-  return options;
-}
-
-function localContactSenders(): ChannelSearchSender[] {
-  const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
-  return list.flatMap((contact) => {
-    const uid = contact?.uid;
-    if (!uid || contact?.status === ContactsStatus.Blacklist) return [];
-    return [
-      {
-        uid,
-        name: contact?.remark || contact?.name || uid,
-        avatarUrl: contact?.avatar || WKApp.shared.avatarUser(uid),
-        isCurrentMember: true,
-      },
-    ];
-  });
-}
-
-function localContactSignature(): string {
-  const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
-  return list
-    .map((contact) =>
-      [
-        contact?.uid || "",
-        contact?.remark || contact?.name || "",
-        contact?.status ?? "",
-      ].join(":")
-    )
-    .sort()
-    .join("\n");
+  const pinyinCandidates = options.filter((option) =>
+    /[\u3400-\u9fff]/.test(option.name)
+  );
+  const index = rebuildNamedPinyinSearchIndex(
+    currentIndex,
+    pinyinCandidates,
+    (option) => `${option.channelType}:${option.channelId}`,
+    (option) => [option.name]
+  );
+  const kw = keyword.trim().toLowerCase();
+  const existingResult = kw
+    ? options.filter((option) => option.name.toLowerCase().includes(kw))
+    : options;
+  const pinyinResult = /^[a-z]+$/i.test(keyword.trim())
+    ? searchNamedPinyinIndex(keyword, index)
+    : [];
+  return {
+    index,
+    result: appendUniqueByKey(
+      existingResult,
+      pinyinResult,
+      (option) => `${option.channelType}:${option.channelId}`
+    ).slice(0, 60),
+  };
 }
 
 // RC #554 blocker (Jerry-Xin + OctoBoooot @ 2026-07-09): the previous
@@ -155,10 +149,18 @@ function localContactSignature(): string {
 // synced `WKApp.dataSource.contactsList` snapshot so the filter panel is
 // never empty in a normal signed-in session.
 async function loadSenderCandidates(
-  keyword: string
-): Promise<ChannelSearchSender[]> {
+  keyword: string,
+  currentIndex: NamedPinyinSearchIndex<ChannelSearchSender>,
+  currentScopedFriendUids: ReadonlySet<string>
+): Promise<{
+  index: NamedPinyinSearchIndex<ChannelSearchSender>;
+  scopedFriendUids: Set<string>;
+  senders: ChannelSearchSender[];
+}> {
   const kw = keyword.trim();
   const out: ChannelSearchSender[] = [];
+  let nextIndex = currentIndex;
+  let scopedFriendUids = new Set(currentScopedFriendUids);
   const seen = new Set<string>();
   const push = (sender: ChannelSearchSender) => {
     if (!sender.uid || seen.has(sender.uid)) return;
@@ -172,6 +174,12 @@ async function loadSenderCandidates(
     if (commonDS && typeof commonDS.searchFriends === "function") {
       const friends = (await commonDS.searchFriends(kw)) ?? [];
       if (Array.isArray(friends)) {
+        const confirmedUids = friends
+          .map((info) => info?.channel?.channelID)
+          .filter(Boolean);
+        scopedFriendUids = kw
+          ? new Set([...scopedFriendUids, ...confirmedUids])
+          : new Set(confirmedUids);
         for (const info of friends) {
           const uid = info?.channel?.channelID;
           if (!uid) continue;
@@ -182,7 +190,9 @@ async function loadSenderCandidates(
             avatarUrl: org.avatar || WKApp.shared.avatarUser(uid),
             isCurrentMember: true,
           });
-          if (out.length >= PAGE_SIZE_SENDERS) return out;
+          if (out.length >= PAGE_SIZE_SENDERS) {
+            return { index: nextIndex, scopedFriendUids, senders: out };
+          }
         }
       }
     }
@@ -193,8 +203,8 @@ async function loadSenderCandidates(
   // 2) Fallback: the already-synced local contacts list. `contactsSync`
   //    populates this on login (see DataSource.contactsSync), so a signed-in
   //    user always has *some* candidates even when the friend-search endpoint
-  //    is missing / offline. Do local case-insensitive filtering on
-  //    name/remark/uid so an empty-keyword call still returns everyone.
+  //    is missing / offline. Keep the existing literal path unchanged, then
+  //    append pinyin-only matches from the same non-blacklisted snapshot.
   try {
     const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
     const kwLower = kw.toLowerCase();
@@ -211,13 +221,52 @@ async function loadSenderCandidates(
         avatarUrl: c?.avatar || WKApp.shared.avatarUser(uid),
         isCurrentMember: true,
       });
-      if (out.length >= PAGE_SIZE_SENDERS) return out;
+      if (out.length >= PAGE_SIZE_SENDERS) {
+        return { index: nextIndex, scopedFriendUids, senders: out };
+      }
+    }
+    const localPinyinCandidates = list.flatMap((c) => {
+      const uid = c?.uid;
+      const name = c?.remark || c?.name || uid;
+      if (
+        !uid ||
+        !scopedFriendUids.has(uid) ||
+        c?.status === ContactsStatus.Blacklist ||
+        c?.beDeleted === true ||
+        c?.follow === 0 ||
+        !/[\u3400-\u9fff]/.test(name)
+      ) {
+        return [];
+      }
+      return [
+        {
+          uid,
+          name,
+          avatarUrl: c?.avatar || WKApp.shared.avatarUser(uid),
+          isCurrentMember: true,
+        } satisfies ChannelSearchSender,
+      ];
+    });
+    nextIndex = rebuildNamedPinyinSearchIndex(
+      currentIndex,
+      localPinyinCandidates,
+      (sender) => sender.uid,
+      (sender) => [sender.name]
+    );
+    const pinyinMatches = /^[a-z]+$/i.test(kw)
+      ? searchNamedPinyinIndex(kw, nextIndex)
+      : [];
+    for (const sender of pinyinMatches) {
+      push(sender);
+      if (out.length >= PAGE_SIZE_SENDERS) {
+        return { index: nextIndex, scopedFriendUids, senders: out };
+      }
     }
   } catch (_) {
     // ignore — worst case we return whatever we already gathered
   }
 
-  return out;
+  return { index: nextIndex, scopedFriendUids, senders: out };
 }
 
 export interface CreateGlobalSearchApiDataSourceOptions {
@@ -236,12 +285,12 @@ export function createGlobalSearchApiDataSource(
   options: CreateGlobalSearchApiDataSourceOptions = {}
 ): GlobalSearchDataSource {
   const senderCache = new Map<string, ChannelSearchSender>();
-  let senderPinyinIndex = createNamedPinyinSearchIndex<ChannelSearchSender>();
+  let localSenderPinyinIndex =
+    createNamedPinyinSearchIndex<ChannelSearchSender>();
   let channelPinyinIndex =
     createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
-  let channelCandidateSignature = "";
   let indexedSpaceId = WKApp.shared.currentSpaceId;
-  let senderCandidateSignature = "";
+  let scopedFriendUids = new Set<string>();
   const rememberSender = (sender?: ChannelSearchSender) => {
     if (!sender?.uid) return;
     senderCache.set(sender.uid, sender);
@@ -250,32 +299,24 @@ export function createGlobalSearchApiDataSource(
   // (and the "发送人" chip always resolves self's display name).
   rememberSender(selfSender());
 
-  const resetScopedPinyinIndexes = () => {
+  const resetSpaceScopedState = () => {
     const currentSpaceId = WKApp.shared.currentSpaceId;
-    const nextSenderCandidateSignature = localContactSignature();
-    const spaceChanged = currentSpaceId !== indexedSpaceId;
-    const senderPoolChanged =
-      nextSenderCandidateSignature !== senderCandidateSignature;
-    if (!spaceChanged && !senderPoolChanged) return;
+    if (currentSpaceId === indexedSpaceId) return;
     indexedSpaceId = currentSpaceId;
-    senderCandidateSignature = nextSenderCandidateSignature;
+    scopedFriendUids.clear();
+    localSenderPinyinIndex = createNamedPinyinSearchIndex();
+    channelPinyinIndex = createNamedPinyinSearchIndex();
     senderCache.clear();
-    senderPinyinIndex = createNamedPinyinSearchIndex<ChannelSearchSender>();
-    if (spaceChanged) {
-      channelPinyinIndex =
-        createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
-      channelCandidateSignature = "";
-    }
     rememberSender(selfSender());
   };
 
   return {
     getSenders: () => {
-      resetScopedPinyinIndexes();
+      resetSpaceScopedState();
       return Array.from(senderCache.values());
     },
     getSender: (uid) => {
-      resetScopedPinyinIndexes();
+      resetSpaceScopedState();
       return (
         senderCache.get(uid) || {
           uid,
@@ -285,41 +326,38 @@ export function createGlobalSearchApiDataSource(
     },
     getSelfUid: () => WKApp.loginInfo.uid || "",
     searchSenders: async (keyword: string) => {
-      resetScopedPinyinIndexes();
+      resetSpaceScopedState();
       const requestSpaceId = WKApp.shared.currentSpaceId;
-      const remote = await loadSenderCandidates(keyword);
-      if (requestSpaceId !== WKApp.shared.currentSpaceId) return [];
-      // Preserve the existing remote/fallback result. The blacklist snapshot
-      // only limits the new local pinyin supplement.
-      const blacklistedUids = new Set(
-        (((WKApp.dataSource as any)?.contactsList ?? []) as any[])
-          .filter((contact) => contact?.status === ContactsStatus.Blacklist)
-          .map((contact) => contact?.uid)
-          .filter(Boolean)
+      const loaded = await loadSenderCandidates(
+        keyword,
+        localSenderPinyinIndex,
+        scopedFriendUids
       );
+      if (requestSpaceId !== WKApp.shared.currentSpaceId) {
+        resetSpaceScopedState();
+        return [];
+      }
+      localSenderPinyinIndex = loaded.index;
+      scopedFriendUids = loaded.scopedFriendUids;
+      const remote = loaded.senders;
       remote.forEach(rememberSender);
+      const kw = keyword.trim().toLowerCase();
       const combined = Array.from(senderCache.values());
-      const normalizedKeyword = keyword.trim().toLowerCase();
-      const existingResult = normalizedKeyword
+      const existingResult = kw
         ? combined.filter((sender) =>
-            `${sender.name}${sender.uid}`
-              .toLowerCase()
-              .includes(normalizedKeyword)
+            `${sender.name}${sender.uid}`.toLowerCase().includes(kw)
           )
         : combined;
-      const pinyinCandidates = new Map(
-        [...combined, ...localContactSenders()]
-          .filter((sender) => !blacklistedUids.has(sender.uid))
-          .map((sender) => [sender.uid, sender])
-      );
-      extendNamedPinyinSearchIndex(
-        senderPinyinIndex,
-        Array.from(pinyinCandidates.values()),
+      const remoteIndex = rebuildNamedPinyinSearchIndex(
+        createNamedPinyinSearchIndex<ChannelSearchSender>(),
+        remote,
         (sender) => sender.uid,
-        (sender) => [sender.name, sender.uid]
+        (sender) => [sender.name]
       );
-      const pinyinResult = searchNamedPinyinIndex(keyword, senderPinyinIndex);
-      const result = Array.from(
+      const pinyinResult = /^[a-z]+$/i.test(keyword.trim())
+        ? searchNamedPinyinIndex(keyword, remoteIndex)
+        : [];
+      return Array.from(
         new Map(
           [...existingResult, ...pinyinResult].map((sender) => [
             sender.uid,
@@ -327,32 +365,20 @@ export function createGlobalSearchApiDataSource(
           ])
         ).values()
       ).slice(0, PAGE_SIZE_SENDERS);
-      result.forEach(rememberSender);
-      return result;
     },
     searchChannels: async (keyword: string) => {
-      resetScopedPinyinIndexes();
+      resetSpaceScopedState();
       const requestSpaceId = WKApp.shared.currentSpaceId;
-      const options = await loadReadableChannelOptions();
-      if (requestSpaceId !== WKApp.shared.currentSpaceId) return [];
-      const nextSignature = options
-        .map(
-          (option) => `${option.channelType}:${option.channelId}:${option.name}`
-        )
-        .sort()
-        .join("\n");
-      if (nextSignature !== channelCandidateSignature) {
-        channelCandidateSignature = nextSignature;
-        channelPinyinIndex =
-          createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
-        extendNamedPinyinSearchIndex(
-          channelPinyinIndex,
-          options,
-          (option) => `${option.channelType}:${option.channelId}`,
-          (option) => [option.name, option.channelId]
-        );
+      const loaded = await loadReadableChannelOptions(
+        keyword,
+        channelPinyinIndex
+      );
+      if (requestSpaceId !== WKApp.shared.currentSpaceId) {
+        resetSpaceScopedState();
+        return [];
       }
-      return searchNamedPinyinIndex(keyword, channelPinyinIndex).slice(0, 60);
+      channelPinyinIndex = loaded.index;
+      return loaded.result;
     },
     getFileTypeCategories: async () => {
       const cache = options.fileTypeCategoriesCache;
@@ -378,12 +404,16 @@ export function createGlobalSearchApiDataSource(
       return promise;
     },
     searchMessages: async (query: GlobalSearchQuery) => {
+      resetSpaceScopedState();
+      const requestSpaceId = WKApp.shared.currentSpaceId;
       const result = await SearchService.searchGlobalMessages(
         query,
         WKApp.loginInfo.uid || "",
         createSearchAssetResolver()
       );
-      result.items.forEach((item) => rememberSender(item.sender));
+      if (requestSpaceId === WKApp.shared.currentSpaceId) {
+        result.items.forEach((item) => rememberSender(item.sender));
+      }
       return result;
     },
   };

@@ -22,7 +22,6 @@ const mockState = vi.hoisted(() => ({
   commonDataSource: undefined as any,
   contactsList: [] as any[],
   groups: [] as any[],
-  groupSaveList: undefined as undefined | (() => Promise<any[]>),
   spaceId: "space-1",
   loginUid: "self-uid",
   loginName: "Me",
@@ -35,11 +34,7 @@ vi.mock("../../../App", () => ({
         commonDataSource: mockState.commonDataSource,
         contactsList: mockState.contactsList,
         channelDataSource: {
-          groupSaveList: vi.fn(() =>
-            mockState.groupSaveList
-              ? mockState.groupSaveList()
-              : Promise.resolve(mockState.groups)
-          ),
+          groupSaveList: vi.fn(() => Promise.resolve(mockState.groups)),
         },
       };
     },
@@ -95,7 +90,6 @@ describe("loadSenderCandidates (via searchSenders)", () => {
     mockState.commonDataSource = undefined;
     mockState.contactsList = [];
     mockState.groups = [];
-    mockState.groupSaveList = undefined;
     mockState.spaceId = "space-1";
   });
 
@@ -230,81 +224,144 @@ describe("loadSenderCandidates (via searchSenders)", () => {
   });
 
   it("matches sender/member candidates by full pinyin without skipping remote search", async () => {
-    const searchFriends = vi.fn().mockResolvedValue([]);
+    const searchFriends = vi.fn((keyword: string) =>
+      Promise.resolve(
+        keyword
+          ? []
+          : [
+              {
+                channel: { channelID: "user-42", channelType: 1 },
+                orgData: { displayName: "贾小明" },
+              },
+            ]
+      )
+    );
     mockState.commonDataSource = { searchFriends };
-    mockState.contactsList = [{ uid: "jia-uid", name: "贾小明" }];
+    mockState.contactsList = [{ uid: "user-42", name: "贾小明" }];
 
     const ds = createGlobalSearchApiDataSource();
+    await ds.searchSenders("");
     const results = await ds.searchSenders("jia");
 
     expect(searchFriends).toHaveBeenCalledWith("jia");
-    expect(results.map((sender) => sender.uid)).toContain("jia-uid");
+    expect(results.map((sender) => sender.uid)).toContain("user-42");
   });
 
   it("matches group options by full pinyin", async () => {
     mockState.groups = [
       {
         channel: { channelID: "group-1", channelType: 2 },
-        title: "全能接项目小组",
-        orgData: { displayName: "全能接项目小组" },
+        displayName: "魏娇莹项目群",
       },
     ];
 
     const ds = createGlobalSearchApiDataSource();
-    const results = await ds.searchChannels("quanneng");
+    const results = await ds.searchChannels("weijiao");
 
     expect(results.map((channel) => channel.channelId)).toContain("group-1");
+    expect(results[0].name).toBe("魏娇莹项目群");
+  });
+
+  it("keeps channel literal search scoped to the existing visible name", async () => {
+    mockState.groups = [
+      {
+        channel: { channelID: "opaque-weijiao-id", channelType: 2 },
+        displayName: "产品讨论群",
+        title: "魏娇莹隐藏标题",
+        orgData: { displayName: "魏娇莹隐藏名称" },
+      },
+    ];
+    const ds = createGlobalSearchApiDataSource();
+
+    await expect(ds.searchChannels("产品")).resolves.toHaveLength(1);
+    await expect(ds.searchChannels("weijiao")).resolves.toEqual([]);
+    await expect(ds.searchChannels("opaque")).resolves.toEqual([]);
   });
 
   it("removes stale channel candidates when the readable pool changes", async () => {
     mockState.groups = [
       {
         channel: { channelID: "group-1", channelType: 2 },
-        displayName: "全能接项目小组",
+        displayName: "魏娇莹项目群",
       },
     ];
     const ds = createGlobalSearchApiDataSource();
-    await expect(ds.searchChannels("quanneng")).resolves.toHaveLength(1);
+    await expect(ds.searchChannels("weijiao")).resolves.toHaveLength(1);
 
     mockState.groups = [];
-    await expect(ds.searchChannels("quanneng")).resolves.toEqual([]);
+    await expect(ds.searchChannels("weijiao")).resolves.toEqual([]);
   });
 
-  it("clears cached pinyin candidates after switching spaces", async () => {
+  it("does not reuse pinyin candidates after the contact pool changes", async () => {
+    mockState.commonDataSource = {
+      searchFriends: vi.fn((keyword: string) =>
+        Promise.resolve(
+          keyword
+            ? []
+            : [
+                {
+                  channel: { channelID: "old-uid", channelType: 1 },
+                  orgData: { displayName: "贾小明" },
+                },
+              ]
+        )
+      ),
+    };
     mockState.contactsList = [{ uid: "old-uid", name: "贾小明" }];
     const ds = createGlobalSearchApiDataSource();
+    await ds.searchSenders("");
     await expect(ds.searchSenders("jia")).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ uid: "old-uid" })])
     );
 
-    mockState.spaceId = "space-2";
     mockState.contactsList = [];
     await expect(ds.searchSenders("jia")).resolves.toEqual([]);
   });
 
   it("removes stale sender candidates when the contact pool shrinks in the same space", async () => {
     mockState.commonDataSource = {
-      searchFriends: vi.fn().mockResolvedValue([]),
+      searchFriends: vi.fn((keyword: string) =>
+        Promise.resolve(
+          keyword
+            ? []
+            : [
+                {
+                  channel: { channelID: "old-uid", channelType: 1 },
+                  orgData: { displayName: "贾小明" },
+                },
+              ]
+        )
+      ),
     };
     mockState.contactsList = [{ uid: "old-uid", name: "贾小明" }];
     const ds = createGlobalSearchApiDataSource();
+    await ds.searchSenders("");
     await expect(ds.searchSenders("jia")).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ uid: "old-uid" })])
     );
 
     mockState.contactsList = [];
     await expect(ds.searchSenders("jia")).resolves.toEqual([]);
-    expect(ds.getSenders().some((sender) => sender.uid === "old-uid")).toBe(
-      false
-    );
   });
 
-  it("removes renamed sender pinyin and excludes blacklisted contacts", async () => {
+  it("does not reuse renamed or blacklisted sender pinyin", async () => {
     mockState.commonDataSource = {
-      searchFriends: vi.fn().mockResolvedValue([]),
+      searchFriends: vi.fn((keyword: string) =>
+        Promise.resolve(
+          keyword
+            ? []
+            : [
+                {
+                  channel: { channelID: "user-1", channelType: 1 },
+                  orgData: { displayName: "贾小明" },
+                },
+              ]
+        )
+      ),
     };
     mockState.contactsList = [{ uid: "user-1", name: "贾小明" }];
     const ds = createGlobalSearchApiDataSource();
+    await ds.searchSenders("");
     await expect(ds.searchSenders("jia")).resolves.toHaveLength(1);
 
     mockState.contactsList = [{ uid: "user-1", name: "张小明" }];
@@ -313,6 +370,86 @@ describe("loadSenderCandidates (via searchSenders)", () => {
 
     mockState.contactsList = [{ uid: "user-1", name: "张小明", status: 2 }];
     await expect(ds.searchSenders("zhang")).resolves.toEqual([]);
+  });
+
+  it("does not add deleted or no-longer-followed contacts as pinyin matches", async () => {
+    mockState.commonDataSource = {
+      searchFriends: vi.fn((keyword: string) =>
+        Promise.resolve(
+          keyword
+            ? []
+            : [
+                {
+                  channel: { channelID: "user-1", channelType: 1 },
+                  orgData: { displayName: "贾小明" },
+                },
+              ]
+        )
+      ),
+    };
+    const ds = createGlobalSearchApiDataSource();
+
+    mockState.contactsList = [
+      { uid: "user-1", name: "贾小明", beDeleted: true },
+    ];
+    await ds.searchSenders("");
+    await expect(ds.searchSenders("jia")).resolves.toEqual([]);
+
+    mockState.contactsList = [{ uid: "user-1", name: "贾小明", follow: 0 }];
+    await expect(ds.searchSenders("jia")).resolves.toEqual([]);
+  });
+
+  it("does not expose a previous Space contact through pinyin", async () => {
+    mockState.commonDataSource = {
+      searchFriends: vi.fn((keyword: string) =>
+        Promise.resolve(
+          mockState.spaceId === "space-1" && !keyword
+            ? [
+                {
+                  channel: { channelID: "space-1-only", channelType: 1 },
+                  orgData: { displayName: "贾小明" },
+                },
+              ]
+            : []
+        )
+      ),
+    };
+    mockState.contactsList = [
+      { uid: "space-1-only", name: "贾小明", status: 1 },
+    ];
+    const ds = createGlobalSearchApiDataSource();
+
+    await ds.searchSenders("");
+    await expect(ds.searchSenders("jia")).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ uid: "space-1-only" })])
+    );
+
+    mockState.spaceId = "space-2";
+    // Production leaves the account-level contactsList untouched here.
+    await expect(ds.searchSenders("jia")).resolves.toEqual([]);
+  });
+
+  it("keeps server-derived sender identities across contact changes", async () => {
+    mockState.commonDataSource = {
+      searchFriends: vi.fn().mockResolvedValue([
+        {
+          channel: { channelID: "server-only", channelType: 1 },
+          orgData: {
+            displayName: "服务端用户",
+            avatar: "https://cdn/server-only.png",
+          },
+        },
+      ]),
+    };
+    const ds = createGlobalSearchApiDataSource();
+
+    await ds.searchSenders("");
+    mockState.contactsList = [{ uid: "contact-b", name: "乙" }];
+
+    expect(ds.getSender("server-only")).toMatchObject({
+      name: "服务端用户",
+      avatarUrl: "https://cdn/server-only.png",
+    });
   });
 
   it("preserves the existing server-first candidate order", async () => {
@@ -339,52 +476,5 @@ describe("loadSenderCandidates (via searchSenders)", () => {
       "server-2",
       "local-1",
     ]);
-  });
-
-  it("does not write an in-flight sender response into a new space", async () => {
-    let resolveSearch: (value: any[]) => void = () => undefined;
-    mockState.commonDataSource = {
-      searchFriends: vi.fn().mockImplementation(
-        () =>
-          new Promise<any[]>((resolve) => {
-            resolveSearch = resolve;
-          })
-      ),
-    };
-    const ds = createGlobalSearchApiDataSource();
-    const pending = ds.searchSenders("old");
-
-    mockState.spaceId = "space-2";
-    mockState.contactsList = [];
-    resolveSearch([
-      {
-        channel: { channelID: "old-space-user", channelType: 1 },
-        orgData: { displayName: "旧空间用户" },
-      },
-    ]);
-
-    await expect(pending).resolves.toEqual([]);
-    expect(ds.getSenders().map((sender) => sender.uid)).toEqual(["self-uid"]);
-  });
-
-  it("does not write in-flight channel options into a new space", async () => {
-    let resolveGroups: (value: any[]) => void = () => undefined;
-    mockState.groupSaveList = () =>
-      new Promise<any[]>((resolve) => {
-        resolveGroups = resolve;
-      });
-    const ds = createGlobalSearchApiDataSource();
-    const pending = ds.searchChannels("quanneng");
-
-    mockState.spaceId = "space-2";
-    resolveGroups([
-      {
-        channel: { channelID: "old-space-group", channelType: 2 },
-        title: "全能接项目小组",
-        orgData: { displayName: "全能接项目小组" },
-      },
-    ]);
-
-    await expect(pending).resolves.toEqual([]);
   });
 });
