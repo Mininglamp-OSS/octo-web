@@ -674,15 +674,11 @@ async function fetchMcpListPath(
   const pageSize = params.limit && params.limit > 0 ? params.limit : 20;
   query.page_size = pageSize;
   query.page = Math.floor((params.offset ?? 0) / pageSize) + 1;
-  // Category counts must honour the SAME `created_by_type` filter as the
-  // item list, otherwise the pill numbers become misleading when a source
-  // filter is active (issue #894 follow-up). `/mcps/mine` scopes to the
-  // caller via mode=mine; the source filter piggy-backs on top. Both are
-  // passed through the shared axios params serializer, so there's a single
-  // wire-shape truth for repeated-array values.
-  const categoryParams: Record<string, unknown> = {};
-  if (path === "/mcps/mine") categoryParams.mode = "mine";
-  if (params.createdByType) categoryParams.created_by_type = params.createdByType;
+  const categoryParams = buildMcpCategoryParams(
+    path === "/mcps/mine" ? "mine" : "all",
+    params,
+    keyword
+  );
   const [resp, categoryWire] = await executeMcpListRequest(() => Promise.all([
       mcpAxios.get<McpListResponseWire>(`${BASE}${path}`, { params: query }),
       mcpAxios
@@ -701,6 +697,22 @@ async function fetchMcpListPath(
     count: categoryCounts.get(key) ?? 0,
   }));
   return { items, total: resp.data.pagination.total, categories };
+}
+
+export function buildMcpCategoryParams(
+  mode: "all" | "mine",
+  params: Pick<ListMcpParams, "createdByType" | "tags">,
+  keyword = ""
+): Record<string, unknown> {
+  // Category counts must honour the same keyword/tag/provenance scope as the
+  // item list. The active category filter is intentionally excluded so category
+  // pills remain useful for switching within the current search/tag result set.
+  const categoryParams: Record<string, unknown> = {};
+  if (mode === "mine") categoryParams.mode = "mine";
+  if (keyword) categoryParams.keyword = keyword;
+  if (params.createdByType) categoryParams.created_by_type = params.createdByType;
+  if (params.tags?.length) categoryParams.tag = params.tags;
+  return categoryParams;
 }
 
 async function fetchMcpDetailReal(id: string): Promise<McpDetail> {
