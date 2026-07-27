@@ -47,7 +47,9 @@ function selfSender(): ChannelSearchSender {
 // of the user's groups — a full group-scoped thread picker is deferred. Thread
 // hits from a picked *group* now expand to «group + all its threads» server-
 // side under the YUJ-30 unified rule (see 01-backend-search-global.md §3/§6).
-async function loadReadableChannelOptions(): Promise<GlobalSearchChannelOption[]> {
+async function loadReadableChannelOptions(): Promise<
+  GlobalSearchChannelOption[]
+> {
   const out = new Map<string, GlobalSearchChannelOption>();
   const push = (option: GlobalSearchChannelOption) => {
     const key = `${option.channelType}:${option.channelId}`;
@@ -214,8 +216,7 @@ export function createGlobalSearchApiDataSource(
   options: CreateGlobalSearchApiDataSourceOptions = {}
 ): GlobalSearchDataSource {
   const senderCache = new Map<string, ChannelSearchSender>();
-  const senderPinyinIndex =
-    createNamedPinyinSearchIndex<ChannelSearchSender>();
+  const senderPinyinIndex = createNamedPinyinSearchIndex<ChannelSearchSender>();
   let channelPinyinIndex =
     createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
   let channelCandidateSignature = "";
@@ -269,8 +270,7 @@ export function createGlobalSearchApiDataSource(
       const options = await loadReadableChannelOptions();
       const nextSignature = options
         .map(
-          (option) =>
-            `${option.channelType}:${option.channelId}:${option.name}`
+          (option) => `${option.channelType}:${option.channelId}:${option.name}`
         )
         .sort()
         .join("\n");

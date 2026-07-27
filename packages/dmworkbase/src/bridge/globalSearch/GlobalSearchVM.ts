@@ -12,14 +12,21 @@ import { MessageContentTypeConst } from "../../Service/Const";
 import { ProviderListener } from "../../Service/Provider";
 import { debounce } from "../../Utils/rateLimit";
 import { t } from "../../i18n";
-import { addCurrentImChannelInfoListener, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
-import type { LegacyGlobalSearchResponse } from "../../Service/SearchService";
 import {
+  addCurrentImChannelInfoListener,
+  getCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime";
+import type {
+  LegacyGlobalSearchContact,
+  LegacyGlobalSearchResponse,
+} from "../../Service/SearchService";
+import {
+  buildGlobalSearchPinyinIndex,
   createEmptyGlobalSearchPinyinIndex,
   extendGlobalSearchPinyinIndex,
   globalSearchContactsToLegacy,
-  globalSearchGroupsToLegacy,
-  mergeGlobalSearchPinyinResults,
+  refreshGlobalSearchGroupCandidates,
+  replaceGlobalSearchPinyinMatches,
   searchGlobalSearchPinyinIndex,
   type GlobalSearchPinyinIndex,
 } from "./globalSearchPinyin";
@@ -44,6 +51,11 @@ export default class GlobalSearchVM extends ProviderListener {
   private pinyinCandidateRequestId = 0;
   private pinyinIndex: GlobalSearchPinyinIndex =
     createEmptyGlobalSearchPinyinIndex();
+  private pinyinGroupCandidates: LegacyGlobalSearchContact[] = [];
+  private serverContactGroupResult: Pick<
+    LegacyGlobalSearchResponse,
+    "friends" | "groups"
+  > = { friends: [], groups: [] };
   private mounted = false;
   public searchError: string | null = null; // 搜索失败错误信息
   private readonly contactsChangeListener = () => {
@@ -51,8 +63,8 @@ export default class GlobalSearchVM extends ProviderListener {
   };
   private readonly spaceChangedListener = () => {
     this.pinyinIndex = createEmptyGlobalSearchPinyinIndex();
+    this.pinyinGroupCandidates = [];
     this.initLoad();
-    void this.refreshPinyinIndex();
     this.requestSearch();
   };
   // tab数据列表
@@ -87,9 +99,7 @@ export default class GlobalSearchVM extends ProviderListener {
   // 搜索标题
   public get searchTitle() {
     if (this.searchInChannel) {
-      const channelInfo = getCurrentImChannelInfo(
-        this.channel!
-      );
+      const channelInfo = getCurrentImChannelInfo(this.channel!);
       if (channelInfo) {
         return t("base.globalSearch.chatHistoryWith", {
           values: { name: channelInfo.title },
@@ -122,7 +132,6 @@ export default class GlobalSearchVM extends ProviderListener {
     this.mounted = true;
     WKApp.dataSource.addContactsChangeListener(this.contactsChangeListener);
     WKApp.mittBus.on("space-changed", this.spaceChangedListener);
-    void this.refreshPinyinIndex();
     this.requestSearch();
 
     this.channelInfoListener = (channelInfo: ChannelInfo) => {
@@ -181,6 +190,7 @@ export default class GlobalSearchVM extends ProviderListener {
     this.loadFinish = false;
     this.loadMoreing = false;
     this.searchResult = null;
+    this.serverContactGroupResult = { friends: [], groups: [] };
     this.applyPinyinMatches();
     this.notifyListener();
   }
@@ -192,7 +202,7 @@ export default class GlobalSearchVM extends ProviderListener {
     const contacts = globalSearchContactsToLegacy(
       WKApp.dataSource.contactsList || []
     );
-    let groups: ChannelInfo[] = [];
+    let groups: ChannelInfo[] | undefined;
     try {
       groups = await WKApp.dataSource.channelDataSource.groupSaveList();
     } catch {
@@ -206,9 +216,13 @@ export default class GlobalSearchVM extends ProviderListener {
     ) {
       return;
     }
-    this.pinyinIndex = extendGlobalSearchPinyinIndex(this.pinyinIndex, {
+    this.pinyinGroupCandidates = refreshGlobalSearchGroupCandidates(
+      this.pinyinGroupCandidates,
+      groups
+    );
+    this.pinyinIndex = buildGlobalSearchPinyinIndex({
       friends: contacts,
-      groups: globalSearchGroupsToLegacy(groups),
+      groups: this.pinyinGroupCandidates,
     });
     this.applyPinyinMatches();
     this.notifyListener();
@@ -225,11 +239,21 @@ export default class GlobalSearchVM extends ProviderListener {
       groups: [],
       messages: [],
     };
-    this.searchResult = mergeGlobalSearchPinyinResults(current, localResult);
+    this.searchResult = replaceGlobalSearchPinyinMatches(
+      current,
+      this.serverContactGroupResult,
+      localResult
+    );
   }
 
   // 请求搜索
   public requestSearch() {
+    if (!this.searchInChannel) {
+      // Refresh the authoritative readable snapshot for every new global
+      // search. Contact changes have their own listener, but readable groups
+      // can change without emitting that event.
+      void this.refreshPinyinIndex();
+    }
     // 递增请求计数器，用于识别当前请求
     this.requestId++;
     const currentRequestId = this.requestId;
@@ -265,6 +289,10 @@ export default class GlobalSearchVM extends ProviderListener {
             this.searchResult = res;
           }
         } else {
+          this.serverContactGroupResult = {
+            friends: res.friends || [],
+            groups: res.groups || [],
+          };
           this.searchResult = res;
         }
 

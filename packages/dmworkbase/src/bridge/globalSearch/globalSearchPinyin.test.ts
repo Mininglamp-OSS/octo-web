@@ -5,6 +5,8 @@ import {
   extendNamedPinyinSearchIndex,
   extendGlobalSearchPinyinIndex,
   mergeGlobalSearchPinyinResults,
+  refreshGlobalSearchGroupCandidates,
+  replaceGlobalSearchPinyinMatches,
   searchNamedPinyinIndex,
   searchGlobalSearchPinyinIndex,
 } from "./globalSearchPinyin";
@@ -30,24 +32,36 @@ describe("global search pinyin index", () => {
   it("matches Chinese, full pinyin and case-insensitive pinyin", () => {
     const index = buildGlobalSearchPinyinIndex(source);
 
-    expect(searchGlobalSearchPinyinIndex("魏娇", index).friends).toHaveLength(1);
-    expect(searchGlobalSearchPinyinIndex("weijiao", index).friends).toHaveLength(1);
-    expect(searchGlobalSearchPinyinIndex("WEIJIAO", index).groups).toHaveLength(1);
+    expect(searchGlobalSearchPinyinIndex("魏娇", index).friends).toHaveLength(
+      1
+    );
+    expect(
+      searchGlobalSearchPinyinIndex("weijiao", index).friends
+    ).toHaveLength(1);
+    expect(searchGlobalSearchPinyinIndex("WEIJIAO", index).groups).toHaveLength(
+      1
+    );
   });
 
   it("uses the visible remark for matching", () => {
     const index = buildGlobalSearchPinyinIndex({
-      friends: [{
-        channel_id: "u1",
-        channel_type: 1,
-        channel_name: "原名",
-        channel_remark: "魏娇莹",
-      }],
+      friends: [
+        {
+          channel_id: "u1",
+          channel_type: 1,
+          channel_name: "原名",
+          channel_remark: "魏娇莹",
+        },
+      ],
       groups: [],
     });
 
-    expect(searchGlobalSearchPinyinIndex("weijiao", index).friends).toHaveLength(1);
-    expect(searchGlobalSearchPinyinIndex("yuanming", index).friends).toHaveLength(0);
+    expect(
+      searchGlobalSearchPinyinIndex("weijiao", index).friends
+    ).toHaveLength(1);
+    expect(
+      searchGlobalSearchPinyinIndex("yuanming", index).friends
+    ).toHaveLength(0);
   });
 
   it("keeps server order and appends only non-duplicate local matches", () => {
@@ -104,7 +118,9 @@ describe("global search pinyin index", () => {
     const index = buildGlobalSearchPinyinIndex(largeSource, toPinyin);
 
     for (let count = 0; count < 20; count += 1) {
-      expect(searchGlobalSearchPinyinIndex("weijiao", index).friends).toHaveLength(1);
+      expect(
+        searchGlobalSearchPinyinIndex("weijiao", index).friends
+      ).toHaveLength(1);
     }
 
     expect(toPinyin).toHaveBeenCalledTimes(10_000);
@@ -141,17 +157,110 @@ describe("global search pinyin index", () => {
     ).toEqual(["g2"]);
   });
 
+  it("rebuilds authoritative snapshots without removed or renamed entries", () => {
+    const initial = buildGlobalSearchPinyinIndex({
+      friends: [
+        {
+          channel_id: "u1",
+          channel_type: 1,
+          channel_name: "魏娇莹",
+        },
+      ],
+      groups: [
+        {
+          channel_id: "g1",
+          channel_type: 2,
+          channel_name: "旧项目群",
+        },
+      ],
+    });
+    expect(
+      searchGlobalSearchPinyinIndex("weijiao", initial).friends
+    ).toHaveLength(1);
+    expect(
+      searchGlobalSearchPinyinIndex("jiuxiangmu", initial).groups
+    ).toHaveLength(1);
+
+    const refreshed = buildGlobalSearchPinyinIndex({
+      friends: [
+        {
+          channel_id: "u1",
+          channel_type: 1,
+          channel_name: "张小明",
+        },
+      ],
+      groups: [],
+    });
+
+    expect(searchGlobalSearchPinyinIndex("weijiao", refreshed).friends).toEqual(
+      []
+    );
+    expect(
+      searchGlobalSearchPinyinIndex("zhangxiao", refreshed).friends
+    ).toHaveLength(1);
+    expect(
+      searchGlobalSearchPinyinIndex("jiuxiangmu", refreshed).groups
+    ).toEqual([]);
+  });
+
+  it("replaces previously merged local rows from the latest server baseline", () => {
+    const staleLocalFriend = {
+      channel_id: "removed-user",
+      channel_type: 1,
+      channel_name: "已删除联系人",
+    };
+    const staleLocalGroup = {
+      channel_id: "removed-group",
+      channel_type: 2,
+      channel_name: "已退出群聊",
+    };
+    const current = {
+      friends: [staleLocalFriend],
+      groups: [staleLocalGroup],
+      messages: [{ message_id: "message-1" }],
+    };
+
+    const replaced = replaceGlobalSearchPinyinMatches(
+      current,
+      { friends: [], groups: [] },
+      { friends: [], groups: [] }
+    );
+
+    expect(replaced.friends).toEqual([]);
+    expect(replaced.groups).toEqual([]);
+    expect(replaced.messages).toEqual(current.messages);
+  });
+
+  it("keeps the last successful group snapshot on load failure but accepts an authoritative empty snapshot", () => {
+    const current = [
+      {
+        channel_id: "g1",
+        channel_type: 2,
+        channel_name: "仍可见群聊",
+      },
+    ];
+
+    expect(refreshGlobalSearchGroupCandidates(current, undefined)).toBe(
+      current
+    );
+    expect(refreshGlobalSearchGroupCandidates(current, [])).toEqual([]);
+  });
+
   it("matches the real group name with the project's pinyin converter", () => {
     const index = buildGlobalSearchPinyinIndex({
       friends: [],
-      groups: [{
-        channel_id: "g2",
-        channel_type: 2,
-        channel_name: "全能接项目小组",
-      }],
+      groups: [
+        {
+          channel_id: "g2",
+          channel_type: 2,
+          channel_name: "全能接项目小组",
+        },
+      ],
     });
 
-    expect(searchGlobalSearchPinyinIndex("quanneng", index).groups).toHaveLength(1);
+    expect(
+      searchGlobalSearchPinyinIndex("quanneng", index).groups
+    ).toHaveLength(1);
   });
 
   it("reuses a generic named index for sender, member and channel pickers", () => {

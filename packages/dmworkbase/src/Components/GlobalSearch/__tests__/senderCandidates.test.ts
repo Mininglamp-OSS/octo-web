@@ -155,9 +155,7 @@ describe("loadSenderCandidates (via searchSenders)", () => {
 
   it("§3: surfaces contactsList when searchFriends is missing entirely", async () => {
     mockState.commonDataSource = {}; // no searchFriends method
-    mockState.contactsList = [
-      { uid: "erin-uid", name: "Erin" },
-    ];
+    mockState.contactsList = [{ uid: "erin-uid", name: "Erin" }];
 
     const ds = createGlobalSearchApiDataSource();
     const results = await ds.searchSenders("");
@@ -168,14 +166,12 @@ describe("loadSenderCandidates (via searchSenders)", () => {
   it("§4: cold panel (empty sender cache) still returns candidates from the real DS API — regression guard", async () => {
     // The exact scenario Jerry-Xin flagged: no prior search results have
     // warmed the sender cache. Before the fix, this returned only [self].
-    const searchFriends = vi
-      .fn()
-      .mockResolvedValue([
-        {
-          channel: { channelID: "frank-uid", channelType: 1 },
-          orgData: { displayName: "Frank" },
-        },
-      ]);
+    const searchFriends = vi.fn().mockResolvedValue([
+      {
+        channel: { channelID: "frank-uid", channelType: 1 },
+        orgData: { displayName: "Frank" },
+      },
+    ]);
     mockState.commonDataSource = { searchFriends };
 
     const ds = createGlobalSearchApiDataSource();

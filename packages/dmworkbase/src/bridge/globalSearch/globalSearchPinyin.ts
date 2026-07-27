@@ -1,9 +1,7 @@
 import type { ChannelInfo } from "wukongimjssdk";
 import { ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import { pinyin } from "pinyin-pro";
-import type {
-  Contacts,
-} from "../../Service/DataSource/DataSource";
+import type { Contacts } from "../../Service/DataSource/DataSource";
 import { ContactsStatus } from "../../Service/DataSource/DataSource";
 import type {
   LegacyGlobalSearchContact,
@@ -44,7 +42,9 @@ function defaultPinyinConverter(value: string): string {
   const standardPinyin = pinyin(simplified, {
     toneType: "none",
     type: "array",
-  }).join("").toLowerCase();
+  })
+    .join("")
+    .toLowerCase();
   return `${legacyPinyin}\n${standardPinyin}`;
 }
 
@@ -153,8 +153,8 @@ export function extendGlobalSearchPinyinIndex(
     incoming: LegacyGlobalSearchContact[] | undefined
   ) => {
     const seen = new Set(
-      current.map((entry) =>
-        `${entry.item.channel_type}:${entry.item.channel_id}`
+      current.map(
+        (entry) => `${entry.item.channel_type}:${entry.item.channel_id}`
       )
     );
     const additions = uniqueByChannel(incoming || [])
@@ -210,6 +210,21 @@ export function mergeGlobalSearchPinyinResults(
   };
 }
 
+export function replaceGlobalSearchPinyinMatches(
+  currentResult: LegacyGlobalSearchResponse,
+  serverResult: Pick<LegacyGlobalSearchResponse, "friends" | "groups">,
+  localResult: Pick<LegacyGlobalSearchResponse, "friends" | "groups">
+): LegacyGlobalSearchResponse {
+  return mergeGlobalSearchPinyinResults(
+    {
+      ...currentResult,
+      friends: serverResult.friends,
+      groups: serverResult.groups,
+    },
+    localResult
+  );
+}
+
 export function globalSearchContactsToLegacy(
   contacts: Contacts[]
 ): LegacyGlobalSearchContact[] {
@@ -242,11 +257,20 @@ export function globalSearchGroupsToLegacy(
       (typeof org.displayName === "string" ? org.displayName : "") ||
       (typeof raw.name === "string" ? raw.name : "") ||
       channelId;
-    return [{
-      channel_id: channelId,
-      channel_type: raw.channel.channelType || ChannelTypeGroup,
-      channel_name: name,
-      channel_remark: remark || undefined,
-    }];
+    return [
+      {
+        channel_id: channelId,
+        channel_type: raw.channel.channelType || ChannelTypeGroup,
+        channel_name: name,
+        channel_remark: remark || undefined,
+      },
+    ];
   });
+}
+
+export function refreshGlobalSearchGroupCandidates(
+  current: LegacyGlobalSearchContact[],
+  groups: ChannelInfo[] | undefined
+): LegacyGlobalSearchContact[] {
+  return groups === undefined ? current : globalSearchGroupsToLegacy(groups);
 }
