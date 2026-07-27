@@ -106,6 +106,45 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
     expect(screen.queryByText(/#a7/)).toBeNull()
   })
 
+  it('shows a localized lost-anchor label and preserves the backend label', async () => {
+    stubFetch(() =>
+      jsonResponse({
+        data: [
+          {
+            id: 'c1',
+            text: 'comment whose target disappeared',
+            anchor: { kind: 'lost', reason: 'no_candidate', label: 'table' },
+            replies: [],
+          },
+        ],
+      })
+    )
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" />)
+
+    await waitFor(() => expect(screen.getByText('comment whose target disappeared')).toBeTruthy())
+    expect(screen.getByText('docs.comment.anchorLostWithLabel')).toBeTruthy()
+  })
+
+  it('shows an unknown-anchor label for an unsupported wire kind', async () => {
+    stubFetch(() =>
+      jsonResponse({
+        data: [
+          {
+            id: 'c1',
+            text: 'comment with a future anchor kind',
+            anchor: { kind: 'future-anchor' },
+            replies: [],
+          },
+        ],
+      })
+    )
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" />)
+
+    await waitFor(() => expect(screen.getByText('comment with a future anchor kind')).toBeTruthy())
+    expect(screen.getByText('docs.comment.anchorUnknown')).toBeTruthy()
+    expect(screen.queryByText('undefined')).toBeNull()
+  })
+
   it('does not render a quote block for a doc-level comment', async () => {
     stubFetch(() =>
       jsonResponse({

@@ -45,7 +45,25 @@ export interface ElementAnchor {
   label?: string
 }
 
-export type Anchor = TextAnchor | ElementAnchor
+export interface AnchorFingerprint {
+  tag?: string
+}
+
+export interface AnchorFallback {
+  nearestHeading?: { text: string }
+  ratio?: number
+}
+
+/** An element anchor that octo-doc could no longer reconcile in the current version. */
+export interface LostAnchor {
+  kind: 'lost'
+  reason?: string
+  label?: string
+  fingerprint?: AnchorFingerprint
+  fallback?: AnchorFallback
+}
+
+export type Anchor = TextAnchor | ElementAnchor | LostAnchor
 
 /**
  * Author object as returned by octo-doc (mirrors backend core.Author). Comments carry the

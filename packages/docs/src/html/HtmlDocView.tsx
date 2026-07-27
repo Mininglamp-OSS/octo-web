@@ -133,6 +133,7 @@ export function resolveHtmlDocAnchorText(
 ): string | null {
   if (!anchor) return null
   if (anchor.kind === 'text') return truncateAnchorText(anchor.text)
+  if (anchor.kind !== 'element') return null
   if (!doc) return null
   try {
     const el = doc.querySelector(`[data-odoc-aid="${cssAttrValue(anchor.aid)}"]`)

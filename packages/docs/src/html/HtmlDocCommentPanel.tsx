@@ -51,8 +51,18 @@ export interface HtmlDocCommentPanelProps {
 /** Short human label for how a comment is anchored (element aid / selected text / doc-level). */
 function anchorLabel(anchor: Anchor | null | undefined): string {
   if (!anchor) return t('docs.comment.anchorDoc')
-  if (anchor.kind === 'element') return `<${anchor.label ?? 'el'}> #${anchor.aid}`
-  return `“${anchor.text}”`
+  switch (anchor.kind) {
+    case 'element':
+      return `<${anchor.label ?? 'el'}> #${anchor.aid}`
+    case 'text':
+      return `“${anchor.text}”`
+    case 'lost':
+      return anchor.label
+        ? t('docs.comment.anchorLostWithLabel', { values: { label: anchor.label } })
+        : t('docs.comment.anchorLost')
+    default:
+      return t('docs.comment.anchorUnknown')
+  }
 }
 
 function fallbackAnchorText(anchor: Anchor | null | undefined): string | null {
@@ -180,7 +190,8 @@ export function HtmlDocCommentPanel({
 
       <ul className="octo-html-doc-comments-list">
         {threads.map((thread) => {
-          const quoteText = resolveAnchorText?.(thread.anchor) ?? fallbackAnchorText(thread.anchor)
+          const canResolveAnchor = thread.anchor?.kind === 'element' || thread.anchor?.kind === 'text'
+          const quoteText = (canResolveAnchor ? resolveAnchorText?.(thread.anchor) : null) ?? fallbackAnchorText(thread.anchor)
           const label = anchorLabel(thread.anchor)
 
           return (
