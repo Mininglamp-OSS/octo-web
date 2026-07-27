@@ -434,7 +434,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
     [onDeleted],
   )
   // Reuse the unified document soft-delete flow; octo-doc remains read-only content storage.
-  const del = useDocDelete(docId, handleDeleted)
+  const del = useDocDelete(docId, handleDeleted, space ? { spaceId: space } : undefined)
 
   useEffect(() => {
     const seq = ++reqSeq.current

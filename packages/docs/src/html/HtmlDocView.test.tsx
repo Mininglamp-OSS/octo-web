@@ -883,7 +883,13 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
 
     await waitFor(() => expect(onDeleted).toHaveBeenCalledWith('d_html'))
     expect(wk.apiClient.calls).toContainEqual(
-      expect.objectContaining({ method: 'delete', url: '/docs/d_html' }),
+      expect.objectContaining({
+        method: 'delete',
+        url: '/docs/d_html',
+        config: expect.objectContaining({
+          headers: expect.objectContaining({ 'X-Space-Id': 'sp' }),
+        }),
+      }),
     )
     expect(
       rawFetch.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE'),
@@ -910,7 +916,7 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     fireEvent.click(screen.getByRole('button', { name: 'docs.comment.delete' }))
 
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(errorKey))
-    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(onDeleted).not.toHaveBeenCalled()
     expect(wk.apiClient.calls).toContainEqual(
       expect.objectContaining({ method: 'delete', url: '/docs/d_html' }),

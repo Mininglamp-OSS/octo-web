@@ -37,6 +37,19 @@ describe('useDocDelete (Problem 4 — delete contract, relocated)', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('passes an explicit spaceId to the delete request', async () => {
+    wk.apiClient.responder = () => ({ data: {}, status: 200 })
+    const { result } = renderHook(() =>
+      useDocDelete('d_1', undefined, { spaceId: 'space-doc' }),
+    )
+    await act(async () => {
+      await result.current.confirm()
+    })
+    const call = wk.apiClient.calls.at(-1)!
+    expect(call.method).toBe('delete')
+    expect(call.config?.headers?.['X-Space-Id']).toBe('space-doc')
+  })
+
   it('treats a 404 as already-gone (success, no error)', async () => {
     wk.apiClient.responder = () => {
       throw { response: { status: 404 } }

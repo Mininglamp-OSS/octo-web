@@ -340,8 +340,10 @@ export async function updateDocTitle(docId: string, title: string): Promise<DocM
  * not admin; 409 archived target. Callers map the ApiError status to the right message — this
  * helper just performs the request and lets the error propagate.
  */
-export async function deleteDoc(docId: string): Promise<void> {
-  await apiClient().delete(`/docs/${docId}`)
+export async function deleteDoc(docId: string, opts?: { spaceId?: string }): Promise<void> {
+  const config =
+    opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined
+  await apiClient().delete(`/docs/${docId}`, config)
 }
 
 /** Downloadable rich-document formats served from the authoritative live Y.Doc. */
