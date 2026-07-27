@@ -88,12 +88,14 @@
 }
 
 /*
- * 头像和二维码子页返回时仍保留 animationend，让 WKViewQueue 正常清理栈顶；
+ * 头像、二维码、群管理和群管理成员选择页返回时仍保留 animationend，让 WKViewQueue 正常清理栈顶；
  * 只取消可见位移，避免标题先切回父页、内容仍横向退场造成的闪动。
  * 该规则不改变 RoutePage/WKViewQueue 的退栈和数据刷新逻辑。
  */
 .wk-viewqueue-view-out:has(.wk-channelavatar),
-.wk-viewqueue-view-out:has(.wk-channelqrcode) {
+.wk-viewqueue-view-out:has(.wk-channelqrcode),
+.wk-viewqueue-view-out:has(.wk-group-management),
+.wk-viewqueue-view-out:has(.wk-group-member-picker) {
     background: var(--wk-bg-surface);
     animation-name: wk-channelsetting-child-exit;
     animation-duration: var(--wk-dur-fast);
