@@ -301,7 +301,11 @@ export default class GlobalSearch extends Component<
                     },
                     onChange: (value) => {
                       this.setState({ searchValue: value });
-                      if (!vm.isComposing) vm.handleInputChange(value);
+                      if (vm.isComposing) {
+                        vm.handleComposingInputChange(value);
+                      } else {
+                        vm.handleInputChange(value);
+                      }
                     },
                     trailing: this.state.searchValue ? (
                       <button

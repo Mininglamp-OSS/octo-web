@@ -13,6 +13,11 @@ import type {
   GlobalSearchFileTypeCategory,
   GlobalSearchQuery,
 } from "../../Service/SearchTypes";
+import {
+  createNamedPinyinSearchIndex,
+  extendNamedPinyinSearchIndex,
+  searchNamedPinyinIndex,
+} from "./globalSearchPinyin";
 
 const PAGE_SIZE_SENDERS = 50;
 
@@ -42,9 +47,7 @@ function selfSender(): ChannelSearchSender {
 // of the user's groups — a full group-scoped thread picker is deferred. Thread
 // hits from a picked *group* now expand to «group + all its threads» server-
 // side under the YUJ-30 unified rule (see 01-backend-search-global.md §3/§6).
-async function loadReadableChannelOptions(
-  keyword: string
-): Promise<GlobalSearchChannelOption[]> {
+async function loadReadableChannelOptions(): Promise<GlobalSearchChannelOption[]> {
   const out = new Map<string, GlobalSearchChannelOption>();
   const push = (option: GlobalSearchChannelOption) => {
     const key = `${option.channelType}:${option.channelId}`;
@@ -94,10 +97,24 @@ async function loadReadableChannelOptions(
     // Failing to load "my groups" is non-fatal — we still return recents.
   }
 
-  const kw = keyword.trim().toLowerCase();
   const options = Array.from(out.values());
-  if (!kw) return options.slice(0, 60);
-  return options.filter((o) => o.name.toLowerCase().includes(kw)).slice(0, 60);
+  return options;
+}
+
+function localContactSenders(): ChannelSearchSender[] {
+  const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
+  return list.flatMap((contact) => {
+    const uid = contact?.uid;
+    if (!uid) return [];
+    return [
+      {
+        uid,
+        name: contact?.remark || contact?.name || uid,
+        avatarUrl: contact?.avatar || WKApp.shared.avatarUser(uid),
+        isCurrentMember: true,
+      },
+    ];
+  });
 }
 
 // RC #554 blocker (Jerry-Xin + OctoBoooot @ 2026-07-09): the previous
@@ -197,6 +214,12 @@ export function createGlobalSearchApiDataSource(
   options: CreateGlobalSearchApiDataSourceOptions = {}
 ): GlobalSearchDataSource {
   const senderCache = new Map<string, ChannelSearchSender>();
+  const senderPinyinIndex =
+    createNamedPinyinSearchIndex<ChannelSearchSender>();
+  let channelPinyinIndex =
+    createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
+  let channelCandidateSignature = "";
+  let indexedSpaceId = WKApp.shared.currentSpaceId;
   const rememberSender = (sender?: ChannelSearchSender) => {
     if (!sender?.uid) return;
     senderCache.set(sender.uid, sender);
@@ -204,6 +227,18 @@ export function createGlobalSearchApiDataSource(
   // Seed with self so the "包含成员" candidate list can filter it out reliably
   // (and the "发送人" chip always resolves self's display name).
   rememberSender(selfSender());
+
+  const resetPinyinIndexesForSpace = () => {
+    const currentSpaceId = WKApp.shared.currentSpaceId;
+    if (currentSpaceId === indexedSpaceId) return;
+    indexedSpaceId = currentSpaceId;
+    senderCache.clear();
+    senderPinyinIndex.entries.clear();
+    channelPinyinIndex =
+      createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
+    channelCandidateSignature = "";
+    rememberSender(selfSender());
+  };
 
   return {
     getSenders: () => Array.from(senderCache.values()),
@@ -214,17 +249,43 @@ export function createGlobalSearchApiDataSource(
       },
     getSelfUid: () => WKApp.loginInfo.uid || "",
     searchSenders: async (keyword: string) => {
+      resetPinyinIndexesForSpace();
       const remote = await loadSenderCandidates(keyword);
-      remote.forEach(rememberSender);
-      const kw = keyword.trim().toLowerCase();
+      [...localContactSenders(), ...remote].forEach(rememberSender);
       const combined = Array.from(senderCache.values());
-      if (!kw) return combined.slice(0, PAGE_SIZE_SENDERS);
-      return combined
-        .filter((s) => `${s.name}${s.uid}`.toLowerCase().includes(kw))
-        .slice(0, PAGE_SIZE_SENDERS);
+      extendNamedPinyinSearchIndex(
+        senderPinyinIndex,
+        combined,
+        (sender) => sender.uid,
+        (sender) => [sender.name, sender.uid]
+      );
+      return searchNamedPinyinIndex(keyword, senderPinyinIndex).slice(
+        0,
+        PAGE_SIZE_SENDERS
+      );
     },
     searchChannels: async (keyword: string) => {
-      return loadReadableChannelOptions(keyword);
+      resetPinyinIndexesForSpace();
+      const options = await loadReadableChannelOptions();
+      const nextSignature = options
+        .map(
+          (option) =>
+            `${option.channelType}:${option.channelId}:${option.name}`
+        )
+        .sort()
+        .join("\n");
+      if (nextSignature !== channelCandidateSignature) {
+        channelCandidateSignature = nextSignature;
+        channelPinyinIndex =
+          createNamedPinyinSearchIndex<GlobalSearchChannelOption>();
+        extendNamedPinyinSearchIndex(
+          channelPinyinIndex,
+          options,
+          (option) => `${option.channelType}:${option.channelId}`,
+          (option) => [option.name, option.channelId]
+        );
+      }
+      return searchNamedPinyinIndex(keyword, channelPinyinIndex).slice(0, 60);
     },
     getFileTypeCategories: async () => {
       const cache = options.fileTypeCategoriesCache;

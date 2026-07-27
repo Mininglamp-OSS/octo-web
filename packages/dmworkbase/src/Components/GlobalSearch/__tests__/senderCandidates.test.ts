@@ -21,6 +21,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const mockState = vi.hoisted(() => ({
   commonDataSource: undefined as any,
   contactsList: [] as any[],
+  groups: [] as any[],
+  spaceId: "space-1",
   loginUid: "self-uid",
   loginName: "Me",
 }));
@@ -31,6 +33,9 @@ vi.mock("../../../App", () => ({
       return {
         commonDataSource: mockState.commonDataSource,
         contactsList: mockState.contactsList,
+        channelDataSource: {
+          groupSaveList: vi.fn().mockResolvedValue(mockState.groups),
+        },
       };
     },
     get loginInfo() {
@@ -41,6 +46,9 @@ vi.mock("../../../App", () => ({
       };
     },
     shared: {
+      get currentSpaceId() {
+        return mockState.spaceId;
+      },
       avatarUser: (uid: string) => `avatar://user/${uid}`,
       avatarChannel: (ch: any) =>
         `avatar://ch/${ch?.channelID ?? ""}/${ch?.channelType ?? ""}`,
@@ -52,24 +60,28 @@ vi.mock("../../../App", () => ({
   },
 }));
 
-vi.mock("wukongimjssdk", () => ({
-  Channel: class {
-    channelID: string;
-    channelType: number;
-    constructor(channelID: string, channelType: number) {
-      this.channelID = channelID;
-      this.channelType = channelType;
-    }
-  },
-  ChannelTypeGroup: 2,
-  ChannelTypePerson: 1,
-  WKSDK: {
+vi.mock("wukongimjssdk", () => {
+  const sdk = {
     shared: () => ({
       conversationManager: { conversations: [] },
       channelManager: { getChannelInfo: () => undefined },
     }),
-  },
-}));
+  };
+  return {
+    default: sdk,
+    Channel: class {
+      channelID: string;
+      channelType: number;
+      constructor(channelID: string, channelType: number) {
+        this.channelID = channelID;
+        this.channelType = channelType;
+      }
+    },
+    ChannelTypeGroup: 2,
+    ChannelTypePerson: 1,
+    WKSDK: sdk,
+  };
+});
 
 import { createGlobalSearchApiDataSource } from "../dataSource";
 
@@ -77,6 +89,8 @@ describe("loadSenderCandidates (via searchSenders)", () => {
   beforeEach(() => {
     mockState.commonDataSource = undefined;
     mockState.contactsList = [];
+    mockState.groups = [];
+    mockState.spaceId = "space-1";
   });
 
   it("§1: maps ChannelInfo[] from commonDataSource.searchFriends into ChannelSearchSender", async () => {
@@ -211,5 +225,57 @@ describe("loadSenderCandidates (via searchSenders)", () => {
 
     const ds = createGlobalSearchApiDataSource();
     await expect(ds.searchSenders("")).resolves.toBeDefined();
+  });
+
+  it("matches sender/member candidates by full pinyin without skipping remote search", async () => {
+    const searchFriends = vi.fn().mockResolvedValue([]);
+    mockState.commonDataSource = { searchFriends };
+    mockState.contactsList = [{ uid: "jia-uid", name: "贾小明" }];
+
+    const ds = createGlobalSearchApiDataSource();
+    const results = await ds.searchSenders("jia");
+
+    expect(searchFriends).toHaveBeenCalledWith("jia");
+    expect(results.map((sender) => sender.uid)).toContain("jia-uid");
+  });
+
+  it("matches group options by full pinyin", async () => {
+    mockState.groups = [
+      {
+        channel: { channelID: "group-1", channelType: 2 },
+        displayName: "全能接项目小组",
+      },
+    ];
+
+    const ds = createGlobalSearchApiDataSource();
+    const results = await ds.searchChannels("quanneng");
+
+    expect(results.map((channel) => channel.channelId)).toContain("group-1");
+  });
+
+  it("removes stale channel candidates when the readable pool changes", async () => {
+    mockState.groups = [
+      {
+        channel: { channelID: "group-1", channelType: 2 },
+        displayName: "全能接项目小组",
+      },
+    ];
+    const ds = createGlobalSearchApiDataSource();
+    await expect(ds.searchChannels("quanneng")).resolves.toHaveLength(1);
+
+    mockState.groups = [];
+    await expect(ds.searchChannels("quanneng")).resolves.toEqual([]);
+  });
+
+  it("clears cached pinyin candidates after switching spaces", async () => {
+    mockState.contactsList = [{ uid: "old-uid", name: "贾小明" }];
+    const ds = createGlobalSearchApiDataSource();
+    await expect(ds.searchSenders("jia")).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ uid: "old-uid" })])
+    );
+
+    mockState.spaceId = "space-2";
+    mockState.contactsList = [];
+    await expect(ds.searchSenders("jia")).resolves.toEqual([]);
   });
 });
