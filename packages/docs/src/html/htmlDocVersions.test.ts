@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { listVersions } from './htmlDocVersions.ts'
-import { deleteDoc } from './htmlDocAdmin.ts'
 
-// octo-doc versions/admin live in the SAME separate backend as comments — reached by raw
-// credentialed fetch. Stub the global fetch and assert URL (PATH slug) / credentials / method.
+// octo-doc versions live in the same separate backend as comments — reached by raw credentialed
+// fetch. Stub the global fetch and assert URL (PATH slug) / credentials.
 function stubFetch(impl: (url: string, init?: RequestInit) => unknown) {
   const spy = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
     Promise.resolve(impl(String(input), init)),
@@ -60,21 +59,5 @@ describe('listVersions (octo-doc backend)', () => {
   it('throws on a non-ok response', async () => {
     stubFetch(() => jsonResponse(null, false, 403))
     await expect(listVersions('s')).rejects.toThrow()
-  })
-})
-
-describe('deleteDoc (octo-doc backend)', () => {
-  it('DELETEs <base>/v1/docs/{slug} with credentials', async () => {
-    const spy = stubFetch(() => jsonResponse({}, true, 204))
-    await deleteDoc('my-slug')
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/my-slug')
-    const init = spy.mock.calls[0][1] as RequestInit
-    expect(init.method).toBe('DELETE')
-    expect(init.credentials).toBe('include')
-  })
-
-  it('throws on a non-ok response', async () => {
-    stubFetch(() => jsonResponse(null, false, 500))
-    await expect(deleteDoc('s')).rejects.toThrow()
   })
 })
