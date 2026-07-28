@@ -78,6 +78,28 @@ describe('HtmlSourceView', () => {
     expect(spy.mock.calls.length).toBe(1)
   })
 
+  it('does not cache latest across remounts', async () => {
+    const spy = stubFetch(() => htmlResponse('<p>latest</p>'))
+    const first = render(<HtmlSourceView slug="src-latest" version="latest" />)
+    await waitFor(() => screen.getByTestId('html-doc-source-code'))
+    first.unmount()
+    render(<HtmlSourceView slug="src-latest" version="latest" />)
+    await waitFor(() => screen.getByTestId('html-doc-source-code'))
+    expect(spy.mock.calls.length).toBe(2)
+  })
+
+  it('evicts the least recently used numeric version after twenty entries', async () => {
+    const spy = stubFetch((url) => htmlResponse(`<p>${url}</p>`))
+    for (let version = 1; version <= 21; version++) {
+      const view = render(<HtmlSourceView slug="src-lru" version={String(version)} />)
+      await waitFor(() => screen.getByTestId('html-doc-source-code'))
+      view.unmount()
+    }
+    render(<HtmlSourceView slug="src-lru" version="1" />)
+    await waitFor(() => screen.getByTestId('html-doc-source-code'))
+    expect(spy.mock.calls.length).toBe(22)
+  })
+
   it('re-fetches when the version changes (lazy per version)', async () => {
     const spy = stubFetch((url) => htmlResponse(url.includes('/8/') ? '<p>v8</p>' : '<p>v9</p>'))
     const { rerender } = render(<HtmlSourceView slug="src-ver" version="8" />)

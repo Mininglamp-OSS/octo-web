@@ -67,6 +67,12 @@ describe('getVersionSource', () => {
     expect((spy.mock.calls[0][1] as RequestInit).cache).toBeUndefined()
   })
 
+  it('revalidates latest with browser no-cache', async () => {
+    const spy = stubFetch(() => htmlResponse('<h1>latest</h1>'))
+    await getVersionSource('my-slug', 'latest')
+    expect((spy.mock.calls[0][1] as RequestInit).cache).toBe('no-cache')
+  })
+
   it('encodes the path and forwards AbortSignal', async () => {
     const spy = stubFetch(() => htmlResponse('x'))
     const controller = new AbortController()

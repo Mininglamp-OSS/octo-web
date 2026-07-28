@@ -5,17 +5,39 @@
 // comments / doctype), a wrap toggle and copy-all. No Monaco, no highlighter lib, no new deps.
 //
 // Browser search (Cmd/Ctrl-F) works because the source is laid out as real, selectable text nodes
-// (not canvas / virtualised rows). Loads lazily per slug:version with an in-module cache so
-// re-opening a version is instant and never re-hits the backend.
+// (not canvas / virtualised rows). Loads lazily per slug:version; immutable numeric versions use a
+// bounded session cache, while `latest` always revalidates against octo-doc.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getVersionSource } from './htmlDocSourceApi.ts'
 import { t } from '../octoweb/index.ts'
 
-// slug:version → source text. Module-scoped so it survives remounts within a session; bounded
-// implicitly by the small number of versions a user opens.
+const SOURCE_CACHE_LIMIT = 20
 const sourceCache = new Map<string, string>()
 const cacheKey = (slug: string, version: string) => `${slug}::${version}`
+const isCacheableVersion = (version: string) => /^\d+$/.test(version)
+
+function getCachedSource(slug: string, version: string): string | undefined {
+  if (!isCacheableVersion(version)) return undefined
+  const key = cacheKey(slug, version)
+  const hit = sourceCache.get(key)
+  if (hit == null) return undefined
+  sourceCache.delete(key)
+  sourceCache.set(key, hit)
+  return hit
+}
+
+function cacheSource(slug: string, version: string, text: string) {
+  if (!isCacheableVersion(version)) return
+  const key = cacheKey(slug, version)
+  sourceCache.delete(key)
+  sourceCache.set(key, text)
+  while (sourceCache.size > SOURCE_CACHE_LIMIT) {
+    const oldestKey = sourceCache.keys().next().value
+    if (oldestKey == null) break
+    sourceCache.delete(oldestKey)
+  }
+}
 
 type LoadState =
   | { status: 'loading' }
@@ -131,13 +153,13 @@ export interface HtmlSourceViewProps {
  * The version toggle above it drives `version`; a new version re-fetches (or hits cache).
  */
 export function HtmlSourceView({ slug, version }: HtmlSourceViewProps) {
-  const cached = sourceCache.get(cacheKey(slug, version))
+  const cached = getCachedSource(slug, version)
   const [state, setState] = useState<LoadState>(cached != null ? { status: 'ready', text: cached } : { status: 'loading' })
   const [wrap, setWrap] = useState(false)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    const hit = sourceCache.get(cacheKey(slug, version))
+    const hit = getCachedSource(slug, version)
     if (hit != null) {
       setState({ status: 'ready', text: hit })
       return
@@ -148,7 +170,7 @@ export function HtmlSourceView({ slug, version }: HtmlSourceViewProps) {
     getVersionSource(slug, version, controller.signal)
       .then((text) => {
         if (cancelled) return
-        sourceCache.set(cacheKey(slug, version), text)
+        cacheSource(slug, version, text)
         setState({ status: 'ready', text })
       })
       .catch(() => {

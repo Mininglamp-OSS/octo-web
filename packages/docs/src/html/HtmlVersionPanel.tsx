@@ -30,8 +30,8 @@ export function HtmlVersionPanel({
   onCompare: (from: number, to: number) => void
   onClose?: () => void
 }) {
-  // Newest-first per backend contract; the "current version" defaults to the newest published one.
-  const latest = versions.length ? versions[0].n : null
+  const orderedVersions = [...versions].sort((a, b) => b.n - a.n)
+  const latest = orderedVersions.length ? orderedVersions[0].n : null
   const current = currentVersion ?? latest
 
   return (
@@ -50,10 +50,10 @@ export function HtmlVersionPanel({
         <p className="octo-member-empty">{t('docs.version.empty')}</p>
       )}
       <ul className="octo-html-doc-versions-list">
-        {versions.map((v, i) => {
+        {orderedVersions.map((v, i) => {
           const time = formatCommentTime(v.created_at)
           // "与上一版比较": the numerically-previous published version (the next row down, older).
-          const prev = versions[i + 1]?.n
+          const prev = orderedVersions[i + 1]?.n
           const isCurrent = current != null && v.n === current
           return (
             <li key={v.n} className="octo-html-doc-version-row" aria-current={isCurrent || undefined}>

@@ -2,12 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getDiff, type DiffChange, type DiffCodeHunk, type DiffResult } from './htmlDocSourceApi.ts'
-import type { DiffRow } from './htmlSourceDiff.ts'
 import { HtmlPreviewFrame } from './HtmlPreviewFrame.tsx'
 import { t } from '../octoweb/index.ts'
 
 type DiffTab = 'code' | 'page'
 type PageLayout = 'both' | 'old' | 'new'
+
+interface DiffRow {
+  op: 'equal' | 'add' | 'remove'
+  oldLine?: number
+  newLine?: number
+  oldText?: string
+  newText?: string
+}
 
 export interface HtmlDiffModalProps {
   slug: string
@@ -25,8 +32,6 @@ function CodeRow({ row }: { row: DiffRow }) {
       ? 'octo-diff-row is-add'
       : row.op === 'remove'
       ? 'octo-diff-row is-remove'
-      : row.op === 'replace'
-      ? 'octo-diff-row is-replace'
       : 'octo-diff-row'
   const text = row.op === 'add' ? row.newText : row.op === 'remove' ? row.oldText : row.newText
   const mark = row.op === 'add' ? '+' : row.op === 'remove' ? '-' : ' '
@@ -176,14 +181,45 @@ export function HtmlDiffModal({ slug, from, to, title, onClose }: HtmlDiffModalP
     }
   }, [slug, from, to])
 
-  // Esc closes; focus the dialog on open (focus trap-lite parity with the member modal).
   useEffect(() => {
-    dialogRef.current?.focus()
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const dialog = dialogRef.current
+    dialog?.focus()
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab' || !dialog) return
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter(
+        (element) =>
+          !element.hidden && !element.closest('[hidden]') && element.getAttribute('aria-hidden') !== 'true',
+      )
+      if (!focusable.length) {
+        e.preventDefault()
+        dialog.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      previousFocus?.focus()
+    }
   }, [onClose])
 
   const rows = useMemo<DiffRow[]>(() => {
@@ -232,7 +268,11 @@ export function HtmlDiffModal({ slug, from, to, title, onClose }: HtmlDiffModalP
     [changes, wireSyncScroll],
   )
 
-  useEffect(() => () => cleanupSync.current?.(), [])
+  useEffect(() => {
+    cleanupSync.current?.()
+    cleanupSync.current = wireSyncScroll()
+    return () => cleanupSync.current?.()
+  }, [wireSyncScroll])
 
   const gotoChange = useCallback(
     (delta: number) => {
@@ -298,15 +338,16 @@ export function HtmlDiffModal({ slug, from, to, title, onClose }: HtmlDiffModalP
           </div>
         )}
 
-        {status === 'ready' && tab === 'code' && (
-          <div
-            id="html-diff-panel-code"
-            role="tabpanel"
-            aria-labelledby="html-diff-tab-code"
-            className="octo-diff-code-panel"
-            data-testid="html-diff-code"
-          >
-            {rows.every((r) => r.op === 'equal') ? (
+        <div
+          id="html-diff-panel-code"
+          role="tabpanel"
+          aria-labelledby="html-diff-tab-code"
+          className="octo-diff-code-panel"
+          data-testid="html-diff-code"
+          hidden={status !== 'ready' || tab !== 'code'}
+        >
+          {status === 'ready' &&
+            (rows.every((r) => r.op === 'equal') ? (
               <p className="octo-member-empty">{t('docs.diff.noChanges')}</p>
             ) : (
               <pre className="octo-diff-code" data-testid="html-diff-code-pre">
@@ -316,18 +357,19 @@ export function HtmlDiffModal({ slug, from, to, title, onClose }: HtmlDiffModalP
                   ))}
                 </code>
               </pre>
-            )}
-          </div>
-        )}
+            ))}
+        </div>
 
-        {status === 'ready' && tab === 'page' && (
-          <div
-            id="html-diff-panel-page"
-            role="tabpanel"
-            aria-labelledby="html-diff-tab-page"
-            className="octo-diff-page-panel"
-            data-testid="html-diff-page"
-          >
+        <div
+          id="html-diff-panel-page"
+          role="tabpanel"
+          aria-labelledby="html-diff-tab-page"
+          className="octo-diff-page-panel"
+          data-testid="html-diff-page"
+          hidden={status !== 'ready' || tab !== 'page'}
+        >
+          {status === 'ready' && tab === 'page' && (
+            <>
             <div className="octo-diff-toolbar">
               <div className="octo-diff-layout" role="group" aria-label={t('docs.diff.layout')}>
                 <button
@@ -399,8 +441,9 @@ export function HtmlDiffModal({ slug, from, to, title, onClose }: HtmlDiffModalP
                 </div>
               )}
             </div>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -6,9 +6,9 @@ import type { HtmlDocVersion } from './htmlDocVersions.ts'
 afterEach(() => cleanup())
 
 const versions: HtmlDocVersion[] = [
-  { n: 3, created_at: '2026-07-16T04:00:00Z' },
-  { n: 2, created_at: '2026-07-15T04:00:00Z' },
   { n: 1, created_at: '2026-07-14T04:00:00Z' },
+  { n: 2, created_at: '2026-07-15T04:00:00Z' },
+  { n: 3, created_at: '2026-07-16T04:00:00Z' },
 ]
 
 function renderPanel(overrides: Partial<React.ComponentProps<typeof HtmlVersionPanel>> = {}) {
@@ -21,6 +21,11 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof HtmlVersionP
 }
 
 describe('HtmlVersionPanel', () => {
+  it('sorts the backend ascending list newest-first', () => {
+    renderPanel()
+    expect(screen.getAllByRole('listitem').map((row) => row.textContent?.slice(0, 2))).toEqual(['v3', 'v2', 'v1'])
+  })
+
   it('renders one row per version with 查看 / 与上一版比较 / 与当前版比较 actions', () => {
     renderPanel()
     const rows = screen.getAllByRole('listitem')

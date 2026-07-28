@@ -115,6 +115,12 @@ describe('HtmlDiffModal', () => {
     const dialog = await waitFor(() => screen.getByRole('dialog'))
     expect(dialog.getAttribute('aria-modal')).toBe('true')
     expect(within(dialog).getAllByRole('tab')).toHaveLength(2)
+    expect(within(dialog).getByRole('tab', { name: 'docs.diff.tabCode' }).getAttribute('aria-controls')).toBe(
+      'html-diff-panel-code',
+    )
+    expect(
+      within(dialog).getByRole('tabpanel', { hidden: true, name: 'docs.diff.tabCode' }).getAttribute('id'),
+    ).toBe('html-diff-panel-code')
     await waitFor(() => screen.getByTestId('html-diff-code-pre'))
     expect(screen.getByTestId('html-diff-code-pre').querySelector('.is-remove')).toBeTruthy()
     expect(screen.getByTestId('html-diff-code-pre').querySelector('.is-add')).toBeTruthy()
@@ -167,6 +173,53 @@ describe('HtmlDiffModal', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     fireEvent.mouseDown(container.querySelector('.octo-modal-overlay') as HTMLElement)
     expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops synchronizing scroll after the toggle is disabled', async () => {
+    stubFetch({})
+    render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)
+    fireEvent.click(await screen.findByText('docs.diff.tabPage'))
+    await waitFor(() => screen.getByTestId('html-diff-page'))
+    const frames = screen.getAllByTitle(/Doc · v/) as HTMLIFrameElement[]
+    const oldDoc = frames[0].contentDocument!
+    const newDoc = frames[1].contentDocument!
+    Object.defineProperties(oldDoc.documentElement, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 100 },
+    })
+    Object.defineProperties(newDoc.documentElement, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 100 },
+    })
+    oldDoc.documentElement.scrollTop = 450
+    fireEvent.scroll(oldDoc)
+    expect(newDoc.documentElement.scrollTop).toBe(450)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'docs.diff.syncScroll' }))
+    oldDoc.documentElement.scrollTop = 900
+    fireEvent.scroll(oldDoc)
+    expect(newDoc.documentElement.scrollTop).toBe(450)
+  })
+
+  it('traps focus and restores the trigger on close', async () => {
+    stubFetch({})
+    const trigger = document.createElement('button')
+    trigger.textContent = 'trigger'
+    document.body.appendChild(trigger)
+    trigger.focus()
+    const view = render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)
+    const dialog = await screen.findByRole('dialog')
+    const buttons = Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not([disabled])')).filter(
+      (button) => !button.closest('[hidden]'),
+    )
+    buttons[buttons.length - 1].focus()
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(document.activeElement).toBe(buttons[0])
+    buttons[0].focus()
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(buttons[buttons.length - 1])
+    view.unmount()
+    expect(document.activeElement).toBe(trigger)
+    trigger.remove()
   })
 
   it('shows an error for HTTP or contract failures', async () => {

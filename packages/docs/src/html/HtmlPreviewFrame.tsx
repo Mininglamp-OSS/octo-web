@@ -58,6 +58,7 @@ export function HtmlPreviewFrame({
     fetch(url, {
       credentials: 'include',
       headers: renderHeaders(),
+      cache: version === 'latest' ? 'no-cache' : undefined,
       signal: controller.signal,
     })
       .then(async (res) => {
