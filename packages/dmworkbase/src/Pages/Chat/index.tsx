@@ -372,6 +372,7 @@ export class ChatContentPage extends Component<
     this.setState(
       openChatRightPanel("filePreview", {
         previewFile: file,
+        activeThread: this.state.activeThread,
         activePreviewMessageId: file.messageId || null, // 保存激活的消息 ID
         previewReturnChannelSearch: fromChannelSearch,
         // 仅当预览触发前用户已经在子区面板里 (showThreadPanel 已经是 true)
@@ -579,9 +580,7 @@ export class ChatContentPage extends Component<
         }
         return {
           ...openChatRightPanel("summary"),
-          summaryPanelView: opening
-            ? data.summaryPanelView
-            : prevState.summaryPanelView,
+          summaryPanelView: data.summaryPanelView,
         };
       });
     };

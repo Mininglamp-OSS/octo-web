@@ -65,16 +65,19 @@ describe("Chat right panel state", () => {
       url: "https://example.test/a.pdf",
       name: "a.pdf",
     } as any;
+    const activeThread = { channel_id: "g1____t1" } as any;
 
     expect(
       openChatRightPanel("filePreview", {
         previewFile,
+        activeThread,
         activePreviewMessageId: "m1",
         previewHadThreadShell: true,
       })
     ).toEqual({
       ...closedState,
       showThreadPanel: true,
+      activeThread,
       previewFile,
       activePreviewMessageId: "m1",
       previewHadThreadShell: true,

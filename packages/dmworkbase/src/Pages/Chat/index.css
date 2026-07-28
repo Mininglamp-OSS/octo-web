@@ -626,8 +626,7 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
    侧边面板布局（子区 + 文件预览共用）
    ============================================ */
 
-/* 只有侧边面板打开时 */
-/* 子区打开时（无论设置是否开着），消息区宽度减去子区宽度 */
+/* 子区/文件预览打开时，消息区宽度减去右侧面板宽度 */
 .wk-chat-content-right.wk-chat-threadpanel-open .wk-chat-content-chat {
   width: calc(100% - var(--wk-width-thread-panel));
 }
@@ -636,9 +635,7 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
   width: calc(100% - var(--wk-width-resizable-right-panel));
 }
 
-.wk-chat-content-right.wk-chat-webhook-preview-open[
-    data-resizable-right-panel-layout="overlay"
-  ]
+.wk-chat-content-right.wk-chat-webhook-preview-open[data-resizable-right-panel-layout="overlay"]
   .wk-chat-content-chat {
   visibility: hidden;
   width: 0;
