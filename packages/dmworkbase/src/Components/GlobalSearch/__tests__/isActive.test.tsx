@@ -42,6 +42,10 @@ const paginationHookPath = path.join(
 );
 const panelSrc = fs.readFileSync(panelPath, "utf8");
 const indexSrc = fs.readFileSync(indexPath, "utf8");
+const filterPanelSrc = fs.readFileSync(
+  path.join(__dirname, "..", "GlobalSearchFilterPanel.tsx"),
+  "utf8"
+);
 const paginationHookSrc = fs.readFileSync(paginationHookPath, "utf8");
 
 describe("GlobalContentSearchPanel — isActive gate (source guard)", () => {
@@ -99,6 +103,34 @@ describe("GlobalSearch index — threads isActive from tab state (§E)", () => {
   it("passes isActive={currentKey === 'files'} to the files panel", () => {
     expect(indexSrc).toMatch(
       /tab="files"[\s\S]{0,300}isActive=\{\s*currentKey\s*===\s*"files"\s*\}/
+    );
+  });
+
+  it("resets shared filters when a tab switch involves messages or files", () => {
+    expect(indexSrc).toContain("private handleTabChange");
+    expect(indexSrc).toMatch(
+      /currentKey\s*!==\s*key[\s\S]{0,240}currentKey\s*===\s*"messages"[\s\S]{0,120}currentKey\s*===\s*"files"[\s\S]{0,120}key\s*===\s*"messages"[\s\S]{0,120}key\s*===\s*"files"/
+    );
+    expect(indexSrc).toMatch(
+      /filters:\s*defaultGlobalSearchFilters\(\),[\s\S]{0,80}fileTypeCategoryKeys:\s*\[\]/
+    );
+    expect(indexSrc).toMatch(
+      /onTabChange=\{this\.handleTabChange\}/
+    );
+  });
+
+  it("counts file type badge by selected UI categories without changing fileExts", () => {
+    expect(indexSrc).toMatch(
+      /selectedGlobalSearchFilterValueCount\([\s\S]{0,180}fileTypeCategoryCount:\s*this\.state\.fileTypeCategoryKeys\.length/
+    );
+    expect(indexSrc).toMatch(
+      /<GlobalSearchFilterPanel[\s\S]{0,500}fileTypeCategoryKeys=\{this\.state\.fileTypeCategoryKeys\}/
+    );
+    expect(filterPanelSrc).toMatch(
+      /onApply:\s*\([\s\S]{0,120}meta\?:\s*GlobalSearchFilterApplyMeta/
+    );
+    expect(filterPanelSrc).toMatch(
+      /return\s*\{\s*\.\.\.cur,\s*fileExts:\s*Array\.from\(set\)\s*\}/
     );
   });
 });

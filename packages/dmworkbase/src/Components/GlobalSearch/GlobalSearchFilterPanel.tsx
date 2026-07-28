@@ -22,12 +22,20 @@ import type {
 } from "../../Service/SearchTypes";
 import { cnDatePresetRange } from "../../Service/SearchService";
 
+export interface GlobalSearchFilterApplyMeta {
+  fileTypeCategoryKeys?: string[];
+}
+
 interface Props {
   tab: GlobalContentTab;
   keyword: string;
   filters: GlobalSearchFilters;
   dataSource: GlobalSearchDataSource;
-  onApply: (filters: GlobalSearchFilters) => void;
+  fileTypeCategoryKeys?: string[];
+  onApply: (
+    filters: GlobalSearchFilters,
+    meta?: GlobalSearchFilterApplyMeta
+  ) => void;
   onClose?: () => void;
   mode?: "popover" | "sidebar";
 }
@@ -105,6 +113,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   keyword,
   filters,
   dataSource,
+  fileTypeCategoryKeys = [],
   onApply,
   onClose,
   mode = "popover",
@@ -131,6 +140,8 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   const [fileCategories, setFileCategories] = useState<
     GlobalSearchFileTypeCategory[]
   >([]);
+  const [draftFileTypeCategoryKeys, setDraftFileTypeCategoryKeys] =
+    useState<string[]>(fileTypeCategoryKeys);
   const [fileSizeMinInput, setFileSizeMinInput] = useState(
     filters.fileSizeMin ? String(Math.round(filters.fileSizeMin / 1024)) : ""
   );
@@ -138,6 +149,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     filters.fileSizeMax ? String(Math.round(filters.fileSizeMax / 1024)) : ""
   );
   const draftRef = useRef(filters);
+  const draftFileTypeCategoryKeysRef = useRef(fileTypeCategoryKeys);
 
   useEffect(() => {
     draftRef.current = filters;
@@ -150,13 +162,19 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     );
   }, [filters]);
 
+  useEffect(() => {
+    draftFileTypeCategoryKeysRef.current = fileTypeCategoryKeys;
+    setDraftFileTypeCategoryKeys(fileTypeCategoryKeys);
+  }, [fileTypeCategoryKeys]);
+
   const updateDraft = (
-    updater: (current: GlobalSearchFilters) => GlobalSearchFilters
+    updater: (current: GlobalSearchFilters) => GlobalSearchFilters,
+    meta?: GlobalSearchFilterApplyMeta
   ) => {
     const next = updater(draftRef.current);
     draftRef.current = next;
     setDraft(next);
-    if (mode === "sidebar") onApply(next);
+    if (mode === "sidebar") onApply(next, meta);
   };
 
   const keywordActive = keyword.trim().length > 0;
@@ -370,15 +388,26 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   };
 
   const toggleFileExts = (category: GlobalSearchFileTypeCategory) => {
+    const currentFileExts = new Set(draftRef.current.fileExts);
+    const allActive = category.exts.every((e) =>
+      currentFileExts.has(e.toLowerCase())
+    );
+    const currentKeys = draftFileTypeCategoryKeysRef.current;
+    const nextKeys = allActive
+      ? currentKeys.filter((key) => key !== category.key)
+      : Array.from(new Set([...currentKeys, category.key]));
+    draftFileTypeCategoryKeysRef.current = nextKeys;
+    setDraftFileTypeCategoryKeys(nextKeys);
     updateDraft((cur) => {
       const set = new Set(cur.fileExts);
-      const allActive = category.exts.every((e) => set.has(e.toLowerCase()));
       if (allActive) {
         category.exts.forEach((e) => set.delete(e.toLowerCase()));
       } else {
         category.exts.forEach((e) => set.add(e.toLowerCase()));
       }
       return { ...cur, fileExts: Array.from(set) };
+    }, {
+      fileTypeCategoryKeys: nextKeys,
     });
   };
 
@@ -447,7 +476,9 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       sort: "time_desc" as const,
     };
     draftRef.current = next;
+    draftFileTypeCategoryKeysRef.current = [];
     setDraft(next);
+    setDraftFileTypeCategoryKeys([]);
     setFileSizeMinInput("");
     setFileSizeMaxInput("");
   };
@@ -463,7 +494,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       fileSizeMax:
         Number.isFinite(maxKb) && maxKb > 0 ? maxKb * 1024 : undefined,
     };
-    onApply(next);
+    onApply(next, { fileTypeCategoryKeys: draftFileTypeCategoryKeys });
     onClose?.();
   };
 

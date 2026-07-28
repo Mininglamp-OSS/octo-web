@@ -157,6 +157,37 @@ describe("selectedGlobalSearchFilterValueCount", () => {
     ).toBe(2);
   });
 
+  it("counts selected file type categories instead of expanded extensions when provided", () => {
+    expect(
+      selectedGlobalSearchFilterValueCount(
+        withOverrides({
+          fileExts: [
+            "txt",
+            "log",
+            "md",
+            "markdown",
+            "gif",
+            "mp4",
+            "mov",
+            "avi",
+          ],
+          datePreset: "last_30_days",
+        }),
+        { fileTypeCategoryCount: 4 }
+      )
+    ).toBe(5);
+  });
+
+  it("falls back to expanded file extensions when file category count is absent", () => {
+    expect(
+      selectedGlobalSearchFilterValueCount(
+        withOverrides({
+          fileExts: ["txt", "log", "md"],
+        })
+      )
+    ).toBe(3);
+  });
+
   it("counts group + thread backend values as one visible group option", () => {
     expect(
       selectedGlobalSearchFilterValueCount(

@@ -55,14 +55,20 @@ export function activeGlobalSearchFilterCount(filters: GlobalSearchFilters) {
 // active dimension. For example sender(1) + member(1) + chat types(2) +
 // message types(2) is displayed as 6.
 export function selectedGlobalSearchFilterValueCount(
-  filters: GlobalSearchFilters
+  filters: GlobalSearchFilters,
+  options?: { fileTypeCategoryCount?: number }
 ) {
+  const fileExtCount =
+    typeof options?.fileTypeCategoryCount === "number" &&
+    options.fileTypeCategoryCount > 0
+      ? options.fileTypeCategoryCount
+      : filters.fileExts.length;
   let count =
     filters.senderUids.length +
     filters.memberUids.length +
     filters.channels.length +
     filters.contentTypes.length +
-    filters.fileExts.length;
+    fileExtCount;
   if (filters.channelTypes.includes(1)) count += 1;
   if (filters.channelTypes.includes(2) || filters.channelTypes.includes(5)) {
     count += 1;
