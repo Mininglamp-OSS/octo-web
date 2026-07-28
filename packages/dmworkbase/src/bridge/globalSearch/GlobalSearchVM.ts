@@ -40,13 +40,21 @@ export default class GlobalSearchVM extends ProviderListener {
         { tab: t("base.globalSearch.tab.files"), itemKey: "files" },
       ];
     }
-    return [
+    const tabs = [
       { tab: t("base.globalSearch.tab.contacts"), itemKey: "contacts" },
       { tab: t("base.globalSearch.tab.groups"), itemKey: "groups" },
       { tab: t("base.globalSearch.tab.chat"), itemKey: "messages" },
       { tab: t("base.globalSearch.tab.files"), itemKey: "files" },
-      { tab: t("base.globalSearch.tab.docs"), itemKey: "docs" },
     ];
+    // Cloud-docs search hits /api/v1/docs/search on the independent docs-backend,
+    // so gate the tab on the same docs_on remote-config flag that hides the Docs
+    // NavRail entry (App.docsOn, default off). Without this the tab shows even
+    // when the backend isn't deployed, and any query 404s into a permanent
+    // "search failed". Mirrors the docs module's docsOn gating.
+    if (WKApp.remoteConfig.docsOn) {
+      tabs.push({ tab: t("base.globalSearch.tab.docs"), itemKey: "docs" });
+    }
+    return tabs;
   }
 
   public get selectedTabKey() {

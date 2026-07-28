@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useRef, useEffect } from "react";
 import { useI18n } from "../../i18n";
 import type {
   DocSearchItem,
@@ -16,9 +16,10 @@ interface DocSearchPanelProps {
   // hidden panel must not run/paginate its search. Gate on isActive (same
   // reasoning as GlobalContentSearchPanel).
   isActive?: boolean;
-  // Integration point: open the clicked cloud doc, then dismiss the search
-  // modal. Wired by the host (route/endpoint TBD). No-op default keeps P0
-  // self-contained without hardcoding an unverified route.
+  // Integration point: open the clicked cloud doc. Wired by the host (Chat) to
+  // buildDocLink -> window.open in a new tab; the search modal is deliberately
+  // kept open so several results can be opened in turn. No-op default keeps this
+  // panel self-contained when the prop is unwired.
   onOpenDoc?: (item: DocSearchItem) => void;
 }
 
@@ -69,18 +70,32 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
   const trimmed = keyword.trim();
   const canSearch = !!trimmed && isActive && !!dataSource.searchDocs;
 
+  // Accumulated item count across pages, used to derive hasMore (see searchPage).
+  // Reset whenever the query changes so a new search starts from zero.
+  const loadedRef = useRef(0);
+  useEffect(() => {
+    loadedRef.current = 0;
+  }, [trimmed]);
+
   // Reuse the shared cursor-paginator by encoding the 1-based page as the
   // cursor string ("2", "3", ...). searchDocs is page-based; map both ways.
   const searchPage = useCallback(
     async (cursor?: string) => {
       const page = cursor ? Number(cursor) || 1 : 1;
+      if (!cursor) loadedRef.current = 0;
       const res = await dataSource.searchDocs!({
         keyword: trimmed,
         page,
         pageSize: PAGE_SIZE,
       });
-      const loaded = page * PAGE_SIZE;
-      const hasMore = loaded < res.total;
+      loadedRef.current += res.items.length;
+      // Derive "more" from the accumulated count, not page * PAGE_SIZE: this
+      // endpoint may return a short non-final page (visibility/soft-delete
+      // filtering), and a page-number denominator would race ahead of the real
+      // item count and drop the remaining hits. A short page also means no more
+      // can follow. Mirrors the docs module's own offset paginator.
+      const hasMore =
+        res.items.length === PAGE_SIZE && loadedRef.current < res.total;
       return {
         items: res.items,
         hasMore,
