@@ -133,6 +133,24 @@ const SUMMARY_WORKFLOW_STAGES: Array<{ key: WorkflowStage; labelKey: string }> =
     { key: "generate_summary", labelKey: "summary.detail.workflowGenerateSummary" },
 ];
 
+/**
+ * AbstractCallout renders the short AI abstract (backend Option-B) as the
+ * lavender callout above the summary body. Renders nothing when the abstract is
+ * empty (older rows / generation failure), so it never leaves a blank card.
+ */
+function AbstractCallout({ abstract, title }: { abstract?: string; title: string }) {
+    if (!abstract || !abstract.trim()) return null;
+    return (
+        <div className="summary-detail-abstract">
+            <div className="summary-detail-abstract__icon" aria-hidden>✦</div>
+            <div className="summary-detail-abstract__body">
+                <div className="summary-detail-abstract__title">{title}</div>
+                <div className="summary-detail-abstract__text">{abstract}</div>
+            </div>
+        </div>
+    );
+}
+
 export default class SummaryDetailPage extends Component<SummaryDetailPageProps, SummaryDetailPageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
@@ -2398,6 +2416,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 </div>
                 {this.renderVersionHistory()}
                 <div className="summary-detail-result-content">
+                    <AbstractCallout abstract={detail.result.abstract} title={this.context.t("summary.detail.abstractTitle")} />
                     <CitationText content={detail.result.content} citations={detail.result.citations || []} />
                 </div>
                 <div className="summary-detail-result-footer">
@@ -2660,6 +2679,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 </div>
                 {this.renderVersionHistory()}
                 <div className="summary-detail-content-box">
+                    <AbstractCallout abstract={detail.result.abstract} title={this.context.t("summary.detail.abstractTitle")} />
                     <CitationText
                         content={detail.result.content}
                         citations={detail.result.citations || []}

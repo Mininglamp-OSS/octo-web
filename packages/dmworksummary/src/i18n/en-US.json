@@ -391,6 +391,7 @@
     },
     "detail": {
         "defaultTitle": "Summary details",
+        "abstractTitle": "AI summary",
         "submitSuccess": "Submitted",
         "submitFailed": "Failed to submit",
         "regenerateStarted": "Regeneration started",

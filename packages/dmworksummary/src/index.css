@@ -3633,3 +3633,161 @@ body.summary-version-detail-open .summary-schedule-page {
 .chat-selector-btn--confirm:hover {
     background: #333;
 }
+
+/* ── 总结 Markdown 渲染增强(对齐版本管理原型)──────────────────────────
+   补 main 缺失的:宽表横向滚动、GFM 列对齐、任务清单勾选框、脚注、图片框。
+   置于文件末尾,同特异性下覆盖上方既有 table/td 规则。 */
+
+/* 宽表格:包一层滚动容器,不撑破正文列 */
+.summary-content-markdown .summary-markdown-table-wrap {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    margin: var(--wk-sp-3) 0 var(--wk-sp-5);
+    overflow-x: auto;
+    border: 1px solid var(--wk-border-default);
+    border-radius: var(--wk-r-md);
+    scrollbar-gutter: stable;
+}
+.summary-content-markdown .summary-markdown-table-wrap > table {
+    display: table;
+    width: 100%;
+    min-width: 620px;
+    margin: 0;
+    overflow: visible;
+    table-layout: auto;
+    border: 0;
+    border-radius: 0;
+    border-spacing: 0;
+    border-collapse: separate;
+}
+.summary-content-markdown .summary-markdown-table-wrap th {
+    padding: 9px var(--wk-sp-3);
+    border: 0;
+    border-right: 1px solid var(--wk-border-default);
+    border-bottom: 1px solid var(--wk-border-default);
+    background: var(--wk-bg-elevated);
+    font-size: var(--wk-text-size-sm);
+    line-height: 20px;
+    text-align: left;
+    white-space: nowrap;
+}
+.summary-content-markdown .summary-markdown-table-wrap td {
+    min-width: 0;
+    padding: 9px var(--wk-sp-3);
+    border: 0;
+    border-right: 1px solid var(--wk-border-default);
+    border-bottom: 1px solid var(--wk-border-default);
+    overflow-wrap: break-word;
+    text-align: left;
+    vertical-align: top;
+    background: var(--wk-bg-surface);
+    font-size: var(--wk-text-size-sm);
+    line-height: 20px;
+}
+.summary-content-markdown .summary-markdown-table-wrap tr > th:last-child,
+.summary-content-markdown .summary-markdown-table-wrap tr > td:last-child { border-right: 0; }
+.summary-content-markdown .summary-markdown-table-wrap tr:last-child > td { border-bottom: 0; }
+/* GFM 列对齐 */
+.summary-content-markdown th[align="center"],
+.summary-content-markdown td[align="center"] { text-align: center; }
+.summary-content-markdown th[align="right"],
+.summary-content-markdown td[align="right"] { text-align: right; }
+
+/* 任务清单勾选框 */
+.summary-content-markdown .contains-task-list { padding-left: 0; list-style: none; }
+.summary-content-markdown .task-list-item { display: flex; align-items: flex-start; gap: var(--wk-sp-2); padding-left: 0; }
+.summary-content-markdown .task-list-item::marker { content: ""; }
+.summary-content-markdown input[type="checkbox"] {
+    appearance: none;
+    display: grid;
+    place-content: center;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: var(--wk-sp-1) 0 0;
+    border: 1px solid var(--wk-border-strong);
+    border-radius: var(--wk-r-xs);
+    background: var(--wk-bg-surface);
+    color: #fff;
+}
+.summary-content-markdown input[type="checkbox"]::before {
+    width: 8px;
+    height: 4px;
+    border-bottom: 2px solid currentColor;
+    border-left: 2px solid currentColor;
+    content: "";
+    visibility: hidden;
+    transform: translateY(-1px) rotate(-45deg);
+}
+.summary-content-markdown input[type="checkbox"]:checked { border-color: var(--wk-brand-primary); background: var(--wk-brand-primary); }
+.summary-content-markdown input[type="checkbox"]:checked::before { visibility: visible; }
+.summary-content-markdown .task-list-item:has(input:checked) { color: var(--wk-text-secondary); }
+
+/* 脚注 */
+.summary-content-markdown [data-footnotes] {
+    margin-top: var(--wk-sp-8);
+    padding-top: var(--wk-sp-4);
+    border-top: 1px solid var(--wk-border-default);
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-sm);
+}
+.summary-content-markdown [data-footnote-ref] {
+    display: inline-flex;
+    min-width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    margin-left: var(--wk-sp-0-5);
+    border-radius: var(--wk-r-full);
+    background: var(--wk-bg-elevated);
+    font-size: var(--wk-text-size-xs);
+    text-decoration: none;
+    vertical-align: super;
+}
+.summary-content-markdown [data-footnotes] ol { margin: 0; padding-left: var(--wk-sp-5); }
+
+/* 图片链接框 */
+.summary-content-markdown a:has(> img) {
+    display: block;
+    margin: var(--wk-sp-4) 0;
+    overflow: hidden;
+    border: 1px solid var(--wk-border-default);
+    border-radius: var(--wk-r-md);
+    background: var(--wk-bg-base);
+}
+.summary-content-markdown a > img { margin: 0; border: 0; border-radius: 0; }
+
+/* AI 摘要 callout(详情页正文顶部) */
+.summary-detail-abstract {
+    display: flex;
+    gap: var(--wk-sp-3);
+    margin: 0 0 var(--wk-sp-5);
+    padding: var(--wk-sp-4);
+    border: 1px solid var(--wk-brand-primary-border, rgba(124, 92, 246, 0.24));
+    border-radius: var(--wk-r-md);
+    background: var(--wk-brand-primary-bg, rgba(124, 92, 246, 0.06));
+}
+.summary-detail-abstract__icon {
+    flex: 0 0 auto;
+    display: grid;
+    place-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--wk-r-md);
+    background: var(--wk-brand-primary);
+    color: #fff;
+    font-size: 15px;
+}
+.summary-detail-abstract__body { min-width: 0; }
+.summary-detail-abstract__title {
+    margin-bottom: var(--wk-sp-1);
+    color: var(--wk-brand-primary);
+    font-size: var(--wk-text-size-sm);
+    font-weight: 600;
+}
+.summary-detail-abstract__text {
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+    line-height: 22px;
+}

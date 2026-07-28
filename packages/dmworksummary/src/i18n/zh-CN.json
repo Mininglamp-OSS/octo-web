@@ -391,6 +391,7 @@
     },
     "detail": {
         "defaultTitle": "总结详情",
+        "abstractTitle": "AI 摘要",
         "submitSuccess": "已提交",
         "submitFailed": "提交失败",
         "regenerateStarted": "已开始重新生成",
