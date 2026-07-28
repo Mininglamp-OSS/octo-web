@@ -28,6 +28,11 @@ import { buildDocLink } from '../forward/link.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
 import { HtmlPresenceBar } from './HtmlPresenceBar.tsx'
+import { HtmlPreviewFrame, type PreviewLoadState } from './HtmlPreviewFrame.tsx'
+import { HtmlSourceView } from './HtmlSourceView.tsx'
+import { HtmlVersionPanel } from './HtmlVersionPanel.tsx'
+import { listVersions, type HtmlDocVersion } from './htmlDocVersions.ts'
+import { HtmlDiffModal } from './HtmlDiffModal.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { useDocDelete } from '../editor/useDocDelete.ts'
 import {
@@ -69,7 +74,7 @@ export function sanitizeDocHtml(raw: string): string {
   })
 }
 
-function resolveAbsoluteOctoDocBase(): string {
+export function resolveAbsoluteOctoDocBase(): string {
   const pageOrigin =
     typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost'
   return new URL(resolveOctoDocBase() || '/', `${pageOrigin}/`).href.replace(/\/+$/, '')
@@ -246,7 +251,7 @@ export function buildOctoDocUrl(slug: string, version: string): string {
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'error'; url?: string; reason?: string }
+  | { status: 'error'; url?: string }
   | { status: 'empty' }
   | { status: 'ready'; html: string; meta: OctoDocMeta | null; isAuthor: boolean }
 
@@ -296,18 +301,27 @@ function parseOdocCap(html: string): boolean {
 }
 
 export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted, creatorNicknameOnly }: HtmlDocViewProps) {
+  // Mode toggle: page (rendered iframe) vs code (raw source). Sticky across version switches.
+  const [mode, setMode] = useState<'page' | 'code'>('page')
+  // In-page version. Starts at the prop; the 历史版本 panel's 查看 repoints it without a new tab.
+  const [viewVersion, setViewVersion] = useState<string>(version)
+  useEffect(() => setViewVersion(version), [version])
   const [state, setState] = useState<LoadState>({ status: 'loading' })
-  // Guards a late fetch resolve from overwriting state after the docId/slug changed.
-  const reqSeq = useRef(0)
   const effectiveSlug = slug ?? docId
   // 划词评论: the anchor lifted from the last non-collapsed selection inside the read-only
   // content. Overlay state only — the content itself is never mutated / made editable.
   const [pendingAnchor, setPendingAnchor] = useState<Anchor | null>(null)
-  const frameRef = useRef<HTMLIFrameElement>(null)
+  const frameRef = useRef<HTMLIFrameElement | null>(null)
   const selectionDocRef = useRef<Document | null>(null)
   const [frameReadyTick, setFrameReadyTick] = useState(0)
   // Header UI state.
   const [membersOpen, setMembersOpen] = useState(false)
+  // 历史版本 panel (≡ → 历史版本) + two-version diff modal state.
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [versions, setVersions] = useState<HtmlDocVersion[]>([])
+  const [versionsLoading, setVersionsLoading] = useState(false)
+  const [versionsError, setVersionsError] = useState<string | null>(null)
+  const [diff, setDiff] = useState<{ from: number; to: number } | null>(null)
   // Comments default open (preserves prior behaviour); the 💬 button toggles the rail.
   const [commentsOpen, setCommentsOpen] = useState(true)
   const meta = state.status === 'ready' ? state.meta : null
@@ -436,62 +450,58 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
   // Reuse the unified document soft-delete flow; octo-doc remains read-only content storage.
   const del = useDocDelete(docId, handleDeleted, space ? { spaceId: space } : undefined)
 
+  // The published HTML fetch/transform/sandbox now lives in HtmlPreviewFrame (shared with the
+  // page-diff tab). HtmlDocView still derives meta/cap (title + isAuthor) from the RAW source the
+  // frame hands back, so header/authorship behaviour is unchanged. Reset transient view state when
+  // the addressed doc/version changes.
   useEffect(() => {
-    const seq = ++reqSeq.current
     setState({ status: 'loading' })
     setPendingAnchor(null)
     setFrameReadyTick(0)
-    const url = buildOctoDocUrl(effectiveSlug, version)
-    // Raw fetch (see file header): octo-doc is a separate backend; carry cookies AND the octo
-    // session token so octo-doc can verify identity (author=creator) — cookies alone don't
-    // cross to octo-doc; octo verifies via the `token` header (not Authorization).
-    const headers: Record<string, string> = { Accept: 'text/html' }
-    const octoToken = getWKApp().loginInfo?.token
-    if (octoToken) headers.token = octoToken
-    fetch(url, { credentials: 'include', headers })
-      .then(async (res) => {
-        if (seq !== reqSeq.current) return
-        if (!res.ok) {
-          // Diagnostic: a misconfigured octo-doc base silently resolves to the CURRENT host
-          // (same-origin default), so a cross-origin deployment that forgot VITE_OCTO_DOC_BASE
-          // / __OCTO_DOC_BASE__ hits the wrong host and 404s. Surface the actual URL + status
-          // (and whether the base is unconfigured) to make that misconfig obvious in the console.
-          console.warn(
-            `[HtmlDocView] octo-doc read failed (${res.status}) for ${url}` +
-              (resolveOctoDocBase()
-                ? ''
-                : ' — octo-doc base is unconfigured (same-origin default); set VITE_OCTO_DOC_BASE or window.__OCTO_DOC_BASE__ if octo-doc is cross-origin')
-          )
-          setState({ status: 'error', url, reason: `status ${res.status}` })
-          return
-        }
-        const html = await res.text()
-        if (seq !== reqSeq.current) return
-        setState(
-          html.trim()
-            ? {
-                status: 'ready',
-                // Absolutize known asset attrs, then inject <base> as the catch-all so CSS-referenced
-                // (background/url()) and any other relative/root resources resolve to the real origin.
-                html: injectBaseHref(absolutizeDocAssetUrls(html, url), resolveAbsoluteOctoDocBase()),
-                meta: parseOdocMeta(html),
-                isAuthor: parseOdocCap(html),
-              }
-            : { status: 'empty' }
-        )
+  }, [effectiveSlug, viewVersion])
+
+  const handlePreviewState = useCallback((s: PreviewLoadState) => {
+    if (s.status === 'ready') {
+      setState({ status: 'ready', html: s.html, meta: parseOdocMeta(s.raw), isAuthor: parseOdocCap(s.raw) })
+    } else if (s.status === 'error') {
+      setState({ status: 'error', url: s.url })
+    } else {
+      setState({ status: s.status })
+    }
+  }, [])
+
+  // Lazy-load the version list only when the 历史版本 panel opens (abort/race guard). Newest-first.
+  useEffect(() => {
+    if (!historyOpen) return
+    let cancelled = false
+    setVersionsLoading(true)
+    setVersionsError(null)
+    listVersions(effectiveSlug)
+      .then((vs) => {
+        if (cancelled) return
+        setVersions(vs)
       })
-      .catch((err) => {
-        if (seq !== reqSeq.current) return
-        console.warn(
-          `[HtmlDocView] octo-doc request errored for ${url}` +
-            (resolveOctoDocBase()
-              ? ''
-              : ' — octo-doc base is unconfigured (same-origin default); set VITE_OCTO_DOC_BASE or window.__OCTO_DOC_BASE__ if octo-doc is cross-origin'),
-          err
-        )
-        setState({ status: 'error', url, reason: 'network' })
+      .catch(() => {
+        if (cancelled) return
+        setVersionsError(t('docs.version.errorList'))
       })
-  }, [effectiveSlug, version])
+      .finally(() => {
+        if (!cancelled) setVersionsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [historyOpen, effectiveSlug])
+
+  // 历史版本 查看: repoint the in-page view (mode preserved), close the panel. numeric → string.
+  const handleViewVersion = useCallback((n: number) => {
+    setViewVersion(String(n))
+    setHistoryOpen(false)
+  }, [])
+  const handleCompare = useCallback((from: number, to: number) => {
+    setDiff({ from, to })
+    setHistoryOpen(false)
+  }, [])
 
   const onFrameSelectionChange = useCallback(() => {
     const doc = frameRef.current?.contentDocument
@@ -508,12 +518,11 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
     selectionDocRef.current = null
   }, [onFrameSelectionChange])
 
-  const handleFrameLoad = useCallback(() => {
+  const handleFrameLoad = useCallback((doc: Document | null, frame: HTMLIFrameElement) => {
+    frameRef.current = frame
     setFrameReadyTick((v) => v + 1)
     cleanupFrameSelectionWatcher()
-    const frame = frameRef.current
     try {
-      const doc = frame?.contentDocument
       if (!doc) throw new Error('missing iframe document')
       doc.addEventListener('selectionchange', onFrameSelectionChange)
       selectionDocRef.current = doc
@@ -556,16 +565,41 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
           {headerTitle}
         </div>
         <div className="octo-doc-header-right">
+          {/* [页面][代码] mode switch. Semantic tablist; the mode is sticky across version switches. */}
+          <div className="octo-html-doc-modes" role="tablist" aria-label={t('docs.mode.label')}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'page'}
+              className={mode === 'page' ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
+              onClick={() => setMode('page')}
+            >
+              {t('docs.mode.page')}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'code'}
+              className={mode === 'code' ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
+              onClick={() => setMode('code')}
+            >
+              {t('docs.mode.code')}
+            </button>
+          </div>
           <HtmlPresenceBar displayName={viewerName} />
-          <button
-            type="button"
-            className={commentsOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
-            aria-pressed={commentsOpen}
-            title={t('docs.toolbar.comments')}
-            onClick={() => setCommentsOpen((v) => !v)}
-          >
-            💬 {t('docs.toolbar.comments')}
-          </button>
+          {/* Comments belong to the rendered page; code mode has no selection anchors, so the toggle
+              is hidden there (a switch-back hint sits in the code body instead). */}
+          {mode === 'page' && (
+            <button
+              type="button"
+              className={commentsOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
+              aria-pressed={commentsOpen}
+              title={t('docs.toolbar.comments')}
+              onClick={() => setCommentsOpen((v) => !v)}
+            >
+              💬 {t('docs.toolbar.comments')}
+            </button>
+          )}
           {/* Forward gated on canForward (no dead entry where the host lacks the conversation-select
               surface, e.g. standalone /d/) AND on role (mirrors EditorShell.tsx role && canForward:
               while role is unresolved — getDoc 404 fail-soft or still loading — the button hides
@@ -609,6 +643,12 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
                 label: t('docs.standalone.openInNewPage'),
                 icon: OpenNewPageIcon,
                 onClick: () => window.open(docUrl, '_blank'),
+              },
+              {
+                key: 'history',
+                label: t('docs.toolbar.history'),
+                icon: OpenNewPageIcon,
+                onClick: () => setHistoryOpen(true),
               },
               // Twin of the toolbar Forward at :579 — same `role && canForward` gate so both
               // affordances hide together when role is unresolved (getDoc 404 fail-soft), instead of
@@ -680,47 +720,74 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
           </div>
         </div>
       )}
-      {state.status === 'loading' && (
-        <div className="octo-html-doc-state" role="status">
-          {t('docs.state.loading')}
+      {/* History (历史版本) opens in the same centered modal shell as members. Independent HTML
+          adapter (HtmlVersionPanel) — never the Yjs-bound VersionHistoryPanel. */}
+      {historyOpen && (
+        <div className="octo-modal-overlay" role="presentation" onMouseDown={() => setHistoryOpen(false)}>
+          <div
+            className="octo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('docs.toolbar.history')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <HtmlVersionPanel
+              versions={versions}
+              currentVersion={Number.isNaN(Number(viewVersion)) ? null : Number(viewVersion)}
+              loading={versionsLoading}
+              error={versionsError}
+              onView={handleViewVersion}
+              onCompare={handleCompare}
+              onClose={() => setHistoryOpen(false)}
+            />
+          </div>
         </div>
       )}
-      {state.status === 'error' && (
-        <div className="octo-html-doc-state octo-html-doc-state--error" role="alert">
-          {t('docs.state.error')}
-          {state.url && (
-            // Inline the attempted octo-doc URL so a misconfigured base is diagnosable from
-            // the UI (not just the console) — the request silently falls back to same-origin.
-            <div className="octo-html-doc-state-detail">{state.url}</div>
-          )}
+      {/* Two-version diff modal (code + page tabs), shared DiffResult. */}
+      {diff && (
+        <HtmlDiffModal
+          slug={effectiveSlug}
+          from={String(diff.from)}
+          to={String(diff.to)}
+          title={headerTitle}
+          onClose={() => setDiff(null)}
+        />
+      )}
+      {/* CODE mode: raw read-only source. No iframe, no comment anchors. */}
+      {mode === 'code' && (
+        <div className="octo-html-doc-main octo-html-doc-main--code" data-testid="html-doc-main">
+          <div className="octo-html-doc-source-wrap">
+            <p className="octo-html-doc-source-hint" role="note">
+              {t('docs.source.commentHint')}
+            </p>
+            <HtmlSourceView slug={effectiveSlug} version={viewVersion} />
+          </div>
         </div>
       )}
-      {state.status === 'empty' && <div className="octo-html-doc-state">{t('docs.state.empty')}</div>}
-      {state.status === 'ready' && (
+      {/* PAGE mode: HtmlPreviewFrame owns fetch/transform/sandbox/state; HtmlDocView derives
+          meta/isAuthor from the raw source it reports back and mounts the comment rail beside it. */}
+      {mode === 'page' && (
         <div className="octo-html-doc-main" data-testid="html-doc-main">
-          {/* allow-same-origin lets comments read selections; scripts stay disabled. */}
-          <iframe
-            ref={frameRef}
-            className="octo-html-doc-frame"
-            sandbox="allow-same-origin"
+          <HtmlPreviewFrame
+            slug={effectiveSlug}
+            version={viewVersion}
             title={headerTitle}
-            srcDoc={state.html}
-            onLoad={handleFrameLoad}
+            onFrameLoad={handleFrameLoad}
+            onStateChange={handlePreviewState}
           />
-
           {/*
             2b EXTENSION POINT: the read-only side comment panel + "让 AI 处理" entry mount here.
             The panel is an overlay rail beside the iframe content — it is NEVER injected into the
             agent HTML, so the view stays strictly read-only. It only renders once the doc is
             readable (a comment scope needs a real slug/version).
           */}
-          {commentsOpen && (
+          {state.status === 'ready' && commentsOpen && (
             <HtmlDocCommentPanel
               docId={docId}
               space={space}
               isAuthor={isAuthor}
               slug={effectiveSlug}
-              version={version}
+              version={viewVersion}
               pendingAnchor={pendingAnchor}
               resolveAnchorText={resolveAnchorText}
               onClearPendingAnchor={() => setPendingAnchor(null)}

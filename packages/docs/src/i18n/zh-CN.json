@@ -386,7 +386,11 @@
     "errorRename": "重命名版本失败。",
     "errorDelete": "删除版本失败。",
     "errorRestore": "恢复版本失败。",
-    "errorRestoreIncompatible": "该版本以不兼容的文档格式保存，无法恢复。"
+    "errorRestoreIncompatible": "该版本以不兼容的文档格式保存，无法恢复。",
+    "view": "查看",
+    "comparePrev": "与上一版比较",
+    "compareCurrent": "与当前版比较",
+    "currentBadge": "当前"
   },
   "comment": {
     "title": "评论",
@@ -719,5 +723,37 @@
     "typeNone": "所选类型下没有文档",
     "typeNoneCta": "清除类型",
     "combinedNone": "无匹配结果"
+  },
+  "mode": {
+    "label": "视图模式",
+    "page": "页面",
+    "code": "代码"
+  },
+  "source": {
+    "wrap": "自动换行",
+    "copyAll": "复制全部",
+    "copied": "已复制",
+    "error": "加载源码失败。",
+    "commentHint": "评论仅在页面视图可用，切回“页面”即可划词评论。"
+  },
+  "diff": {
+    "title": "版本对比",
+    "heading": "对比 v{{from}} → v{{to}}",
+    "tabCode": "代码 Diff",
+    "tabPage": "页面 Diff",
+    "error": "加载对比失败。",
+    "noChanges": "两个版本之间没有差异。",
+    "changesOnly": "仅看变更",
+    "showContext": "显示全部",
+    "layout": "布局",
+    "layoutBoth": "双栏",
+    "layoutOld": "旧版",
+    "layoutNew": "新版",
+    "syncScroll": "同步滚动",
+    "navChanges": "变更导航",
+    "prevChange": "上一处",
+    "nextChange": "下一处",
+    "oldVersion": "旧版 v{{v}}",
+    "newVersion": "新版 v{{v}}"
   }
 }

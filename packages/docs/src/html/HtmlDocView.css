@@ -215,3 +215,251 @@
     border-top: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
   }
 }
+
+/* ---- [页面][代码] mode switch + version rows + source view + diff modal --------------------- */
+.octo-html-doc-modes {
+  display: inline-flex;
+  gap: 4px;
+}
+.octo-doc-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Version list rows: label + per-row actions (查看 / 与上一版比较 / 与当前版比较). */
+.octo-html-doc-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+.octo-html-doc-version-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.octo-html-doc-version-badge {
+  color: var(--octo-doc-accent, var(--semi-color-primary, #1c1c23));
+  font-weight: 600;
+}
+.octo-html-doc-version-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* Source (code) mode. */
+.octo-html-doc-main--code {
+  display: block;
+  overflow: auto;
+}
+.octo-html-doc-source-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.octo-html-doc-source-hint {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--octo-doc-fg-muted, var(--semi-color-text-2));
+  background: var(--octo-doc-quote-bg, var(--semi-color-fill-0));
+  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border));
+}
+.octo-html-doc-source {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.octo-html-doc-source-bar {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+}
+.octo-html-doc-source-code {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 12px 16px;
+  overflow: auto;
+  font-family: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  tab-size: 2;
+}
+.octo-html-doc-source-code.is-wrap .octo-src-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.octo-src-line {
+  display: flex;
+  gap: 12px;
+}
+.octo-src-ln {
+  flex: 0 0 auto;
+  width: 40px;
+  text-align: right;
+  user-select: none;
+  color: var(--octo-doc-fg-muted, var(--semi-color-text-2));
+}
+.octo-src-content {
+  flex: 1 1 auto;
+  white-space: pre;
+}
+/* Light, dependency-free syntax coloring (semantic tokens; no new deps). */
+.src-tag { color: var(--octo-doc-info, var(--semi-color-info)); }
+.src-attr { color: var(--octo-doc-accent, var(--semi-color-primary)); }
+.src-string { color: var(--octo-doc-success, var(--semi-color-success)); }
+.src-comment { color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #8a8f99)); font-style: italic; }
+.src-punct { color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #6b7280)); }
+.src-text { color: var(--octo-doc-fg, var(--semi-color-text-0, #1c1c23)); }
+
+/* ---- diff modal ---------------------------------------------------------------------------- */
+.octo-html-diff-modal {
+  max-width: 1080px;
+  width: 100%;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+.octo-html-diff-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.octo-html-diff-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.octo-diff-tabs {
+  display: flex;
+  gap: 8px;
+  height: 48px;
+  align-items: center;
+  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+  margin-bottom: 12px;
+}
+.octo-diff-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 4px 8px;
+  height: 32px;
+  border-radius: 9999px;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #6b7280));
+}
+.octo-diff-tab.is-active {
+  color: var(--octo-doc-fg, var(--semi-color-text-0, #1c1c23));
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 0 var(--octo-doc-fg, #1c1c23);
+  border-radius: 0;
+}
+.octo-diff-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.octo-diff-layout,
+.octo-diff-nav {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.octo-diff-sync {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.octo-diff-nav-count {
+  font-size: 12px;
+  color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #6b7280));
+}
+
+/* Code diff rows. */
+.octo-diff-code {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.octo-diff-row {
+  display: flex;
+  gap: 8px;
+  padding: 0 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.octo-diff-row.is-add { background: var(--octo-doc-add-bg, var(--semi-color-success-light-default)); }
+.octo-diff-row.is-remove { background: var(--octo-doc-remove-bg, var(--semi-color-danger-light-default)); }
+.octo-diff-row.is-replace { background: var(--octo-doc-replace-bg, var(--semi-color-warning-light-default)); }
+.octo-diff-ln {
+  flex: 0 0 auto;
+  width: 36px;
+  text-align: right;
+  user-select: none;
+  color: var(--octo-doc-fg-muted, var(--semi-color-text-2));
+}
+.octo-diff-mark {
+  flex: 0 0 auto;
+  width: 12px;
+  user-select: none;
+}
+.octo-diff-text { flex: 1 1 auto; }
+.octo-diff-text-old .octo-diff-char { background: var(--octo-doc-remove-strong, var(--semi-color-danger-light-hover)); }
+.octo-diff-text-new .octo-diff-char { background: var(--octo-doc-add-strong, var(--semi-color-success-light-hover)); }
+
+/* Page diff frames. */
+.octo-diff-page-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.octo-diff-frames {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+}
+.octo-diff-frame-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+  border-radius: 8px;
+  overflow: hidden;
+}
+.octo-diff-frame-label {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+}
+.octo-diff-frame {
+  flex: 1 1 auto;
+  min-height: 320px;
+}

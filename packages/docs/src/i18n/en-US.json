@@ -386,7 +386,11 @@
     "errorRename": "Failed to rename version.",
     "errorDelete": "Failed to delete version.",
     "errorRestore": "Failed to restore version.",
-    "errorRestoreIncompatible": "This version was saved under an incompatible document format and can't be restored."
+    "errorRestoreIncompatible": "This version was saved under an incompatible document format and can't be restored.",
+    "view": "View",
+    "comparePrev": "Compare with previous",
+    "compareCurrent": "Compare with current",
+    "currentBadge": "Current"
   },
   "comment": {
     "title": "Comments",
@@ -719,5 +723,37 @@
     "typeNone": "No documents of the selected type",
     "typeNoneCta": "Clear type",
     "combinedNone": "No matching results"
+  },
+  "mode": {
+    "label": "View mode",
+    "page": "Page",
+    "code": "Code"
+  },
+  "source": {
+    "wrap": "Wrap",
+    "copyAll": "Copy all",
+    "copied": "Copied",
+    "error": "Failed to load source.",
+    "commentHint": "Comments are available in Page view — switch back to Page to comment on a selection."
+  },
+  "diff": {
+    "title": "Compare versions",
+    "heading": "Compare v{{from}} → v{{to}}",
+    "tabCode": "Code diff",
+    "tabPage": "Page diff",
+    "error": "Failed to load the comparison.",
+    "noChanges": "No differences between the two versions.",
+    "changesOnly": "Changes only",
+    "showContext": "Show all",
+    "layout": "Layout",
+    "layoutBoth": "Split",
+    "layoutOld": "Old",
+    "layoutNew": "New",
+    "syncScroll": "Sync scroll",
+    "navChanges": "Change navigation",
+    "prevChange": "Previous",
+    "nextChange": "Next",
+    "oldVersion": "Old v{{v}}",
+    "newVersion": "New v{{v}}"
   }
 }
