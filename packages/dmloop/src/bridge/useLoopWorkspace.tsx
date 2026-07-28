@@ -334,6 +334,10 @@ export function useLoopWorkspace({
         showEmptyGuide();
         return;
       }
+      // Personal/runtime 页在自身激活期间可能改写了 http 层 workspace context;
+      // 回 Loop 时必须在重挂子页面前重新断言正确 slug,否则子页面会用 Personal 的 context 发请求(#631)。
+      setWorkspaceContext(workspace.slug, workspace.id, workspace.name);
+      resetWorkspaceCaches();
       replaceLoopRootPath();
       setTab("issue");
       WKApp.routeRight.replaceToRoot(renderTabView("issue", workspace));
