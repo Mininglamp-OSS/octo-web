@@ -71,17 +71,20 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
   const canSearch = !!trimmed && isActive && !!dataSource.searchDocs;
 
   // Accumulated item count across pages for the current query, used only to
-  // cap pagination once we've observed >= total. Reset on keyword change:
-  // useSearchPagination's stale-request guard (requestIdRef) only kicks in
-  // AFTER search() returns, so a stale in-flight page could otherwise leak
-  // into this counter here. Keying reset on trimmed (not on "cursor is
-  // falsy") means stale increments are wiped the moment the query changes,
-  // and hasMore does not depend on this counter alone for stop decisions
-  // (see rawItemCount check below).
+  // cap pagination once we've observed >= total. Reset on ANY change that
+  // makes useSearchPagination clear its own response.items — i.e. when the
+  // trimmed keyword changes AND when the enabled/canSearch state flips.
+  // useSearchPagination's own effect (deps: [enabled, ...]) clears its
+  // response every time enabled changes, so a tab switch (isActive false
+  // then true again with the same keyword) leaves visible items = 0 but
+  // would otherwise leave loadedRef at its stale accumulated value; the
+  // next first-page fetch would then push loadedRef >= total and prematurely
+  // hide load-more. Keying reset on both trimmed and canSearch mirrors the
+  // hook's own reset lifecycle so the accumulator stays in sync.
   const loadedRef = useRef(0);
   useEffect(() => {
     loadedRef.current = 0;
-  }, [trimmed]);
+  }, [trimmed, canSearch]);
 
   // Reuse the shared cursor-paginator by encoding the 1-based page as the
   // cursor string ("2", "3", ...). searchDocs is page-based; map both ways.
