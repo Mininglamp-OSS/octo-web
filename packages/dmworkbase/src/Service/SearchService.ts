@@ -20,6 +20,7 @@ import type {
   ChannelSearchQuery,
   ChannelSearchResponse,
   ChannelSearchTab,
+  DocSearchItem,
   DocSearchQuery,
   DocSearchResponse,
   GlobalContentTab,
@@ -438,13 +439,21 @@ const SearchService = {
       pageSize: query.pageSize,
     };
     if (query.docType !== undefined) body.docType = query.docType;
-    const resp = await APIClient.shared.post("docs/search", body, {
-      signal: query.signal,
-    });
+    const resp = await APIClient.shared.post("docs/search", body);
     const items = Array.isArray(resp?.items) ? resp.items : [];
+    // Per-item validation at the service boundary: the backend contract says
+    // docId/title are always present, but a malformed item would otherwise flow
+    // to key={docId} (React duplicate-key collisions on undefined) and
+    // buildDocLink({docId}) -> /d/undefined. Drop items missing a usable docId.
+    const validItems = items.filter(
+      (it: unknown): it is DocSearchItem =>
+        !!it &&
+        typeof (it as DocSearchItem).docId === "string" &&
+        (it as DocSearchItem).docId !== ""
+    );
     return {
-      total: typeof resp?.total === "number" ? resp.total : items.length,
-      items,
+      total: typeof resp?.total === "number" ? resp.total : validItems.length,
+      items: validItems,
     };
   },
 

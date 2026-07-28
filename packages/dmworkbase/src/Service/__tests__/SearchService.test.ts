@@ -182,4 +182,72 @@ describe("SearchService request boundaries", () => {
       only_message: 1,
     });
   });
+
+  it("posts cloud-docs search with the {q,page,pageSize} body and normalizes the response", async () => {
+    postMock.mockResolvedValue({
+      total: 2,
+      items: [
+        { docId: "d1", title: "A", docType: "doc", updatedAt: 1 },
+        { docId: "d2", title: "B", docType: "sheet", updatedAt: 2 },
+      ],
+    });
+
+    const result = await SearchService.searchDocs({
+      keyword: "spec",
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(postMock).toHaveBeenCalledWith("docs/search", {
+      q: "spec",
+      page: 1,
+      pageSize: 20,
+    });
+    expect(result).toEqual({
+      total: 2,
+      items: [
+        { docId: "d1", title: "A", docType: "doc", updatedAt: 1 },
+        { docId: "d2", title: "B", docType: "sheet", updatedAt: 2 },
+      ],
+    });
+  });
+
+  it("includes docType in the body only when provided", async () => {
+    postMock.mockResolvedValue({ total: 0, items: [] });
+    await SearchService.searchDocs({
+      keyword: "x",
+      page: 1,
+      pageSize: 20,
+      docType: ["doc", "sheet"],
+    });
+    expect(postMock).toHaveBeenCalledWith("docs/search", {
+      q: "x",
+      page: 1,
+      pageSize: 20,
+      docType: ["doc", "sheet"],
+    });
+  });
+
+  it("falls back to items.length when total is not a number, and defaults items to []", async () => {
+    postMock.mockResolvedValue({ items: [{ docId: "d1", title: "A", docType: "doc", updatedAt: 0 }] });
+    const withItems = await SearchService.searchDocs({ keyword: "x", page: 1, pageSize: 20 });
+    expect(withItems.total).toBe(1);
+
+    postMock.mockResolvedValue({ total: "nope" });
+    const noItems = await SearchService.searchDocs({ keyword: "x", page: 1, pageSize: 20 });
+    expect(noItems).toEqual({ total: 0, items: [] });
+  });
+
+  it("drops items missing a usable docId so /d/undefined and key collisions are impossible", async () => {
+    postMock.mockResolvedValue({
+      total: 3,
+      items: [
+        { docId: "d1", title: "A", docType: "doc", updatedAt: 0 },
+        { title: "no id", docType: "doc", updatedAt: 0 },
+        { docId: "", title: "empty id", docType: "doc", updatedAt: 0 },
+      ],
+    });
+    const result = await SearchService.searchDocs({ keyword: "x", page: 1, pageSize: 20 });
+    expect(result.items).toEqual([{ docId: "d1", title: "A", docType: "doc", updatedAt: 0 }]);
+  });
 });

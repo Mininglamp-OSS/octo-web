@@ -227,7 +227,6 @@ export interface DocSearchQuery {
   docType?: DocSearchDocType | DocSearchDocType[];
   page: number; // 1-based
   pageSize: number;
-  signal?: AbortSignal;
 }
 
 export interface DocSearchResponse {
