@@ -623,6 +623,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       */}
         <FilterSearchSelect
           title={t("base.globalSearch.filter.channels")}
+          placeholder={t("base.globalSearch.filter.channelsPlaceholder")}
           query={channelQuery}
           onQueryChange={setChannelQuery}
           options={channelSelectOptions}
@@ -634,6 +635,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
 
         <FilterSearchSelect
           title={t("base.globalSearch.filter.memberUid")}
+          placeholder={t("base.globalSearch.filter.memberUidPlaceholder")}
           query={memberQuery}
           onQueryChange={setMemberQuery}
           options={memberSelectOptions}
