@@ -188,21 +188,23 @@ export default class GlobalSearch extends Component<
     this.props.hideModal?.();
   };
 
-  // Cloud-docs tab: open the clicked doc via the host `onOpenDoc` (route/endpoint
-  // is a deployment concern still being finalized); when unwired this is a no-op
-  // plus a console hint rather than a bogus navigation. The doc opens in a new
-  // browser tab, so we intentionally keep this search modal open (the current
-  // page is untouched) — letting the user click more results in a row.
+  // Cloud-docs tab: open the clicked doc via the host `onOpenDoc`, which the Chat
+  // host wires to buildDocLink -> window.open in a new browser tab. We keep this
+  // search modal open (the current page is untouched) so the user can open more
+  // results in a row. When the prop is unwired (future reuse) this is a no-op
+  // plus a dev-only console hint rather than a bogus navigation.
   handleOpenDoc = (item: DocSearchItem) => {
     if (this.props.onOpenDoc) {
       this.props.onOpenDoc(item);
       return;
     }
-    // eslint-disable-next-line no-console
-    console.warn(
-      "[GlobalSearch] onOpenDoc not wired; cannot open cloud doc",
-      item.docId
-    );
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[GlobalSearch] onOpenDoc not wired; cannot open cloud doc",
+        item.docId
+      );
+    }
   };
 
   // 同时挂载所有 tab 组件，通过 display 切换可见性。
