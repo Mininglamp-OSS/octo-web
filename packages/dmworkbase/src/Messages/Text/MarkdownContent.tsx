@@ -42,7 +42,7 @@ interface MarkdownContentProps {
   mentions?: MentionInfo[];
   onMentionClick?: (uid: string) => void;
   emojis?: EmojiInfo[];
-  /** 是否启用数学公式渲染（KaTeX），默认 false */
+  /** 是否启用数学公式渲染（KaTeX），默认 true */
   enableMath?: boolean;
   /**
    * 是否启用 Markdown 语法渲染，默认 true。
@@ -521,7 +521,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
   mentions = [],
   onMentionClick,
   emojis = [],
-  enableMath = false,
+  enableMath = true,
   enableMarkdown = true,
 }) => {
   const normalized = useMemo(
