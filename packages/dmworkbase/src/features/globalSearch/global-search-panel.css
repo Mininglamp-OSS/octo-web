@@ -121,10 +121,7 @@
   .wk-channel-search-empty,
 .wk-search-tabs__content-shell.has-filter
   .wk-global-chat-search-layout
-  .wk-channel-search-loading,
-.wk-search-tabs__content-shell.has-filter
-  .wk-global-chat-search-layout
-  .wk-channel-search-error {
+  .wk-global-chat-search-panel__state {
   gap: var(--wk-sp-4);
   padding: var(--wk-sp-4);
 }
@@ -187,7 +184,7 @@
   padding: 0 var(--wk-sp-1);
   border-radius: var(--wk-r-circle);
   background: var(--wk-text-primary);
-  color: var(--wk-text-on-brand);
+  color: var(--wk-text-inverse);
   font: var(--wk-text-caption);
 }
 
