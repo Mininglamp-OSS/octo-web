@@ -7,8 +7,8 @@
 // `?doc=` deep-link was wiped before the docs module mounted and the recipient landed on the empty
 // document list / a login detour. By carrying the docId in the PATH, which the pathname-only
 // re-push PRESERVES, the shared link opens the target document directly: apps/web Layout intercepts
-// the whole `/d` namespace before the app shell and mounts StandaloneDocPage (which reads the id
-// from the path, runs a GET /docs/{docId} preflight, then mounts the collaborative editor). When
+// the whole `/d` namespace before the app shell and delegates to the enterprise standalone
+// capability, which reads the id from the path and performs the document preflight. When
 // the recipient must sign in first, the anonymous Layout branch stashes the exact `/d/:docId`
 // target in sessionStorage (`octo.docs.standaloneReturn`) and the post-login flow bounces them back
 // to it — so deep-link direct-open AND login-return both land on the correct document.
@@ -31,10 +31,10 @@
 export interface DocLinkTarget {
   docId: string
   /**
-   * The document's REAL space id (doc_meta.space_id — a 32-hex docs-backend space, e.g.
+ * The document's REAL space id (doc_meta.space_id — a 32-hex document service space, e.g.
    * `105d4a60…`), known to the sharer at forward time (the in-shell EditorShell space prop, which
    * is the live currentSpaceId). Embedded on the link as `?sp=` (XIN-501) so the recipient's
-   * standalone preflight can address `GET /docs/:docId` at the doc's own space. This is NOT the same
+ * standalone preflight can address the document metadata request at the doc's own space. This is NOT the same
    * value as the octo `?sid` token-bucket key: `?sp` is the docs space the backend matches against in
    * requireDocRole's cross-space guard, whereas `?sid` (no longer minted on this link, XIN-513) only
    * scoped the token store. Optional: a link built without it degrades to the recipient resolving the
@@ -52,7 +52,7 @@ function origin(): string {
 /**
  * Build `${origin}/d/<docId>` — the standalone doc-page share form — carrying, when available:
  *   - `?sp=<space id>`    the doc's REAL space (doc_meta.space_id) so the receiver's preflight
- *                         (`GET /docs/:docId`) addresses the doc's own space (XIN-501).
+ *                         addresses the doc's own space (XIN-501).
  *
  * The link deliberately carries NO `?sid=` (XIN-513): an already-logged-in recipient's session is
  * recovered from storage independently of the URL (apps/web Layout → recoverSession.ts
@@ -62,9 +62,9 @@ function origin(): string {
  * preflight space, but a token-bucket sid never equals the doc's space_id, so the preflight 404'd
  * for every recipient (including the owner's own doc). Carrying the real space on its own `?sp` param
  * fixes that without touching the `token<sid>` logic. The receiver opens it → Layout intercepts the
- * `/d` namespace → the stored session is recovered → preflight against `?sp` → StandaloneDocPage
- * mounts the editor (reader / writer / forbidden-with-request / not-found / archived), all outside the
- * app shell and immune to the host's query-wiping re-push (the docId lives in the path, not the query).
+ * `/d` namespace → the stored session is recovered → the enterprise standalone capability preflights
+ * against `?sp` and renders the document page, all outside the app shell and immune to the host's
+ * query-wiping re-push (the docId lives in the path, not the query).
  */
 export function buildDocLink({ docId, space }: DocLinkTarget): string {
   const path = `/d/${encodeURIComponent(docId)}`

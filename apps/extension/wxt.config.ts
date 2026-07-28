@@ -2,6 +2,16 @@ import { defineConfig } from "wxt";
 import tsconfigPaths from "vite-tsconfig-paths";
 import commonjs from "vite-plugin-commonjs";
 import path from "path";
+import {
+  enterpriseModulesPlugin,
+  parseEnterpriseFsAllow,
+} from "../web/vite.enterpriseHtml";
+
+const webRoot = path.resolve(__dirname, "../web");
+const enterpriseFsAllow = parseEnterpriseFsAllow(
+  process.env.VITE_ENTERPRISE_FS_ALLOW,
+  webRoot
+);
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
@@ -13,11 +23,19 @@ export default defineConfig({
     developmentIndicator: false,
   },
   vite: () => ({
-    plugins: [commonjs(), tsconfigPaths({ root: "../../" })],
+    plugins: [
+      enterpriseModulesPlugin(
+        process.env.VITE_ENTERPRISE_MODULES_ENTRY,
+        webRoot,
+        enterpriseFsAllow
+      ),
+      commonjs(),
+      tsconfigPaths({ root: "../../" }),
+    ],
     resolve: {
       dedupe: ["react", "react-dom"],
       alias: {
-        "@web": path.resolve(__dirname, "../web/src"),
+        "@web": path.resolve(webRoot, "src"),
       },
     },
     define: {
@@ -33,7 +51,13 @@ export default defineConfig({
       page: "entrypoints/options/index.html",
       open_in_tab: true,
     },
-    permissions: ["notifications", "storage", "offscreen", "sidePanel", "contextMenus"],
+    permissions: [
+      "notifications",
+      "storage",
+      "offscreen",
+      "sidePanel",
+      "contextMenus",
+    ],
     host_permissions: ["<all_urls>"],
     web_accessible_resources: [
       {

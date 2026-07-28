@@ -18,7 +18,7 @@ import zhCN from "./i18n/zh-CN.json";
 let _initialized = false;
 let loopCliAuthorizeInitialSearch = "";
 // remoteConfig 监听的退订句柄:HMR 重新 init 时先退订旧的,避免 refreshMenus 闭包在共享
-// WKApp.remoteConfig 单例上越堆越多(镜像 DocsModule._configUnsubscribers)。
+// WKApp.remoteConfig 单例上越堆越多。
 let _configUnsubs: Array<() => void> = [];
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -98,7 +98,7 @@ export default class LoopModule implements IModule {
 
     // 上线开关:仅当后端 appconfig `dmloop_on`(WKApp.remoteConfig.dmloopOn)为 true 才在 NavRail
     // 展示「回路」入口,否则工厂返回 undefined(MenusManager 过滤 falsy → 隐藏)。默认 false(fail-safe):
-    // 合入 main 也不暴露,运维就绪后下发 dmloop_on=true。镜像 DocsModule(docs_on)。纯显示门,路由仍注册。
+    // 合入 main 也不暴露,运维就绪后下发 dmloop_on=true。纯显示门,路由仍注册。
     WKApp.menus.register(
       "loop",
       () =>
@@ -115,7 +115,7 @@ export default class LoopModule implements IModule {
     );
 
     // appconfig 异步拉取:init() 时 dmloopOn 通常还是默认 false。dmloop_on resolve / 后续切换时
-    // 刷新 NavRail,让「回路」入口即时出现/消失(镜像 DocsModule 的 listener)。HMR 退订见顶部 _configUnsubs。
+    // 刷新 NavRail,让「回路」入口即时出现/消失。HMR 退订见顶部 _configUnsubs。
     const refreshMenus = (): void => WKApp.menus.refresh?.();
     const rc = WKApp.remoteConfig;
     if (rc) {

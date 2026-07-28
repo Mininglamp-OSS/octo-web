@@ -80,7 +80,7 @@ function parseBoardPreview(body: unknown): DocSharePreview | undefined {
 /**
  * 解析 GET /docs/:id/sheet（表格）→ 首个 sheet 左上角小网格（row0 表头 + 前几行）。
  * 真实响应是**扁平 cell map**：`body.sheetCells = { "<sheetId>!<row>:<col>": {v,f,s,...} }`
- * （key 格式见 docs-backend sheetCellKey）。取 cell 数最多的 sheet，重建 rows 0..MAX_ROWS × 前几列。
+ * （key 格式见 document service sheetCellKey）。取 cell 数最多的 sheet，重建 rows 0..MAX_ROWS × 前几列。
  * 扫描量有硬上限，仅非空值计入；拿不到 → undefined（降级无预览）。
  */
 const SHEET_CELL_KEY = /^(.+)!(\d+):(\d+)$/;

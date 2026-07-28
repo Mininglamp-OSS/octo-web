@@ -17,8 +17,8 @@ The **same source** is shared by all three consumers so none hard-codes field
 names or rules:
 
 1. **FE Excalidraw binding (XIN-25)** — local, render-time defensive
-   `normalizeElement` (this package, consumed by `@octo/docs` board collab).
-2. **BE authoritative repair** (`octo-docs-backend` `src/whiteboard/repair.ts`).
+   `normalizeElement` (this package, consumed by the private docs board collab).
+2. **BE authoritative repair**.
 3. **BE Agent conversion path** (Element ↔ Y.Map).
 
 The only difference between FE and BE is **who writes the normalized result

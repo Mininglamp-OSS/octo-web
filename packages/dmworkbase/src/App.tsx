@@ -268,15 +268,9 @@ export class WKRemoteConfig {
    */
   stickerUploadLimits: StickerUploadLimits = { ...DEFAULT_STICKER_UPLOAD_LIMITS };
   /**
-   * Docs 协作文档模块展示开关。后端字段 docs_on 为 true 时，前端在侧边栏 NavRail
-   * 展示 Docs 入口；false 或字段缺失时隐藏。
-   *
-   * 默认 false(fail-safe): docs-backend 是独立服务，其反向代理路由、Hocuspocus
-   * WS(:1234) 暴露、MySQL/Redis/对象存储依赖未就绪前保持隐藏，避免用户点进去卡在
-   * "Loading document…" 或报错。运维在 docs-backend 部署就绪后再下发 docs_on=true。
-   *
-   * 纯 UI 展示开关，不承担鉴权语义: /api/v1/docs 相关接口的权限校验仍由 docs-backend
-   * 负责，前端不能据此推断用户是否具备文档访问能力。
+   * Enterprise Docs display gate. The open-source host keeps this remote-config
+   * value so a private enterprise module can decide whether to expose its
+   * NavRail entry. It is display-only and does not carry authorization meaning.
    */
   docsOn: boolean = false;
   /**
@@ -285,7 +279,7 @@ export class WKRemoteConfig {
    *
    * 默认 false(fail-safe): loop 依赖后端服务 + fleet 代理 + daemon 运行时一整套未就绪前保持隐藏——
    * feature 分支合入 main 也不对用户暴露；运维在依赖部署就绪后再下发 dmloop_on=true 放量。
-   * 镜像 docs_on(system_setting dmloop.enabled),纯 UI 展示门,不承担鉴权:/fleet/api 相关接口的
+   * 与其他 config-gated 模块一致,纯 UI 展示门,不承担鉴权:/fleet/api 相关接口的
    * 权限校验仍由后端负责。
    */
   dmloopOn: boolean = false;

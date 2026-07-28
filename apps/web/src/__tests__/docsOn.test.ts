@@ -9,7 +9,7 @@ function readRepoFile(relativePath: string): string {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf-8");
 }
 
-describe("docs_on appconfig web integration", () => {
+describe("docs_on enterprise appconfig host integration", () => {
   it.each([
     [0, false],
     ["0", false],
@@ -26,7 +26,7 @@ describe("docs_on appconfig web integration", () => {
   it("wires docsOn into WKRemoteConfig from appconfig, defaulting to false", () => {
     const source = readRepoFile("packages/dmworkbase/src/App.tsx");
 
-    // Fail-safe default: hidden until docs-backend is deployed and ops flips docs_on.
+    // Fail-safe default: hidden until the private enterprise module is deployed and ops flips docs_on.
     expect(source).toContain("docsOn: boolean = false");
     expect(source).toContain('this.docsOn = parseRemoteBool(result["docs_on"])');
     // docsOn must participate in change detection so the NavRail refreshes on toggle.
@@ -35,19 +35,12 @@ describe("docs_on appconfig web integration", () => {
     expect(source).toContain("notifyConfigChangeListeners");
   });
 
-  it("gates the Docs NavRail entry on docsOn and refreshes when appconfig arrives", () => {
-    const source = readRepoFile("packages/docs/src/module.tsx");
+  it("keeps the host menu refresh path available for config-gated enterprise modules", () => {
+    const source = readRepoFile("packages/dmworkbase/src/App.tsx");
 
-    // Menu factory returns the entry only when docsOn is true (else undefined → hidden).
-    expect(source).toContain("wk.remoteConfig?.docsOn");
-    // Subscribe to first load AND later changes, refreshing the NavRail each time. (Behavioral
-    // coverage of the gate flip lives in packages/docs/module.test.tsx; these assert the wiring
-    // is present.)
-    expect(source).toContain("rc.addListener(refreshMenus)");
-    expect(source).toContain("rc.addConfigChangeListener(refreshMenus)");
-    expect(source).toContain("wk.menus.refresh?.()");
-    // Honor the addListener contract: when appconfig already resolved before init, reflect the
-    // current docs_on immediately instead of waiting on a listener that would never fire (#536).
-    expect(source).toContain("rc.requestSuccess");
+    // Private modules own their entry wiring. The open-source host only exposes the remote-config
+    // value and guarantees that a config change can refresh menus.
+    expect(source).toContain("previousDocsOn !== this.docsOn");
+    expect(source).toContain("notifyConfigChangeListeners");
   });
 });

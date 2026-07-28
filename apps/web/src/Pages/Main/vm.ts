@@ -57,10 +57,10 @@ export default class MainVM extends ProviderListener {
   private ipcListeners: { event: string; handler: (...args: any[]) => void }[] = [];
   private stopVersionCheck?: () => void;
   // Unsubscribe for the remote-config listener that reconciles the active view when a
-  // config-gated menu (e.g. docs_on) disappears from the NavRail. See reconcileActiveMenu.
+  // config-gated menu disappears from the NavRail. See reconcileActiveMenu.
   private _unsubscribeMenuReconcile?: () => void;
-  // A boot route (e.g. /docs) that had no matching menu at didMount because a config-gated menu
-  // (docs_on) had not resolved yet. Kept so it can be activated once the menu appears on the
+  // A boot route that had no matching menu at didMount because a config-gated menu had not
+  // resolved yet. Kept so it can be activated once the menu appears on the
   // first appconfig load, then cleared. Any explicit user navigation also clears it (see the
   // currentMenus setter) so a late toggle never yanks the user off a view they chose.
   private _pendingRouteActivation?: string;
@@ -93,15 +93,15 @@ export default class MainVM extends ProviderListener {
       this.currentMenus = this.menusList[0];
     }
     // Deep-link deferral (#536 reviewer follow-up): we fell back to chat because the URL's route
-    // matched no live menu. When that route belongs to a config-gated menu still resolving (e.g.
-    // /docs before docs_on arrives), remember it so activatePendingRouteMenu can select it once
-    // the menu appears — otherwise a hard load / refresh / bookmark of /docs stays stuck on chat
-    // in the enabled deployment. Set AFTER the fallback assignment above, whose setter clears it.
+    // matched no live menu. When that route belongs to a config-gated menu still resolving,
+    // remember it so activatePendingRouteMenu can select it once the menu appears — otherwise a
+    // hard load / refresh / bookmark of that route stays stuck on chat in the enabled deployment.
+    // Set AFTER the fallback assignment above, whose setter clears it.
     if (!found && !!bootPath && bootPath !== "/") {
       this._pendingRouteActivation = bootPath;
     }
 
-    // React to remote-config changes (e.g. ops flips docs_on) in two directions:
+    // React to remote-config changes in two directions:
     //  - disappearance: a menu that was the active view is gated OFF → reconcileActiveMenu drops
     //    its route + falls back (also tears down its shared-pane view, see reconcileActiveMenu);
     //  - appearance: a gated menu we deep-linked to at boot turns ON → activatePendingRouteMenu
@@ -226,12 +226,12 @@ export default class MainVM extends ProviderListener {
    * Reconcile menu state against the live menu list. Called on remote-config changes.
    *
    * Drops any `historyRoutePaths` entry whose menu is no longer present (a config-gated entry
-   * such as docs_on was turned off) — including background tabs the user isn't currently on, not
+   * was turned off) — including background tabs the user isn't currently on, not
    * just the active one — so the corresponding view unmounts. If the *active* menu itself
    * vanished, additionally falls back to the first available menu.
    *
    * The *active* menu may have pushed content into the shared right-hand pane
-   * (`WKApp.routeRight`, e.g. the docs collab editor via `routeRight.replaceToRoot`), which is
+   * (`WKApp.routeRight`, e.g. a route-level detail view via `routeRight.replaceToRoot`), which is
    * independent of `historyRoutePaths` and would otherwise keep its WebSocket connected after its
    * NavRail entry disappears. When the active menu itself vanishes we clear that pane too,
    * mirroring what a manual menu switch already does for a non-chat menu (see `onMenuClick` in
@@ -267,7 +267,7 @@ export default class MainVM extends ProviderListener {
 
   /**
    * Activate a route the user deep-linked to at boot but which had no live menu then because a
-   * config-gated menu (e.g. docs_on) was still resolving. Called on remote-config changes.
+   * config-gated menu was still resolving. Called on remote-config changes.
    *
    * If `_pendingRouteActivation` is set and a menu with that routePath is now present, select it
    * (adding its route to `historyRoutePaths` so MainContentLeft renders it) and clear the pending
@@ -293,10 +293,10 @@ export default class MainVM extends ProviderListener {
     this._historyRoutePaths = result.historyRoutePaths;
     WKApp.currentMenuId = result.currentMenu?.id;
     // NB: unlike onMenuClick we deliberately do NOT WKApp.routeRight.popToRoot() here. The route
-    // being activated (e.g. /docs) mounts fresh and populates the right pane itself via
+    // being activated mounts fresh and populates the right pane itself via
     // replaceToRoot on mount; popping first would empty the shared queue and briefly flash the
-    // host's base chat placeholder (the exact race DocsHome is built to avoid). Atomic replace by
-    // the newly-mounted route is cleaner than empty-then-fill.
+    // host's base chat placeholder. Atomic replace by the newly-mounted route is cleaner than
+    // empty-then-fill.
     return true;
   }
 
