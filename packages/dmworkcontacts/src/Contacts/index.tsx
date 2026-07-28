@@ -51,6 +51,7 @@ function OverflowTooltip({ text, children }: { text: string; children: React.Rea
 }
 
 const ITEM_HEIGHT = 44
+// 必须与 .wk-contacts-letter-header 的 height 保持一致
 const LETTER_HEADER_HEIGHT = 24
 
 // 在线态 uid 归一化：Space 场景下列表持有的是带前缀 uid（s<spaceId>_<uid>），而
