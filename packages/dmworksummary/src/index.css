@@ -416,6 +416,25 @@
     gap: 4px;
 }
 
+/* 类型标签:Agent 总结(紫)/ 快速总结(蓝),对齐版本管理原型 */
+.summary-card-type-tag {
+    align-self: flex-start;
+    margin-top: 2px;
+    padding: 1px 8px;
+    border-radius: var(--wk-r-full, 999px);
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 500;
+}
+.summary-card-type-tag--agent {
+    color: #7c5cf6;
+    background: rgba(124, 92, 246, 0.1);
+}
+.summary-card-type-tag--quick {
+    color: #2f76e6;
+    background: rgba(47, 118, 230, 0.1);
+}
+
 .summary-card-title {
     font-size: 14px;
     font-weight: 500;

@@ -528,6 +528,8 @@
         "continueRefine": "Continue refining"
     },
     "summaryCard": {
+        "agentType": "Agent summary",
+        "quickType": "Quick summary",
         "createdBy": "Created by {{name}}",
         "deleteTitle": "Confirm deletion",
         "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed.",

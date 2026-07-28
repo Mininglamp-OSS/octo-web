@@ -528,6 +528,8 @@
         "continueRefine": "继续优化"
     },
     "summaryCard": {
+        "agentType": "Agent 总结",
+        "quickType": "快速总结",
         "createdBy": "{{name}} 发起",
         "deleteTitle": "确认删除",
         "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。",

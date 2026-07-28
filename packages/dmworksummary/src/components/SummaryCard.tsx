@@ -4,7 +4,7 @@ import { MoreHorizontal, AlertTriangle, X } from "lucide-react";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
-import { ParticipantStatus, TaskStatus } from "../types/summary";
+import { ParticipantStatus, TaskStatus, TriggerType } from "../types/summary";
 import { getStatusLabel } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 
@@ -78,6 +78,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     const statusText = displayStatus !== TaskStatus.COMPLETED ? getStatusLabel(displayStatus) : null;
 
     const isGenerating = task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING;
+    // Type tag: agent-conversation summaries vs the traditional workflow ("快速总结").
+    const isAgentType = task.trigger_type === TriggerType.AGENT;
     const sourceInfo = getSourceInfo(task, t);
     const relativeTime = formatRelativeTime(task.created_at, t);
     const isCreator = task.creator_id != null && task.creator_id === currentUid;
@@ -138,6 +140,9 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                 {task.topic && task.topic !== displayTitle && (
                     <div className="summary-card-desc">{task.topic}</div>
                 )}
+                <span className={`summary-card-type-tag summary-card-type-tag--${isAgentType ? "agent" : "quick"}`}>
+                    {isAgentType ? t("summary.summaryCard.agentType") : t("summary.summaryCard.quickType")}
+                </span>
             </div>
 
             {/* 底部：时间 + 操作菜单 */}
