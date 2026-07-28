@@ -396,7 +396,7 @@
     "title": "Comments",
     "close": "Close",
     "loading": "Loading comments…",
-    "empty": "No comments yet. Select text in the document and click 💬 Comment to start a thread.",
+    "empty": "No comments yet. Select text in the document and click Comment to start a thread.",
     "showResolved": "Show resolved",
     "loadMore": "Load more",
     "commentButton": "Comment",

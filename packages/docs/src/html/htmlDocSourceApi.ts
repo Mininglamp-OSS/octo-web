@@ -1,67 +1,144 @@
-// octo-doc single-version SOURCE + two-version DIFF data layer (read-only).
-//
-// SEPARATE BACKEND: like htmlDocComments / htmlDocVersions, source and diff live in octo-doc (NOT
-// the same-origin Yjs `/api/v1` backend), so every call is a raw credentialed fetch against
-// resolveOctoDocBase() carrying the octo `token` header. Never route through the octoweb apiClient.
-//
-// Endpoints (frozen contract this client targets):
-//   GET <base>/v1/docs/{slug}/versions/{version}/source  → text/html raw published source
-//   GET <base>/v1/docs/{slug}/diff?from={a}&to={b}       → {data: DiffResult}
-
-import { resolveOctoDocBase } from './HtmlDocView.tsx'
+import { resolveOctoDocBase } from './htmlDocFrameHelpers.ts'
 import { getWKApp } from '../octoweb/index.ts'
 
-// octo-doc verifies identity via the `token` header (octo convention, not Authorization).
 function octoDocHeaders(base: Record<string, string>): Record<string, string> {
-  const tok = getWKApp().loginInfo?.token
-  return tok ? { ...base, token: tok } : base
+  const token = getWKApp().loginInfo?.token
+  return token ? { ...base, token } : base
 }
 
-/** A single structural change between two versions (page-diff highlight source). */
+export interface DiffSummary {
+  added: number
+  removed: number
+  modified: number
+}
+
 export interface DiffChange {
-  /** add = new in `to`; remove = gone from `to`; replace = present in both, content differs. */
-  op: 'add' | 'remove' | 'replace'
-  /** Stable agent id of the changed element — the PREFERRED highlight locator. */
-  aid?: string
-  /** DOM path fallback when the element carries no aid (`body>section:nth-of-type(2)>p`). */
-  path?: string
-  old_text?: string
-  new_text?: string
+  kind: 'added' | 'removed' | 'modified'
+  before_aid?: string
+  after_aid?: string
+  dom_path: string
+  before_path?: string
+  after_path?: string
+  before_html?: string
+  after_html?: string
 }
 
-/** One line-oriented hunk of the raw-source diff (code-diff renderer input). */
-export interface DiffHunk {
-  op: 'equal' | 'add' | 'remove'
-  /** 1-based line number in the OLD (from) source; absent on pure additions. */
-  old_ln?: number
-  /** 1-based line number in the NEW (to) source; absent on pure removals. */
-  new_ln?: number
-  text: string
+export interface DiffCodeHunk {
+  old_start: number
+  old_lines: number
+  new_start: number
+  new_lines: number
+  lines: string[]
 }
 
-/** The shared diff payload consumed by BOTH the code-diff and page-diff tabs. */
 export interface DiffResult {
   from: number
   to: number
-  /** Structural changes (page diff highlights). */
+  summary: DiffSummary
   changes: DiffChange[]
-  /** Optional pre-computed line hunks; when absent the code tab diffs the two raw sources itself. */
-  html_diff?: DiffHunk[]
+  code_hunks: DiffCodeHunk[]
 }
 
-/**
- * GET <base>/v1/docs/{slug}/versions/{version}/source → raw published HTML source (as stored).
- *
- * Read permission is required (share-code cookie / write token), so the credentialed fetch carries
- * whatever octo-doc session the browser holds. `signal` lets the caller abort a stale in-flight
- * request (version switch / unmount). Returns the source text verbatim — the caller decides how to
- * render it (never executed).
- */
-export async function getVersionSource(
-  slug: string,
-  version: string | number,
-  signal?: AbortSignal,
-): Promise<string> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function requiredInteger(value: unknown, field: string): number {
+  if (!Number.isInteger(value) || (value as number) < 0) throw new Error(`octo-doc diff invalid ${field}`)
+  return value as number
+}
+
+function requiredPositiveInteger(value: unknown, field: string): number {
+  const parsed = requiredInteger(value, field)
+  if (parsed < 1) throw new Error(`octo-doc diff invalid ${field}`)
+  return parsed
+}
+
+function optionalString(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') throw new Error(`octo-doc diff invalid ${field}`)
+  return value
+}
+
+function parseSummary(value: unknown): DiffSummary {
+  if (!isRecord(value)) throw new Error('octo-doc diff missing summary')
+  return {
+    added: requiredInteger(value.added, 'summary.added'),
+    removed: requiredInteger(value.removed, 'summary.removed'),
+    modified: requiredInteger(value.modified, 'summary.modified'),
+  }
+}
+
+function parseChange(value: unknown, index: number): DiffChange {
+  if (!isRecord(value)) throw new Error(`octo-doc diff invalid changes[${index}]`)
+  const kind = value.kind
+  if (kind !== 'added' && kind !== 'removed' && kind !== 'modified') {
+    throw new Error(`octo-doc diff invalid changes[${index}].kind`)
+  }
+  if (typeof value.dom_path !== 'string' || !value.dom_path) {
+    throw new Error(`octo-doc diff invalid changes[${index}].dom_path`)
+  }
+  const change: DiffChange = {
+    kind,
+    dom_path: value.dom_path,
+    before_aid: optionalString(value.before_aid, `changes[${index}].before_aid`),
+    after_aid: optionalString(value.after_aid, `changes[${index}].after_aid`),
+    before_path: optionalString(value.before_path, `changes[${index}].before_path`),
+    after_path: optionalString(value.after_path, `changes[${index}].after_path`),
+    before_html: optionalString(value.before_html, `changes[${index}].before_html`),
+    after_html: optionalString(value.after_html, `changes[${index}].after_html`),
+  }
+  if (kind !== 'added' && !change.before_aid && !change.before_path) {
+    throw new Error(`octo-doc diff missing old locator for changes[${index}]`)
+  }
+  if (kind !== 'removed' && !change.after_aid && !change.after_path) {
+    throw new Error(`octo-doc diff missing new locator for changes[${index}]`)
+  }
+  return change
+}
+
+function parseCodeHunk(value: unknown, index: number): DiffCodeHunk {
+  if (!isRecord(value) || !Array.isArray(value.lines) || !value.lines.every((line) => typeof line === 'string')) {
+    throw new Error(`octo-doc diff invalid code_hunks[${index}]`)
+  }
+  const hunk = {
+    old_start: requiredPositiveInteger(value.old_start, `code_hunks[${index}].old_start`),
+    old_lines: requiredInteger(value.old_lines, `code_hunks[${index}].old_lines`),
+    new_start: requiredPositiveInteger(value.new_start, `code_hunks[${index}].new_start`),
+    new_lines: requiredInteger(value.new_lines, `code_hunks[${index}].new_lines`),
+    lines: value.lines,
+  }
+  let oldLines = 0
+  let newLines = 0
+  hunk.lines.forEach((line, lineIndex) => {
+    const prefix = line[0]
+    if (prefix !== ' ' && prefix !== '-' && prefix !== '+') {
+      throw new Error(`octo-doc diff invalid code_hunks[${index}].lines[${lineIndex}]`)
+    }
+    if (prefix !== '+') oldLines++
+    if (prefix !== '-') newLines++
+  })
+  if (oldLines !== hunk.old_lines || newLines !== hunk.new_lines) {
+    throw new Error(`octo-doc diff invalid code_hunks[${index}] line counts`)
+  }
+  return hunk
+}
+
+function parseDiffResult(value: unknown): DiffResult {
+  if (!isRecord(value)) throw new Error('octo-doc diff response must be an object')
+  const summary = parseSummary(value.summary)
+  if (!Array.isArray(value.changes)) throw new Error('octo-doc diff missing changes')
+  if (!Array.isArray(value.code_hunks)) throw new Error('octo-doc diff missing code_hunks')
+  return {
+    from: requiredPositiveInteger(value.from, 'from'),
+    to: requiredPositiveInteger(value.to, 'to'),
+    summary,
+    changes: value.changes.map(parseChange),
+    code_hunks: value.code_hunks.map(parseCodeHunk),
+  }
+}
+
+export async function getVersionSource(slug: string, version: string | number, signal?: AbortSignal): Promise<string> {
   const url = `${resolveOctoDocBase()}/v1/docs/${encodeURIComponent(slug)}/versions/${encodeURIComponent(
     String(version),
   )}/source`
@@ -74,13 +151,6 @@ export async function getVersionSource(
   return res.text()
 }
 
-/**
- * GET <base>/v1/docs/{slug}/diff?from={from}&to={to} → the shared DiffResult.
- *
- * Both tabs of HtmlDiffModal read this one payload: the code tab renders html_diff (or diffs the
- * two raw sources locally when it is absent), the page tab highlights `changes` by aid/path.
- * Fail-soft: a shape drift (missing `changes`) resolves to an empty change set rather than throwing.
- */
 export async function getDiff(
   slug: string,
   from: string | number,
@@ -95,12 +165,6 @@ export async function getDiff(
     signal,
   })
   if (!res.ok) throw new Error(`octo-doc getDiff failed: ${res.status}`)
-  const data = (await res.json()) as { data?: Partial<DiffResult> } | null
-  const d = data?.data ?? {}
-  return {
-    from: typeof d.from === 'number' ? d.from : Number(from),
-    to: typeof d.to === 'number' ? d.to : Number(to),
-    changes: Array.isArray(d.changes) ? d.changes : [],
-    html_diff: Array.isArray(d.html_diff) ? d.html_diff : undefined,
-  }
+  const json = (await res.json()) as unknown
+  return parseDiffResult(isRecord(json) && 'data' in json ? json.data : json)
 }

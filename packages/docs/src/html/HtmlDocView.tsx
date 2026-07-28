@@ -35,15 +35,23 @@ import { listVersions, type HtmlDocVersion } from './htmlDocVersions.ts'
 import { HtmlDiffModal } from './HtmlDiffModal.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { useDocDelete } from '../editor/useDocDelete.ts'
-import {
-  DocMoreMenu,
-  OpenNewPageIcon,
-  LinkIcon,
-  DeleteIcon,
-  type DocMoreMenuItem,
-} from '../editor/DocMoreMenu.tsx'
+import { DocMoreMenu, OpenNewPageIcon, LinkIcon, DeleteIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { buildAnchorFromSelection, truncateAnchorText } from './htmlDocAnchor.ts'
 import type { Anchor } from './htmlDocComments.ts'
+import {
+  absolutizeDocAssetUrls,
+  buildOctoDocUrl,
+  injectBaseHref,
+  resolveAbsoluteOctoDocBase,
+  resolveOctoDocBase,
+} from './htmlDocFrameHelpers.ts'
+export {
+  absolutizeDocAssetUrls,
+  buildOctoDocUrl,
+  injectBaseHref,
+  resolveAbsoluteOctoDocBase,
+  resolveOctoDocBase,
+} from './htmlDocFrameHelpers.ts'
 import './HtmlDocView.css'
 
 // Interactive/editable elements the read-only view must never render, even if DOMPurify's
@@ -74,67 +82,13 @@ export function sanitizeDocHtml(raw: string): string {
   })
 }
 
-export function resolveAbsoluteOctoDocBase(): string {
-  const pageOrigin =
-    typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost'
-  return new URL(resolveOctoDocBase() || '/', `${pageOrigin}/`).href.replace(/\/+$/, '')
-}
-
-function resolveAbsoluteUrl(value: string): string {
-  const pageOrigin =
-    typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost'
-  return new URL(value || '/', `${pageOrigin}/`).href
-}
-
-function isAbsoluteOrSpecialUrl(value: string): boolean {
-  return /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value) || value.startsWith('//') || value.startsWith('#')
-}
-
-// basePrefix is the octo-doc same-origin path prefix (resolveOctoDocBase, e.g. '/docs-html'),
-// empty for cross-origin/override deployments. A root-relative octo-doc asset ref like
-// `/d/{slug}/assets/{sha}` (the form the doc backend emits, see signAssetURLs) resolves
-// against the PAGE ORIGIN and would DROP the prefix, hitting a path the nginx no longer
-// proxies — re-root it under basePrefix first so it stays inside /docs-html/*. Only re-root
-// when docUrl itself sits under basePrefix (i.e. the same-origin prefixed deploy); an
-// absolute/override docUrl already carries the doc origin and must be left alone.
-function resolveDocAssetUrl(value: string, docUrl: string, basePrefix = ''): string | null {
-  if (!value || isAbsoluteOrSpecialUrl(value)) return null
-  try {
-    const docPath = new URL(docUrl).pathname
-    const underPrefix = !!basePrefix && (docPath === basePrefix || docPath.startsWith(basePrefix + '/'))
-    const rebased =
-      underPrefix && value.startsWith('/d/') && !value.startsWith(basePrefix + '/') ? basePrefix + value : value
-    const url = new URL(rebased, docUrl)
-    return /\/assets\//.test(url.pathname) ? url.href : null
-  } catch {
-    return null
-  }
-}
-
-function absolutizeAssetAttr(el: Element, attr: 'src' | 'href', docUrl: string, basePrefix = '') {
-  const raw = el.getAttribute(attr)
-  if (!raw) return
-  const value = raw.trim()
-  const resolved = resolveDocAssetUrl(value, docUrl, basePrefix)
-  if (resolved) el.setAttribute(attr, resolved)
-}
-
-function neutralizeEditableControls(doc: Document) {
-  doc.querySelectorAll('[contenteditable]').forEach((el) => {
-    el.setAttribute('contenteditable', 'false')
-  })
-  doc.querySelectorAll('input, textarea, select, button').forEach((el) => {
-    el.setAttribute('disabled', '')
-  })
-}
-
 function cssAttrValue(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
 export function resolveHtmlDocAnchorText(
   anchor: Anchor | null | undefined,
-  doc: Document | null | undefined
+  doc: Document | null | undefined,
 ): string | null {
   if (!anchor) return null
   if (anchor.kind === 'text') return truncateAnchorText(anchor.text)
@@ -146,48 +100,6 @@ export function resolveHtmlDocAnchorText(
   } catch {
     return null
   }
-}
-
-/**
- * srcdoc resolves relative URLs against about:srcdoc. Only octo-doc asset URLs are rewritten
- * against the real document URL, and editable controls are preserved visually but disabled.
- */
-export function absolutizeDocAssetUrls(html: string, docUrl = resolveAbsoluteOctoDocBase()): string {
-  if (typeof DOMParser === 'undefined') return html
-  const absoluteDocUrl = resolveAbsoluteUrl(docUrl)
-  // Same-origin path prefix (e.g. '/docs-html'); '' for absolute/cross-origin bases. Used to
-  // re-root the backend's root-relative `/d/...` asset refs so they keep the prefix.
-  const base = resolveOctoDocBase()
-  const basePrefix = base.startsWith('/') ? base.replace(/\/+$/, '') : ''
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-  doc.querySelectorAll('img[src]').forEach((el) => absolutizeAssetAttr(el, 'src', absoluteDocUrl, basePrefix))
-  doc.querySelectorAll('link[href]').forEach((el) => absolutizeAssetAttr(el, 'href', absoluteDocUrl, basePrefix))
-  neutralizeEditableControls(doc)
-  const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>` : ''
-  return `${doctype}${doc.documentElement.outerHTML}`
-}
-
-/**
- * Inject a <base href> so relative/root-path resources (CSS background-image, srcset, url(…))
- * resolve against the real doc origin instead of about:srcdoc.
- *
- * srcDoc renders under about:srcdoc, where relative/root URLs have no meaningful base. img[src]
- * / link[href] are already absolutized by absolutizeDocAssetUrls, but CSS-referenced assets
- * (background-image, mask, etc.) are not — <base> is the single fallback that fixes them all.
- * Effective because the iframe is sandbox="allow-same-origin". Inserted at the START of <head>
- * (or synthesized before <html>/content when absent) so it wins over any later in-doc <base>.
- */
-export function injectBaseHref(html: string, baseUrl: string): string {
-  if (!baseUrl) return html
-  // Ensure a trailing slash so a root path like /d/… resolves against the doc root, not a file.
-  const href = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
-  const baseTag = `<base href="${href.replace(/"/g, '&quot;')}">`
-  const headOpen = /<head[^>]*>/i.exec(html)
-  if (headOpen) {
-    const at = headOpen.index + headOpen[0].length
-    return `${html.slice(0, at)}${baseTag}${html.slice(at)}`
-  }
-  return `${baseTag}${html}`
 }
 
 export interface HtmlDocViewProps {
@@ -214,46 +126,16 @@ export interface HtmlDocViewProps {
   creatorNicknameOnly?: boolean
 }
 
-/**
- * Resolve the octo-doc backend base URL.
- *
- * octo-doc is a distinct deployment from the docs `/api/v1` backend, so its origin is
- * configured independently. Resolution order:
- *   1. `window.__OCTO_DOC_BASE__` — runtime injection (host config / index.html), so the
- *      same bundle points at different octo-doc origins per environment without a rebuild.
- *   2. `import.meta.env.VITE_OCTO_DOC_BASE` — build-time override.
- *   3. Default `/docs-html` — a same-origin unified prefix. All web→octo-doc traffic
- *      (render `/d/…`, and the real backend paths `/v1/comments`, `/v1/reactions`,
- *      `/v1/docs/{slug}/grants`, `/v1/docs/{slug}`, `/v1/docs/{slug}/versions`) is namespaced
- *      under this one prefix so it is easy to govern and cannot collide with SPA or other
- *      service routes. The web nginx strips `/docs-html/` with a single rewrite and forwards
- *      the remaining real path to octo-doc. A deployment where octo-doc lives elsewhere sets
- *      one of the overrides above.
- */
-export function resolveOctoDocBase(): string {
-  const runtime =
-    typeof window !== 'undefined' ? (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__ : undefined
-  if (typeof runtime === 'string' && runtime.trim()) return runtime.trim().replace(/\/+$/, '')
-  const env =
-    typeof import.meta !== 'undefined'
-      ? (import.meta as unknown as { env?: { VITE_OCTO_DOC_BASE?: string } }).env?.VITE_OCTO_DOC_BASE
-      : undefined
-  if (typeof env === 'string' && env.trim()) return env.trim().replace(/\/+$/, '')
-  // Same-origin unified prefix: octo-doc reverse-proxied under /docs-html (see web nginx).
-  return '/docs-html'
-}
-
-/** Build the octo-doc read-only render URL: `<base>/d/{slug}/v/{version}`. */
-export function buildOctoDocUrl(slug: string, version: string): string {
-  const base = resolveOctoDocBase()
-  return `${base}/d/${encodeURIComponent(slug)}/v/${encodeURIComponent(version)}`
-}
-
 type LoadState =
   | { status: 'loading' }
   | { status: 'error'; url?: string }
   | { status: 'empty' }
-  | { status: 'ready'; html: string; meta: OctoDocMeta | null; isAuthor: boolean }
+  | {
+      status: 'ready'
+      html: string
+      meta: OctoDocMeta | null
+      isAuthor: boolean
+    }
 
 // Minimal metadata the render page injects as window.__ODOC__ (see doc-side render).
 // ⚠️ identity here is the CURRENT VIEWER's session identity (identityFromSession), NOT the
@@ -300,7 +182,14 @@ function parseOdocCap(html: string): boolean {
   return m?.[1] === 'true'
 }
 
-export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted, creatorNicknameOnly }: HtmlDocViewProps) {
+export function HtmlDocView({
+  docId,
+  space,
+  slug,
+  version = 'latest',
+  onDeleted,
+  creatorNicknameOnly,
+}: HtmlDocViewProps) {
   // Mode toggle: page (rendered iframe) vs code (raw source). Sticky across version switches.
   const [mode, setMode] = useState<'page' | 'code'>('page')
   // In-page version. Starts at the prop; the 历史版本 panel's 查看 repoints it without a new tab.
@@ -322,7 +211,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [versionsError, setVersionsError] = useState<string | null>(null)
   const [diff, setDiff] = useState<{ from: number; to: number } | null>(null)
-  // Comments default open (preserves prior behaviour); the 💬 button toggles the rail.
+  // Comments default open to preserve the existing reader behavior.
   const [commentsOpen, setCommentsOpen] = useState(true)
   const meta = state.status === 'ready' ? state.meta : null
   // Backend-authoritative authorship (resolveCap → window.__ODOC_CAP__.isAuthor). Do NOT compare
@@ -462,7 +351,12 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
 
   const handlePreviewState = useCallback((s: PreviewLoadState) => {
     if (s.status === 'ready') {
-      setState({ status: 'ready', html: s.html, meta: parseOdocMeta(s.raw), isAuthor: parseOdocCap(s.raw) })
+      setState({
+        status: 'ready',
+        html: s.html,
+        meta: parseOdocMeta(s.raw),
+        isAuthor: parseOdocCap(s.raw),
+      })
     } else if (s.status === 'error') {
       setState({ status: 'error', url: s.url })
     } else {
@@ -518,18 +412,21 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
     selectionDocRef.current = null
   }, [onFrameSelectionChange])
 
-  const handleFrameLoad = useCallback((doc: Document | null, frame: HTMLIFrameElement) => {
-    frameRef.current = frame
-    setFrameReadyTick((v) => v + 1)
-    cleanupFrameSelectionWatcher()
-    try {
-      if (!doc) throw new Error('missing iframe document')
-      doc.addEventListener('selectionchange', onFrameSelectionChange)
-      selectionDocRef.current = doc
-    } catch (err) {
-      console.warn('[HtmlDocView] unable to initialize iframe document hooks', err)
-    }
-  }, [cleanupFrameSelectionWatcher, onFrameSelectionChange])
+  const handleFrameLoad = useCallback(
+    (doc: Document | null, frame: HTMLIFrameElement) => {
+      frameRef.current = frame
+      setFrameReadyTick((v) => v + 1)
+      cleanupFrameSelectionWatcher()
+      try {
+        if (!doc) throw new Error('missing iframe document')
+        doc.addEventListener('selectionchange', onFrameSelectionChange)
+        selectionDocRef.current = doc
+      } catch (err) {
+        console.warn('[HtmlDocView] unable to initialize iframe document hooks', err)
+      }
+    },
+    [cleanupFrameSelectionWatcher, onFrameSelectionChange],
+  )
 
   const resolveAnchorText = useCallback(
     (anchor: Anchor | null | undefined): string | null => {
@@ -539,7 +436,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
         return null
       }
     },
-    [frameReadyTick]
+    [frameReadyTick],
   )
 
   useEffect(() => {
@@ -557,7 +454,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-html-doc" data-testid="html-doc-view">
       {/* Header parity with rich docs (EditorShell octo-doc-header): title on the left; on the right,
-          the viewer avatar → 💬 comments → ⤴ forward → members → ≡ more. HTML docs are read-only so the
+          the viewer avatar, comments, forward, members, and more actions. HTML docs are read-only so the
           title is static; the creator + created date moved into the ≡ menu head (avoids duplicating
           it in the bar). Retains octo-html-doc-header for HTML-specific CSS. */}
       <header className="octo-doc-header octo-html-doc-header">
@@ -597,7 +494,7 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
               title={t('docs.toolbar.comments')}
               onClick={() => setCommentsOpen((v) => !v)}
             >
-              💬 {t('docs.toolbar.comments')}
+              {t('docs.toolbar.comments')}
             </button>
           )}
           {/* Forward gated on canForward (no dead entry where the host lacks the conversation-select

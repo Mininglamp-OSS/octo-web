@@ -1,13 +1,4 @@
-// Shared sandboxed octo-doc preview iframe (page mode).
-//
-// EXTRACTED from HtmlDocView so the read-only view AND the page-diff tab render published HTML
-// through ONE hardened path: raw credentialed fetch → asset absolutize → <base> injection →
-// sandbox="allow-same-origin" (never allow-scripts) → editable-neutralize. Centralising it means a
-// change to the security/asset logic can never drift between the two surfaces.
-//
-// SECURITY: identical guarantees to the original inline frame — scripts never run, interactive/
-// editable controls are neutralised, only octo-doc asset URLs are rewritten. See HtmlDocView’s
-// file header for the full threat model.
+// Shared sandboxed preview. Scripts stay disabled and editable controls are neutralized.
 
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -16,7 +7,7 @@ import {
   injectBaseHref,
   resolveAbsoluteOctoDocBase,
   resolveOctoDocBase,
-} from './HtmlDocView.tsx'
+} from './htmlDocFrameHelpers.ts'
 import { getWKApp, t } from '../octoweb/index.ts'
 
 export type PreviewLoadState =
@@ -38,7 +29,6 @@ export interface HtmlPreviewFrameProps {
   frameRef?: (frame: HTMLIFrameElement | null) => void
 }
 
-/** Same octo `token` header + Accept the original render fetch used. */
 function renderHeaders(): Record<string, string> {
   const headers: Record<string, string> = { Accept: 'text/html' }
   const tok = getWKApp().loginInfo?.token
@@ -46,13 +36,6 @@ function renderHeaders(): Record<string, string> {
   return headers
 }
 
-/**
- * Fetch + render one published octo-doc version in a sandboxed iframe.
- *
- * Race/abort/unmount safe: an AbortController tears down the in-flight fetch when slug/version
- * changes or the component unmounts, and a monotonic seq guard drops any late resolve that races
- * past the abort (jsdom does not always reject on abort).
- */
 export function HtmlPreviewFrame({
   slug,
   version,
@@ -72,7 +55,11 @@ export function HtmlPreviewFrame({
     setState({ status: 'loading' })
     onStateChange?.({ status: 'loading' })
     const url = buildOctoDocUrl(slug, version)
-    fetch(url, { credentials: 'include', headers: renderHeaders(), signal: controller.signal })
+    fetch(url, {
+      credentials: 'include',
+      headers: renderHeaders(),
+      signal: controller.signal,
+    })
       .then(async (res) => {
         if (mySeq !== seq.current) return
         if (!res.ok) {

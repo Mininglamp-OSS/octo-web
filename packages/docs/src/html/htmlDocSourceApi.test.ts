@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { getVersionSource, getDiff } from './htmlDocSourceApi.ts'
 
-// Source + diff live in the SAME separate octo-doc backend as comments/versions — raw credentialed
-// fetch with the octo `token` header. Stub the global fetch and assert URL / credentials / token.
 function stubFetch(impl: (url: string, init?: RequestInit) => unknown) {
   const spy = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
     Promise.resolve(impl(String(input), init)),
@@ -17,6 +15,40 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as unknown as Response
 }
 
+const backendDiff = {
+  from: 2,
+  to: 3,
+  summary: { added: 1, removed: 0, modified: 1 },
+  changes: [
+    {
+      kind: 'modified',
+      before_aid: 'old-aid',
+      after_aid: 'new-aid',
+      dom_path: '/html[1]/body[1]/p[1]',
+      before_path: '/html[1]/body[1]/p[1]',
+      after_path: '/html[1]/body[1]/p[1]',
+      before_html: '<p data-odoc-aid="old-aid">old</p>',
+      after_html: '<p data-odoc-aid="new-aid">new</p>',
+    },
+    {
+      kind: 'added',
+      after_aid: 'added-aid',
+      dom_path: '/html[1]/body[1]/p[2]',
+      after_path: '/html[1]/body[1]/p[2]',
+      after_html: '<p data-odoc-aid="added-aid">added</p>',
+    },
+  ],
+  code_hunks: [
+    {
+      old_start: 1,
+      old_lines: 2,
+      new_start: 1,
+      new_lines: 3,
+      lines: [' <html>', '-<p>old</p>', '+<p>new</p>', '+<p>added</p>'],
+    },
+  ],
+}
+
 beforeEach(() => {
   ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
 })
@@ -27,25 +59,20 @@ afterEach(() => {
 })
 
 describe('getVersionSource', () => {
-  it('GETs <base>/v1/docs/{slug}/versions/{version}/source as text (credentialed)', async () => {
+  it('uses browser-native caching and keeps the credentialed source request', async () => {
     const spy = stubFetch(() => htmlResponse('<h1>src</h1>'))
-    const text = await getVersionSource('my-slug', 3)
-    expect(text).toBe('<h1>src</h1>')
+    expect(await getVersionSource('my-slug', 3)).toBe('<h1>src</h1>')
     expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/my-slug/versions/3/source')
     expect(spy.mock.calls[0][1]).toMatchObject({ credentials: 'include' })
+    expect((spy.mock.calls[0][1] as RequestInit).cache).toBeUndefined()
   })
 
-  it('encodes slug + version in the path', async () => {
+  it('encodes the path and forwards AbortSignal', async () => {
     const spy = stubFetch(() => htmlResponse('x'))
-    await getVersionSource('a/b', 'v/2')
+    const controller = new AbortController()
+    await getVersionSource('a/b', 'v/2', controller.signal)
     expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/a%2Fb/versions/v%2F2/source')
-  })
-
-  it('forwards an AbortSignal so a stale request can be cancelled', async () => {
-    const spy = stubFetch(() => htmlResponse('x'))
-    const ctrl = new AbortController()
-    await getVersionSource('s', 1, ctrl.signal)
-    expect(spy.mock.calls[0][1]).toMatchObject({ signal: ctrl.signal })
+    expect(spy.mock.calls[0][1]).toMatchObject({ signal: controller.signal })
   })
 
   it('throws on a non-ok response', async () => {
@@ -55,31 +82,33 @@ describe('getVersionSource', () => {
 })
 
 describe('getDiff', () => {
-  it('GETs <base>/v1/docs/{slug}/diff?from&to and parses data', async () => {
-    const spy = stubFetch(() =>
+  it('parses the real VersionDiff wire shape inside a data envelope', async () => {
+    const spy = stubFetch(() => jsonResponse({ data: backendDiff }))
+    const result = await getDiff('slug', 2, 3)
+    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/slug/diff?from=2&to=3')
+    expect(result).toEqual(backendDiff)
+  })
+
+  it('also accepts the VersionDiff object without an envelope', async () => {
+    stubFetch(() => jsonResponse(backendDiff))
+    await expect(getDiff('slug', 2, 3)).resolves.toEqual(backendDiff)
+  })
+
+  it('rejects contract drift instead of silently returning empty changes', async () => {
+    stubFetch(() => jsonResponse({ data: { from: 2, to: 3, changes: [] } }))
+    await expect(getDiff('slug', 2, 3)).rejects.toThrow('missing summary')
+  })
+
+  it('rejects invalid change locators', async () => {
+    stubFetch(() =>
       jsonResponse({
         data: {
-          from: 2,
-          to: 3,
-          changes: [{ op: 'replace', aid: 'a1', old_text: 'x', new_text: 'y' }],
-          html_diff: [{ op: 'equal', old_ln: 1, new_ln: 1, text: '<p>a</p>' }],
+          ...backendDiff,
+          changes: [{ kind: 'modified', dom_path: '/html[1]/body[1]/p[1]' }],
         },
       }),
     )
-    const d = await getDiff('slug', 2, 3)
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/slug/diff?from=2&to=3')
-    expect(spy.mock.calls[0][1]).toMatchObject({ credentials: 'include' })
-    expect(d.from).toBe(2)
-    expect(d.to).toBe(3)
-    expect(d.changes).toHaveLength(1)
-    expect(d.html_diff).toHaveLength(1)
-  })
-
-  it('fails soft on shape drift — missing changes → empty array, numbers from args', async () => {
-    stubFetch(() => jsonResponse({ data: {} }))
-    const d = await getDiff('slug', 5, 6)
-    expect(d).toMatchObject({ from: 5, to: 6, changes: [] })
-    expect(d.html_diff).toBeUndefined()
+    await expect(getDiff('slug', 2, 3)).rejects.toThrow('missing old locator')
   })
 
   it('throws on a non-ok response', async () => {

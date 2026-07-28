@@ -243,7 +243,7 @@
   font-size: 14px;
 }
 .octo-html-doc-version-badge {
-  color: var(--octo-doc-accent, var(--semi-color-primary, #1c1c23));
+  color: var(--octo-doc-accent, var(--semi-color-primary));
   font-weight: 600;
 }
 .octo-html-doc-version-actions {
@@ -282,7 +282,7 @@
   display: flex;
   gap: 8px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border));
 }
 .octo-html-doc-source-code {
   flex: 1 1 auto;
@@ -318,9 +318,9 @@
 .src-tag { color: var(--octo-doc-info, var(--semi-color-info)); }
 .src-attr { color: var(--octo-doc-accent, var(--semi-color-primary)); }
 .src-string { color: var(--octo-doc-success, var(--semi-color-success)); }
-.src-comment { color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #8a8f99)); font-style: italic; }
-.src-punct { color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #6b7280)); }
-.src-text { color: var(--octo-doc-fg, var(--semi-color-text-0, #1c1c23)); }
+.src-comment { color: var(--octo-doc-fg-muted, var(--semi-color-text-2)); font-style: italic; }
+.src-punct { color: var(--octo-doc-fg-muted, var(--semi-color-text-2)); }
+.src-text { color: var(--octo-doc-fg, var(--semi-color-text-0)); }
 
 /* ---- diff modal ---------------------------------------------------------------------------- */
 .octo-html-diff-modal {
@@ -350,7 +350,7 @@
   gap: 8px;
   height: 48px;
   align-items: center;
-  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border));
   margin-bottom: 12px;
 }
 .octo-diff-tab {
@@ -362,12 +362,12 @@
   border-radius: 9999px;
   font-size: 14px;
   cursor: pointer;
-  color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #6b7280));
+  color: var(--octo-doc-fg-muted, var(--semi-color-text-2));
 }
 .octo-diff-tab.is-active {
-  color: var(--octo-doc-fg, var(--semi-color-text-0, #1c1c23));
+  color: var(--octo-doc-fg, var(--semi-color-text-0));
   font-weight: 600;
-  box-shadow: inset 0 -2px 0 0 var(--octo-doc-fg, #1c1c23);
+  box-shadow: inset 0 -2px 0 0 var(--octo-doc-fg, var(--semi-color-text-0));
   border-radius: 0;
 }
 .octo-diff-toolbar {
@@ -391,7 +391,7 @@
 }
 .octo-diff-nav-count {
   font-size: 12px;
-  color: var(--octo-doc-fg-muted, var(--semi-color-text-2, #6b7280));
+  color: var(--octo-doc-fg-muted, var(--semi-color-text-2));
 }
 
 /* Code diff rows. */
@@ -448,7 +448,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+  border: 1px solid var(--octo-doc-border, var(--semi-color-border));
   border-radius: 8px;
   overflow: hidden;
 }
@@ -457,7 +457,7 @@
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 500;
-  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border));
 }
 .octo-diff-frame {
   flex: 1 1 auto;

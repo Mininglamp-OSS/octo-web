@@ -1,26 +1,32 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent, within } from '@testing-library/react'
-import { HtmlDiffModal } from './HtmlDiffModal.tsx'
+import { codeHunksToRows, highlightChanges, HtmlDiffModal } from './HtmlDiffModal.tsx'
+import type { DiffChange, DiffResult } from './htmlDocSourceApi.ts'
 
-// The modal talks to the octo-doc backend: GET /diff, GET /versions/{v}/source (code tab) and the
-// render URL /d/{slug}/v/{v} for each page-diff frame. Route the stub by URL shape.
-function stubFetch(handlers: {
-  diff?: unknown
-  source?: (url: string) => string
-  render?: (url: string) => string
-}) {
+const emptyDiff: DiffResult = {
+  from: 2,
+  to: 3,
+  summary: { added: 0, removed: 0, modified: 0 },
+  changes: [],
+  code_hunks: [],
+}
+
+function stubFetch(handlers: { diff?: DiffResult; render?: (url: string) => string }) {
   const spy = vi.fn((input: RequestInfo | URL) => {
     const url = String(input)
     if (url.includes('/diff?')) {
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: handlers.diff ?? { from: 1, to: 2, changes: [] } }) } as unknown as Response)
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: handlers.diff ?? emptyDiff }),
+      } as Response)
     }
-    if (url.includes('/source')) {
-      const body = handlers.source ? handlers.source(url) : '<p>src</p>'
-      return Promise.resolve({ ok: true, status: 200, text: async () => body } as unknown as Response)
-    }
-    // render URL (page-diff frame)
     const body = handlers.render ? handlers.render(url) : '<p>page</p>'
-    return Promise.resolve({ ok: true, status: 200, text: async () => body } as unknown as Response)
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: async () => body,
+    } as Response)
   }) as unknown as typeof fetch
   vi.stubGlobal('fetch', spy)
   return spy as unknown as ReturnType<typeof vi.fn>
@@ -36,110 +42,144 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('server code hunks', () => {
+  it('maps unified hunk prefixes and line ranges without source LCS', () => {
+    expect(
+      codeHunksToRows([
+        {
+          old_start: 10,
+          old_lines: 2,
+          new_start: 20,
+          new_lines: 2,
+          lines: [' context', '-old', '+new'],
+        },
+      ]),
+    ).toEqual([
+      {
+        op: 'equal',
+        oldLine: 10,
+        newLine: 20,
+        oldText: 'context',
+        newText: 'context',
+      },
+      { op: 'remove', oldLine: 11, oldText: 'old' },
+      { op: 'add', newLine: 21, newText: 'new' },
+    ])
+  })
+})
+
+describe('page diff highlighting', () => {
+  it('uses before_aid on the old side and after_aid on the new side', () => {
+    const change: DiffChange = {
+      kind: 'modified',
+      before_aid: 'old"aid',
+      after_aid: 'new-aid',
+      dom_path: '/html[1]/body[1]/p[1]',
+      before_path: '/html[1]/body[1]/p[1]',
+      after_path: '/html[1]/body[1]/p[1]',
+    }
+    const oldDoc = new DOMParser().parseFromString('<p data-odoc-aid="old&quot;aid">old</p>', 'text/html')
+    const newDoc = new DOMParser().parseFromString('<p data-odoc-aid="new-aid">new</p>', 'text/html')
+    expect(highlightChanges(oldDoc, [change], 'old')[0]?.textContent).toBe('old')
+    expect(highlightChanges(newDoc, [change], 'new')[0]?.textContent).toBe('new')
+  })
+
+  it('falls back from backend DOM paths to safe CSS selectors', () => {
+    const doc = new DOMParser().parseFromString('<section><p>first</p><p>target</p></section>', 'text/html')
+    const change: DiffChange = {
+      kind: 'added',
+      dom_path: '/html[1]/body[1]/section[1]/p[2]',
+      after_path: '/html[1]/body[1]/section[1]/p[2]',
+    }
+    expect(highlightChanges(doc, [change], 'new')[0]?.textContent).toBe('target')
+  })
+})
+
 describe('HtmlDiffModal', () => {
-  it('is a semantic dialog with [代码 Diff][页面 Diff] tabs; code tab is default', async () => {
-    stubFetch({ source: (u) => (u.includes('/2/') ? 'a\nOLD' : 'a\nNEW') })
+  it('renders the server code hunks and does not fetch version sources', async () => {
+    const spy = stubFetch({
+      diff: {
+        ...emptyDiff,
+        code_hunks: [
+          {
+            old_start: 1,
+            old_lines: 1,
+            new_start: 1,
+            new_lines: 1,
+            lines: ['-<p>old</p>', '+<p>new</p>'],
+          },
+        ],
+      },
+    })
     render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)
     const dialog = await waitFor(() => screen.getByRole('dialog'))
     expect(dialog.getAttribute('aria-modal')).toBe('true')
-    const tabs = within(dialog).getAllByRole('tab')
-    expect(tabs).toHaveLength(2)
-    // Code tab selected by default → code panel present.
-    await waitFor(() => expect(screen.getByTestId('html-diff-code')).toBeTruthy())
-  })
-
-  it('code diff shows red删 / 绿增 rows from the two raw sources', async () => {
-    stubFetch({ source: (u) => (u.includes('/2/') ? 'keep\nold line' : 'keep\nnew line') })
-    render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)
+    expect(within(dialog).getAllByRole('tab')).toHaveLength(2)
     await waitFor(() => screen.getByTestId('html-diff-code-pre'))
-    const rows = screen.getAllByTestId('diff-row')
-    // A changed line becomes a replace row (char emphasis span present).
-    const pre = screen.getByTestId('html-diff-code-pre')
-    expect(pre.querySelector('.is-replace')).toBeTruthy()
-    expect(pre.querySelector('.octo-diff-char')).toBeTruthy()
-    expect(rows.length).toBeGreaterThan(0)
+    expect(screen.getByTestId('html-diff-code-pre').querySelector('.is-remove')).toBeTruthy()
+    expect(screen.getByTestId('html-diff-code-pre').querySelector('.is-add')).toBeTruthy()
+    expect(spy.mock.calls.some((call) => String(call[0]).includes('/source'))).toBe(false)
   })
 
-  it('code diff toggles 仅看变更 / 显示全部 (context)', async () => {
-    // Many equal lines + one change; changes-only hides distant equals.
-    const many = Array.from({ length: 20 }, (_, i) => `line${i}`).join('\n')
-    stubFetch({ source: (u) => (u.includes('/2/') ? many : many.replace('line10', 'CHANGED10')) })
+  it('shows no changes when the server returns no code hunks', async () => {
+    stubFetch({})
     render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)
-    await waitFor(() => screen.getByTestId('html-diff-code-pre'))
-    const changesOnlyRows = screen.getAllByTestId('diff-row').length
-    // Toggle to show all context → more rows.
-    fireEvent.click(screen.getByText('docs.diff.showContext'))
-    const allRows = screen.getAllByTestId('diff-row').length
-    expect(allRows).toBeGreaterThan(changesOnlyRows)
+    await waitFor(() => expect(screen.getByText('docs.diff.noChanges')).toBeTruthy())
   })
 
-  it('code diff prefers the backend html_diff when present', async () => {
+  it('page tab renders both version frames for structural changes', async () => {
     stubFetch({
       diff: {
-        from: 2,
-        to: 3,
-        changes: [],
-        html_diff: [
-          { op: 'equal', old_ln: 1, new_ln: 1, text: '<p>a</p>' },
-          { op: 'add', new_ln: 2, text: '<p>b</p>' },
+        ...emptyDiff,
+        summary: { added: 0, removed: 0, modified: 1 },
+        changes: [
+          {
+            kind: 'modified',
+            before_aid: 'old-aid',
+            after_aid: 'new-aid',
+            dom_path: '/html[1]/body[1]/p[1]',
+            before_path: '/html[1]/body[1]/p[1]',
+            after_path: '/html[1]/body[1]/p[1]',
+          },
         ],
       },
-      source: () => 'unused\nsource',
+      render: (url) =>
+        url.endsWith('/2') ? '<p data-odoc-aid="old-aid">old</p>' : '<p data-odoc-aid="new-aid">new</p>',
     })
     render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)
-    await waitFor(() => screen.getByTestId('html-diff-code-pre'))
-    const pre = screen.getByTestId('html-diff-code-pre')
-    expect(pre.querySelector('.is-add')).toBeTruthy()
-  })
-
-  it('page tab renders two preview frames (旧版/新版) and highlights changed elements by aid', async () => {
-    stubFetch({
-      diff: { from: 2, to: 3, changes: [{ op: 'replace', aid: 'a5' }] },
-      render: () => '<p data-odoc-aid="a5">changed</p>',
-    })
-    render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)
-    await waitFor(() => screen.getByRole('dialog'))
-    fireEvent.click(screen.getByText('docs.diff.tabPage'))
+    fireEvent.click(await screen.findByText('docs.diff.tabPage'))
     await waitFor(() => screen.getByTestId('html-diff-page'))
-    // Both frame columns present in 双栏 default layout.
     expect(screen.getByTestId('html-diff-old')).toBeTruthy()
     expect(screen.getByTestId('html-diff-new')).toBeTruthy()
-    // Change navigation shows a 1/1 counter.
     expect(screen.getByText('1/1')).toBeTruthy()
   })
 
-  it('page tab switches layout 双栏/旧版/新版', async () => {
-    stubFetch({ diff: { from: 2, to: 3, changes: [] }, render: () => '<p>x</p>' })
-    render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)
-    await waitFor(() => screen.getByRole('dialog'))
-    fireEvent.click(screen.getByText('docs.diff.tabPage'))
-    await waitFor(() => screen.getByTestId('html-diff-page'))
-    fireEvent.click(screen.getByText('docs.diff.layoutOld'))
-    expect(screen.getByTestId('html-diff-old')).toBeTruthy()
-    expect(screen.queryByTestId('html-diff-new')).toBeNull()
-    fireEvent.click(screen.getByText('docs.diff.layoutNew'))
-    expect(screen.getByTestId('html-diff-new')).toBeTruthy()
-    expect(screen.queryByTestId('html-diff-old')).toBeNull()
-  })
-
-  it('closes on Esc and on backdrop click', async () => {
-    stubFetch({ source: () => 'a' })
+  it('switches page layout and closes on Esc/backdrop', async () => {
+    stubFetch({})
     const onClose = vi.fn()
     const { container } = render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={onClose} />)
-    await waitFor(() => screen.getByRole('dialog'))
+    fireEvent.click(await screen.findByText('docs.diff.tabPage'))
+    await waitFor(() => screen.getByTestId('html-diff-page'))
+    fireEvent.click(screen.getByText('docs.diff.layoutOld'))
+    expect(screen.queryByTestId('html-diff-new')).toBeNull()
+    fireEvent.click(screen.getByText('docs.diff.layoutNew'))
+    expect(screen.queryByTestId('html-diff-old')).toBeNull()
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(onClose).toHaveBeenCalledTimes(1)
     fireEvent.mouseDown(container.querySelector('.octo-modal-overlay') as HTMLElement)
     expect(onClose).toHaveBeenCalledTimes(2)
   })
 
-  it('shows an error state when the diff load fails', async () => {
-    const spy = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.includes('/diff?')) return Promise.resolve({ ok: false, status: 500, json: async () => null } as unknown as Response)
-      return Promise.resolve({ ok: true, status: 200, text: async () => 'x' } as unknown as Response)
-    }) as unknown as typeof fetch
-    vi.stubGlobal('fetch', spy)
+  it('shows an error for HTTP or contract failures', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: { from: 2, to: 3 } }),
+        } as Response),
+      ),
+    )
     render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy())
     expect(screen.getByText('docs.diff.error')).toBeTruthy()
