@@ -16,23 +16,20 @@ import type {
 } from "../../../Service/SearchTypes";
 import DocSearchPanel from "../DocSearchPanel";
 
-// ReviewBot / Jerry-Xin flagged P1s that all live in DocSearchPanel's
-// searchPage stop-condition:
-//   round-3 P1-1  loadedRef self-incremented BEFORE useSearchPagination's
-//                 stale guard, so a discarded response still counted.
-//   round-3 P1-2  A "short page => stop" rule that used items.length, but
-//                 SearchService.searchDocs drops malformed rows and forges
-//                 a short page — the full-page check must look at the
-//                 backend's pre-filter count (rawItemCount).
-//   round-4 P1    loadedRef only reset on keyword change, but the hook
-//                 clears its response every time `enabled` flips. Switching
-//                 tabs (isActive false → true) with the same keyword left
-//                 loadedRef inflated, pushing hasMore false after the next
-//                 page-1 fetch. Fix: reset loadedRef on canSearch changes
-//                 too, mirroring the hook's own lifecycle.
+// The pagination stop condition (DocSearchPanel's searchPage) went through
+// several revisions to close reachable "hasMore flips false while results
+// remain" defects:
+//   - A client-side docId filter can shrink a full page; full-page detection
+//     must use the backend's pre-filter count (rawItemCount), not
+//     items.length, or a full page reads as short and stops early.
+//   - The accumulated page count must not live in a cross-render mutable ref
+//     that a discarded (stale) response could still mutate ahead of the
+//     hook's request-id guard. It is now derived purely from the current
+//     request's own `page * PAGE_SIZE` versus the server total, so a stale
+//     response can never poison a fresh query's pagination.
 //
-// These tests pin all three invariants so a future rewrite of hasMore
-// can't silently regress any of them.
+// These tests pin those invariants so a future rewrite can't silently
+// regress them.
 
 const PAGE_SIZE = 20;
 
@@ -46,7 +43,7 @@ function makeDataSource(
   return { searchDocs: vi.fn(impl) } as unknown as GlobalSearchDataSource;
 }
 
-describe("DocSearchPanel — pagination stop conditions (ReviewBot rounds 3/4 P1s)", () => {
+describe("DocSearchPanel — pagination stop conditions", () => {
   it("does NOT stop when the backend returned a full page but the client filter dropped some (rawItemCount saves the day)", async () => {
     // Backend genuinely returned PAGE_SIZE rows, but 2 of them are malformed
     // and get filtered out by SearchService before reaching the panel.
@@ -82,61 +79,50 @@ describe("DocSearchPanel — pagination stop conditions (ReviewBot rounds 3/4 P1
     expect(container.querySelector(".wk-doc-search__loadmore")).toBeNull();
   });
 
-  it("resets the accumulated counter on keyword change so a stale count cannot poison the next query", async () => {
-    // Keyword changes from "old" (full page, big total) to "new" (short page,
-    // small total). The new query must render its own items without carrying
-    // any accumulated state from the previous query.
+  it("keyword change: a late (stale) response from the previous query cannot corrupt the new query's pagination", async () => {
+    // Reproduce the P1 race directly. Keyword "old" resolves LATE (deferred),
+    // keyword "new" resolves immediately as a genuine short final page. If the
+    // stop condition depended on a shared mutable accumulator, the late "old"
+    // resolution would still bump it and could push the "new" query's hasMore
+    // false. With `page * PAGE_SIZE` derivation, the stale resolution is inert.
+    let releaseOld: (() => void) | null = null;
+    const oldGate = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+
     const dataSource = makeDataSource(async (q) => {
       if (q.keyword === "old") {
+        await oldGate; // resolves only after we switch to "new"
         return {
-          total: 100,
+          total: 1000,
           items: Array.from({ length: PAGE_SIZE }, (_, i) => makeItem(`o${i}`)),
           rawItemCount: PAGE_SIZE,
         };
       }
       return {
-        total: 5,
-        items: Array.from({ length: 5 }, (_, i) => makeItem(`n${i}`)),
-        rawItemCount: 5,
+        total: 4,
+        items: Array.from({ length: 4 }, (_, i) => makeItem(`n${i}`)),
+        rawItemCount: 4,
       };
     });
 
     const { rerender } = render(
       <DocSearchPanel keyword="old" dataSource={dataSource} />
     );
-    await screen.findByText("o0");
-
+    // Switch to "new" while "old" is still in flight.
     rerender(<DocSearchPanel keyword="new" dataSource={dataSource} />);
     await screen.findByText("n0");
-    // The new query is a genuine short final page, so no load-more.
-    expect(document.body.querySelector(".wk-doc-search__loadmore")).toBeNull();
-  });
 
-  it("resets the accumulated counter across tab-switch (isActive false then true) — Jerry-Xin round-4 P1 source guard", () => {
-    // Jerry-Xin round-4 P1: useSearchPagination clears its response every
-    // time `enabled` changes, but the accumulator lived in the panel and was
-    // only reset on trimmed. Switching away from the Cloud Docs tab and back
-    // with the same keyword produced: visible items = 0 but loadedRef still
-    // holding the previous accumulated value. On the next page-1 fetch,
-    // loadedRef.current += res.items.length pushed it past total and hasMore
-    // flipped false, hiding all subsequent pages. Fix: reset loadedRef on
-    // canSearch (enabled) changes too, mirroring the hook's own lifecycle.
-    //
-    // Rendering this end-to-end in jsdom is unreliable because the shared
-    // pagination hook's scroll-based auto-pagination is not gated by DOM
-    // metrics that jsdom fills in (see the older isActive.test.tsx suite for
-    // the same reason). Pin the fix at the source level instead: the effect
-    // that clears loadedRef MUST depend on canSearch, not just trimmed.
-    const fs = require("node:fs") as typeof import("node:fs");
-    const path = require("node:path") as typeof import("node:path");
-    const panelSrc = fs.readFileSync(
-      path.join(__dirname, "..", "DocSearchPanel.tsx"),
-      "utf8"
-    );
-    // Locate the loadedRef reset effect and assert its dependency array
-    // includes canSearch. This is the invariant Jerry-Xin's P1 requires.
-    expect(panelSrc).toMatch(
-      /loadedRef\.current\s*=\s*0;\s*\}\s*,\s*\[trimmed,\s*canSearch\]/
-    );
+    // Now let the stale "old" request resolve.
+    releaseOld?.();
+    await oldGate;
+    // Give React a tick to (not) apply the discarded response.
+    await new Promise((r) => setTimeout(r, 50));
+
+    // The "new" query is a genuine 4-item final page: no load-more, and the
+    // stale "old" full page must not have leaked in.
+    expect(document.body.querySelector(".wk-doc-search__loadmore")).toBeNull();
+    expect(screen.queryByText("o0")).toBeNull();
+    expect(screen.getByText("n0")).toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useEffect } from "react";
+import React, { useCallback, useMemo } from "react";
 import { useI18n } from "../../i18n";
 import type {
   DocSearchItem,
@@ -49,6 +49,7 @@ const DOC_TYPE_BADGE: Record<string, string> = {
   doc: "DOC",
   sheet: "XLS",
   board: "BRD",
+  html: "WEB",
 };
 
 function formatUpdatedAt(ms: number, locale: string): string {
@@ -70,24 +71,18 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
   const trimmed = keyword.trim();
   const canSearch = !!trimmed && isActive && !!dataSource.searchDocs;
 
-  // Accumulated item count across pages for the current query, used only to
-  // cap pagination once we've observed >= total. Reset on ANY change that
-  // makes useSearchPagination clear its own response.items — i.e. when the
-  // trimmed keyword changes AND when the enabled/canSearch state flips.
-  // useSearchPagination's own effect (deps: [enabled, ...]) clears its
-  // response every time enabled changes, so a tab switch (isActive false
-  // then true again with the same keyword) leaves visible items = 0 but
-  // would otherwise leave loadedRef at its stale accumulated value; the
-  // next first-page fetch would then push loadedRef >= total and prematurely
-  // hide load-more. Keying reset on both trimmed and canSearch mirrors the
-  // hook's own reset lifecycle so the accumulator stays in sync.
-  const loadedRef = useRef(0);
-  useEffect(() => {
-    loadedRef.current = 0;
-  }, [trimmed, canSearch]);
-
   // Reuse the shared cursor-paginator by encoding the 1-based page as the
   // cursor string ("2", "3", ...). searchDocs is page-based; map both ways.
+  //
+  // The stop condition is derived purely from the CURRENT request's own page
+  // number and the server total — no cross-render mutable counter. Earlier
+  // rounds kept a `loadedRef` accumulator that was `+=`-mutated inside this
+  // callback, but that ran before useSearchPagination applied its
+  // `requestIdRef` stale-response guard, so a discarded (superseded) request
+  // could still bump the shared counter and silently truncate a later valid
+  // page. `page * PAGE_SIZE` is a pure function of this request alone: a stale
+  // response can never poison a fresh query's pagination, and the hook already
+  // accumulates visible items in `response.items` for us.
   const searchPage = useCallback(
     async (cursor?: string) => {
       const page = cursor ? Number(cursor) || 1 : 1;
@@ -96,18 +91,15 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
         page,
         pageSize: PAGE_SIZE,
       });
-      loadedRef.current += res.items.length;
       // Full-page detection must use the backend's ORIGINAL page size, not
       // res.items.length: SearchService.searchDocs drops items missing a
       // usable docId, which would otherwise forge a short page and stop
       // pagination early. rawItemCount is that pre-filter count.
       const rawCount = res.rawItemCount ?? res.items.length;
-      // Stop pagination when the backend gave us a genuinely short page
-      // (real end of the corpus) OR when the accumulated count has already
-      // reached the reported total. The two clauses are independent so a
-      // stale increment on loadedRef alone can't silently truncate results:
-      // a full page from the server still forces hasMore=true.
-      const hasMore = rawCount >= PAGE_SIZE && loadedRef.current < res.total;
+      // Continue only when the server returned a full page AND the pages we've
+      // requested so far haven't yet covered the reported total. Both clauses
+      // depend solely on this request, so no stale response can corrupt them.
+      const hasMore = rawCount >= PAGE_SIZE && page * PAGE_SIZE < res.total;
       return {
         items: res.items,
         hasMore,
@@ -176,7 +168,9 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
                 onClick={() => onOpenDoc?.(item)}
               >
                 <span
-                  className={`wk-doc-search__icon wk-doc-search__icon--${item.docType}`}
+                  className={`wk-doc-search__icon wk-doc-search__icon--${
+                    DOC_TYPE_BADGE[item.docType] ? item.docType : "doc"
+                  }`}
                 >
                   {DOC_TYPE_BADGE[item.docType] ?? "DOC"}
                 </span>
