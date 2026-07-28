@@ -3810,3 +3810,45 @@ body.summary-version-detail-open .summary-schedule-page {
     font-size: var(--wk-text-size-sm);
     line-height: 22px;
 }
+
+/* ── 版本内联预览(点历史版本 → 中间栏只读预览,替代原 modal)────────── */
+.summary-version-preview {
+    position: relative;
+}
+.summary-version-preview-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--wk-sp-3);
+    margin: 0 0 var(--wk-sp-4);
+    padding: var(--wk-sp-3) var(--wk-sp-4);
+    border: 1px solid var(--wk-brand-primary-border, rgba(124, 92, 246, 0.24));
+    border-radius: var(--wk-r-md);
+    background: var(--wk-brand-primary-bg, rgba(124, 92, 246, 0.06));
+}
+.summary-version-preview-banner-icon {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    color: #7c5cf6;
+}
+.summary-version-preview-banner-copy {
+    flex: 1;
+    min-width: 0;
+}
+.summary-version-preview-banner-title {
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-sm);
+    font-weight: 600;
+}
+.summary-version-preview-banner-desc {
+    margin-top: 2px;
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+    line-height: 20px;
+}
+.summary-version-preview-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: var(--wk-sp-5);
+    padding-top: var(--wk-sp-4);
+    border-top: 1px solid var(--wk-border-subtle);
+}

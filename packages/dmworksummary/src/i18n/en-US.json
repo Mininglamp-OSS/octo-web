@@ -392,6 +392,9 @@
     "detail": {
         "defaultTitle": "Summary details",
         "abstractTitle": "AI summary",
+        "versionPreviewTitle": "Viewing historical version V{{version}}",
+        "versionPreviewDesc": "The content below is a read-only snapshot of this version. Restore it as a new version to keep editing.",
+        "versionPreviewBack": "Back to current",
         "submitSuccess": "Submitted",
         "submitFailed": "Failed to submit",
         "regenerateStarted": "Regeneration started",

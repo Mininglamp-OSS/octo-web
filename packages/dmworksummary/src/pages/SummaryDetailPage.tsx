@@ -2251,7 +2251,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     renderVersionHistory() {
         const { versions, versionsLoading, detail, restoringVersionId } = this.state;
-        if (!detail?.result || versionsLoading || versions.length <= 1) return null;
+        // Version records are a traditional-workflow ("快速总结") feature only.
+        // Agent summaries iterate via "继续迭代" (a new referencing chat), not versions.
+        if (!detail?.result || detail.trigger_type === TriggerType.AGENT || versionsLoading || versions.length <= 1) return null;
         const currentVersion = detail.result.version;
         const canRestore = !!(detail.permissions?.can_edit_team || detail.permissions?.can_edit);
         return (
@@ -2273,6 +2275,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 多人协作最终页只保留团队汇总版本控制；个人报告里的版本历史会让用户误以为
         // 恢复个人版本会直接影响最终团队结果，因此在多人协作场景统一隐藏。
         if (this.isMultiCollab()) return null;
+        // Agent summaries have no version records (traditional workflow only).
+        if (detail?.trigger_type === TriggerType.AGENT) return null;
         if (!personalResult?.content || personalVersionsLoading || personalVersions.length <= 1) return null;
         const currentVersion = personalResult.version || personalVersions[0]?.version || 0;
         const canRestore = !!detail?.permissions?.can_edit_personal;
@@ -2289,9 +2293,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
-    renderVersionDetailModal() {
+    renderVersionPreview() {
         const { t } = this.context;
         const { versionDetail, versionDetailLoading, versionDetailIsPersonal, detail, personalResult } = this.state;
+        if (!this.state.showVersionDetailModal) return null;
         const currentVersion = versionDetailIsPersonal
             ? (personalResult?.version || 0)
             : (detail?.result?.version || 0);
@@ -2299,78 +2304,58 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const canRestore = !!versionDetail && !isCurrent && (versionDetailIsPersonal
             ? !!detail?.permissions?.can_edit_personal
             : !!(detail?.permissions?.can_edit_team || detail?.permissions?.can_edit));
-        const operation = versionDetail ? this.formatVersionOperation(versionDetail) : "";
         return (
-            <Modal
-                width="min(860px, calc(100vw - 48px))"
-                bodyStyle={{
-                    maxHeight: "calc(100vh - 320px)",
-                    overflowY: "auto",
-                }}
-                title={versionDetail
-                    ? t("summary.detail.versionDetailTitle", { values: { version: versionDetail.version, operation } })
-                    : t("summary.detail.versionDetailLoading")}
-                visible={this.state.showVersionDetailModal}
-                onCancel={this.handleCloseVersionDetail}
-                footer={
-                    <div className="summary-version-detail-footer">
-                        <Button onClick={this.handleCloseVersionDetail}>{t("summary.common.close")}</Button>
-                        {canRestore && versionDetail && (
-                            <Button
-                                theme="solid"
-                                loading={versionDetailIsPersonal
-                                    ? this.state.restoringPersonalVersionId === versionDetail.result_id
-                                    : this.state.restoringVersionId === versionDetail.result_id}
-                                onClick={async () => {
-                                    const restored = versionDetailIsPersonal
-                                        ? await this.handleRestorePersonalVersion(versionDetail)
-                                        : await this.handleRestoreVersion(versionDetail);
-                                    if (restored) {
-                                        this.setState({ showVersionDetailModal: false, versionDetail: null });
-                                    }
-                                }}
-                            >
-                                {t("summary.detail.restoreVersion")}
-                            </Button>
-                        )}
+            <div className="summary-detail-content-box summary-version-preview">
+                <div className="summary-version-preview-banner">
+                    <IconHistory className="summary-version-preview-banner-icon" />
+                    <div className="summary-version-preview-banner-copy">
+                        <div className="summary-version-preview-banner-title">
+                            {t("summary.detail.versionPreviewTitle", { values: { version: versionDetail?.version ?? "" } })}
+                        </div>
+                        <div className="summary-version-preview-banner-desc">{t("summary.detail.versionPreviewDesc")}</div>
                     </div>
-                }
-            >
+                    <Button theme="borderless" size="small" onClick={this.handleCloseVersionDetail}>
+                        {t("summary.detail.versionPreviewBack")}
+                    </Button>
+                </div>
                 {versionDetailLoading ? (
-                    <div className="summary-version-detail-loading">
-                        <Spin />
-                    </div>
+                    <div className="summary-version-detail-loading"><Spin /></div>
                 ) : versionDetail ? (
-                    <div className="summary-version-detail">
-                        <section className="summary-version-detail-section">
-                            <div className="summary-version-detail-label">{t("summary.detail.versionDetailUserContent")}</div>
-                            <div className="summary-version-detail-note">
-                                {detail?.title || t("summary.common.unknown")}
+                    <>
+                        <div className="summary-detail-result-content">
+                            <CitationText
+                                content={versionDetail.content}
+                                citations={versionDetail.citations || []}
+                                teamCitations={versionDetail.team_citations || []}
+                                members={this.state.members}
+                                disableTeamMemberPreview
+                            />
+                        </div>
+                        {canRestore && (
+                            <div className="summary-version-preview-footer">
+                                <Button
+                                    theme="solid"
+                                    type="primary"
+                                    icon={<IconHistory />}
+                                    loading={versionDetailIsPersonal
+                                        ? this.state.restoringPersonalVersionId === versionDetail.result_id
+                                        : this.state.restoringVersionId === versionDetail.result_id}
+                                    onClick={async () => {
+                                        const restored = versionDetailIsPersonal
+                                            ? await this.handleRestorePersonalVersion(versionDetail)
+                                            : await this.handleRestoreVersion(versionDetail);
+                                        if (restored) {
+                                            this.setState({ showVersionDetailModal: false, versionDetail: null });
+                                        }
+                                    }}
+                                >
+                                    {t("summary.detail.restoreVersion")}
+                                </Button>
                             </div>
-                        </section>
-                        <section className="summary-version-detail-section">
-                            <div className="summary-version-detail-label">{t("summary.detail.versionDetailFeedback")}</div>
-                            <div className="summary-version-detail-note">
-                                {versionDetail.operation_type === "refine" && versionDetail.operation_note
-                                    ? versionDetail.operation_note
-                                    : t("summary.detail.versionDetailNoFeedback")}
-                            </div>
-                        </section>
-                        <section className="summary-version-detail-section">
-                            <div className="summary-version-detail-label">{t("summary.detail.versionDetailResult")}</div>
-                            <div className="summary-version-detail-content">
-                                <CitationText
-                                    content={versionDetail.content}
-                                    citations={versionDetail.citations || []}
-                                    teamCitations={versionDetail.team_citations || []}
-                                    members={this.state.members}
-                                    disableTeamMemberPreview
-                                />
-                            </div>
-                        </section>
-                    </div>
+                        )}
+                    </>
                 ) : null}
-            </Modal>
+            </div>
         );
     }
 
@@ -2415,10 +2400,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 </div>
                 {this.renderVersionHistory()}
-                <div className="summary-detail-result-content">
-                    <AbstractCallout abstract={detail.result.abstract} title={this.context.t("summary.detail.abstractTitle")} />
-                    <CitationText content={detail.result.content} citations={detail.result.citations || []} />
-                </div>
+                {this.state.showVersionDetailModal ? this.renderVersionPreview() : (
+                    <div className="summary-detail-result-content">
+                        <AbstractCallout abstract={detail.result.abstract} title={this.context.t("summary.detail.abstractTitle")} />
+                        <CitationText content={detail.result.content} citations={detail.result.citations || []} />
+                    </div>
+                )}
                 <div className="summary-detail-result-footer">
                     <span className="summary-detail-result-time">
                         {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
@@ -2678,16 +2665,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 </div>
                 {this.renderVersionHistory()}
-                <div className="summary-detail-content-box">
-                    <AbstractCallout abstract={detail.result.abstract} title={this.context.t("summary.detail.abstractTitle")} />
-                    <CitationText
-                        content={detail.result.content}
-                        citations={detail.result.citations || []}
-                        teamCitations={detail.result.team_citations || []}
-                        members={members}
-                        hidePlainCitations
-                    />
-                </div>
+                {this.state.showVersionDetailModal ? this.renderVersionPreview() : (
+                    <div className="summary-detail-content-box">
+                        <AbstractCallout abstract={detail.result.abstract} title={this.context.t("summary.detail.abstractTitle")} />
+                        <CitationText
+                            content={detail.result.content}
+                            citations={detail.result.citations || []}
+                            teamCitations={detail.result.team_citations || []}
+                            members={members}
+                            hidePlainCitations
+                        />
+                    </div>
+                )}
             </div>
         );
     }
@@ -3713,7 +3702,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     disabling={this.state.scheduleDisabling}
                 />
                 {/* need7：添加成员复用 SubscriberList 路由页面，见 handleOpenAddMember */}
-                {this.renderVersionDetailModal()}
                 <Modal
                     header={null}
                     footer={null}

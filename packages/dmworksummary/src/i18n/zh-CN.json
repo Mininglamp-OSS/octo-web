@@ -392,6 +392,9 @@
     "detail": {
         "defaultTitle": "总结详情",
         "abstractTitle": "AI 摘要",
+        "versionPreviewTitle": "正在查看 V{{version}} 历史版本",
+        "versionPreviewDesc": "中部展示的是该版本的只读内容，恢复为新版本后才可以继续编辑。",
+        "versionPreviewBack": "返回当前",
         "submitSuccess": "已提交",
         "submitFailed": "提交失败",
         "regenerateStarted": "已开始重新生成",
