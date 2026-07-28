@@ -12,7 +12,7 @@ import { SummaryModule } from '@dmwork/summary';
 import { McpMarketModule } from '@dmwork/mcp';
 import { SkillMarketModule } from '@dmwork/skillmarket';
 import { AppBotModule } from '@dmwork/appbot';
-import { DocsModule } from '@octo/docs';
+import { registerEnterpriseModules } from 'virtual:octo-enterprise-modules';
 import { LoopModule } from '@octo/loop';
 import { PersonalModule } from '@octo/personal';
 import { version as pkgVersion } from '../package.json';
@@ -76,9 +76,11 @@ WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
 WKApp.shared.registerModule(new McpMarketModule()); // MCP 市场模块
 WKApp.shared.registerModule(new SkillMarketModule()); // Skill 市场模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
-WKApp.shared.registerModule(new DocsModule()); // Docs module
 WKApp.shared.registerModule(new LoopModule()); // Loop 面板（Issue/Skill/Project/Agent/Squad/Runtime）
 WKApp.shared.registerModule(new PersonalModule()); // 我的（Runtimes/Skills）
+registerEnterpriseModules({
+  registerModule: (module) => WKApp.shared.registerModule(module),
+})
 
 // e2e mock: 仅在 VITE_E2E_MOCK=1 时启动 MSW Service Worker.
 // dev / prod 完全走 tree-shake 分支, 无副作用. 必须在 startup() 之前 await,

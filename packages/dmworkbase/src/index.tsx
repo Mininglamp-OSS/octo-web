@@ -143,7 +143,6 @@ export type { ClawHealthCheckItemProps, HealthStatus } from './Components/ClawHe
 export { default as AgentCardService } from './Service/AgentCardService'
 export type { AgentCardData, FileGroup, FileItem, FileContent, FileContentResponse } from './Service/AgentCardService'
 
-// Re-export the WuKongIM Channel primitives docs' embedded bot DM needs (plan Task 5) so the docs
-// package can construct `new Channel(botUid, ChannelTypePerson)` through the @octo/base boundary
-// without taking a direct wukongimjssdk dependency (only @octo/base imports the SDK).
+// Re-export the WuKongIM Channel primitives used by downstream embedded bot-DM surfaces through
+// the @octo/base boundary, without making those modules take a direct wukongimjssdk dependency.
 export { Channel, ChannelTypePerson } from 'wukongimjssdk'

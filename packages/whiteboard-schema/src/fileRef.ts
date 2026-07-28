@@ -4,8 +4,8 @@
  * The whiteboard image path keeps the binary in object storage and stores ONLY
  * a reference in the Y.Doc `files` container (§2.2). That reference is the exact
  * handoff between the two halves of image support:
- *   · back-end (octo-docs-backend) mints a stable `attachId` at presign time
- *     (POST /api/v1/docs/{docId}/attachments/presign) and serves the binary back
+ *   · back-end document service mints a stable `attachId` at presign time
+ *     (attachments presign endpoint) and serves the binary back
  *     by that id (GET .../attachments/{attachId});
  *   · front-end (XIN-702) stores the returned `attachId` — plus `mimeType`,
  *     `status`, `createdAt` — as `files[fileId]` in the scene Y.Doc, and on a

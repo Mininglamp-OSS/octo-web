@@ -2,9 +2,9 @@
  * @octo/whiteboard-schema — frozen shared constants (XIN-16 §3).
  *
  * This module is the FROZEN shared whiteboard schema package described by the
- * XIN-16 single-authority contract. It is the analogue of `@octo/docs-schema`
- * for ProseMirror docs (which lives as the local stand-in `src/schema/index.ts`
- * in this repo): the front-end Excalidraw binding (XIN-25), the back-end
+ * XIN-16 single-authority contract. It is the whiteboard analogue of the
+ * ProseMirror document schema owned by the private docs module: the front-end
+ * Excalidraw binding (XIN-25), the back-end
  * authoritative repair extension, and the back-end Agent conversion path MUST
  * all import the SAME constants and the SAME `normalizeElement` rule set from
  * here — never hard-code field names or rules on one side. Front-end and

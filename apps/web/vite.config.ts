@@ -2,11 +2,25 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 import commonjs from "vite-plugin-commonjs";
+import {
+  enterpriseHtmlHeadPlugin,
+  enterpriseModulesPlugin,
+  parseEnterpriseFsAllow,
+  readEnterpriseHtmlHead,
+} from "./vite.enterpriseHtml";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const apiUrl = env.VITE_API_URL;
   const isElectronBuild = env.VITE_ELECTRON_BUILD === "true";
+  const enterpriseHtmlHead = readEnterpriseHtmlHead(
+    env.VITE_ENTERPRISE_HTML_HEAD_PATH,
+    process.cwd()
+  );
+  const enterpriseFsAllow = parseEnterpriseFsAllow(
+    env.VITE_ENTERPRISE_FS_ALLOW,
+    process.cwd()
+  );
 
   // 提取 origin
   let apiOrigin: string;
@@ -50,6 +64,8 @@ export default defineConfig(({ mode }) => {
           ];
         },
       },
+      enterpriseHtmlHeadPlugin(enterpriseHtmlHead),
+      enterpriseModulesPlugin(env.VITE_ENTERPRISE_MODULES_ENTRY, process.cwd(), enterpriseFsAllow),
       // TODO: remove after all require() calls are migrated to import (chore/migrate-require-to-import)
       commonjs(),
       react(),
@@ -126,12 +142,6 @@ export default defineConfig(({ mode }) => {
       port: env.VITE_PORT ? Number(env.VITE_PORT) : 3000,
       host: env.VITE_HOST ?? true,
       proxy: {
-        // Docs service API — must be before the general /api/ rule
-        "/api/v1/docs": {
-          target: env.VITE_DOCS_API_URL || "http://localhost:4000",
-          changeOrigin: true,
-          secure: false,
-        },
         // Summary service API — must be before the general /api/ rule
         "/summary/api/v1": {
           target:

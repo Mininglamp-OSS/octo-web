@@ -13,10 +13,11 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
-import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
+import { getEnterpriseStandaloneDocCapability } from "virtual:octo-enterprise-modules";
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
+import { persistStandaloneReturn, consumeStandaloneReturn } from "./standaloneReturn";
 import { isLoopCliAuthorizePath, LOOP_CLI_AUTHORIZE_PATH } from "@octo/loop";
 
 interface AppLayoutState {
@@ -422,7 +423,8 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         // straight back to the doc (now with `?sid=`) after sign-in — the deep-link resumes
         // instead of dead-ending (AC-11). SPA deep-link serving depends on the nginx try_files
         // fallback (deployment concern, out of scope for this frontend change).
-        if (isStandaloneDocPath(window.location.pathname)) {
+        const standaloneDocCapability = getEnterpriseStandaloneDocCapability();
+        if (standaloneDocCapability?.isStandaloneDocPath(window.location.pathname)) {
             if (!WKApp.loginInfo.token) {
                 WKApp.loginInfo.load();
             }
@@ -430,8 +432,11 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 recoverOctoSessionFromStorage(true);
             }
             if (WKApp.loginInfo.token) {
-                const standaloneDocId = parseStandaloneDocId(window.location.pathname);
-                return <StandaloneDocPage docId={standaloneDocId} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
+                const standaloneDocId = standaloneDocCapability.parseStandaloneDocId(window.location.pathname);
+                return standaloneDocCapability.renderStandaloneDocPage({
+                    docId: standaloneDocId,
+                    onSessionExpired: clearExpiredStandaloneSessionAndReload,
+                });
             }
             // Anonymous: stash the exact /d/:docId target so the post-login flow (local OR SSO/OIDC)
             // can bounce the user back to the document instead of the app root, then fall through to

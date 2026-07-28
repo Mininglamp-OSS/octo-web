@@ -6,8 +6,9 @@
  * guards lock the Layout wiring that makes the clean path stand on its own, following the
  * source-grep convention the Layout already uses (layoutPendingInviteToast.test.ts) since the
  * component pulls in Tauri / MainPage and can't be cheaply rendered in jsdom. Behavioral coverage
- * of the pieces lives in recoverSession.test.ts (recovery scan), the @octo/docs unit tests
- * (namespace + not-found), and the standalone-doc Playwright e2e (real browser cold-load).
+ * of the pieces lives in recoverSession.test.ts (recovery scan) and the enterprise standalone
+ * capability wiring tests (namespace + not-found). Private docs keeps the browser-level
+ * standalone-doc coverage after extraction.
  */
 import * as fs from 'fs'
 import * as path from 'path'
@@ -20,7 +21,7 @@ describe('Layout — standalone /d/:docId clean cold-load path', () => {
   })
 
   it('claims the whole /d namespace so malformed ids are intercepted, not shelled (AC-9)', () => {
-    expect(layout).toMatch(/isStandaloneDocPath\(\s*window\.location\.pathname\s*\)/)
+    expect(layout).toMatch(/standaloneDocCapability\?\.isStandaloneDocPath\(\s*window\.location\.pathname\s*\)/)
     // The old guard keyed off a well-formed id only (`if (standaloneDocId)`); ensure we no longer
     // gate the interception on a truthy parsed id.
     expect(layout).not.toMatch(/if\s*\(\s*standaloneDocId\s*\)/)
@@ -31,10 +32,10 @@ describe('Layout — standalone /d/:docId clean cold-load path', () => {
     expect(layout).toMatch(/recoverOctoSessionFromStorage\(true\)/)
     // Inside the namespace branch, recovery must run before the page renders. Search from the
     // branch start so the helper's top-of-file definition doesn't skew the ordering.
-    const nsIdx = layout.search(/isStandaloneDocPath\(\s*window\.location\.pathname\s*\)/)
+    const nsIdx = layout.search(/standaloneDocCapability\?\.isStandaloneDocPath\(\s*window\.location\.pathname\s*\)/)
     expect(nsIdx).toBeGreaterThan(0)
     const recoverIdx = layout.indexOf('recoverOctoSessionFromStorage(true)', nsIdx)
-    const renderIdx = layout.indexOf('<StandaloneDocPage', nsIdx)
+    const renderIdx = layout.indexOf('standaloneDocCapability.renderStandaloneDocPage', nsIdx)
     expect(recoverIdx).toBeGreaterThan(nsIdx)
     expect(renderIdx).toBeGreaterThan(recoverIdx)
   })
@@ -43,7 +44,7 @@ describe('Layout — standalone /d/:docId clean cold-load path', () => {
     // The page is returned inside `if (WKApp.loginInfo.token)`; an anonymous visitor falls through
     // to the Provider/login branch rendered in place (pathname stays /d/:docId → onLogin bounces
     // back after sign-in).
-    expect(layout).toMatch(/if\s*\(\s*WKApp\.loginInfo\.token\s*\)\s*\{[\s\S]*?<StandaloneDocPage/)
+    expect(layout).toMatch(/if\s*\(\s*WKApp\.loginInfo\.token\s*\)\s*\{[\s\S]*?standaloneDocCapability\.renderStandaloneDocPage/)
   })
 
   it('shares the same recovery with the invite-landing branch (no duplicated scan loop)', () => {
@@ -61,7 +62,7 @@ describe('Layout — standalone /d/:docId clean cold-load path', () => {
     // expired. Layout wires onSessionExpired so the page can delegate the dead-end fix (clear the
     // stale session + reload → falls through to the login screen) instead of rendering a terminal
     // with no way to re-authenticate.
-    expect(layout).toMatch(/<StandaloneDocPage[\s\S]*?onSessionExpired=\{clearExpiredStandaloneSessionAndReload\}/)
+    expect(layout).toMatch(/renderStandaloneDocPage\(\{[\s\S]*?onSessionExpired:\s*clearExpiredStandaloneSessionAndReload/)
     // The handler clears the CURRENT session (logout) AND sweeps every bucket holding the expired
     // token by value (clearSessionsWithToken), so the cold-load recover-then-persist copy can't be
     // re-recovered into a loop — while a different valid session (different token) is left intact.

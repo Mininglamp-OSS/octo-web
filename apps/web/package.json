@@ -67,7 +67,6 @@
     "@octo/base": "workspace:*",
     "@octo/contacts": "workspace:*",
     "@octo/datasource": "workspace:*",
-    "@octo/docs": "workspace:*",
     "@octo/login": "workspace:*",
     "@octo/loop": "workspace:*",
     "@octo/personal": "workspace:*",

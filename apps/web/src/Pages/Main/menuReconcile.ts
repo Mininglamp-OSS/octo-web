@@ -2,14 +2,14 @@
 // unit-tested without importing the full @octo/base module graph (which pulls heavy component
 // deps into the test environment). MainVM.reconcileActiveMenu delegates here.
 //
-// Rule (#536 reviewer follow-up): when a config-gated menu (e.g. docs_on) is toggled OFF, its
+// Rule (#536 reviewer follow-up): when a config-gated menu is toggled OFF, its
 // NavRail entry leaves `menusList` but the host would keep rendering its route via
 // `historyRoutePaths` — including background tabs the user isn't currently on (they stay mounted,
 // just `display:none`, see MainContentLeft). So on every reconcile pass we drop ALL routes whose
 // menu is no longer live, not just the active one; if the active menu itself vanished we also
 // fall back to the first available menu. One-directional: turning a menu ON never moves the user
 // off their current view. Dropping a route only unmounts what that route renders directly into
-// `historyRoutePaths` (e.g. the docs list) — see MainVM.reconcileActiveMenu for the additional
+// `historyRoutePaths` — see MainVM.reconcileActiveMenu for the additional
 // step needed to release content a route pushed into the shared right-hand pane.
 
 /** Minimal structural shape of a NavRail menu the reconciliation needs. */
@@ -96,13 +96,13 @@ export function reconcileMenuState<M extends MenuLike>(
 
 // ── Appearance-side reactivation (#536 reviewer follow-up) ──────────────────────────────────
 //
-// The mirror of the disappearance case above. A config-gated menu (docs_on) also affects the
-// *appearance* side: because the menu factory returns `undefined` until appconfig resolves
-// docsOn=true, a hard load / refresh / bookmark / share-link to that menu's route (e.g. `/docs`)
-// finds no matching menu at MainVM.didMount and falls back to chat. When docs_on later resolves,
-// refreshing the NavRail makes the entry appear, but nothing re-selects the route the URL asked
-// for — so the user is stranded on chat until they click the entry manually (a regression the
-// gating introduced; pre-gate the menu was always registered and didMount matched it).
+// The mirror of the disappearance case above. A config-gated menu also affects the *appearance*
+// side: because the menu factory returns `undefined` until appconfig enables it, a hard load /
+// refresh / bookmark / share-link to that menu's route finds no matching menu at MainVM.didMount
+// and falls back to chat. When the config later resolves, refreshing the NavRail makes the entry
+// appear, but nothing re-selects the route the URL asked for — so the user is stranded on chat
+// until they click the entry manually (a regression the gating introduced; pre-gate the menu was
+// always registered and didMount matched it).
 //
 // Fix: MainVM records the boot route it could not satisfy (`pendingRoutePath`) and, on each
 // appconfig change, asks this helper whether that route's menu has since appeared. Deliberately
@@ -151,7 +151,7 @@ export function resolvePendingRouteActivation<M extends MenuLike>(
 
   const target = menusList.find((m) => m.routePath === pendingRoutePath);
   if (!target) {
-    // Target menu still not live (e.g. docs_on not yet true) — keep waiting.
+    // Target menu still not live — keep waiting.
     return { activated: false, currentMenu, historyRoutePaths, pendingRoutePath };
   }
 

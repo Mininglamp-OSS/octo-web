@@ -7,7 +7,7 @@ import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 
 let _initialized = false;
-// remoteConfig 监听退订句柄:HMR 重新 init 时先退订旧的(镜像 DocsModule._configUnsubscribers)。
+// remoteConfig 监听退订句柄:HMR 重新 init 时先退订旧的。
 let _configUnsubs: Array<() => void> = [];
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -41,7 +41,7 @@ export default class PersonalModule implements IModule {
 
     // 上线开关:仅当后端 appconfig `dmpersonal_on`(WKApp.remoteConfig.dmpersonalOn)为 true 才展示
     // 「我的 / 运行时」入口,否则返回 undefined 隐藏。与 dmloop_on 独立(「我的」后续脱离 loop 演进)。
-    // 默认 false(fail-safe),镜像 DocsModule(docs_on)。纯显示门,/personal 路由仍注册。
+    // 默认 false(fail-safe)。纯显示门,/personal 路由仍注册。
     WKApp.menus.register(
       "dmpersonal",
       () =>

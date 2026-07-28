@@ -19,12 +19,6 @@ server {
         # string that the corresponding location block tests for.
         set $summary_api_url "${SUMMARY_API_URL}";
         set $market_api_url "${MARKET_API_URL}";
-        # octo-doc (DOC_APP_URL) + octo-docs-backend (DOCS_BACKEND_URL) upstreams, as
-        # runtime nginx variables so the doc/backend hosts resolve per-request (with a
-        # resolver) instead of at config load — an unset/unresolvable host then 503s its
-        # own route instead of aborting the whole container at startup.
-        set $doc_app_url "${DOC_APP_URL}";
-        set $docs_backend_url "${DOCS_BACKEND_URL}";
 
         # Security headers
         # Prevent clickjacking attacks
@@ -40,32 +34,7 @@ server {
         # blob: is required for srcdoc iframe previews (HTML file preview)
         # srcdoc iframe origin is null, so internally created blob URLs become blob:null/...
         # Adding blob: to script-src and connect-src allows these URLs to load.
-        #
-        # img-src: the object-store (minio) presign service signs image URLs over http://
-        # on an environment-specific host:port (the browser-reachable minio host). CSP only
-        # whitelists https: by default, so an http minio source is blocked at the CSP layer
-        # (before even reaching the JS ASSET_HOST_WHITELIST). ${DOCS_ASSET_CSP_ORIGIN} is an
-        # envsubst placeholder for that extra source (e.g. "http://192.168.214.189:9000"),
-        # kept env-configurable so we never hardcode a host or open http: wide. It MUST match
-        # the backend presign host and the frontend VITE_DOCS_ASSET_HOSTS value. Empty by
-        # default (no extra source) for environments that serve assets over https.
-        #
-        # font-src: Excalidraw (whiteboard) loads its hand-drawn font faces (.woff2) from its
-        # default asset host https://esm.sh when window.EXCALIDRAW_ASSET_PATH is not overridden
-        # (e.g. https://esm.sh/@excalidraw/excalidraw@<ver>/dist/prod/fonts/...). Without it the
-        # browser blocks the @font-face fetch and the console fills with CSP font-src errors.
-        #
-        # SECURITY NOTE (P2 #8, XIN-517): allowing esm.sh here is a scoped third-party origin —
-        # limited to font-src only (never script/connect), so it cannot execute code or exfiltrate
-        # data, but it is still a supply-chain surface. The preferred hardening is to SELF-HOST the
-        # Excalidraw font assets and point window.EXCALIDRAW_ASSET_PATH at a same-origin path, then
-        # drop esm.sh from font-src entirely. That requires copying @excalidraw/excalidraw's
-        # dist/prod/fonts into the served bundle at build time (a new vite static-copy step in
-        # apps/web) and cannot be validated while the whiteboard build/test env is frozen — shipping
-        # it blind risks a silent production font break with no fallback once esm.sh is removed. Per
-        # the boss escape hatch, esm.sh is retained for now; self-hosting is tracked as the
-        # follow-up to remove this allowance.
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: ${DOCS_ASSET_CSP_ORIGIN}; font-src 'self' data: https://esm.sh; connect-src 'self' ws: wss: http: https: blob:; media-src 'self' blob: https:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'self';" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' ws: wss: http: https: blob:; media-src 'self' blob: https:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'self';" always;
         # HSTS - uncomment when full HTTPS chain is confirmed
         # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
@@ -102,51 +71,6 @@ server {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             client_max_body_size 100m;
-        }
-
-        # ── octo-doc HTML: single unified prefix /docs-html/* ─────────────────────
-        # All web→octo-doc traffic is namespaced under ONE prefix. The frontend now builds
-        # octo-doc's REAL backend paths under this prefix (resolveOctoDocBase + /v1/...):
-        #   /docs-html/v1/comments, /docs-html/v1/reactions, /docs-html/v1/docs/{slug}/grants,
-        #   /docs-html/v1/docs/{slug}, /docs-html/v1/docs/{slug}/versions, and the render page
-        #   /docs-html/d/{slug}/v/{ver}.
-        # So this block only STRIPS the /docs-html prefix and forwards the already-correct path
-        # to $doc_app_url with the octo `token` header for identity — no per-path alias rewrites.
-        # resolver + runtime-variable proxy_pass: doc host resolves per-request, so an
-        # unset/unresolvable DOC_APP_URL 503s this route instead of failing nginx startup.
-        location /docs-html/ {
-            resolver 127.0.0.11 ipv6=off valid=30s;
-            if ($doc_app_url = "") { return 503 '{"status":503,"msg":"octo-doc is not configured"}'; }
-            # Single strip: /docs-html/<real-path> → /<real-path> (already /v1/... or d/...).
-            rewrite ^/docs-html/(.*)$ /$1 break;
-            proxy_pass $doc_app_url;
-            proxy_set_header token $http_token;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-
-        # octo-docs-backend — the FULL docs-meta REST surface, NOT just list/registration.
-        # As an nginx prefix (longer than /api/, so it wins) this deliberately routes ALL of
-        # /api/v1/docs* — list, create, /{docId}, /octo-doc/{slug} (html registration),
-        # plus /{docId}/members|comments|share|versions|invites|access-requests — to
-        # ${DOCS_BACKEND_URL}. This is correct by ownership: octo-docs-backend mounts that
-        # whole surface under /api/v1/docs; octo-server has NO /api/v1/docs routes (only
-        # /v1/docs/bindings* and /v1/docs/proxy/*), so narrowing this back to octo-server
-        # would 404 the rich-doc APIs. Rich-doc realtime editing runs over the collab
-        # WebSocket (direct, not proxied here); only this docs-meta REST goes through nginx.
-        location /api/v1/docs {
-            resolver 127.0.0.11 ipv6=off valid=30s;
-            if ($docs_backend_url = "") { return 503 '{"status":503,"msg":"octo-docs-backend is not configured"}'; }
-            # Variable proxy_pass: append the original URI (incl. query) directly.
-            # A `rewrite ^ $request_uri break` would URL-encode the `?` into %3F
-            # (breaking list?owner=me → 404); appending $request_uri to the
-            # variable forwards path+query verbatim, matching the pre-rewrite behavior.
-            proxy_pass $docs_backend_url$request_uri;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            client_max_body_size 1000m;
         }
 
         location /api/ {

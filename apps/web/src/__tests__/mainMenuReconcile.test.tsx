@@ -14,7 +14,7 @@ function readRepoFile(relativePath: string): string {
 }
 
 // Behavioral coverage for the #536 reviewer follow-up (Jerry-Xin + yujiawei): when a
-// remote-config-gated menu (e.g. docs_on) is toggled OFF while it is the active view,
+// remote-config-gated menu is toggled OFF while it is the active view,
 // reconciliation must drop its cached route (so the view unmounts / collab WS tears down) and
 // fall back to the first available menu — otherwise the NavRail entry disappears but the route
 // keeps rendering via historyRoutePaths. Turning a menu ON must never move the user.
@@ -27,7 +27,7 @@ const docs: MenuLike = { id: "docs", routePath: "/docs" };
 
 describe("reconcileMenuState — config-gated menu disappearance", () => {
   it("falls back to the first menu and drops the route when the active menu is gated off", () => {
-    // User is on Docs; docs_on flips false → docs leaves the list.
+    // User is on the gated route; config flips false → the route leaves the list.
     const result = reconcileMenuState({
       menusList: [chat], // post-toggle: docs gone
       currentMenu: docs,
@@ -52,7 +52,7 @@ describe("reconcileMenuState — config-gated menu disappearance", () => {
   });
 
   it("does not move the user when a menu is turned ON (one-directional)", () => {
-    // docs just appeared, user is on chat → chat still present → no change.
+    // The gated menu just appeared, user is on chat → chat still present → no change.
     const result = reconcileMenuState({
       menusList: [chat, docs],
       currentMenu: chat,
@@ -85,10 +85,10 @@ describe("reconcileMenuState — config-gated menu disappearance", () => {
 
   // #536 round-2 reviewer follow-up (yujiawei/OctoBoooot/Jerry-Xin): a menu gated off while the
   // user is on a *different* tab must still be pruned from history — otherwise the hidden
-  // subtree (and anything it pushed outside historyRoutePaths, e.g. the docs editor in the
+  // subtree (and anything it pushed outside historyRoutePaths into the shared right pane)
   // shared right pane) lingers forever, since it's no longer reachable from the NavRail.
   it("drops a gated-off menu's route even when it is not the active tab", () => {
-    // User is on chat; docs was visited earlier (hidden, display:none) and is now gated off.
+    // User is on chat; the gated route was visited earlier (hidden, display:none) and is now off.
     const result = reconcileMenuState({
       menusList: [chat], // post-toggle: docs gone
       currentMenu: chat,
@@ -151,10 +151,9 @@ describe("reconcileMenuState — config-gated menu disappearance", () => {
 
 // #536 round-3/4 reviewer follow-up (yujiawei/OctoBoooot/Jerry-Xin, converged after
 // back-and-forth): dropping a route from `historyRoutePaths` only unmounts what that route
-// renders directly there. The docs editor instead lives in the shared right-hand pane
-// (WKApp.routeRight, pushed via `routeRight.replaceToRoot`), which `historyRoutePaths` pruning
-// never touches — so its collab WebSocket kept running after `docs_on` was gated off while docs
-// was the active tab. Fix: MainVM.reconcileActiveMenu additionally clears `WKApp.routeRight`
+// renders directly there. Some routes instead push content into the shared right-hand pane
+// (WKApp.routeRight, via `routeRight.replaceToRoot`), which `historyRoutePaths` pruning
+// never touches. Fix: MainVM.reconcileActiveMenu additionally clears `WKApp.routeRight`
 // when the active menu itself vanished (mirroring what a manual menu switch already does — see
 // onMenuClick in Pages/Main/index.tsx). Gating on `activeMenuVanished` rather than "any route
 // pruned" matters: routeRight is shared with whatever menu is currently active (e.g. chat pushes
@@ -183,17 +182,18 @@ describe("MainVM.reconcileActiveMenu — releases the shared right pane only whe
 });
 
 // #536 round-4 reviewer follow-up (yujiawei / OctoBoooot / Jerry-Xin): the gating regressed the
-// APPEARANCE side. Because the docs menu factory returns undefined until docs_on resolves, a hard
-// load / refresh / bookmark / share-link of /docs finds no matching menu at MainVM.didMount and
-// falls back to chat; when docs_on later resolves, the NavRail refresh makes the entry appear but
-// nothing re-selects the deep-linked route, stranding the user on chat. MainVM records the
+// APPEARANCE side. Because a gated menu factory returns undefined until appconfig resolves, a
+// hard load / refresh / bookmark / share-link of its route finds no matching menu at
+// MainVM.didMount and falls back to chat; when config later resolves, the NavRail refresh makes
+// the entry appear but nothing re-selects the deep-linked route, stranding the user on chat.
+// MainVM records the
 // unsatisfied boot route and, on each appconfig change, asks resolvePendingRouteActivation whether
 // that route's menu has since appeared. Tested as a pure helper (no @octo/base graph); MainVM is a
 // thin adapter that copies the result onto its private state and clears the pending path on any
 // explicit user navigation (verified by source assertion below).
 describe("resolvePendingRouteActivation — deep-link appears after appconfig resolves", () => {
   it("activates the pending route once its menu appears, and clears the pending path", () => {
-    // Booted at /docs, fell back to chat; docs_on now true → docs menu appears.
+    // Booted at the gated route and fell back to chat; config now enables the route.
     const result = resolvePendingRouteActivation({
       pendingRoutePath: "/docs",
       menusList: [chat, docs], // docs now live
@@ -207,7 +207,7 @@ describe("resolvePendingRouteActivation — deep-link appears after appconfig re
   });
 
   it("keeps waiting (no activation) while the pending route's menu is still absent", () => {
-    // docs_on hasn't resolved yet → docs still not in the list.
+    // Config hasn't enabled the route yet.
     const result = resolvePendingRouteActivation({
       pendingRoutePath: "/docs",
       menusList: [chat], // docs still gated off
@@ -265,7 +265,7 @@ describe("MainVM — pending deep-link wiring", () => {
     // ...and the config-change listener tries to activate it as menus appear.
     expect(source).toContain("this.activatePendingRouteMenu()");
     // Any explicit menu selection (the currentMenus setter) must cancel the pending activation so
-    // a late docs_on toggle never yanks a user off a view they chose.
+    // a late config toggle never yanks a user off a view they chose.
     expect(source).toContain("this._pendingRouteActivation = undefined");
     const setterClearIdx = source.lastIndexOf(
       "this._pendingRouteActivation = undefined"
