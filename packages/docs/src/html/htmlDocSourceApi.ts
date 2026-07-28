@@ -145,7 +145,7 @@ export async function getVersionSource(slug: string, version: string | number, s
   const res = await fetch(url, {
     credentials: 'include',
     headers: octoDocHeaders({ Accept: 'text/html' }),
-    cache: String(version) === 'latest' ? 'no-cache' : undefined,
+    cache: 'no-cache',
     signal,
   })
   if (!res.ok) throw new Error(`octo-doc getVersionSource failed: ${res.status}`)

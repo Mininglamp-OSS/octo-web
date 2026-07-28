@@ -59,18 +59,20 @@ afterEach(() => {
 })
 
 describe('getVersionSource', () => {
-  it('uses browser-native caching and keeps the credentialed source request', async () => {
-    const spy = stubFetch(() => htmlResponse('<h1>src</h1>'))
-    expect(await getVersionSource('my-slug', 3)).toBe('<h1>src</h1>')
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/my-slug/versions/3/source')
-    expect(spy.mock.calls[0][1]).toMatchObject({ credentials: 'include' })
-    expect((spy.mock.calls[0][1] as RequestInit).cache).toBeUndefined()
-  })
+  it.each([
+    { version: 3, source: '<h1>src</h1>' },
+    { version: 'latest', source: '<h1>latest</h1>' },
+  ])('revalidates $version on every credentialed source request', async ({ version, source }) => {
+    const spy = stubFetch(() => htmlResponse(source))
 
-  it('revalidates latest with browser no-cache', async () => {
-    const spy = stubFetch(() => htmlResponse('<h1>latest</h1>'))
-    await getVersionSource('my-slug', 'latest')
-    expect((spy.mock.calls[0][1] as RequestInit).cache).toBe('no-cache')
+    expect(await getVersionSource('my-slug', version)).toBe(source)
+    expect(await getVersionSource('my-slug', version)).toBe(source)
+
+    expect(spy).toHaveBeenCalledTimes(2)
+    for (const call of spy.mock.calls) {
+      expect(String(call[0])).toBe(`https://od.test/v1/docs/my-slug/versions/${version}/source`)
+      expect(call[1]).toMatchObject({ credentials: 'include', cache: 'no-cache' })
+    }
   })
 
   it('encodes the path and forwards AbortSignal', async () => {
