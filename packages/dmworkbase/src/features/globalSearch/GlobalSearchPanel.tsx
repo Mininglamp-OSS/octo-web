@@ -311,7 +311,14 @@ export default class GlobalSearch extends Component<
           <DocSearchPanel
             keyword={vm.keyword}
             dataSource={this.globalDataSource}
-            isActive={currentKey === "docs"}
+            // Gate the panel on docsOn as well as the selected tab: the tab
+            // LIST is gated in GlobalSearchVM, but selectedTabKey can stay
+            // "docs" if docsOn is revoked mid-session (remote-config refresh).
+            // Without this the tab button disappears while the panel keeps
+            // querying a now-disabled feature. remoteConfig is an
+            // always-fresh singleton and the config listener force-updates
+            // this component, so the panel deactivates on the same refresh.
+            isActive={currentKey === "docs" && WKApp.remoteConfig.docsOn}
             onOpenDoc={this.handleOpenDoc}
           />
         </div>

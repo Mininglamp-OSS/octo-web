@@ -204,7 +204,7 @@ export interface GlobalSearchDataSource {
 
 // --- Cloud-docs search (octo-docs-backend) -------------------------------
 // doc_type enum as returned/accepted by the backend search endpoint.
-export type DocSearchDocType = "doc" | "sheet" | "board";
+export type DocSearchDocType = "doc" | "sheet" | "board" | "html";
 
 export interface DocSearchItem {
   docId: string;

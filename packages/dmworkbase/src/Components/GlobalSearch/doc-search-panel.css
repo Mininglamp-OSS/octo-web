@@ -51,6 +51,9 @@
 .wk-doc-search__icon--board {
   background: #f7734b;
 }
+.wk-doc-search__icon--html {
+  background: #7a5af5;
+}
 body[theme-mode="dark"] .wk-doc-search__icon--doc {
   background: #2b5fd9;
 }
@@ -59,6 +62,9 @@ body[theme-mode="dark"] .wk-doc-search__icon--sheet {
 }
 body[theme-mode="dark"] .wk-doc-search__icon--board {
   background: #d9603c;
+}
+body[theme-mode="dark"] .wk-doc-search__icon--html {
+  background: #5f45c9;
 }
 .wk-doc-search__meta {
   flex: 1;

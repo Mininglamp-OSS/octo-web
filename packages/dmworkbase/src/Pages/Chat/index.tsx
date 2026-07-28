@@ -1713,7 +1713,31 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         docId: item.docId,
                         space: item.spaceId,
                       });
-                      window.open(url, "_blank", "noopener,noreferrer");
+                      // window.open(url, "_blank", "noopener,noreferrer")
+                      // cannot be null-checked: per MDN, passing the
+                      // `noopener` feature makes window.open return null on
+                      // SUCCESS too, so `if (!opened)` false-positives on
+                      // every successful open. Open about:blank first to get
+                      // a truthful blocked/succeeded signal, then null the
+                      // opener (equivalent noopener isolation) and navigate.
+                      // Never fall back to location.href here: the search
+                      // modal must stay open so several results can be opened
+                      // in a row (see MeInfo/vm.tsx for the same pattern).
+                      const opened = window.open("about:blank", "_blank");
+                      if (!opened) {
+                        Toast.warning(
+                          t("base.globalSearch.docs.popupBlocked")
+                        );
+                        return;
+                      }
+                      try {
+                        opened.opener = null;
+                      } catch {
+                        // A few sandboxes freeze the opener setter; continue
+                        // navigating. about:blank is same-origin so the
+                        // residual risk is already contained.
+                      }
+                      opened.location.href = url;
                     }}
                     hideModal={() => {
                       vm.showGlobalSearch = false;
