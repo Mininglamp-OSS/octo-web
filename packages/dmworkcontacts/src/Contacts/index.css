@@ -251,7 +251,10 @@
    字母分组 header
    ============================================================ */
 .wk-contacts-letter-header {
-    padding: var(--wk-sp-2) var(--wk-sp-4);
+    height: 28px;
+    padding: 0 var(--wk-sp-4);
+    line-height: 28px;
+    box-sizing: border-box;
     font-size: 11px;
     font-weight: 600;
     color: var(--wk-text-tertiary);
