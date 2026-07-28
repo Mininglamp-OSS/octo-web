@@ -1,0 +1,189 @@
+{
+  "menu": {
+    "title": "网盘"
+  },
+  "page": {
+    "placeholder": "网盘功能即将上线"
+  },
+  "common": {
+    "confirm": "确定",
+    "cancel": "取消"
+  },
+  "space": {
+    "personal": "个人空间",
+    "shared": "共享空间",
+    "create": "创建共享空间",
+    "createTitle": "创建共享空间",
+    "namePlaceholder": "请输入空间名称",
+    "noShared": "暂无共享空间"
+  },
+  "file": {
+    "folder": "文件夹",
+    "root": "全部文件",
+    "newFolder": "新建文件夹",
+    "folderNamePlaceholder": "请输入文件夹名称",
+    "renameTitle": "重命名",
+    "rename": "重命名",
+    "move": "移动",
+    "copy": "复制",
+    "delete": "删除",
+    "share": "分享",
+    "download": "下载",
+    "upload": "上传",
+    "actions": "更多操作",
+    "empty": "此文件夹为空",
+    "colName": "名称",
+    "colSize": "大小",
+    "colUpdated": "修改时间"
+  },
+  "move": {
+    "title": "移动到",
+    "noSubfolder": "该文件夹下没有子文件夹",
+    "sameLocation": "已在当前位置，无需移动"
+  },
+  "copy": {
+    "title": "复制到"
+  },
+  "delete": {
+    "title": "确认删除",
+    "content": "确定删除"
+  },
+  "mount": {
+    "title": "添加在线文档",
+    "empty": "没有可添加的文档",
+    "add": "添加",
+    "mounted": "已添加",
+    "untitled": "未命名文档",
+    "owner": "我创建",
+    "member": "协作"
+  },
+  "share": {
+    "title": "分享",
+    "create": "创建分享链接",
+    "created": "分享链接已创建",
+    "revoked": "已取消分享",
+    "blobGenerated": "已生成分享链接，默认权限：下载",
+    "docGenerated": "已生成文档链接",
+    "docPermissionFallback": "权限由文档自身设置决定",
+    "generating": "正在生成分享链接…",
+    "generateFailed": "生成分享链接失败",
+    "permission": "权限",
+    "permView": "仅查看",
+    "permDownload": "可下载",
+    "expiry": "有效期",
+    "expiry1d": "1 天",
+    "expiry7d": "7 天",
+    "expiry30d": "30 天",
+    "password": "访问密码",
+    "passwordPlaceholder": "可选",
+    "none": "暂无分享链接",
+    "hasPassword": "带密码",
+    "expiresAt": "到期",
+    "copyLink": "复制链接",
+    "copied": "链接已复制",
+    "revoke": "取消分享"
+  },
+  "invite": {
+    "title": "邀请成员",
+    "byLink": "邀请链接",
+    "byOrg": "从组织架构选择",
+    "created": "邀请链接已创建",
+    "revoked": "已撤销邀请",
+    "added": "已添加成员",
+    "addedPartial": "部分添加成功",
+    "role": "角色",
+    "roleEditor": "可编辑",
+    "roleUploaderDownloader": "可上传下载",
+    "roleDownloader": "可下载",
+    "rolePreview": "仅预览",
+    "genLink": "生成链接",
+    "none": "暂无邀请链接",
+    "copyLink": "复制链接",
+    "copied": "链接已复制",
+    "revoke": "撤销",
+    "byOrgHint": "从组织架构中选择成员，直接加入空间（无需审批）。",
+    "pickMembers": "选择成员"
+  },
+  "member": {
+    "title": "成员管理",
+    "empty": "暂无成员",
+    "you": "你",
+    "creator": "创建者",
+    "joinedAt": "加入于",
+    "remove": "移除",
+    "removeConfirm": "确认将该成员移出空间？",
+    "removed": "已移除成员",
+    "removeFailed": "移除失败",
+    "roleUpdated": "角色已更新",
+    "updateFailed": "更新角色失败",
+    "roleSuperAdmin": "超级管理员",
+    "roleAdmin": "管理员",
+    "roleEditor": "可编辑",
+    "roleUploaderDownloader": "可上传下载",
+    "roleDownloader": "可下载",
+    "rolePreview": "仅浏览",
+    "roleCustom": "自定义"
+  },
+  "org": {
+    "title": "选择成员",
+    "confirm": "确定",
+    "searchPlaceholder": "搜索姓名 / 账号",
+    "noResult": "无匹配结果",
+    "hint": "输入关键词搜索组织成员",
+    "joined": "已加入"
+  },
+  "upload": {
+    "unsafeUrl": "上传地址不安全，已阻止",
+    "failed": "上传失败",
+    "progress": "上传中…",
+    "preparing": "准备中…",
+    "uploading": "上传中…",
+    "confirming": "保存中…",
+    "done": "已完成",
+    "retry": "重试",
+    "dismiss": "移除"
+  },
+  "download": {
+    "failed": "下载失败"
+  },
+  "landing": {
+    "share": {
+      "loading": "正在打开分享…",
+      "passwordTitle": "此分享受密码保护",
+      "passwordPlaceholder": "请输入访问密码",
+      "passwordSubmit": "访问",
+      "passwordWrong": "密码错误，请重试",
+      "permView": "仅查看",
+      "permDownload": "可下载",
+      "expiresAt": "有效期至",
+      "download": "下载文件",
+      "expiredTitle": "分享已过期",
+      "expiredBody": "该分享链接已失效。",
+      "invalidTitle": "分享不存在",
+      "invalidBody": "该分享链接无效或已被取消。",
+      "errorTitle": "打开失败",
+      "errorBody": "无法打开该分享，请稍后重试。",
+      "enterDrive": "进入网盘"
+    },
+    "invite": {
+      "accepting": "正在加入空间…",
+      "joinedTitle": "已加入空间",
+      "alreadyTitle": "你已是该空间成员",
+      "role": "角色",
+      "invalidTitle": "邀请无效",
+      "invalidBody": "该邀请链接无效或已过期。",
+      "errorTitle": "加入失败",
+      "errorBody": "无法接受该邀请，请稍后重试。",
+      "enterDrive": "进入网盘"
+    }
+  },
+  "toast": {
+    "loadFailed": "加载失败",
+    "opFailed": "操作失败",
+    "created": "创建成功",
+    "renamed": "重命名成功",
+    "moved": "移动成功",
+    "copied": "复制成功",
+    "deleted": "删除成功"
+  }
+}

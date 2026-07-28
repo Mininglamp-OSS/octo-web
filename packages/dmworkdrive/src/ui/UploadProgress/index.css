@@ -1,0 +1,67 @@
+.drive-upload-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--semi-color-border, #e5e6eb);
+  background: var(--semi-color-fill-0, #f7f8fa);
+}
+
+.drive-upload-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--semi-color-bg-0, #fff);
+  border: 1px solid var(--semi-color-border, #e5e6eb);
+}
+
+.drive-upload-item__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.drive-upload-item__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--semi-color-text-0, #1c1f23);
+}
+
+.drive-upload-item__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--semi-color-text-2, #86909c);
+}
+
+.drive-upload-item__size {
+  color: var(--semi-color-text-2, #86909c);
+}
+
+.drive-upload-item__ok {
+  color: var(--semi-color-success, #00b42a);
+}
+
+.drive-upload-item__err {
+  color: var(--semi-color-danger, #f53f3f);
+}
+
+.drive-upload-item[data-status='error'] .drive-upload-item__meta {
+  color: var(--semi-color-danger, #f53f3f);
+}
+
+.drive-upload-item__ops {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}

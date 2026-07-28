@@ -1,0 +1,32 @@
+.drive-share__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+}
+
+.drive-share__oneshot {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.drive-share__message {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--semi-color-text-0);
+}
+
+.drive-share__muted {
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+}
+
+.drive-share__linkrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

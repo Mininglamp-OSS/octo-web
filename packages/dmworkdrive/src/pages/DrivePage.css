@@ -1,0 +1,51 @@
+.drive-page {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1d2129);
+}
+
+/* Left pane wrapper (WKLayout.contentLeft): fills the host's fixed-width rail. */
+.drive-sidebar-pane {
+  height: 100%;
+  width: 100%;
+}
+
+.drive-main {
+  flex: 1;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1d2129);
+}
+
+.drive-main__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--semi-color-border, #e5e6eb);
+}
+
+.drive-main__actions {
+  flex-shrink: 0;
+}
+
+.drive-main__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 20px 20px;
+}
+
+.drive-main__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+}

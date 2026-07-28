@@ -1,0 +1,38 @@
+.drive-mount {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.drive-mount__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+}
+
+.drive-mount__empty {
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+}
+
+.drive-mount__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.drive-mount__icon {
+  color: #2f6bff;
+  flex-shrink: 0;
+}
+
+.drive-mount__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}

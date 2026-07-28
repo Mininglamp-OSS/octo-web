@@ -1,0 +1,69 @@
+.drive-member {
+  max-height: 440px;
+  overflow-y: auto;
+}
+
+.drive-member__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+}
+
+.drive-member__empty {
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+}
+
+.drive-member__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.drive-member__avatar {
+  flex-shrink: 0;
+}
+
+.drive-member__id {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.drive-member__uid {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-family: var(--semi-font-family-mono, monospace);
+}
+
+.drive-member__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drive-member__joined {
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}
+
+.drive-member__role {
+  width: 132px;
+  flex-shrink: 0;
+}
+
+.drive-member__roleTag {
+  flex-shrink: 0;
+}
+
+.drive-member__removeSlot {
+  width: 28px;
+  flex-shrink: 0;
+}

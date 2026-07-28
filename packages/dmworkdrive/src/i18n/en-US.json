@@ -1,0 +1,189 @@
+{
+  "menu": {
+    "title": "Drive"
+  },
+  "page": {
+    "placeholder": "Drive is coming soon"
+  },
+  "common": {
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
+  "space": {
+    "personal": "Personal",
+    "shared": "Shared",
+    "create": "Create shared space",
+    "createTitle": "Create shared space",
+    "namePlaceholder": "Enter a space name",
+    "noShared": "No shared spaces yet"
+  },
+  "file": {
+    "folder": "Folder",
+    "root": "All files",
+    "newFolder": "New folder",
+    "folderNamePlaceholder": "Enter a folder name",
+    "renameTitle": "Rename",
+    "rename": "Rename",
+    "move": "Move",
+    "copy": "Copy",
+    "delete": "Delete",
+    "share": "Share",
+    "download": "Download",
+    "upload": "Upload",
+    "actions": "More actions",
+    "empty": "This folder is empty",
+    "colName": "Name",
+    "colSize": "Size",
+    "colUpdated": "Modified"
+  },
+  "move": {
+    "title": "Move to",
+    "noSubfolder": "No subfolders here",
+    "sameLocation": "Already in this location"
+  },
+  "copy": {
+    "title": "Copy to"
+  },
+  "delete": {
+    "title": "Confirm deletion",
+    "content": "Delete"
+  },
+  "mount": {
+    "title": "Add document",
+    "empty": "No documents available",
+    "add": "Add",
+    "mounted": "Added",
+    "untitled": "Untitled",
+    "owner": "Owner",
+    "member": "Member"
+  },
+  "share": {
+    "title": "Share",
+    "create": "Create share link",
+    "created": "Share link created",
+    "revoked": "Share revoked",
+    "blobGenerated": "Share link created · default permission: Download",
+    "docGenerated": "Document link created",
+    "docPermissionFallback": "Access is governed by the document's own sharing settings",
+    "generating": "Generating share link…",
+    "generateFailed": "Failed to generate share link",
+    "permission": "Permission",
+    "permView": "View only",
+    "permDownload": "Download",
+    "expiry": "Expiry",
+    "expiry1d": "1 day",
+    "expiry7d": "7 days",
+    "expiry30d": "30 days",
+    "password": "Password",
+    "passwordPlaceholder": "Optional",
+    "none": "No share links yet",
+    "hasPassword": "Password",
+    "expiresAt": "Expires",
+    "copyLink": "Copy link",
+    "copied": "Link copied",
+    "revoke": "Revoke"
+  },
+  "invite": {
+    "title": "Invite members",
+    "byLink": "Invite link",
+    "byOrg": "Pick from organization",
+    "created": "Invite link created",
+    "revoked": "Invite revoked",
+    "added": "Members added",
+    "addedPartial": "Partially added",
+    "role": "Role",
+    "roleEditor": "Can edit",
+    "roleUploaderDownloader": "Upload & download",
+    "roleDownloader": "Can download",
+    "rolePreview": "Preview only",
+    "genLink": "Generate link",
+    "none": "No invite links yet",
+    "copyLink": "Copy link",
+    "copied": "Link copied",
+    "revoke": "Revoke",
+    "byOrgHint": "Pick members from the organization to add them directly (no approval).",
+    "pickMembers": "Pick members"
+  },
+  "member": {
+    "title": "Members",
+    "empty": "No members yet",
+    "you": "You",
+    "creator": "Creator",
+    "joinedAt": "Joined",
+    "remove": "Remove",
+    "removeConfirm": "Remove this member from the space?",
+    "removed": "Member removed",
+    "removeFailed": "Failed to remove member",
+    "roleUpdated": "Role updated",
+    "updateFailed": "Failed to update role",
+    "roleSuperAdmin": "Super admin",
+    "roleAdmin": "Admin",
+    "roleEditor": "Editor",
+    "roleUploaderDownloader": "Upload & download",
+    "roleDownloader": "Download",
+    "rolePreview": "View only",
+    "roleCustom": "Custom"
+  },
+  "org": {
+    "title": "Pick members",
+    "confirm": "Confirm",
+    "searchPlaceholder": "Search by name / account",
+    "noResult": "No matches",
+    "hint": "Type to search organization members",
+    "joined": "Joined"
+  },
+  "upload": {
+    "unsafeUrl": "Blocked an unsafe upload URL",
+    "failed": "Upload failed",
+    "progress": "Uploading…",
+    "preparing": "Preparing…",
+    "uploading": "Uploading…",
+    "confirming": "Saving…",
+    "done": "Done",
+    "retry": "Retry",
+    "dismiss": "Dismiss"
+  },
+  "download": {
+    "failed": "Download failed"
+  },
+  "landing": {
+    "share": {
+      "loading": "Opening share…",
+      "passwordTitle": "This share is password-protected",
+      "passwordPlaceholder": "Enter the access password",
+      "passwordSubmit": "Access",
+      "passwordWrong": "Wrong password, please try again",
+      "permView": "View only",
+      "permDownload": "Download",
+      "expiresAt": "Expires",
+      "download": "Download file",
+      "expiredTitle": "Share expired",
+      "expiredBody": "This share link is no longer valid.",
+      "invalidTitle": "Share not found",
+      "invalidBody": "This share link is invalid or has been revoked.",
+      "errorTitle": "Failed to open",
+      "errorBody": "Couldn't open this share. Please try again later.",
+      "enterDrive": "Go to Drive"
+    },
+    "invite": {
+      "accepting": "Joining the space…",
+      "joinedTitle": "Joined the space",
+      "alreadyTitle": "You're already a member",
+      "role": "Role",
+      "invalidTitle": "Invalid invite",
+      "invalidBody": "This invite link is invalid or has expired.",
+      "errorTitle": "Failed to join",
+      "errorBody": "Couldn't accept this invite. Please try again later.",
+      "enterDrive": "Go to Drive"
+    }
+  },
+  "toast": {
+    "loadFailed": "Failed to load",
+    "opFailed": "Operation failed",
+    "created": "Created",
+    "renamed": "Renamed",
+    "moved": "Moved",
+    "copied": "Copied",
+    "deleted": "Deleted"
+  }
+}
