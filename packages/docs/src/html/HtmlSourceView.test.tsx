@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { HtmlSourceView } from './HtmlSourceView.tsx'
+import { setWKApp } from '../octoweb/index.ts'
+import { createMockWKApp } from '../octoweb/mock.ts'
 
 function stubFetch(impl: (url: string, init?: RequestInit) => unknown) {
   const spy = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
@@ -15,10 +17,12 @@ function htmlResponse(body: string, ok = true, status = 200): Response {
 
 beforeEach(() => {
   ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
+  setWKApp(createMockWKApp({ uid: 'user-a', token: 'token-a' }))
 })
 afterEach(() => {
   cleanup()
   delete (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
+  setWKApp(undefined as never)
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -66,19 +70,31 @@ describe('HtmlSourceView', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('<p>copy me</p>'))
   })
 
-  it('caches by slug:version — a re-mounted identical view does not re-fetch', async () => {
-    const spy = stubFetch(() => htmlResponse('<p>cached</p>'))
-    const first = render(<HtmlSourceView slug="src-cache" version="7" />)
+  it('revalidates a numeric version on every mount', async () => {
+    const spy = stubFetch(() => htmlResponse('<p>fresh</p>'))
+    const first = render(<HtmlSourceView slug="src-revalidate" version="7" />)
     await waitFor(() => screen.getByTestId('html-doc-source-code'))
     expect(spy.mock.calls.length).toBe(1)
     first.unmount()
-    render(<HtmlSourceView slug="src-cache" version="7" />)
+    render(<HtmlSourceView slug="src-revalidate" version="7" />)
     await waitFor(() => screen.getByTestId('html-doc-source-code'))
-    // Served from the module cache, no second network hit.
-    expect(spy.mock.calls.length).toBe(1)
+    expect(spy.mock.calls.length).toBe(2)
   })
 
-  it('does not cache latest across remounts', async () => {
+  it('cannot reuse source fetched under a previous identity', async () => {
+    const spy = stubFetch((_url, init) => htmlResponse(`<p>${(init?.headers as Record<string, string>)?.token}</p>`))
+    const first = render(<HtmlSourceView slug="src-identity" version="7" />)
+    await waitFor(() => expect(screen.getByTestId('html-doc-source-code').textContent).toContain('token-a'))
+    first.unmount()
+    setWKApp(createMockWKApp({ uid: 'user-b', token: 'token-b' }))
+    render(<HtmlSourceView slug="src-identity" version="7" />)
+    await waitFor(() => expect(screen.getByTestId('html-doc-source-code').textContent).toContain('token-b'))
+    expect(spy.mock.calls.length).toBe(2)
+    expect((spy.mock.calls[0][1]?.headers as Record<string, string>).token).toBe('token-a')
+    expect((spy.mock.calls[1][1]?.headers as Record<string, string>).token).toBe('token-b')
+  })
+
+  it('revalidates latest across remounts', async () => {
     const spy = stubFetch(() => htmlResponse('<p>latest</p>'))
     const first = render(<HtmlSourceView slug="src-latest" version="latest" />)
     await waitFor(() => screen.getByTestId('html-doc-source-code'))
@@ -86,18 +102,6 @@ describe('HtmlSourceView', () => {
     render(<HtmlSourceView slug="src-latest" version="latest" />)
     await waitFor(() => screen.getByTestId('html-doc-source-code'))
     expect(spy.mock.calls.length).toBe(2)
-  })
-
-  it('evicts the least recently used numeric version after twenty entries', async () => {
-    const spy = stubFetch((url) => htmlResponse(`<p>${url}</p>`))
-    for (let version = 1; version <= 21; version++) {
-      const view = render(<HtmlSourceView slug="src-lru" version={String(version)} />)
-      await waitFor(() => screen.getByTestId('html-doc-source-code'))
-      view.unmount()
-    }
-    render(<HtmlSourceView slug="src-lru" version="1" />)
-    await waitFor(() => screen.getByTestId('html-doc-source-code'))
-    expect(spy.mock.calls.length).toBe(22)
   })
 
   it('re-fetches when the version changes (lazy per version)', async () => {

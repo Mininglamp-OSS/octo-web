@@ -54,6 +54,33 @@ async function waitForFrame(container: HTMLElement) {
 }
 
 describe('HtmlDocView — page/code mode', () => {
+  it('links mode tabs to panels and supports roving keyboard navigation', async () => {
+    stubFetch({ source: () => '<p>source</p>' })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="s" version="2" />)
+    await waitForFrame(container)
+    const pageTab = screen.getByRole('tab', { name: 'docs.mode.page' })
+    const codeTab = screen.getByRole('tab', { name: 'docs.mode.code' })
+    expect(pageTab.getAttribute('aria-controls')).toBe('html-doc-mode-panel-page')
+    expect(pageTab.tabIndex).toBe(0)
+    expect(codeTab.tabIndex).toBe(-1)
+    expect(screen.getByRole('tabpanel', { name: 'docs.mode.page' }).getAttribute('id')).toBe('html-doc-mode-panel-page')
+
+    pageTab.focus()
+    fireEvent.keyDown(pageTab, { key: 'ArrowRight' })
+    await waitFor(() => expect(screen.getByRole('tabpanel', { name: 'docs.mode.code' })).toBeTruthy())
+    expect(document.activeElement).toBe(codeTab)
+    expect(pageTab.tabIndex).toBe(-1)
+    expect(codeTab.tabIndex).toBe(0)
+
+    fireEvent.keyDown(codeTab, { key: 'Home' })
+    await waitFor(() => expect(screen.getByRole('tabpanel', { name: 'docs.mode.page' })).toBeTruthy())
+    expect(document.activeElement).toBe(pageTab)
+    fireEvent.keyDown(pageTab, { key: 'End' })
+    await waitFor(() => expect(screen.getByRole('tabpanel', { name: 'docs.mode.code' })).toBeTruthy())
+    fireEvent.keyDown(codeTab, { key: 'ArrowLeft' })
+    await waitFor(() => expect(screen.getByRole('tabpanel', { name: 'docs.mode.page' })).toBeTruthy())
+  })
+
   it('defaults to page mode (iframe) and switches to code mode (source view) on [代码]', async () => {
     stubFetch({ source: () => '<h1>Src</h1>' })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="s" version="2" />)

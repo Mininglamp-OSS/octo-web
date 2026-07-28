@@ -11,7 +11,7 @@
 // the shared MemberPanel can consume this backend unchanged. Only the reader role
 // is supported today (author is the synthesized creator row).
 
-import { resolveOctoDocBase } from './HtmlDocView.tsx'
+import { resolveOctoDocBase } from './htmlDocFrameHelpers.ts'
 import { getWKApp } from '../octoweb/index.ts'
 
 // octo-doc verifies identity via the `token` header (octo convention, not

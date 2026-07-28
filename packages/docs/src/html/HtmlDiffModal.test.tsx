@@ -127,6 +127,29 @@ describe('HtmlDiffModal', () => {
     expect(spy.mock.calls.some((call) => String(call[0]).includes('/source'))).toBe(false)
   })
 
+  it('uses roving tab stops and keyboard navigation for diff tabs', async () => {
+    stubFetch({})
+    render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)
+    const codeTab = await screen.findByRole('tab', { name: 'docs.diff.tabCode' })
+    const pageTab = screen.getByRole('tab', { name: 'docs.diff.tabPage' })
+    expect(codeTab.tabIndex).toBe(0)
+    expect(pageTab.tabIndex).toBe(-1)
+
+    codeTab.focus()
+    fireEvent.keyDown(codeTab, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(pageTab)
+    expect(codeTab.tabIndex).toBe(-1)
+    expect(pageTab.tabIndex).toBe(0)
+    expect(screen.getByRole('tabpanel', { hidden: true, name: 'docs.diff.tabPage' }).hidden).toBe(false)
+
+    fireEvent.keyDown(pageTab, { key: 'Home' })
+    expect(document.activeElement).toBe(codeTab)
+    fireEvent.keyDown(codeTab, { key: 'End' })
+    expect(document.activeElement).toBe(pageTab)
+    fireEvent.keyDown(pageTab, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(codeTab)
+  })
+
   it('shows no changes when the server returns no code hunks', async () => {
     stubFetch({})
     render(<HtmlDiffModal slug="s" from="2" to="3" title="Doc" onClose={() => {}} />)

@@ -5,39 +5,12 @@
 // comments / doctype), a wrap toggle and copy-all. No Monaco, no highlighter lib, no new deps.
 //
 // Browser search (Cmd/Ctrl-F) works because the source is laid out as real, selectable text nodes
-// (not canvas / virtualised rows). Loads lazily per slug:version; immutable numeric versions use a
-// bounded session cache, while `latest` always revalidates against octo-doc.
+// (not canvas / virtualised rows). Loads lazily per slug:version and revalidates with octo-doc on
+// every mount so current authorization is always enforced by the backend.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getVersionSource } from './htmlDocSourceApi.ts'
 import { t } from '../octoweb/index.ts'
-
-const SOURCE_CACHE_LIMIT = 20
-const sourceCache = new Map<string, string>()
-const cacheKey = (slug: string, version: string) => `${slug}::${version}`
-const isCacheableVersion = (version: string) => /^\d+$/.test(version)
-
-function getCachedSource(slug: string, version: string): string | undefined {
-  if (!isCacheableVersion(version)) return undefined
-  const key = cacheKey(slug, version)
-  const hit = sourceCache.get(key)
-  if (hit == null) return undefined
-  sourceCache.delete(key)
-  sourceCache.set(key, hit)
-  return hit
-}
-
-function cacheSource(slug: string, version: string, text: string) {
-  if (!isCacheableVersion(version)) return
-  const key = cacheKey(slug, version)
-  sourceCache.delete(key)
-  sourceCache.set(key, text)
-  while (sourceCache.size > SOURCE_CACHE_LIMIT) {
-    const oldestKey = sourceCache.keys().next().value
-    if (oldestKey == null) break
-    sourceCache.delete(oldestKey)
-  }
-}
 
 type LoadState =
   | { status: 'loading' }
@@ -149,28 +122,21 @@ export interface HtmlSourceViewProps {
 }
 
 /**
- * Lazy-loaded, read-only source panel. Owns its own fetch (abortable, race-guarded, cached).
- * The version toggle above it drives `version`; a new version re-fetches (or hits cache).
+ * Lazy-loaded, read-only source panel. Owns its own abortable, race-guarded fetch.
+ * The version toggle above it drives `version`; every mount or version change revalidates access.
  */
 export function HtmlSourceView({ slug, version }: HtmlSourceViewProps) {
-  const cached = getCachedSource(slug, version)
-  const [state, setState] = useState<LoadState>(cached != null ? { status: 'ready', text: cached } : { status: 'loading' })
+  const [state, setState] = useState<LoadState>({ status: 'loading' })
   const [wrap, setWrap] = useState(false)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    const hit = getCachedSource(slug, version)
-    if (hit != null) {
-      setState({ status: 'ready', text: hit })
-      return
-    }
     const controller = new AbortController()
     let cancelled = false
     setState({ status: 'loading' })
     getVersionSource(slug, version, controller.signal)
       .then((text) => {
         if (cancelled) return
-        cacheSource(slug, version, text)
         setState({ status: 'ready', text })
       })
       .catch(() => {

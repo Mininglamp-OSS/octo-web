@@ -192,6 +192,7 @@ export function HtmlDocView({
 }: HtmlDocViewProps) {
   // Mode toggle: page (rendered iframe) vs code (raw source). Sticky across version switches.
   const [mode, setMode] = useState<'page' | 'code'>('page')
+  const modeTabRefs = useRef<Record<'page' | 'code', HTMLButtonElement | null>>({ page: null, code: null })
   // In-page version. Starts at the prop; the 历史版本 panel's 查看 repoints it without a new tab.
   const [viewVersion, setViewVersion] = useState<string>(version)
   useEffect(() => setViewVersion(version), [version])
@@ -397,6 +398,24 @@ export function HtmlDocView({
     setHistoryOpen(false)
   }, [])
 
+  const selectModeTab = useCallback((nextMode: 'page' | 'code') => {
+    setMode(nextMode)
+    modeTabRefs.current[nextMode]?.focus()
+  }, [])
+
+  const handleModeTabKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>, currentMode: 'page' | 'code') => {
+      let nextMode: 'page' | 'code' | null = null
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') nextMode = currentMode === 'page' ? 'code' : 'page'
+      else if (event.key === 'Home') nextMode = 'page'
+      else if (event.key === 'End') nextMode = 'code'
+      if (!nextMode) return
+      event.preventDefault()
+      selectModeTab(nextMode)
+    },
+    [selectModeTab],
+  )
+
   const onFrameSelectionChange = useCallback(() => {
     const doc = frameRef.current?.contentDocument
     const body = doc?.body
@@ -465,20 +484,30 @@ export function HtmlDocView({
           {/* [页面][代码] mode switch. Semantic tablist; the mode is sticky across version switches. */}
           <div className="octo-html-doc-modes" role="tablist" aria-label={t('docs.mode.label')}>
             <button
+              ref={(node) => { modeTabRefs.current.page = node }}
               type="button"
               role="tab"
+              id="html-doc-mode-tab-page"
               aria-selected={mode === 'page'}
+              aria-controls="html-doc-mode-panel-page"
+              tabIndex={mode === 'page' ? 0 : -1}
               className={mode === 'page' ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
               onClick={() => setMode('page')}
+              onKeyDown={(event) => handleModeTabKeyDown(event, 'page')}
             >
               {t('docs.mode.page')}
             </button>
             <button
+              ref={(node) => { modeTabRefs.current.code = node }}
               type="button"
               role="tab"
+              id="html-doc-mode-tab-code"
               aria-selected={mode === 'code'}
+              aria-controls="html-doc-mode-panel-code"
+              tabIndex={mode === 'code' ? 0 : -1}
               className={mode === 'code' ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
               onClick={() => setMode('code')}
+              onKeyDown={(event) => handleModeTabKeyDown(event, 'code')}
             >
               {t('docs.mode.code')}
             </button>
@@ -652,7 +681,7 @@ export function HtmlDocView({
       )}
       {/* CODE mode: raw read-only source. No iframe, no comment anchors. */}
       {mode === 'code' && (
-        <div className="octo-html-doc-main octo-html-doc-main--code" data-testid="html-doc-main">
+        <div id="html-doc-mode-panel-code" role="tabpanel" aria-labelledby="html-doc-mode-tab-code" className="octo-html-doc-main octo-html-doc-main--code" data-testid="html-doc-main">
           <div className="octo-html-doc-source-wrap">
             <p className="octo-html-doc-source-hint" role="note">
               {t('docs.source.commentHint')}
@@ -664,7 +693,7 @@ export function HtmlDocView({
       {/* PAGE mode: HtmlPreviewFrame owns fetch/transform/sandbox/state; HtmlDocView derives
           meta/isAuthor from the raw source it reports back and mounts the comment rail beside it. */}
       {mode === 'page' && (
-        <div className="octo-html-doc-main" data-testid="html-doc-main">
+        <div id="html-doc-mode-panel-page" role="tabpanel" aria-labelledby="html-doc-mode-tab-page" className="octo-html-doc-main" data-testid="html-doc-main">
           <HtmlPreviewFrame
             slug={effectiveSlug}
             version={viewVersion}

@@ -10,7 +10,7 @@
 // completely different scheme from the Yjs RelativePosition anchors in ../comments/anchor.ts.
 // That module is NOT reusable here.
 
-import { resolveOctoDocBase } from './HtmlDocView.tsx'
+import { resolveOctoDocBase } from './htmlDocFrameHelpers.ts'
 import { getWKApp } from '../octoweb/index.ts'
 
 // octo-doc verifies identity via the `token` header (octo convention, not Authorization).

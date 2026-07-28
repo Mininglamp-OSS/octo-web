@@ -155,6 +155,7 @@ export function HtmlDiffModal({ slug, from, to, title, onClose }: HtmlDiffModalP
   const [changeIdx, setChangeIdx] = useState(0)
 
   const dialogRef = useRef<HTMLDivElement>(null)
+  const tabRefs = useRef<Record<DiffTab, HTMLButtonElement | null>>({ code: null, page: null })
   const oldDocRef = useRef<Document | null>(null)
   const newDocRef = useRef<Document | null>(null)
   const oldHits = useRef<Array<Element | null>>([])
@@ -287,15 +288,36 @@ export function HtmlDiffModal({ slug, from, to, title, onClose }: HtmlDiffModalP
     [changeIdx, changes],
   )
 
+  const selectTab = useCallback((nextTab: DiffTab) => {
+    setTab(nextTab)
+    tabRefs.current[nextTab]?.focus()
+  }, [])
+
+  const handleTabKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>, currentTab: DiffTab) => {
+      let nextTab: DiffTab | null = null
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') nextTab = currentTab === 'code' ? 'page' : 'code'
+      else if (event.key === 'Home') nextTab = 'code'
+      else if (event.key === 'End') nextTab = 'page'
+      if (!nextTab) return
+      event.preventDefault()
+      selectTab(nextTab)
+    },
+    [selectTab],
+  )
+
   const tabButton = (id: DiffTab, label: string) => (
     <button
+      ref={(node) => { tabRefs.current[id] = node }}
       type="button"
       role="tab"
       id={`html-diff-tab-${id}`}
       aria-selected={tab === id}
       aria-controls={`html-diff-panel-${id}`}
+      tabIndex={tab === id ? 0 : -1}
       className={tab === id ? 'octo-diff-tab is-active' : 'octo-diff-tab'}
       onClick={() => setTab(id)}
+      onKeyDown={(event) => handleTabKeyDown(event, id)}
     >
       {label}
     </button>
