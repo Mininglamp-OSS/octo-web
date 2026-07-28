@@ -572,6 +572,7 @@ export class ChatContentPage extends Component<
         this.setState({
           showThreadPanel: true,
           activeThread: detail.thread || null,
+          showChannelSetting: false,
           previewFile: null, // 关闭文件预览
           activePreviewMessageId: null,
           showSummaryPanel: false,
@@ -619,6 +620,7 @@ export class ChatContentPage extends Component<
           channelSearchPreviewFile: opening
             ? null
             : prevState.channelSearchPreviewFile,
+          showChannelSetting: opening ? false : prevState.showChannelSetting,
           webhookIssuePreviewTarget: opening
             ? null
             : prevState.webhookIssuePreviewTarget,
@@ -644,6 +646,7 @@ export class ChatContentPage extends Component<
       this.setState({
         showThreadPanel: true,
         activeThread: null,
+        showChannelSetting: false,
         previewFile: null,
         activePreviewMessageId: null,
         previewReturnChannelSearch: false,
@@ -673,6 +676,7 @@ export class ChatContentPage extends Component<
           conversationDigest: pending.conversationDigest,
         },
         activePreviewMessageId: pending.messageId || null,
+        showChannelSetting: false,
         showSummaryPanel: false,
         showChannelSearch: false,
         channelSearchPreviewFile: null,
@@ -738,6 +742,7 @@ export class ChatContentPage extends Component<
         this.setState({
           showThreadPanel: true,
           activeThread: null,
+          showChannelSetting: false,
           previewFile: null, // 关闭文件预览（互斥）
           activePreviewMessageId: null,
           previewReturnChannelSearch: false,
@@ -767,6 +772,7 @@ export class ChatContentPage extends Component<
             conversationDigest: pending.conversationDigest,
           },
           activePreviewMessageId: pending.messageId || null,
+          showChannelSetting: false,
           showSummaryPanel: false,
           showChannelSearch: false,
           channelSearchPreviewFile: null,
@@ -1107,6 +1113,7 @@ export class ChatContentPage extends Component<
                                 !prevState.activeThread;
                               return {
                                 showThreadPanel: !isThreadListVisible,
+                                showChannelSetting: false,
                                 showSummaryPanel: false,
                                 showChannelSearch: false,
                                 channelSearchPreviewFile: null,
@@ -1126,12 +1133,31 @@ export class ChatContentPage extends Component<
                       className="wk-chat-conversation-header-right-item"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // 点击更多按钮只切换设置面板，不影响文件预览/子区面板状态
-                        this.setState({
-                          showChannelSetting: !this.state.showChannelSetting,
-                          showChannelSearch: false,
-                          channelSearchPreviewFile: null,
-                          webhookIssuePreviewTarget: null,
+                        this.setState((prevState) => {
+                          const opening = !prevState.showChannelSetting;
+                          return {
+                            showChannelSetting: opening,
+                            showSummaryPanel: opening
+                              ? false
+                              : prevState.showSummaryPanel,
+                            showThreadPanel: opening
+                              ? false
+                              : prevState.showThreadPanel,
+                            activeThread: opening ? null : prevState.activeThread,
+                            previewFile: opening ? null : prevState.previewFile,
+                            previewHadThreadShell: opening
+                              ? false
+                              : prevState.previewHadThreadShell,
+                            activePreviewMessageId: opening
+                              ? null
+                              : prevState.activePreviewMessageId,
+                            showChannelSearch: false,
+                            channelSearchPreviewFile: null,
+                            previewReturnChannelSearch: opening
+                              ? false
+                              : prevState.previewReturnChannelSearch,
+                            webhookIssuePreviewTarget: null,
+                          };
                         });
                       }}
                     >
@@ -1177,6 +1203,7 @@ export class ChatContentPage extends Component<
                   if (threadInfo) {
                     this.setState({
                       showThreadPanel: true,
+                      showChannelSetting: false,
                       showSummaryPanel: false,
                       showChannelSearch: false,
                       channelSearchPreviewFile: null,
