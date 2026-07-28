@@ -10,7 +10,7 @@ import {
     Tooltip,
     Dropdown,
 } from "@douyinfe/semi-ui";
-import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
+import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { ChevronDown, Check, X } from "lucide-react";
 import { Channel, MessageText } from "wukongimjssdk";
 import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base";
@@ -53,7 +53,7 @@ import CitationText from "../components/CitationText";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import SummaryEditor from "../components/SummaryEditor";
-import SummaryVersionHistory from "../components/SummaryVersionHistory";
+import SummaryVersionPanel from "../components/SummaryVersionPanel";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
@@ -105,6 +105,12 @@ interface SummaryDetailPageState {
     personalVersionsLoading: boolean;
     restoringPersonalVersionId: number | null;
     showVersionDetailModal: boolean;
+    /** 版本记录右侧滑入面板是否展开 */
+    versionPanelOpen: boolean;
+    /** 本文目录：从正文标题提取的大纲 */
+    tocItems: { id: string; text: string; level: number }[];
+    /** 当前滚动高亮的目录项 id */
+    activeTocId: string;
     versionDetailLoading: boolean;
     versionDetail: SummaryVersionDetail | null;
     versionDetailIsPersonal: boolean;
@@ -156,6 +162,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     declare context: React.ContextType<typeof I18nContext>;
 
     private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
+    private contentScrollRef = React.createRef<HTMLDivElement>();
+    private tocObserver: IntersectionObserver | null = null;
+    private tocSignature = "";
 
     private handleRegenerateTopicVoice = (
         text: string,
@@ -214,6 +223,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         personalVersionsLoading: false,
         restoringPersonalVersionId: null,
         showVersionDetailModal: false,
+        versionPanelOpen: false,
+        tocItems: [],
+        activeTocId: "",
         versionDetailLoading: false,
         versionDetail: null,
         versionDetailIsPersonal: false,
@@ -291,6 +303,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 regenerateSubmitting: false,
                 refineLoadingTarget: null,
                 showVersionDetailModal: false,
+                versionPanelOpen: false,
                 versionDetailLoading: false,
                 versionDetail: null,
                 restoringVersionId: null,
@@ -316,6 +329,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (prevState && prevState.showVersionDetailModal !== this.state.showVersionDetailModal) {
             this.syncVersionDetailScrollLock();
         }
+        // 正文渲染后（或内容变化后）重建本文目录。rebuildToc 内部按签名去重，
+        // 不会因自身 setState 造成循环。
+        this.rebuildToc();
     }
 
     private handleRegenerateFromList = (e: Event) => {
@@ -334,6 +350,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     componentWillUnmount() {
         this.unmounted = true;
+        this.teardownTocObserver();
         window.removeEventListener("summary-status-change", this.handleStatusChangeEvent);
         window.removeEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.removeEventListener("summary-list-unmount", this.handleListPageUnmount);
@@ -1571,6 +1588,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ showVersionDetailModal: false, versionDetail: null });
     };
 
+    /** 关闭版本记录面板：一并退出中部只读预览，回到当前可编辑内容。 */
+    handleCloseVersionPanel = () => {
+        if (this.state.versionDetailLoading) return;
+        this.setState({ versionPanelOpen: false, showVersionDetailModal: false, versionDetail: null });
+    };
+
     handleRegenerateCancel = () => {
         this.setState({ showRegenerateModal: false });
     };
@@ -2249,61 +2272,190 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return label === key ? t("summary.detail.versionOperation.generate") : label;
     }
 
-    renderVersionHistory() {
-        const { versions, versionsLoading, detail, restoringVersionId } = this.state;
-        // Version records are a traditional-workflow ("快速总结") feature only.
-        // Agent summaries iterate via "继续迭代" (a new referencing chat), not versions.
-        if (!detail?.result || detail.trigger_type === TriggerType.AGENT || versionsLoading || versions.length <= 1) return null;
-        const currentVersion = detail.result.version;
-        const canRestore = !!(detail.permissions?.can_edit_team || detail.permissions?.can_edit);
-        return (
-            <SummaryVersionHistory
-                versions={versions}
-                versionsLoading={versionsLoading}
-                currentVersion={currentVersion}
-                restoringVersionId={restoringVersionId}
-                canRestore={canRestore}
-                onViewVersion={(version: SummaryVersionItem) => this.handleViewVersion(version, false)}
-                onRestoreVersion={(version: SummaryVersionItem) => this.handleRestoreVersion(version)}
-            />
-        );
-    }
-
-
-    renderPersonalVersionHistory() {
-        const { personalVersions, personalVersionsLoading, personalResult, restoringPersonalVersionId, detail } = this.state;
-        // 多人协作最终页只保留团队汇总版本控制；个人报告里的版本历史会让用户误以为
-        // 恢复个人版本会直接影响最终团队结果，因此在多人协作场景统一隐藏。
+    /**
+     * 决定当前详情页「版本记录」应作用于哪一组版本。
+     *
+     * - agent 总结：无版本记录（传统 workflow 专属）→ null。
+     * - 多人协作：隐藏（恢复个人版本会误导为影响团队结果）→ null。
+     * - BY_GROUP（团队）：团队汇总版本 `versions`。
+     * - 单人 BY_PERSON：个人报告版本 `personalVersions`。
+     *
+     * 版本数 ≤ 1 时同样返回 null（没有可回溯的历史）。
+     */
+    private getActiveVersionContext(): {
+        versions: SummaryVersionItem[];
+        isPersonal: boolean;
+        currentVersion: number;
+        canRestore: boolean;
+        restoringId: number | null;
+    } | null {
+        const {
+            detail,
+            versions,
+            versionsLoading,
+            personalVersions,
+            personalVersionsLoading,
+            personalResult,
+            restoringVersionId,
+            restoringPersonalVersionId,
+        } = this.state;
+        if (!detail || detail.trigger_type === TriggerType.AGENT) return null;
         if (this.isMultiCollab()) return null;
-        // Agent summaries have no version records (traditional workflow only).
-        if (detail?.trigger_type === TriggerType.AGENT) return null;
-        if (!personalResult?.content || personalVersionsLoading || personalVersions.length <= 1) return null;
-        const currentVersion = personalResult.version || personalVersions[0]?.version || 0;
-        const canRestore = !!detail?.permissions?.can_edit_personal;
+
+        if (detail.summary_mode === SummaryMode.BY_PERSON) {
+            if (!personalResult?.content || personalVersionsLoading || personalVersions.length <= 1) return null;
+            return {
+                versions: personalVersions,
+                isPersonal: true,
+                currentVersion: personalResult.version || personalVersions[0]?.version || 0,
+                canRestore: !!detail.permissions?.can_edit_personal,
+                restoringId: restoringPersonalVersionId,
+            };
+        }
+
+        if (!detail.result || versionsLoading || versions.length <= 1) return null;
+        return {
+            versions,
+            isPersonal: false,
+            currentVersion: detail.result.version,
+            canRestore: !!(detail.permissions?.can_edit_team || detail.permissions?.can_edit),
+            restoringId: restoringVersionId,
+        };
+    }
+
+    private resolveMemberName = (uid?: string): string => {
+        if (!uid) return "";
+        const m = this.state.members.find((x) => x.user_id === uid);
+        return m?.user_name || uid;
+    };
+
+    // ============ 本文目录（TOC）：从正文标题提取大纲 + 滚动高亮 ============
+
+    /** 渲染后扫描主正文的 h1/h2，构建目录并挂载滚动监听。 */
+    private rebuildToc = () => {
+        const root = this.contentScrollRef.current;
+        if (!root) return;
+        // 只取主阅读区第一个 markdown 块（避免个人报告/预览里的多份内容互相干扰）。
+        const md = root.querySelector<HTMLElement>(".summary-content-markdown");
+        if (!md) {
+            if (this.state.tocItems.length) this.setState({ tocItems: [], activeTocId: "" });
+            this.teardownTocObserver();
+            this.tocSignature = "";
+            return;
+        }
+        // 目录只列 h2 分节，编号与正文 CSS counter（md-section，仅 h2 递增）一致。
+        const heads = Array.from(md.querySelectorAll<HTMLElement>("h2"));
+        const items = heads.map((el, i) => {
+            if (!el.id) el.id = `toc-h-${i}`;
+            return { id: el.id, text: (el.textContent || "").trim(), level: 2 };
+        }).filter((it) => it.text);
+        const sig = items.map((it) => `${it.id}:${it.text}`).join("|");
+        if (sig === this.tocSignature) return;
+        this.tocSignature = sig;
+        this.setState({ tocItems: items });
+        this.setupTocObserver(root, heads);
+    };
+
+    private setupTocObserver(root: HTMLElement, heads: HTMLElement[]) {
+        this.teardownTocObserver();
+        if (!heads.length || typeof IntersectionObserver === "undefined") return;
+        this.tocObserver = new IntersectionObserver(
+            (entries) => {
+                const visible = entries
+                    .filter((e) => e.isIntersecting)
+                    .map((e) => e.target as HTMLElement);
+                if (!visible.length) return;
+                visible.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+                const id = visible[0].id;
+                if (id && id !== this.state.activeTocId) this.setState({ activeTocId: id });
+            },
+            { root, rootMargin: "0px 0px -68% 0px", threshold: 0 }
+        );
+        heads.forEach((h) => this.tocObserver!.observe(h));
+    }
+
+    private teardownTocObserver() {
+        if (this.tocObserver) {
+            this.tocObserver.disconnect();
+            this.tocObserver = null;
+        }
+    }
+
+    private handleTocClick = (id: string) => {
+        const root = this.contentScrollRef.current;
+        const el = root?.querySelector<HTMLElement>(`#${(window.CSS && CSS.escape) ? CSS.escape(id) : id}`);
+        if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "start" });
+            this.setState({ activeTocId: id });
+        }
+    };
+
+    renderToc() {
+        const { tocItems, activeTocId, versionPanelOpen, isEditing, editingTeamSummary } = this.state;
+        // 编辑态 / 版本面板打开时不显示目录，避免与右侧面板抢占空间。
+        if (versionPanelOpen || isEditing || editingTeamSummary) return null;
+        if (!tocItems || tocItems.length < 2) return null;
+        const { t } = this.context;
         return (
-            <SummaryVersionHistory
-                versions={personalVersions}
-                versionsLoading={personalVersionsLoading}
-                currentVersion={currentVersion}
-                restoringVersionId={restoringPersonalVersionId}
-                canRestore={canRestore}
-                onViewVersion={(version: SummaryVersionItem) => this.handleViewVersion(version, true)}
-                onRestoreVersion={(version: SummaryVersionItem) => this.handleRestorePersonalVersion(version)}
+            <aside className="summary-detail-toc" aria-label={t("summary.detail.tocTitle")}>
+                <div className="summary-detail-toc-title">{t("summary.detail.tocTitle")}</div>
+                <nav className="summary-detail-toc-list">
+                    {tocItems.map((it, i) => (
+                        <button
+                            key={it.id}
+                            type="button"
+                            className={`summary-detail-toc-item${activeTocId === it.id ? " is-active" : ""}${it.level === 1 ? " is-h1" : ""}`}
+                            onClick={() => this.handleTocClick(it.id)}
+                            title={it.text}
+                        >
+                            <span className="summary-detail-toc-index">{String(i + 1).padStart(2, "0")}</span>
+                            <span className="summary-detail-toc-text">{it.text}</span>
+                        </button>
+                    ))}
+                </nav>
+            </aside>
+        );
+    }
+
+    renderVersionPanel() {
+        const ctx = this.getActiveVersionContext();
+        if (!ctx) return null;
+        return (
+            <SummaryVersionPanel
+                open={this.state.versionPanelOpen}
+                versions={ctx.versions}
+                currentVersion={ctx.currentVersion}
+                selectedResultId={this.state.showVersionDetailModal ? (this.state.versionDetail?.result_id ?? null) : null}
+                restoringResultId={ctx.restoringId}
+                canRestore={ctx.canRestore}
+                resolveAuthor={this.resolveMemberName}
+                onClose={this.handleCloseVersionPanel}
+                onSelect={(version: SummaryVersionItem) => {
+                    if (version.version === ctx.currentVersion) {
+                        this.handleCloseVersionDetail();
+                    } else {
+                        this.handleViewVersion(version, ctx.isPersonal);
+                    }
+                }}
+                onRestore={async (version: SummaryVersionItem) => {
+                    const restored = ctx.isPersonal
+                        ? await this.handleRestorePersonalVersion(version)
+                        : await this.handleRestoreVersion(version);
+                    if (restored) {
+                        this.setState({ showVersionDetailModal: false, versionDetail: null });
+                    }
+                }}
             />
         );
     }
+
 
     renderVersionPreview() {
         const { t } = this.context;
-        const { versionDetail, versionDetailLoading, versionDetailIsPersonal, detail, personalResult } = this.state;
+        const { versionDetail, versionDetailLoading } = this.state;
         if (!this.state.showVersionDetailModal) return null;
-        const currentVersion = versionDetailIsPersonal
-            ? (personalResult?.version || 0)
-            : (detail?.result?.version || 0);
-        const isCurrent = !!versionDetail && versionDetail.version === currentVersion;
-        const canRestore = !!versionDetail && !isCurrent && (versionDetailIsPersonal
-            ? !!detail?.permissions?.can_edit_personal
-            : !!(detail?.permissions?.can_edit_team || detail?.permissions?.can_edit));
+        // Read-only preview of a historical version, shown in the center while the
+        // version panel stays open on the right. Restore lives in the panel footer.
         return (
             <div className="summary-detail-content-box summary-version-preview">
                 <div className="summary-version-preview-banner">
@@ -2321,39 +2473,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 {versionDetailLoading ? (
                     <div className="summary-version-detail-loading"><Spin /></div>
                 ) : versionDetail ? (
-                    <>
-                        <div className="summary-detail-result-content">
-                            <CitationText
-                                content={versionDetail.content}
-                                citations={versionDetail.citations || []}
-                                teamCitations={versionDetail.team_citations || []}
-                                members={this.state.members}
-                                disableTeamMemberPreview
-                            />
-                        </div>
-                        {canRestore && (
-                            <div className="summary-version-preview-footer">
-                                <Button
-                                    theme="solid"
-                                    type="primary"
-                                    icon={<IconHistory />}
-                                    loading={versionDetailIsPersonal
-                                        ? this.state.restoringPersonalVersionId === versionDetail.result_id
-                                        : this.state.restoringVersionId === versionDetail.result_id}
-                                    onClick={async () => {
-                                        const restored = versionDetailIsPersonal
-                                            ? await this.handleRestorePersonalVersion(versionDetail)
-                                            : await this.handleRestoreVersion(versionDetail);
-                                        if (restored) {
-                                            this.setState({ showVersionDetailModal: false, versionDetail: null });
-                                        }
-                                    }}
-                                >
-                                    {t("summary.detail.restoreVersion")}
-                                </Button>
-                            </div>
-                        )}
-                    </>
+                    <div className="summary-detail-result-content">
+                        <CitationText
+                            content={versionDetail.content}
+                            citations={versionDetail.citations || []}
+                            teamCitations={versionDetail.team_citations || []}
+                            members={this.state.members}
+                            disableTeamMemberPreview
+                        />
+                    </div>
                 ) : null}
             </div>
         );
@@ -2399,7 +2527,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </div>
                     </div>
                 </div>
-                {this.renderVersionHistory()}
                 {this.state.showVersionDetailModal ? this.renderVersionPreview() : (
                     <div className="summary-detail-result-content">
                         <AbstractCallout abstract={detail.result.abstract} title={this.context.t("summary.detail.abstractTitle")} />
@@ -2482,7 +2609,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 </Button>
                             </div>
                         )}
-                        {!isEditing && this.renderPersonalVersionHistory()}
                         {isEditing ? (
                             <div className="summary-detail-content-box">
                                 <SummaryEditor
@@ -2664,7 +2790,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {/* need4：团队编辑按钮移到 more dropdown，不再在卡片内独立渲染。 */}
                     </div>
                 </div>
-                {this.renderVersionHistory()}
                 {this.state.showVersionDetailModal ? this.renderVersionPreview() : (
                     <div className="summary-detail-content-box">
                         <AbstractCallout abstract={detail.result.abstract} title={this.context.t("summary.detail.abstractTitle")} />
@@ -2905,7 +3030,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     </Button>
                                 )}
                             </div>
-                            {isMe && this.renderPersonalVersionHistory()}
                             <div className="summary-detail-participant-report-content">
                                 {/* 问题2：「我」那条也参与 expanded/needsTruncate 收起逻辑。
                                     isMe 始终用 CitationText 渲染（保留引用可点）；
@@ -3027,7 +3151,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {t("summary.detail.submitToAll")}
                     </Button>
                 </div>
-                {this.renderPersonalVersionHistory()}
                 {myContent && this.canRevealPersonalContent() && (
                     <div className="summary-detail-participant-report-content">
                         <CitationText content={myContent} citations={myCitations} />
@@ -3370,7 +3493,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const scheduleItem = this.state.scheduleItem;
         const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
         const showSchedule = canSchedule;
-        const hasMoreActions = showForwardToChat || showRegenerate || showRetry || showCancel || showDelete || showLeave || showEdit || showSchedule;
 
         return (
             <>
@@ -3391,7 +3513,74 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             {t("summary.detail.continueRefine")}
                         </Button>
                     )}
-                    {hasMoreActions && (
+                    {(() => {
+                        const vctx = this.getActiveVersionContext();
+                        if (!vctx) return null;
+                        return (
+                            <Button
+                                className={`summary-version-trigger${this.state.versionPanelOpen ? " is-active" : ""}`}
+                                theme="borderless"
+                                type="tertiary"
+                                icon={<IconHistory />}
+                                onClick={() => this.setState((s) => ({ versionPanelOpen: !s.versionPanelOpen }))}
+                                aria-expanded={this.state.versionPanelOpen}
+                            >
+                                {t("summary.detail.versionRecords")}
+                                <span className="summary-version-trigger-count">{vctx.versions.length}</span>
+                            </Button>
+                        );
+                    })()}
+                    {/* 主操作常驻顶部（对齐版本管理原型）：转发到聊天 / 重新生成 / 删除 */}
+                    {showForwardToChat && (
+                        <Button
+                            className="summary-detail-header-btn"
+                            theme="borderless"
+                            type="tertiary"
+                            icon={<IconSend />}
+                            onClick={this.handleForwardToChat}
+                            disabled={waitingForFallback}
+                        >
+                            {t("summary.detail.forwardToChat")}
+                        </Button>
+                    )}
+                    {showRegenerate && !showRetry && (
+                        <Button
+                            className="summary-detail-header-btn"
+                            theme="borderless"
+                            type="tertiary"
+                            icon={<IconRefresh />}
+                            onClick={this.handleRegenerate}
+                        >
+                            {t("summary.detail.regenerate")}
+                        </Button>
+                    )}
+                    {showRetry && (
+                        <Button
+                            className="summary-detail-header-btn"
+                            theme="borderless"
+                            type="tertiary"
+                            icon={<IconRefresh />}
+                            onClick={this.handleRetry}
+                        >
+                            {t("summary.summaryCard.retry")}
+                        </Button>
+                    )}
+                    {showDelete && (
+                        <Button
+                            className="summary-detail-header-btn summary-detail-header-btn--danger"
+                            theme="borderless"
+                            type="danger"
+                            icon={<IconDelete />}
+                            aria-label={t("summary.common.delete")}
+                            onClick={() => Modal.confirm({
+                                title: t("summary.summaryCard.deleteTitle"),
+                                content: t("summary.summaryCard.deleteContent", { values: { title: detail?.title || detail?.task_no || "" } }),
+                                onOk: this.handleDeleteTask,
+                            })}
+                        />
+                    )}
+                    {/* 其余次要操作收进 ⋯：编辑 / 定时 / 取消 / 离开 */}
+                    {(showEdit || showSchedule || showCancel || showLeave) && (
                         <Dropdown
                             trigger="click"
                             position="bottomRight"
@@ -3414,50 +3603,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                                 {t(hasActiveSchedule ? "summary.detail.editSchedule" : "summary.detail.setSchedule")}
                                             </Dropdown.Item>
                                         )}
-                                        {showForwardToChat && (
-                                            <Dropdown.Item
-                                                icon={<IconSend />}
-                                                onClick={this.handleForwardToChat}
-                                                disabled={waitingForFallback}
-                                            >
-                                                {t("summary.detail.forwardToChat")}
-                                            </Dropdown.Item>
-                                        )}
-                                        {showRegenerate && !showRetry && (
-                                            <Dropdown.Item
-                                                icon={<IconHistory />}
-                                                onClick={this.handleRegenerate}
-                                            >
-                                                {t("summary.detail.regenerate")}
-                                            </Dropdown.Item>
-                                        )}
-                                        {showRetry && (
-                                            <Dropdown.Item
-                                                icon={<IconHistory />}
-                                                onClick={this.handleRetry}
-                                            >
-                                                {t("summary.summaryCard.retry")}
-                                            </Dropdown.Item>
-                                        )}
                                         {showCancel && (
                                             <Dropdown.Item
                                                 icon={<IconClose />}
                                                 onClick={this.handleCancel}
                                             >
                                                 {t("summary.detail.cancelTask")}
-                                            </Dropdown.Item>
-                                        )}
-                                        {showDelete && (
-                                            <Dropdown.Item
-                                                type="danger"
-                                                icon={<IconDelete />}
-                                                onClick={() => Modal.confirm({
-                                                    title: t("summary.summaryCard.deleteTitle"),
-                                                    content: t("summary.summaryCard.deleteContent", { values: { title: detail?.title || detail?.task_no || "" } }),
-                                                    onOk: this.handleDeleteTask,
-                                                })}
-                                            >
-                                                {t("summary.common.delete")}
                                             </Dropdown.Item>
                                         )}
                                         {showLeave && (
@@ -3493,7 +3644,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div className="summary-detail-page">
                 <div className="summary-detail-content-wrapper">
-                    <div className="summary-detail-content-scroll">
+                    <div className="summary-detail-content-scroll" ref={this.contentScrollRef}>
                         <div className="summary-detail-content-inner">
                         {detail && !loading && this.renderHeader()}
                         {loading && (
@@ -3649,6 +3800,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 </div>
                 </div>
+
+                {/* 本文目录：右侧浮动大纲（宽屏显示，编辑/版本面板时隐藏） */}
+                {this.renderToc()}
+
+                {/* 版本记录：右侧滑入面板 + 遮罩（页面级，覆盖在内容之上） */}
+                {this.renderVersionPanel()}
 
                 {/* Edit mode footer */}
                 {(this.state.isEditing || this.state.editingTeamSummary || this.state.editingMyDraft || this.state.editingPersonalReport) && (
