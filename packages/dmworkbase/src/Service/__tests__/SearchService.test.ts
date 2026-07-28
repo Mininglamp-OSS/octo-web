@@ -209,6 +209,7 @@ describe("SearchService request boundaries", () => {
         { docId: "d1", title: "A", docType: "doc", updatedAt: 1 },
         { docId: "d2", title: "B", docType: "sheet", updatedAt: 2 },
       ],
+      rawItemCount: 2,
     });
   });
 
@@ -235,7 +236,7 @@ describe("SearchService request boundaries", () => {
 
     postMock.mockResolvedValue({ total: "nope" });
     const noItems = await SearchService.searchDocs({ keyword: "x", page: 1, pageSize: 20 });
-    expect(noItems).toEqual({ total: 0, items: [] });
+    expect(noItems).toEqual({ total: 0, items: [], rawItemCount: 0 });
   });
 
   it("drops items missing a usable docId so /d/undefined and key collisions are impossible", async () => {
@@ -249,5 +250,8 @@ describe("SearchService request boundaries", () => {
     });
     const result = await SearchService.searchDocs({ keyword: "x", page: 1, pageSize: 20 });
     expect(result.items).toEqual([{ docId: "d1", title: "A", docType: "doc", updatedAt: 0 }]);
+    // rawItemCount preserves the backend's pre-filter page size so the pager
+    // can tell a client-side drop apart from a genuine short final page.
+    expect(result.rawItemCount).toBe(3);
   });
 });
