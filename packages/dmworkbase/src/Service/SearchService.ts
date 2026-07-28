@@ -454,6 +454,11 @@ const SearchService = {
     return {
       total: typeof resp?.total === "number" ? resp.total : validItems.length,
       items: validItems,
+      // Preserve the backend's original page size so the pager can detect a
+      // full page independently of our client-side filtering; without this,
+      // dropping a malformed row would forge a short page and prematurely
+      // stop pagination.
+      rawItemCount: items.length,
     };
   },
 

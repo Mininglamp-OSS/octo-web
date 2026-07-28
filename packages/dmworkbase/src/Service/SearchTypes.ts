@@ -232,6 +232,11 @@ export interface DocSearchQuery {
 export interface DocSearchResponse {
   total: number;
   items: DocSearchItem[];
+  // Number of items the backend returned for this page BEFORE client-side
+  // sanitization (see SearchService.searchDocs docId filter). The pager uses
+  // this to detect a full page, so a client-drop of malformed rows can't be
+  // mistaken for a genuine short (final) page. Absent when equal to items.
+  rawItemCount?: number;
 }
 
 export interface GlobalSearchChannelOption {

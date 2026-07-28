@@ -70,8 +70,14 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
   const trimmed = keyword.trim();
   const canSearch = !!trimmed && isActive && !!dataSource.searchDocs;
 
-  // Accumulated item count across pages, used to derive hasMore (see searchPage).
-  // Reset whenever the query changes so a new search starts from zero.
+  // Accumulated item count across pages for the current query, used only to
+  // cap pagination once we've observed >= total. Reset on keyword change:
+  // useSearchPagination's stale-request guard (requestIdRef) only kicks in
+  // AFTER search() returns, so a stale in-flight page could otherwise leak
+  // into this counter here. Keying reset on trimmed (not on "cursor is
+  // falsy") means stale increments are wiped the moment the query changes,
+  // and hasMore does not depend on this counter alone for stop decisions
+  // (see rawItemCount check below).
   const loadedRef = useRef(0);
   useEffect(() => {
     loadedRef.current = 0;
@@ -82,20 +88,23 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
   const searchPage = useCallback(
     async (cursor?: string) => {
       const page = cursor ? Number(cursor) || 1 : 1;
-      if (!cursor) loadedRef.current = 0;
       const res = await dataSource.searchDocs!({
         keyword: trimmed,
         page,
         pageSize: PAGE_SIZE,
       });
       loadedRef.current += res.items.length;
-      // Derive "more" from the accumulated count, not page * PAGE_SIZE: this
-      // endpoint may return a short non-final page (visibility/soft-delete
-      // filtering), and a page-number denominator would race ahead of the real
-      // item count and drop the remaining hits. A short page also means no more
-      // can follow. Mirrors the docs module's own offset paginator.
-      const hasMore =
-        res.items.length === PAGE_SIZE && loadedRef.current < res.total;
+      // Full-page detection must use the backend's ORIGINAL page size, not
+      // res.items.length: SearchService.searchDocs drops items missing a
+      // usable docId, which would otherwise forge a short page and stop
+      // pagination early. rawItemCount is that pre-filter count.
+      const rawCount = res.rawItemCount ?? res.items.length;
+      // Stop pagination when the backend gave us a genuinely short page
+      // (real end of the corpus) OR when the accumulated count has already
+      // reached the reported total. The two clauses are independent so a
+      // stale increment on loadedRef alone can't silently truncate results:
+      // a full page from the server still forces hasMore=true.
+      const hasMore = rawCount >= PAGE_SIZE && loadedRef.current < res.total;
       return {
         items: res.items,
         hasMore,
