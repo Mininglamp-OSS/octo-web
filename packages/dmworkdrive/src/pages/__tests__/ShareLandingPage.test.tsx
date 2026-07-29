@@ -131,4 +131,38 @@ describe('ShareLandingPage', () => {
     const { getByText } = render(<ShareLandingPage token="tok-5" />);
     await waitFor(() => getByText('drive.landing.share.errorTitle'));
   });
+
+  it('fires onSessionConfirmed once access succeeds (host clears stashed return target)', async () => {
+    vi.mocked(api.accessShareByToken).mockResolvedValue(grant);
+    const onSessionConfirmed = vi.fn();
+    const { getByText } = render(
+      <ShareLandingPage token="tok-ok" onSessionConfirmed={onSessionConfirmed} />,
+    );
+    await waitFor(() => getByText('quarterly-report.pdf'));
+    expect(onSessionConfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT fire onSessionConfirmed on a password gate (session unproven — stash must survive)', async () => {
+    vi.mocked(api.accessShareByToken).mockRejectedValue(
+      new DriveApiError('password required', 'password_required', 403),
+    );
+    const onSessionConfirmed = vi.fn();
+    const { getByText } = render(
+      <ShareLandingPage token="tok-pw" onSessionConfirmed={onSessionConfirmed} />,
+    );
+    await waitFor(() => getByText('drive.landing.share.passwordTitle'));
+    expect(onSessionConfirmed).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire onSessionConfirmed when access fails (e.g. expired) — 401 chain keeps its stash', async () => {
+    vi.mocked(api.accessShareByToken).mockRejectedValue(
+      new DriveApiError('share expired', 'share_expired', 403),
+    );
+    const onSessionConfirmed = vi.fn();
+    const { getByText } = render(
+      <ShareLandingPage token="tok-exp" onSessionConfirmed={onSessionConfirmed} />,
+    );
+    await waitFor(() => getByText('drive.landing.share.expiredTitle'));
+    expect(onSessionConfirmed).not.toHaveBeenCalled();
+  });
 });

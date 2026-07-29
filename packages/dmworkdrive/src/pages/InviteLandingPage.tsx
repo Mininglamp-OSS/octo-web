@@ -28,9 +28,16 @@ export interface InviteLandingPageProps {
   token: string;
   /** Leave the landing page and enter the main drive view. */
   onExit?: () => void;
+  /**
+   * Called once acceptInvite confirms the current session is valid (joined, incl.
+   * already_member). The host clears the up-front-stashed standalone return target here so a
+   * valid accept can't be replayed — auto-accepting the invite — under a later account that
+   * signs in on the same tab (PR#1146 R9 P1).
+   */
+  onSessionConfirmed?: () => void;
 }
 
-export default function InviteLandingPage({ token, onExit }: InviteLandingPageProps) {
+export default function InviteLandingPage({ token, onExit, onSessionConfirmed }: InviteLandingPageProps) {
   const { t } = useI18n();
   const [view, setView] = useState<View>({ kind: 'accepting' });
 
@@ -39,6 +46,9 @@ export default function InviteLandingPage({ token, onExit }: InviteLandingPagePr
     (async () => {
       try {
         const result = await api.acceptInvite(token);
+        // API success proves the session is valid; drop the stashed return target so a later
+        // account on this tab can't replay (and auto-accept) this invite (PR#1146 R9 P1).
+        onSessionConfirmed?.();
         if (active) setView({ kind: 'joined', result });
       } catch (err) {
         if (!active) return;
@@ -50,7 +60,7 @@ export default function InviteLandingPage({ token, onExit }: InviteLandingPagePr
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, onSessionConfirmed]);
 
   // Use the shared role→label SSOT (roleLabel.ts) so the landing page renders
   // role names identically to the member roster / org picker — and covers all

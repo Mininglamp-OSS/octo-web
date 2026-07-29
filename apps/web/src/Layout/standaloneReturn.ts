@@ -69,6 +69,27 @@ export function persistStandaloneReturn(): void {
 }
 
 /**
+ * Delete the stashed standalone return target without navigating or validating it.
+ *
+ * The R8 up-front stash (prepareDriveLandingReturn) fires for a VALID signed-in landing
+ * render too, not just the expired/anonymous chain. Left in place, that residue outlives the
+ * page: if the same tab later logs out and a DIFFERENT account signs in, onLogin's
+ * consumeStandaloneReturn would replay the previous user's share/invite deep-link across
+ * identities (an invite would even auto-accept). A landing page whose first real API call
+ * succeeds has proven the current session is valid, so the stash is no longer needed to
+ * recover from a 401 — clear it (PR#1146 R9 P1). Only removes the key; the anonymous/expired
+ * chain never reaches an API success, so its stash survives to drive the post-login return.
+ */
+export function clearStandaloneReturn(): void {
+    if (typeof window === "undefined") return;
+    try {
+        window.sessionStorage.removeItem(STANDALONE_RETURN_KEY);
+    } catch {
+        // sessionStorage unavailable: nothing was stashed, nothing to clear.
+    }
+}
+
+/**
  * Gate a drive share/invite standalone landing: stash the deep-link return target FIRST,
  * then report whether a session is available to render the landing page.
  *

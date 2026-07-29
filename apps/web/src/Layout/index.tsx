@@ -18,7 +18,7 @@ import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
-import { consumeStandaloneReturn, persistStandaloneReturn, prepareDriveLandingReturn } from "./standaloneReturn";
+import { consumeStandaloneReturn, persistStandaloneReturn, prepareDriveLandingReturn, clearStandaloneReturn } from "./standaloneReturn";
 import {
   ShareLandingPage,
   InviteLandingPage,
@@ -494,7 +494,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         };
         if (isDriveSharePath(window.location.pathname)) {
             if (prepareDriveLandingReturn(resolveDriveLandingSession)) {
-                return <ShareLandingPage token={shareTokenFromPath()} onExit={enterDriveHome} />;
+                return <ShareLandingPage token={shareTokenFromPath()} onExit={enterDriveHome} onSessionConfirmed={clearStandaloneReturn} />;
             }
             // Anonymous/expired: return target already stashed; fall through to the login screen.
         }
@@ -507,7 +507,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         // up-front stash as the share branch above.
         if (isDriveInvitePath(window.location.pathname)) {
             if (prepareDriveLandingReturn(resolveDriveLandingSession)) {
-                return <InviteLandingPage token={inviteTokenFromPath()} onExit={enterDriveHome} />;
+                return <InviteLandingPage token={inviteTokenFromPath()} onExit={enterDriveHome} onSessionConfirmed={clearStandaloneReturn} />;
             }
             // Anonymous/expired: return target already stashed; fall through to the login screen.
         }

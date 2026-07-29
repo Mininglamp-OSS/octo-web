@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { consumeStandaloneReturn, persistStandaloneReturn } from "../standaloneReturn";
+import { clearStandaloneReturn, consumeStandaloneReturn, persistStandaloneReturn } from "../standaloneReturn";
 
 const KEY = "octo.docs.standaloneReturn";
 
@@ -78,6 +78,19 @@ describe("standalone return target", () => {
                 },
             ])
         ).toBeNull();
+    });
+
+    it("clearStandaloneReturn deletes the key without navigating or consuming (R9 P1)", () => {
+        const href = window.location.href;
+        window.sessionStorage.setItem(KEY, "/drive/invite/tok_1");
+
+        clearStandaloneReturn();
+
+        expect(window.sessionStorage.getItem(KEY)).toBeNull(); // key gone
+        expect(window.location.href).toBe(href); // no navigation
+        // Idempotent: a second clear (or clearing when nothing is stashed) is a harmless no-op.
+        expect(() => clearStandaloneReturn()).not.toThrow();
+        expect(consumeStandaloneReturn()).toBeNull(); // nothing left for onLogin to replay
     });
 
     it("rejects off-origin and control-character return targets", () => {

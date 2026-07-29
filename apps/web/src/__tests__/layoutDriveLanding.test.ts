@@ -11,8 +11,8 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+    clearStandaloneReturn,
     consumeStandaloneReturn,
-    persistStandaloneReturn,
     prepareDriveLandingReturn,
 } from "../Layout/standaloneReturn";
 
@@ -90,5 +90,60 @@ describe("drive landing return-target gate (prepareDriveLandingReturn)", () => {
         prepareDriveLandingReturn(() => true);
 
         expect(window.location.href).toBe(href); // unchanged: no assign/reload/redirect
+    });
+});
+
+/**
+ * R9 P1: the up-front stash also fires for a VALID signed-in render, so the landing page's
+ * onSessionConfirmed callback (wired in Layout to clearStandaloneReturn) must drop that
+ * residue once the API confirms the session — otherwise the next account on the same tab
+ * replays the previous user's share/invite deep-link (an invite would auto-accept).
+ * The wiring under test is `onSessionConfirmed={clearStandaloneReturn}`; here we drive the
+ * same persist → (callback) → consume sequence against the real store.
+ */
+describe("drive landing session-confirmed cleanup (R9 P1)", () => {
+    it("valid share access success: onSessionConfirmed clears the stash → later login consumes null", () => {
+        openPath("/drive/s/sh_abc");
+
+        // Landing renders (valid session) and stashes up-front.
+        expect(prepareDriveLandingReturn(() => true)).toBe(true);
+        expect(window.sessionStorage.getItem(KEY)).toBe("/drive/s/sh_abc");
+
+        // accessShare succeeds → ShareLandingPage fires onSessionConfirmed (= clearStandaloneReturn).
+        clearStandaloneReturn();
+
+        // A later logout + different-account login on the same tab finds nothing to replay.
+        expect(consumeStandaloneReturn()).toBeNull();
+    });
+
+    it("valid invite accept success: cleared stash cannot auto-replay the invite under a new account", () => {
+        openPath("/drive/invite/tok_1");
+
+        expect(prepareDriveLandingReturn(() => true)).toBe(true);
+        expect(window.sessionStorage.getItem(KEY)).toBe("/drive/invite/tok_1");
+
+        // acceptInvite succeeds → InviteLandingPage fires onSessionConfirmed.
+        clearStandaloneReturn();
+
+        expect(consumeStandaloneReturn()).toBeNull(); // no cross-identity auto-accept
+    });
+
+    it("expired-session chain is untouched: no success → callback never fires → stash survives to consume", () => {
+        openPath("/drive/s/sh_abc?x=1");
+
+        // Expired token still renders; API then 401s → global logout, so onSessionConfirmed
+        // NEVER runs (no accessShare success). The stash must survive for post-login return.
+        expect(prepareDriveLandingReturn(() => true)).toBe(true);
+        // (no clearStandaloneReturn here — mirrors the 401 path that skips the success callback)
+        expect(consumeStandaloneReturn()).toBe("/drive/s/sh_abc?x=1");
+    });
+
+    it("anonymous chain is untouched: stash survives for post-login return", () => {
+        openPath("/drive/invite/tok_1?foo=bar");
+
+        // Anonymous → resolveSession false → fall through to login; no landing mounts, so no
+        // success callback. Stash must remain for onLogin.
+        expect(prepareDriveLandingReturn(() => false)).toBe(false);
+        expect(consumeStandaloneReturn()).toBe("/drive/invite/tok_1?foo=bar");
     });
 });

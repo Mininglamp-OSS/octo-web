@@ -36,6 +36,12 @@ export interface ShareLandingPageProps {
   token: string;
   /** Leave the landing page and enter the main drive view. */
   onExit?: () => void;
+  /**
+   * Called once the share-access API confirms the current session is valid (first
+   * successful accessShare). The host clears the up-front-stashed standalone return
+   * target here so a valid render can't leave residue for a later account (PR#1146 R9 P1).
+   */
+  onSessionConfirmed?: () => void;
 }
 
 /**
@@ -62,7 +68,7 @@ function classify(err: unknown): View {
   return { kind: 'error' };
 }
 
-export default function ShareLandingPage({ token, onExit }: ShareLandingPageProps) {
+export default function ShareLandingPage({ token, onExit, onSessionConfirmed }: ShareLandingPageProps) {
   const { t } = useI18n();
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [password, setPassword] = useState('');
@@ -72,12 +78,15 @@ export default function ShareLandingPage({ token, onExit }: ShareLandingPageProp
     async (pwd?: string) => {
       try {
         const result = await api.accessShareByToken(token, pwd);
+        // API success proves the session is valid; drop the stashed return target so it
+        // can't be replayed under a different account after logout (PR#1146 R9 P1).
+        onSessionConfirmed?.();
         setView({ kind: 'ready', access: result });
       } catch (err) {
         setView(classify(err));
       }
     },
-    [token],
+    [token, onSessionConfirmed],
   );
 
   useEffect(() => {

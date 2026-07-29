@@ -76,4 +76,44 @@ describe('InviteLandingPage', () => {
     const { getByText } = render(<InviteLandingPage token="inv-4" />);
     await waitFor(() => getByText('drive.landing.invite.errorTitle'));
   });
+
+  it('fires onSessionConfirmed when the invite is accepted (host clears stashed return target)', async () => {
+    vi.mocked(api.acceptInvite).mockResolvedValue({
+      space_id: 's1',
+      role: 'editor',
+      already_member: false,
+    });
+    const onSessionConfirmed = vi.fn();
+    const { getByText } = render(
+      <InviteLandingPage token="inv-ok" onSessionConfirmed={onSessionConfirmed} />,
+    );
+    await waitFor(() => getByText('drive.landing.invite.joinedTitle'));
+    expect(onSessionConfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires onSessionConfirmed on an already-member replay (idempotent join is still session-confirmed)', async () => {
+    vi.mocked(api.acceptInvite).mockResolvedValue({
+      space_id: 's1',
+      role: 'downloader',
+      already_member: true,
+    });
+    const onSessionConfirmed = vi.fn();
+    const { getByText } = render(
+      <InviteLandingPage token="inv-already" onSessionConfirmed={onSessionConfirmed} />,
+    );
+    await waitFor(() => getByText('drive.landing.invite.alreadyTitle'));
+    expect(onSessionConfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT fire onSessionConfirmed when acceptInvite fails (stash must survive a 401/logout)', async () => {
+    vi.mocked(api.acceptInvite).mockRejectedValue(
+      new DriveApiError('not found', 'not_found', 404),
+    );
+    const onSessionConfirmed = vi.fn();
+    const { getByText } = render(
+      <InviteLandingPage token="inv-bad" onSessionConfirmed={onSessionConfirmed} />,
+    );
+    await waitFor(() => getByText('drive.landing.invite.invalidTitle'));
+    expect(onSessionConfirmed).not.toHaveBeenCalled();
+  });
 });
