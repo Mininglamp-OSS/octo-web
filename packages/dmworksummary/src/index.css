@@ -612,14 +612,96 @@
     background: #333;
 }
 
-/* Regenerate modal textarea */
+/* Regenerate modal */
 .summary-regenerate-content {
     padding: 10px 16px;
     margin-top: 16px;
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: var(--wk-sp-3);
     position: relative;
+}
+
+.summary-regenerate-mode-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--wk-sp-2);
+}
+
+.summary-regenerate-mode {
+    display: flex;
+    gap: var(--wk-sp-2);
+    align-items: flex-start;
+    padding: var(--wk-sp-2);
+    border: 1px solid var(--semi-color-border);
+    border-radius: var(--wk-r-sm);
+    background: var(--semi-color-bg-0);
+    color: var(--semi-color-text-1);
+    text-align: left;
+    cursor: pointer;
+}
+
+.summary-regenerate-mode__input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+}
+
+.summary-regenerate-mode:has(.summary-regenerate-mode__input:focus-visible) {
+    outline: 2px solid var(--semi-color-primary);
+    outline-offset: 2px;
+}
+
+.summary-regenerate-mode:hover {
+    background: var(--semi-color-fill-0);
+}
+
+.summary-regenerate-mode--selected {
+    border-color: var(--semi-color-primary);
+    background: var(--semi-color-primary-light-default);
+}
+
+.summary-regenerate-mode__indicator {
+    width: 12px;
+    height: 12px;
+    margin-top: 3px;
+    flex: 0 0 12px;
+    border: 1px solid var(--semi-color-border);
+    border-radius: 50%;
+    box-sizing: border-box;
+}
+
+.summary-regenerate-mode--selected .summary-regenerate-mode__indicator {
+    border: 3px solid var(--semi-color-primary);
+}
+
+.summary-regenerate-mode__title,
+.summary-regenerate-mode__desc {
+    display: block;
+}
+
+.summary-regenerate-mode__title {
+    color: var(--semi-color-text-0);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 20px;
+}
+
+.summary-regenerate-mode__desc {
+    margin-top: 2px;
+    color: var(--semi-color-text-2);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.summary-regenerate-input-label {
+    color: var(--semi-color-text-1);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 20px;
 }
 
 .summary-regenerate-textarea-wrap {
@@ -630,7 +712,7 @@
 .summary-regenerate-textarea {
     width: 100%;
     height: 75px;
-    padding: 6px 12px 20px 12px;
+    padding: 6px 40px 28px 12px;
     border: none;
     outline: none;
     background: rgba(28, 28, 35, 0.04);
