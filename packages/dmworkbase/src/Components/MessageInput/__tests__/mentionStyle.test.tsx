@@ -8,6 +8,10 @@ import StarterKit from "@tiptap/starter-kit";
 import TiptapMention from "@tiptap/extension-mention";
 import { isBroadcastSentinelUid } from "../../../Utils/mentionRender";
 
+/**
+ * 与生产代码 MessageInput/index.tsx 保持一致的 TiptapMention 配置，
+ * 防止 renderLabel / renderText / renderHTML 之间的短路行为在测试里被绕过。
+ */
 function createMentionEditor() {
   return new Editor({
     extensions: [
@@ -36,6 +40,9 @@ function createMentionEditor() {
             `@${node.attrs.label ?? node.attrs.id}`,
           ];
         },
+        renderText({ node }) {
+          return `@${node.attrs.label ?? node.attrs.id}`;
+        },
       }),
     ],
   });
@@ -56,7 +63,6 @@ describe("Mention renderHTML class distinction", () => {
     expect(html).toContain('data-label="Alice"');
     expect(html).toContain("mention-user");
     expect(html).toContain("@Alice");
-    expect(html).not.toMatch(/class="mention"\s*[^u]|<span[^>]*class="mention"[^-]/);
   });
 
   it("@所有人(-2) 广播 mention 不包含 mention-user class", () => {

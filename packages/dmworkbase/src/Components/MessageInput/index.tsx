@@ -582,8 +582,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             `@${node.attrs.label ?? node.attrs.id}`,
           ];
         },
-        renderLabel({ options, node }) {
-          return `@${node.attrs.label}`;
+        renderText({ node }) {
+          return `@${node.attrs.label ?? node.attrs.id}`;
         },
       }),
       // 表情前缀联想：输入中文片段（如「使命」）联想出自定义表情 [使命必达]
