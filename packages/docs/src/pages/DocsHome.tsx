@@ -29,6 +29,7 @@ import { CreatorFilter, CreatorChips, creatorName } from './CreatorFilter.tsx'
 import { TypeFilter, TypeChips } from './TypeFilter.tsx'
 import { InfiniteList } from './InfiniteList.tsx'
 import { useDocsView, type DocsViewKind } from './useDocsView.ts'
+import { OnboardingHelp } from './OnboardingHelp.tsx'
 
 export interface DocTarget {
   space: string
@@ -865,54 +866,64 @@ function DocsList({
     <div className="octo-docs-list">
       <div className="octo-docs-list-header">
         <h2 className="octo-docs-list-title">{t('docs.menu.title')}</h2>
-        <span
-          className="octo-docs-list-new"
-          style={{ display: 'inline-flex', alignItems: 'stretch', padding: 0, overflow: 'hidden' }}
-        >
-          <button
-            type="button"
-            onClick={() => onCreate()}
-            disabled={creating}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              background: 'transparent',
-              border: 'none',
-              color: 'inherit',
-              font: 'inherit',
-              padding: '6px 8px 6px 12px',
-              cursor: creating ? 'default' : 'pointer',
-            }}
+        {/* Right-hand action group: the permanent agent-CLI onboarding help
+            (Mininglamp-OSS/octo-docs-backend#125) sits directly beside the New-document control.
+            The header is `space-between`, so the help button must live INSIDE this group —
+            otherwise it gets pushed to the far left, away from the action it belongs with.
+            It stays list-state independent either way. */}
+        {/* A `<div>`, not a `<span>`: the help trigger's sibling content is flow content, and a
+            phrasing-content wrapper would trip React's DOM-nesting validation. */}
+        <div className="octo-docs-list-header-actions">
+          <OnboardingHelp />
+          <span
+            className="octo-docs-list-new"
+            style={{ display: 'inline-flex', alignItems: 'stretch', padding: 0, overflow: 'hidden' }}
           >
-            <span className="octo-docs-list-new-icon" aria-hidden="true">+</span>
-            {t('docs.list.new')}
-          </button>
-          <button
-            type="button"
-            aria-label={t('docs.list.newMenu')}
-            title={t('docs.list.newMenu')}
-            disabled={creating}
-            onClick={(e) => {
-              const box = (e.currentTarget.closest('.octo-docs-list-new') as HTMLElement) ?? e.currentTarget
-              const r = box.getBoundingClientRect()
-              setNewMenuAt(newMenuAt ? null : { left: r.left, top: r.bottom + 6 })
-            }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              background: 'transparent',
-              border: 'none',
-              borderLeft: '1px solid rgba(255,255,255,0.45)',
-              color: 'inherit',
-              padding: '0 12px',
-              fontSize: 11,
-              cursor: creating ? 'default' : 'pointer',
-            }}
-          >
-            ▾
-          </button>
-        </span>
+            <button
+              type="button"
+              onClick={() => onCreate()}
+              disabled={creating}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                background: 'transparent',
+                border: 'none',
+                color: 'inherit',
+                font: 'inherit',
+                padding: '6px 8px 6px 12px',
+                cursor: creating ? 'default' : 'pointer',
+              }}
+            >
+              <span className="octo-docs-list-new-icon" aria-hidden="true">+</span>
+              {t('docs.list.new')}
+            </button>
+            <button
+              type="button"
+              aria-label={t('docs.list.newMenu')}
+              title={t('docs.list.newMenu')}
+              disabled={creating}
+              onClick={(e) => {
+                const box = (e.currentTarget.closest('.octo-docs-list-new') as HTMLElement) ?? e.currentTarget
+                const r = box.getBoundingClientRect()
+                setNewMenuAt(newMenuAt ? null : { left: r.left, top: r.bottom + 6 })
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                background: 'transparent',
+                border: 'none',
+                borderLeft: '1px solid rgba(255,255,255,0.45)',
+                color: 'inherit',
+                padding: '0 12px',
+                fontSize: 11,
+                cursor: creating ? 'default' : 'pointer',
+              }}
+            >
+              ▾
+            </button>
+          </span>
+        </div>
         {newMenuAt && (
           <PortalMenu at={newMenuAt} onClose={() => setNewMenuAt(null)}>
             <button

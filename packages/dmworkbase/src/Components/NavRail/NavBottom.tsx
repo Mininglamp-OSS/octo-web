@@ -6,6 +6,7 @@ import { t } from "../../i18n";
 
 export interface NavBottomProps {
     settingSelected?: boolean;
+    settingsButtonRef?: React.RefObject<HTMLButtonElement>;
     onSettingsClick?: () => void;
     /** 外部通知有新版本，触发气泡首次弹出 */
     hasNewVersion?: boolean;
@@ -44,7 +45,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
     }
 
     render() {
-        const { onSettingsClick, hasNewVersion, onDismissNewVersion, spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace } = this.props;
+        const { onSettingsClick, settingsButtonRef, settingSelected, hasNewVersion, onDismissNewVersion, spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace } = this.props;
         const { bubbleVisible } = this.state;
 
         return (
@@ -57,10 +58,13 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                 {/* 设置按钮 + 气泡 */}
                 <div className="wk-navrail__settings-wrap">
                     <button
+                        ref={settingsButtonRef}
                         type="button"
                         className="wk-navrail__item"
                         title={t("base.navRail.settings")}
                         aria-label={t("base.navRail.settings")}
+                        aria-haspopup="menu"
+                        aria-expanded={!!settingSelected}
                         onClick={onSettingsClick}
                     >
                         <IconSettings />

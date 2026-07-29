@@ -17,7 +17,10 @@ import BotDetailVM, {
     stripBotDetailDisplayName,
 } from "../../bridge/profileDetail/BotDetailVM";
 import BotDetailView from "../../ui/profileDetail/BotDetailView";
-import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
+import {
+    addCurrentImChannelInfoListener,
+    fetchCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime";
 import "./index.css";
 
 interface BotDetailModalProps {
@@ -36,6 +39,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
     private descriptionRef = React.createRef<HTMLTextAreaElement>();
     private vm: BotDetailVM;
     private unsubscribeVM?: () => void;
+    private unsubscribeChannelInfo?: () => void;
 
     constructor(props: BotDetailModalProps) {
         super(props);
@@ -67,6 +71,14 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
 
     componentDidMount() {
         this.unsubscribeVM = this.vm.addListener(() => this.forceUpdate());
+        this.unsubscribeChannelInfo = addCurrentImChannelInfoListener((channelInfo) => {
+            if (
+                channelInfo.channel?.channelID === this.props.uid &&
+                channelInfo.channel?.channelType === ChannelTypePerson
+            ) {
+                this.vm.updateChannelInfo(channelInfo);
+            }
+        });
         this.vm.mount();
         if (this.props.uid) {
             this.vm.loadBotInfo();
@@ -84,6 +96,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
 
     componentWillUnmount() {
         this.unsubscribeVM?.();
+        this.unsubscribeChannelInfo?.();
         this.vm.unmount();
     }
 
@@ -287,6 +300,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
             remarkDraft,
             savingRemark,
             reported,
+            channelInfo,
             showClawInfo,
             showBotManage,
             avatarCropFile,
@@ -322,6 +336,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
                     isOwner={isOwner}
                     isFriend={isFriend}
                     reported={reported}
+                    channelInfo={channelInfo}
                     uploadingAvatar={uploadingAvatar}
                     editingRemark={editingRemark}
                     remarkDraft={remarkDraft}

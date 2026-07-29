@@ -75,7 +75,7 @@ function renderSwitcher() {
 }
 
 function clickLanguageMenuItem(label: string) {
-  const item = Array.from(container.querySelectorAll("button"))
+  const item = Array.from(document.body.querySelectorAll("button"))
     .find((button) => button.textContent?.includes(label)) as HTMLButtonElement | undefined;
   expect(item).toBeTruthy();
   act(() => {
@@ -107,6 +107,23 @@ describe("NavLanguageSwitcher", () => {
 
     expect(i18n.getLocale()).toBe("en-US");
     expect(hoisted.updateUserLanguagePreference).not.toHaveBeenCalled();
+  });
+
+  it("closes on Escape and restores focus to the trigger", () => {
+    renderSwitcher();
+    const trigger = container.querySelector(".wk-navrail__language") as HTMLButtonElement;
+
+    act(() => {
+      trigger.click();
+    });
+    expect(document.body.querySelector("[role='menu']")).toBeTruthy();
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+
+    expect(document.body.querySelector("[role='menu']")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("keeps local language when backend sync fails", async () => {

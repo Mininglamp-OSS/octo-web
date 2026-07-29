@@ -1,6 +1,5 @@
 import WKApp from "../../App";
 import { checkVersionOnce } from "../../Utils/versionChecker";
-import classnames from "classnames";
 import React, { Component } from "react";
 import { Toast, Spin, Button, Progress } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
@@ -9,9 +8,11 @@ import NavSecretsSettingsItem from "./NavSecretsSettingsItem";
 import ChangelogMarkdown from "./ChangelogMarkdown";
 import { i18n, t } from "../../i18n";
 import { apiFetchJson } from "../../Service/apiFetch";
+import NavFlyout, { NavFlyoutMenuItem } from "./NavFlyout";
 
 export interface NavSettingsPanelProps {
     settingSelected: boolean;
+    triggerRef: React.RefObject<HTMLElement>;
     hasNewVersion: boolean;
     showNewVersion: boolean;
     showAppVersion: boolean;
@@ -86,6 +87,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
     render() {
         const {
             settingSelected,
+            triggerRef,
             hasNewVersion,
             showNewVersion,
             showAppVersion,
@@ -117,17 +119,20 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
 
         return (
             <>
-                {/* 点击外部关闭 mask */}
-                {settingSelected && (
-                    <div
-                        style={{ position: "fixed", inset: 0, zIndex: 199 }}
-                        onClick={onToggleSetting}
-                    />
-                )}
-                <ul className={classnames("wk-sider-setting-list wk-navrail__settings-list", settingSelected ? "open" : undefined)}>
+                <NavFlyout
+                    open={settingSelected}
+                    triggerRef={triggerRef}
+                    onOpenChange={(next) => {
+                        if (next !== settingSelected) onToggleSetting();
+                    }}
+                    size="md"
+                    role="menu"
+                    ariaLabel={t("base.navRail.settings")}
+                    className="wk-navrail__settings-list"
+                >
                     {/* 版本更新提示（面板打开时自检，有新版本时展示） */}
                     {hasNewVersionLocal && (
-                        <li className="wk-navrail__settings-version-update" onClick={(e) => e.stopPropagation()}>
+                        <div className="wk-navrail__settings-version-update" role="none">
                             <span>{t("base.navRail.settingsPanel.versionAvailable")}</span>
                             <button
                                 className="wk-navrail__settings-version-refresh"
@@ -144,59 +149,59 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                             >
                                 {t("base.navRail.settingsPanel.refreshNow")}
                             </button>
-                        </li>
+                        </div>
                     )}
                     {/* 暗黑模式入口已关闭 */}
                     {showAccountCenter && (
-                        <li onClick={() => {
+                        <NavFlyoutMenuItem onSelect={() => {
                             onToggleSetting();
                             window.open(accountCenterUrl, '_blank', 'noopener,noreferrer');
                         }}>
                             {t("base.navRail.settingsPanel.accountCenter")}
-                        </li>
+                        </NavFlyoutMenuItem>
                     )}
-                    <li onClick={() => {
+                    <NavFlyoutMenuItem onSelect={() => {
                         onToggleSetting();
                         this.fetchChangelog();
                         onSetShowNewVersion(true);
                     }}>
                         {t("base.navRail.settingsPanel.changelog")}
-                    </li>
+                    </NavFlyoutMenuItem>
                     {onOpenOnboarding && (
-                        <li onClick={() => {
+                        <NavFlyoutMenuItem onSelect={() => {
                             onToggleSetting();
                             onOpenOnboarding();
                         }}>
                             {t("base.navRail.settingsPanel.onboarding")}
-                        </li>
+                        </NavFlyoutMenuItem>
                     )}
                     {canManageSpace && (
-                        <li onClick={() => {
+                        <NavFlyoutMenuItem onSelect={() => {
                             onToggleSetting();
                             // /space 是独立打包的 admin SPA（同源），React Router 不识别，必须整页跳转；
                             // 真实鉴权由 admin 后端负责，此处仅用于 UI 可见性控制。
                             window.location.href = "/space";
                         }}>
                             {t("base.navRail.settingsPanel.spaceManagement")}
-                        </li>
+                        </NavFlyoutMenuItem>
                     )}
-                    <li onClick={() => {
+                    <NavFlyoutMenuItem onSelect={() => {
                         onToggleSetting();
                         WKApp.shared.notificationIsClose = !WKApp.shared.notificationIsClose;
                     }}>
                         {WKApp.shared.notificationIsClose
                             ? t("base.navRail.settingsPanel.desktopNotification.on")
                             : t("base.navRail.settingsPanel.desktopNotification.off")}
-                    </li>
+                    </NavFlyoutMenuItem>
                     <NavVoiceSettingsItem />
                     <NavSecretsSettingsItem />
-                    <li onClick={() => {
+                    <NavFlyoutMenuItem onSelect={() => {
                         onToggleSetting();
                         void WKApp.shared.logoutUserInitiated();
                     }}>
                         {t("base.navRail.settingsPanel.logout")}
-                    </li>
-                </ul>
+                    </NavFlyoutMenuItem>
+                </NavFlyout>
 
                 {/* 更新日志 Modal */}
                 <WKModal

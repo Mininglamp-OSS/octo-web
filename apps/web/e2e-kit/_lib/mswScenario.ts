@@ -4,42 +4,23 @@
  *
  * 为什么用 sessionStorage 而不是 worker.use():
  *  - worker.use() 装的 handler 在 page nav 后会 reset (Playwright authedPage
- *    fixture 先 goto('/'), spec 再 goto('/loop') → 中间会重置)
+ *    fixture 先 goto('/'), spec 再 goto('/target') → 中间会重置)
  *  - sessionStorage 在 nav 后存活, handler 内部读它做 dispatch, 一次装长期有效
  *
  * 用法:
  *   test("...", async ({ authedPage }) => {
- *     await installMswScenario(authedPage, "one-issue");
- *     await authedPage.goto("/loop?sid=e2etest");
+ *     await installMswScenario(authedPage, "default");
+ *     await authedPage.goto("/target?sid=e2etest");
  *     ...
  *   });
- *
- * 目前支持的 scenario 名 (见 apps/web/e2e-kit/msw-handlers/loop-empty.ts):
- *   - "empty" (默认): 无 workspace, 空态引导 (C1)
- *   - "create-ws": POST 前空, POST 后有 workspace (C2)
- *   - "one-ws": 一个 workspace, 无 issue (C3)
- *   - "one-issue": 一个 workspace + 一个 issue (C4/C5)
- *   - "two-ws": 两个 workspace (C6 切换)
  */
 import type { Page } from "@playwright/test";
 
-export type LoopScenario =
-  | "empty"
-  | "create-ws"
-  | "one-ws"
-  | "one-issue"
-  | "two-ws"
-  | "ws-with-members"
-  | "member-remove"
-  | "one-project"
-  | "one-agent"
-  | "one-squad"
-  | "one-automation"
-  | "no-mock";
+export type MswScenario = string | "no-mock";
 
 export async function installMswScenario(
   page: Page,
-  scenario: LoopScenario
+  scenario: MswScenario
 ): Promise<void> {
   // no-mock: 阻止 SW 加载 (让 page.route 生效, 因为 SW 一旦 register 会抢
   // 所有 fetch, page.route 只能拦不经过 SW 的原生 fetch).

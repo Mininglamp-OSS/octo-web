@@ -1,3 +1,4 @@
+import { renderToStaticMarkup } from "react-dom/server"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ConnectStatus } from "wukongimjssdk"
 import ConnectionStatus from "../index"
@@ -56,8 +57,8 @@ vi.mock("../../../i18n", async () => {
 type ConnectionStatusState = ConnectionStatus["state"]
 type ConnectionStatusSetState = Parameters<ConnectionStatus["setState"]>[0]
 
-function createConnectionStatus(state?: Partial<ConnectionStatusState>) {
-    const component = new ConnectionStatus({})
+function createConnectionStatus(state?: Partial<ConnectionStatusState>, props: { compact?: boolean } = {}) {
+    const component = new ConnectionStatus(props)
     component.state = {
         status: ConnectStatus.Connected,
         latency: 88,
@@ -74,9 +75,50 @@ function createConnectionStatus(state?: Partial<ConnectionStatusState>) {
     return component
 }
 
+function renderComponent(component: ConnectionStatus) {
+    component.context = {
+        t: (key: string) => key,
+        locale: "zh-CN",
+        setLocale: vi.fn(),
+    } as any
+    return renderToStaticMarkup(component.render())
+}
+
+describe("ConnectionStatus render", () => {
+    beforeEach(() => {
+        hoisted.sdk.connectManager.connect.mockReset()
+    })
+
+    it("shows connected text when connected latency is not available yet", () => {
+        const component = createConnectionStatus({ latency: null })
+
+        const html = renderComponent(component)
+
+        expect(html).toContain("base.connectionStatus.connected")
+        expect(html).not.toContain("base.connectionStatus.disconnected")
+    })
+
+    it("keeps compact disconnected status interactive", () => {
+        const component = createConnectionStatus({
+            status: ConnectStatus.Disconnect,
+            latency: null,
+            connectedSince: null,
+        }, { compact: true })
+
+        const html = renderComponent(component)
+        component.handleClick()
+
+        expect(html).toContain("role=\"button\"")
+        expect(html).toContain("cursor:pointer")
+        expect(html).toContain("base.connectionStatus.disconnected")
+        expect(hoisted.sdk.connectManager.connect).toHaveBeenCalledTimes(1)
+    })
+})
+
 describe("ConnectionStatus measureLatency", () => {
     beforeEach(() => {
         hoisted.sdk.connectManager.status = ConnectStatus.Connected
+        hoisted.sdk.connectManager.connect.mockReset()
         hoisted.apiFetch.mockReset()
     })
 

@@ -3,6 +3,7 @@ import { ensureVoiceFeedbackLoaded } from '../MessageInput/useSpaceFeedbackSetti
 import WKApp from '../../App';
 import VoiceSettingsPanel from './VoiceSettingsPanel';
 import { useI18n } from '../../i18n';
+import { NavFlyoutMenuItem } from './NavFlyout';
 
 export default function NavVoiceSettingsItem() {
   const [panelVisible, setPanelVisible] = useState(false);
@@ -21,12 +22,9 @@ export default function NavVoiceSettingsItem() {
 
   return (
     <>
-      <li onClick={(e) => {
-        e.stopPropagation();
-        setPanelVisible(true);
-      }}>
+      <NavFlyoutMenuItem onSelect={() => setPanelVisible(true)}>
         {t("base.navRail.settingsPanel.voiceSettings")}
-      </li>
+      </NavFlyoutMenuItem>
       {panelVisible && (
         <VoiceSettingsPanel onClose={() => setPanelVisible(false)} />
       )}

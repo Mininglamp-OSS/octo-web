@@ -50,6 +50,8 @@ export interface NavRailVMProps {
 export interface NavRailProps extends NavRailVMProps {}
 
 export default class NavRail extends Component<NavRailProps> {
+    private settingsButtonRef = React.createRef<HTMLButtonElement>();
+
     render() {
         const {
             menusList,
@@ -119,6 +121,7 @@ export default class NavRail extends Component<NavRailProps> {
                     {/* 底部：分割线 + 设置 + Space */}
                     <NavBottom
                         settingSelected={settingSelected}
+                        settingsButtonRef={this.settingsButtonRef}
                         hasNewVersion={hasNewVersion}
                         onSettingsClick={onToggleSetting}
                         onDismissNewVersion={onDismissNewVersion}
@@ -133,6 +136,7 @@ export default class NavRail extends Component<NavRailProps> {
                 {/* 设置面板 + Modals（挂在 nav 外，避免 overflow 裁剪） */}
                 <NavSettingsPanel
                     settingSelected={settingSelected}
+                    triggerRef={this.settingsButtonRef}
                     hasNewVersion={hasNewVersion}
                     canManageSpace={canManageSpace}
                     showNewVersion={showNewVersion}

@@ -2912,6 +2912,12 @@ body.octo-row-resizing {
   font-size: 15px;
   font-weight: 600;
   color: var(--octo-fg, #1f2329);
+  /* The header gained a ~32px "?" action; in the 280px split pane the title must yield instead of
+     pushing the action group out of the row. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* "New document" reads as a clear primary action, visually distinct from rows. */
 .octo-docs-list-new {
@@ -3351,6 +3357,193 @@ body.octo-row-resizing {
   gap: 8px;
 }
 
+/* "?" agent-CLI onboarding help (Mininglamp-OSS/octo-docs-backend#125): a permanent header button + a copy-prompt dialog.
+   The docs `--octo-*` color tokens are defined ONLY under `.octo-theme` (top of this file), but the
+   docs list / modals render under `.octo-doc` (outside that scope) — so, exactly like
+   `.octo-confirm-modal` and `.octo-docs-empty-*`, every `--octo-*` color MUST carry its fallback
+   hex or it resolves to nothing (a transparent dialog). Spacing / radius / type use the `--wk-*`
+   scale with px fallbacks so the standalone harness (no theme entry) still renders. */
+/* Right-hand header action group: onboarding help "?" sits directly beside the New control.
+   Without this wrapper the `space-between` header strands the help button on the far left. */
+.octo-docs-list-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1, 4px);
+  flex: 0 0 auto;
+}
+.octo-docs-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-8, 32px);
+  height: var(--wk-sp-8, 32px);
+  padding: 0;
+  border: none;
+  border-radius: var(--wk-r-sm, 6px);
+  background: transparent;
+  color: var(--octo-muted, #8a919e);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.octo-docs-help-btn:hover {
+  background: var(--octo-hover, #f2f3f5);
+  color: var(--octo-fg, #1f2329);
+}
+/* SVG icon styling — mirrors .octo-doc-more-glyph so the help/close icons render as the same
+   stroked line-icons the rest of the docs header uses (no emoji / glyph characters). */
+.octo-docs-help-glyph {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.octo-docs-help-overlay {
+  position: fixed;
+  inset: 0;
+  /* The real hazard was NOT the token: `.octo-docs-list` sets `container-type: inline-size`, whose
+     layout containment makes the list the containing block for `position: fixed` descendants and
+     scopes their z-index — so this overlay is portaled to <body> (OnboardingHelp.tsx, mirroring
+     PortalMenu) and only then do `inset: 0` and this z-index mean anything.
+     Hard 1300, matching .octo-confirm-overlay — deliberately NOT `--wk-z-modal`, which resolves to
+     200 in the production host (dmworkbase/theme/semantic.css) and would place this overlay BELOW
+     this package's own layers: .octo-modal-overlay (1200), .octo-confirm-overlay (1300) and the
+     new-document dropdown (1000) in this very header. */
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Same modal scrim as .octo-confirm-overlay so the dialog reads as a real modal (not a floating,
+     see-through panel). Matches the existing docs confirm/modal backdrop exactly. */
+  background: rgba(0, 0, 0, 0.4);
+  padding: var(--wk-sp-4, 16px);
+}
+.octo-docs-help-dialog {
+  width: 100%;
+  max-width: 560px;
+  max-height: 82vh;
+  overflow-y: auto;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  /* 12px modal radius — matches .octo-confirm-modal / UI-SPEC modal rounding. */
+  border-radius: 12px;
+  box-shadow: var(--octo-modal-shadow, 0 12px 48px rgba(0, 0, 0, 0.24));
+  padding: var(--wk-sp-5, 20px);
+  /* Re-anchor the face: the dialog is portaled to <body>, so it inherits nothing from the Docs
+     subtree. Anchor to the CHROME stack, not `.octo-doc`'s Arial — that Arial is documented in
+     place as "the sheet's default cell font", i.e. a document-CONTENT face, and it only wins in
+     `.octo-doc.octo-docs-list-only`. In `.octo-docs-split` the list chrome declares this system
+     stack at equal specificity and later in the file, so anchoring to Arial would have made the
+     dialog mismatch its own surroundings in split view — the very bug this rule fixes, relocated
+     Keep in sync with `.octo-docs-split` / the other chrome rules.
+     The prompt textarea overrides this with an explicit monospace stack. */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.octo-docs-help-manual-hint {
+  /* Clipboard-blocked fallback notice. Advisory, not an error: neutral secondary text, no red. */
+  margin: var(--wk-sp-2, 8px) 0 0;
+  font-size: var(--wk-text-size-sm, 12px);
+  line-height: 1.5;
+  /* `--octo-muted` is the defined, dark-aware token for secondary text (`.octo-theme`) and is what
+     the sibling `.octo-docs-help-dialog-intro` already uses. An invented `--octo-fg-secondary` is
+     defined nowhere, so its literal would always apply — unthemeable, and a second grey for one
+     semantic role inside one dialog. */
+  color: var(--octo-muted, #8a919e);
+}
+/* Idle state of the live region above. It must stay in the a11y tree (see the JSX comment) so it
+   cannot use `display: none` / `visibility: hidden` / the `hidden` attribute — all three remove it.
+   This is the standard sr-only clip: zero-area, clipped, no layout contribution, still rendered. */
+.octo-docs-help-manual-hint-idle {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.octo-docs-help-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2, 8px);
+}
+.octo-docs-help-dialog-title {
+  margin: 0;
+  font-size: var(--wk-text-size-xl, 16px);
+  font-weight: 600;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-help-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-8, 32px);
+  height: var(--wk-sp-8, 32px);
+  padding: 0;
+  border: none;
+  border-radius: var(--wk-r-sm, 6px);
+  background: transparent;
+  color: var(--octo-muted, #8a919e);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.octo-docs-help-dialog-close:hover {
+  background: var(--octo-hover, #f2f3f5);
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-help-dialog-intro {
+  margin: var(--wk-sp-2, 8px) 0 var(--wk-sp-3, 12px);
+  font-size: var(--wk-text-size-base, 13px);
+  color: var(--octo-muted, #8a919e);
+}
+.octo-docs-help-prompt {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--wk-text-size-sm, 12px);
+  line-height: 1.5;
+  color: var(--octo-fg, #1f2329);
+  background: var(--octo-hover, #f2f3f5);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: var(--wk-r-md, 8px);
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+}
+.octo-docs-help-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3, 12px);
+  margin-top: var(--wk-sp-3, 12px);
+}
+.octo-docs-help-copy {
+  border: none;
+  /* UI-SPEC §2: product primary is the deep black `#1C1C23` and Primary buttons are black-on-white
+     text — the legacy blue must NOT be used for a primary action. */
+  background: var(--wk-brand-primary, #1c1c23);
+  color: var(--wk-text-on-brand, #fff);
+  border-radius: var(--wk-r-full, 9999px);
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-4, 16px);
+  font-size: var(--wk-text-size-base, 13px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.octo-docs-help-copy:hover {
+  background: var(--wk-brand-primary-hover, #2a2a33);
+}
+/* Secondary/ghost link — neutral, not the legacy blue (UI-SPEC: blue is not a brand/action color;
+   purple is reserved for AI/Thread). */
+.octo-docs-help-reference {
+  font-size: var(--wk-text-size-base, 13px);
+  color: var(--octo-fg, #1f2329);
+  text-decoration: underline;
+}
+.octo-docs-help-reference:hover {
+  color: var(--wk-brand-primary, #1c1c23);
+}
 
 /* ─────────────────────────────────────────────────────────────────────────
    Batch-3 schema toolbar items (SCHEMA_VERSION 5–13)
