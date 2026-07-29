@@ -190,6 +190,7 @@
   --wk-text-mono-sm: 400 11px/1.4 var(--wk-font-mono);
 
   /* ── Spacing — 4px 栅格 ── */
+  --wk-sp-px: 1px;
   --wk-sp-0-5: 2px;
   --wk-sp-1: 4px;
   --wk-sp-1-5: 6px;

@@ -48,15 +48,13 @@ describe("Mention CSS capsule style", () => {
     const block = match![1];
     expect(block).toMatch(/background-color\s*:\s*var\(--wk-purple-alpha-08\)/);
     expect(block).toMatch(/color\s*:\s*var\(--wk-color-accent\)/);
+    expect(block).toMatch(/padding\s*:\s*var\(--wk-sp-px\)\s+var\(--wk-sp-2\)/);
     expect(block).not.toMatch(/background-color\s*:\s*transparent/);
+    expect(block).not.toMatch(/transition/);
   });
 
-  it(".wk-messageinput-editor .mention:hover 有加深背景", () => {
-    const match = css.match(
-      /\.wk-messageinput-editor \.mention:hover\s*{([^}]*)}/,
-    );
-    expect(match, ":hover 规则应存在").not.toBeNull();
-    expect(match![1]).toMatch(/background-color\s*:\s*var\(--wk-purple-alpha-12\)/);
+  it(".wk-messageinput-editor .mention 无 :hover 态（cursor:text 不响应 hover）", () => {
+    expect(css).not.toMatch(/\.wk-messageinput-editor \.mention:hover/);
   });
 });
 
