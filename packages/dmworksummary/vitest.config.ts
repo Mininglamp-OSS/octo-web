@@ -28,6 +28,7 @@ export default defineConfig({
     alias: [
       { find: /^@octo\/base\/src\/Components\/VoiceInputButton$/, replacement: path.resolve(__dirname, 'src/__mocks__/VoiceInputButton.tsx') },
       { find: /^@octo\/base\/src\/Components\/AiBadge$/, replacement: path.resolve(__dirname, 'src/__mocks__/AiBadge.tsx') },
+      { find: /^@octo\/base\/src\/Components\/WKAvatar$/, replacement: path.resolve(__dirname, 'src/__mocks__/WKAvatar.tsx') },
       { find: /^@octo\/base\/src\/EndpointCommon$/, replacement: path.resolve(__dirname, 'src/__mocks__/EndpointCommon.ts') },
       { find: /^@octo\/base\/src\/Service\/Const$/, replacement: path.resolve(__dirname, 'src/__mocks__/Const.ts') },
       { find: /^@octo\/base\/src\/Service\/SidebarService$/, replacement: path.resolve(root, 'packages/dmworkbase/src/Service/SidebarService.ts') },

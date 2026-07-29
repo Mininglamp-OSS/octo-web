@@ -83,7 +83,7 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
             />,
         );
 
-        const groupBadge = badgeByText('[1–2]')!;
+        const groupBadge = badgeByText('[1,2]')!;
         expect(groupBadge).toBeTruthy();
         fireEvent.click(groupBadge);
 
