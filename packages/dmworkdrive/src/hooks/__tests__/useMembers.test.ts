@@ -89,4 +89,32 @@ describe('useMembers', () => {
     expect(api.removeMember).toHaveBeenCalledWith('sp', 'u1');
     expect(result.current.members.find((m) => m.uid === 'u1')).toBeUndefined();
   });
+
+  it('passes an abort signal and drops a stale space response (B5)', async () => {
+    // Old space request hangs until we resolve it late.
+    let resolveOld: (m: Member[]) => void = () => {};
+    vi.mocked(api.listMembers).mockImplementationOnce(
+      () => new Promise<Member[]>((res) => { resolveOld = res; }),
+    );
+    const { result, rerender } = renderHook(
+      (props: { sp: string }) => useMembers(props.sp, true),
+      { sp: 'sp-old' },
+    );
+    await waitFor(() => expect(api.listMembers).toHaveBeenCalledTimes(1));
+    const signal = vi.mocked(api.listMembers).mock.calls[0][1] as AbortSignal;
+    expect(typeof signal.aborted).toBe('boolean');
+
+    // Switch spaces mid-flight; the new space resolves immediately.
+    vi.mocked(api.listMembers).mockResolvedValueOnce([member('u-new', 'editor')]);
+    rerender({ sp: 'sp-new' });
+    await waitFor(() => expect(result.current.members.map((m) => m.uid)).toEqual(['u-new']));
+
+    // The old space's response arrives late — its controller was aborted on the
+    // switch, so it must NOT overwrite the current space's members.
+    await act(async () => {
+      resolveOld([member('u-old', 'admin')]);
+      await Promise.resolve();
+    });
+    expect(result.current.members.map((m) => m.uid)).toEqual(['u-new']);
+  });
 });

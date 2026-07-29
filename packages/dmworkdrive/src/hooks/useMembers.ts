@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { WKApp, t } from '@octo/base';
 import * as api from '../api/driveApi';
 import type { Member, DriveRole } from '../bridge/types';
@@ -46,27 +46,39 @@ export function useMembers(spaceId: string | null, enabled: boolean): UseMembers
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyUid, setBusyUid] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const currentUid = WKApp.loginInfo.uid ?? '';
 
   const load = useCallback(async () => {
+    abortRef.current?.abort();
     if (!enabled || !spaceId) {
       setMembers([]);
       setLoading(false);
       return;
     }
+    // Drop a stale response so quickly switching spaces can't let an older
+    // space's members land on the current view (which would misgate perms).
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setLoading(true);
     try {
-      setMembers(await api.listMembers(spaceId));
+      const list = await api.listMembers(spaceId, ctrl.signal);
+      if (ctrl.signal.aborted) return;
+      setMembers(list);
     } catch (err: unknown) {
+      if ((err as Error)?.name === 'AbortError') return;
       Toast.error((err as Error)?.message || t('drive.toast.loadFailed'));
     } finally {
-      setLoading(false);
+      if (!ctrl.signal.aborted) setLoading(false);
     }
   }, [enabled, spaceId]);
 
   useEffect(() => {
     load();
+    return () => {
+      abortRef.current?.abort();
+    };
   }, [load]);
 
   const superAdminUid = useMemo(
