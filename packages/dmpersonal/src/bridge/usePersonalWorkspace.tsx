@@ -154,6 +154,9 @@ export function usePersonalWorkspace({
   useEffect(() => {
     const onNavMenuActivated = ({ menuId }: { menuId: string }) => {
       if (menuId !== "dmpersonal") return;
+      // Personal 没有独立的 workspace 切换器,上次记住的 selectedWsRef 可能已是 Loop 已切换掉的旧 workspace;
+      // 从导航进入时清空,让 targetId 回落到 currentWorkspaceId() 跟随 Loop 当前选中的 workspace(#631)。
+      selectedWsRef.current = null;
       // showLoading=true:框架会先 popToRoot 清空右栏,重解析是异步的,先铺加载态避免空白闪一下。
       resolveRef.current(true);
     };
