@@ -92,16 +92,24 @@ interface MergedMessage {
     sent_at: string;
     message_seq?: number;
     channel_id?: string;
+    source?: string;
     cited: boolean;
     citation_index?: number;
 }
 
 function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
+    // 频道在阅读序里首次出现的次序，用于把消息按「频道段」排列（P1-2）：
+    // 段之间保持引用出现的阅读序，段内再按消息序，避免 localeCompare 打乱阅读序。
+    const channelFirstSeen = new Map<string, number>();
+    for (const c of groupCitations) {
+        const ch = c.channel_id ?? "";
+        if (!channelFirstSeen.has(ch)) channelFirstSeen.set(ch, channelFirstSeen.size);
+    }
     const all: MergedMessage[] = [];
     for (const c of groupCitations) {
         if (c.context_before) {
             for (const msg of c.context_before) {
-                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, channel_id: c.channel_id, cited: false });
+                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, channel_id: c.channel_id, source: c.source, cited: false });
             }
         }
         all.push({
@@ -111,12 +119,13 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
             sent_at: c.sent_at,
             message_seq: c.message_seq,
             channel_id: c.channel_id,
+            source: c.source,
             cited: true,
             citation_index: c.index,
         });
         if (c.context_after) {
             for (const msg of c.context_after) {
-                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, channel_id: c.channel_id, cited: false });
+                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, channel_id: c.channel_id, source: c.source, cited: false });
             }
         }
     }
@@ -134,8 +143,10 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
 
     const result = Array.from(seen.values());
     result.sort((a, b) => {
-        const channelOrder = (a.channel_id ?? "").localeCompare(b.channel_id ?? "");
-        if (channelOrder !== 0) return channelOrder;
+        // 先按频道段的阅读序（首次出现次序），再在段内按消息序/时间。
+        const ca = channelFirstSeen.get(a.channel_id ?? "") ?? 0;
+        const cb = channelFirstSeen.get(b.channel_id ?? "") ?? 0;
+        if (ca !== cb) return ca - cb;
         if (a.message_seq != null && b.message_seq != null) return a.message_seq - b.message_seq;
         return new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime();
     });
@@ -413,6 +424,12 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
 
     const firstCitation = groupCitations[0];
 
+    // P1-2：一个分组可能跨多个频道（相邻角标合并时不再限定同频道）。此时钉住视图
+    // 不能只用第一个频道的 source 作总标题，否则会把其它频道的消息挂到错误来源名下。
+    const spansMultipleSources = new Set(
+        groupCitations.map((c) => `${c.channel_id ?? ""} ${c.source ?? ""}`)
+    ).size > 1;
+
     // Hover preview: first up-to-3 cited messages compact. Pinned: full timeline + jump.
     const previewContent = !pinned ? (
         <div className="citation-mini-preview">
@@ -435,7 +452,9 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
         <div className="citation-popover">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '18px', color: '#1C1C23', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                    {firstCitation.source || t("summary.citation.sourceDefault")}
+                    {spansMultipleSources
+                        ? t("summary.citation.multipleSources")
+                        : (firstCitation.source || t("summary.citation.sourceDefault"))}
                 </span>
             </div>
             <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
@@ -453,6 +472,11 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                                     : undefined}
                                 jumpLink={msg.cited && cit ? <JumpLink citation={cit} badgeKey={badgeKey} closeKey={closeKey} /> : undefined}
                             />
+                            {spansMultipleSources && msg.source && (
+                                <div className="citation-msg-source" style={{ paddingLeft: 24 }}>
+                                    {t("summary.citation.source", { values: { source: msg.source } })}
+                                </div>
+                            )}
                             <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
                                 {msg.content}
                             </div>

@@ -582,6 +582,7 @@
         "jumpToOriginal": "Open original →",
         "source": "Source: {{source}}",
         "sourceDefault": "Unknown source",
+        "multipleSources": "Multiple sources",
         "referenceTag": "Citation [{{index}}]",
         "member": "Member: {{name}}"
     },

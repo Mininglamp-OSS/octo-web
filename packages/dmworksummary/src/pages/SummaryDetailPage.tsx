@@ -533,6 +533,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.workflowCompleteTimer = null;
         }
         this.workflowTargetIndex = -1;
+        // P1-1：切换任务时清除上一个编辑器暴露的 save 闭包，防止在新任务上点保存
+        // 触发对上一个任务内容的写入（闭包持有旧 taskId/baseResultId/content）。
+        this.editorSaveFn = null;
 
         this.setState({
             loading: true,
@@ -3241,11 +3244,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     handleStartEdit = () => {
         // F1：进入单人个人总结编辑时互斥关闭另两个编辑态。
         // OCT-21：同时关闭草稿编辑态（纵深防御）。
-        this.setState({ isEditing: true, editingTeamSummary: false, editingPersonalReport: false, editingMyDraft: false });
+        // P1-1：进入编辑必须展开个人总结区，否则编辑器不挂载而保存栏仍在，
+        // 会出现「有保存栏无编辑器」甚至保存到陈旧闭包的问题。
+        this.setState({ isEditing: true, editingTeamSummary: false, editingPersonalReport: false, editingMyDraft: false, personalExpanded: true });
     };
 
     togglePersonalExpanded = () => {
-        this.setState((prev) => ({ personalExpanded: !prev.personalExpanded }));
+        this.setState((prev) => {
+            // P1-1：编辑进行中禁止折叠个人总结区，避免隐藏编辑器却保留保存栏。
+            if (prev.personalExpanded && (prev.isEditing || prev.editingMyDraft || prev.editingPersonalReport)) {
+                return null;
+            }
+            return { personalExpanded: !prev.personalExpanded };
+        });
     };
 
     handleEditSave = () => {

@@ -93,6 +93,26 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
         expect(popover.textContent).toContain('引用 [2]');
     });
 
+    it('labels each source in the pinned popover when a group spans channels (P1-2)', () => {
+        render(
+            <CitationText
+                content="跨来源引用 [1][2]"
+                citations={[
+                    makeCitation({ index: 1, channel_id: 'chan-a', message_seq: 3, source: '产品群 A', content: '频道 A 的消息' }),
+                    makeCitation({ index: 2, channel_id: 'chan-b', message_seq: 3, source: '研发群 B', content: '频道 B 的消息' }),
+                ]}
+            />,
+        );
+
+        const groupBadge = badgeByText('[1,2]')!;
+        fireEvent.click(groupBadge);
+
+        const popover = screen.getByTestId('popover-content');
+        // Both channel sources must be surfaced, not just the first citation's.
+        expect(popover.textContent).toContain('产品群 A');
+        expect(popover.textContent).toContain('研发群 B');
+    });
+
     it('labels each directly cited message with its reading-order number in the pinned popover', () => {
         render(
             <CitationText
