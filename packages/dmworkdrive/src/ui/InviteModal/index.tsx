@@ -5,6 +5,7 @@ import { Copy, Trash2, Link2, UserPlus } from 'lucide-react';
 import { useInvite } from '../../hooks/useInvite';
 import OrgPickerModal from '../OrgPickerModal';
 import type { DriveRole } from '../../bridge/types';
+import { ROLE_LABEL_KEY } from '../../utils/roleLabel';
 import { buildInviteLink } from '../../utils/links';
 import { formatTime } from '../../utils/format';
 import { Toast } from '../../utils/toast';
@@ -35,6 +36,12 @@ async function copy(text: string, okMsg: string) {
 export default function InviteModal({ visible, spaceId, onClose }: InviteModalProps) {
   const { t } = useI18n();
   const { invites, loading, creating, create, revoke, addMembers } = useInvite(spaceId, visible);
+
+  // Render role names via the shared SSOT so invite rows match the member
+  // roster / org picker, instead of the raw backend enum (e.g. "uploader_downloader").
+  // Invite.role is a plain string, so fall back to the generic label for any
+  // unrecognized value.
+  const roleLabel = (r: string) => t(ROLE_LABEL_KEY[r as DriveRole] ?? ROLE_LABEL_KEY.custom);
 
   const [role, setRole] = useState<DriveRole>('editor');
   const [expiryDays, setExpiryDays] = useState<number>(7);
@@ -106,7 +113,7 @@ export default function InviteModal({ visible, spaceId, onClose }: InviteModalPr
                 invites.map((inv) => (
                   <div key={inv.id} className="drive-invite__row">
                     <Tag size="small" color="violet">
-                      {inv.role}
+                      {roleLabel(inv.role)}
                     </Tag>
                     <span className="drive-invite__expiry">
                       {inv.expires_at ? `${t('drive.share.expiresAt')} ${formatTime(inv.expires_at)}` : ''}

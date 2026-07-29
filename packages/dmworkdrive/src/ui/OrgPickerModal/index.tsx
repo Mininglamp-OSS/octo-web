@@ -141,4 +141,3 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
     </Modal>
   );
 }
-

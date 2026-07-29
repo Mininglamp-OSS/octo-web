@@ -125,7 +125,7 @@ export default function FileList({
                       {canEdit && <Dropdown.Item onClick={() => onRename(entry)}>{t('drive.file.rename')}</Dropdown.Item>}
                       {canEdit && <Dropdown.Item onClick={() => onMove(entry)}>{t('drive.file.move')}</Dropdown.Item>}
                       {canEdit && <Dropdown.Item onClick={() => onCopy(entry)}>{t('drive.file.copy')}</Dropdown.Item>}
-                      {canShare && <Dropdown.Item onClick={() => onShare(entry)}>{t('drive.file.share')}</Dropdown.Item>}
+                      {canShare && entry.type !== 'folder' && <Dropdown.Item onClick={() => onShare(entry)}>{t('drive.file.share')}</Dropdown.Item>}
                       {canEdit && <Dropdown.Divider />}
                       {canEdit && (
                         <Dropdown.Item type="danger" onClick={() => onDelete(entry)}>
