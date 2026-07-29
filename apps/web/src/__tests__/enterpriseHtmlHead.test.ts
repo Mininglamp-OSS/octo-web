@@ -18,6 +18,15 @@ describe("enterprise HTML head injection", () => {
     );
   });
 
+  it("treats enterprise head HTML as a literal replacement", () => {
+    const plugin = enterpriseHtmlHeadPlugin("<script>window.__ENT__ = \"a$&b$'c\"</script>");
+    const transform = plugin.transformIndexHtml as (html: string) => string;
+
+    expect(transform("<html><head></head><body></body></html>")).toBe(
+      "<html><head><script>window.__ENT__ = \"a$&b$'c\"</script>\n  </head><body></body></html>",
+    );
+  });
+
   it("is a no-op when no enterprise head HTML is configured", () => {
     const plugin = enterpriseHtmlHeadPlugin("");
     const transform = plugin.transformIndexHtml as (html: string) => string;
@@ -62,7 +71,14 @@ describe("enterprise modules slot", () => {
   it("can synthesize the virtual module from one configured entry", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-modules-"));
     const file = path.join(dir, "loop.ts");
-    fs.writeFileSync(file, "export function registerEnterpriseModules() {}", "utf-8");
+    fs.writeFileSync(
+      file,
+      [
+        "export function registerEnterpriseModules() {}",
+        "export function getEnterpriseStandaloneHandlers() { return [] }",
+      ].join("\n"),
+      "utf-8",
+    );
 
     const plugin = enterpriseModulesPlugin(file, process.cwd());
     const resolveId = plugin.resolveId as (id: string) => string | undefined;
@@ -72,18 +88,20 @@ describe("enterprise modules slot", () => {
     const source = load(resolved!);
 
     expect(resolved).toBe("\0virtual:octo-enterprise-modules");
-    expect(source).toContain(`import * as entry0 from ${JSON.stringify(file)};`);
-    expect(source).toContain("callEnterpriseExport(entry0, \"registerEnterpriseModules\", [context]);");
-    expect(source).toContain("appendEnterpriseHandlers(handlers, entry0);");
-    expect(source).toContain("callEnterpriseExport(entry, \"getEnterpriseStandaloneHandlers\")");
+    expect(source).toContain(`registerEnterpriseModules as registerEnterpriseModules0`);
+    expect(source).toContain(`getEnterpriseStandaloneHandlers as getEnterpriseStandaloneHandlers0`);
+    expect(source).toContain(`} from ${JSON.stringify(file)};`);
+    expect(source).toContain("registerEnterpriseModules0(context);");
+    expect(source).toContain("const entryHandlers0 = getEnterpriseStandaloneHandlers0();");
+    expect(source).toContain("handlers.push(...entryHandlers0);");
   });
 
   it("can compose multiple enterprise entries without importing unconfigured modules", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-modules-"));
     const loopEntry = path.join(dir, "loop.ts");
     const personalEntry = path.join(dir, "personal.ts");
-    fs.writeFileSync(loopEntry, "export function registerEnterpriseModules() {}", "utf-8");
-    fs.writeFileSync(personalEntry, "export function registerEnterpriseModules() {}", "utf-8");
+    fs.writeFileSync(loopEntry, "export function registerEnterpriseModules() {}\nexport function getEnterpriseStandaloneHandlers() { return [] }", "utf-8");
+    fs.writeFileSync(personalEntry, "export function registerEnterpriseModules() {}\nexport function getEnterpriseStandaloneHandlers() { return [] }", "utf-8");
 
     const plugin = enterpriseModulesPlugin(
       [loopEntry, personalEntry].join(path.delimiter),
@@ -94,12 +112,12 @@ describe("enterprise modules slot", () => {
 
     const source = load(resolveId("virtual:octo-enterprise-modules")!);
 
-    expect(source).toContain(`import * as entry0 from ${JSON.stringify(loopEntry)};`);
-    expect(source).toContain(`import * as entry1 from ${JSON.stringify(personalEntry)};`);
-    expect(source).toContain("callEnterpriseExport(entry0, \"registerEnterpriseModules\", [context]);");
-    expect(source).toContain("callEnterpriseExport(entry1, \"registerEnterpriseModules\", [context]);");
-    expect(source).toContain("appendEnterpriseHandlers(handlers, entry0);");
-    expect(source).toContain("appendEnterpriseHandlers(handlers, entry1);");
+    expect(source).toContain(`} from ${JSON.stringify(loopEntry)};`);
+    expect(source).toContain(`} from ${JSON.stringify(personalEntry)};`);
+    expect(source).toContain("registerEnterpriseModules0(context);");
+    expect(source).toContain("registerEnterpriseModules1(context);");
+    expect(source).toContain("const entryHandlers0 = getEnterpriseStandaloneHandlers0();");
+    expect(source).toContain("const entryHandlers1 = getEnterpriseStandaloneHandlers1();");
     expect(source).toContain("return handlers;");
   });
 
@@ -125,5 +143,38 @@ describe("enterprise modules slot", () => {
         },
       },
     });
+  });
+
+  it("keeps the monorepo workspace root allowed during enterprise dev", () => {
+    const entryDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-entry-"));
+    const entry = path.join(entryDir, "index.ts");
+    fs.writeFileSync(entry, "export const marker = true", "utf-8");
+
+    const plugin = enterpriseModulesPlugin(entry, process.cwd());
+    const config = plugin.config?.({}, { command: "serve", mode: "development" });
+
+    expect(config).toMatchObject({
+      server: {
+        fs: {
+          allow: [path.resolve(process.cwd(), "../.."), entryDir],
+        },
+      },
+    });
+  });
+
+  it("resolves repo-relative entry paths consistently with head paths", () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-root-"));
+    const entryDir = path.join(rootDir, "enterprise");
+    const entry = path.join(entryDir, "loop.ts");
+    fs.mkdirSync(entryDir);
+    fs.writeFileSync(entry, "export function registerEnterpriseModules() {}\nexport function getEnterpriseStandaloneHandlers() { return [] }", "utf-8");
+
+    const plugin = enterpriseModulesPlugin("enterprise/loop.ts", rootDir);
+    const load = plugin.load as (id: string) => string | undefined;
+    const resolveId = plugin.resolveId as (id: string) => string | undefined;
+
+    expect(load(resolveId("virtual:octo-enterprise-modules")!)).toContain(
+      `} from ${JSON.stringify(entry)};`,
+    );
   });
 });

@@ -411,8 +411,9 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                     onSessionExpired: clearExpiredStandaloneSessionAndReload,
                 });
                 if (enterpriseStandalonePage) return enterpriseStandalonePage;
+            } else if (enterpriseStandaloneHandler.persistReturnOnAnonymous) {
+                persistStandaloneReturn();
             }
-            if (enterpriseStandaloneHandler.persistReturnOnAnonymous) persistStandaloneReturn();
         }
 
         // Standalone document deep-link (`/d/:docId`, octo-web #512): a shareable full-window

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { Plugin } from "vite";
+import { searchForWorkspaceRoot, type Plugin } from "vite";
 
 const ENTERPRISE_MODULES_ID = "virtual:octo-enterprise-modules";
 const RESOLVED_ENTERPRISE_MODULES_ID = "\0virtual:octo-enterprise-modules";
@@ -20,13 +20,19 @@ export function enterpriseHtmlHeadPlugin(headHtml: string): Plugin {
     transformIndexHtml(html) {
       const trimmed = headHtml.trim();
       if (!trimmed) return html;
-      return html.replace(/<\/head>/i, `${trimmed}\n  </head>`);
+      return html.replace(/<\/head>/i, () => `${trimmed}\n  </head>`);
     },
   };
 }
 
 function resolveEnterpriseEntry(entryPath: string, rootDir: string): string {
-  if (!entryPath.startsWith(".") && !path.isAbsolute(entryPath)) return entryPath;
+  if (
+    !entryPath.startsWith(".") &&
+    !path.isAbsolute(entryPath) &&
+    (entryPath.startsWith("@") || !/[\\/]/.test(entryPath))
+  ) {
+    return entryPath;
+  }
 
   const resolved = path.isAbsolute(entryPath) ? entryPath : path.resolve(rootDir, entryPath);
   if (!fs.existsSync(resolved)) {
@@ -52,22 +58,25 @@ function createEnterpriseModulesVirtualModule(entries: string[]): string {
     ].join("\n");
   }
 
-  const imports = entries.map((entry, index) => `import * as entry${index} from ${JSON.stringify(entry)};`);
-  const refs = entries.map((_, index) => `entry${index}`);
-  const registerCalls = refs.map((ref) => `  callEnterpriseExport(${ref}, "registerEnterpriseModules", [context]);`);
-  const standaloneHandlerCalls = refs.map((ref) => `  appendEnterpriseHandlers(handlers, ${ref});`);
+  const imports = entries.map((entry, index) =>
+    [
+      "import {",
+      `  registerEnterpriseModules as registerEnterpriseModules${index},`,
+      `  getEnterpriseStandaloneHandlers as getEnterpriseStandaloneHandlers${index}`,
+      `} from ${JSON.stringify(entry)};`,
+    ].join("\n")
+  );
+  const registerCalls = entries.map((_, index) => `  registerEnterpriseModules${index}(context);`);
+  const standaloneHandlerCalls = entries.flatMap((entry, index) => [
+    `  const entryHandlers${index} = getEnterpriseStandaloneHandlers${index}();`,
+    `  if (!Array.isArray(entryHandlers${index})) {`,
+    `    throw new Error(${JSON.stringify(`[vite] enterprise entry must return an array from getEnterpriseStandaloneHandlers(): ${entry}`)});`,
+    "  }",
+    `  handlers.push(...entryHandlers${index});`,
+  ]);
 
   return [
     ...imports,
-    "",
-    "function callEnterpriseExport(entry, exportName, args = []) {",
-    "  const fn = entry[exportName];",
-    "  return typeof fn === \"function\" ? fn(...args) : null;",
-    "}",
-    "function appendEnterpriseHandlers(handlers, entry) {",
-    "  const value = callEnterpriseExport(entry, \"getEnterpriseStandaloneHandlers\");",
-    "  if (Array.isArray(value)) handlers.push(...value);",
-    "}",
     "",
     "export function registerEnterpriseModules(context) {",
     ...registerCalls,
@@ -106,7 +115,7 @@ export function enterpriseModulesPlugin(
     enforce: "pre",
     config() {
       if (entryDirs.length === 0 && extraFsAllow.length === 0) return undefined;
-      const allow = Array.from(new Set([rootDir, ...entryDirs, ...extraFsAllow]));
+      const allow = Array.from(new Set([searchForWorkspaceRoot(rootDir), ...entryDirs, ...extraFsAllow]));
       return {
         server: {
           fs: {
