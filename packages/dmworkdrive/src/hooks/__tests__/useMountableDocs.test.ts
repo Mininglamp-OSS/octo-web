@@ -83,4 +83,30 @@ describe('useMountableDocs', () => {
     expect(ok).toBe(false);
     expect(result.current.docs.length).toBe(1);
   });
+
+  it('drops a fetch that resolves after the modal disables (P0-2 stale leak)', async () => {
+    // The first (enabled) fetch hangs so we can resolve it out of order.
+    let resolveA: (r: MountableDocsResponse) => void = () => {};
+    vi.mocked(api.listMountableDocs).mockImplementationOnce(
+      () => new Promise<MountableDocsResponse>((res) => { resolveA = res; }),
+    );
+    const { result, rerender } = renderHook(
+      (props: { enabled: boolean }) => useMountableDocs('sp', 0, props.enabled),
+      { enabled: true },
+    );
+    await waitFor(() => expect(api.listMountableDocs).toHaveBeenCalledTimes(1));
+
+    // Modal closes → disabled: list clears, loading false.
+    rerender({ enabled: false });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.docs).toEqual([]);
+
+    // The prior fetch resolves late — aborted on disable, must not write back.
+    await act(async () => {
+      resolveA(resp([doc('stale')]));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.docs).toEqual([]);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, waitFor } from '../../__tests__/harness';
+import { renderHook, waitFor, act } from '../../__tests__/harness';
 
 vi.mock('../../api/driveApi', () => ({
   browse: vi.fn(),
@@ -78,5 +78,32 @@ describe('useFileList', () => {
     const { result } = renderHook(() => useFileList('sp', 0));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe('nope');
+  });
+
+  it('drops a browse that resolves after the space is reset to null (P0-2 stale leak)', async () => {
+    // Space A's browse hangs so we can resolve it out of order.
+    let resolveA: (r: BrowseResponse) => void = () => {};
+    vi.mocked(api.browse).mockImplementationOnce(
+      () => new Promise<BrowseResponse>((res) => { resolveA = res; }),
+    );
+    const { result, rerender } = renderHook(
+      (props: { sp: string | null }) => useFileList(props.sp, 0),
+      { sp: 'A' as string | null },
+    );
+    await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(1));
+
+    // DriveVM.reset() drops the active space → spaceId null. Entries clear.
+    rerender({ sp: null });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.entries).toEqual([]);
+
+    // Space A's browse resolves LATE — the null transition aborted it, so it
+    // must not write the previous tenant's entries back over the cleared view.
+    await act(async () => {
+      resolveA(resp([entry(1, 'stale', 'blob')]));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.entries).toEqual([]);
   });
 });

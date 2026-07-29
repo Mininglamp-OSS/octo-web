@@ -24,7 +24,7 @@ vi.mock('axios', () => {
 });
 
 import axios from 'axios';
-import { WKApp } from '@octo/base';
+import { WKApp, DEFAULT_REQUEST_TIMEOUT_MS } from '@octo/base';
 import * as driveApi from '../driveApi';
 import { DriveApiError, assertSafeUploadURL, putToPresignedUrl } from '../driveApi';
 
@@ -271,6 +271,18 @@ describe('error mapping (flat envelope)', () => {
 });
 
 describe('auth-header interceptor', () => {
+  it('creates the drive axios instance with an explicit request timeout (N3 hardening)', () => {
+    // The isolated instance must set DEFAULT_REQUEST_TIMEOUT_MS explicitly — it
+    // doesn't inherit the singleton's timeout, so without this a drive call could
+    // hang the UI forever. Assert the module-load create() carried the ceiling.
+    const create = (axios as unknown as { create: ReturnType<typeof vi.fn> }).create;
+    const configs = create.mock.calls.map((c) => c[0]).filter(Boolean);
+    expect(
+      configs.some((cfg: { timeout?: number }) => cfg?.timeout === DEFAULT_REQUEST_TIMEOUT_MS),
+    ).toBe(true);
+    expect(DEFAULT_REQUEST_TIMEOUT_MS).toBeGreaterThan(0);
+  });
+
   it('injects token + X-Space-Id + Accept-Language at request time', () => {
     const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
     const onRequest = requestUse.mock.calls[0][0];

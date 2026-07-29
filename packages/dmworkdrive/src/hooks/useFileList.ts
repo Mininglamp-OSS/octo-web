@@ -30,15 +30,21 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   const [error, setError] = useState<string | null>(null);
   const [truncatedTotal, setTruncatedTotal] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const seqRef = useRef(0);
 
   const load = useCallback(async () => {
+    // Abort any in-flight browse FIRST — including on the transition to no-space
+    // (DriveVM.reset() sets spaceId null). If we cleared + returned before
+    // aborting, the previous space's browse could resolve afterwards and write
+    // its (stale, cross-tenant) entries back over the cleared view.
+    abortRef.current?.abort();
+    const seq = ++seqRef.current;
     if (!spaceId) {
       setEntries([]);
       setTruncatedTotal(null);
       setLoading(false);
       return;
     }
-    abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setLoading(true);
@@ -48,7 +54,9 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
         { space_id: spaceId, parent_id: parentId, page_size: PAGE_SIZE },
         ctrl.signal,
       );
-      if (ctrl.signal.aborted) return;
+      // Generation guard: drop a superseded response (space/folder changed, or
+      // reset to no-space) even if its abort didn't land in time.
+      if (ctrl.signal.aborted || seq !== seqRef.current) return;
       const list = res.entries ?? [];
       setEntries(list);
       // P1 fetches a single page; surface a notice when the server has more so
@@ -56,11 +64,11 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
       const total = res.page?.total ?? list.length;
       setTruncatedTotal(total > list.length ? total : null);
     } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError') return;
+      if ((err as Error)?.name === 'AbortError' || seq !== seqRef.current) return;
       setError((err as Error)?.message ?? 'load failed');
       Toast.error(t('drive.toast.loadFailed'));
     } finally {
-      if (!ctrl.signal.aborted) setLoading(false);
+      if (!ctrl.signal.aborted && seq === seqRef.current) setLoading(false);
     }
   }, [spaceId, parentId]);
 

@@ -35,28 +35,33 @@ export function useMountableDocs(
   const [error, setError] = useState<string | null>(null);
   const [mounting, setMounting] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const seqRef = useRef(0);
 
   const load = useCallback(async () => {
+    // Abort any in-flight fetch FIRST — including when disabling / clearing the
+    // space — so a prior space's response can't resolve after the clear and
+    // write stale candidates back (aligns with useFileList/useInvite/useMembers).
+    abortRef.current?.abort();
+    const seq = ++seqRef.current;
     if (!enabled || !spaceId) {
       setDocs([]);
       setLoading(false);
       return;
     }
-    abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setLoading(true);
     setError(null);
     try {
       const res = await api.listMountableDocs({ space_id: spaceId, page_size: PAGE_SIZE }, ctrl.signal);
-      if (ctrl.signal.aborted) return;
+      if (ctrl.signal.aborted || seq !== seqRef.current) return;
       setDocs(res.items ?? []);
     } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError') return;
+      if ((err as Error)?.name === 'AbortError' || seq !== seqRef.current) return;
       setError((err as Error)?.message ?? 'load failed');
       Toast.error(t('drive.toast.loadFailed'));
     } finally {
-      if (!ctrl.signal.aborted) setLoading(false);
+      if (!ctrl.signal.aborted && seq === seqRef.current) setLoading(false);
     }
   }, [enabled, spaceId, parentId]);
 
