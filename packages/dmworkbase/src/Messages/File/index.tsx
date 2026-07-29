@@ -705,7 +705,9 @@ export class FileCell extends MessageCell<any, FileCellState> {
         >
           <div className="wk-text-file-preview">
             {this.state.textPreviewExt === "md" ? (
-              <MarkdownContent content={this.state.textPreviewContent} />
+              // 附件 .md 预览不是聊天消息入口：显式关掉公式渲染，避免正文里的
+              // $$...$$ / $VAR 被当公式吞掉分隔符（KaTeX 只在消息与显式文档预览开启）。
+              <MarkdownContent content={this.state.textPreviewContent} enableMath={false} />
             ) : (
               <pre className="wk-text-file-preview-plain">
                 {this.state.textPreviewContent}
