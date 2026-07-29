@@ -99,9 +99,11 @@ interface SummaryDetailPageState {
     regenerateSubmitting: boolean;
     refineLoadingTarget: RefineLoadingTarget | null;
     versions: SummaryVersionItem[];
+    versionsRetention: number | null;
     versionsLoading: boolean;
     restoringVersionId: number | null;
     personalVersions: SummaryVersionItem[];
+    personalVersionsRetention: number | null;
     personalVersionsLoading: boolean;
     restoringPersonalVersionId: number | null;
     showVersionDetailModal: boolean;
@@ -218,8 +220,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         refineLoadingTarget: null,
         versions: [],
         versionsLoading: false,
+        versionsRetention: null,
         restoringVersionId: null,
         personalVersions: [],
+        personalVersionsRetention: null,
         personalVersionsLoading: false,
         restoringPersonalVersionId: null,
         showVersionDetailModal: false,
@@ -1231,10 +1235,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         try {
             const resp = await api.listSummaryVersions(taskId, 3);
             if (this.taskId !== taskId) return;
-            this.setState({ versions: resp.versions || [], versionsLoading: false });
+            this.setState({
+                versions: resp.versions || [],
+                versionsRetention: resp.keep_limit,
+                versionsLoading: false,
+            });
         } catch {
             if (this.taskId !== taskId) return;
-            this.setState({ versions: [], versionsLoading: false });
+            this.setState({ versions: [], versionsRetention: null, versionsLoading: false });
         }
     }
 
@@ -1244,10 +1252,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         try {
             const resp = await api.listPersonalSummaryVersions(taskId, 3);
             if (this.taskId !== taskId) return;
-            this.setState({ personalVersions: resp.versions || [], personalVersionsLoading: false });
+            this.setState({
+                personalVersions: resp.versions || [],
+                personalVersionsRetention: resp.keep_limit,
+                personalVersionsLoading: false,
+            });
         } catch {
             if (this.taskId !== taskId) return;
-            this.setState({ personalVersions: [], personalVersionsLoading: false });
+            this.setState({ personalVersions: [], personalVersionsRetention: null, personalVersionsLoading: false });
         }
     }
 
@@ -2288,6 +2300,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         currentVersion: number;
         canRestore: boolean;
         restoringId: number | null;
+        retention: number | null;
     } | null {
         const {
             detail,
@@ -2295,9 +2308,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             versionsLoading,
             personalVersions,
             personalVersionsLoading,
+            personalVersionsRetention,
             personalResult,
             restoringVersionId,
             restoringPersonalVersionId,
+            versionsRetention,
         } = this.state;
         if (!detail || detail.trigger_type === TriggerType.AGENT) return null;
         if (this.isMultiCollab()) return null;
@@ -2310,6 +2325,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 currentVersion: personalResult.version || personalVersions[0]?.version || 0,
                 canRestore: !!detail.permissions?.can_edit_personal,
                 restoringId: restoringPersonalVersionId,
+                retention: personalVersionsRetention,
             };
         }
 
@@ -2320,6 +2336,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             currentVersion: detail.result.version,
             canRestore: !!(detail.permissions?.can_edit_team || detail.permissions?.can_edit),
             restoringId: restoringVersionId,
+            retention: versionsRetention,
         };
     }
 
@@ -2427,6 +2444,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 currentVersion={ctx.currentVersion}
                 selectedResultId={this.state.showVersionDetailModal ? (this.state.versionDetail?.result_id ?? null) : null}
                 restoringResultId={ctx.restoringId}
+                retention={ctx.retention ?? undefined}
                 canRestore={ctx.canRestore}
                 resolveAuthor={this.resolveMemberName}
                 onClose={this.handleCloseVersionPanel}
@@ -2679,6 +2697,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             </div>
                         ) : personalResult.content && (
                             <div className="summary-detail-content-box">
+                                <AbstractCallout
+                                    abstract={personalResult.abstract}
+                                    title={t("summary.detail.abstractTitle")}
+                                />
                                 <CitationText content={personalResult.content} citations={personalResult.citations || []} />
                             </div>
                         )}
@@ -3573,12 +3595,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     {(() => {
                         const vctx = this.getActiveVersionContext();
                         if (!vctx) return null;
+                        const versionPanelActive = this.state.versionPanelOpen;
                         return (
                             <Button
-                                className={`summary-version-trigger${this.state.versionPanelOpen ? " is-active" : ""}`}
+                                className={`summary-version-trigger${versionPanelActive ? " is-active" : ""}`}
                                 theme="borderless"
                                 type="tertiary"
                                 icon={<IconHistory />}
+                                style={{
+                                    color: versionPanelActive ? "#fff" : "var(--wk-color-accent)",
+                                    background: versionPanelActive ? "var(--wk-color-accent)" : "var(--wk-bg-selected)",
+                                    borderColor: versionPanelActive ? "var(--wk-color-accent)" : "var(--wk-ai-border)",
+                                }}
                                 onClick={() => this.setState((s) => ({ versionPanelOpen: !s.versionPanelOpen }))}
                                 aria-expanded={this.state.versionPanelOpen}
                             >

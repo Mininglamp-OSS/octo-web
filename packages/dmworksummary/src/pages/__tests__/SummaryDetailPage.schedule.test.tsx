@@ -1754,6 +1754,34 @@ describe('v2 对齐：定时按钮集中到 header（从团队框/个人区移�
         expect(json).not.toContain('summary.detail.editSchedule');
     });
 
+    it('completed agent/BY_PERSON summary renders its AI abstract before the body', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                summary_mode: SM_BY_PERSON,
+                status: COMPLETED,
+                trigger_type: 3,
+                participants: [{ user_id: 'test-uid' }],
+            }),
+            personalResult: {
+                worker_status: 2,
+                abstract: 'agent abstract',
+                content: 'agent summary body',
+                submitted_at: null,
+                citations: [],
+            } as any,
+            personalLoading: false,
+            personalExpanded: true,
+            members: [submittedMember('test-uid', '我', 'agent summary body')],
+        };
+
+        const json = JSON.stringify((page as any).renderPersonalSummary());
+        expect(json).toContain('"abstract":"agent abstract"');
+        expect(json).toContain('"content":"agent summary body"');
+        expect(json.indexOf('"abstract":"agent abstract"')).toBeLessThan(json.indexOf('"content":"agent summary body"'));
+    });
+
     it('multi-collab: renderPersonalSummary does NOT render schedule button (it lives in header)', () => {
         const page = makePage(1);
         page.state = {

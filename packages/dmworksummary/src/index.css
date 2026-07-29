@@ -3956,28 +3956,12 @@ body.summary-version-detail-open .summary-schedule-page {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: var(--wk-color-accent) !important;
-    background: var(--wk-bg-selected) !important;
-    border: 1px solid var(--wk-ai-border) !important;
+    border: 1px solid;
     border-radius: var(--wk-r-full);
     font-weight: 500;
 }
 .summary-version-trigger:hover {
-    background: var(--wk-purple-alpha-10) !important;
-    border-color: var(--wk-purple-alpha-20) !important;
-}
-.summary-version-trigger .semi-icon,
-.summary-version-trigger .semi-button-content {
-    color: var(--wk-color-accent) !important;
-}
-.summary-version-trigger.is-active {
-    color: #fff !important;
-    background: var(--wk-color-accent) !important;
-    border-color: var(--wk-color-accent) !important;
-}
-.summary-version-trigger.is-active .semi-icon,
-.summary-version-trigger.is-active .semi-button-content {
-    color: #fff !important;
+    filter: brightness(0.97);
 }
 .summary-version-trigger-count {
     display: inline-flex;
