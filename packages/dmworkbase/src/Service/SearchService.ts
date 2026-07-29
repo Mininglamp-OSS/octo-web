@@ -487,6 +487,10 @@ const SearchService = {
     // to key={docId} (React duplicate-key collisions on undefined) and
     // buildDocLink({docId}) -> /d/undefined. Drop items missing a usable docId,
     // and coerce updatedAt to positive-millis-or-null (contract fact #3).
+    // highlight is the one remaining OpenSearch-shaped field consumed directly
+    // (renderHighlight scans it as a string); a non-string value would throw on
+    // .length/.replace and take out the whole row. Coerce to string-or-undefined
+    // at the boundary so the panel only ever sees the contract shape.
     const validItems = items
       .filter(
         (it: unknown): it is DocSearchItem =>
@@ -497,6 +501,7 @@ const SearchService = {
       .map((it: DocSearchItem) => ({
         ...it,
         updatedAt: coerceUpdatedAt(it.updatedAt),
+        highlight: typeof it.highlight === "string" ? it.highlight : undefined,
       }));
     const nextCursor =
       typeof resp?.nextCursor === "string" && resp.nextCursor !== ""

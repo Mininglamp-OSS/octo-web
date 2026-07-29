@@ -247,6 +247,25 @@ describe("SearchService request boundaries", () => {
     expect(bad).toEqual({ total: 0, items: [], nextCursor: undefined });
   });
 
+  it("coerces highlight to string-or-undefined (a non-string can't reach renderHighlight)", async () => {
+    postMock.mockResolvedValue({
+      total: 4,
+      items: [
+        { docId: "a", title: "A", docType: "doc", highlight: "<em>hit</em>" }, // string kept
+        { docId: "b", title: "B", docType: "doc", highlight: 123 }, // number -> undefined
+        { docId: "c", title: "C", docType: "doc", highlight: { x: 1 } }, // object -> undefined
+        { docId: "d", title: "D", docType: "doc" }, // absent -> undefined
+      ],
+    });
+    const result = await SearchService.searchDocs({ keyword: "x", pageSize: 20 });
+    expect(result.items.map((it) => it.highlight)).toEqual([
+      "<em>hit</em>",
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
   it("coerces updatedAt to plausible-millis-or-null (contract: number | null)", async () => {
     postMock.mockResolvedValue({
       total: 5,
