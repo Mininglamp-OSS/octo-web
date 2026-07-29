@@ -47,7 +47,7 @@ const mockFiles = [
 
 const makeMockContext = (files: File[], onRemove?: (i: number) => void): ConversationContext => ({
   getPendingAttachments: () => files,
-  addPendingAttachments: () => null,
+  addPendingAttachments: async () => null,
   removePendingAttachment: (i) => onRemove?.(i),
   clearPendingAttachments: () => {},
 } as unknown as ConversationContext)

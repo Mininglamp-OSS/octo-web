@@ -286,8 +286,8 @@ export class DocsModule implements IModule {
     // falls back to the chat shell — including on a hard `/docs` deep-link, because
     // MainVM.didMount only activates a route when it matches a registered menu's
     // routePath. Registering the menu fixes both the missing entry AND deep-link
-    // mounting. Pattern mirrors MatterModule / dmworksummary. sort=4002 places it
-    // after contacts(4000)/matter(4001) and before summary(5000).
+    // mounting. Pattern mirrors dmworksummary. sort=4002 places it
+    // after contacts(4000) and before summary(5000).
     //
     // Gated by the backend appconfig `docs_on` flag (WKApp.remoteConfig.docsOn): the factory
     // returns the menu only when docsOn is true, otherwise `undefined` (MenusManager.invokes

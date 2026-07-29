@@ -26,6 +26,9 @@ interface ChatSummaryNewModalProps {
     channel: { channelID: string; channelType: number };
     onClose: () => void;
     onSubmit: (taskId: number) => void;
+    /** When true, render only the form content (no Modal shell) so the panel
+     *  can embed this component inline. */
+    embedded?: boolean;
 }
 
 interface ChatSummaryNewModalState {
@@ -667,7 +670,7 @@ export default class ChatSummaryNewModal extends Component<
     };
 
     render() {
-        const { visible, onClose } = this.props;
+        const { visible, onClose, embedded } = this.props;
         const {
             topic, appliedTemplateLabel, customTemplateLimit, mode, templates, selectedChats, showChatSelector, submitting, agentSubmitting, scheduleConfig, showScheduleConfig, showMoreTemplates,
             editingTemplate, creatingCustomTemplate,
@@ -741,27 +744,17 @@ export default class ChatSummaryNewModal extends Component<
             </div>
         );
 
-        return (
+        const modalContent = (
             <>
-                <Modal
-                    visible={visible}
-                    onCancel={onClose}
-                    footer={footer}
-                    width={640}
-                    closable
-                    title={null}
-                    bodyStyle={{ padding: '24px 24px 0' }}
-                    className="chat-summary-new-modal"
-                >
-                    <div className="chat-summary-modal-header">
-                        <span className="chat-summary-modal-title">{t('summary.create.title')}</span>
-                        <span className="chat-summary-modal-ai-badge">AI+</span>
-                    </div>
-                    <div className="chat-summary-modal-desc">
-                        {t('summary.create.desc')}
-                    </div>
+                <div className="chat-summary-modal-header">
+                    <span className="chat-summary-modal-title">{t('summary.create.title')}</span>
+                    <span className="chat-summary-modal-ai-badge">AI+</span>
+                </div>
+                <div className="chat-summary-modal-desc">
+                    {t('summary.create.desc')}
+                </div>
 
-                    <div className="chat-summary-modal-input-area">
+                <div className="chat-summary-modal-input-area">
                         {isAgent ? (
                             // 弹窗内高度受限：固定面板高度让内部消息列表滚动。
                             <div className="chat-summary-modal-agent-chat" style={{ height: 360 }}>
@@ -961,7 +954,30 @@ export default class ChatSummaryNewModal extends Component<
                             </div>
                         )}
                     </div>
-                </Modal>
+            </>
+        );
+
+        return (
+            <>
+                {embedded ? (
+                    <div className="chat-summary-modal-embedded">
+                        {modalContent}
+                        {footer}
+                    </div>
+                ) : (
+                    <Modal
+                        visible={visible}
+                        onCancel={onClose}
+                        footer={footer}
+                        width={640}
+                        closable
+                        title={null}
+                        bodyStyle={{ padding: '24px 24px 0' }}
+                        className="chat-summary-new-modal"
+                    >
+                        {modalContent}
+                    </Modal>
+                )}
 
                 <ChatSelectorModal
                     visible={showChatSelector}

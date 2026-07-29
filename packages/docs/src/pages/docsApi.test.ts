@@ -148,6 +148,16 @@ describe('docs list/create API (bare-relative /docs)', () => {
     const call = api.calls.at(-1)!
     expect(call.method).toBe('delete')
     expect(call.url).toBe('/docs/d_real')
+    expect(call.config?.headers?.['X-Space-Id']).toBeUndefined()
+  })
+
+  it('carries an explicit X-Space-Id header when deleteDoc is given a spaceId', async () => {
+    api.responder = () => ({ data: {}, status: 200 })
+    await deleteDoc('d_real', { spaceId: 'space-doc' })
+    const call = api.calls.at(-1)!
+    expect(call.method).toBe('delete')
+    expect(call.url).toBe('/docs/d_real')
+    expect(call.config?.headers?.['X-Space-Id']).toBe('space-doc')
   })
 
   it('propagates the error (with status) when delete fails', async () => {

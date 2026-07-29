@@ -31,6 +31,7 @@ describe('FONT_FAMILIES i18n refactor (XIN-936)', () => {
     expect(byKey['docs.toolbar.font.simsun']).toBe('SimSun, "宋体", serif')
     expect(byKey['docs.toolbar.font.simhei']).toBe('SimHei, "黑体", sans-serif')
     expect(byKey['docs.toolbar.font.kaiti']).toBe('KaiTi, "楷体", serif')
+    expect(byKey['docs.toolbar.font.calibri']).toBe('Calibri, Carlito, sans-serif')
   })
 
   it('resolves every labelKey in both zh-CN and en-US', () => {

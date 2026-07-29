@@ -28,8 +28,8 @@ import { buildDocLink } from '../forward/link.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
 import { HtmlPresenceBar } from './HtmlPresenceBar.tsx'
-import { deleteDoc } from './htmlDocAdmin.ts'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
+import { useDocDelete } from '../editor/useDocDelete.ts'
 import {
   DocMoreMenu,
   OpenNewPageIcon,
@@ -310,10 +310,6 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
   const [membersOpen, setMembersOpen] = useState(false)
   // Comments default open (preserves prior behaviour); the 💬 button toggles the rail.
   const [commentsOpen, setCommentsOpen] = useState(true)
-  // Delete flow (≡ → 删除此文档, author-only): confirm modal + in-flight/error state.
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
   const meta = state.status === 'ready' ? state.meta : null
   // Backend-authoritative authorship (resolveCap → window.__ODOC_CAP__.isAuthor). Do NOT compare
   // viewer uid to any __ODOC__ field: identity there is the viewer itself and creator_uid is absent,
@@ -430,20 +426,15 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
     })
   }, [canForward, docId, headerTitle, role, ownerId, space])
 
-  const confirmDeleteDoc = useCallback(() => {
-    setDeleting(true)
-    setDeleteError(null)
-    deleteDoc(effectiveSlug)
-      .then(() => {
-        setConfirmDelete(false)
-        // Prefer the shell's onDeleted (returns to the list + refreshes it, mirror of SheetView);
-        // only fall back to history.back() on the standalone /d/ surface where no shell is present.
-        if (onDeleted) onDeleted(docId)
-        else if (typeof window !== 'undefined') window.history.back()
-      })
-      .catch(() => setDeleteError(t('docs.state.error')))
-      .finally(() => setDeleting(false))
-  }, [effectiveSlug, onDeleted, docId])
+  const handleDeleted = useCallback(
+    (id: string) => {
+      if (onDeleted) onDeleted(id)
+      else if (typeof window !== 'undefined') window.history.back()
+    },
+    [onDeleted],
+  )
+  // Reuse the unified document soft-delete flow; octo-doc remains read-only content storage.
+  const del = useDocDelete(docId, handleDeleted, space ? { spaceId: space } : undefined)
 
   useEffect(() => {
     const seq = ++reqSeq.current
@@ -634,20 +625,14 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
                 : []),
             ]}
             dangerItem={
-              // Delete is author-only, matching htmlDocAdmin.deleteDoc's octo-doc backend
-              // ("caller gates the UI entry"). Symmetric with the grants-side hiding of Add/Current
-              // members from an admin-not-author viewer (OCT-216) — two backend authorities kept
-              // independent so a docs-backend admin never sees a guaranteed-403 affordance.
+              // Delete remains author-only, matching the existing HTML document UI gate.
               isAuthor
                 ? {
                     key: 'delete',
                     label: t('docs.doc.deleteEntry'),
                     icon: DeleteIcon,
                     danger: true,
-                    onClick: () => {
-                      setDeleteError(null)
-                      setConfirmDelete(true)
-                    },
+                    onClick: del.requestDelete,
                   }
                 : undefined
             }
@@ -655,17 +640,21 @@ export function HtmlDocView({ docId, space, slug, version = 'latest', onDeleted,
         </div>
       </header>
       <ConfirmModal
-        open={confirmDelete}
+        open={del.confirming}
         title={t('docs.doc.deleteEntry')}
         message={t('docs.doc.deleteConfirm')}
         confirmLabel={t('docs.comment.delete')}
         cancelLabel={t('docs.comment.cancel')}
         danger
-        busy={deleting}
-        error={deleteError}
-        onConfirm={confirmDeleteDoc}
-        onCancel={() => setConfirmDelete(false)}
+        busy={del.deleting}
+        onConfirm={() => void del.confirm()}
+        onCancel={del.cancel}
       />
+      {del.error && (
+        <p className="octo-member-error" role="alert">
+          {del.error}
+        </p>
+      )}
       {/* Members open in a centered modal dialog (overlay + click-outside to close), matching the
           rich-doc member modal (EditorShell #A4) so HTML docs share the same floating-panel shape.
           Only the panel CONTENT differs (HtmlMemberPanel → octo-doc grants), never the shell. */}

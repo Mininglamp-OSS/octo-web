@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildQuickStartTabs, TOKEN_PLACEHOLDER } from "./quickStartTemplates";
+import {
+  buildQuickStartTabs,
+  formatTokenPlaceholder,
+  TOKEN_PLACEHOLDER_RE,
+} from "./quickStartTemplates";
 import type { McpQuickStart } from "../types/mcp";
 
 /** Small helper: grab a tab's content by key from the ordered tab list. */
@@ -24,7 +28,7 @@ describe("buildQuickStartTabs — JSON snippet", () => {
     expect(server.type).toBeUndefined();
     expect(server.command).toBe("npx");
     expect(server.args).toEqual(["-y", "@modelcontextprotocol/server-github"]);
-    expect(server.env).toEqual({ FOO: "bar", GITHUB_TOKEN: TOKEN_PLACEHOLDER });
+    expect(server.env).toEqual({ FOO: "bar", GITHUB_TOKEN: formatTokenPlaceholder("GITHUB_TOKEN") });
   });
 
   it("stdio: shared env value is published verbatim (no forced masking)", () => {
@@ -73,7 +77,7 @@ describe("buildQuickStartTabs — JSON snippet", () => {
     expect(server.url).toBe("https://mcp.example.com/github");
     expect(server.headers).toEqual({
       "X-Trace": "web",
-      Authorization: TOKEN_PLACEHOLDER,
+      Authorization: formatTokenPlaceholder("Authorization"),
     });
   });
 
@@ -164,7 +168,7 @@ describe("buildQuickStartTabs — prompt", () => {
     };
     const prompt = content(qs, "prompt");
     expect(prompt).toContain("FOO=bar");
-    expect(prompt).toContain(`GITHUB_TOKEN=${TOKEN_PLACEHOLDER}`);
+    expect(prompt).toContain(`GITHUB_TOKEN=${formatTokenPlaceholder("GITHUB_TOKEN")}`);
   });
 
   it("stdio: skips the env line entirely when env map is empty", () => {
@@ -187,7 +191,7 @@ describe("buildQuickStartTabs — prompt", () => {
     };
     const prompt = content(qs, "prompt");
     expect(prompt).toContain("X-Trace: web");
-    expect(prompt).toContain(`Authorization: ${TOKEN_PLACEHOLDER}`);
+    expect(prompt).toContain(`Authorization: ${formatTokenPlaceholder("Authorization")}`);
   });
 
   it("remote: skips 请求头 line when no headers", () => {
@@ -198,5 +202,40 @@ describe("buildQuickStartTabs — prompt", () => {
     };
     const prompt = content(qs, "prompt");
     expect(prompt).not.toContain("请求头");
+  });
+});
+
+describe("formatTokenPlaceholder + TOKEN_PLACEHOLDER_RE", () => {
+  it("interpolates the exact header/env key into the placeholder", () => {
+    expect(formatTokenPlaceholder("Authorization")).toBe(
+      "<把这里换成你的 Authorization>"
+    );
+    // Non-token key names (arbitrary user labels) must render just as
+    // cleanly — the placeholder is not literally about tokens.
+    expect(formatTokenPlaceholder("12")).toBe("<把这里换成你的 12>");
+    expect(formatTokenPlaceholder("X-Team-Id")).toBe(
+      "<把这里换成你的 X-Team-Id>"
+    );
+  });
+
+  it("regex matches every interpolated placeholder in a snippet", () => {
+    const text =
+      `Headers:\n` +
+      `${formatTokenPlaceholder("Authorization")}\n` +
+      `${formatTokenPlaceholder("X-API-Key")}\n` +
+      `end`;
+    const matches = text.match(TOKEN_PLACEHOLDER_RE) ?? [];
+    expect(matches).toEqual([
+      "<把这里换成你的 Authorization>",
+      "<把这里换成你的 X-API-Key>",
+    ]);
+  });
+
+  it("regex does not spill across `>` boundaries", () => {
+    // A stray `>` in trailing content must terminate the match, not consume
+    // downstream text. Guard against a greedy-quantifier regression.
+    const text = `A ${formatTokenPlaceholder("Authorization")} > B`;
+    const matches = text.match(TOKEN_PLACEHOLDER_RE) ?? [];
+    expect(matches).toEqual(["<把这里换成你的 Authorization>"]);
   });
 });

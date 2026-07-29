@@ -1,18 +1,12 @@
-// Import flow: file picker → parse Markdown → create new doc → navigate → inject content.
-//
-// Design doc §5 (方案 A1 + B1): user picks a .md file, we parse it to PM JSON,
-// create a new empty doc via REST, stash the PM JSON in sessionStorage keyed by docId,
-// then navigate to the new doc. EditorShell picks up the stashed content on mount and
-// injects it via setContent once the editor is ready.
+// Import flow: file picker → create destination → atomically apply on backend → navigate.
+// The destination editor always loads authoritative content from its live Y.Doc.
 
-import { parseMarkdownToPmDoc } from '../import/markdown.ts'
-import { createDoc, importDocx } from '../pages/docsApi.ts'
+import { createDoc, deleteDoc, importDocx, importMarkdown } from '../pages/docsApi.ts'
 import {
   copyAttachments,
   ingestAttachments,
   type CopySourceRef,
 } from '../attachments/api.ts'
-import { emojiGlyph } from './emoji.ts'
 
 const IMPORT_KEY_PREFIX = 'octo-import-pm-'
 const IMPORT_WARN_PREFIX = 'octo-import-warn-'
@@ -134,8 +128,8 @@ export interface ImportResult {
 }
 
 /**
- * Run the full import flow: pick file → parse → create doc → stash content.
- * Caller navigates to result.docId after this resolves.
+ * Run the full import flow: pick file → create doc → atomically apply on backend.
+ * Caller navigates to result.docId only after this resolves.
  */
 /** Translator type threaded from the calling React component (has useTranslation). */
 type Translate = (key: string, opts?: { values?: Record<string, unknown> }) => string
@@ -173,7 +167,7 @@ export async function runMarkdownImport(
   t?: Translate,
 ): Promise<ImportResult> {
   // 1. File picker
-  const { text, fileName } = await pickMdFile(t)
+  const { file, fileName } = await pickMdFile(t)
 
   // 1b. Extension guard. `input.accept` is only a UI hint (the OS dialog still lets the user pick
   // "all files"), so reject anything that is not a Markdown file here — this import path is for
@@ -182,34 +176,32 @@ export async function runMarkdownImport(
     throw new Error(tr(t, 'docs.import.mdOnly'))
   }
 
-  // 2. Parse (emojiName resolves `:shortcode:` against the editor's bundled GitHub emoji set;
-  // unknown shortcodes stay literal text rather than becoming blank emoji nodes).
-  const parsed = parseMarkdownToPmDoc(text, { emojiName: emojiGlyph, t })
-
-  // 3. Determine title. Use the file name (matching the .docx import), so the sidebar label is
+  // 2. Determine title. Use the file name (matching the .docx import), so the sidebar label is
   // always the imported file's name rather than the document's first heading.
   const title = stripExtension(fileName) || 'Imported document'
 
-  // 4. Create new doc
+  // 3. Create the destination before import so the authenticated backend can authorize the write
+  // and scope any imported content to the exact destination doc.
   const created = await createDoc({ title, spaceId, folderId })
 
-  // 4b. Migrate imported images into the NEW doc. The parsed image nodes still point at the
-  // SOURCE doc's attachId + a short-lived signed URL. The editor resolves an image's URL with
-  // the CURRENT doc's id (getReadUrl(thisDoc, attachId)), so a foreign attachId never resolves
-  // and the image renders blank once the signed src expires. Re-upload each image under the new
-  // doc so it gets a doc-scoped attachId the editor can re-sign. Best-effort: an image that
-  // can't be fetched/re-uploaded degrades to a warning instead of blocking the whole import.
-  const migrateWarnings = await migrateImportedImages(created.docId, parsed.doc, t)
-
-  // 5. Stash content + warnings for EditorShell to pick up after navigation
-  stashImportContent(created.docId, parsed.doc)
-  stashImportWarnings(created.docId, [...parsed.warnings, ...migrateWarnings])
-
-  return {
-    docId: created.docId,
-    title,
-    warnings: [...parsed.warnings, ...migrateWarnings],
+  // 4. The backend is the authoritative Markdown parser used by web and CLI. It enforces the byte
+  // bound and strict UTF-8 at the client boundary too, then returns the same PM schema as DOCX.
+  // The apply header makes this call resolve only after the backend has committed the import to the
+  // live Y.Doc. Its response may intentionally omit the (potentially very large) parsed PM tree.
+  let warnings: string[]
+  try {
+    ;({ warnings = [] } = await importMarkdown(created.docId, file))
+  } catch (error) {
+    // Import failures must not leave the destination shell behind. Preserve the
+    // importer error even if best-effort cleanup also fails.
+    await deleteDoc(created.docId).catch(() => undefined)
+    throw error
   }
+
+  // Only small diagnostics cross navigation. The editor loads authoritative content from Y.Doc.
+  stashImportWarnings(created.docId, warnings)
+
+  return { docId: created.docId, title, warnings }
 }
 
 /**
@@ -397,12 +389,9 @@ function collectImageNodes(node: unknown, out: Array<Record<string, unknown>>): 
 }
 
 /**
- * Run the full .docx import flow: pick file → create an empty doc → POST the file
- * to the server-side importer → stash the returned ProseMirror JSON. Unlike the
- * Markdown flow (which parses client-side), docx parsing + image upload happen
- * on the server, so we must create the doc FIRST to get a docId that scopes the
- * uploaded image attachments. Caller navigates to result.docId after this
- * resolves; EditorShell drains the stash on mount.
+ * Run the full .docx import flow: pick file → create an empty doc → atomically apply the file
+ * on the backend. The doc is created first so imported attachments are scoped to its id. Caller
+ * navigates only after the authoritative Y.Doc write succeeds.
  */
 export async function runDocxImport(
   spaceId?: string,
@@ -416,11 +405,17 @@ export async function runDocxImport(
   const title = stripDocxExtension(fileName) || 'Imported document'
   const created = await createDoc({ title, spaceId, folderId })
 
-  // 3. Server parses the .docx to ProseMirror JSON and uploads embedded images.
-  const { doc, warnings } = await importDocx(created.docId, file)
+  // 3. Server parses and atomically applies the .docx to the live Y.Doc. The request rejects on any
+  // parse, storage, or collaboration-write failure, so callers never navigate to an empty doc.
+  let warnings: string[]
+  try {
+    ;({ warnings = [] } = await importDocx(created.docId, file))
+  } catch (error) {
+    await deleteDoc(created.docId).catch(() => undefined)
+    throw error
+  }
 
-  // 4. Stash content + warnings for EditorShell to pick up after navigation.
-  stashImportContent(created.docId, doc)
+  // 4. Only small diagnostics cross navigation; content is loaded from the authoritative Y.Doc.
   stashImportWarnings(created.docId, warnings)
 
   return {
@@ -433,7 +428,7 @@ export async function runDocxImport(
 // ── File picker ───────────────────────────────────────────────────────────────
 
 interface PickedFile {
-  text: string
+  file: File
   fileName: string
 }
 
@@ -453,11 +448,7 @@ function pickMdFile(t?: Translate): Promise<PickedFile> {
     input.onchange = () => {
       const file = input.files?.[0]
       if (!file) { reject(new Error(tr(t, 'docs.import.noFileChosen'))); cleanup(); return }
-      const fileName = file.name
-      const reader = new FileReader()
-      reader.onload = () => resolve({ text: reader.result as string, fileName })
-      reader.onerror = () => reject(new Error(tr(t, 'docs.import.fileReadFailed')))
-      reader.readAsText(file, 'UTF-8')
+      resolve({ file, fileName: file.name })
       cleanup()
     }
 

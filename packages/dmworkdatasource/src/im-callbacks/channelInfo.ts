@@ -93,6 +93,7 @@ export function createChannelInfoCallback(deps: ChannelInfoCallbackDeps) {
         }
 
         channelInfo.orgData = data.extra || {}
+        channelInfo.orgData.online = data.online
         channelInfo.orgData.remark = data.remark ?? ""
         channelInfo.orgData.displayName =
             data.remark && data.remark !== "" ? data.remark : channelInfo.title

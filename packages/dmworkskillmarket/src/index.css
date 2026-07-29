@@ -726,6 +726,7 @@
 }
 
 .skill-market-card__title-row h3 {
+  display: block;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -826,6 +827,7 @@
 }
 
 .skill-market-card__owner-bot-icon,
+.skill-market-card__owner-platform-icon,
 .skill-market-card__owner-user-icon {
   flex: 0 0 auto;
 }
@@ -1344,9 +1346,24 @@
 }
 
 .skill-market-detail-header__owner {
-  max-width: 96px;
+  max-width: min(260px, 42%);
   color: var(--wk-color-accent) !important;
   font-weight: 600;
+}
+
+.skill-market-detail-header__owner > svg {
+  flex: 0 0 auto;
+}
+
+.skill-market-detail-header__owner > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.skill-market-detail-header__owner .skill-market-detail-header__publisher-separator {
+  flex: 0 0 auto;
+  overflow: visible;
 }
 
 .skill-market-detail-header__updated {
@@ -1420,26 +1437,23 @@
 
 .skill-market-detail__tags {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
 }
 
 .skill-market-detail__tags span {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 168px;
-  overflow: hidden;
+  flex: 0 0 auto;
+  max-width: 100%;
   padding: 3px 8px;
   border-radius: var(--wk-r-full);
   background: var(--wk-accent-tint-06, rgba(127, 59, 245, 0.06));
   color: var(--wk-color-accent);
   font-size: 12px;
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .skill-market-detail__tag-tooltip {
@@ -2249,12 +2263,25 @@
   gap: 4px;
   height: 26px;
   max-width: 140px;
+  min-width: 0;
+  overflow: hidden;
   padding: 0 var(--wk-sp-2);
   border: 0;
   border-radius: var(--wk-r-full);
   background: var(--wk-accent-tint-08);
   color: var(--wk-color-accent);
   font: 500 12px/1 var(--wk-font-sans);
+}
+
+.skill-market-tag-input__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-market-tag-input button svg {
+  flex: 0 0 auto;
 }
 
 .skill-market-tag-input input {

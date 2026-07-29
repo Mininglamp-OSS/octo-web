@@ -21,10 +21,7 @@ import { isChannelSearchEnabled } from "./features/channelSearch/feature";
 import ChatSearchEntryButton from "./features/channelSearch/ChatSearchEntryButton";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
 import { InputEdit } from "./Components/InputEdit";
-import {
-  ListItem,
-  ListItemTip,
-} from "./Components/ListItem";
+import { ListItem, ListItemTip } from "./Components/ListItem";
 import { Card, CardCell } from "./Messages/Card";
 import { GifCell, GifContent } from "./Messages/Gif";
 import { HistorySplitCell, HistorySplitContent } from "./Messages/HistorySplit";
@@ -120,6 +117,8 @@ import {
 } from "./Messages/ThreadCreated";
 import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
+import { DocumentShareCardContent } from "./Messages/DocumentShareCard/DocumentShareCardContent";
+import { DocumentShareCardCell } from "./Messages/DocumentShareCard";
 import { parseThreadChannelId } from "./Service/Thread";
 import { canShowRevokeMenu } from "./Service/revokePermission";
 import {
@@ -158,9 +157,7 @@ import { buildChannelMembersSection } from "./features/channelSetting/channelSet
 import { buildChannelGroupInfoSection } from "./features/channelSetting/channelSettingGroupInfoSection";
 import {
   buildThreadActionsSection,
-  buildThreadInfoSection,
-  buildThreadMdSection,
-  buildThreadWebhookSection,
+  buildThreadOverviewSection,
 } from "./features/channelSetting/channelSettingThreadSections";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
@@ -182,9 +179,7 @@ const pendingRevokeRoleFetches = new Set<string>();
 
 function findSubscriber(channel: Channel, uid: string): Subscriber | undefined {
   const subscribers = getCurrentImChannelSubscribers(channel) as Subscriber[];
-  return subscribers.find(
-    (subscriber) => subscriber && subscriber.uid === uid
-  );
+  return subscribers.find((subscriber) => subscriber && subscriber.uid === uid);
 }
 
 function mergeSubscriberIntoCache(channel: Channel, subscriber: Subscriber) {
@@ -320,6 +315,8 @@ export default class BaseModule implements IModule {
             return ApproveGroupMemberCell;
           case 15: // 智能总结卡片
             return SummaryCardCell;
+          case MessageContentTypeConst.docShareCard: // 文档转发卡片
+            return DocumentShareCardCell;
           case 98:
             return SignalMessageCell;
           default:
@@ -330,13 +327,19 @@ export default class BaseModule implements IModule {
       }
     );
 
-    registerCurrentImMessageContent(MessageContentType.image, () => new ImageContent()); // 图片
+    registerCurrentImMessageContent(
+      MessageContentType.image,
+      () => new ImageContent()
+    ); // 图片
     registerCurrentImMessageContent(
       MessageContentTypeConst.file,
       () => new FileContent()
     ); // 文件
 
-    registerCurrentImMessageContent(MessageContentTypeConst.card, () => new Card()); // 名片
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.card,
+      () => new Card()
+    ); // 名片
     registerCurrentImMessageContent(
       MessageContentTypeConst.interactiveCard,
       () => new InteractiveCardContent()
@@ -389,6 +392,10 @@ export default class BaseModule implements IModule {
     );
     // 智能总结卡片
     registerCurrentImMessageContent(15, () => new SummaryCardContent());
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.docShareCard,
+      () => new DocumentShareCardContent()
+    );
 
     // 富文本（图文混排）
     registerCurrentImMessageContent(
@@ -665,7 +672,7 @@ export default class BaseModule implements IModule {
   }
 
   /**
-   * 频道头右侧入口按钮。dmworksummary / dmworktodo 各自注册了「智能总结」/「事项」
+   * 频道头右侧入口按钮。dmworksummary 注册了「智能总结」
    * 图标；这里注册「查找聊天内容」的唯一入口，通过 feature 门禁后用 mittBus
    * 事件 wk:open-channel-search 通知 Pages/Chat 调 _openChannelSearchPanel()。
    */
@@ -676,7 +683,7 @@ export default class BaseModule implements IModule {
         if (!isChannelSearchEnabled(channel)) return undefined;
         return <ChatSearchEntryButton channel={channel} />;
       },
-      4900, // 排在 matter (5000) / summary (5100) 之前
+      4900 // 排在 summary (5100) 之前
     );
   }
 
@@ -907,7 +914,10 @@ export default class BaseModule implements IModule {
           return null;
         }
         // 服务端本期只接受纯文本；尚未拿到服务端 message_id 的本地待发送消息也不展示。
-        if (message.contentType !== MessageContentType.text || !message.messageID) {
+        if (
+          message.contentType !== MessageContentType.text ||
+          !message.messageID
+        ) {
           return null;
         }
         return {
@@ -1222,7 +1232,8 @@ export default class BaseModule implements IModule {
           channelInfo,
           fromSubscriberOfUser,
         });
-        const membershipCreatedAt = userInfoMembershipCreatedAt(membershipOrgData);
+        const membershipCreatedAt =
+          userInfoMembershipCreatedAt(membershipOrgData);
         if (membershipCreatedAt) {
           let joinDesc = `${membershipCreatedAt.substr(0, 10)}`;
           if (
@@ -1316,9 +1327,8 @@ export default class BaseModule implements IModule {
                             data.uid,
                             ChannelTypePerson
                           );
-                          const conversation = findCurrentImConversation(
-                            channel
-                          );
+                          const conversation =
+                            findCurrentImConversation(channel);
                           if (conversation) {
                             WKApp.conversationProvider.clearConversationMessages(
                               conversation
@@ -1515,12 +1525,14 @@ export default class BaseModule implements IModule {
     placeholder?: string,
     maxCount?: number,
     allowEmpty?: boolean,
-    allowWrap?: boolean
+    allowWrap?: boolean,
+    className?: string
   ) {
     let value: string;
     let finishButtonContext: FinishButtonContext;
     context.push(
       <InputEdit
+        className={className}
         defaultValue={defaultValue}
         placeholder={placeholder}
         onChange={(v, exceeded) => {
@@ -1554,6 +1566,27 @@ export default class BaseModule implements IModule {
     );
   }
 
+  channelSettingInputEditPush(
+    context: RouteContext<any>,
+    defaultValue: string,
+    onFinish: (value: string) => Promise<void>,
+    placeholder?: string,
+    maxCount?: number,
+    allowEmpty?: boolean,
+    allowWrap?: boolean
+  ) {
+    this.inputEditPush(
+      context,
+      defaultValue,
+      onFinish,
+      placeholder,
+      maxCount,
+      allowEmpty,
+      allowWrap,
+      "wk-channelsetting-input-edit"
+    );
+  }
+
   registerChannelSettings() {
     WKApp.shared.channelSettingRegister("channel.subscribers", (context) => {
       return buildChannelMembersSection(context);
@@ -1564,7 +1597,7 @@ export default class BaseModule implements IModule {
       (context) => {
         return buildChannelGroupInfoSection(
           context,
-          this.inputEditPush.bind(this)
+          this.channelSettingInputEditPush.bind(this)
         );
       },
       1000
@@ -1583,7 +1616,7 @@ export default class BaseModule implements IModule {
       (context) => {
         return buildMyGroupNicknameSection(
           context,
-          this.inputEditPush.bind(this)
+          this.channelSettingInputEditPush.bind(this)
         );
       },
       4000
@@ -1636,40 +1669,17 @@ export default class BaseModule implements IModule {
       90000
     );
 
-    // 子区 (Thread) 设置项
+    // 子区信息行沿用各自既有 builder 和权限/点击逻辑，只在展示层合并为同一信息卡。
+    // 当前未注册的免打扰、查找聊天内容等入口不得因 UI 参考图而补回。
     WKApp.shared.channelSettingRegister(
-      "thread.base.info",
+      "thread.overview",
       (context) => {
-        return buildThreadInfoSection(
+        return buildThreadOverviewSection(
           context,
-          this.inputEditPush.bind(this)
+          this.channelSettingInputEditPush.bind(this)
         );
       },
       500
-    );
-
-    // 子区 GROUP.md 设置项
-    WKApp.shared.channelSettingRegister(
-      "thread.md.setting",
-      (context) => {
-        return buildThreadMdSection(context);
-      },
-      1000
-    );
-
-    // 子区入站 Webhook（入口 A：聊天信息 / 完整会话设置页）。与入口 B
-    // （ThreadPanel 右上角「…」菜单）完全同口径：复用群面板 ChannelWebhookPanel，
-    // 传【父群】channel + 子区 short_id，datasource 据此拼
-    // groups/{group}/threads/{short}/incoming-webhooks 做作用域隔离；
-    // isManager 锚【父群】角色（子区无独立角色矩阵，普通成员仍可管自己创建的）。
-    // 仅【活跃中】子区显示 —— 归档子区建 webhook 会被后端拒，避免无效入口，
-    // 与入口 B 的 status 门槛保持一致。
-    WKApp.shared.channelSettingRegister(
-      "thread.webhook",
-      (context) => {
-        return buildThreadWebhookSection(context);
-      },
-      2000
     );
 
     // 子区设置说明：

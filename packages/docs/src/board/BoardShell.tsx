@@ -655,6 +655,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       ownerId,
       space,
       folder,
+      kind: 'board',
     })
   }, [docId, currentTitle, role, ownerId, space, folder])
 

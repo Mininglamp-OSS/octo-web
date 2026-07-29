@@ -118,7 +118,7 @@ describe('Layout — standalone /s/:taskNo summary clean cold-load path', () => 
     expect(stashIdx).toBeGreaterThan(nsIdx)
     expect(layout).toMatch(/const\s+forwardSp\s*=\s*getQueryParam\("sp"\)\s*\|\|\s*""/)
     expect(layout).toMatch(/redirectQuery\.set\("sp",\s*forwardSp\)/)
-    expect(layout).toMatch(/consumeStandaloneReturn\(\)/)
+    expect(layout).toMatch(/consumeStandaloneReturn\(getEnterpriseStandaloneHandlers\(\)\)/)
     // sid-clean path (PR #851 decision): cache the sid in SessionScope then
     // navigate to the sid-less return URL. `withReturnSid(...)` was the
     // sid-in-URL alternative that this test previously assumed; the fork

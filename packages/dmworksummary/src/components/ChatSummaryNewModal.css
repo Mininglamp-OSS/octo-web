@@ -2,6 +2,90 @@
     display: none;
 }
 
+.chat-summary-modal-embedded {
+    height: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 16px 12px;
+    overflow: auto;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-header {
+    margin-bottom: 4px;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-title {
+    font-size: 17px;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-desc {
+    margin-bottom: 10px;
+    line-height: 18px;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-input-area {
+    min-height: 96px;
+    margin-bottom: 10px;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-input {
+    min-height: 48px;
+    padding: 10px 12px;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-templates-heading {
+    margin-bottom: 8px;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-templates-label {
+    margin-bottom: 8px;
+    padding: 0 4px;
+}
+
+.chat-summary-modal-embedded .summary-template-more-button {
+    padding-right: 4px;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-templates {
+    gap: 8px;
+    padding: 0 4px 8px;
+}
+
+.chat-summary-modal-embedded .chat-summary-template-card {
+    min-height: 132px;
+    padding: 10px;
+}
+
+.chat-summary-modal-embedded .chat-summary-template-card-icon {
+    margin-bottom: 6px;
+}
+
+.chat-summary-modal-embedded .summary-template-custom-section {
+    padding: 2px 4px 8px;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-chat-section {
+    margin-bottom: 8px;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-footer {
+    position: sticky;
+    bottom: -12px;
+    flex-shrink: 0;
+    margin: auto -16px -12px;
+    padding: 10px 16px 12px;
+    background: var(--semi-color-bg-0);
+    border-top: 1px solid var(--semi-color-border);
+    z-index: 1;
+}
+
+.chat-summary-modal-embedded .chat-summary-modal-split {
+    margin-left: auto;
+}
+
+
 .chat-summary-modal-header {
     display: flex;
     align-items: center;
@@ -42,7 +126,7 @@
 }
 
 .chat-summary-modal-input-area:focus-within {
-    border-color: var(--wk-color-primary, #3370FF);
+    border-color: var(--wk-border-default, #E5E6EB);
 }
 
 .chat-summary-modal-input-wrap {

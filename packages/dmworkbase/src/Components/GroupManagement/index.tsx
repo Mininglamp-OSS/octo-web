@@ -1,9 +1,11 @@
 import React, { Component } from "react";
-import { Button, Spin, Switch, Tag, Toast } from "@douyinfe/semi-ui";
+import { Spin, Toast } from "@douyinfe/semi-ui";
 import { Channel, Subscriber } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";
-import { SubscriberList } from "../Subscribers/list";
-import RouteContext, { RouteContextConfig } from "../../Service/Context";
+import RouteContext, {
+  type FinishButtonContext,
+  RouteContextConfig,
+} from "../../Service/Context";
 import { GroupRole } from "../../Service/Const";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
@@ -24,7 +26,12 @@ import {
   shouldApplyFetchResult,
   shouldListenerApply,
 } from "../../bridge/channelSetting/groupManagementAllowNoMention";
-import "./index.css";
+import { GroupManagementMemberPicker } from "./MemberPicker";
+import GroupManagementView, {
+  type GroupManagementMemberItem,
+  type GroupManagementMemberRole,
+  type GroupManagementViewLabels,
+} from "../../ui/channelSetting/GroupManagementView";
 
 export interface GroupManagementProps {
   channel: Channel;
@@ -58,6 +65,8 @@ export class GroupManagement extends Component<
   // 期间不回写——这些 fetch resolve 会触发 listener，但其新旧由 opSeq 守卫的
   // .then 决定，避免 stale fetch 经 listener 覆盖刚 toggle 的结果。
   private inflightFetch = 0;
+  // 保存操作单独计数。后台 refresh 也会更新 opSeq，但不能影响保存 loading 复位。
+  private allowNoMentionSaveSeq = 0;
 
   constructor(props: GroupManagementProps) {
     super(props);
@@ -78,6 +87,7 @@ export class GroupManagement extends Component<
   };
 
   componentDidMount() {
+    this.unmounted = false;
     this.loadMembers();
 
     // Bug 2 时序变种修复：挂载时缓存可能是 stale/缺字段的 ChannelInfo，
@@ -212,38 +222,56 @@ export class GroupManagement extends Component<
     const { channel, context } = this.props;
     const { managers } = this.state;
     const disableList = managers.map((m) => m.uid);
+    let finishButtonContext: FinishButtonContext | undefined;
 
     let selectedItems: Subscriber[] = [];
 
     context.push(
-      <SubscriberList
+      <GroupManagementMemberPicker
         channel={channel}
-        canSelect={true}
-        disableSelectList={disableList}
         filter={(s) => s.orgData?.robot !== 1 && s.role === GroupRole.normal}
+        disabledUids={disableList}
+        labels={{
+          searchPlaceholder: t("base.groupManagement.searchMemberPlaceholder"),
+          empty: t("base.groupManagement.noMemberCandidates"),
+          emptySearch: t("base.groupManagement.noMemberMatches"),
+        }}
         onSelect={(items) => {
           selectedItems = items;
+          finishButtonContext?.disable(selectedItems.length === 0);
         }}
       />,
       new RouteContextConfig({
         title: t("base.groupManagement.addManager"),
         showFinishButton: true,
         finishButtonTitle: t("base.common.ok"),
+        onFinishContext: (ctx) => {
+          finishButtonContext = ctx;
+          ctx.disable(true);
+        },
         onFinish: async () => {
           if (selectedItems.length === 0) {
             Toast.warning(t("base.groupManagement.selectMember"));
             return;
           }
+          finishButtonContext?.loading(true);
+          let shouldResetLoading = true;
           try {
             await addGroupManagementManagers({
               channel,
               uids: selectedItems.map((s) => s.uid),
             });
             Toast.success(t("base.groupManagement.added"));
+            finishButtonContext?.loading(false);
+            shouldResetLoading = false;
             context.pop();
-            this.loadMembers();
+            void this.loadMembers();
           } catch (err: any) {
             Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
+          } finally {
+            if (shouldResetLoading) {
+              finishButtonContext?.loading(false);
+            }
           }
         },
       })
@@ -254,54 +282,73 @@ export class GroupManagement extends Component<
     const { channel, context } = this.props;
     const { botAdmins } = this.state;
     const disableList = botAdmins.map((m) => m.uid);
+    let finishButtonContext: FinishButtonContext | undefined;
 
     let selectedItems: Subscriber[] = [];
 
     context.push(
-      <SubscriberList
+      <GroupManagementMemberPicker
         channel={channel}
-        canSelect={true}
-        disableSelectList={disableList}
+        disabledUids={disableList}
         filter={(s) => s.orgData?.robot === 1 && s.orgData?.bot_admin !== 1}
+        labels={{
+          searchPlaceholder: t("base.groupManagement.searchBotPlaceholder"),
+          empty: t("base.groupManagement.noBotCandidates"),
+          emptySearch: t("base.groupManagement.noBotMatches"),
+        }}
         onSelect={(items) => {
           selectedItems = items;
+          finishButtonContext?.disable(selectedItems.length === 0);
         }}
       />,
       new RouteContextConfig({
         title: t("base.groupManagement.addBotAdmin"),
         showFinishButton: true,
         finishButtonTitle: t("base.common.ok"),
+        onFinishContext: (ctx) => {
+          finishButtonContext = ctx;
+          ctx.disable(true);
+        },
         onFinish: async () => {
           if (selectedItems.length === 0) {
             Toast.warning(t("base.groupManagement.selectBot"));
             return;
           }
+          finishButtonContext?.loading(true);
+          let shouldResetLoading = true;
           // 后端无批量端点，对每个选中 bot 各发一次 PUT；先快照选中 uid，
           // 避免提交期间 onSelect 回调改写 selectedItems 造成竞态。
           const uids = selectedItems.map((item) => item.uid);
-          const { succeeded, failed } = await addGroupManagementBotAdmins({
-            channel,
-            uids,
-          });
-          if (succeeded.length > 0) {
-            // 只要有成功的就刷新列表并关闭对话框。
-            context.pop();
-            this.loadMembers();
-          }
-          if (failed.length === 0) {
-            Toast.success(t("base.groupManagement.added"));
-          } else if (succeeded.length === 0) {
-            const firstReason = failed[0].reason as any;
-            Toast.error(
-              firstReason?.msg || t("base.groupManagement.operationFailed")
-            );
-          } else {
-            // 部分失败：明确列出失败的 uid，不静默吞掉。
-            Toast.error(
-              t("base.groupManagement.operationFailed") +
-                ` (${failed.length}/${uids.length}): ` +
-                failed.map((f) => f.uid).join(", ")
-            );
+          try {
+            const { succeeded, failed } = await addGroupManagementBotAdmins({
+              channel,
+              uids,
+            });
+            if (succeeded.length > 0) {
+              finishButtonContext?.loading(false);
+              shouldResetLoading = false;
+              context.pop();
+              void this.loadMembers();
+            }
+            if (failed.length === 0) {
+              Toast.success(t("base.groupManagement.added"));
+            } else if (succeeded.length === 0) {
+              const firstReason = failed[0].reason as any;
+              Toast.error(
+                firstReason?.msg || t("base.groupManagement.operationFailed")
+              );
+            } else {
+              // 部分失败：明确列出失败的 uid，不静默吞掉。
+              Toast.error(
+                t("base.groupManagement.operationFailed") +
+                  ` (${failed.length}/${uids.length}): ` +
+                  failed.map((f) => f.uid).join(", ")
+              );
+            }
+          } finally {
+            if (shouldResetLoading) {
+              finishButtonContext?.loading(false);
+            }
           }
         },
       })
@@ -349,10 +396,10 @@ export class GroupManagement extends Component<
     const prev = this.state.allowNoMention;
     // 自增 opSeq：本次 toggle 成为最新操作，任何更早的在途 mount-fetch resolve
     // 后会因 opSeq 不匹配被丢弃，无法覆盖本次结果。
-    const myOp = ++this.opSeq;
+    ++this.opSeq;
+    const mySave = ++this.allowNoMentionSaveSeq;
     // 乐观更新 + saving 锁，避免连点；saving 期间 listener 也不回写。
     this.setState({ allowNoMention: next, allowNoMentionSaving: true });
-    this.inflightFetch++;
     try {
       await setGroupManagementAllowNoMention({
         allow: next,
@@ -360,170 +407,138 @@ export class GroupManagement extends Component<
       });
       if (this.unmounted) return;
       // 期间又有更新的 toggle 发起 → 那次操作接管 state（含 saving 锁），本次静默退出。
-      if (myOp !== this.opSeq) return;
-      this.setState({
-        allowNoMention: this.readAllowNoMention(),
-        allowNoMentionSaving: false,
-      });
+      if (mySave !== this.allowNoMentionSaveSeq) return;
+      this.setState(
+        {
+          allowNoMention: next,
+          allowNoMentionSaving: false,
+        },
+        () => {
+          if (this.unmounted) return;
+          if (mySave !== this.allowNoMentionSaveSeq) return;
+          this.refreshAllowNoMention();
+        }
+      );
     } catch (err: any) {
       // 失败回滚到改前状态。仅当本次仍是最新操作时才回滚 + 解锁，
       // 否则尊重更新的 toggle（它接管 saving 锁）。
       Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
       if (this.unmounted) return;
-      if (myOp !== this.opSeq) return;
+      if (mySave !== this.allowNoMentionSaveSeq) return;
       this.setState({ allowNoMention: prev, allowNoMentionSaving: false });
-    } finally {
-      this.inflightFetch--;
     }
+  };
+
+  private subscriberDisplayName = (subscriber: Subscriber) => {
+    return subscriber.remark || subscriber.name || subscriber.uid;
+  };
+
+  private toMemberItem = (
+    subscriber: Subscriber,
+    role: GroupManagementMemberRole,
+    canRemove: boolean
+  ): GroupManagementMemberItem => {
+    return {
+      id: subscriber.uid,
+      name: this.subscriberDisplayName(subscriber),
+      avatar: <WKAvatar src={subscriber.avatar} />,
+      role,
+      canRemove,
+    };
+  };
+
+  private findManager = (item: GroupManagementMemberItem) => {
+    return this.state.managers.find((manager) => manager.uid === item.id);
+  };
+
+  private findBotAdmin = (item: GroupManagementMemberItem) => {
+    return this.state.botAdmins.find((botAdmin) => botAdmin.uid === item.id);
+  };
+
+  private memberCount = () => {
+    const routeData = this.props.context.routeData?.();
+    const memberCount = routeData?.channelInfo?.orgData?.member_count;
+    if (memberCount) return Number(memberCount);
+    if (Array.isArray(routeData?.subscribers)) {
+      return routeData.subscribers.length;
+    }
+    return undefined;
   };
 
   render() {
     const { isCreator } = this.props;
-    const { loading, managers, botAdmins, allowNoMention, allowNoMentionSaving } =
-      this.state;
+    const {
+      loading,
+      managers,
+      botAdmins,
+      allowNoMention,
+      allowNoMentionSaving,
+    } = this.state;
+    const memberCount = this.memberCount();
 
-    if (loading) {
-      return (
-        <div className="wk-group-mgmt">
-          <div className="wk-group-mgmt-loading">
-            <Spin size="large" />
-          </div>
-        </div>
+    const labels: GroupManagementViewLabels = {
+      loading: <Spin size="large" />,
+      ownerAndManagers: t("base.groupManagement.ownerAndManagers"),
+      botAdmins: t("base.groupManagement.botAdmins"),
+      addManager: t("base.groupManagement.addManager"),
+      addBotAdmin: t("base.groupManagement.addBotAdmin"),
+      owner: t("base.groupManagement.owner"),
+      manager: t("base.groupManagement.manager"),
+      botAdmin: t("base.groupManagement.botAdmin"),
+      emptyManagers: t("base.groupManagement.noManagers"),
+      emptyBotAdmins: t("base.groupManagement.noBotAdmins"),
+      memberManagement: t("base.groupManagement.memberManagement"),
+      memberManagementMeta:
+        typeof memberCount === "number"
+          ? t("base.groupManagement.memberManagementMeta", {
+              values: { count: memberCount },
+            })
+          : undefined,
+      allowNoMentionTitle: t("base.groupManagement.allowNoMentionTitle"),
+      allowNoMentionLabel: t("base.module.channelSettings.allowNoMention"),
+      allowNoMentionDesc: t("base.groupManagement.allowNoMentionDesc"),
+      disbandAction: t("base.groupManagement.disbandAction"),
+      disbandDesc: t("base.groupManagement.disbandDesc"),
+      removeMember: t("base.groupManagement.removeMember"),
+    };
+
+    const managerItems = managers.map((item) => {
+      const role: GroupManagementMemberRole =
+        item.role === GroupRole.owner ? "owner" : "manager";
+      return this.toMemberItem(
+        item,
+        role,
+        isCreator && item.role === GroupRole.manager
       );
-    }
+    });
+    const botAdminItems = botAdmins.map((item) =>
+      this.toMemberItem(item, "botAdmin", true)
+    );
 
     return (
-      <div className="wk-group-mgmt">
-        {/* 群主、管理员 */}
-        <div className="wk-group-mgmt-section">
-          <div className="wk-group-mgmt-section-header">
-            <span className="wk-group-mgmt-section-title">{t("base.groupManagement.ownerAndManagers")}</span>
-            {isCreator && (
-              <Button size="small" onClick={this.handleAddManager}>
-                {t("base.groupManagement.addManager")}
-              </Button>
-            )}
-          </div>
-          <div className="wk-group-mgmt-list">
-            {managers.map((item) => (
-              <div className="wk-group-mgmt-item" key={item.uid}>
-                <div className="wk-group-mgmt-item-avatar">
-                  <WKAvatar src={item.avatar} />
-                </div>
-                <div className="wk-group-mgmt-item-info">
-                  <span className="wk-group-mgmt-item-name">
-                    {item.remark || item.name}
-                  </span>
-                  {item.role === GroupRole.owner && (
-                    <Tag size="small" color="orange">
-                      {t("base.groupManagement.owner")}
-                    </Tag>
-                  )}
-                  {item.role === GroupRole.manager && (
-                    <Tag size="small" color="blue">
-                      {t("base.groupManagement.manager")}
-                    </Tag>
-                  )}
-                </div>
-                {isCreator && item.role === GroupRole.manager && (
-                  <div className="wk-group-mgmt-item-action">
-                    <span
-                      className="wk-group-mgmt-remove-btn"
-                      onClick={() => this.handleRemoveManager(item)}
-                    >
-                      ⊖
-                    </span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Bot 管理员 */}
-        <div className="wk-group-mgmt-section">
-          <div className="wk-group-mgmt-section-header">
-            <span className="wk-group-mgmt-section-title">{t("base.groupManagement.botAdmins")}</span>
-            <Button size="small" onClick={this.handleAddBotAdmin}>
-              {t("base.groupManagement.addBotAdmin")}
-            </Button>
-          </div>
-          <div className="wk-group-mgmt-list">
-            {botAdmins.length === 0 ? (
-              <div className="wk-group-mgmt-empty">{t("base.groupManagement.noBotAdmins")}</div>
-            ) : (
-              botAdmins.map((item) => (
-                <div className="wk-group-mgmt-item" key={item.uid}>
-                  <div className="wk-group-mgmt-item-avatar">
-                    <WKAvatar src={item.avatar} />
-                  </div>
-                  <div className="wk-group-mgmt-item-info">
-                    <span className="wk-group-mgmt-item-name">
-                      {item.remark || item.name}
-                    </span>
-                    <Tag size="small" color="green">
-                      {t("base.groupManagement.botAdmin")}
-                    </Tag>
-                  </div>
-                  <div className="wk-group-mgmt-item-action">
-                    <span
-                      className="wk-group-mgmt-remove-btn"
-                      onClick={() => this.handleRemoveBotAdmin(item)}
-                    >
-                      ⊖
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* 群级「允许群内 Bot 免@回答」总开关：群主/管理员可控。
-            两轴语义：最终免@ = bot主人开了本群免@ AND 群管理员允许本群免@（本开关）。 */}
-        <div className="wk-group-mgmt-section">
-          <div className="wk-group-mgmt-section-header">
-            <span className="wk-group-mgmt-section-title">
-              {t("base.groupManagement.allowNoMentionTitle")}
-            </span>
-          </div>
-          <div className="wk-group-mgmt-switch-row">
-            <span className="wk-group-mgmt-switch-label">
-              {t("base.module.channelSettings.allowNoMention")}
-            </span>
-            {/* Semi UI <Switch> 裸放在 flex row 里会被默认 flex-shrink:1 压缩
-                （参考 PersonaEdit 的 wk-persona-edit-row-control 同款处理），
-                包一层 non-shrinking 控件容器锁定自然宽高。 */}
-            <div className="wk-group-mgmt-switch-control">
-              <Switch
-                checked={allowNoMention}
-                loading={allowNoMentionSaving}
-                onChange={(v) => this.handleToggleAllowNoMention(v)}
-              />
-            </div>
-          </div>
-          <div className="wk-group-mgmt-switch-desc">
-            {t("base.groupManagement.allowNoMentionDesc")}
-          </div>
-        </div>
-
-        {/* 危险操作区：解散群聊。仅群主可见。企业微信式——解散后保留历史、全员只读。 */}
-        {isCreator && (
-          <div className="wk-group-mgmt-section wk-group-mgmt-danger-section">
-            <Button
-              theme="solid"
-              type="danger"
-              block
-              onClick={this.handleDisband}
-            >
-              {t("base.groupManagement.disbandAction")}
-            </Button>
-            <div className="wk-group-mgmt-switch-desc">
-              {t("base.groupManagement.disbandDesc")}
-            </div>
-          </div>
-        )}
-      </div>
+      <GroupManagementView
+        loading={loading}
+        managers={managerItems}
+        botAdmins={botAdminItems}
+        allowNoMention={allowNoMention}
+        allowNoMentionSaving={allowNoMentionSaving}
+        canManageManagers={isCreator}
+        canManageBotAdmins
+        canDisband={isCreator}
+        labels={labels}
+        onAddManager={this.handleAddManager}
+        onAddBotAdmin={this.handleAddBotAdmin}
+        onRemoveManager={(item) => {
+          const manager = this.findManager(item);
+          if (manager) this.handleRemoveManager(manager);
+        }}
+        onRemoveBotAdmin={(item) => {
+          const botAdmin = this.findBotAdmin(item);
+          if (botAdmin) this.handleRemoveBotAdmin(botAdmin);
+        }}
+        onToggleAllowNoMention={this.handleToggleAllowNoMention}
+        onDisband={this.handleDisband}
+      />
     );
   }
 }

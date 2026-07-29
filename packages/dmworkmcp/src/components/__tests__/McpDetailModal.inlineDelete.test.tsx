@@ -16,7 +16,7 @@ vi.mock("../../api/quickStartTemplates", () => ({
   buildQuickStartTabs: () => [
     { key: "prompt", labelKey: "prompt", content: "x" },
   ],
-  TOKEN_PLACEHOLDER: "<把这里换成你的 Token>",
+  TOKEN_PLACEHOLDER_RE: /<把这里换成你的 [^>]+>/g,
 }));
 vi.mock("../../utils/icon", () => ({ IconGlyph: () => null }));
 vi.mock("@douyinfe/semi-ui", () => ({

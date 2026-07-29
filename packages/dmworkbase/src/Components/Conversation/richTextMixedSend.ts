@@ -13,6 +13,16 @@ export interface RichTextMixedCandidate {
   topImageIds: string[];
 }
 
+export function finishRichTextMixedSend(
+  anyMessageSent: boolean,
+  mixedSent: boolean,
+  consumedTopIds: string[],
+  onMessageSent?: () => void
+) {
+  if (anyMessageSent) onMessageSent?.();
+  return { editorConsumed: mixedSent, consumedTopIds };
+}
+
 const IMAGE_EXTENSIONS = new Set([
   "jpg",
   "jpeg",

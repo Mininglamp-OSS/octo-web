@@ -124,27 +124,79 @@
     color: var(--wk-text-tertiary);
 }
 
-/* ── Dropdown ── */
-.wk-navrail__dropdown-mask {
+/* ── Shared NavRail flyout ── */
+.wk-navrail__flyout-mask {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    z-index: 190;
 }
 
-.wk-navrail__dropdown {
-    position: fixed;
-    bottom: 52px;
-    left: 12px;
+.wk-navrail__flyout {
+    background: var(--wk-bg-elevated);
+    border: 1px solid var(--wk-border-default);
+    border-radius: var(--wk-r-md, 10px);
+    box-shadow: var(--wk-shadow-lg);
+    z-index: 200;
+    overflow: hidden;
+    padding: var(--wk-sp-1, 4px) 0;
+    box-sizing: border-box;
+}
+
+.wk-navrail__flyout--sm {
+    width: 132px;
+    padding: var(--wk-sp-1, 4px);
+}
+
+.wk-navrail__flyout--md {
+    width: 224px;
+}
+
+.wk-navrail__flyout--lg {
     width: 240px;
     background: var(--wk-bg-surface);
-    border: 1px solid var(--wk-border-subtle);
+    border-color: var(--wk-border-subtle);
     border-radius: 8px;                /* Figma: cornerRadius=8 */
     box-shadow: var(--wk-shadow-dropdown);
-    z-index: 101;
-    overflow: hidden;
     display: flex;
     flex-direction: column;
-    padding: 4px 0;                    /* Figma: 上下 4px，左右 0（行内自带 padding） */
+}
+
+.wk-navrail__flyout-item {
+    width: 100%;
+    min-height: 32px;
+    padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+    border: none;
+    border-radius: var(--wk-r-sm, 6px);
+    background: transparent;
+    color: var(--wk-text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--wk-sp-2, 8px);
+    font: var(--wk-text-sm);
+    letter-spacing: 0;
+    text-align: left;
+    transition: background var(--wk-dur-fast, 200ms);
+}
+
+.wk-navrail__flyout-item:hover,
+.wk-navrail__flyout-item:focus-visible,
+.wk-navrail__flyout-item--active {
+    background: var(--wk-bg-hover);
+    outline: none;
+}
+
+.wk-navrail__flyout-item-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-navrail__flyout-item-trailing {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--wk-brand-primary);
 }
 
 .wk-navrail__dropdown-title {
@@ -348,62 +400,13 @@
     font-weight: var(--wk-font-semibold);
 }
 
-.wk-navrail__language .semi-icon {
+.wk-navrail__language-menu .semi-icon {
     display: inline-flex;
-    font-size: 20px;
-}
-
-.wk-navrail__language-mask {
-    position: fixed;
-    inset: 0;
-    z-index: 190;
-}
-
-.wk-navrail__language-menu {
-    position: absolute;
-    left: calc(100% + 8px);
-    bottom: 0;
-    width: 132px;
-    padding: var(--wk-sp-1, 4px);
-    border: 1px solid var(--wk-border-default);
-    border-radius: var(--wk-r-md, 10px);
-    background: var(--wk-bg-elevated);
-    box-shadow: var(--wk-shadow-lg);
-    z-index: 201;
-}
-
-.wk-navrail__language-menu-item {
-    width: 100%;
-    min-height: 32px;
-    padding: 0 var(--wk-sp-2, 8px);
-    border: none;
-    border-radius: var(--wk-r-sm, 6px);
-    background: transparent;
-    color: var(--wk-text-primary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--wk-sp-2, 8px);
-    font: var(--wk-text-sm);
-    letter-spacing: 0;
-}
-
-.wk-navrail__language-menu-item:hover,
-.wk-navrail__language-menu-item--active {
-    background: var(--wk-bg-hover);
-}
-
-.wk-navrail__language-menu-item .semi-icon {
-    flex-shrink: 0;
-    color: var(--wk-brand-primary);
     font-size: 14px;
 }
 
-.wk-navrail__language-menu-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.wk-navrail__language-menu-item {
+    padding: 0 var(--wk-sp-2, 8px);
 }
 
 /* Figma: 选中态只有颜色变化，无背景，无指示条 */
@@ -558,13 +561,14 @@
 /* ── 设置面板内版本更新提示 ── */
 .wk-navrail__settings-version-update {
     display: flex;
+    align-items: center;
     justify-content: space-between;
+    gap: var(--wk-sp-2, 8px);
+    padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
     border-bottom: 1px solid var(--wk-border-subtle);
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-sm, 13px);
     cursor: default;
-}
-
-.wk-navrail__settings-list li.wk-navrail__settings-version-update:hover {
-    background: transparent;
 }
 
 .wk-navrail__settings-version-refresh {
@@ -584,37 +588,13 @@
 
 /* ── Settings panel (flyout) ── */
 .wk-navrail__settings-list {
-    position: fixed;
-    left: 56px;
-    bottom: var(--wk-sp-8, 32px);
-    width: 224px;
-    background: var(--wk-bg-elevated);
-    border: 1px solid var(--wk-border-default);
-    border-radius: var(--wk-r-md, 10px);
-    box-shadow: var(--wk-shadow-lg);
-    z-index: 200;
-    padding: var(--wk-sp-1, 4px) 0;
     list-style: none;
-    display: none;
 }
 
-.wk-navrail__settings-list.open {
-    display: block;
-}
-
-.wk-navrail__settings-list li {
+.wk-navrail__settings-list .wk-navrail__flyout-item {
+    border-radius: 0;
     padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
     font-size: var(--wk-text-size-sm, 13px);
-    color: var(--wk-text-primary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: var(--wk-sp-2, 8px);
-    transition: background var(--wk-dur-fast, 200ms);
-}
-
-.wk-navrail__settings-list li:hover {
-    background: var(--wk-bg-hover);
 }
 
 /* ── User avatar ── */

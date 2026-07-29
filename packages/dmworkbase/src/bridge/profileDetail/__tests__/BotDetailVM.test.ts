@@ -75,6 +75,31 @@ describe("BotDetailVM", () => {
     expect(vm.state.reported).toBe(true);
   });
 
+  it("loads bot profile and online channel info together", async () => {
+    mocks.getBotProfile.mockResolvedValueOnce({
+      name: "Bot One",
+      username: "bot_one",
+      bot_creator_uid: "someone",
+      follow: 1,
+    });
+    const runtime = createRuntime({
+      fetchChannelInfo: vi.fn().mockResolvedValueOnce({
+        title: "Bot One",
+        online: true,
+        lastOffline: 0,
+        orgData: { online: 1 },
+      }),
+    });
+    const vm = new BotDetailVM("bot1", runtime);
+    vm.mount();
+
+    await vm.loadBotInfo();
+    await Promise.resolve();
+
+    expect(runtime.fetchChannelInfo).toHaveBeenCalledWith("bot1");
+    expect(vm.state.channelInfo?.online).toBe(true);
+  });
+
   it("falls back to channel info when profile load fails", async () => {
     mocks.getBotProfile.mockRejectedValueOnce(new Error("boom"));
     const runtime = createRuntime({
@@ -97,6 +122,7 @@ describe("BotDetailVM", () => {
 
     expect(vm.state.loading).toBe(false);
     expect(vm.state.name).toBe("Cached Bot");
+    expect(vm.state.channelInfo?.title).toBe("Cached Bot");
     expect(vm.state.remark).toBe("Cached Remark");
     expect(vm.isOwner()).toBe(false);
   });
@@ -212,6 +238,16 @@ describe("BotDetailVM", () => {
     expect(mocks.uploadAvatar).toHaveBeenCalledWith("bot1", file, "token-a");
     expect(runtime.onAvatarChanged).toHaveBeenCalledWith("bot1");
     expect(vm.state.uploadingAvatar).toBe(false);
+  });
+
+  it("updates channel info from a listener push", () => {
+    const vm = new BotDetailVM("bot1", createRuntime());
+    vm.mount();
+
+    vm.updateChannelInfo({ online: false, lastOffline: 123, orgData: { online: 0 } });
+
+    expect(vm.state.channelInfo?.online).toBe(false);
+    expect(vm.state.channelInfo?.lastOffline).toBe(123);
   });
 });
 

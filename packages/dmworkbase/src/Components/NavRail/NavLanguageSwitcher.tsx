@@ -4,6 +4,7 @@ import WKApp from "../../App";
 import { updateUserLanguagePreference } from "../../Service/UserLanguageService";
 import { useI18n } from "../../i18n/useI18n";
 import { Locale } from "../../i18n/types";
+import NavFlyout, { NavFlyoutMenuItem } from "./NavFlyout";
 
 function getNextLocale(locale: Locale): Locale {
   return locale === "zh-CN" ? "en-US" : "zh-CN";
@@ -21,6 +22,7 @@ function summarizeLanguageSyncError(error: unknown): Record<string, unknown> | u
 
 export default function NavLanguageSwitcher() {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
   const { locale, setLocale, t } = useI18n();
   const nextLocale = getNextLocale(locale);
   const titleKey = nextLocale === "en-US"
@@ -54,6 +56,7 @@ export default function NavLanguageSwitcher() {
   return (
     <div className="wk-navrail__language-wrap">
       <button
+        ref={triggerRef}
         type="button"
         className={`wk-navrail__item wk-navrail__language${open ? " wk-navrail__language--open" : ""}`}
         title={title}
@@ -65,29 +68,32 @@ export default function NavLanguageSwitcher() {
         <IconLanguage aria-hidden="true" />
       </button>
 
-      {open && (
-        <>
-          <div className="wk-navrail__language-mask" onClick={() => setOpen(false)} />
-          <div className="wk-navrail__language-menu" role="menu">
-            {locales.map((item) => {
-              const active = item.locale === locale;
-              return (
-                <button
-                  key={item.locale}
-                  type="button"
-                  className={`wk-navrail__language-menu-item${active ? " wk-navrail__language-menu-item--active" : ""}`}
-                  role="menuitemradio"
-                  aria-checked={active}
-                  onClick={() => handleSelect(item.locale)}
-                >
-                  <span className="wk-navrail__language-menu-label">{t(item.labelKey)}</span>
-                  {active && <IconTick aria-hidden="true" />}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
+      <NavFlyout
+        open={open}
+        triggerRef={triggerRef}
+        onOpenChange={setOpen}
+        size="sm"
+        role="menu"
+        ariaLabel={title}
+        className="wk-navrail__language-menu"
+      >
+        {locales.map((item) => {
+          const active = item.locale === locale;
+          return (
+            <NavFlyoutMenuItem
+              key={item.locale}
+              role="menuitemradio"
+              ariaChecked={active}
+              active={active}
+              trailing={active ? <IconTick aria-hidden="true" /> : undefined}
+              className="wk-navrail__language-menu-item"
+              onSelect={() => handleSelect(item.locale)}
+            >
+              {t(item.labelKey)}
+            </NavFlyoutMenuItem>
+          );
+        })}
+      </NavFlyout>
     </div>
   );
 }

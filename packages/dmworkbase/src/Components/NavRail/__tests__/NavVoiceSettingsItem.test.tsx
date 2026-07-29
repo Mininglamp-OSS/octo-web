@@ -48,6 +48,8 @@ afterEach(() => {
   container.remove();
 });
 
+const voiceButton = () => Array.from(container.querySelectorAll('button')).find(el => el.textContent?.includes('语音设置')) as HTMLButtonElement | undefined;
+
 describe('NavVoiceSettingsItem', () => {
   it('always renders 语音设置', async () => {
     await act(async () => {
@@ -67,8 +69,8 @@ describe('NavVoiceSettingsItem', () => {
       );
     });
     expect(container.querySelector('[data-testid="voice-settings-panel"]')).toBeNull();
-    const li = Array.from(container.querySelectorAll('li')).find(el => el.textContent?.includes('语音设置'))!;
-    act(() => { li.click(); });
+    const button = voiceButton()!;
+    act(() => { button.click(); });
     expect(container.querySelector('[data-testid="voice-settings-panel"]')).not.toBeNull();
   });
 
@@ -79,8 +81,8 @@ describe('NavVoiceSettingsItem', () => {
         container,
       );
     });
-    const li = Array.from(container.querySelectorAll('li')).find(el => el.textContent?.includes('语音设置'))!;
-    act(() => { li.click(); });
+    const button = voiceButton()!;
+    act(() => { button.click(); });
     expect(container.querySelector('[data-testid="voice-settings-panel"]')).not.toBeNull();
     const closeBtn = container.querySelector('[data-testid="voice-settings-panel"] button')!;
     act(() => { (closeBtn as HTMLElement).click(); });

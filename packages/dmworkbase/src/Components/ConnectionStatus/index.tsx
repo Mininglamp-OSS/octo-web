@@ -156,19 +156,33 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
 
         const inactiveBar = "var(--wk-border-default)"
 
-        const labelText = connected && latency !== null
-            ? `${latency}ms`
+        const labelText = connected
+            ? (latency !== null ? `${latency}ms` : t("base.connectionStatus.connected"))
             : connecting ? t("base.connectionStatus.connectingDots") : t("base.connectionStatus.disconnected")
+        const statusLabel = connected
+            ? t("base.connectionStatus.connected")
+            : connecting ? t("base.connectionStatus.connecting") : t("base.connectionStatus.disconnected")
+        const containerProps = {
+            onClick: this.handleClick,
+            onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+                if (!connected && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault()
+                    this.handleClick()
+                }
+            },
+            onMouseEnter: () => this.setState({ showTooltip: true }),
+            onMouseLeave: () => this.setState({ showTooltip: false }),
+            role: connected ? undefined : "button",
+            tabIndex: connected ? undefined : 0,
+            "aria-label": statusLabel,
+            style: { cursor: connected ? "default" : "pointer" },
+        }
 
         const tooltip = showTooltip && (
             <div className="wk-conn-tooltip">
                 <div>
                     {t("base.connectionStatus.statusLabel")}
-                    {connected
-                        ? t("base.connectionStatus.connected")
-                        : connecting
-                            ? t("base.connectionStatus.connecting")
-                            : t("base.connectionStatus.disconnected")}
+                    {statusLabel}
                 </div>
                 {connected && latency !== null && <div>{t("base.connectionStatus.latencyLabel")}{latency}ms</div>}
                 {connected && connectedSince && (
@@ -197,10 +211,7 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
             return (
                 <div
                     className={`wk-conn-status wk-conn-status--compact${connecting ? " wk-conn-blink-wrap" : ""}`}
-                    onClick={this.handleClick}
-                    onMouseEnter={() => this.setState({ showTooltip: true })}
-                    onMouseLeave={() => this.setState({ showTooltip: false })}
-                    style={{ cursor: "default" }}
+                    {...containerProps}
                 >
                     {svgBars(12)}
                     <span style={{ fontSize: 11, color: barColor, marginLeft: 2, fontVariantNumeric: 'tabular-nums' }}>
@@ -214,10 +225,7 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
         return (
             <div
                 className="wk-conn-status"
-                onClick={this.handleClick}
-                onMouseEnter={() => this.setState({ showTooltip: true })}
-                onMouseLeave={() => this.setState({ showTooltip: false })}
-                style={{ cursor: connected ? "default" : "pointer" }}
+                {...containerProps}
             >
                 {svgBars(14)}
                 <span className="wk-conn-text" style={{ color: barColor }}>

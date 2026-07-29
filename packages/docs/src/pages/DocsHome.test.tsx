@@ -1,10 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react'
+import {
+  render,
+  screen,
+  waitFor,
+  cleanup,
+  fireEvent,
+  act,
+  createEvent,
+} from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import { resolveDocTarget, clearDocTarget, readDocFromHistory, DocsHome } from './DocsHome.tsx'
-import { captureDocTargetDeepLink } from '../config.ts'
+import { captureDocTargetDeepLink, CLI_REFERENCE_URL, httpUrlOr } from '../config.ts'
+import zhLocale from '../i18n/zh-CN.json'
+import enLocale from '../i18n/en-US.json'
 
 // Replace the heavy editor shell (Tiptap + Yjs + Hocuspocus) with a marker so the DocsHome
 // render tests exercise target-resolution / navigation without mounting the real editor.
@@ -62,6 +72,35 @@ vi.mock('../html/HtmlDocView.tsx', () => ({
     <div data-testid="html-doc-view">
       <span data-testid="html-doc">{props.docId}</span>
       <span data-testid="html-slug">{props.slug ?? ''}</span>
+    </div>
+  ),
+}))
+
+// Replace the embedded bot-DM shell (pulls @octo/base Conversation + WKSDK) with a marker so the
+// new-HTML flow is testable without a live IM channel. Surfaces the bot uid, requestId and part of
+// the auto-sent task text, plus the onClose affordance (plan Task 6).
+vi.mock('../html-create/DocsBotConversation.tsx', () => ({
+  DocsBotConversation: (props: {
+    draft: { botUid: string; requestId: string; spaceId: string; description: string }
+    autoSend?: boolean
+    onClose?: () => void
+    onMessageSent?: () => void
+  }) => (
+    <div data-testid="bot-chat">
+      <span data-testid="bot-chat-bot">{props.draft.botUid}</span>
+      <span data-testid="bot-chat-request">{props.draft.requestId}</span>
+      <span data-testid="bot-chat-space">{props.draft.spaceId}</span>
+      <span data-testid="bot-chat-autosend">{String(props.autoSend)}</span>
+      {props.onClose && (
+        <button type="button" data-testid="bot-chat-close" onClick={props.onClose}>
+          close
+        </button>
+      )}
+      {props.onMessageSent && (
+        <button type="button" data-testid="bot-chat-sent" onClick={props.onMessageSent}>
+          sent
+        </button>
+      )}
     </div>
   ),
 }))
@@ -1970,5 +2009,681 @@ describe('DocsHome — re-activating the docs nav entry refetches the recent lis
     // Returning to the docs entry refetches so a newly-recorded view shows up.
     act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
     await waitFor(() => expect(recentListGets(wk)).toBeGreaterThan(afterMount))
+  })
+})
+
+// plan Task 6: the "new HTML" entry launches an embedded bot DM in the right pane. The left
+// DocsList stays resident; no placeholder doc is created; the global Chat is never entered; the
+// same requestId is never re-sent on NavRail re-entry; opening a doc / switching Space closes it.
+describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
+  function ownedBotsResponder(
+    calls: Array<{ method: string; url: string; body?: unknown }>,
+    bots: Array<{ uid: string; name: string }> = [{ uid: 'bot_1', name: 'Publisher' }],
+  ) {
+    return (method: string, url: string, body?: unknown) => {
+      calls.push({ method, url, body })
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: bots, status: 200 }
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      return { data: {}, status: 200 }
+    }
+  }
+
+  it('shows "New HTML" in the New dropdown and opens the modal WITHOUT creating a doc', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = ownedBotsResponder(calls)
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    expect(screen.getByText('docs.list.newHtml')).toBeTruthy()
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+
+    // Modal opened + owned bots loaded; NO POST /docs was made.
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
+    expect(calls.some((c) => c.url.startsWith('/robot/owned_bots'))).toBe(true)
+  })
+
+  it('submits the modal → pushes the bot chat into routeRight, DocsList still resident, no global Chat', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    const switchToMenuById = vi.fn()
+    const showConversation = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    ;(wk as { switchToMenuById?: unknown }).switchToMenuById = switchToMenuById
+    ;(wk as { endpoints?: unknown }).endpoints = { showConversation }
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = ownedBotsResponder(calls)
+
+    render(<DocsHome />)
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
+      target: { value: 'A launch page' },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
+
+    // The bot chat element was pushed into the host right pane.
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
+        | { props?: { draft?: { botUid?: string } } }
+        | undefined
+      expect(last?.props?.draft?.botUid).toBe('bot_1')
+    })
+    // Left DocsList is still mounted (production resident-list path).
+    expect(screen.getByLabelText('docs.list.newMenu')).toBeTruthy()
+    // Never entered the global Chat.
+    expect(switchToMenuById).not.toHaveBeenCalled()
+    expect(showConversation).not.toHaveBeenCalled()
+    // No placeholder doc.
+    expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
+  })
+
+  it('re-entering after an unconfirmed send retains the SAME auto-send compose', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = ownedBotsResponder(calls)
+
+    render(<DocsHome />)
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
+      target: { value: 'Landing' },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
+
+    let requestId: string | undefined
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
+        | { props?: { draft?: { requestId?: string }; autoSend?: boolean } }
+        | undefined
+      requestId = last?.props?.draft?.requestId
+      expect(requestId).toBeTruthy()
+      // First open is the one allowed auto-send.
+      expect(last?.props?.autoSend).toBe(true)
+    })
+
+    // No onMessageSent confirmation happened, so remounting must retain the compose for retry.
+    act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
+        | { props?: { draft?: { requestId?: string }; autoSend?: boolean } }
+        | undefined
+      expect(last?.props?.draft?.requestId).toBe(requestId)
+      expect(last?.props?.autoSend).toBe(true)
+    })
+  })
+
+  it('re-entering after a confirmed send omits the initial auto-send compose', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = ownedBotsResponder(calls)
+
+    render(<DocsHome />)
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Landing' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
+
+    const first = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { onMessageSent?: () => void } }
+    act(() => first.props?.onMessageSent?.())
+    act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
+      expect(last.props?.autoSend).toBe(false)
+    })
+  })
+
+  it('a Space switch closes the html chat and returns the right pane to the empty state', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    wk.shared.currentSpaceId = 's_1'
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = ownedBotsResponder(calls)
+
+    render(<DocsHome />)
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
+      target: { value: 'Landing' },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
+        | { props?: { draft?: { botUid?: string } } }
+        | undefined
+      expect(last?.props?.draft?.botUid).toBe('bot_1')
+    })
+
+    // Switch Space → the reconciler closes the chat; the LAST push is no longer a bot chat.
+    wk.shared.currentSpaceId = 's_2'
+    act(() => wk.mockMittBus.emitSpaceChanged())
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
+        | { props?: { draft?: unknown } }
+        | undefined
+      expect(last?.props?.draft).toBeUndefined()
+    })
+  })
+})
+
+// "?" agent-CLI onboarding help (Mininglamp-OSS/octo-docs-backend#125). Root cause: the docs list changed from a global view
+// to "owned / recently viewed", so the old onboarding entry stopped being discoverable for a
+// brand-new agent. The fix is a permanent header "?" button (list-state independent) that opens a
+// dialog with a copyable self-bind prompt. The i18n mock returns the key verbatim, so we assert the
+// wiring (button → dialog → copy the prompt string / reference link), not the localized copy.
+describe('DocsHome — "?" agent CLI onboarding help (Mininglamp-OSS/octo-docs-backend#125)', () => {
+  // These cases stub `navigator.clipboard`; restore the original descriptor so the mock cannot leak
+  // into any block appended after this one (review finding: test hygiene).
+  const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+  afterEach(() => {
+    if (clipboardDescriptor) Object.defineProperty(navigator, 'clipboard', clipboardDescriptor)
+    else delete (navigator as unknown as { clipboard?: unknown }).clipboard
+  })
+
+  const mountDocs = () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    return wk
+  }
+
+  it('always shows the help button in the Docs header (empty list)', async () => {
+    mountDocs()
+    // Present even with an empty list — it does not depend on any list/ownership/recent state.
+    expect(await screen.findByTestId('onboarding-help-btn')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('docs.empty.recentNone')).toBeTruthy())
+    expect(screen.getByTestId('onboarding-help-btn')).toBeTruthy()
+  })
+
+  it('opens a dialog exposing the copyable self-bind prompt', async () => {
+    mountDocs()
+    fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    expect(screen.getByTestId('onboarding-help-overlay')).toBeTruthy()
+    const prompt = screen.getByTestId('onboarding-help-prompt') as HTMLTextAreaElement
+    expect(prompt.readOnly).toBe(true)
+    // The textarea is populated from the prompt i18n key (verbatim under the test mock).
+    expect(prompt.value).toBe('docs.onboarding.prompt')
+    // The modal semantics several other tests take for granted are asserted HERE, once. Without
+    // this, deleting role="dialog" / aria-modal="true" outright left the whole suite green while
+    // two test titles still claimed to cover the contract. getByRole throws if the role is gone.
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(dialog.getAttribute('aria-label')).toBe('docs.onboarding.dialogTitle')
+    expect(dialog.contains(prompt)).toBe(true)
+  })
+
+  it('selects the whole prompt when the textarea takes focus', async () => {
+    // The manual-copy fallback focuses this textarea so the user is one Ctrl/Cmd+C away. Without the
+    // onFocus self-select it focuses an UNSELECTED textarea and that keystroke copies nothing, so
+    // the fallback is silently dead — and deleting the handler was previously invisible to the suite.
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const prompt = screen.getByTestId('onboarding-help-prompt') as HTMLTextAreaElement
+    prompt.setSelectionRange(0, 0)
+    await act(async () => {
+      prompt.focus()
+      fireEvent.focus(prompt)
+    })
+    expect(prompt.selectionStart).toBe(0)
+    expect(prompt.selectionEnd).toBe(prompt.value.length)
+    expect(prompt.selectionEnd).toBeGreaterThan(0)
+  })
+
+  it('copies the self-bind prompt to the clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    mountDocs()
+    fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    fireEvent.click(screen.getByTestId('onboarding-help-copy'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('docs.onboarding.prompt'))
+  })
+
+  it('links to the canonical CLI reference and closes on a backdrop press', async () => {
+    mountDocs()
+    fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    const ref = screen.getByTestId('onboarding-help-reference') as HTMLAnchorElement
+    // Defaults to the octo-cli repo (config.CLI_REFERENCE_URL) — a real location, not a guess.
+    expect(ref.getAttribute('href')).toBe('https://github.com/Mininglamp-OSS/octo-cli')
+    expect(ref.getAttribute('target')).toBe('_blank')
+    // target="_blank" without this hands the opened page a window.opener handle back into the app.
+    // Deleting the attribute was previously invisible to the suite.
+    expect(ref.getAttribute('rel')).toBe('noopener noreferrer')
+    // Pressing the backdrop dismisses the dialog. Keyed on mousedown, not click, so a drag-selection
+    // that ends on the scrim is not a dismiss — see the dedicated test below.
+    fireEvent.mouseDown(screen.getByTestId('onboarding-help-overlay'))
+    expect(screen.queryByTestId('onboarding-help-prompt')).toBeNull()
+  })
+
+  it('ships a self-bind prompt that teaches read-modify-write and never materializes the token', () => {
+    // Locale-level assertions on the shipped JSON (not the i18n mock), so this locks the CONTENT
+    // contract, not just formatting.
+    for (const prompt of [zhLocale.onboarding.prompt, enLocale.onboarding.prompt]) {
+      expect((prompt.match(/"/g) || []).length % 2).toBe(0) // balanced double quotes
+      // Shell assignments carrying a `<placeholder>`: the round-3 form (`'="<'`) only matched a
+      // QUOTED placeholder, which the shipped prompts never used, so it passed vacuously the moment
+      // the prompt started needing it. Widened, and turned into an explicit
+      // allow-list decision: only NON-SECRET vars may be assigned a placeholder. `OCTO_BOT_ID` is a
+      // profile selector and `OCTO_API_BASE_URL` is an endpoint — neither is a credential.
+      const ASSIGNABLE_NON_SECRETS = ['OCTO_BOT_ID', 'OCTO_API_BASE_URL']
+      const placeholderAssignments = [...prompt.matchAll(/(\w+)=\s*["']?</g)].map((m) => m[1])
+      expect(placeholderAssignments.length).toBeGreaterThan(0) // guard is not vacuous
+      for (const name of placeholderAssignments) {
+        expect(ASSIGNABLE_NON_SECRETS).toContain(name)
+      }
+
+      // ── Credential handling ───────────────────────────────────────────────────────────────────
+      // The rule is about the ASSIGNMENT, not the identifier: what leaks a secret is an agent
+      // running `export OCTO_BOT_TOKEN=<value>`, which writes it into the transcript and shell
+      // history. Forbidding the *name* outright (an earlier over-broad guard) also forbade telling
+      // the agent "do not set OCTO_BOT_TOKEN yourself" — i.e. it blocked the steering that keeps
+      // the agent off that path. Guard the assignment only.
+      expect(prompt).not.toMatch(/OCTO_BOT_TOKEN\s*=/)
+      expect(prompt).not.toMatch(/export\s+OCTO_BOT_TOKEN/)
+      // ORDERING is the round-4 blocker, not mere presence: `OCTO_BOT_ID` is a selector against the
+      // on-disk profile store, and exporting it with no matching profile is a terminal auth error
+      // that deliberately refuses to fall back to `OCTO_BOT_TOKEN` (octo-cli
+      // internal/authstore/authstore.go `case botID != ""` is evaluated BEFORE the zero-profile
+      // check; internal/credential/file_provider.go turns StatusMissing into a hard ErrAuth). So the
+      // diagnostic must come FIRST and the export must be conditional on it.
+      expect(prompt.indexOf('octo-cli auth status')).toBeLessThan(prompt.indexOf('export OCTO_BOT_ID'))
+      // ...and it must branch on the four outcomes `auth status` actually documents, so an agent on
+      // an env-token deployment is told to change nothing rather than to set a selector.
+      expect(prompt).toContain('profile_count')
+      expect(prompt).toContain('env_token_set')
+      // The auth step must be ACTIONABLE, not merely a prohibition: it names the
+      // provisioning mechanism (`auth login`, whose token never touches argv), the non-secret
+      // runtime selector (robot id), the required base URL, and the identity check.
+      expect(prompt).toContain('octo-cli auth login')
+      expect(prompt).toContain('OCTO_BOT_ID')
+      expect(prompt).toContain('OCTO_API_BASE_URL')
+      expect(prompt).toContain('octo-cli auth status')
+      // Masked verification stays part of the auth check.
+      expect(prompt).toContain('octo-cli config show')
+      // `auth login` must be taught as the operator/provisioning step reading the token from a
+      // hidden prompt / stdin / --token-file — never as anything that puts a token on a command
+      // line. The guard deliberately does NOT also require a literal token prefix on the line: with
+      // that clause it only fired on `--with-token app_...` and happily allowed
+      // `auth login --with-token <your token>`, i.e. exactly the shape it exists to forbid.
+      expect(prompt).not.toMatch(/auth login[^\n]*--with-token/)
+      // No token value may ever appear as an argument, under any flag spelling.
+      expect(prompt).not.toMatch(/--(token|bot-token|with-token)[= ]+['"]?(app_|bf_|uk_)/)
+
+      // ── No remote-execution one-liner in first-party UI ───────────────────────────────────────
+      // Cover every downloader and every shell, plus an interposed `sudo`: the previous
+      // /curl[^\n]*\|\s*sh/ matched none of `| bash`, `| zsh`, `| sudo sh`, or `wget -qO- ... | sh`.
+      expect(prompt).not.toMatch(/(curl|wget|fetch)[^\n]*\|[^\n]*\b(sh|bash|zsh|dash|ksh|fish|python3?|node|perl|ruby)\b/)
+      // And the install step stays a pinned package-manager install.
+      expect(prompt).toMatch(/npm install -g @mininglamp-oss\/octo-cli@\d/)
+
+      // ── The real, executable octo-cli steps ARE present (grounded in octo-cli/README + skills) ─
+      expect(prompt).toContain('npm install -g @mininglamp-oss/octo-cli')
+      expect(prompt).toContain('octo-cli docs list')
+      expect(prompt).toContain('octo-cli docs create')
+      // The promised "update" workflow must actually be taught, as read-modify-write: `content get`
+      // yields the base-version token that `content edit` requires.
+      expect(prompt).toContain('octo-cli docs content get')
+      expect(prompt).toContain('octo-cli docs content edit')
+      expect(prompt).toContain('--base-version')
+      expect(prompt).toContain('octo-cli docs members set')
+      expect(prompt).toContain('octo-cli docs comments add')
+      // Points bots at the version-accurate bundled skill doc rather than only a README URL.
+      expect(prompt).toContain('octo-cli skills octo-docs')
+    }
+  })
+
+  it('does NOT claim "copied" when the Clipboard API is unavailable', async () => {
+    // `navigator.clipboard?.writeText(...)` resolves to undefined when the API is missing (insecure
+    // context), so awaiting it would flag a successful copy that never happened.
+    // The assertion must be made AFTER the async copy handler has settled, with a plain expect.
+    // `await waitFor(() => expect(label).toBe('copy'))` cannot fail here: waitFor probes once
+    // synchronously on entry and returns on the first success, and at that first probe the label is
+    // still 'copy' whatever the handler goes on to do. Flush with act(), then assert plainly.
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const btn = screen.getByTestId('onboarding-help-copy')
+    expect(btn.textContent).toBe('docs.onboarding.copy')
+    await act(async () => {
+      fireEvent.click(btn)
+    })
+    // Label must stay "copy" — never flip to "copied" without a real clipboard write.
+    expect(screen.getByTestId('onboarding-help-copy').textContent).toBe('docs.onboarding.copy')
+  })
+
+  it('does NOT claim "copied" when the clipboard write is rejected', async () => {
+    // The other half of the same contract: the API exists but the browser denies permission. A
+    // rejected write must surface the manual fallback, never the success label.
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('onboarding-help-copy'))
+    })
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('onboarding-help-copy').textContent).toBe('docs.onboarding.copy')
+    expect(screen.getByTestId('onboarding-help-manual-hint').textContent).not.toBe('')
+  })
+
+  it('ignores a clipboard write that resolves after the dialog was closed', async () => {
+    // A promise cannot be cancelled, so close() bumps a session epoch and the handler drops any
+    // resolve that lands afterwards. Without the guard, a slow write flips "Copied" on for a copy
+    // the user never saw and arms a fresh 2s timer past close, so reopening shows stale success.
+    let release: (() => void) | undefined
+    const writeText = vi.fn(() => new Promise<void>((resolve) => { release = resolve }))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    mountDocs()
+    const trigger = await screen.findByTestId('onboarding-help-btn')
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('onboarding-help-copy'))
+    })
+    // Close while the write is still in flight, THEN let it resolve.
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+    await waitFor(() => expect(screen.queryByTestId('onboarding-help-overlay')).toBeNull())
+    await act(async () => {
+      release?.()
+    })
+    // Reopening must show a clean control, not "Copied" inherited from the abandoned session.
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+    expect(screen.getByTestId('onboarding-help-copy').textContent).toBe('docs.onboarding.copy')
+  })
+
+  it('renders the dialog in a body portal, NOT inside the container-type list subtree', async () => {
+    // `.octo-docs-list` sets `container-type: inline-size`; layout containment makes it the
+    // containing block for `position: fixed` descendants, so an inline overlay would be confined to
+    // (and clipped by) the list pane — a ~280px sidebar in split view.
+    mountDocs()
+    fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    const overlay = screen.getByTestId('onboarding-help-overlay')
+    expect(overlay.parentElement).toBe(document.body)
+    expect(overlay.closest('.octo-docs-list')).toBeNull()
+  })
+
+  it('keeps Tab inside the dialog (aria-modal focus trap)', async () => {
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const closeBtn = screen.getByLabelText('docs.onboarding.close')
+    const link = screen.getByTestId('onboarding-help-reference')
+    expect(document.activeElement).toBe(closeBtn)
+    // Moving focus is only HALF the contract: the handler must also cancel the event. jsdom does not
+    // implement native Tab focus movement, so `activeElement` looks identical whether or not
+    // preventDefault ran — dropping it would leave a real browser doing BOTH our wrap and its own
+    // native step, landing focus one control further on. Dispatch explicitly and assert defaultPrevented.
+    const shiftTab = createEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    fireEvent(document, shiftTab)
+    expect(document.activeElement).toBe(link)
+    expect(shiftTab.defaultPrevented).toBe(true)
+    // Tab off the last focusable wraps back to the first, likewise cancelled.
+    const tab = createEvent.keyDown(document, { key: 'Tab' })
+    fireEvent(document, tab)
+    expect(document.activeElement).toBe(closeBtn)
+    expect(tab.defaultPrevented).toBe(true)
+  })
+
+  it('falls back to the default reference URL for a non-http scheme', () => {
+    // CLI_REFERENCE_URL is build-arg driven and lands in an href, so a `javascript:`/`data:` value
+    // would produce a trusted-looking link inside the modal.
+    // Assert the GUARD with hostile input, not just the resolved default — the old form only
+    // checked the already-imported default and would have passed with httpUrlOr deleted.
+    const fb = 'https://github.com/Mininglamp-OSS/octo-cli'
+    expect(httpUrlOr('javascript:alert(1)', fb)).toBe(fb)
+    expect(httpUrlOr('data:text/html,<script>1</script>', fb)).toBe(fb)
+    expect(httpUrlOr('  ', fb)).toBe(fb)
+    expect(httpUrlOr(undefined, fb)).toBe(fb)
+    expect(httpUrlOr(42, fb)).toBe(fb)
+    // ...and that a legitimate override IS honoured, so the guard is not vacuously "always default".
+    expect(httpUrlOr('https://docs.example.com/octo-cli', fb)).toBe('https://docs.example.com/octo-cli')
+    expect(httpUrlOr('  http://intranet/cli  ', fb)).toBe('http://intranet/cli')
+    // The shipped value still satisfies the guard.
+    expect(CLI_REFERENCE_URL).toMatch(/^https?:\/\//)
+  })
+
+  it('pulls Tab back into the dialog when focus has fallen out of the cycle', async () => {
+    // Clicking a non-focusable part of the dialog (title / intro / padding) drops focus to <body>,
+    // which is NEITHER trap endpoint. An endpoint-only trap lets the native sequence resume from the
+    // top of the document and walk into the list controls *behind* the scrim, since the portaled
+    // dialog is the last body child. Containment-based check required.
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const closeBtn = screen.getByLabelText('docs.onboarding.close')
+    // Simulate focus landing outside the cycle.
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).toBe(document.body)
+    const tab = createEvent.keyDown(document, { key: 'Tab' })
+    fireEvent(document, tab)
+    expect(document.activeElement).toBe(closeBtn)
+    // Cancelled too, for the same reason as the endpoint wraps.
+    expect(tab.defaultPrevented).toBe(true)
+  })
+
+  it('does not dismiss when a drag that started inside the dialog ends on the scrim', async () => {
+    // The click event of such a drag targets the nearest common ancestor (the overlay), so an
+    // overlay `onClick` + descendant `stopPropagation` would close the dialog and discard the
+    // user's selection. Dismissal must key on the mousedown target.
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const overlay = screen.getByTestId('onboarding-help-overlay')
+    const textarea = screen.getByTestId('onboarding-help-prompt')
+    fireEvent.mouseDown(textarea)
+    fireEvent.mouseUp(overlay)
+    fireEvent.click(overlay)
+    expect(screen.queryByTestId('onboarding-help-overlay')).not.toBeNull()
+    // A press that genuinely lands on the scrim still dismisses.
+    fireEvent.mouseDown(overlay)
+    await waitFor(() => expect(screen.queryByTestId('onboarding-help-overlay')).toBeNull())
+  })
+
+  it('offers a manual-copy hint when the Clipboard API is unavailable', async () => {
+    // The honest "no success claim" path must not leave a dead control.
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    // The live region is MOUNTED before it has content and its text is toggled, so screen readers
+    // announce reliably. Assert it exists-but-silent, not absent. Crucially it must NOT be hidden
+    // with the `hidden` attribute (or display/visibility): that removes it from the a11y tree, so
+    // while idle it would not be a present live region at all. Idle = mounted + sr-only + empty.
+    const hint = screen.getByTestId('onboarding-help-manual-hint')
+    expect(hint.getAttribute('role')).toBe('status')
+    expect(hint.getAttribute('aria-live')).toBe('polite')
+    expect(hint.hasAttribute('hidden')).toBe(false)
+    expect(hint.className).toContain('octo-docs-help-manual-hint-idle')
+    expect(hint.textContent).toBe('')
+    fireEvent.click(screen.getByTestId('onboarding-help-copy'))
+    await waitFor(() =>
+      expect(screen.getByTestId('onboarding-help-manual-hint').textContent).toBe(
+        'docs.onboarding.copyManualHint',
+      ),
+    )
+    const activeHint = screen.getByTestId('onboarding-help-manual-hint')
+    expect(activeHint.hasAttribute('hidden')).toBe(false)
+    // Same node, still a live region — only the sr-only class and the text changed.
+    expect(activeHint).toBe(hint)
+    expect(activeHint.className).not.toContain('octo-docs-help-manual-hint-idle')
+    // Focus moves to the textarea, which self-selects, so Ctrl/Cmd+C is enough.
+    expect(document.activeElement).toBe(screen.getByTestId('onboarding-help-prompt'))
+  })
+
+  it('makes aria-modal true by marking the background inert, and restores it on close', async () => {
+    // Trapping Tab is not enough to justify `aria-modal="true"`: the dialog is portaled to <body>,
+    // so it is a SIBLING of the Docs list and SR virtual navigation / programmatic .focus() can
+    // still reach the list behind the scrim.
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const overlay = screen.getByTestId('onboarding-help-overlay')
+    const others = Array.from(document.body.children).filter((c) => !c.contains(overlay))
+    expect(others.length).toBeGreaterThan(0) // the assertion below is not vacuous
+    for (const el of others) {
+      expect(el.hasAttribute('inert')).toBe(true)
+      expect(el.getAttribute('aria-hidden')).toBe('true')
+    }
+    // The dialog's own branch must NOT be inert, or we would have disabled what we just opened.
+    expect(overlay.closest('[inert]')).toBeNull()
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+    await waitFor(() => expect(screen.queryByTestId('onboarding-help-overlay')).toBeNull())
+    for (const el of others) {
+      expect(el.hasAttribute('inert')).toBe(false)
+      expect(el.hasAttribute('aria-hidden')).toBe(false)
+    }
+  })
+
+  it('un-inerts the background before restoring focus, on every close path', async () => {
+    // Regression guard. The inert effect's cleanup does not run until the `open=false` commit lands,
+    // i.e. AFTER close() returns. The trigger button lives inside one of the body children that the
+    // effect marks `inert`, so if close() focused it before un-inerting, engines that implement
+    // `inert` would ignore the .focus() and keyboard users would be dropped on <body>.
+    //
+    // Two things this test must NOT do, both of which make it vacuous:
+    //  - assert `document.activeElement` alone: jsdom does not implement inert focusability
+    //    suppression, so focus lands on the trigger whatever the ordering was;
+    //  - sample `closest('[inert]')` after `waitFor`: by then the effect cleanup has already run on
+    //    the `open=false` commit and un-inerted everything, so it reads clean even if close() never
+    //    called the restore at all.
+    // So sample at the only instant that discriminates: inside the .focus() call itself. The spy
+    // records whether the trigger still had an `[inert]` ancestor at the moment focus was restored,
+    // which is exactly the property that decides whether a real browser honours it.
+    // The spy calls through, so real focus behaviour is unchanged; it only samples on the way past.
+    const nativeFocus = HTMLElement.prototype.focus
+    let watched: HTMLElement | null = null
+    let inertAtFocus: Array<Element | null> = []
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function (this: HTMLElement, ...args: unknown[]) {
+        if (watched && this === watched) inertAtFocus.push(this.closest('[inert]'))
+        return (nativeFocus as (...a: unknown[]) => void).apply(this, args)
+      })
+    const paths: Array<[string, () => void]> = [
+      ['escape', () => fireEvent.keyDown(document, { key: 'Escape' })],
+      ['close-button', () => fireEvent.click(screen.getByTestId('onboarding-help-overlay')
+        .querySelector('.octo-docs-help-dialog-close') as HTMLElement)],
+      ['backdrop', () => fireEvent.mouseDown(screen.getByTestId('onboarding-help-overlay'))],
+    ]
+    try {
+      mountDocs()
+      for (const [path, dismiss] of paths) {
+        const trigger = await screen.findByTestId('onboarding-help-btn')
+        watched = null // do not sample the open transition, only the dismissal
+        await act(async () => {
+          fireEvent.click(trigger)
+        })
+        // Precondition: the trigger really is inside an inert subtree while the dialog is open,
+        // otherwise the ordering this test guards would be trivially satisfied.
+        expect(trigger.closest('[inert]')).not.toBeNull()
+
+        inertAtFocus = []
+        watched = trigger
+        await act(async () => {
+          dismiss()
+        })
+        watched = null
+        await waitFor(() => expect(screen.queryByTestId('onboarding-help-overlay')).toBeNull())
+
+        // Focus WAS restored to the trigger on this path...
+        expect(inertAtFocus.length, `${path}: trigger.focus() was never called`).toBeGreaterThan(0)
+        // ...and at that instant nothing inert stood between it and the document root. Deleting
+        // `restoreBackgroundRef.current()` from close() makes this fail on all three paths.
+        for (const ancestor of inertAtFocus) {
+          expect(ancestor, `${path}: focus restored while still inside an inert subtree`).toBeNull()
+        }
+        expect(document.activeElement).toBe(trigger)
+        // And the background is fully restored once the close commit has settled.
+        expect(trigger.closest('[inert]')).toBeNull()
+      }
+    } finally {
+      focusSpy.mockRestore()
+    }
+  })
+
+  it('resets the copied label when the dialog is closed and reopened', async () => {
+    // close() must clear both `copied` and its pending 2s timer, else a reopen inside the window
+    // shows "Copied" for a copy that did not happen in this session.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('onboarding-help-copy'))
+    })
+    expect(screen.getByTestId('onboarding-help-copy').textContent).toBe('docs.onboarding.copied')
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('onboarding-help-btn'))
+    })
+    expect(screen.getByTestId('onboarding-help-copy').textContent).toBe('docs.onboarding.copy')
+  })
+
+  it('closes on Escape and returns focus to the help button', async () => {
+    mountDocs()
+    const trigger = await screen.findByTestId('onboarding-help-btn')
+    // act() so the open effect (which moves focus into the dialog) is flushed before asserting.
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+    // Focus moves into the dialog on open (role="dialog" + aria-modal contract).
+    expect(document.activeElement).toBe(screen.getByLabelText('docs.onboarding.close'))
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+    // Dialog closes and focus is restored to the trigger (no keyboard dead-end).
+    expect(screen.queryByTestId('onboarding-help-prompt')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByTestId('onboarding-help-btn'))
   })
 })

@@ -682,6 +682,7 @@ export function SheetView(props: SheetViewProps) {
       ownerId,
       space,
       folder,
+      kind: 'sheet',
     })
   }
 

@@ -4,11 +4,14 @@ import WKApp from "../../App"
 import { MessageContentTypeConst } from "../../Service/Const"
 import MessageBase from "../Base"
 import { MessageCell } from "../MessageCell"
-import Lightbox from "yet-another-react-lightbox"
-import Download from "yet-another-react-lightbox/plugins/download"
+import Lightbox, { isImageSlide, useLightboxState } from "yet-another-react-lightbox"
+import type { Slide, ZoomRef } from "yet-another-react-lightbox"
+import Zoom from "yet-another-react-lightbox/plugins/zoom"
 import "yet-another-react-lightbox/styles.css"
+import { Copy, Download, RotateCw, X, ZoomIn, ZoomOut } from "lucide-react"
 import { Toast } from "@douyinfe/semi-ui"
 import { downloadFile } from "../../Utils/download"
+import { copyImageToClipboard } from "../../Utils/clipboard"
 import MessageRow from "../../ui/message/MessageRow"
 import SingleImage from "../../ui/message/ImageContent/SingleImage"
 import MultiImage from "../../ui/message/ImageContent/MultiImage"
@@ -16,8 +19,164 @@ import type { ImageTransferState } from "../../ui/message/ImageContent/SingleIma
 import { getImageMessageUI } from "../../bridge/message/useImageMessageUI"
 import { isMessageSelectable } from "../../Service/messageSelection"
 import { t } from "../../i18n"
+import "./index.css"
 
 const SMALL_FILE_THRESHOLD = 1024 * 1024 // 1MB 以下不显示进度覆盖层
+
+interface ImagePreviewToolbarProps {
+    zoom: ZoomRef
+    filename?: string
+    onReset: () => void
+    onRotate: () => void
+}
+
+export function ImagePreviewToolbar({ zoom, filename, onReset, onRotate }: ImagePreviewToolbarProps) {
+    const { currentSlide } = useLightboxState()
+    const [copying, setCopying] = React.useState(false)
+    const src = currentSlide && isImageSlide(currentSlide) ? currentSlide.src : ""
+
+    const handleCopy = async () => {
+        if (!src) return
+        setCopying(true)
+        try {
+            await copyImageToClipboard(src)
+            Toast.success(t("base.module.contextMenus.copyImageSuccess"))
+        } catch (error) {
+            Toast.warning(error instanceof Error ? error.message : t("base.module.contextMenus.copyFailed"))
+        } finally {
+            setCopying(false)
+        }
+    }
+
+    return (
+        <div className="wk-image-preview-toolbar">
+            <button
+                type="button"
+                aria-label={t("base.filePreview.pdf.zoomOut")}
+                title={t("base.filePreview.pdf.zoomOut")}
+                disabled={zoom.disabled || zoom.zoom <= zoom.minZoom}
+                onClick={zoom.zoomOut}
+            >
+                <ZoomOut size={19} />
+            </button>
+            <button
+                type="button"
+                className="wk-image-preview-toolbar-reset"
+                aria-label={t("base.filePreview.pdf.actualSize")}
+                title={t("base.filePreview.pdf.actualSize")}
+                onClick={() => {
+                    zoom.changeZoom(1)
+                    onReset()
+                }}
+            >
+                1:1
+            </button>
+            <button
+                type="button"
+                aria-label={t("base.filePreview.pdf.zoomIn")}
+                title={t("base.filePreview.pdf.zoomIn")}
+                disabled={zoom.disabled || zoom.zoom >= zoom.maxZoom}
+                onClick={zoom.zoomIn}
+            >
+                <ZoomIn size={19} />
+            </button>
+            <span className="wk-image-preview-toolbar-divider" />
+            <button
+                type="button"
+                aria-label={t("base.message.imagePreview.rotate")}
+                title={t("base.message.imagePreview.rotate")}
+                onClick={() => {
+                    zoom.changeZoom(1)
+                    onRotate()
+                }}
+            >
+                <RotateCw size={19} />
+            </button>
+            <span className="wk-image-preview-toolbar-divider" />
+            <button
+                type="button"
+                aria-label={t("base.module.contextMenus.copyImage")}
+                title={t("base.module.contextMenus.copyImage")}
+                disabled={!src || copying}
+                onClick={handleCopy}
+            >
+                <Copy size={19} />
+            </button>
+            <span className="wk-image-preview-toolbar-divider" />
+            <button
+                type="button"
+                aria-label={t("base.filePreview.download")}
+                title={t("base.filePreview.download")}
+                disabled={!src}
+                onClick={() => src && downloadFile(src, filename || "image.png")}
+            >
+                <Download size={19} />
+            </button>
+        </div>
+    )
+}
+
+interface ImagePreviewLightboxProps {
+    open: boolean
+    close: () => void
+    slides: readonly Slide[]
+    index?: number
+    filename?: string
+    isMulti?: boolean
+}
+
+export function ImagePreviewLightbox({ open, close, slides, index, filename, isMulti }: ImagePreviewLightboxProps) {
+    const [rotation, setRotation] = React.useState(0)
+    const resetRotation = () => setRotation(0)
+
+    return (
+        <Lightbox
+            className="wk-image-preview"
+            open={open}
+            close={() => {
+                resetRotation()
+                close()
+            }}
+            slides={slides}
+            index={index}
+            plugins={[Zoom]}
+            labels={{
+                Close: t("base.common.close"),
+                "Zoom in": t("base.filePreview.pdf.zoomIn"),
+                "Zoom out": t("base.filePreview.pdf.zoomOut"),
+            }}
+            toolbar={{ buttons: ["zoom", "close"] }}
+            zoom={{ minZoom: 0.25, maxZoomPixelRatio: 4, zoomInMultiplier: 1.25, scrollToZoom: true }}
+            carousel={{
+                finite: true,
+                imageProps: {
+                    style: {
+                        maxWidth: rotation % 180 ? "100cqh" : "100%",
+                        maxHeight: rotation % 180 ? "100cqw" : "100%",
+                    },
+                },
+            }}
+            controller={{ closeOnBackdropClick: true }}
+            on={{ entering: resetRotation, view: resetRotation }}
+            styles={{
+                root: { "--yarl__image_preview_rotation": `${rotation}deg` },
+            }}
+            render={{
+                buttonPrev: isMulti ? undefined : () => null,
+                buttonNext: isMulti ? undefined : () => null,
+                buttonZoom: (zoom) => (
+                    <ImagePreviewToolbar
+                        zoom={zoom}
+                        filename={filename}
+                        onReset={resetRotation}
+                        onRotate={() => setRotation(value => (value + 90) % 360)}
+                    />
+                ),
+                iconClose: () => <X size={22} />,
+            }}
+        />
+    )
+}
 
 
 export class ImageContent extends MediaMessageContent {
@@ -73,6 +232,7 @@ export class ImageContent extends MediaMessageContent {
 
 interface ImageCellState {
     showPreview: boolean
+    previewIndex: number
     uploadProgress: number
     uploadStatus: TaskStatus | null
 }
@@ -147,6 +307,7 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
         super(props)
         this.state = {
             showPreview: false,
+            previewIndex: 0,
             uploadProgress: 0,
             uploadStatus: null,
         }
@@ -217,14 +378,16 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
 
     render() {
         const { message, context } = this.props
-        const { showPreview, uploadProgress, uploadStatus } = this.state
+        const { showPreview, previewIndex, uploadProgress, uploadStatus } = this.state
         const content = message.content as ImageContent
 
         // 新 UI 实现
         const useNewUI = true
         if (useNewUI) {
             const uiProps = getImageMessageUI(message)
-            const hasRemoteUrl = !!(content.url || (content as any).remoteUrl)
+            const hasRemoteUrl = uiProps.isMulti
+                ? uiProps.images.some(image => !!image.src)
+                : !!(content.url || (content as any).remoteUrl)
             const fileSize = (content as any).file?.size ?? 0
             const transferState = getImageTransferState({
                 hasLocalFile: !!(content as any).file,
@@ -258,7 +421,9 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                                 images={uiProps.images}
                                 transferState={transferState}
                                 onImageClick={canOpenPreview ? (index) => {
-                                    // TODO: 多图预览
+                                    if (uiProps.images[index]?.src) {
+                                        this.setState({ showPreview: true, previewIndex: index })
+                                    }
                                 } : undefined}
                               />
                             : uiProps.singleImage
@@ -270,25 +435,16 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                                 : null
                         }
                     </MessageRow>
-                    <Lightbox
+                    <ImagePreviewLightbox
                         open={showPreview}
                         close={() => this.setState({ showPreview: false })}
+                        index={previewIndex}
                         slides={uiProps.isMulti
                             ? uiProps.images.map(img => ({ src: img.src, alt: '' }))
                             : [{ src: uiProps.singleImage?.src || '', alt: '' }]
                         }
-                        plugins={[Download]}
-                        download={{ download: ({ slide }) => {
-                            if (slide?.src) {
-                                downloadFile(slide.src, content.name || 'image.png')
-                            }
-                        }}}
-                        carousel={{ finite: true }}
-                        controller={{ closeOnBackdropClick: true }}
-                        render={{
-                            buttonPrev: uiProps.isMulti ? undefined : () => null,
-                            buttonNext: uiProps.isMulti ? undefined : () => null,
-                        }}
+                        filename={content.name}
+                        isMulti={uiProps.isMulti}
                     />
                 </>
             )
@@ -358,22 +514,11 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                     </div>
                 )}
             </div>
-            <Lightbox
+            <ImagePreviewLightbox
                 open={showPreview}
                 close={() => this.setState({ showPreview: false })}
                 slides={[{ src: imageURL, alt: '' }]}
-                plugins={[Download]}
-                download={{ download: ({ slide }) => {
-                    if (slide?.src) {
-                        downloadFile(slide.src, content.name || 'image.png')
-                    }
-                }}}
-                carousel={{ finite: true }}
-                controller={{ closeOnBackdropClick: true }}
-                render={{
-                    buttonPrev: () => null,
-                    buttonNext: () => null,
-                }}
+                filename={content.name}
             />
         </MessageBase>
     }

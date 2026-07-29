@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildRichTextMixedCandidate,
+  finishRichTextMixedSend,
   isImageFileForRichTextMixed,
 } from "../richTextMixedSend";
 
@@ -51,5 +52,18 @@ describe("buildRichTextMixedCandidate", () => {
   it("recognizes image files by extension when MIME is missing", () => {
     expect(isImageFileForRichTextMixed(file("screenshot.webp"))).toBe(true);
     expect(isImageFileForRichTextMixed(file("notes.txt"))).toBe(false);
+  });
+
+  it("reports a partial send when a top non-image sent before rich mixed failed", () => {
+    const onMessageSent = vi.fn();
+    const result = finishRichTextMixedSend(
+      true,
+      false,
+      ["pdf1"],
+      onMessageSent
+    );
+
+    expect(onMessageSent).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ editorConsumed: false, consumedTopIds: ["pdf1"] });
   });
 });

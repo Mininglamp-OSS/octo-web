@@ -4,6 +4,7 @@ import SpaceItem from "../SpaceItem";
 import ActionListItem from "../ActionListItem";
 import { I18nContext } from "../../i18n";
 import WKApp from "../../App";
+import NavFlyout from "./NavFlyout";
 
 function IconBuilding() {
     return (
@@ -34,6 +35,7 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
     private unsubscribeRemoteConfig?: () => void;
+    private triggerRef = React.createRef<HTMLButtonElement>();
 
     constructor(props: NavSpaceSwitcherProps) {
         super(props);
@@ -41,22 +43,14 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
     }
 
     componentDidMount() {
-        document.addEventListener("keydown", this.handleKeyDown);
         this.unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
             this.forceUpdate();
         });
     }
 
     componentWillUnmount() {
-        document.removeEventListener("keydown", this.handleKeyDown);
         this.unsubscribeRemoteConfig?.();
     }
-
-    private handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === "Escape" && this.state.open) {
-            this.handleClose();
-        }
-    };
 
     private handleToggle = () => {
         this.setState(prev => ({ open: !prev.open }));
@@ -76,77 +70,76 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
         return (
             <div className="wk-navrail__switcher">
                 <button
+                    ref={this.triggerRef}
                     type="button"
                     className="wk-navrail__space-icon-btn"
                     title={current?.name ?? t("base.navRail.spaceSwitcher.switch")}
                     aria-label={t("base.navRail.spaceSwitcher.switch")}
+                    aria-haspopup="dialog"
+                    aria-expanded={open}
                     onClick={this.handleToggle}
                 >
                     <IconBuilding />
                 </button>
 
-                {open && (
-                    <>
-                        {/* 点击外部关闭 */}
-                        <div
-                            className="wk-navrail__dropdown-mask"
-                            onClick={this.handleClose}
-                        />
-                        <div className="wk-navrail__dropdown" onClick={e => e.stopPropagation()}>
-                            {/* 弹窗标题 */}
-                            <div className="wk-navrail__dropdown-title">{t("base.navRail.spaceSwitcher.joinedSpaces")}</div>
-                            {/* 可滚动的 Space 列表 */}
-                            <div className="wk-navrail__dropdown-spaces">
-                                {spaces.map(space => (
-                                    <SpaceItem
-                                        key={space.space_id}
-                                        name={space.name}
-                                        logo={space.logo}
-                                        avatarSize="switcher"
-                                        meta={space.max_users > 0
-                                            ? t("base.navRail.spaceSwitcher.memberCountWithLimit", {
-                                                values: { count: space.member_count, max: space.max_users },
-                                            })
-                                            : t("base.navRail.spaceSwitcher.memberCount", {
-                                                values: { count: space.member_count },
-                                            })}
-                                        selected={space.space_id === currentSpaceId}
-                                        onClick={() => {
-                                            onSpaceSelect(space.space_id);
-                                            this.handleClose();
-                                        }}
+                <NavFlyout
+                    open={open}
+                    triggerRef={this.triggerRef}
+                    onOpenChange={(next) => this.setState({ open: next })}
+                    size="lg"
+                    role="dialog"
+                    ariaLabel={t("base.navRail.spaceSwitcher.joinedSpaces")}
+                    className="wk-navrail__dropdown"
+                >
+                    <div className="wk-navrail__dropdown-title">{t("base.navRail.spaceSwitcher.joinedSpaces")}</div>
+                    <div className="wk-navrail__dropdown-spaces">
+                        {spaces.map(space => (
+                            <SpaceItem
+                                key={space.space_id}
+                                name={space.name}
+                                logo={space.logo}
+                                avatarSize="switcher"
+                                meta={space.max_users > 0
+                                    ? t("base.navRail.spaceSwitcher.memberCountWithLimit", {
+                                        values: { count: space.member_count, max: space.max_users },
+                                    })
+                                    : t("base.navRail.spaceSwitcher.memberCount", {
+                                        values: { count: space.member_count },
+                                    })}
+                                selected={space.space_id === currentSpaceId}
+                                onClick={() => {
+                                    onSpaceSelect(space.space_id);
+                                    this.handleClose();
+                                }}
+                            />
+                        ))}
+                    </div>
+                    {(onJoinSpace || canCreateSpace) && (
+                        <>
+                            <div className="wk-navrail__dropdown-divider" />
+                            <div className="wk-navrail__dropdown-actions">
+                                {onJoinSpace && (
+                                    <ActionListItem
+                                        icon={<IconJoinSpace />}
+                                        label={t("base.navRail.spaceSwitcher.joinNewSpace")}
+                                        compact
+                                        trailing={<IconChevronRight />}
+                                        onClick={() => { this.handleClose(); onJoinSpace(); }}
                                     />
-                                ))}
+                                )}
+                                {canCreateSpace && (
+                                    <ActionListItem
+                                        icon={<IconCreateSpace />}
+                                        label={t("base.spaceList.createSpace")}
+                                        compact
+                                        trailing={<IconChevronRight />}
+                                        onClick={() => { this.handleClose(); onCreateSpace?.(); }}
+                                    />
+                                )}
                             </div>
-                            {/* 固定底部操作区 */}
-                            {(onJoinSpace || canCreateSpace) && (
-                                <>
-                                    <div className="wk-navrail__dropdown-divider" />
-                                    <div className="wk-navrail__dropdown-actions">
-                                        {onJoinSpace && (
-                                            <ActionListItem
-                                                icon={<IconJoinSpace />}
-                                                label={t("base.navRail.spaceSwitcher.joinNewSpace")}
-                                                compact
-                                                trailing={<IconChevronRight />}
-                                                onClick={() => { this.handleClose(); onJoinSpace(); }}
-                                            />
-                                        )}
-                                        {canCreateSpace && (
-                                            <ActionListItem
-                                                icon={<IconCreateSpace />}
-                                                label={t("base.spaceList.createSpace")}
-                                                compact
-                                                trailing={<IconChevronRight />}
-                                                onClick={() => { this.handleClose(); onCreateSpace?.(); }}
-                                            />
-                                        )}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </>
-                )}
+                        </>
+                    )}
+                </NavFlyout>
             </div>
         );
     }

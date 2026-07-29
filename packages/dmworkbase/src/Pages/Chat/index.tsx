@@ -78,6 +78,7 @@ import {
 } from "../../im-runtime/channelRuntime";
 import WebhookIssuePreviewPanel from "../../features/webhookMessagePreview/WebhookIssuePreviewPanel";
 import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
+import { closeChatRightPanels, openChatRightPanel } from "./rightPanelState";
 
 // 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
@@ -254,16 +255,6 @@ export interface ChatContentPageState {
   previewFile: FilePreviewInfo | null;
   /** 当前正在预览的文件消息 ID（用于卡片激活态） */
   activePreviewMessageId: string | null;
-  /** 任务列表面板是否显示 */
-  showMatterPanel: boolean;
-  /** v0.7 Matter 详情面板是否显示（跟子区/文件预览/任务列表可并存） */
-  showMatterDetailPanel: boolean;
-  /**
-   * 从事项详情面板触发文件预览时记下来源 matter ID。
-   * 关闭/返回预览时, 据此把事项面板重新拉起来并自动选回这条 matter,
-   * 避免用户落到子区列表或空白侧边。
-   */
-  previewReturnMatterId: string | null;
   /**
    * 文件预览触发前是否真有子区面板上下文 (用户先打开了子区列表 / 子区详情)。
    * 据此决定 ThreadPanel 文件预览模式下要不要显示左上角 ← 返回箭头 —
@@ -309,9 +300,6 @@ export class ChatContentPage extends Component<
       activeThread: null,
       previewFile: null,
       activePreviewMessageId: null,
-      showMatterPanel: false,
-      showMatterDetailPanel: false,
-      previewReturnMatterId: null,
       previewHadThreadShell: false,
       showSummaryPanel: false,
       summaryPanelView: "new",
@@ -326,22 +314,11 @@ export class ChatContentPage extends Component<
 
   private _openWebhookPreview = (target: WebhookIssuePreviewTarget) => {
     this._clearChannelSearchState();
-    this.setState({
-      webhookIssuePreviewTarget: target,
-      showChannelSetting: false,
-      showThreadPanel: false,
-      activeThread: null,
-      previewFile: null,
-      activePreviewMessageId: null,
-      previewReturnMatterId: null,
-      previewHadThreadShell: false,
-      showMatterPanel: false,
-      showMatterDetailPanel: false,
-      showSummaryPanel: false,
-      showChannelSearch: false,
-      channelSearchPreviewFile: null,
-      previewReturnChannelSearch: false,
-    });
+    this.setState(
+      openChatRightPanel("webhookPreview", {
+        webhookIssuePreviewTarget: target,
+      })
+    );
   };
 
   private _onFilePreview = (
@@ -392,37 +369,21 @@ export class ChatContentPage extends Component<
     }
 
     // 正常处理：打开文件预览，确保侧边面板打开（子区和文件预览共用一个壳子）。
-    // 互斥：事项列表 / 事项详情跟文件预览都在同一个侧边容器区域，同时显示会
-    // 相互遮盖。打开文件预览时强制关掉两个事项面板，避免 "看不到预览" 的
-    // 死锁 (跟 _onToggleMatterPanel 打开事项时关文件预览的处理对称)。
-    //
-    // 例外: 来源 = 事项详情 (file.originMatterId 非空), 不卸事项面板,
-    // 改成 display:none 暂时隐藏 (见 render), 关掉预览后 unhide 时
-    // 内部 state (tab / 展开的时间线 / 选中的 matter) 全部保留, 用户感受
-    // 上跟 "回到事项详情" 一致, 且不会闪一下重新拉数据。
-    const fromMatter = !!file.originMatterId;
     const fromChannelSearch = !!options?.returnToChannelSearch;
-    this.setState({
-      previewFile: file,
-      webhookIssuePreviewTarget: null,
-      showThreadPanel: true, // 确保面板打开
-      showChannelSetting: false, // 关闭设置面板，避免布局冲突
-      showChannelSearch: false,
-      showMatterPanel: fromMatter ? this.state.showMatterPanel : false,
-      showMatterDetailPanel: fromMatter
-        ? this.state.showMatterDetailPanel
-        : false,
-      showSummaryPanel: false,
-      activePreviewMessageId: file.messageId || null, // 保存激活的消息 ID
-      previewReturnMatterId: file.originMatterId || null,
-      previewReturnChannelSearch: fromChannelSearch,
-      // 仅当预览触发前用户已经在子区面板里 (showThreadPanel 已经是 true)
-      // 才允许显示 ← 返回箭头, 让 ← 真正回到子区列表/详情。其他来源
-      // (消息附件、事项详情等) 一律隐藏 ← , 避免误导用户跳到子区。
-      previewHadThreadShell: fromChannelSearch
-        ? false
-        : this.state.showThreadPanel,
-    });
+    this.setState(
+      openChatRightPanel("filePreview", {
+        previewFile: file,
+        activeThread: this.state.activeThread,
+        activePreviewMessageId: file.messageId || null, // 保存激活的消息 ID
+        previewReturnChannelSearch: fromChannelSearch,
+        // 仅当预览触发前用户已经在子区面板里 (showThreadPanel 已经是 true)
+        // 才允许显示 ← 返回箭头, 让 ← 真正回到子区列表/详情。其他来源
+        // (消息附件等) 一律隐藏 ← , 避免误导用户跳到子区。
+        previewHadThreadShell: fromChannelSearch
+          ? false
+          : this.state.showThreadPanel,
+      })
+    );
   };
 
   private getChannelSearchDataSource(
@@ -515,40 +476,23 @@ export class ChatContentPage extends Component<
   private _openChannelSearchPanel = () => {
     if (!isChannelSearchEnabled(this.props.channel)) return;
     this._clearChannelSearchState();
-    this.setState({
-      showChannelSearch: true,
-      webhookIssuePreviewTarget: null,
-      channelSearchPreviewFile: null,
-      showChannelSetting: false,
-      showThreadPanel: false,
-      activeThread: null,
-      previewFile: null,
-      activePreviewMessageId: null,
-      previewReturnChannelSearch: false,
-      showMatterPanel: false,
-      showMatterDetailPanel: false,
-      showSummaryPanel: false,
-    });
+    this.setState(openChatRightPanel("channelSearch"));
   };
 
   /**
    * 关闭文件预览 (X 或 ←) 的统一收尾。
-   *   - 来源 = 事项详情 (previewReturnMatterId 非空): 事项面板被 display:none
-   *     隐藏着 (见 render), 这里只清预览相关 state, unhide 后内部 state
-   *     (tab / 展开的时间线 / 选中的 matter) 全部保留。但必须把 showThreadPanel
-   *     复位, 否则 ThreadPanel 会留下退化成子区列表遮住事项。
-   *   - 来源 = 其他: resetThreadShell 控制是否同时关掉子区壳 (群聊路径下
-   *     X 全关传 true; 子区频道/私聊路径下 X / ← 也传 true)。
+   *   - 来源 = 频道内搜索 (previewReturnChannelSearch 非空): 关预览后重新
+   *     打开搜索面板, 同时复位 showThreadPanel, 否则 ThreadPanel 会留下
+   *     退化成子区列表遮住搜索面板。
+   *   - 其他: resetThreadShell 控制是否同时关掉子区壳 (群聊路径下 X 全关
+   *     传 true; 子区频道/私聊路径下 X / ← 也传 true)。
    */
-  private _closePreviewAndMaybeRestoreMatter = (resetThreadShell: boolean) => {
-    const fromMatter = !!this.state.previewReturnMatterId;
+  private _closePreview = (resetThreadShell: boolean) => {
     const fromChannelSearch = !!this.state.previewReturnChannelSearch;
-    const shouldResetThread =
-      fromMatter || fromChannelSearch || resetThreadShell;
+    const shouldResetThread = fromChannelSearch || resetThreadShell;
     this.setState({
       previewFile: null,
       activePreviewMessageId: null,
-      previewReturnMatterId: null,
       previewReturnChannelSearch: false,
       previewHadThreadShell: false,
       showChannelSearch:
@@ -600,25 +544,17 @@ export class ChatContentPage extends Component<
       });
 
     // 注册 pending-thread 事件监听（当前频道已打开时直接导航到子区）。
-    // 跟文件预览 / 事项列表 / 事项详情互斥 (同一侧边容器)。
+    // 跟文件预览互斥 (同一侧边容器)。
     this._onPendingThread = (detail: {
       groupNo: string;
       thread: Thread | null;
     }) => {
       if (detail?.groupNo === this.props.channel.channelID) {
-        this.setState({
-          showThreadPanel: true,
-          activeThread: detail.thread || null,
-          previewFile: null, // 关闭文件预览
-          activePreviewMessageId: null,
-          showMatterPanel: false, // 关闭事项列表面板
-          showMatterDetailPanel: false, // 关闭事项详情面板
-          showSummaryPanel: false,
-          showChannelSearch: false,
-          channelSearchPreviewFile: null,
-          previewReturnChannelSearch: false,
-          webhookIssuePreviewTarget: null,
-        });
+        this.setState(
+          openChatRightPanel("thread", {
+            activeThread: detail.thread || null,
+          })
+        );
       }
     };
     WKApp.mittBus.on("wk:pending-thread", this._onPendingThread);
@@ -631,78 +567,6 @@ export class ChatContentPage extends Component<
     };
     WKApp.mittBus.on("wk:close-thread-panel", this._onCloseThreadPanel);
 
-    // 注册任务列表面板切换事件监听。
-    // 互斥关系: 打开事项列表时关掉其它同容器的侧边面板 (事项详情 / 子区 /
-    // 文件预览), 关闭时不影响其它。
-    this._onToggleMatterPanel = (data) => {
-      if (
-        data.channelId !== channel.channelID ||
-        data.channelType !== channel.channelType
-      )
-        return;
-      this.setState((prevState) => {
-        const opening = !prevState.showMatterPanel;
-        return {
-          showMatterPanel: opening,
-          showMatterDetailPanel: opening
-            ? false
-            : prevState.showMatterDetailPanel,
-          showThreadPanel: opening ? false : prevState.showThreadPanel,
-          activeThread: opening ? null : prevState.activeThread,
-          previewFile: opening ? null : prevState.previewFile,
-          previewReturnChannelSearch: opening
-            ? false
-            : prevState.previewReturnChannelSearch,
-          activePreviewMessageId: opening
-            ? null
-            : prevState.activePreviewMessageId,
-          showSummaryPanel: opening ? false : prevState.showSummaryPanel,
-          showChannelSearch: opening ? false : prevState.showChannelSearch,
-          channelSearchPreviewFile: opening
-            ? null
-            : prevState.channelSearchPreviewFile,
-          webhookIssuePreviewTarget: opening
-            ? null
-            : prevState.webhookIssuePreviewTarget,
-        };
-      });
-    };
-    WKApp.mittBus.on("wk:toggle-matter-panel", this._onToggleMatterPanel);
-
-    // 注册 v0.7 事项详情面板切换。
-    // 跟文件预览 / 子区 / 任务列表互斥: 跟 _onToggleMatterPanel (事项列表)
-    // 一样, 打开时关掉其它侧边面板, 关闭时不影响其它。
-    this._onToggleMatterDetailPanel = (data) => {
-      if (
-        data.channelId !== channel.channelID ||
-        data.channelType !== channel.channelType
-      )
-        return;
-      this.setState((prevState) => {
-        const opening = !prevState.showMatterDetailPanel;
-        if (!opening) {
-          return { showMatterDetailPanel: false };
-        }
-        return {
-          showMatterDetailPanel: true,
-          showMatterPanel: false,
-          showThreadPanel: false,
-          activeThread: null,
-          previewFile: null,
-          activePreviewMessageId: null,
-          previewReturnChannelSearch: false,
-          showSummaryPanel: false,
-          showChannelSearch: false,
-          channelSearchPreviewFile: null,
-          webhookIssuePreviewTarget: null,
-        };
-      });
-    };
-    WKApp.mittBus.on(
-      "wk:toggle-matter-detail-panel",
-      this._onToggleMatterDetailPanel
-    );
-
     this._onToggleSummaryPanel = (data) => {
       if (
         data.channelId !== channel.channelID ||
@@ -712,31 +576,12 @@ export class ChatContentPage extends Component<
       this.setState((prevState) => {
         // forceOpen：始终打开（用于聊天内创建总结后展示），不做 toggle 关闭
         const opening = data.forceOpen ? true : !prevState.showSummaryPanel;
+        if (!opening) {
+          return { showSummaryPanel: false };
+        }
         return {
-          showSummaryPanel: opening,
-          summaryPanelView: opening
-            ? data.summaryPanelView
-            : prevState.summaryPanelView,
-          showMatterPanel: opening ? false : prevState.showMatterPanel,
-          showMatterDetailPanel: opening
-            ? false
-            : prevState.showMatterDetailPanel,
-          showThreadPanel: opening ? false : prevState.showThreadPanel,
-          activeThread: opening ? null : prevState.activeThread,
-          previewFile: opening ? null : prevState.previewFile,
-          previewReturnChannelSearch: opening
-            ? false
-            : prevState.previewReturnChannelSearch,
-          activePreviewMessageId: opening
-            ? null
-            : prevState.activePreviewMessageId,
-          showChannelSearch: opening ? false : prevState.showChannelSearch,
-          channelSearchPreviewFile: opening
-            ? null
-            : prevState.channelSearchPreviewFile,
-          webhookIssuePreviewTarget: opening
-            ? null
-            : prevState.webhookIssuePreviewTarget,
+          ...openChatRightPanel("summary"),
+          summaryPanelView: data.summaryPanelView,
         };
       });
     };
@@ -756,19 +601,7 @@ export class ChatContentPage extends Component<
 
     // 检查是否需要自动打开子区面板（查看全部子区）
     if (WKApp.shared.pendingThreadPanel === channel.channelID) {
-      this.setState({
-        showThreadPanel: true,
-        activeThread: null,
-        previewFile: null,
-        activePreviewMessageId: null,
-        previewReturnChannelSearch: false,
-        showMatterPanel: false, // 互斥
-        showMatterDetailPanel: false, // 互斥
-        showSummaryPanel: false,
-        showChannelSearch: false,
-        channelSearchPreviewFile: null,
-        webhookIssuePreviewTarget: null,
-      });
+      this.setState(openChatRightPanel("thread"));
       WKApp.shared.pendingThreadPanel = undefined;
     }
 
@@ -776,28 +609,23 @@ export class ChatContentPage extends Component<
     if (WKApp.shared.pendingFilePreview) {
       const pending = WKApp.shared.pendingFilePreview;
       WKApp.shared.pendingFilePreview = undefined;
-      this.setState({
-        previewFile: {
-          url: pending.url,
-          name: pending.name,
-          extension: pending.extension,
-          size: pending.size,
-          messageId: pending.messageId,
-          sourceChannelId: pending.sourceChannelId,
-          sourceChannelType: pending.sourceChannelType,
-          messageSeq: pending.messageSeq,
-          fromUID: pending.fromUID,
-          conversationDigest: pending.conversationDigest,
-        },
-        activePreviewMessageId: pending.messageId || null,
-        showMatterPanel: false, // 互斥
-        showMatterDetailPanel: false, // 互斥
-        showSummaryPanel: false,
-        showChannelSearch: false,
-        channelSearchPreviewFile: null,
-        previewReturnChannelSearch: false,
-        webhookIssuePreviewTarget: null,
-      });
+      this.setState(
+        openChatRightPanel("filePreview", {
+          previewFile: {
+            url: pending.url,
+            name: pending.name,
+            extension: pending.extension,
+            size: pending.size,
+            messageId: pending.messageId,
+            sourceChannelId: pending.sourceChannelId,
+            sourceChannelType: pending.sourceChannelType,
+            messageSeq: pending.messageSeq,
+            fromUID: pending.fromUID,
+            conversationDigest: pending.conversationDigest,
+          },
+          activePreviewMessageId: pending.messageId || null,
+        })
+      );
     }
 
     // 子区：预先获取父群组信息
@@ -850,24 +678,11 @@ export class ChatContentPage extends Component<
     }
 
     // 切换频道时消费 pendingThreadPanel 和 pendingFilePreview。
-    // 两个场景都要跟事项列表 / 事项详情互斥 (同一侧边容器)。
     if (channelChanged) {
       // 打开全部子区列表
       if (WKApp.shared.pendingThreadPanel === channel.channelID) {
         WKApp.shared.pendingThreadPanel = undefined;
-        this.setState({
-          showThreadPanel: true,
-          activeThread: null,
-          previewFile: null, // 关闭文件预览（互斥）
-          activePreviewMessageId: null,
-          previewReturnChannelSearch: false,
-          showMatterPanel: false, // 互斥
-          showMatterDetailPanel: false, // 互斥
-          showSummaryPanel: false,
-          showChannelSearch: false,
-          channelSearchPreviewFile: null,
-          webhookIssuePreviewTarget: null,
-        });
+        this.setState(openChatRightPanel("thread"));
         return;
       }
 
@@ -875,28 +690,23 @@ export class ChatContentPage extends Component<
       if (WKApp.shared.pendingFilePreview) {
         const pending = WKApp.shared.pendingFilePreview;
         WKApp.shared.pendingFilePreview = undefined;
-        this.setState({
-          previewFile: {
-            url: pending.url,
-            name: pending.name,
-            extension: pending.extension,
-            size: pending.size,
-            messageId: pending.messageId,
-            sourceChannelId: pending.sourceChannelId,
-            sourceChannelType: pending.sourceChannelType,
-            messageSeq: pending.messageSeq,
-            fromUID: pending.fromUID,
-            conversationDigest: pending.conversationDigest,
-          },
-          activePreviewMessageId: pending.messageId || null,
-          showMatterPanel: false, // 互斥
-          showMatterDetailPanel: false, // 互斥
-          showSummaryPanel: false,
-          showChannelSearch: false,
-          channelSearchPreviewFile: null,
-          previewReturnChannelSearch: false,
-          webhookIssuePreviewTarget: null,
-        });
+        this.setState(
+          openChatRightPanel("filePreview", {
+            previewFile: {
+              url: pending.url,
+              name: pending.name,
+              extension: pending.extension,
+              size: pending.size,
+              messageId: pending.messageId,
+              sourceChannelId: pending.sourceChannelId,
+              sourceChannelType: pending.sourceChannelType,
+              messageSeq: pending.messageSeq,
+              fromUID: pending.fromUID,
+              conversationDigest: pending.conversationDigest,
+            },
+            activePreviewMessageId: pending.messageId || null,
+          })
+        );
         return;
       }
     }
@@ -922,14 +732,6 @@ export class ChatContentPage extends Component<
     thread: Thread | null;
   }) => void;
   private _onCloseThreadPanel?: () => void;
-  private _onToggleMatterPanel?: (data: {
-    channelId: string;
-    channelType: number;
-  }) => void;
-  private _onToggleMatterDetailPanel?: (data: {
-    channelId: string;
-    channelType: number;
-  }) => void;
   private _onToggleSummaryPanel?: (data: {
     channelId: string;
     channelType: number;
@@ -948,15 +750,6 @@ export class ChatContentPage extends Component<
     }
     if (this._onCloseThreadPanel) {
       WKApp.mittBus.off("wk:close-thread-panel", this._onCloseThreadPanel);
-    }
-    if (this._onToggleMatterPanel) {
-      WKApp.mittBus.off("wk:toggle-matter-panel", this._onToggleMatterPanel);
-    }
-    if (this._onToggleMatterDetailPanel) {
-      WKApp.mittBus.off(
-        "wk:toggle-matter-detail-panel",
-        this._onToggleMatterDetailPanel
-      );
     }
     if (this._onToggleSummaryPanel) {
       WKApp.mittBus.off("wk:toggle-summary-panel", this._onToggleSummaryPanel);
@@ -1063,8 +856,6 @@ export class ChatContentPage extends Component<
       showThreadPanel,
       activeThread,
       previewFile,
-      showMatterPanel,
-      showMatterDetailPanel,
       showSummaryPanel,
       summaryPanelView,
       showChannelSearch,
@@ -1084,10 +875,7 @@ export class ChatContentPage extends Component<
           "wk-chat-content-right",
           showChannelSetting ? "wk-chat-channelsetting-open" : "",
           showChannelSearch ? "wk-chat-channel-search-open" : "",
-          showThreadPanel || previewFile || showMatterPanel
-            ? "wk-chat-threadpanel-open"
-            : "",
-          showMatterDetailPanel ? "wk-chat-matter-detail-panel-open" : "",
+          showThreadPanel || previewFile ? "wk-chat-threadpanel-open" : "",
           showSummaryPanel ? "wk-chat-summary-panel-open" : "",
           webhookIssuePreviewTarget ? "wk-chat-webhook-preview-open" : ""
         )}
@@ -1249,18 +1037,9 @@ export class ChatContentPage extends Component<
                                 prevState.showThreadPanel &&
                                 !prevState.previewFile &&
                                 !prevState.activeThread;
-                              return {
-                                showThreadPanel: !isThreadListVisible,
-                                showMatterPanel: false, // 与事项列表面板互斥
-                                showMatterDetailPanel: false, // 与事项详情面板互斥
-                                showSummaryPanel: false,
-                                showChannelSearch: false,
-                                channelSearchPreviewFile: null,
-                                activeThread: null,
-                                previewFile: null, // 关闭文件预览（互斥）
-                                activePreviewMessageId: null,
-                                webhookIssuePreviewTarget: null,
-                              };
+                              return isThreadListVisible
+                                ? closeChatRightPanels()
+                                : openChatRightPanel("thread");
                             });
                           }}
                           title={t("base.chatPage.threadPanel")}
@@ -1272,12 +1051,11 @@ export class ChatContentPage extends Component<
                       className="wk-chat-conversation-header-right-item"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // 点击更多按钮只切换设置面板，不影响文件预览/子区面板状态
-                        this.setState({
-                          showChannelSetting: !this.state.showChannelSetting,
-                          showChannelSearch: false,
-                          channelSearchPreviewFile: null,
-                          webhookIssuePreviewTarget: null,
+                        this.setState((prevState) => {
+                          const opening = !prevState.showChannelSetting;
+                          return opening
+                            ? openChatRightPanel("channelSetting")
+                            : { showChannelSetting: false };
                         });
                       }}
                     >
@@ -1322,23 +1100,16 @@ export class ChatContentPage extends Component<
                 onOpenThreadPanel={(threadChannelId, threadName) => {
                   const threadInfo = parseThreadChannelId(threadChannelId);
                   if (threadInfo) {
-                    this.setState({
-                      showThreadPanel: true,
-                      showMatterPanel: false, // 与事项列表面板互斥
-                      showMatterDetailPanel: false, // 与事项详情面板互斥
-                      showSummaryPanel: false,
-                      showChannelSearch: false,
-                      channelSearchPreviewFile: null,
-                      previewFile: null, // 关闭文件预览（互斥）
-                      activePreviewMessageId: null,
-                      webhookIssuePreviewTarget: null,
-                      activeThread: buildThreadStub(
-                        threadInfo.shortId,
-                        threadInfo.groupNo,
-                        threadChannelId,
-                        threadName
-                      ),
-                    });
+                    this.setState(
+                      openChatRightPanel("thread", {
+                        activeThread: buildThreadStub(
+                          threadInfo.shortId,
+                          threadInfo.groupNo,
+                          threadChannelId,
+                          threadName
+                        ),
+                      })
+                    );
                   }
                 }}
                 onOpenWebhookPreview={this._openWebhookPreview}
@@ -1430,14 +1201,10 @@ export class ChatContentPage extends Component<
               groupNo={channel.channelID}
               thread={activeThread}
               onClose={() => {
-                // X 关闭: 若当前是从事项详情打开的预览, 回到事项详情;
+                // X 关闭: 若当前是从频道内搜索打开的预览, 回到搜索面板;
                 // 否则沿用原行为, 把整个侧边壳 (子区 + 预览) 一起关掉。
-                if (
-                  previewFile &&
-                  (this.state.previewReturnMatterId ||
-                    this.state.previewReturnChannelSearch)
-                ) {
-                  this._closePreviewAndMaybeRestoreMatter(true);
+                if (previewFile && this.state.previewReturnChannelSearch) {
+                  this._closePreview(true);
                   return;
                 }
                 this.setState({
@@ -1445,7 +1212,6 @@ export class ChatContentPage extends Component<
                   activeThread: null,
                   previewFile: null,
                   activePreviewMessageId: null,
-                  previewReturnMatterId: null,
                   previewReturnChannelSearch: false,
                   previewHadThreadShell: false,
                 });
@@ -1456,9 +1222,9 @@ export class ChatContentPage extends Component<
               filePreview={previewFile}
               showBackButton={this.state.previewHadThreadShell}
               onFilePreviewClose={() => {
-                // ← 返回: 来自事项详情的预览统一走 restore 路径, 落回事项详情;
-                // 否则按原行为只清预览, 保留 showThreadPanel 让用户回到子区列表。
-                this._closePreviewAndMaybeRestoreMatter(false);
+                // ← 返回: 只清预览, 保留 showThreadPanel 让用户回到子区列表;
+                // 来自频道内搜索的预览则同时复位子区壳并重新打开搜索面板。
+                this._closePreview(false);
               }}
               onReplyFile={(info) => {
                 // 触发回复功能，保持文件预览面板打开
@@ -1481,11 +1247,9 @@ export class ChatContentPage extends Component<
         {(isThreadChannel || channel.channelType === ChannelTypePerson) &&
           previewFile && (
             <ThreadPanel
-              onClose={() => this._closePreviewAndMaybeRestoreMatter(true)}
+              onClose={() => this._closePreview(true)}
               filePreview={previewFile}
-              onFilePreviewClose={() =>
-                this._closePreviewAndMaybeRestoreMatter(true)
-              }
+              onFilePreviewClose={() => this._closePreview(true)}
               onReplyFile={(info) => {
                 // 触发回复功能，保持文件预览面板打开
                 this.conversationContext?.replyToFileMessage?.(info);
@@ -1500,46 +1264,12 @@ export class ChatContentPage extends Component<
             />
           )}
 
-        {/* 任务列表面板（与子区互斥，复用 ThreadPanel 容器样式）。
-            从事项详情触发文件预览时不卸面板, 只 display:none 隐藏,
-            unhide 时 ChatMatterPanel 内部 state (active matter / tab /
-            展开的时间线) 全部保留, 用户感受像 "回到原样"。 */}
-        {showMatterPanel && (
-          <div
-            className="wk-thread-panel"
-            style={
-              previewFile && this.state.previewReturnMatterId
-                ? { display: "none" }
-                : undefined
-            }
-          >
-            {WKApp.endpoints.chatMatterPanel(channel, () =>
-              this.setState({ showMatterPanel: false })
-            )}
-          </div>
-        )}
-
-        {/* v0.7 Matter 详情面板（跟子区/文件预览/任务列表可并存，不互斥）。
-            从事项详情触发文件预览时同样改 display:none 保留 state。 */}
-        {showMatterDetailPanel && (
-          <div
-            className="wk-matter-detail-panel"
-            style={
-              previewFile && this.state.previewReturnMatterId
-                ? { display: "none" }
-                : undefined
-            }
-          >
-            {WKApp.endpoints.chatMatterDetailPanel(channel, () =>
-              this.setState({ showMatterDetailPanel: false })
-            )}
-          </div>
-        )}
-
         {showSummaryPanel && (
           <div className="wk-summary-panel">
-            {WKApp.endpoints.chatSummaryPanel(channel, () =>
-              this.setState({ showSummaryPanel: false })
+            {WKApp.endpoints.chatSummaryPanel(
+              channel,
+              () => this.setState({ showSummaryPanel: false }),
+              summaryPanelView
             )}
           </div>
         )}
@@ -1963,9 +1693,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   vm.showGlobalSearch = false;
                 }}
               >
-                <ErrorBoundary
-                  moduleName={t("base.chatPage.searchModuleName")}
-                >
+                <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
                   <GlobalSearch
                     onClick={(item, type: string) => {
                       void handleGlobalSearchClick(item, type, () => {

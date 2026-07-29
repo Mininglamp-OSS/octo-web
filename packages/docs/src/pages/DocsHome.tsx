@@ -5,6 +5,9 @@ import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
 import { BoardSession } from '../board/BoardSession.tsx'
 import { HtmlDocView } from '../html/HtmlDocView.tsx'
+import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
+import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
+import { docsApiBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
 import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
 import { runMarkdownImport, runDocxImport, ImportContentCorruptError } from '../editor/importFlow.ts'
 import '../editor/styles.css'
@@ -26,6 +29,7 @@ import { CreatorFilter, CreatorChips, creatorName } from './CreatorFilter.tsx'
 import { TypeFilter, TypeChips } from './TypeFilter.tsx'
 import { InfiniteList } from './InfiniteList.tsx'
 import { useDocsView, type DocsViewKind } from './useDocsView.ts'
+import { OnboardingHelp } from './OnboardingHelp.tsx'
 
 export interface DocTarget {
   space: string
@@ -456,6 +460,7 @@ function DocsList({
   uid,
   selectedDocId,
   onSelect,
+  onCreateHtml,
   reloadToken,
   botUids,
 }: {
@@ -465,6 +470,8 @@ function DocsList({
   uid: string
   selectedDocId: string | null
   onSelect: (docId: string, docType?: string, octoDocSlug?: string) => void
+  /** Open the "new HTML (embedded bot DM)" flow (plan Task 6). Menu-only; never calls createDoc. */
+  onCreateHtml: () => void
   reloadToken?: number
   /** uids of every bot in the space; a row whose ownerId is here shows a bot badge. */
   botUids: Set<string>
@@ -790,9 +797,8 @@ function DocsList({
     )
   }
 
-  // "从 Markdown 导入" → pick a .md file, parse it to a ProseMirror document client-side, create a
-  // NEW doc (title from the H1 / filename), stash the parsed content, then open it. Import never
-  // touches an existing doc — it always lands in its own new file, mirroring the Excel import flow.
+  // "从 Markdown 导入" → pick a .md file, create a NEW doc, then ask the backend to parse and
+  // atomically apply it to the live Y.Doc. Open only after that authoritative write succeeds.
   const onImportMarkdown = async () => {
     if (creating) return
     setCreating(true)
@@ -818,9 +824,8 @@ function DocsList({
   }
 
   // "从 Word 导入" → pick a .docx file, create a NEW doc, POST the file to the server-side
-  // importer (parses OOXML → ProseMirror JSON, uploads embedded images scoped to the new doc),
-  // stash the returned content, then open it. Like every import path, it lands in its own new
-  // file and never overwrites an existing doc.
+  // importer, which uploads embedded images and atomically applies content to the live Y.Doc.
+  // Open only after that write succeeds; the editor never receives PM content through storage.
   const onImportWord = async () => {
     if (creating) return
     setCreating(true)
@@ -861,54 +866,64 @@ function DocsList({
     <div className="octo-docs-list">
       <div className="octo-docs-list-header">
         <h2 className="octo-docs-list-title">{t('docs.menu.title')}</h2>
-        <span
-          className="octo-docs-list-new"
-          style={{ display: 'inline-flex', alignItems: 'stretch', padding: 0, overflow: 'hidden' }}
-        >
-          <button
-            type="button"
-            onClick={() => onCreate()}
-            disabled={creating}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              background: 'transparent',
-              border: 'none',
-              color: 'inherit',
-              font: 'inherit',
-              padding: '6px 8px 6px 12px',
-              cursor: creating ? 'default' : 'pointer',
-            }}
+        {/* Right-hand action group: the permanent agent-CLI onboarding help
+            (Mininglamp-OSS/octo-docs-backend#125) sits directly beside the New-document control.
+            The header is `space-between`, so the help button must live INSIDE this group —
+            otherwise it gets pushed to the far left, away from the action it belongs with.
+            It stays list-state independent either way. */}
+        {/* A `<div>`, not a `<span>`: the help trigger's sibling content is flow content, and a
+            phrasing-content wrapper would trip React's DOM-nesting validation. */}
+        <div className="octo-docs-list-header-actions">
+          <OnboardingHelp />
+          <span
+            className="octo-docs-list-new"
+            style={{ display: 'inline-flex', alignItems: 'stretch', padding: 0, overflow: 'hidden' }}
           >
-            <span className="octo-docs-list-new-icon" aria-hidden="true">+</span>
-            {t('docs.list.new')}
-          </button>
-          <button
-            type="button"
-            aria-label={t('docs.list.newMenu')}
-            title={t('docs.list.newMenu')}
-            disabled={creating}
-            onClick={(e) => {
-              const box = (e.currentTarget.closest('.octo-docs-list-new') as HTMLElement) ?? e.currentTarget
-              const r = box.getBoundingClientRect()
-              setNewMenuAt(newMenuAt ? null : { left: r.left, top: r.bottom + 6 })
-            }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              background: 'transparent',
-              border: 'none',
-              borderLeft: '1px solid rgba(255,255,255,0.45)',
-              color: 'inherit',
-              padding: '0 12px',
-              fontSize: 11,
-              cursor: creating ? 'default' : 'pointer',
-            }}
-          >
-            ▾
-          </button>
-        </span>
+            <button
+              type="button"
+              onClick={() => onCreate()}
+              disabled={creating}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                background: 'transparent',
+                border: 'none',
+                color: 'inherit',
+                font: 'inherit',
+                padding: '6px 8px 6px 12px',
+                cursor: creating ? 'default' : 'pointer',
+              }}
+            >
+              <span className="octo-docs-list-new-icon" aria-hidden="true">+</span>
+              {t('docs.list.new')}
+            </button>
+            <button
+              type="button"
+              aria-label={t('docs.list.newMenu')}
+              title={t('docs.list.newMenu')}
+              disabled={creating}
+              onClick={(e) => {
+                const box = (e.currentTarget.closest('.octo-docs-list-new') as HTMLElement) ?? e.currentTarget
+                const r = box.getBoundingClientRect()
+                setNewMenuAt(newMenuAt ? null : { left: r.left, top: r.bottom + 6 })
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                background: 'transparent',
+                border: 'none',
+                borderLeft: '1px solid rgba(255,255,255,0.45)',
+                color: 'inherit',
+                padding: '0 12px',
+                fontSize: 11,
+                cursor: creating ? 'default' : 'pointer',
+              }}
+            >
+              ▾
+            </button>
+          </span>
+        </div>
         {newMenuAt && (
           <PortalMenu at={newMenuAt} onClose={() => setNewMenuAt(null)}>
             <button
@@ -935,6 +950,21 @@ function DocsList({
               }}
             >
               ▦ {t('docs.sheet.new')}
+            </button>
+            {/* plan Task 6: "new HTML" launches the embedded bot-DM flow — it only closes the menu and
+                calls onCreateHtml; it NEVER calls createDoc (no placeholder doc is created up front). */}
+            <button
+              type="button"
+              className="octo-tb-btn"
+              disabled={creating}
+              style={{ display: 'block', width: '100%', textAlign: 'left' }}
+              onClick={() => {
+                setNewMenuAt(null)
+                onCreateHtml()
+              }}
+            >
+              <span className="octo-docs-new-menu-icon" aria-hidden="true"><HtmlRowIcon /></span>
+              {t('docs.list.newHtml')}
             </button>
             {/* Import entries merged into the "New" dropdown (was a standalone "Import" button).
                 Flag ON; formal owner sign-off still PENDING, gated by needs-human-review (was hidden
@@ -1151,7 +1181,7 @@ function DocsList({
  *
  * Selecting a list item opens the editor INLINE in the right pane via state (selectedDocId),
  * NOT a full navigation — so the left list never disappears, matching the
- * octo-smart-summary / matter list+detail layout. The selection is mirrored to `?doc=` +
+ * octo-smart-summary list+detail layout. The selection is mirrored to `?doc=` +
  * sessionStorage (mirrorDocToUrl + persistDocTarget) for shareable/deep-link/refresh, using
  * history.replaceState (no host re-push) so `?doc=` is no longer wiped.
  */
@@ -1253,7 +1283,7 @@ export function DocsHome() {
 
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
-  // full-width list+detail layout Matter/Summary use. When absent (tests / standalone), we
+  // full-width list+detail layout Summary uses. When absent (tests / standalone), we
   // fall back to rendering the editor inline in a CSS split pane.
   const routeRight = getRouteRight()
 
@@ -1262,6 +1292,23 @@ export function DocsHome() {
   const onTitleSaved = useCallback(() => {
     setListReloadToken((n) => n + 1)
   }, [])
+
+  // plan Task 6: the "new HTML" flow. `htmlModalOpen` drives the create dialog; `htmlChatDraft`
+  // holds the active embedded-bot-DM task (mutually exclusive with a selected doc — opening one
+  // closes the other). A ref mirrors the draft so the NavRail re-entry handler can re-mount the
+  // SAME chat (same requestId) without a stale closure and without re-sending (§5 risk 1).
+  const [htmlModalOpen, setHtmlModalOpen] = useState(false)
+  const [htmlChatDraft, setHtmlChatDraft] = useState<HtmlCreationDraft | null>(null)
+  const htmlChatDraftRef = useRef<HtmlCreationDraft | null>(null)
+  useEffect(() => {
+    htmlChatDraftRef.current = htmlChatDraft
+  }, [htmlChatDraft])
+  // Tracks which html-chat requestIds have already triggered their ONE first auto-send. On a
+  // nav-reentry / restore the Conversation is a NEW instance (its instance-level _consumedComposeIds
+  // is empty), so without this guard the same requestId would auto-send a SECOND time (reviewer P1
+  // double-send). We consult this set to force autoSend=false on any restore of an already-fired
+  // requestId; only the FIRST openHtmlChat sends (plan Task 6 step 4 / §5 risk 1).
+  const htmlComposeFiredRef = useRef<Set<string>>(new Set())
 
   // uid → display name for the space (feature #8): used to set the awareness user.name so the
   // presence avatar initial and the collaboration caret show a real name, not the raw uid.
@@ -1304,10 +1351,121 @@ export function DocsHome() {
     [],
   )
 
+  // plan Task 6 §5.5: limited, non-perpetual list refresh after the task is sent. The IM ACK only
+  // means the task reached the bot — the HTML doc registers asynchronously later, so we bump the
+  // reload token at 5s / 15s / 30s (three fixed nudges, then STOP). No perpetual polling, and the
+  // front end never fabricates a stage from a timer (§5.8). Timers are cleared on close/unmount.
+  const htmlRefreshTimers = useRef<number[]>([])
+  const clearHtmlRefreshTimers = useCallback(() => {
+    for (const id of htmlRefreshTimers.current) window.clearTimeout(id)
+    htmlRefreshTimers.current = []
+  }, [])
+  const scheduleHtmlListRefresh = useCallback(() => {
+    clearHtmlRefreshTimers()
+    for (const delay of [5000, 15000, 30000]) {
+      const id = window.setTimeout(() => setListReloadToken((n) => n + 1), delay)
+      htmlRefreshTimers.current.push(id)
+    }
+  }, [clearHtmlRefreshTimers])
+  useEffect(() => clearHtmlRefreshTimers, [clearHtmlRefreshTimers])
+
+  // Build the embedded bot-DM shell for the active html chat draft. Close returns to the docs
+  // empty state (does NOT delete the DM); onMessageSent triggers the bounded list refresh.
+  // Once a request has sent, restores omit initialCompose so neither text nor files are staged again.
+  const buildBotChat = useCallback(
+    (draft: HtmlCreationDraft, autoSend = true) => (
+      <DocsBotConversation
+        key={draft.requestId}
+        draft={draft}
+        autoSend={autoSend}
+        onClose={() => closeHtmlChatRef.current()}
+        onMessageSent={() => {
+          // A confirmed send means this requestId has fired its one auto-send; any later restore
+          // must be prefill-only.
+          htmlComposeFiredRef.current.add(draft.requestId)
+          scheduleHtmlListRefresh()
+        }}
+      />
+    ),
+    [scheduleHtmlListRefresh],
+  )
+
+  // closeHtmlChat is referenced by buildBotChat (pushed into the route pane) BEFORE it is defined;
+  // route it through a ref so the pushed snapshot always calls the latest close logic.
+  const closeHtmlChatRef = useRef<() => void>(() => {})
+  const closeHtmlChat = useCallback(() => {
+    clearHtmlRefreshTimers()
+    setHtmlChatDraft(null)
+    htmlChatDraftRef.current = null
+    if (routeRight) {
+      try {
+        routeRight.replaceToRoot(buildEmptyState() as unknown)
+      } catch {
+        // ignore — right pane unavailable
+      }
+    }
+  }, [routeRight, buildEmptyState, clearHtmlRefreshTimers])
+  useEffect(() => {
+    closeHtmlChatRef.current = closeHtmlChat
+  }, [closeHtmlChat])
+
+  // Open the embedded bot DM for a submitted draft: it becomes the sole right-pane occupant.
+  // Any open doc selection is cleared first so the two right-pane modes stay mutually exclusive
+  // (§8): no fake doc id, no `?doc=`, no persisted doc target.
+  const openHtmlChat = useCallback(
+    (draft: HtmlCreationDraft) => {
+      setSelectedDocId(null)
+      setSelectedDocType(undefined)
+      setSelectedOctoDocSlug(undefined)
+      selectedDocIdRef.current = null
+      latestOpenRef.current = null
+      clearDocTarget()
+      mirrorListToUrl()
+      setHtmlChatDraft(draft)
+      htmlChatDraftRef.current = draft
+      if (routeRight) {
+        try {
+          routeRight.replaceToRoot(buildBotChat(draft) as unknown)
+        } catch {
+          // ignore — fall back to inline render.
+        }
+      }
+    },
+    [routeRight, buildBotChat],
+  )
+
+  // Modal submit → finalise the draft (requestId + front-end-derived base_url) and open the chat.
+  // crypto.randomUUID() is the one-shot idempotency id; base_url comes ONLY from the app origin
+  // (docsApiBaseUrl), never from user text/attachments (§5.6).
+  const onSubmitHtml = useCallback(
+    (partial: Omit<HtmlCreationDraft, 'requestId' | 'baseUrl'>) => {
+      const requestId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      const draft: HtmlCreationDraft = {
+        ...partial,
+        requestId,
+        baseUrl: docsApiBaseUrl(origin),
+      }
+      setHtmlModalOpen(false)
+      openHtmlChat(draft)
+    },
+    [openHtmlChat],
+  )
+
   const backToList = useCallback(() => {
     setSelectedDocId(null)
     setSelectedDocType(undefined)
     setSelectedOctoDocSlug(undefined)
+    // Also drop any active html chat + its refresh timers. backToList is the onSpaceChanged
+    // reconciler, so a Space switch must discard the old Space's draft/File[] and never send it
+    // into the new Space (§5.7).
+    clearHtmlRefreshTimers()
+    setHtmlChatDraft(null)
+    htmlChatDraftRef.current = null
+    setHtmlModalOpen(false)
     // Invalidate any in-flight unknown-kind open (openDoc → getDoc still pending). Without this,
     // a Space switch (this is also the onSpaceChanged reconciler) leaves latestOpenRef pointing at
     // the previous Space's docId, so a late getDoc resolve would pass the `latestOpenRef === docId`
@@ -1325,7 +1483,7 @@ export function DocsHome() {
         // ignore — right pane already cleared / unavailable
       }
     }
-  }, [routeRight, buildEmptyState])
+  }, [routeRight, buildEmptyState, clearHtmlRefreshTimers])
 
   // Subscribe to the host's Space-switch broadcast. On a switch the host mutates currentSpaceId
   // then emits `space-changed`; we re-read the id into state AND reconcile the open selection.
@@ -1487,6 +1645,13 @@ export function DocsHome() {
   // right pane. Split out from openDoc so the kind can be resolved asynchronously first.
   const commitOpen = useCallback(
     (docId: string, docType: 'board' | 'doc' | 'sheet' | 'html', octoDocSlug?: string) => {
+      // Opening a doc closes any active html chat (mutually exclusive right-pane modes, §8). Clear
+      // the draft + its refresh timers here; the doc shell is pushed below, so no empty-state flash.
+      if (htmlChatDraftRef.current) {
+        clearHtmlRefreshTimers()
+        setHtmlChatDraft(null)
+        htmlChatDraftRef.current = null
+      }
       const htmlSlug = docType === 'html' ? octoDocSlug : undefined
       // Whether a doc was already open BEFORE this commit — read from the live ref (not the
       // closed-over state, which lags a render). Drives whether we PUSH a new history entry
@@ -1520,7 +1685,7 @@ export function DocsHome() {
       if (docType !== undefined) push(docType)
       else void getDoc(docId).then((m) => push(m.docType)).catch(() => push(undefined))
     },
-    [space, folder, routeRight, buildRightPane],
+    [space, folder, routeRight, buildRightPane, clearHtmlRefreshTimers],
   )
 
   const openDoc = useCallback(
@@ -1635,11 +1800,19 @@ export function DocsHome() {
   useEffect(() => {
     buildRightPaneRef.current = buildRightPane
   }, [buildRightPane])
+  // Companion ref for the bot-chat builder so the nav-reentry handler can re-mount an active html
+  // chat (SAME requestId object via htmlChatDraftRef) without a stale closure. The Conversation's
+  // instance-level consumed-set is the second layer that prevents a re-send on this remount (§5).
+  const buildBotChatRef = useRef(buildBotChat)
+  useEffect(() => {
+    buildBotChatRef.current = buildBotChat
+  }, [buildBotChat])
   useEffect(() => {
     if (!routeRight) return
     return onNavMenuActivated('docs', () => {
       try {
         const id = selectedDocIdRef.current
+        const chatDraft = htmlChatDraftRef.current
         if (id) {
           routeRight.replaceToRoot(
             buildRightPaneRef.current(
@@ -1648,6 +1821,12 @@ export function DocsHome() {
               undefined,
               selectedOctoDocSlugRef.current,
             ) as unknown,
+          )
+        } else if (chatDraft) {
+          // Restore the same chat and requestId. A confirmed request omits initialCompose entirely.
+          const alreadyFired = htmlComposeFiredRef.current.has(chatDraft.requestId)
+          routeRight.replaceToRoot(
+            buildBotChatRef.current(chatDraft, !alreadyFired) as unknown,
           )
         } else {
           routeRight.replaceToRoot(buildEmptyState() as unknown)
@@ -1704,8 +1883,16 @@ export function DocsHome() {
           uid={uid}
           selectedDocId={selectedDocId}
           onSelect={openDoc}
+          onCreateHtml={() => setHtmlModalOpen(true)}
           reloadToken={listReloadToken}
           botUids={botUids}
+        />
+        <CreateHtmlModal
+          open={htmlModalOpen}
+          spaceId={space}
+          publishBaseUrl={docsApiBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
+          onClose={() => setHtmlModalOpen(false)}
+          onSubmit={onSubmitHtml}
         />
       </div>
     )
@@ -1720,12 +1907,15 @@ export function DocsHome() {
           uid={uid}
           selectedDocId={selectedDocId}
           onSelect={openDoc}
+          onCreateHtml={() => setHtmlModalOpen(true)}
           reloadToken={listReloadToken}
           botUids={botUids}
         />
       </aside>
       <section className="octo-docs-split-right">
-        {selectedDocId ? (
+        {htmlChatDraft ? (
+          buildBotChat(htmlChatDraft)
+        ) : selectedDocId ? (
           buildRightPane(selectedDocId, selectedDocType, backToList, selectedOctoDocSlug)
         ) : (
           <div className="octo-docs-split-empty">
@@ -1733,6 +1923,13 @@ export function DocsHome() {
           </div>
         )}
       </section>
+      <CreateHtmlModal
+        open={htmlModalOpen}
+        spaceId={space}
+        publishBaseUrl={docsApiBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
+        onClose={() => setHtmlModalOpen(false)}
+        onSubmit={onSubmitHtml}
+      />
     </div>
   )
 }

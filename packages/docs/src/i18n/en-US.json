@@ -8,6 +8,7 @@
     "newDocument": "New document",
     "newBoard": "New board",
     "newSheet": "New sheet",
+    "newHtml": "New HTML",
     "comingSoon": "Coming soon",
     "kindDoc": "Document",
     "kindBoard": "Board",
@@ -23,7 +24,39 @@
     "loadingMore": "Loading more…",
     "end": "No more documents",
     "loadMoreFailed": "Couldn't load more",
-    "retry": "Retry"
+    "retry": "Retry",
+    "htmlCreate": {
+      "title": "New HTML",
+      "descLabel": "HTML description",
+      "descPlaceholder": "Describe the HTML you want (e.g. a launch landing page with a title, highlights and a sign-up button).",
+      "descTooLong": "Description is too long — keep it under 8000 characters.",
+      "botLabel": "Creation bot",
+      "botLoading": "Loading available bots…",
+      "botError": "Failed to load bots",
+      "botEmpty": "You don't have a bot available to create HTML",
+      "filesLabel": "Reference files (optional)",
+      "addFiles": "Add files",
+      "removeFile": "Remove file",
+      "cancel": "Cancel",
+      "generatePrompt": "Generate prompt",
+      "promptLabel": "Full prompt",
+      "backToEdit": "Back to edit",
+      "copyPrompt": "Copy prompt",
+      "forwardToBot": "Forward to Bot",
+      "previewFilesHint": "Attachments are not shown in the prompt; they will be sent when you forward it to the Bot.",
+      "copySuccess": "Prompt copied",
+      "copySuccessWithFiles": "Prompt copied. Attachments were not copied; forward them with the prompt.",
+      "copyFailed": "Couldn't copy the prompt. Select and copy it manually.",
+      "prerequisiteHint": "Before creating HTML from this prompt, install octo-cli locally and the Octo HTML Skill for the Bot.",
+      "retry": "Retry",
+      "chatContext": "Create HTML with a bot",
+      "close": "Close",
+      "statePrepared": "Task prepared",
+      "stateSent": "Task submitted to {{name}}",
+      "stateFailed": "Send failed — retry manually in the composer below",
+      "draftConflict": "This conversation already has a draft or pending attachments; clear it first, then retry",
+      "messageTooLong": "The final message exceeds the {{max}} character send limit. Shorten the description."
+    }
   },
   "board": {
     "readOnly": "Read-only",
@@ -123,6 +156,7 @@
       "simhei": "SimHei",
       "kaiti": "KaiTi",
       "arial": "Arial",
+      "calibri": "Calibri",
       "timesNewRoman": "Times New Roman",
       "georgia": "Georgia",
       "courierNew": "Courier New",
@@ -685,5 +719,16 @@
     "typeNone": "No documents of the selected type",
     "typeNoneCta": "Clear type",
     "combinedNone": "No matching results"
+  },
+  "onboarding": {
+    "helpTitle": "Agent CLI onboarding help",
+    "dialogTitle": "Connect your bot to the Octo Docs CLI",
+    "dialogIntro": "Copy the prompt below and send it to your bot. It uses the credentials it is already configured with to self-bind and learns to read, create, update, and collaborate on documents with octo-cli — no secrets are provided or displayed by either of you.",
+    "prompt": "Please use the Octo Docs CLI (octo-cli) to read and write documents for me. Configure yourself with these steps:\n\n1) Install octo-cli:\n   npm install -g @mininglamp-oss/octo-cli@0.9\n\n2) Diagnose before you configure anything. Do NOT set any credential environment variable yet —\n   `OCTO_BOT_ID` is a selector against the on-disk profile store, and setting it when no matching\n   profile exists is a hard auth error that deliberately refuses to fall back to an environment\n   token. Run this first and branch on what it reports:\n     octo-cli auth status\n   - \"active\": {...}                                -> already bound; go to step 3.\n   - \"profile_count\": 0 with \"env_token_set\": true  -> your credential is already in the\n                                                       environment; change NOTHING, go to step 3.\n   - \"profile_count\": 0 with \"env_token_set\": false -> STOP and tell me: no credential is available\n                                                       to you. Ask the operator to run\n                                                       `octo-cli auth login --bot-id <your robot id>`\n                                                       (the token is read from a hidden prompt, from\n                                                       stdin with `--with-token`, or from a file with\n                                                       `--token-file` — never from a command line. With\n                                                       no terminal the prompt hard-fails, so one of the\n                                                       latter two is the only path in automation).\n   - \"profile_count\" of 2 or more                   -> several identities are stored, so you must say\n                                                       which one to act as. Your robot id is a\n                                                       selector, not a secret:\n                                                         export OCTO_BOT_ID=<your robot id>\n   - an auth error \"no matching profile\"            -> a selector is already set (OCTO_BOT_ID / --bot-id)\n                                                       but no stored profile matches it, and this is a hard\n                                                       error with exit code 3, NOT a fallback to an\n                                                       environment token. Do NOT set a token to work around\n                                                       it: run `octo-cli auth list`, then either unset\n                                                       OCTO_BOT_ID or set it to an id that is listed.\n   You do NOT move, print, echo, log, or forward a token, and you must not ask me for one: I provide\n   no secrets. Never set OCTO_BOT_TOKEN yourself — that is the one path that would write your\n   credential into your shell history and transcript.\n   `OCTO_API_BASE_URL` is NOT a secret, and nothing will ever tell you that it is missing: the CLI\n   silently defaults to `http://127.0.0.1:8080`, and `config show` always prints the RESOLVED value,\n   so an unset variable looks exactly like a correctly set one. Verify the VALUE — never check for\n   absence. Run `octo-cli config show` and read `api_base_url`: if it is `http://127.0.0.1:8080` and\n   that is not your deployment, every later call silently fails against localhost, so set it:\n     export OCTO_API_BASE_URL=<the API base URL of your deployment>\n\n3) Confirm which identity you are acting as (tokens are always masked in this output):\n   octo-cli config show\n   octo-cli docs list        # the documents you can access\n\n4) Core document workflows (read / create / update / collaborate):\n   octo-cli docs create --title \"Design notes\"\n   octo-cli docs get <docId>\n   octo-cli docs content get <docId>      # returns the body AND its base-version token\n   octo-cli docs content edit <docId> --base-version \"<token>\" --data '<ops JSON>'\n   octo-cli docs members set <docId> --data '{\"uid\":\"<uid>\",\"role\":\"writer\"}'\n   # A ROOT comment must be anchored, or the server rejects it. You have no live editor selection,\n   # so anchor by text and let the backend resolve it (add --blockPath / --occurrence if the text\n   # occurs more than once, otherwise an ambiguous match is a 422). A REPLY sets --parentId instead\n   # and omits the anchor entirely.\n   octo-cli docs comments add <docId> --body \"looks good\" --anchorText \"<the exact quoted span>\"\n   octo-cli docs comments add <docId> --body \"agreed\" --parentId <rootCommentId>\n\n   Updating is read-modify-write: take the base-version token from `docs content get` and pass it\n   to `docs content edit`, so a concurrent edit is rejected instead of silently overwritten.\n\n5) For the full, version-accurate command reference, read the CLI's own bundled skill docs:\n   octo-cli skills octo-docs\n\nTell me once you're connected.",
+    "copy": "Copy prompt",
+    "copied": "Copied",
+    "copyManualHint": "Clipboard access was blocked by the browser. The prompt is selected above — press Ctrl/Cmd+C to copy it manually.",
+    "close": "Close",
+    "referenceLinkLabel": "View the canonical CLI reference"
   }
 }

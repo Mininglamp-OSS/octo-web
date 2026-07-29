@@ -63,6 +63,7 @@ export interface TimeRange {
 /** Citation 上下文消息 */
 export interface CitationContextMessage {
     sender: string;
+    sender_uid?: string;
     content: string;
     sent_at: string;
     message_seq?: number;
@@ -72,6 +73,7 @@ export interface CitationContextMessage {
 export interface CitationItem {
     index: number;
     sender: string;
+    sender_uid?: string;
     content: string;
     sent_at: string;
     source: string;

@@ -37,8 +37,14 @@ export * from './im-runtime/currentTaskRuntime'
 export * from './Components/WKLayout'
 
 export * from './Components/Conversation/context'
+export { MAX_MESSAGE_LENGTH } from './Components/MessageInput/constants'
 export type { default as ConversationContext} from './Components/Conversation/context'
 export { Conversation } from './Components/Conversation'
+export type { ConversationProps } from './Components/Conversation'
+export type {
+  InitialCompose,
+  InitialComposeState,
+} from './Components/Conversation/initialCompose'
 export { default as Search } from './Components/Search'
 export { default as WKNavMainHeader } from './Components/WKNavHeader'
 export { default as WKViewQueueHeader } from './Components/WKViewQueueHeader'
@@ -136,3 +142,8 @@ export { default as ClawHealthCheckItem } from './Components/ClawHealthCheckItem
 export type { ClawHealthCheckItemProps, HealthStatus } from './Components/ClawHealthCheckItem'
 export { default as AgentCardService } from './Service/AgentCardService'
 export type { AgentCardData, FileGroup, FileItem, FileContent, FileContentResponse } from './Service/AgentCardService'
+
+// Re-export the WuKongIM Channel primitives docs' embedded bot DM needs (plan Task 5) so the docs
+// package can construct `new Channel(botUid, ChannelTypePerson)` through the @octo/base boundary
+// without taking a direct wukongimjssdk dependency (only @octo/base imports the SDK).
+export { Channel, ChannelTypePerson } from 'wukongimjssdk'

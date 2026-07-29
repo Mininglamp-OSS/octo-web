@@ -37,6 +37,10 @@
       "reason": "Toolbar font-family presets. The only CJK literals are the localized family-name aliases inside the CSS font-family values (e.g. \"微软雅黑\", \"宋体\") that must byte-match the native font name so browsers matching a font by its Chinese name still render it; they are font resource identifiers, not translatable UI copy (mirrors export/docx/styles.ts). The user-facing display name is localized separately via the labelKey i18n keys resolved with t()."
     },
     {
+      "path": "packages/docs/src/html-create/createHtmlTask.ts",
+      "reason": "Generated agent-facing publish prompt protocol. Its Chinese directives are copied or forwarded byte-for-byte to a Bot and are covered by protocol tests; modal UI labels and copy status remain localized in the docs namespace."
+    },
+    {
       "path": "packages/dmworkmcp/src/mock/mcpMock.ts",
       "reason": "MCP Market demo fixtures (server names, slogans, descriptions, FAQ, notes). This is sample content data returned by the mock service layer, replaced wholesale by the real backend response later; it is not translatable UI chrome and has no i18n namespace key to bind to."
     },
@@ -59,6 +63,14 @@
     {
       "path": "packages/dmworkskillmarket/src/utils/botPublishPrompt.ts",
       "reason": "Agent prompt template for the Bot publish flow. Same rationale as installPrompt.ts above — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
+    },
+    {
+      "path": "packages/dmworkskillmarket/src/utils/publisher.ts",
+      "reason": "Publisher classification helper. The Chinese literal is a backend identity value used to recognize administrator-created records, not user-facing UI copy; the displayed label is localized separately."
+    },
+    {
+      "path": "packages/dmworkmcp/src/utils/mcpBotPublishPrompt.ts",
+      "reason": "Agent prompt template for the MCP marketplace publish flow. Same rationale as dmworkskillmarket/src/utils/botPublishPrompt.ts — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
     },
     {
       "path": "packages/dmworksummary/src/__mocks__/handlers.ts",

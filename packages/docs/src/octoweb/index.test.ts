@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { apiClient, wrapHostClient, setWKApp, onNavMenuActivated } from './index.ts'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { apiClient, wrapHostClient, setWKApp, onNavMenuActivated, fetchOwnedBots } from './index.ts'
 import { createMockWKApp } from './mock.ts'
 import type { APIClient } from './types.ts'
 
@@ -152,5 +152,69 @@ describe('onNavMenuActivated seam', () => {
       throw new Error('should never fire without a bus')
     })
     expect(() => off()).not.toThrow()
+  })
+})
+
+// Task 2 / plan §5.4: the docs "new HTML" picker only lists bots the user OWNS in the current
+// Space. It reaches them through GET /robot/owned_bots?space_id=, the owner-scoped endpoint, and
+// maps the response to the choosable {uid,name,description?} shape — never a token field (§5.5).
+describe('octoweb fetchOwnedBots seam', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  it('issues one owned_bots request (space_id encoded) and maps {uid,name,description}', async () => {
+    wk.apiClient.responder = (_m, url) =>
+      url.startsWith('/robot/owned_bots')
+        ? {
+            data: [
+              { uid: 'bot1', name: 'Publisher', description: 'Builds HTML' },
+              { uid: 'bot2', name: 'Scribe' },
+            ],
+            status: 200,
+          }
+        : { data: {}, status: 200 }
+    const bots = await fetchOwnedBots('s 1')
+    expect(bots).toEqual([
+      { uid: 'bot1', name: 'Publisher', description: 'Builds HTML' },
+      { uid: 'bot2', name: 'Scribe' },
+    ])
+    const calls = wk.apiClient.calls.filter((c) => c.url.startsWith('/robot/owned_bots'))
+    expect(calls).toHaveLength(1)
+    // space_id must be URL-encoded (space → %20).
+    expect(calls[0].url).toBe('/robot/owned_bots?space_id=s%201')
+  })
+
+  it('falls back to the uid for a bot with no name and drops entries without a uid', async () => {
+    wk.apiClient.responder = () => ({
+      data: [{ uid: 'bot1', name: '' }, { name: 'ghost' }],
+      status: 200,
+    })
+    expect(await fetchOwnedBots('s_1')).toEqual([{ uid: 'bot1', name: 'bot1' }])
+  })
+
+  it('returns an empty list for a non-array body', async () => {
+    wk.apiClient.responder = () => ({ data: { nope: true }, status: 200 })
+    expect(await fetchOwnedBots('s_1')).toEqual([])
+  })
+
+  it('returns an empty list for a blank space id without touching the host', async () => {
+    expect(await fetchOwnedBots('')).toEqual([])
+    expect(wk.apiClient.calls).toHaveLength(0)
+  })
+
+  it('never maps a token / credential field even if the server leaks one', async () => {
+    // Defense in depth (§5.5): the Web layer must not surface a Bot Token. Even a stray `token`
+    // in the response body must not appear on the mapped picker entry.
+    wk.apiClient.responder = () => ({
+      data: [{ uid: 'bot1', name: 'Leaky', token: 'SECRET', bot_commands: '[]' } as unknown],
+      status: 200,
+    })
+    const bots = await fetchOwnedBots('s_1')
+    expect(bots).toEqual([{ uid: 'bot1', name: 'Leaky' }])
+    expect(JSON.stringify(bots)).not.toContain('SECRET')
   })
 })

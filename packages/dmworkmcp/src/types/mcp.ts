@@ -90,7 +90,7 @@ export interface McpListItem {
    *  stays intact after a bot rename / delete. */
   createdByBotName?: string;
   transport?: McpTransport;
-  source?: "system" | "space" | "mine";
+  source?: McpSource;
   verificationStatus?: "verified" | "unverified" | "error";
   matchReasons?: string[];
   relevance?: number;
@@ -128,6 +128,8 @@ export interface McpDetail extends McpListItem {
  *  "import" is reserved for the Git-import path (#867). */
 export type McpCreatedByType = "human" | "bot" | "import";
 
+export type McpSource = "system" | "space" | "mine";
+
 /** A category filter option with its live count. */
 export interface McpCategory {
   key: string;
@@ -142,7 +144,7 @@ export interface ListMcpParams {
   categories?: string[];
   transports?: McpTransport[];
   visibilities?: McpVisibility[];
-  sources?: Array<"system" | "space" | "mine">;
+  sources?: McpSource[];
   verificationStatuses?: Array<"verified" | "unverified" | "error">;
   /** Provenance filter (mcp-v1.md §4.2; issue #894). Single-select today —
    *  the toolbar segmented control is one-of-three. Kept as a single value
@@ -239,18 +241,17 @@ export interface CreateMcpParams {
   faqs?: McpFaq[];
   /** Cautions / notes rendered under ⚠️ on the detail page. */
   notes?: string[];
-  /** Visibility scope. */
-  visibility: McpVisibility;
 }
 
-export type McpVisibility = "public" | "private";
+export type McpVisibility = "public" | "private" | "system";
 
 /**
  * Payload for updating an existing MCP server entry (PATCH /mcps/{id}).
  * Wire-wise the backend accepts partial updates (fields are pointer types,
  * omitted fields stay unchanged — mcp-v1.md §4.5). The UI always sends the
- * full form, so the shape is identical to CreateMcpParams and every field
- * gets rewritten. Kept as a distinct type alias so callers self-document
+ * full editable form, so the shape is identical to CreateMcpParams and every
+ * editable field gets rewritten. Visibility is intentionally absent and
+ * therefore preserved by the backend. Kept as a distinct type alias so callers self-document
  * "I'm editing" vs "I'm creating" — and so a future partial-update UI can
  * narrow to `Partial<CreateMcpParams>` without a signature churn.
  */

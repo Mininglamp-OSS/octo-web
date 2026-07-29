@@ -1274,7 +1274,6 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             scheduleItem: null,
             isEditing: false,
             members: [member('test-uid'), member('u_b')],
-            forwardingToMatter: false,
         };
         const header = (page as any).renderHeader();
         const json = JSON.stringify(header);
@@ -1714,7 +1713,6 @@ describe('v2 对齐：定时按钮集中到 header（从团队框/个人区移�
             scheduleItem: null,
             isEditing: false,
             members: [submittedMember('test-uid', '我', 'a'), submittedMember('u_b', '李四', 'b')],
-            forwardingToMatter: false,
         };
         const json = JSON.stringify((page as any).renderHeader());
         expect(json).toContain('summary.detail.setSchedule');

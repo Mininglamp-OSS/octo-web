@@ -15,10 +15,11 @@ import { uploadImage, AttachmentRejectedError } from '../attachments/api.ts'
 /** Client-side guard before bothering the backend; the backend stays the final
  * authority and may still reject with a 400 (handled in uploadAndInsertImage). */
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024 // 10 MB
-export const IMAGE_FILE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/bmp,image/svg+xml,.svg'
+export const IMAGE_FILE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/bmp,image/svg,image/svg+xml,.svg'
 
 export function imageMime(file: File): string {
   const type = file.type.trim().toLowerCase()
+  if (type === 'image/svg') return 'image/svg+xml'
   if (type) return type
   return /\.svg$/i.test(file.name) ? 'image/svg+xml' : ''
 }

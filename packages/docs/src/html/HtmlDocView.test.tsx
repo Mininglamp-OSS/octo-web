@@ -866,12 +866,68 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(screen.getByText('docs.doc.deleteEntry')).toBeTruthy()
   })
 
-  it('hides the delete affordance from an admin-not-author viewer (author-only, matches htmlDocAdmin.deleteDoc backend)', async () => {
-    // Delete is author-only both at the octo-doc backend (see htmlDocAdmin.ts header comment) and
-    // symmetrically at the UI gate. A docs-backend admin who is NOT the author must never see the
-    // Delete entry — otherwise clicking it hits the octo-doc 403 ("guaranteed-fail entry").
-    // Symmetric with OCT-216 grants-side hiding of Add member / Current Members from the same
-    // admin-not-author viewer.
+  it.each([200, 404])('soft-deletes the HTML doc through /docs/{docId} on %i', async (status) => {
+    wk.apiClient.responder = (method) => {
+      if (method === 'delete' && status === 404) throw { response: { status } }
+      return { data: {}, status: 200 }
+    }
+    const rawFetch = serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: true })
+    const onDeleted = vi.fn()
+    const { container } = render(
+      <HtmlDocView docId="d_html" space="sp" slug="published-slug" onDeleted={onDeleted} />,
+    )
+    await waitForFrame(container)
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    fireEvent.click(screen.getByText('docs.doc.deleteEntry'))
+    fireEvent.click(screen.getByRole('button', { name: 'docs.comment.delete' }))
+
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledWith('d_html'))
+    expect(wk.apiClient.calls).toContainEqual(
+      expect.objectContaining({
+        method: 'delete',
+        url: '/docs/d_html',
+        config: expect.objectContaining({
+          headers: expect.objectContaining({ 'X-Space-Id': 'sp' }),
+        }),
+      }),
+    )
+    expect(
+      rawFetch.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE'),
+    ).toBe(false)
+  })
+
+  it.each([
+    [403, 'docs.doc.deleteForbidden'],
+    [409, 'docs.doc.deleteArchived'],
+    [500, 'docs.doc.deleteFailed'],
+  ])('shows the shared delete error after the confirm closes on %i', async (status, errorKey) => {
+    wk.apiClient.responder = (method) => {
+      if (method === 'delete') throw { response: { status } }
+      return { data: {}, status: 200 }
+    }
+    const rawFetch = serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: true })
+    const onDeleted = vi.fn()
+    const { container } = render(
+      <HtmlDocView docId="d_html" space="sp" slug="published-slug" onDeleted={onDeleted} />,
+    )
+    await waitForFrame(container)
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    fireEvent.click(screen.getByText('docs.doc.deleteEntry'))
+    fireEvent.click(screen.getByRole('button', { name: 'docs.comment.delete' }))
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(errorKey))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(onDeleted).not.toHaveBeenCalled()
+    expect(wk.apiClient.calls).toContainEqual(
+      expect.objectContaining({ method: 'delete', url: '/docs/d_html' }),
+    )
+    expect(
+      rawFetch.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE'),
+    ).toBe(false)
+  })
+
+  it('hides the delete affordance from an admin-not-author viewer', async () => {
+    // The existing HTML author gate remains independent from the docs-backend role.
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url === '/docs/d1') {
         return { data: { docId: 'd1', ownerId: 'u_owner', role: 'admin' }, status: 200 }

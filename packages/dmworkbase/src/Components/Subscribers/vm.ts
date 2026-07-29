@@ -71,4 +71,8 @@ export class SubscribersVM extends ProviderListener {
         let showMemberNum = this.shouldShowMemberNum()
         return this.subscribers.length>showMemberNum
     }
+
+    memberCount() {
+        return this.routeData.channelInfo?.orgData?.member_count || this.subscribers.length
+    }
 }

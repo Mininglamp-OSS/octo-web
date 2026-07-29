@@ -26,7 +26,11 @@ export interface UseDocDelete {
  * on a 404 (already gone → treat as deleted), so the caller can return to the list. A 403/409/other
  * surfaces a localized error and keeps the document.
  */
-export function useDocDelete(docId: string, onDeleted?: (docId: string) => void): UseDocDelete {
+export function useDocDelete(
+  docId: string,
+  onDeleted?: (docId: string) => void,
+  opts?: { spaceId?: string },
+): UseDocDelete {
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,7 +49,7 @@ export function useDocDelete(docId: string, onDeleted?: (docId: string) => void)
     setDeleting(true)
     setError(null)
     try {
-      await deleteDoc(docId)
+      await deleteDoc(docId, opts)
       onDeleted?.(docId)
     } catch (e) {
       const outcome = classifyDeleteStatus((e as ApiError).response?.status)

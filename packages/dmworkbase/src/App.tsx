@@ -31,15 +31,10 @@ export type MittEvents = {
     shortId?: string;
   };
   "wk:close-thread-panel": undefined;
-  "wk:toggle-matter-panel": { channelId: string; channelType: number };
-  /** v0.7 Matter 详情面板切换（跟子区/文件预览/任务列表可并存） */
-  "wk:toggle-matter-detail-panel": { channelId: string; channelType: number };
   "wk:toggle-summary-panel": { channelId: string; channelType: number; summaryPanelView: 'history' | 'new'; forceOpen?: boolean };
   "wk:open-summary-modal": { channelId: string; channelType: number };
   /** 主聊天框头部搜索入口点击：请求打开该频道的会话内搜索面板（与信息栏「查找聊天内容」同一效果）。 */
   "wk:open-channel-search": { channelId: string; channelType: number };
-  /** 打开多选→添加到事项的弹出菜单（由 dmworktodo 模块接管渲染） */
-  "wk:open-matter-link-menu": { anchor: HTMLElement; channelId: string; channelType: number; messages?: Array<{ messageSeq?: number; messageID?: string; fromUID?: string; fromUName?: string; content?: string; timestamp?: number; attachments?: any[] }> };
   "wk:switch-sidebar-tab": string;
   "wk:file-preview": {
     url: string;
@@ -58,16 +53,7 @@ export type MittEvents = {
     fromUID?: string;
     /** 消息摘要（用于回复时显示） */
     conversationDigest?: string;
-    /**
-     * 来源事项 ID。从事项详情面板 (产出文件 tab / 时间线附件) 触发预览时传入。
-     * Chat 页面据此把事项面板暂时隐藏 (而不是卸掉), 关闭预览后 unhide 让用户
-     * 回到原样, 且不在文件预览头部显示 ← 返回箭头 (因为 X 已经能"回到事项")。
-     */
-    originMatterId?: string;
   } | null;
-  'wk:open-create-matter-modal': { channelId: string; channelType: number; channelName?: string; prefillTitle?: string; prefillAssigneeUids?: string[]; clearOnConfirm?: boolean };
-  /** After matter created from toolbar/Alt+Enter, send editor content then clear */
-  'wk:matter-created-from-input': { channelId: string; channelType: number };
   /**
    * NavRail 菜单按钮被点击 (不论是切换到该菜单还是重复点击当前菜单)。
    * 接收方可以据此刷新数据 — 同一路由长期挂载时用户重进菜单的场景下, 组件
@@ -91,15 +77,6 @@ export type MittEvents = {
     name?: string;
     value?: string;
   } | undefined;
-  /**
-   * Matter 任一字段被编辑后广播 (标题 / 主要目标 / DDL / 状态 / 负责人 /
-   * 关联群聊等)。接收方 (通常是左侧事项列表) 据此 reload, 避免跨 React
-   * 子树数据不同步 — 详情面板和列表分别挂在 routeRight / routeLeft, 不共
-   * 享 state, 列表接口返回的字段也不会被详情页的 setMatter 影响。
-   */
-  'wk:matter-updated': { matterId: string };
-  /** Matter 被删除后广播, 接收方据此从列表移除 */
-  'wk:matter-deleted': { matterId: string };
   "summary-space-changed": undefined;
   /**
    * Chat VM 完成 requestConversationList()（切 Space / 重连后会触发）后广播。
@@ -304,7 +281,7 @@ export class WKRemoteConfig {
   docsOn: boolean = false;
   /**
    * Loop(回路)模块展示开关。后端字段 dmloop_on 为 true 时，前端在侧边栏 NavRail
-   * 展示「回路」(LoopModule) 入口；false 或字段缺失时隐藏。
+   * 展示企业「回路」入口；false 或字段缺失时隐藏。
    *
    * 默认 false(fail-safe): loop 依赖后端服务 + fleet 代理 + daemon 运行时一整套未就绪前保持隐藏——
    * feature 分支合入 main 也不对用户暴露；运维在依赖部署就绪后再下发 dmloop_on=true 放量。
@@ -313,7 +290,7 @@ export class WKRemoteConfig {
    */
   dmloopOn: boolean = false;
   /**
-   * 「我的 / 运行时」(PersonalModule) 模块展示开关。后端字段 dmpersonal_on 为 true 时展示入口。
+   * 企业「我的 / 运行时」入口展示开关。后端字段 dmpersonal_on 为 true 时展示入口。
    * 与 dmloop_on 分开:「我的」后续会重新设计、脱离 loop 独立演进,故独立门控(可分阶段放量)。
    * 默认 false(fail-safe),运维就绪后下发 dmpersonal_on=true。纯 UI 展示门,不承担鉴权。
    */

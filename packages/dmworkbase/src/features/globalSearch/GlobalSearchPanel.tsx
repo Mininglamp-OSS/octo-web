@@ -9,7 +9,9 @@ import TabGroup from "../../Components/GlobalSearch/tab-group";
 import TabFile from "../../Components/GlobalSearch/tab-file";
 import { Channel } from "wukongimjssdk";
 import GlobalContentSearchPanel from "../../Components/GlobalSearch/GlobalContentSearchPanel";
-import GlobalSearchFilterPanel from "../../Components/GlobalSearch/GlobalSearchFilterPanel";
+import GlobalSearchFilterPanel, {
+  type GlobalSearchFilterApplyMeta,
+} from "../../Components/GlobalSearch/GlobalSearchFilterPanel";
 import GlobalChatSearchPanel from "../globalChatSearch/GlobalChatSearchPanel";
 import { createGlobalSearchApiDataSource } from "../../bridge/globalSearch/createGlobalSearchDataSource";
 import { selectedGlobalSearchFilterValueCount } from "../../bridge/globalSearch/filterState";
@@ -52,6 +54,7 @@ export interface GlobalSearchProps {
 export interface GlobalSearchState {
   filterOpen: boolean;
   filters: GlobalSearchFilters;
+  fileTypeCategoryKeys: string[];
   searchValue: string;
 }
 
@@ -73,6 +76,7 @@ export default class GlobalSearch extends Component<
     this.state = {
       filterOpen: false,
       filters: defaultGlobalSearchFilters(),
+      fileTypeCategoryKeys: [],
       searchValue: "",
       ...props.initialState,
     };
@@ -110,6 +114,39 @@ export default class GlobalSearch extends Component<
     this._removeConfigListener?.();
     this._removeConfigListener = undefined;
   }
+
+  private handleApplyFilters = (
+    filters: GlobalSearchFilters,
+    meta?: GlobalSearchFilterApplyMeta
+  ) => {
+    this.setState((prev) => ({
+      filters,
+      fileTypeCategoryKeys:
+        meta?.fileTypeCategoryKeys ??
+        (filters.fileExts.length > 0 ? prev.fileTypeCategoryKeys : []),
+    }));
+  };
+
+  private handleTabChange = (key: string) => {
+    const currentKey = this.vm.selectedTabKey;
+    const contentTabInvolved =
+      currentKey !== key &&
+      (currentKey === "messages" ||
+        currentKey === "files" ||
+        key === "messages" ||
+        key === "files");
+    if (!contentTabInvolved) {
+      this.vm.onTabClick(key);
+      return;
+    }
+    this.setState(
+      {
+        filters: defaultGlobalSearchFilters(),
+        fileTypeCategoryKeys: [],
+      },
+      () => this.vm.onTabClick(key)
+    );
+  };
 
   handleLocate = (item: ChannelSearchItem) => {
     // Guard: backend v10 always fills channel_id/channel_type on hits
@@ -251,7 +288,8 @@ export default class GlobalSearch extends Component<
               keyword={vm.keyword}
               filters={this.state.filters}
               dataSource={this.globalDataSource}
-              onApply={(filters) => this.setState({ filters })}
+              fileTypeCategoryKeys={this.state.fileTypeCategoryKeys}
+              onApply={this.handleApplyFilters}
             />
           </aside>
         )}
@@ -273,7 +311,8 @@ export default class GlobalSearch extends Component<
         }}
         render={(vm: GlobalSearchVM) => {
           const filterCount = selectedGlobalSearchFilterValueCount(
-            this.state.filters
+            this.state.filters,
+            { fileTypeCategoryCount: this.state.fileTypeCategoryKeys.length }
           );
           const isGlobalContentTab =
             vm.selectedTabKey === "messages" || vm.selectedTabKey === "files";
@@ -322,7 +361,7 @@ export default class GlobalSearch extends Component<
                     label: tab.tab,
                   }))}
                   activeTab={vm.selectedTabKey}
-                  onTabChange={(key) => vm.onTabClick(key)}
+                  onTabChange={this.handleTabChange}
                   error={vm.searchError}
                   actions={
                     this.contentSearchEnabled && isGlobalContentTab ? (
@@ -334,6 +373,7 @@ export default class GlobalSearch extends Component<
                             onClick={() =>
                               this.setState({
                                 filters: defaultGlobalSearchFilters(),
+                                fileTypeCategoryKeys: [],
                               })
                             }
                           >

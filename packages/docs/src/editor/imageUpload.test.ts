@@ -6,11 +6,13 @@ describe('SVG image upload input', () => {
     const file = new File(['<svg/>'], 'diagram.svg', { type: 'image/svg+xml' })
     expect(imageMime(file)).toBe('image/svg+xml')
     expect(isUploadableImage(file)).toBe(true)
+    expect(IMAGE_FILE_ACCEPT.split(',')).toContain('image/svg')
     expect(IMAGE_FILE_ACCEPT.split(',')).toContain('image/svg+xml')
     expect(IMAGE_FILE_ACCEPT.split(',')).toContain('.svg')
   })
 
-  it('recognizes an SVG extension only when the browser leaves File.type empty', () => {
+  it('normalizes the legacy SVG MIME and uses the extension only for an empty MIME', () => {
+    expect(imageMime(new File(['<svg/>'], 'diagram.svg', { type: 'image/svg' }))).toBe('image/svg+xml')
     expect(imageMime(new File(['<svg/>'], 'diagram.SVG', { type: '' }))).toBe('image/svg+xml')
     expect(imageMime(new File(['x'], 'misleading.svg', { type: 'text/plain' }))).toBe('text/plain')
   })

@@ -8,6 +8,7 @@
 
 import { WKApp, i18n, t, useI18n, Menus, SpaceService } from '@octo/base'
 import { VoiceInputButton } from '@octo/base'
+import { Conversation, Channel, ChannelTypePerson, MAX_MESSAGE_LENGTH } from '@octo/base'
 import type { ReplaceMode, SelectionRange } from '@octo/base'
 import type {
   APIClient,
@@ -43,7 +44,7 @@ export function getWKApp(): WKAppShape {
 
 /**
  * The host's RIGHT (main) route pane manager. Production: the real static WKApp.routeRight
- * (a ContextRouteManager) — the same one Matter/Summary push their detail panel into so it
+ * (a ContextRouteManager) — the same one Summary pushes its detail panel into so it
  * fills the main content area while the list stays in the left route slot. Tests: the
  * override's routeRight stub if provided, else null (DocsHome falls back to inline render).
  */
@@ -260,6 +261,44 @@ export async function fetchMyBots(spaceId?: string): Promise<SpaceMemberLite[]> 
     .map((b) => ({ uid: b.uid, name: b.name || b.uid, isBot: true }))
 }
 
+/** Minimal view of a `/robot/owned_bots` entry the docs "new HTML" picker reads. */
+interface HostOwnedBot {
+  uid: string
+  name?: string
+  description?: string
+}
+
+/**
+ * Fetch the bots the CURRENT user owns in a Space via `GET /robot/owned_bots?space_id=<encoded>`
+ * (octo-server modules/robot ownedBots) for the docs "new HTML" picker.
+ *
+ * WHY a dedicated endpoint: `my_bots` is friend-dimension and `space_bots` is space-wide, so
+ * neither expresses "bots I created, active, in THIS space" — the exact owner semantics the HTML
+ * creation flow needs (a user may only drive HTML creation through a bot they own; plan Task 1 /
+ * §5.4). The server enforces the owner + Space + active filter; the Web layer just maps the
+ * response to the choosable shape and NEVER reads a token/credential field (plan §5.5).
+ *
+ * Returns `{ uid, name, description? }` triples (name falls back to the uid so a bot with no
+ * display name is never blank; description is carried through only when present). Resolves to an
+ * EMPTY list on a non-array body, and drops entries with no uid — so the caller can render an
+ * "empty"/"error" state without a broken row.
+ */
+export async function fetchOwnedBots(spaceId: string): Promise<import('./types.ts').OwnedBotLite[]> {
+  if (!spaceId) return []
+  const { data } = await apiClient().get<HostOwnedBot[]>(
+    `/robot/owned_bots?space_id=${encodeURIComponent(spaceId)}`,
+  )
+  const bots = Array.isArray(data) ? data : []
+  return bots
+    .filter((b): b is HostOwnedBot => !!b && !!b.uid)
+    .map((b) => {
+      const lite: import('./types.ts').OwnedBotLite = { uid: b.uid, name: b.name || b.uid }
+      // Carry description only when the server actually sent one — no `description: undefined` noise.
+      if (b.description) lite.description = b.description
+      return lite
+    })
+}
+
 /**
  * Re-wrap the REAL host APIClient so its responses look axios-style to docs callers.
  *
@@ -368,6 +407,12 @@ export function openDocForward(opts: OpenDocForwardOptions): void {
   host.showConversationSelect(undefined, opts.modalTitle, {
     messageTitle: opts.title,
     link: opts.link,
+    shareAsCard: opts.shareAsCard,
+    docId: opts.docId,
+    spaceId: opts.spaceId,
+    kind: opts.kind,
+    ownerName: opts.ownerName,
+    updatedAt: opts.updatedAt,
     canGrant: opts.canGrant,
     disabledReason: opts.disabledReason,
     defaultRole: opts.defaultRole,
@@ -419,5 +464,14 @@ export { Menus }
  * can wire voice input without importing @octo/base subpaths directly (tests alias the seam). */
 export { VoiceInputButton }
 export type { ReplaceMode, SelectionRange }
+
+/**
+ * Re-export the host `Conversation` component + WuKongIM `Channel` primitives through the docs seam
+ * (plan Task 5). The docs "new HTML" right-pane shell builds `new Channel(botUid, ChannelTypePerson)`
+ * and renders `<Conversation initialCompose=... />` — all via @octo/base so docs never imports
+ * wukongimjssdk directly and tests/typecheck resolve them through the single seam boundary.
+ */
+export { Conversation, Channel, ChannelTypePerson, MAX_MESSAGE_LENGTH }
+export type { InitialCompose, InitialComposeState, ConversationProps } from '@octo/base'
 
 export * from './types.ts'

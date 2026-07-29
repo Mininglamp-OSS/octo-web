@@ -28,7 +28,39 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { runSendWithCleanup, SendCleanup } from "../sendFlow";
+import {
+  announceContextAfterSendReady,
+  invokeReadySend,
+  runSendWithCleanup,
+  SendCleanup,
+} from "../sendFlow";
+
+describe("announceContextAfterSendReady", () => {
+  it("wires the send handler before announcing context readiness", async () => {
+    const sendRef: { current: (() => Promise<boolean>) | null } = { current: null };
+    const send = vi.fn().mockResolvedValue(true);
+    let firstContextSend: Promise<boolean> | undefined;
+
+    announceContextAfterSendReady(sendRef, send, () => {
+      // Models Conversation consuming a no-attachment initialCompose immediately
+      // inside MessageInput's first onContext callback.
+      firstContextSend = invokeReadySend(sendRef.current);
+    });
+
+    await expect(firstContextSend).resolves.toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("invokeReadySend", () => {
+  it("returns false instead of legacy void when the send callback is not ready", async () => {
+    await expect(invokeReadySend(null)).resolves.toBe(false);
+  });
+
+  it("forwards the real result once the send callback is ready", async () => {
+    await expect(invokeReadySend(async () => true)).resolves.toBe(true);
+  });
+});
 
 interface RecordingCleanup extends SendCleanup {
   calls: string[];

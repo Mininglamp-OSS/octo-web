@@ -112,7 +112,10 @@ export default interface ConversationContext {
   getPendingAttachments(): File[];
 
   /** 追加文件到待发送队列（超限时返回错误描述，成功返回 null） */
-  addPendingAttachments(files: File[]): string | null;
+  addPendingAttachments(
+    files: File[],
+    source?: "paste" | "upload"
+  ): Promise<string | null>;
 
   /** 移除指定索引的待发送附件 */
   removePendingAttachment(index: number): void;

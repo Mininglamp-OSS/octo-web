@@ -1,15 +1,14 @@
 import React, { Component } from "react";
 import {
     Button,
-    Input,
-    Select,
+    Dropdown,
     Spin,
-    Pagination,
     Toast,
     Banner,
     Tooltip,
 } from "@douyinfe/semi-ui";
-import { IconSearch, IconPlus, IconRefresh } from "@douyinfe/semi-icons";
+import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
+import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp } from "@octo/base";
 import * as api from "../api/summaryApi";
 import type {
@@ -23,12 +22,24 @@ import SummaryCard from "../components/SummaryCard";
 import SummaryCreatePage from "./SummaryCreatePage";
 import SummaryDetailPage from "./SummaryDetailPage";
 
+interface SummaryListPageProps {
+    channelId?: string;
+    /** Called when the user clicks the close button (panel mode only). */
+    onClose?: () => void;
+    /** Called when the user clicks "new summary" in panel mode. */
+    onCreateNew?: () => void;
+    /** Called when a card is clicked in panel mode (instead of routeRight.push). */
+    onViewDetail?: (taskId: number) => void;
+}
+
 interface SummaryListPageState {
     items: SummaryListItem[];
     total: number;
     page: number;
     pageSize: number;
     loading: boolean;
+    loadingMore: boolean;
+    hasMore: boolean;
     error: string | null;
     statusFilter: TaskStatusType | undefined;
     keyword: string;
@@ -44,7 +55,7 @@ export const getStatusOptions = () => [
     { value: TaskStatus.CANCELLED, label: getStatusLabel(TaskStatus.CANCELLED) },
 ];
 
-export default class SummaryListPage extends Component<{}, SummaryListPageState> {
+export default class SummaryListPage extends Component<SummaryListPageProps, SummaryListPageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
 
@@ -52,8 +63,10 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         items: [],
         total: 0,
         page: 1,
-        pageSize: 20,
+        pageSize: this.props?.channelId ? 50 : 20,
         loading: false,
+        loadingMore: false,
+        hasMore: true,
         error: null,
         statusFilter: undefined,
         keyword: "",
@@ -141,6 +154,12 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         window.addEventListener("summary-detail-inactive", this.handleDetailInactive_);
     }
 
+    componentDidUpdate(prevProps: SummaryListPageProps) {
+        if (prevProps.channelId !== this.props.channelId) {
+            this.loadData();
+        }
+    }
+
     componentWillUnmount() {
         window.dispatchEvent(new CustomEvent("summary-list-unmount"));
         if (this.searchTimer) clearTimeout(this.searchTimer);
@@ -155,19 +174,41 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         window.removeEventListener("summary-detail-inactive", this.handleDetailInactive_);
     }
 
+    async fetchData(): Promise<{ items: SummaryListItem[]; total: number; attention_count: number }> {
+        const { page, pageSize, statusFilter, keyword } = this.state;
+        const { channelId } = this.props;
+        const params: ListSummariesParams = {
+            page,
+            page_size: pageSize,
+            status: statusFilter,
+            keyword: keyword || undefined,
+            origin_channel_id: channelId || undefined,
+        };
+        const resp = await api.listSummaries(params);
+        this.attentionCount = resp.attention_count ?? 0;
+        this.emitBadgeUpdate(resp.attention_count);
+        return { items: resp.items, total: resp.total, attention_count: resp.attention_count ?? 0 };
+    }
+
     async loadData() {
-        this.setState({ loading: true, error: null });
+        this.setState({ loading: true, error: null, page: 1, hasMore: true });
         try {
-            const { page, pageSize, statusFilter, keyword } = this.state;
+            const { pageSize, statusFilter, keyword } = this.state;
             const params: ListSummariesParams = {
-                page,
+                page: 1,
                 page_size: pageSize,
                 status: statusFilter,
                 keyword: keyword || undefined,
+                origin_channel_id: this.props.channelId || undefined,
             };
             const resp = await api.listSummaries(params);
             this.attentionCount = resp.attention_count ?? 0;
-            this.setState({ items: resp.items, total: resp.total, loading: false }, () => {
+            this.setState({
+                items: resp.items,
+                total: resp.total,
+                loading: false,
+                hasMore: resp.items.length < resp.total,
+            }, () => {
                 this.maybeStartBatchPoll();
                 this.emitBadgeUpdate(resp.attention_count);
             });
@@ -176,9 +217,38 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         }
     }
 
-    handlePageChange = (page: number) => {
-        this.setState({ page }, () => this.loadData());
+    handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const el = e.currentTarget;
+        const { scrollTop, scrollHeight, clientHeight } = el;
+        if (scrollHeight - scrollTop - clientHeight < 100) {
+            this.loadMore();
+        }
     };
+
+    async loadMore() {
+        if (this.state.loadingMore || !this.state.hasMore || this.state.loading) return;
+        this.setState({ loadingMore: true });
+        try {
+            const nextPage = this.state.page + 1;
+            const { pageSize, statusFilter, keyword } = this.state;
+            const params: ListSummariesParams = {
+                page: nextPage,
+                page_size: pageSize,
+                status: statusFilter,
+                keyword: keyword || undefined,
+                origin_channel_id: this.props.channelId || undefined,
+            };
+            const resp = await api.listSummaries(params);
+            this.setState(prev => ({
+                items: [...prev.items, ...resp.items],
+                page: nextPage,
+                loadingMore: false,
+                hasMore: prev.items.length + resp.items.length < resp.total,
+            }), () => this.maybeStartBatchPoll());
+        } catch {
+            this.setState({ loadingMore: false });
+        }
+    }
 
     private maybeStartBatchPoll() {
         const activeIds = this.state.items
@@ -256,6 +326,9 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
      * Uses a separate unfiltered query so badge is independent of list filter.
      */
     private emitBadgeUpdate(count?: number) {
+        // Panel mode (channelId set): attention_count is channel-scoped, must not
+        // overwrite the global nav badge. Only the full-page route owns the badge.
+        if (this.props.channelId) return;
         if (count != null) {
             WKApp.mittBus.emit("summary-badge-update" as any, { count });
             return;
@@ -284,20 +357,47 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         try {
             await api.deleteSummary(taskId);
             Toast.success(t("summary.list.deleteSuccess"));
-            WKApp.routeRight.popToRoot();
-            WKApp.routeRight.push(
-                <SummaryCreatePage onCreated={() => this.loadData()} />
-            );
+            // Always reload from page 1 after delete to avoid losing earlier pages
             this.loadData();
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.deleteFailed"));
         }
     };
 
+    handleDelete_refetch = async () => {
+        const fresh = await this.fetchData();
+        if (fresh.items.length > 0) {
+            const next = fresh.items[0];
+            this.setState({ activeTaskId: next.task_id, items: fresh.items, total: fresh.total }, () => {
+                if (this.props.onViewDetail) {
+                    this.props.onViewDetail(next.task_id);
+                } else {
+                    WKApp.routeRight.popToRoot();
+                    WKApp.routeRight.push(<SummaryDetailPage taskId={next.task_id} emitSelection />);
+                }
+            });
+        } else {
+            this.setState({ items: [], total: 0, activeTaskId: null }, () => {
+                if (this.props.onCreateNew) {
+                    this.props.onCreateNew();
+                } else {
+                    WKApp.routeRight.popToRoot();
+                    WKApp.routeRight.push(
+                        <SummaryCreatePage onCreated={() => this.loadData()} />
+                    );
+                }
+            });
+        }
+    };
+
     handleCardClick = (taskId: number) => {
         this.setState({ activeTaskId: taskId });
-        WKApp.routeRight.popToRoot();
-        WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} emitSelection />);
+        if (this.props.onViewDetail) {
+            this.props.onViewDetail(taskId);
+        } else {
+            WKApp.routeRight.popToRoot();
+            WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} emitSelection />);
+        }
     };
 
     handleLeave = async (taskId: number) => {
@@ -321,7 +421,48 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         }
     };
 
+    handleRetry = async (taskId: number) => {
+        try {
+            const task = this.state.items.find(i => i.task_id === taskId);
+            await api.regenerateSummary(taskId, { topic: task?.title || "" });
+            Toast.success(t("summary.list.retrySuccess"));
+            this.loadData();
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.common.operationFailed"));
+        }
+    };
+
+    handleCancel = async (taskId: number) => {
+        try {
+            await api.cancelSummary(taskId);
+            Toast.success(t("summary.list.cancelSuccess"));
+            this.loadData();
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.common.operationFailed"));
+        }
+    };
+
+    handleRegenerate = (taskId: number) => {
+        this.handleCardClick(taskId);
+        setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("summary-detail-regenerate", { detail: { taskId } }));
+        }, 300);
+    };
+
+    handleEdit = (taskId: number) => {
+        this.handleCardClick(taskId);
+        // 300ms delay allows detail page to mount and register event listener
+        // before dispatching the edit action event
+        setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("summary-detail-edit", { detail: { taskId } }));
+        }, 300);
+    };
+
     handleCreate = () => {
+        if (this.props.onCreateNew) {
+            this.props.onCreateNew();
+            return;
+        }
         WKApp.routeRight.popToRoot();
         WKApp.routeRight.push(
             <SummaryCreatePage onCreated={() => this.loadData()} />
@@ -329,52 +470,79 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     };
 
     render() {
-        const { items, total, page, pageSize, loading, error, statusFilter, keyword, activeTaskId } = this.state;
+        const { items, total, pageSize, loading, loadingMore, hasMore, error, statusFilter, keyword, activeTaskId } = this.state;
+        const { channelId, onClose } = this.props;
         const { locale, t: translate } = this.context;
         const statusOptions = getStatusOptions();
+        const isPanel = Boolean(channelId);
 
         return (
-            <div className="summary-list-page">
+            <div className={`summary-list-page${isPanel ? " summary-list-page--panel" : ""}`}>
                 <div className="summary-list-header">
-                    <h2 className="summary-list-title">{translate("summary.list.title")}</h2>
-                    <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
-                        <Button
-                            icon={<IconPlus />}
-                            theme="borderless"
-                            onClick={this.handleCreate}
-                        />
-                    </Tooltip>
+                    <h2 className="summary-list-title">
+                        {isPanel ? translate("summary.chatSummary.panelTitle") : translate("summary.list.title")}
+                    </h2>
+                    <div className="summary-list-header-actions">
+                        {isPanel && (
+                            <Tooltip content={translate("summary.chatSummary.createNew")} position="bottom">
+                                <Button
+                                    icon={<IconPlus />}
+                                    theme="borderless"
+                                    onClick={this.handleCreate}
+                                />
+                            </Tooltip>
+                        )}
+                        {isPanel && onClose ? (
+                            <Button
+                                icon={<X size={18} />}
+                                theme="borderless"
+                                type="tertiary"
+                                onClick={onClose}
+                            />
+                        ) : (
+                            <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
+                                <Button
+                                    icon={<IconPlus />}
+                                    theme="borderless"
+                                    onClick={this.handleCreate}
+                                />
+                            </Tooltip>
+                        )}
+                    </div>
                 </div>
 
                 <div className="summary-list-toolbar">
-                    <Input
-                        className="summary-list-search"
-                        prefix={<IconSearch />}
-                        placeholder={translate("summary.list.searchPlaceholder")}
-                        value={keyword}
-                        onChange={this.handleKeywordChange}
-                        showClear
-                    />
-                    <div className="summary-list-actions">
-                        <Select
-                            className="summary-list-status-filter"
-                            key={locale}
-                            value={statusFilter ?? ""}
-                            onChange={this.handleStatusChange}
-                        >
-                            {statusOptions.map((opt) => (
-                                <Select.Option key={String(opt.value)} value={opt.value}>
-                                    {opt.label}
-                                </Select.Option>
-                            ))}
-                        </Select>
-                        <Button
-                            className="summary-list-refresh"
-                            icon={<IconRefresh />}
-                            theme="borderless"
-                            onClick={() => this.loadData()}
+                    <div className="summary-list-search-wrap">
+                        <IconSearch className="summary-list-search-icon" />
+                        <input
+                            className="summary-list-search-input"
+                            placeholder={translate("summary.list.searchPlaceholder")}
+                            value={keyword}
+                            onChange={(e) => this.handleKeywordChange(e.target.value)}
                         />
                     </div>
+                    <Dropdown
+                        trigger="click"
+                        position="bottomLeft"
+                        render={
+                            <Dropdown.Menu>
+                                {statusOptions.map((opt) => (
+                                    <Dropdown.Item
+                                        key={String(opt.value)}
+                                        active={statusFilter === opt.value}
+                                        onClick={() => this.handleStatusChange(opt.value)}
+                                    >
+                                        {opt.label}
+                                    </Dropdown.Item>
+                                ))}
+                            </Dropdown.Menu>
+                        }
+                    >
+                        <div className="summary-list-status-trigger">
+                            <span>{statusOptions.find((o) => o.value === (statusFilter ?? ""))?.label ?? statusOptions[0]?.label}</span>
+                            <ChevronDown size={14} />
+                        </div>
+                    </Dropdown>
                 </div>
 
                 {error && (
@@ -400,43 +568,57 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
 
                 {!loading && !error && items.length === 0 && (
                     <div className="summary-list-empty">
-                        <div className="summary-list-empty-icon">📄</div>
-                        <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
-                        <div className="summary-list-empty-desc">
-                            {translate("summary.list.emptyDesc")}
-                        </div>
-                        <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
-                            {translate("summary.list.createFirst")}
-                        </Button>
+                        {isPanel ? (
+                            <>
+                                <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
+                                <div className="summary-list-empty-desc">{translate("summary.chatSummary.emptyDescription")}</div>
+                                <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                    {translate("summary.chatSummary.createNew")}
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <div className="summary-list-empty-icon">📄</div>
+                                <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
+                                <div className="summary-list-empty-desc">
+                                    {translate("summary.list.emptyDesc")}
+                                </div>
+                                <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                    {translate("summary.list.createFirst")}
+                                </Button>
+                            </>
+                        )}
                     </div>
                 )}
 
                 {!loading && items.length > 0 && (
-                    <>
-                        <div className="summary-list-content">
-                            {items.map((item) => (
-                                <SummaryCard
-                                    key={item.task_id}
-                                    task={item}
-                                    active={item.task_id === activeTaskId}
-                                    onClick={this.handleCardClick}
-                                    onDelete={this.handleDelete}
-                                    onRespond={this.handleRespond}
-                                    onLeave={this.handleLeave}
-                                />
-                            ))}
-                        </div>
-                        {total > pageSize && (
-                            <div className="summary-list-pagination">
-                                <Pagination
-                                    currentPage={page}
-                                    pageSize={pageSize}
-                                    total={total}
-                                    onPageChange={this.handlePageChange}
-                                />
+                    <div className="summary-list-content" onScroll={this.handleScroll}>
+                        {items.map((item) => (
+                            <SummaryCard
+                                key={item.task_id}
+                                task={item}
+                                active={item.task_id === activeTaskId}
+                                onClick={this.handleCardClick}
+                                onDelete={this.handleDelete}
+                                onRespond={this.handleRespond}
+                                onLeave={this.handleLeave}
+                                onRetry={this.handleRetry}
+                                onRegenerate={this.handleRegenerate}
+                                onEdit={this.handleEdit}
+                                onCancel={this.handleCancel}
+                            />
+                        ))}
+                        {loadingMore && (
+                            <div className="summary-list-loading-more">
+                                <Spin />
                             </div>
                         )}
-                    </>
+                        {!hasMore && items.length > pageSize && (
+                            <div className="summary-list-no-more">
+                                {translate("summary.list.noMore")}
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
         );

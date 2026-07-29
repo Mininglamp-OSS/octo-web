@@ -41,6 +41,7 @@ export interface UserInfoViewProps {
   remarkDraft: string;
   savingRemark: boolean;
   sections: UserInfoViewSections;
+  status?: React.ReactNode;
   footerAction?: React.ReactNode;
   footerHint?: React.ReactNode;
   labels: UserInfoViewLabels;
@@ -63,6 +64,7 @@ function UserInfoView({
   remarkDraft,
   savingRemark,
   sections,
+  status,
   footerAction,
   footerHint,
   labels,
@@ -103,6 +105,7 @@ function UserInfoView({
           </>
         }
         metaItems={metaItems}
+        status={status}
       />
       {showRemarkEditor && (
         <div className="wk-userinfo-remark-section">
