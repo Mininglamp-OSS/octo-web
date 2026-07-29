@@ -6,6 +6,7 @@ const sdkState = vi.hoisted(() => ({
     sendingQueues: new Map<number, unknown>(),
     channelInfos: new Map<string, any>(),
     syncMessages: vi.fn(),
+    markConversationUnread: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock("wukongimjssdk", () => {
@@ -95,9 +96,9 @@ vi.mock("../../../App", () => ({
         loginInfo: { uid: "me" },
         config: { pageSizeOfMessage: 30 },
         dataSource: { channelDataSource: { subscribers: () => Promise.resolve([]) } },
-        mittBus: { on: () => {}, off: () => {} },
+        mittBus: { on: () => {}, off: () => {}, emit: () => {} },
         conversationProvider: {
-            markConversationUnread: () => Promise.resolve(),
+            markConversationUnread: sdkState.markConversationUnread,
             syncMessages: sdkState.syncMessages,
         },
         shared: { currentSpaceId: "", notifyMessageDeleteListener: () => {} },
@@ -121,7 +122,7 @@ vi.mock("../../../Service/Provider", () => ({
 vi.mock("react-scroll", () => ({ animateScroll: { scrollToBottom: () => {} }, scroller: { scrollTo: () => {} } }))
 vi.mock("../../../Service/Const", () => ({
     EndpointID: {},
-    MessageContentTypeConst: { time: 1001, historySplit: 1002, rtcData: 1003 },
+    MessageContentTypeConst: { time: -1, historySplit: -3, removeMembers: 1003, rtcData: 9994 },
     OrderFactor: 10000,
     ChannelTypeCommunityTopic: 6,
 }))
@@ -218,6 +219,7 @@ describe("ConversationVM message ordering", () => {
         ConversationVM.sendQueue.clear()
         sdkState.sendingQueues.clear()
         sdkState.channelInfos.clear()
+        sdkState.markConversationUnread.mockClear()
         sdkState.syncMessages.mockReset()
         document.body.innerHTML = ""
     })
@@ -571,5 +573,53 @@ describe("ConversationVM message ordering", () => {
 
         expect(() => vm.updateReplyMessageContent({ messageID: "m1", contentEdit: "edited" } as any)).not.toThrow()
         expect(replyMsg.content.reply.content).toBe("edited")
+    })
+
+    it("clears unread after auto-scrolling a member-leave system message to the bottom", async () => {
+        const vm = new ConversationVM(channel)
+        const memberLeft = wrap({
+            clientMsgNo: "member-left",
+            messageSeq: 11,
+            timestamp: 200,
+            contentType: 1003,
+            content: { contentType: 1003, displayText: "Alice left the group" },
+            fromUID: "u1",
+        })
+        vm.messagesOfOrigin = [memberLeft]
+        vm.lastMessage = memberLeft
+        vm.browseToMessageSeq = 10
+        vm.unreadCount = 1
+        vm.pullupHasMore = false
+
+        vm.scrollToBottom(false)
+        await Promise.resolve()
+
+        expect(vm.browseToMessageSeq).toBe(11)
+        expect(vm.unreadCount).toBe(0)
+        expect(sdkState.markConversationUnread).toHaveBeenCalledWith(channel, 0)
+    })
+
+    it("keeps unread when scroll-to-bottom only reaches a partially loaded window", async () => {
+        const vm = new ConversationVM(channel)
+        const memberLeft = wrap({
+            clientMsgNo: "member-left-partial",
+            messageSeq: 11,
+            timestamp: 200,
+            contentType: 1003,
+            content: { contentType: 1003, displayText: "Alice left the group" },
+            fromUID: "u1",
+        })
+        vm.messagesOfOrigin = [memberLeft]
+        vm.lastMessage = memberLeft
+        vm.browseToMessageSeq = 10
+        vm.unreadCount = 1
+        vm.pullupHasMore = true
+
+        vm.scrollToBottom(false)
+        await Promise.resolve()
+
+        expect(vm.browseToMessageSeq).toBe(10)
+        expect(vm.unreadCount).toBe(1)
+        expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
     })
 })
