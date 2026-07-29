@@ -19,6 +19,14 @@ import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
 import { consumeStandaloneReturn, persistStandaloneReturn } from "./standaloneReturn";
+import {
+  ShareLandingPage,
+  InviteLandingPage,
+  shareTokenFromPath,
+  inviteTokenFromPath,
+  isDriveSharePath,
+  isDriveInvitePath,
+} from "@octo/drive";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -51,6 +59,15 @@ interface AppLayoutState {
 function recoverOctoSessionFromStorage(persist: boolean): void {
     if (WKApp.loginInfo.token) return;
     adoptStoredSession(WKApp.loginInfo, localStorage, { persist });
+}
+
+/**
+ * Leave a drive share/invite landing page for the main drive view. The landing pages render
+ * standalone (outside the app shell), so a full navigation to `/drive` is the clean handoff:
+ * it boots the shell, and if the viewer is anonymous the login gate takes over.
+ */
+function enterDriveHome(): void {
+    if (typeof window !== "undefined") window.location.assign("/drive");
 }
 
 /**
@@ -448,6 +465,35 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             // available without exposing sid in the return URL. The standalone page itself only
             // mounts once a token exists, so the anonymous path is the ONLY place this key gets
             // written for a first-time visitor — onLogin consumes it via consumeStandaloneReturn.
+            persistStandaloneReturn();
+            // Anonymous: fall through to the login screen (below) without navigating away.
+        }
+
+        // Drive public-share landing (`/drive/s/:token`, PR#1146 N2). The share
+        // access/download endpoints are ANONYMOUS by design (an external recipient
+        // has no octo account), so this page must render WITHOUT the login gate —
+        // the old drive-module boot rewrite sent it to `/drive` and the login layout
+        // swallowed it, so accessShareByToken was never called. Render it standalone
+        // for everyone; a signed-in viewer's session is irrelevant to the public calls.
+        if (isDriveSharePath(window.location.pathname)) {
+            return <ShareLandingPage token={shareTokenFromPath()} onExit={enterDriveHome} />;
+        }
+
+        // Space-invite landing (`/drive/invite/:token`, PR#1146 N2). acceptInvite IS
+        // authenticated, so mirror the `/d/:docId` flow: recover the octo session, render
+        // the accept page when signed in, else stash the exact return target and fall
+        // through to the login screen so the user bounces back to the invite after
+        // sign-in (isSafeReturnPath now whitelists the drive landing shapes).
+        if (isDriveInvitePath(window.location.pathname)) {
+            if (!WKApp.loginInfo.token) {
+                WKApp.loginInfo.load();
+            }
+            if (!WKApp.loginInfo.token) {
+                recoverOctoSessionFromStorage(true);
+            }
+            if (WKApp.loginInfo.token) {
+                return <InviteLandingPage token={inviteTokenFromPath()} onExit={enterDriveHome} />;
+            }
             persistStandaloneReturn();
             // Anonymous: fall through to the login screen (below) without navigating away.
         }

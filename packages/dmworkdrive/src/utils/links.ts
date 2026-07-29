@@ -55,3 +55,18 @@ export function inviteTokenFromPath(): string {
   const m = window.location.pathname.match(/\/drive\/invite\/([^/?#]+)/);
   return m ? safeDecode(m[1]) : '';
 }
+
+/**
+ * Whether `pathname` is a drive public-share landing link (`/drive/s/:token`).
+ * The host Layout intercepts this shape pre-login to render ShareLandingPage
+ * for anonymous recipients (the share endpoints need no auth). Anchored to a
+ * single token segment so it never swallows unrelated `/drive/...` paths.
+ */
+export function isDriveSharePath(pathname: string): boolean {
+  return /^\/drive\/s\/[^/?#]+\/?$/.test(pathname);
+}
+
+/** Whether `pathname` is a space-invite landing link (`/drive/invite/:token`). */
+export function isDriveInvitePath(pathname: string): boolean {
+  return /^\/drive\/invite\/[^/?#]+\/?$/.test(pathname);
+}

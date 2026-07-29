@@ -29,6 +29,15 @@ const STANDALONE_PATH = /^\/d\/([A-Za-z0-9_-]+)\/?$/
 /** `/s/:taskNo` — summary notification deep-link target, same segment safety as `/d/:docId`. */
 const STANDALONE_SUMMARY_PATH = /^\/s\/([A-Za-z0-9_-]+)\/?$/
 
+/**
+ * `/drive/s/:token` and `/drive/invite/:token` — drive share / space-invite landing links.
+ * Matches a SINGLE path segment before decode (no `/`, `?`, `#`); the token is then decoded and
+ * re-checked so an encoded slash / control char / malformed %-escape can't smuggle redirect
+ * structure past this allowlist (see isSafeDriveLandingPath). Kept narrow on purpose — only these
+ * two exact drive shapes may be a post-login return target, never arbitrary `/drive/*`.
+ */
+const STANDALONE_DRIVE_PATH = /^\/drive\/(?:s|invite)\/([^/?#]+)\/?$/
+
 /** The standalone-doc URL namespace: `/d`, `/d/`, or `/d/<anything>` (top-level only). */
 const STANDALONE_NAMESPACE = /^\/d(?:\/|$)/
 
@@ -106,7 +115,35 @@ function isSafeReturnPath(path: string | null): path is string {
     return false
   }
   if (url.origin !== origin) return false
-  return parseStandaloneDocId(url.pathname) !== null || STANDALONE_SUMMARY_PATH.test(url.pathname)
+  return (
+    parseStandaloneDocId(url.pathname) !== null ||
+    STANDALONE_SUMMARY_PATH.test(url.pathname) ||
+    isSafeDriveLandingPath(url.pathname)
+  )
+}
+
+/**
+ * Whether `pathname` is a safe drive share / invite landing target (`/drive/s/:token` or
+ * `/drive/invite/:token`). Gate-3 allowlist entry (see isSafeReturnPath): a narrow, exact-shape
+ * extension so an invite recipient who signs in from the link bounces back to it — without opening
+ * the door to arbitrary `/drive/*` redirects.
+ *
+ * The regex already pins the shape to a single non-`/?#` segment; we then DECODE the token and
+ * reject it if decoding fails (malformed %-escape) or the decoded value still carries redirect
+ * structure (`/`, `\`, `?`, `#`) or a control char — closing the encoded-slash / smuggling class.
+ */
+function isSafeDriveLandingPath(pathname: string): boolean {
+  const m = STANDALONE_DRIVE_PATH.exec(pathname)
+  if (!m) return false
+  let token: string
+  try {
+    token = decodeURIComponent(m[1])
+  } catch {
+    return false
+  }
+  if (token.length === 0) return false
+  // eslint-disable-next-line no-control-regex
+  return !/[/\\?#\x00-\x1f\x7f]/.test(token)
 }
 
 /**

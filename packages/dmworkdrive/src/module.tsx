@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   WKApp,
   ChatPage,
@@ -11,9 +11,6 @@ import { HardDrive } from 'lucide-react';
 import DriveSidebar from './pages/DriveSidebar';
 import DriveContent from './pages/DriveContent';
 import { DriveVM } from './pages/DriveVM';
-import ShareLandingPage from './pages/ShareLandingPage';
-import InviteLandingPage from './pages/InviteLandingPage';
-import { shareTokenFromPath, inviteTokenFromPath } from './utils/links';
 
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
@@ -42,68 +39,13 @@ if (import.meta.hot) {
 // over it so the two WKViewQueue subtrees stay in sync.
 const vm = new DriveVM();
 
-// ─── Deep-link capture for the share / invite landing routes ────────────────
-//
-// The octo host's self-built RouteManager activates the main view by matching a
-// registered menu's routePath; only `/drive` has a menu. A hard navigation to
-// `/drive/s/:id` or `/drive/invite/:token` therefore has no menu to activate
-// and would fall back to the chat shell. Mirroring the docs module, we capture
-// the token on boot, stash it, and rewrite the URL to `/drive` so the existing
-// `/drive` menu activates — then DriveRouteElement renders the landing page
-// while a pending token exists. RouteManager passes no path params, so the
-// token is read from the pathname.
-
-const PENDING_SHARE_KEY = 'octo.drive.pendingShare';
-const PENDING_INVITE_KEY = 'octo.drive.pendingInvite';
-
-/** Read a pending landing token: live path first, then the stashed value. */
-function readPending(key: string, fromPath: () => string): string {
-  const live = fromPath();
-  if (live) return live;
-  if (typeof window === 'undefined') return '';
-  try {
-    return window.sessionStorage.getItem(key) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-/** Peek whether a landing token is pending, without consuming it. */
-function hasPendingLanding(): boolean {
-  return !!readPending(PENDING_SHARE_KEY, shareTokenFromPath) ||
-    !!readPending(PENDING_INVITE_KEY, inviteTokenFromPath);
-}
-
-function clearPending(key: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.removeItem(key);
-  } catch {
-    // ignore — nothing to clear if storage is unavailable.
-  }
-}
-
-/**
- * On a cold open of `/drive/s/:id` or `/drive/invite/:token`, stash the token
- * and rewrite the URL to `/drive` so the existing menu activates the view.
- */
-function normalizeDriveDeepLink(): void {
-  if (typeof window === 'undefined') return;
-  const share = shareTokenFromPath();
-  const invite = inviteTokenFromPath();
-  if (!share && !invite) return;
-  try {
-    if (share) window.sessionStorage.setItem(PENDING_SHARE_KEY, share);
-    if (invite) window.sessionStorage.setItem(PENDING_INVITE_KEY, invite);
-  } catch {
-    // sessionStorage unavailable: the route element still reads from the path.
-  }
-  try {
-    window.history.replaceState(window.history.state, '', '/drive');
-  } catch {
-    // history unavailable: leave the URL as-is; path-based read still works.
-  }
-}
+// NOTE: the share (`/drive/s/:token`) and invite (`/drive/invite/:token`)
+// landing pages are intercepted by the host Layout (apps/web) as standalone
+// pages — share renders anonymously (public endpoints, no login), invite
+// bounces through login and back. This module no longer captures/rewrites those
+// deep-links; it owns only the authenticated two-pane `/drive` view. Keeping a
+// single source of truth for the landing routes (the host Layout) avoids the
+// double-routing that the old boot-time URL rewrite created.
 
 /** Mount the normal drive file view into the right pane (WKLayout.contentRight). */
 function mountDriveContent(): void {
@@ -121,42 +63,10 @@ function mountDriveContent(): void {
   }
 }
 
-/**
- * Element served for the `/drive` menu/route into WKLayout.contentLeft.
- * Renders the share/invite landing page full-width in the left pane when a
- * pending token exists (a normalized deep-link) — landing pages are single
- * pages, not the two-pane split. Otherwise renders the space rail; the file
- * view is mounted separately into the right pane by the menu's onPress.
- *
- * The token is read once and consumed so a later plain `/drive` visit doesn't
- * re-trigger a landing flow; `onExit` clears the token and hands off to the
- * normal two-pane view (rail here + content in the right pane).
- */
-function DriveRouteElement(): React.ReactElement {
-  const [pending, setPending] = useState(() => ({
-    share: readPending(PENDING_SHARE_KEY, shareTokenFromPath),
-    invite: readPending(PENDING_INVITE_KEY, inviteTokenFromPath),
-  }));
-
-  useEffect(() => {
-    if (pending.share) clearPending(PENDING_SHARE_KEY);
-    if (pending.invite) clearPending(PENDING_INVITE_KEY);
-  }, [pending.share, pending.invite]);
-
-  const exit = () => {
-    setPending({ share: '', invite: '' });
-    mountDriveContent();
-  };
-
-  if (pending.share) return <ShareLandingPage token={pending.share} onExit={exit} />;
-  if (pending.invite) return <InviteLandingPage token={pending.invite} onExit={exit} />;
-  return <DriveSidebar vm={vm} onActivate={mountDriveContent} />;
-}
-
-// Build the `/drive` route element ONCE so the host's repeated route-handler
-// invocations preserve the fiber (DriveRouteElement's one-shot token read runs
-// once). Mirrors the docs module's docsRouteElement stability contract.
-const driveRouteElement = <DriveRouteElement />;
+// `/drive` renders the space rail into WKLayout.contentLeft; the file view is
+// mounted separately into the right pane by the menu's onPress. Built ONCE so
+// the host's repeated route-handler invocations preserve the fiber.
+const driveRouteElement = <DriveSidebar vm={vm} onActivate={mountDriveContent} />;
 
 // URL-driven renders (cold-load / bfcache pageshow / back-forward) mount the
 // full Main shell instead of the bare `/drive` sidebar, so refreshing `/drive`
@@ -178,8 +88,8 @@ function DriveIcon({ active }: { active?: boolean }) {
 /**
  * DriveModule — registers the network-drive feature into Octo web:
  * an i18n namespace, a two-pane route (space rail in contentLeft + file view in
- * contentRight, mirroring mcp-market), share/invite landing routes, and a
- * NavRail entry.
+ * contentRight, mirroring mcp-market), and a NavRail entry. The share/invite
+ * landing pages are owned by the host Layout (apps/web), not this module.
  */
 export default class DriveModule implements IModule {
   id(): string {
@@ -195,18 +105,11 @@ export default class DriveModule implements IModule {
       'en-US': enUS,
     });
 
-    // Capture a share/invite deep-link and normalize to `/drive` BEFORE the
-    // host reads the route, so the `/drive` menu activates.
-    normalizeDriveDeepLink();
-
-    // `/drive` renders the space rail (or a landing page) into contentLeft.
-    // hostShell keeps URL-driven renders mounting the full shell (see above).
+    // `/drive` renders the space rail into contentLeft. hostShell keeps
+    // URL-driven renders mounting the full shell (see above). The share/invite
+    // landing routes are owned by the host Layout (apps/web), not registered
+    // here — see the note near `vm`.
     WKApp.route.register('/drive', () => driveRouteElement, { hostShell: driveHostShell });
-    // Landing routes for in-app SPA navigation. The token is read from the
-    // pathname (RouteManager passes no params); cold-loads go through
-    // normalizeDriveDeepLink → `/drive` → DriveRouteElement.
-    WKApp.route.register('/drive/s/:id', () => <ShareLandingRoute />);
-    WKApp.route.register('/drive/invite/:token', () => <InviteLandingRoute />);
 
     // NavRail entry (sort 4008 — after contacts=4000 / matter=4001 cluster).
     //
@@ -217,7 +120,7 @@ export default class DriveModule implements IModule {
     // object-storage / docs-backend deps must be deployed before the entry is
     // usable — otherwise the backend fail-closes with 503. Ops flips drive_on on
     // once ready. Pure display gate: /v1/drive auth still lives in the drive
-    // service. Routes stay registered so a deep-link still resolves. Mirrors
+    // service. The `/drive` route stays registered regardless. Mirrors
     // DocsModule (docs_on) / LoopModule (dmloop_on).
     WKApp.menus.register(
       'drive',
@@ -233,16 +136,10 @@ export default class DriveModule implements IModule {
         // Own both panes on activation (Main/index.tsx's default click handler
         // is bypassed when onPress is defined). The space rail auto-mounts into
         // contentLeft via the `/drive` route; here we mount the file view into
-        // the right pane — unless a share/invite deep-link is pending, in which
-        // case DriveRouteElement shows the landing page in the left pane and the
-        // right pane stays empty until the user exits into the drive.
+        // the right pane.
         m.onPress = () => {
           WKApp.routeLeft.popToRoot();
-          if (hasPendingLanding()) {
-            WKApp.routeRight.popToRoot();
-          } else {
-            mountDriveContent();
-          }
+          mountDriveContent();
           WKApp.route.syncPath('/drive');
         };
         return m;
@@ -279,12 +176,4 @@ export default class DriveModule implements IModule {
       _configUnsubscribers.push(rc.addConfigChangeListener(refreshMenus));
     }
   }
-}
-
-function ShareLandingRoute(): React.ReactElement {
-  return <ShareLandingPage token={shareTokenFromPath()} />;
-}
-
-function InviteLandingRoute(): React.ReactElement {
-  return <InviteLandingPage token={inviteTokenFromPath()} />;
 }
