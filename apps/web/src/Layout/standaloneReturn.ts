@@ -71,14 +71,16 @@ export function persistStandaloneReturn(): void {
 /**
  * Delete the stashed standalone return target without navigating or validating it.
  *
- * The R8 up-front stash (prepareDriveLandingReturn) fires for a VALID signed-in landing
- * render too, not just the expired/anonymous chain. Left in place, that residue outlives the
- * page: if the same tab later logs out and a DIFFERENT account signs in, onLogin's
+ * The up-front stash (prepareDriveLandingReturn) fires for a VALID signed-in landing
+ * render too, not just the expired/anonymous chain. Left in place, that residue outlives
+ * the page: if the same tab later logs out and a DIFFERENT account signs in, onLogin's
  * consumeStandaloneReturn would replay the previous user's share/invite deep-link across
- * identities (an invite would even auto-accept). A landing page whose first real API call
- * succeeds has proven the current session is valid, so the stash is no longer needed to
- * recover from a 401 — clear it (PR#1146 R9 P1). Only removes the key; the anonymous/expired
- * chain never reaches an API success, so its stash survives to drive the post-login return.
+ * identities (an invite would even auto-accept). So the landing pages call this on EVERY
+ * outcome except a genuine session 401 — access/accept success, a share business error,
+ * a 5xx, a network error — because none of those needs a post-login return (the session is
+ * either valid or unrecoverable on this route). Only a session 401 (which fires a global
+ * logout) skips the clear, leaving the stash to drive the post-login return (PR#1146 R10).
+ * Removing the key is idempotent and never navigates.
  */
 export function clearStandaloneReturn(): void {
     if (typeof window === "undefined") return;
@@ -97,10 +99,12 @@ export function clearStandaloneReturn(): void {
  * hole (PR#1146 R8 P1). An expired stored token still satisfies the caller's token check and
  * renders the landing, whose API then 401s → global logout → hard redirect to login; without
  * an up-front stash the deep-link was never saved and sign-in dropped the user at the app
- * root. A valid signed-in render stashes once more harmlessly: consumeStandaloneReturn
- * re-validates and deletes, and only the onLogin flow consumes it, so a plain render performs
- * no navigation (no redirect loop). persist runs before resolveSession so a throw/short-circuit
- * while resolving the session can never skip the stash.
+ * root. A valid signed-in render stashes here too, but that residue is NOT self-cleaning:
+ * the landing page actively clears it (onClearReturn) on API success and on every non-401
+ * failure, so only a genuine session 401 leaves it behind for the post-login return (R10).
+ * The gate itself performs no navigation — consumeStandaloneReturn runs only in the onLogin
+ * flow — so a plain render never triggers a redirect loop. persist runs before resolveSession
+ * so a throw/short-circuit while resolving the session can never skip the stash.
  *
  * @param resolveSession Runs the branch's load→recover sequence; returns whether a token is
  *   now present (i.e. the landing page should render).

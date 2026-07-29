@@ -158,6 +158,23 @@ export class DriveApiError extends Error {
   }
 }
 
+/**
+ * Whether `err` is a genuine session-expiry 401 — the single failure the response
+ * interceptor above reacts to by firing a global logout. A share-business 401
+ * (password_required / wrong_password / share_expired / not_found) is exempt and
+ * is NOT session expiry; nor is any 403/404/5xx/network error. The landing pages
+ * keep the stashed standalone-return target ONLY for this case, so re-login bounces
+ * back to the deep-link; every other outcome clears the stash so it can't replay
+ * under a different account that later signs in on the same tab (PR#1146 R10).
+ */
+export function isSessionExpiredError(err: unknown): boolean {
+  return (
+    err instanceof DriveApiError &&
+    err.status === 401 &&
+    !(err.code !== undefined && SHARE_BUSINESS_CODES.has(err.code))
+  );
+}
+
 function extractApiError(err: unknown): DriveApiError {
   if (axios.isCancel(err)) {
     const abortErr = new DriveApiError('aborted', 'aborted');

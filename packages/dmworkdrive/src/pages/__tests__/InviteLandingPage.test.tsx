@@ -23,8 +23,15 @@ vi.mock('../../api/driveApi', () => {
       this.status = status;
     }
   }
+  // Mirror the real predicate: a 401 that is NOT a share-business code = session expiry.
+  const SHARE_BUSINESS_CODES = new Set(['password_required', 'wrong_password', 'share_expired', 'not_found']);
+  const isSessionExpiredError = (err: unknown) =>
+    err instanceof DriveApiError &&
+    err.status === 401 &&
+    !(err.code !== undefined && SHARE_BUSINESS_CODES.has(err.code));
   return {
     DriveApiError,
+    isSessionExpiredError,
     acceptInvite: vi.fn(),
   };
 });
@@ -77,43 +84,67 @@ describe('InviteLandingPage', () => {
     await waitFor(() => getByText('drive.landing.invite.errorTitle'));
   });
 
-  it('fires onSessionConfirmed when the invite is accepted (host clears stashed return target)', async () => {
+  it('fires onClearReturn when the invite is accepted (host drops stashed return target)', async () => {
     vi.mocked(api.acceptInvite).mockResolvedValue({
       space_id: 's1',
       role: 'editor',
       already_member: false,
     });
-    const onSessionConfirmed = vi.fn();
+    const onClearReturn = vi.fn();
     const { getByText } = render(
-      <InviteLandingPage token="inv-ok" onSessionConfirmed={onSessionConfirmed} />,
+      <InviteLandingPage token="inv-ok" onClearReturn={onClearReturn} />,
     );
     await waitFor(() => getByText('drive.landing.invite.joinedTitle'));
-    expect(onSessionConfirmed).toHaveBeenCalledTimes(1);
+    expect(onClearReturn).toHaveBeenCalledTimes(1);
   });
 
-  it('fires onSessionConfirmed on an already-member replay (idempotent join is still session-confirmed)', async () => {
+  it('fires onClearReturn on an already-member replay (idempotent join clears too)', async () => {
     vi.mocked(api.acceptInvite).mockResolvedValue({
       space_id: 's1',
       role: 'downloader',
       already_member: true,
     });
-    const onSessionConfirmed = vi.fn();
+    const onClearReturn = vi.fn();
     const { getByText } = render(
-      <InviteLandingPage token="inv-already" onSessionConfirmed={onSessionConfirmed} />,
+      <InviteLandingPage token="inv-already" onClearReturn={onClearReturn} />,
     );
     await waitFor(() => getByText('drive.landing.invite.alreadyTitle'));
-    expect(onSessionConfirmed).toHaveBeenCalledTimes(1);
+    expect(onClearReturn).toHaveBeenCalledTimes(1);
   });
 
-  it('does NOT fire onSessionConfirmed when acceptInvite fails (stash must survive a 401/logout)', async () => {
+  it('fires onClearReturn on an invalid/denied invite (no cross-identity auto-accept residue)', async () => {
     vi.mocked(api.acceptInvite).mockRejectedValue(
       new DriveApiError('not found', 'not_found', 404),
     );
-    const onSessionConfirmed = vi.fn();
+    const onClearReturn = vi.fn();
     const { getByText } = render(
-      <InviteLandingPage token="inv-bad" onSessionConfirmed={onSessionConfirmed} />,
+      <InviteLandingPage token="inv-bad" onClearReturn={onClearReturn} />,
     );
     await waitFor(() => getByText('drive.landing.invite.invalidTitle'));
-    expect(onSessionConfirmed).not.toHaveBeenCalled();
+    expect(onClearReturn).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires onClearReturn on a generic 5xx error (session still valid)', async () => {
+    vi.mocked(api.acceptInvite).mockRejectedValue(
+      new DriveApiError('boom', 'internal', 500),
+    );
+    const onClearReturn = vi.fn();
+    const { getByText } = render(
+      <InviteLandingPage token="inv-5xx" onClearReturn={onClearReturn} />,
+    );
+    await waitFor(() => getByText('drive.landing.invite.errorTitle'));
+    expect(onClearReturn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT fire onClearReturn on a genuine session 401 (logout fired → stash kept for post-login return)', async () => {
+    vi.mocked(api.acceptInvite).mockRejectedValue(
+      new DriveApiError('unauthorized', 'unauthorized', 401),
+    );
+    const onClearReturn = vi.fn();
+    const { getByText } = render(
+      <InviteLandingPage token="inv-401" onClearReturn={onClearReturn} />,
+    );
+    await waitFor(() => getByText('drive.landing.invite.errorTitle'));
+    expect(onClearReturn).not.toHaveBeenCalled();
   });
 });

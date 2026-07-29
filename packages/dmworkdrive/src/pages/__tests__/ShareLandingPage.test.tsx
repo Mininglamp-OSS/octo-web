@@ -33,8 +33,15 @@ vi.mock('../../api/driveApi', () => {
       this.status = status;
     }
   }
+  // Mirror the real predicate: a 401 that is NOT a share-business code = session expiry.
+  const SHARE_BUSINESS_CODES = new Set(['password_required', 'wrong_password', 'share_expired', 'not_found']);
+  const isSessionExpiredError = (err: unknown) =>
+    err instanceof DriveApiError &&
+    err.status === 401 &&
+    !(err.code !== undefined && SHARE_BUSINESS_CODES.has(err.code));
   return {
     DriveApiError,
+    isSessionExpiredError,
     accessShareByToken: vi.fn(),
     downloadShareByToken: vi.fn(),
     assertSafePresignedURL: () => {},
@@ -132,37 +139,61 @@ describe('ShareLandingPage', () => {
     await waitFor(() => getByText('drive.landing.share.errorTitle'));
   });
 
-  it('fires onSessionConfirmed once access succeeds (host clears stashed return target)', async () => {
+  it('fires onClearReturn once access succeeds (host drops stashed return target)', async () => {
     vi.mocked(api.accessShareByToken).mockResolvedValue(grant);
-    const onSessionConfirmed = vi.fn();
+    const onClearReturn = vi.fn();
     const { getByText } = render(
-      <ShareLandingPage token="tok-ok" onSessionConfirmed={onSessionConfirmed} />,
+      <ShareLandingPage token="tok-ok" onClearReturn={onClearReturn} />,
     );
     await waitFor(() => getByText('quarterly-report.pdf'));
-    expect(onSessionConfirmed).toHaveBeenCalledTimes(1);
+    expect(onClearReturn).toHaveBeenCalledTimes(1);
   });
 
-  it('does NOT fire onSessionConfirmed on a password gate (session unproven — stash must survive)', async () => {
+  it('fires onClearReturn on a password gate (business error → session valid, stash must not linger)', async () => {
     vi.mocked(api.accessShareByToken).mockRejectedValue(
       new DriveApiError('password required', 'password_required', 403),
     );
-    const onSessionConfirmed = vi.fn();
+    const onClearReturn = vi.fn();
     const { getByText } = render(
-      <ShareLandingPage token="tok-pw" onSessionConfirmed={onSessionConfirmed} />,
+      <ShareLandingPage token="tok-pw" onClearReturn={onClearReturn} />,
     );
     await waitFor(() => getByText('drive.landing.share.passwordTitle'));
-    expect(onSessionConfirmed).not.toHaveBeenCalled();
+    expect(onClearReturn).toHaveBeenCalledTimes(1);
   });
 
-  it('does NOT fire onSessionConfirmed when access fails (e.g. expired) — 401 chain keeps its stash', async () => {
+  it('fires onClearReturn on an expired share (403 business error, not a session 401)', async () => {
     vi.mocked(api.accessShareByToken).mockRejectedValue(
       new DriveApiError('share expired', 'share_expired', 403),
     );
-    const onSessionConfirmed = vi.fn();
+    const onClearReturn = vi.fn();
     const { getByText } = render(
-      <ShareLandingPage token="tok-exp" onSessionConfirmed={onSessionConfirmed} />,
+      <ShareLandingPage token="tok-exp" onClearReturn={onClearReturn} />,
     );
     await waitFor(() => getByText('drive.landing.share.expiredTitle'));
-    expect(onSessionConfirmed).not.toHaveBeenCalled();
+    expect(onClearReturn).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires onClearReturn on a generic 5xx error (session still valid)', async () => {
+    vi.mocked(api.accessShareByToken).mockRejectedValue(
+      new DriveApiError('boom', 'internal', 500),
+    );
+    const onClearReturn = vi.fn();
+    const { getByText } = render(
+      <ShareLandingPage token="tok-5xx" onClearReturn={onClearReturn} />,
+    );
+    await waitFor(() => getByText('drive.landing.share.errorTitle'));
+    expect(onClearReturn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT fire onClearReturn on a genuine session 401 (logout fired → stash kept for post-login return)', async () => {
+    vi.mocked(api.accessShareByToken).mockRejectedValue(
+      new DriveApiError('unauthorized', 'unauthorized', 401),
+    );
+    const onClearReturn = vi.fn();
+    const { getByText } = render(
+      <ShareLandingPage token="tok-401" onClearReturn={onClearReturn} />,
+    );
+    await waitFor(() => getByText('drive.landing.share.errorTitle'));
+    expect(onClearReturn).not.toHaveBeenCalled();
   });
 });

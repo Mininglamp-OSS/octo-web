@@ -37,11 +37,15 @@ export interface ShareLandingPageProps {
   /** Leave the landing page and enter the main drive view. */
   onExit?: () => void;
   /**
-   * Called once the share-access API confirms the current session is valid (first
-   * successful accessShare). The host clears the up-front-stashed standalone return
-   * target here so a valid render can't leave residue for a later account (PR#1146 R9 P1).
+   * Called whenever the stashed standalone return target should be dropped — i.e.
+   * on any outcome EXCEPT a genuine session 401. Access success, a share business
+   * error (password_required / wrong_password / share_expired / not_found), a 5xx
+   * or a network error all leave a session that is either valid or unrecoverable
+   * here, so the up-front-stashed deep-link must be cleared to keep it from
+   * replaying under a later account on the same tab (PR#1146 R10). Only a session
+   * 401 (which triggers global logout) retains the stash for post-login return.
    */
-  onSessionConfirmed?: () => void;
+  onClearReturn?: () => void;
 }
 
 /**
@@ -68,7 +72,7 @@ function classify(err: unknown): View {
   return { kind: 'error' };
 }
 
-export default function ShareLandingPage({ token, onExit, onSessionConfirmed }: ShareLandingPageProps) {
+export default function ShareLandingPage({ token, onExit, onClearReturn }: ShareLandingPageProps) {
   const { t } = useI18n();
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [password, setPassword] = useState('');
@@ -78,15 +82,19 @@ export default function ShareLandingPage({ token, onExit, onSessionConfirmed }: 
     async (pwd?: string) => {
       try {
         const result = await api.accessShareByToken(token, pwd);
-        // API success proves the session is valid; drop the stashed return target so it
-        // can't be replayed under a different account after logout (PR#1146 R9 P1).
-        onSessionConfirmed?.();
+        // Success proves the session; drop the stashed return target.
+        onClearReturn?.();
         setView({ kind: 'ready', access: result });
       } catch (err) {
+        // Retain the stash ONLY for a session 401 (the API layer just fired a
+        // global logout — keep the deep-link so re-login returns here). A share
+        // business error, 5xx or network error leaves a session that's valid or
+        // unrecoverable here, so clear it to avoid cross-account replay (R10).
+        if (!api.isSessionExpiredError(err)) onClearReturn?.();
         setView(classify(err));
       }
     },
-    [token, onSessionConfirmed],
+    [token, onClearReturn],
   );
 
   useEffect(() => {

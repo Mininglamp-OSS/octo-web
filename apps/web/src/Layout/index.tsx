@@ -494,7 +494,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         };
         if (isDriveSharePath(window.location.pathname)) {
             if (prepareDriveLandingReturn(resolveDriveLandingSession)) {
-                return <ShareLandingPage token={shareTokenFromPath()} onExit={enterDriveHome} onSessionConfirmed={clearStandaloneReturn} />;
+                return <ShareLandingPage token={shareTokenFromPath()} onExit={enterDriveHome} onClearReturn={clearStandaloneReturn} />;
             }
             // Anonymous/expired: return target already stashed; fall through to the login screen.
         }
@@ -507,7 +507,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         // up-front stash as the share branch above.
         if (isDriveInvitePath(window.location.pathname)) {
             if (prepareDriveLandingReturn(resolveDriveLandingSession)) {
-                return <InviteLandingPage token={inviteTokenFromPath()} onExit={enterDriveHome} onSessionConfirmed={clearStandaloneReturn} />;
+                return <InviteLandingPage token={inviteTokenFromPath()} onExit={enterDriveHome} onClearReturn={clearStandaloneReturn} />;
             }
             // Anonymous/expired: return target already stashed; fall through to the login screen.
         }

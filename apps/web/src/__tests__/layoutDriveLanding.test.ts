@@ -10,6 +10,8 @@
  * drive shapes is covered by standaloneReturn.test.ts and not duplicated here.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as fs from "fs";
+import * as path from "path";
 import {
     clearStandaloneReturn,
     consumeStandaloneReturn,
@@ -94,22 +96,26 @@ describe("drive landing return-target gate (prepareDriveLandingReturn)", () => {
 });
 
 /**
- * R9 P1: the up-front stash also fires for a VALID signed-in render, so the landing page's
- * onSessionConfirmed callback (wired in Layout to clearStandaloneReturn) must drop that
- * residue once the API confirms the session — otherwise the next account on the same tab
- * replays the previous user's share/invite deep-link (an invite would auto-accept).
- * The wiring under test is `onSessionConfirmed={clearStandaloneReturn}`; here we drive the
- * same persist → (callback) → consume sequence against the real store.
+ * PR#1146 R10: the up-front stash fires for a VALID signed-in render too, so the landing
+ * page's onClearReturn callback (wired in Layout to clearStandaloneReturn) must drop that
+ * residue on EVERY outcome except a genuine session 401 — access/accept success, a share
+ * business error, a 5xx, a network error — otherwise the next account on the same tab
+ * replays the previous user's share/invite deep-link (an invite would auto-accept). Only a
+ * session 401 (which fires a global logout) keeps the stash for post-login return.
+ *
+ * These exercise the persist → (clear) → consume sequence against the real store. The
+ * landing pages' decision to CALL onClearReturn per outcome is covered by the dmworkdrive
+ * ShareLandingPage/InviteLandingPage tests; the literal Layout wiring is asserted below.
  */
-describe("drive landing session-confirmed cleanup (R9 P1)", () => {
-    it("valid share access success: onSessionConfirmed clears the stash → later login consumes null", () => {
+describe("drive landing return-target cleanup (R10)", () => {
+    it("valid share access success: onClearReturn drops the stash → later login consumes null", () => {
         openPath("/drive/s/sh_abc");
 
         // Landing renders (valid session) and stashes up-front.
         expect(prepareDriveLandingReturn(() => true)).toBe(true);
         expect(window.sessionStorage.getItem(KEY)).toBe("/drive/s/sh_abc");
 
-        // accessShare succeeds → ShareLandingPage fires onSessionConfirmed (= clearStandaloneReturn).
+        // accessShare succeeds → ShareLandingPage fires onClearReturn (= clearStandaloneReturn).
         clearStandaloneReturn();
 
         // A later logout + different-account login on the same tab finds nothing to replay.
@@ -122,19 +128,31 @@ describe("drive landing session-confirmed cleanup (R9 P1)", () => {
         expect(prepareDriveLandingReturn(() => true)).toBe(true);
         expect(window.sessionStorage.getItem(KEY)).toBe("/drive/invite/tok_1");
 
-        // acceptInvite succeeds → InviteLandingPage fires onSessionConfirmed.
+        // acceptInvite succeeds → InviteLandingPage fires onClearReturn.
         clearStandaloneReturn();
 
         expect(consumeStandaloneReturn()).toBeNull(); // no cross-identity auto-accept
     });
 
-    it("expired-session chain is untouched: no success → callback never fires → stash survives to consume", () => {
+    it("share business error (expired link / wrong password): onClearReturn drops the stash too (R10)", () => {
+        openPath("/drive/s/sh_abc");
+
+        expect(prepareDriveLandingReturn(() => true)).toBe(true);
+        expect(window.sessionStorage.getItem(KEY)).toBe("/drive/s/sh_abc");
+
+        // 403 share_expired / wrong_password is NOT a session 401 → landing fires onClearReturn.
+        clearStandaloneReturn();
+
+        expect(consumeStandaloneReturn()).toBeNull(); // no residue for a later account
+    });
+
+    it("genuine session 401 chain: onClearReturn NEVER fires → stash survives to consume the original path", () => {
         openPath("/drive/s/sh_abc?x=1");
 
-        // Expired token still renders; API then 401s → global logout, so onSessionConfirmed
-        // NEVER runs (no accessShare success). The stash must survive for post-login return.
+        // Expired octo session: token still renders the landing; the drive API then 401s →
+        // global logout. isSessionExpiredError is true, so the landing skips onClearReturn.
         expect(prepareDriveLandingReturn(() => true)).toBe(true);
-        // (no clearStandaloneReturn here — mirrors the 401 path that skips the success callback)
+        // (no clearStandaloneReturn — mirrors the 401 path that keeps the stash)
         expect(consumeStandaloneReturn()).toBe("/drive/s/sh_abc?x=1");
     });
 
@@ -142,8 +160,37 @@ describe("drive landing session-confirmed cleanup (R9 P1)", () => {
         openPath("/drive/invite/tok_1?foo=bar");
 
         // Anonymous → resolveSession false → fall through to login; no landing mounts, so no
-        // success callback. Stash must remain for onLogin.
+        // clear. Stash must remain for onLogin.
         expect(prepareDriveLandingReturn(() => false)).toBe(false);
         expect(consumeStandaloneReturn()).toBe("/drive/invite/tok_1?foo=bar");
+    });
+});
+
+/**
+ * Bind the two ends of the fix: the store-lifecycle tests above prove clearStandaloneReturn
+ * clears/retains correctly, and the dmworkdrive tests prove each landing page calls
+ * onClearReturn per outcome — but only the Layout actually connects them. Assert that literal
+ * wiring so a future refactor can't silently drop the callback (mirrors oidcLogoutWiring).
+ */
+describe("Layout wires onClearReturn to clearStandaloneReturn (R10)", () => {
+    const layoutSource = fs.readFileSync(
+        path.join(__dirname, "../Layout/index.tsx"),
+        "utf-8",
+    );
+
+    it("passes clearStandaloneReturn as onClearReturn on the share landing", () => {
+        expect(layoutSource).toMatch(
+            /<ShareLandingPage[^>]*onClearReturn=\{clearStandaloneReturn\}/,
+        );
+    });
+
+    it("passes clearStandaloneReturn as onClearReturn on the invite landing", () => {
+        expect(layoutSource).toMatch(
+            /<InviteLandingPage[^>]*onClearReturn=\{clearStandaloneReturn\}/,
+        );
+    });
+
+    it("no longer wires the stale onSessionConfirmed prop", () => {
+        expect(layoutSource).not.toContain("onSessionConfirmed");
     });
 });

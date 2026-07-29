@@ -29,15 +29,18 @@ export interface InviteLandingPageProps {
   /** Leave the landing page and enter the main drive view. */
   onExit?: () => void;
   /**
-   * Called once acceptInvite confirms the current session is valid (joined, incl.
-   * already_member). The host clears the up-front-stashed standalone return target here so a
-   * valid accept can't be replayed — auto-accepting the invite — under a later account that
-   * signs in on the same tab (PR#1146 R9 P1).
+   * Called whenever the stashed standalone return target should be dropped — i.e.
+   * on any outcome EXCEPT a genuine session 401. A successful (or already_member)
+   * accept, an invalid/denied invite, a 5xx or a network error all clear the
+   * up-front-stashed deep-link so a later account on the same tab can't replay this
+   * invite URL and auto-accept under a different identity (PR#1146 R10). Only a
+   * session 401 (which triggers global logout) retains the stash for post-login
+   * return.
    */
-  onSessionConfirmed?: () => void;
+  onClearReturn?: () => void;
 }
 
-export default function InviteLandingPage({ token, onExit, onSessionConfirmed }: InviteLandingPageProps) {
+export default function InviteLandingPage({ token, onExit, onClearReturn }: InviteLandingPageProps) {
   const { t } = useI18n();
   const [view, setView] = useState<View>({ kind: 'accepting' });
 
@@ -46,12 +49,15 @@ export default function InviteLandingPage({ token, onExit, onSessionConfirmed }:
     (async () => {
       try {
         const result = await api.acceptInvite(token);
-        // API success proves the session is valid; drop the stashed return target so a later
-        // account on this tab can't replay (and auto-accept) this invite (PR#1146 R9 P1).
-        onSessionConfirmed?.();
+        // Success proves the session; drop the stashed return target.
+        onClearReturn?.();
         if (active) setView({ kind: 'joined', result });
       } catch (err) {
         if (!active) return;
+        // Retain the stash ONLY for a session 401 (logout fired → return after
+        // re-login). Clearing on every other failure stops a later account from
+        // replaying this invite URL and auto-accepting under a new identity (R10).
+        if (!api.isSessionExpiredError(err)) onClearReturn?.();
         const notFound = err instanceof DriveApiError && err.code === 'not_found';
         const denied = err instanceof DriveApiError && err.code === 'permission_denied';
         setView({ kind: notFound || denied ? 'invalid' : 'error' });
@@ -60,7 +66,7 @@ export default function InviteLandingPage({ token, onExit, onSessionConfirmed }:
     return () => {
       active = false;
     };
-  }, [token, onSessionConfirmed]);
+  }, [token, onClearReturn]);
 
   // Use the shared role→label SSOT (roleLabel.ts) so the landing page renders
   // role names identically to the member roster / org picker — and covers all
