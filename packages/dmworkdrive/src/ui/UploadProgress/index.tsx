@@ -53,6 +53,23 @@ export default function UploadProgress({ items, onRetry, onDismiss }: UploadProg
           )}
 
           <div className="drive-upload-item__ops">
+            {(item.status === 'preparing' ||
+              item.status === 'uploading' ||
+              item.status === 'confirming') && (
+              // In-flight: dismiss aborts the underlying PUT (useUpload), so this
+              // is a genuine cancel — labelled as such, distinct from the "移除"
+              // the terminal (done/error) rows use.
+              <Button
+                theme="borderless"
+                type="tertiary"
+                size="small"
+                icon={<X size={14} />}
+                aria-label={t('drive.upload.cancel')}
+                onClick={() => onDismiss(item.id)}
+              >
+                {t('drive.upload.cancel')}
+              </Button>
+            )}
             {item.status === 'error' && (
               <Button
                 theme="borderless"

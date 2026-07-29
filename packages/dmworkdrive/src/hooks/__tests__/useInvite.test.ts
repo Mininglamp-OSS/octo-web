@@ -94,4 +94,62 @@ describe('useInvite', () => {
     });
     expect(ok).toBe(true);
   });
+
+  it('drops a create write-back after the space switches mid-flight (Q8 guard)', async () => {
+    vi.mocked(api.listInvites).mockImplementation(async (sid: string) =>
+      sid === 'A' ? [] : [invite('b1')],
+    );
+    let resolveCreate!: (v: Invite) => void;
+    vi.mocked(api.createInvite).mockReturnValue(
+      new Promise<Invite>((res) => {
+        resolveCreate = res;
+      }),
+    );
+    const { result, rerender } = renderHook((sid: string) => useInvite(sid, true), 'A' as string);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let createPromise!: Promise<unknown>;
+    act(() => {
+      createPromise = result.current.create('editor', 604800);
+    });
+    // Switch to space B before the create resolves; B loads its own list.
+    rerender('B');
+    await waitFor(() => expect(result.current.invites.map((i) => i.id)).toEqual(['b1']));
+
+    await act(async () => {
+      resolveCreate(invite('a-new'));
+      await createPromise;
+    });
+    // A's created invite must not land in B's view.
+    expect(result.current.invites.map((i) => i.id)).toEqual(['b1']);
+    expect(api.createInvite).toHaveBeenCalledWith('A', { role: 'editor', expires_in_seconds: 604800 });
+  });
+
+  it('drops a revoke write-back after the space switches mid-flight (Q8 guard)', async () => {
+    vi.mocked(api.listInvites).mockImplementation(async (sid: string) =>
+      sid === 'A' ? [invite('a1')] : [invite('b1')],
+    );
+    let resolveRevoke!: () => void;
+    vi.mocked(api.revokeInvite).mockReturnValue(
+      new Promise<void>((res) => {
+        resolveRevoke = res;
+      }),
+    );
+    const { result, rerender } = renderHook((sid: string) => useInvite(sid, true), 'A' as string);
+    await waitFor(() => expect(result.current.invites.map((i) => i.id)).toEqual(['a1']));
+
+    let revokePromise!: Promise<unknown>;
+    act(() => {
+      revokePromise = result.current.revoke('a1');
+    });
+    rerender('B');
+    await waitFor(() => expect(result.current.invites.map((i) => i.id)).toEqual(['b1']));
+
+    await act(async () => {
+      resolveRevoke();
+      await revokePromise;
+    });
+    // The revoke resolving must not reshape B's list.
+    expect(result.current.invites.map((i) => i.id)).toEqual(['b1']);
+  });
 });

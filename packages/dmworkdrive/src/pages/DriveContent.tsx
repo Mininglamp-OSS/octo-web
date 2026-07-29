@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useI18n, buildDocLink } from '@octo/base';
 import { Button, Modal, Spin } from '@douyinfe/semi-ui';
 import { FolderPlus, FilePlus2, UserPlus, Users } from 'lucide-react';
@@ -48,7 +48,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
       try {
         const { url, filename } = await api.getDownloadUrl(entry.id);
         // M-3: validate the signed GET URL before handing it to the browser.
-        api.assertSafeUploadURL(url);
+        api.assertSafePresignedURL(url);
         triggerBrowserDownload(url, filename || entry.name);
       } catch (err: unknown) {
         Toast.error((err as Error)?.message || t('drive.download.failed'));
@@ -79,6 +79,20 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   const [shareTarget, setShareTarget] = useState<DriveEntry | null>(null);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [memberModalOpen, setMemberModalOpen] = useState(false);
+
+  // Close every modal when the active space changes: a modal target (rename /
+  // move / share entry, or an open invite/member/mount dialog) belongs to the
+  // space it was opened in. Carrying it into a newly selected space would hand a
+  // stale entry to a dialog now scoped to different membership/permissions.
+  useEffect(() => {
+    setFolderModalOpen(false);
+    setRenameTarget(null);
+    setMoveState(null);
+    setMountModalOpen(false);
+    setShareTarget(null);
+    setInviteModalOpen(false);
+    setMemberModalOpen(false);
+  }, [activeSpaceId]);
 
   const openFolder = useCallback((entry: DriveEntry) => {
     vm.enterFolder(entry.id, entry.name);

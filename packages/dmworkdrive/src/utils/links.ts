@@ -8,9 +8,11 @@
 // token (drive backend keys `POST /v1/drive/public/shares/:id/access` on the
 // share id); invites carry their own opaque token.
 //
-// P1 note: the landing routes (`/drive/s/:id`, `/drive/invite/:token`) are not
-// registered yet — the value delivered here is a copyable token-bearing URL.
-// Accept/landing pages are tracked for a later task.
+// The landing routes (`/drive/s/:id`, `/drive/invite/:token`) are registered
+// via the octo host Layout. Both REQUIRE a signed-in Octo session: a logged-out
+// visitor who opens the link is sent to login and returned to the landing after
+// signing in (login-then-return). The value delivered here is a copyable
+// token-bearing URL.
 
 function origin(): string {
   return typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
@@ -58,15 +60,30 @@ export function inviteTokenFromPath(): string {
 
 /**
  * Whether `pathname` is a drive public-share landing link (`/drive/s/:token`).
- * The host Layout intercepts this shape pre-login to render ShareLandingPage
- * for anonymous recipients (the share endpoints need no auth). Anchored to a
- * single token segment so it never swallows unrelated `/drive/...` paths.
+ * The host Layout intercepts this shape and renders ShareLandingPage (which
+ * requires a signed-in session; a logged-out visitor is bounced to login and
+ * returned here). Anchored to a single token segment, and the token must
+ * survive safeDecode — a malformed %-escape or an encoded slash is rejected so
+ * Layout never renders the page with an empty/ambiguous token that would POST to
+ * `/public/shares//access`. Mirrors isSafeDriveLandingPath in the host allowlist.
  */
 export function isDriveSharePath(pathname: string): boolean {
-  return /^\/drive\/s\/[^/?#]+\/?$/.test(pathname);
+  return isLandingToken(pathname, /^\/drive\/s\/([^/?#]+)\/?$/);
 }
 
 /** Whether `pathname` is a space-invite landing link (`/drive/invite/:token`). */
 export function isDriveInvitePath(pathname: string): boolean {
-  return /^\/drive\/invite\/[^/?#]+\/?$/.test(pathname);
+  return isLandingToken(pathname, /^\/drive\/invite\/([^/?#]+)\/?$/);
+}
+
+/**
+ * Match a single-segment landing path and require the token to be a decodable,
+ * unambiguous segment: a malformed %-escape (`safeDecode` → '') or an encoded
+ * slash (`%2F` → '/', smuggling a second segment) is rejected.
+ */
+function isLandingToken(pathname: string, re: RegExp): boolean {
+  const m = re.exec(pathname);
+  if (!m) return false;
+  const decoded = safeDecode(m[1]);
+  return decoded !== '' && !decoded.includes('/');
 }

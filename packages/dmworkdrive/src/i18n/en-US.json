@@ -130,6 +130,7 @@
     "confirming": "Saving…",
     "done": "Done",
     "retry": "Retry",
+    "cancel": "Cancel",
     "dismiss": "Dismiss"
   },
   "download": {

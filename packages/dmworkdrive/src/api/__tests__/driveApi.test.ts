@@ -26,7 +26,7 @@ vi.mock('axios', () => {
 import axios from 'axios';
 import { WKApp, DEFAULT_REQUEST_TIMEOUT_MS } from '@octo/base';
 import * as driveApi from '../driveApi';
-import { DriveApiError, assertSafeUploadURL, putToPresignedUrl } from '../driveApi';
+import { DriveApiError, assertSafePresignedURL, putToPresignedUrl } from '../driveApi';
 
 // Same stub instance returned by every axios.create() call.
 const inst = (axios as unknown as { create: () => any }).create();
@@ -303,24 +303,53 @@ describe('auth-header interceptor', () => {
     logout.mockRestore();
   });
 
-  it('does NOT log out on a 401 from the share endpoints (B1) — share rejects the token, not the session', async () => {
+  it('does NOT log out on a share-route 401 carrying a business code (B1)', async () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
     const onError = responseUse.mock.calls[0][1];
-    // These are the exact URLs accessShareByToken / downloadShareByToken issue.
+    // Every share business code, on both share endpoints, is left for the page
+    // to classify — the share rejected the caller, the octo session is fine.
     for (const url of [
       '/v1/drive/public/shares/tok/access',
       '/v1/drive/public/shares/tok/download',
     ]) {
-      await expect(onError({ response: { status: 401 }, config: { url } })).rejects.toBeDefined();
+      for (const code of ['password_required', 'wrong_password', 'share_expired', 'not_found']) {
+        await expect(
+          onError({ response: { status: 401, data: { error: code } }, config: { url } }),
+        ).rejects.toBeDefined();
+      }
     }
     expect(logout).not.toHaveBeenCalled();
     logout.mockRestore();
   });
 
-  it('share access/download reject with a typed error (no logout) so the page can classify the code (B1)', async () => {
-    // Exercise the real functions: a share-path 401 surfaces as a DriveApiError
-    // carrying the server code, and must not tear down the viewer's session.
+  it('DOES log out on a share-route 401 that is a session failure, not a share code (B1)', async () => {
+    const logout = vi.spyOn(WKApp.shared, 'logout');
+    const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
+    const onError = responseUse.mock.calls[0][1];
+    // A genuine expired session on a share route (envelope `unauthorized`, or no
+    // recognisable code at all) must still log out — the whole-path exemption
+    // this replaces would have swallowed it.
+    await expect(
+      onError({
+        response: { status: 401, data: { error: 'unauthorized' } },
+        config: { url: '/v1/drive/public/shares/tok/access' },
+      }),
+    ).rejects.toBeDefined();
+    await expect(
+      onError({
+        response: { status: 401 },
+        config: { url: '/v1/drive/public/shares/tok/download' },
+      }),
+    ).rejects.toBeDefined();
+    expect(logout).toHaveBeenCalledTimes(2);
+    logout.mockRestore();
+  });
+
+  it('share access + download reject with a typed code and no logout on a business-code 401 (B1)', async () => {
+    // Exercise the real functions end-to-end: a share-path 401 with a business
+    // code surfaces as a DriveApiError carrying that code and must not tear down
+    // the viewer's session.
     const logout = vi.spyOn(WKApp.shared, 'logout');
     inst.post.mockRejectedValue({
       response: { status: 401, data: { error: 'wrong_password', message: 'bad password' } },
@@ -328,6 +357,14 @@ describe('auth-header interceptor', () => {
     });
     await expect(driveApi.accessShareByToken('tok', 'nope')).rejects.toMatchObject({
       code: 'wrong_password',
+      status: 401,
+    });
+    inst.post.mockRejectedValue({
+      response: { status: 401, data: { error: 'share_expired', message: 'expired' } },
+      config: { url: '/v1/drive/public/shares/tok/download' },
+    });
+    await expect(driveApi.downloadShareByToken('tok')).rejects.toMatchObject({
+      code: 'share_expired',
       status: 401,
     });
     expect(logout).not.toHaveBeenCalled();
@@ -338,8 +375,8 @@ describe('auth-header interceptor', () => {
     // Share access/download require a valid Octo session, so they run on the SAME
     // authed driveAxios (no separate anonymous instance): one request interceptor
     // (token/X-Space-Id/Accept-Language) and one response interceptor registered at
-    // module load. The response interceptor logs out on a normal 401 but EXEMPTS
-    // the share endpoints (see B1 tests above).
+    // module load. The response interceptor logs out on a normal 401 but exempts
+    // only a share-route 401 whose envelope carries a share business code (B1).
     const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
     expect(requestUse.mock.calls.length).toBe(1);
@@ -352,19 +389,19 @@ describe('auth-header interceptor', () => {
   });
 });
 
-describe('assertSafeUploadURL', () => {
+describe('assertSafePresignedURL', () => {
   it('accepts https', () => {
-    expect(() => assertSafeUploadURL('https://storage.example.com/x')).not.toThrow();
+    expect(() => assertSafePresignedURL('https://storage.example.com/x')).not.toThrow();
   });
   it('accepts http on localhost', () => {
-    expect(() => assertSafeUploadURL('http://localhost:9000/x')).not.toThrow();
-    expect(() => assertSafeUploadURL('http://127.0.0.1:9000/x')).not.toThrow();
+    expect(() => assertSafePresignedURL('http://localhost:9000/x')).not.toThrow();
+    expect(() => assertSafePresignedURL('http://127.0.0.1:9000/x')).not.toThrow();
   });
   it('rejects http on a remote host', () => {
-    expect(() => assertSafeUploadURL('http://evil.example.com/x')).toThrow(DriveApiError);
+    expect(() => assertSafePresignedURL('http://evil.example.com/x')).toThrow(DriveApiError);
   });
   it('rejects a non-URL', () => {
-    expect(() => assertSafeUploadURL('not a url')).toThrow(DriveApiError);
+    expect(() => assertSafePresignedURL('not a url')).toThrow(DriveApiError);
   });
 });
 
@@ -396,7 +433,7 @@ describe('putToPresignedUrl — M-3 credential isolation', () => {
   it('refuses an unsafe URL and never PUTs', async () => {
     await expect(
       putToPresignedUrl('http://evil.example.com/obj', new Blob(['x']), { contentType: 'text/plain' }),
-    ).rejects.toMatchObject({ code: 'unsafe_upload_url' });
+    ).rejects.toMatchObject({ code: 'unsafe_presigned_url' });
     expect(inst.put).not.toHaveBeenCalled();
   });
 

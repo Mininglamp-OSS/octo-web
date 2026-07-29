@@ -29,6 +29,10 @@ export function useInvite(spaceId: string | null, enabled: boolean): UseInviteRe
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  // Latest space this hook is bound to, so a create/revoke that resolves after
+  // the user switched spaces doesn't write its result into the new space's view.
+  const spaceIdRef = useRef(spaceId);
+  spaceIdRef.current = spaceId;
 
   const load = useCallback(async () => {
     abortRef.current?.abort();
@@ -68,6 +72,9 @@ export function useInvite(spaceId: string | null, enabled: boolean): UseInviteRe
       setCreating(true);
       try {
         const invite = await api.createInvite(spaceId, { role, expires_in_seconds: expiresInSeconds });
+        // Dropped if the user switched spaces mid-flight: prepending here would
+        // show space A's live token under space B's label.
+        if (spaceIdRef.current !== spaceId) return invite;
         setInvites((prev) => [invite, ...prev]);
         Toast.success(t('drive.invite.created'));
         return invite;
@@ -86,7 +93,11 @@ export function useInvite(spaceId: string | null, enabled: boolean): UseInviteRe
       if (!spaceId) return false;
       try {
         await api.revokeInvite(spaceId, inviteId);
-        setInvites((prev) => prev.filter((i) => i.id !== inviteId));
+        // Skip the list mutation if the space changed under us (same rationale
+        // as create): don't reshape another space's invite list.
+        if (spaceIdRef.current === spaceId) {
+          setInvites((prev) => prev.filter((i) => i.id !== inviteId));
+        }
         Toast.success(t('drive.invite.revoked'));
         return true;
       } catch (err: unknown) {

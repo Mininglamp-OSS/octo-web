@@ -4,6 +4,8 @@ import {
   buildInviteLink,
   shareTokenFromPath,
   inviteTokenFromPath,
+  isDriveSharePath,
+  isDriveInvitePath,
 } from '../links';
 
 /** Run `fn` with window.location.pathname overridden, then restore. */
@@ -56,5 +58,31 @@ describe('token readers (N5 — malformed URL must not throw)', () => {
       expect(shareTokenFromPath()).toBe('');
       expect(inviteTokenFromPath()).toBe('');
     });
+  });
+});
+
+describe('landing-path predicates (Q4 — reuse safeDecode, reject malformed/ambiguous tokens)', () => {
+  it('accepts a single decodable token segment (with/without trailing slash)', () => {
+    expect(isDriveSharePath('/drive/s/abc123')).toBe(true);
+    expect(isDriveSharePath('/drive/s/abc123/')).toBe(true);
+    expect(isDriveInvitePath('/drive/invite/tok-9')).toBe(true);
+  });
+
+  it('rejects a malformed %-escape instead of letting a token="" request through', () => {
+    expect(isDriveSharePath('/drive/s/%')).toBe(false);
+    expect(isDriveSharePath('/drive/s/%zz')).toBe(false);
+    expect(isDriveInvitePath('/drive/invite/%E0%A4%A')).toBe(false);
+  });
+
+  it('rejects an encoded slash (%2F) that would smuggle a second segment', () => {
+    expect(isDriveSharePath('/drive/s/a%2Fb')).toBe(false);
+    expect(isDriveInvitePath('/drive/invite/a%2Fb')).toBe(false);
+  });
+
+  it('rejects non-landing and multi-segment paths', () => {
+    expect(isDriveSharePath('/drive')).toBe(false);
+    expect(isDriveSharePath('/drive/s/')).toBe(false);
+    expect(isDriveSharePath('/drive/s/a/b')).toBe(false);
+    expect(isDriveInvitePath('/drive/s/abc')).toBe(false);
   });
 });

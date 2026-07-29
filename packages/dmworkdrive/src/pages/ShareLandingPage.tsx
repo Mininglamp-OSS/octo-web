@@ -98,7 +98,7 @@ export default function ShareLandingPage({ token, onExit }: ShareLandingPageProp
       // Same token+password the access() call used (empty for unprotected shares).
       const pwd = password.trim() || undefined;
       const { url, filename } = await api.downloadShareByToken(token, pwd);
-      api.assertSafeUploadURL(url);
+      api.assertSafePresignedURL(url);
       triggerBrowserDownload(url, filename || view.access.file_name);
     } catch {
       Toast.error(t('drive.download.failed'));

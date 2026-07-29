@@ -20,4 +20,4 @@ export * from './bridge/types';
 
 // API
 export * as driveApi from './api/driveApi';
-export { DriveApiError, assertSafeUploadURL, putToPresignedUrl } from './api/driveApi';
+export { DriveApiError, assertSafePresignedURL, putToPresignedUrl } from './api/driveApi';

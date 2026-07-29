@@ -94,17 +94,45 @@ driveAxios.interceptors.request.use((config) => {
   return config;
 });
 
-// Mirror APIClient: an expired token (401) logs the user out — EXCEPT on the
-// share landing endpoints. A 401 from `/public/shares/:token/*` means the share
-// itself rejected the caller (bad/expired token, wrong password, not a permitted
-// viewer), NOT that the viewer's own octo session died — so logging them out
-// would be wrong. ShareLandingPage classifies that response by its share-domain
-// error code instead. Every other drive API 401 still logs out.
+// Share-domain business error codes (see TASK-I1). A 401 carrying one of these
+// is the SHARE rejecting the caller (unknown/revoked token, wrong password,
+// expired), NOT the viewer's own Octo session dying — so it must reach
+// ShareLandingPage's classify() rather than trigger a global logout. The
+// backend serves these as 403/404 today; keying on the code (not the path)
+// keeps the exemption correct even if a share-credential failure ever arrives
+// as 401, without swallowing a genuine session 401 on the same route.
+const SHARE_BUSINESS_CODES = new Set([
+  'password_required',
+  'wrong_password',
+  'share_expired',
+  'not_found',
+]);
+
+/**
+ * Whether `url` targets the public-share namespace, anchored to the exact drive
+ * base path so it never matches a sibling like `/v1/drive/publicshares` or an
+ * unrelated `/public/shares/` on another service.
+ */
+function isSharePublicPath(url: string): boolean {
+  const path = url.split('?')[0];
+  return path.startsWith(`${BASE}/public/shares/`);
+}
+
+// Mirror APIClient: an expired octo session (401) logs the user out — EXCEPT a
+// 401 from `/v1/drive/public/shares/:token/*` whose envelope carries a share
+// business code, which means the share (not the session) rejected the caller.
+// ShareLandingPage classifies that response by its code. Every other 401 —
+// including a share-route `unauthorized`/session-expired 401 — still logs out,
+// preserving the login-then-return-to-landing flow.
 driveAxios.interceptors.response.use(undefined, (err) => {
-  const url: string = err?.config?.url ?? '';
-  const isShareEndpoint = url.includes('/public/shares/');
-  if (err?.response?.status === 401 && !isShareEndpoint) {
-    WKApp.shared.logout();
+  if (err?.response?.status === 401) {
+    const url: string = err?.config?.url ?? '';
+    const code = extractApiError(err).code;
+    const isShareBusinessFailure =
+      isSharePublicPath(url) && !!code && SHARE_BUSINESS_CODES.has(code);
+    if (!isShareBusinessFailure) {
+      WKApp.shared.logout();
+    }
   }
   return Promise.reject(err);
 });
@@ -387,21 +415,22 @@ export async function getDownloadUrl(fileId: number): Promise<DownloadResp> {
 }
 
 /**
- * Reject any presigned URL that isn't https (or http on localhost for dev
- * proxies). Defense-in-depth before PUTting bytes straight to object storage:
- * a misconfigured/compromised backend could point the URL at an internal or
- * plaintext host. Exported so the upload hook can validate early.
+ * Reject any presigned object-storage URL that isn't https (or http on localhost
+ * for dev proxies). Defense-in-depth for BOTH directions: before PUTting bytes to
+ * an upload URL and before handing a signed download/GET URL to the browser — a
+ * misconfigured/compromised backend could point either at an internal or
+ * plaintext host. Exported so the upload hook and download paths validate early.
  */
-export function assertSafeUploadURL(raw: string): void {
+export function assertSafePresignedURL(raw: string): void {
   let u: URL;
   try {
     u = new URL(raw);
   } catch {
-    throw new DriveApiError('invalid upload url', 'unsafe_upload_url');
+    throw new DriveApiError('invalid presigned url', 'unsafe_presigned_url');
   }
   if (u.protocol === 'https:') return;
   if (u.protocol === 'http:' && (u.hostname === 'localhost' || u.hostname === '127.0.0.1')) return;
-  throw new DriveApiError('unsafe upload url', 'unsafe_upload_url');
+  throw new DriveApiError('unsafe presigned url', 'unsafe_presigned_url');
 }
 
 export interface PutToStorageOptions {
@@ -430,7 +459,7 @@ export async function putToPresignedUrl(
   file: Blob,
   opts: PutToStorageOptions,
 ): Promise<void> {
-  assertSafeUploadURL(uploadUrl);
+  assertSafePresignedURL(uploadUrl);
   const headers: Record<string, string> = { 'Content-Type': opts.contentType };
   if (opts.contentDisposition) {
     headers['Content-Disposition'] = opts.contentDisposition;
@@ -481,9 +510,11 @@ export async function revokeShare(shareId: string): Promise<void> {
  * Recipient-side share access. Requires a valid Octo session: any signed-in Octo
  * user may open a share (regardless of whether they belong to the file's Space);
  * external/anonymous visitors cannot. Sent through the authed `driveAxios`, so a
- * 401 (expired session) triggers the normal logout. The path keeps the
- * `/public/shares/...` name for backend-route compatibility, but the request
- * carries the session token.
+ * genuine session 401 still triggers logout — but a 401 carrying a share business
+ * code (password_required / wrong_password / share_expired / not_found) does NOT,
+ * so ShareLandingPage can classify it instead of tearing down the session. The
+ * path keeps the `/public/shares/...` name for backend-route compatibility, but
+ * the request carries the session token.
  */
 export async function accessShareByToken(token: string, password?: string): Promise<ShareAccess> {
   return post<ShareAccess>(`/public/shares/${encodeURIComponent(token)}/access`, password ? { password } : undefined);
@@ -492,7 +523,8 @@ export async function accessShareByToken(token: string, password?: string): Prom
 /**
  * Recipient-side share download. Reuses the same token+password+expiry check as
  * accessShareByToken and returns the object-storage URL. Authed like access —
- * any signed-in Octo user may download.
+ * any signed-in Octo user may download; same 401 handling (session 401 logs out,
+ * a share-business-code 401 is left for the caller to classify).
  */
 export async function downloadShareByToken(
   token: string,

@@ -182,15 +182,18 @@ server {
 
         # octo-drive service — an INDEPENDENT backend (not octo-server) that serves
         # its API natively under /v1/drive/* (spaces, folders, blobs, shares,
-        # public share access/download, etc.). As a prefix longer than /v1/ this
-        # wins over the octo-server /v1/ block for all drive traffic. Set
-        # DRIVE_API_URL (e.g. http://octo-drive:8080) at container start; blank
+        # public share access/download, etc.). Matched by an anchored regex so it
+        # owns exactly the /v1/drive namespace (bare /v1/drive and /v1/drive/*)
+        # and — unlike a bare `/v1/drive` prefix — never captures an unrelated
+        # sibling like /v1/drivers. A matching regex location wins over the
+        # octo-server /v1/ prefix block below, so all drive traffic lands here.
+        # Set DRIVE_API_URL (e.g. http://octo-drive:8080) at container start; blank
         # yields a 503 so a deployment without drive still boots. resolver +
         # runtime-variable proxy_pass: the drive host resolves per-request, so an
         # unset/unresolvable DRIVE_API_URL 503s this route instead of failing
         # nginx startup. Path+query are forwarded verbatim ($request_uri) — the
         # drive service owns the full /v1/drive/* surface, so nothing is stripped.
-        location /v1/drive {
+        location ~ ^/v1/drive(/|$) {
             default_type application/json;
             if ($drive_api_url = "") {
                 return 503 '{"status":503,"msg":"drive service is not configured"}';

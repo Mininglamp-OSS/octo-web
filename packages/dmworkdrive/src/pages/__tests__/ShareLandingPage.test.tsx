@@ -37,7 +37,7 @@ vi.mock('../../api/driveApi', () => {
     DriveApiError,
     accessShareByToken: vi.fn(),
     downloadShareByToken: vi.fn(),
-    assertSafeUploadURL: () => {},
+    assertSafePresignedURL: () => {},
   };
 });
 

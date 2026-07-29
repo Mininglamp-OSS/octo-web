@@ -1,6 +1,7 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, waitFor } from '../../__tests__/harness';
+import { render, waitFor, act } from '../../__tests__/harness';
 
 // Semi barrel drags in jsdom-hostile deps; stub to shells. Button forwards its
 // text/aria-label so we can find the gated entries by name.
@@ -30,7 +31,14 @@ vi.mock('../../ui/MoveModal', () => ({ default: () => null }));
 vi.mock('../../ui/UploadProgress', () => ({ default: () => null }));
 vi.mock('../../ui/MountDocsModal', () => ({ default: () => null }));
 vi.mock('../../ui/ShareModal', () => ({ default: () => null }));
-vi.mock('../../ui/InviteModal', () => ({ default: () => null }));
+// InviteModal renders a visibility marker so the space-switch reset test can
+// observe an open dialog being closed.
+vi.mock('../../ui/InviteModal', async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const r: any = await vi.importActual('react');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return { default: ({ visible }: any) => (visible ? r.createElement('div', null, 'INVITE_OPEN') : null) };
+});
 vi.mock('../../ui/MemberModal', () => ({ default: () => null }));
 vi.mock('../../utils/toast', () => ({ Toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('../../utils/download', () => ({ triggerBrowserDownload: vi.fn() }));
@@ -176,5 +184,29 @@ describe('DriveContent toolbar gating', () => {
     expect(queryByRole('button', { name: MOUNT })).not.toBeNull();
     expect(queryByRole('button', { name: INVITE })).toBeNull();
     expect(queryByRole('button', { name: MEMBER })).toBeNull();
+  });
+});
+
+describe('DriveContent — reset modals on space switch (Q8)', () => {
+  it('closes an open dialog when activeSpaceId changes, but not on a same-space rerender', async () => {
+    stubMembers({ canUpload: true, canEdit: true, canDownload: true, canShare: true, canManage: true });
+    const r = render(<DriveContent vm={vmWith(space('A', 'shared'))} />);
+    await waitFor(() => expect(r.queryByRole('button', { name: INVITE })).not.toBeNull());
+
+    // Open the invite dialog in space A.
+    r.click(r.getByRole('button', { name: INVITE }));
+    expect(r.queryByText('INVITE_OPEN')).not.toBeNull();
+
+    // Re-render with the SAME space id — the reset effect must NOT fire.
+    act(() => {
+      ReactDOM.render(<DriveContent vm={vmWith(space('A', 'shared'))} />, r.container);
+    });
+    expect(r.queryByText('INVITE_OPEN')).not.toBeNull();
+
+    // Switch to space B — the effect clears the stale open dialog.
+    act(() => {
+      ReactDOM.render(<DriveContent vm={vmWith(space('B', 'shared'))} />, r.container);
+    });
+    expect(r.queryByText('INVITE_OPEN')).toBeNull();
   });
 });
