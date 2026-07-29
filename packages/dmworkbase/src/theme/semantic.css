@@ -297,6 +297,13 @@
   --wk-space-color-5: #43e97b;
   --wk-space-color-6: #fa709a;
 
+  /* 云文档 doc_type 徽标底色（全局搜索云文档 tab）。这 4 组品牌色与现有
+     primitive palette 不完全一致，无法直接复用，故单列语义 token。 */
+  --wk-doc-accent-doc: #3370ff;
+  --wk-doc-accent-sheet: #00b42a;
+  --wk-doc-accent-board: #f7734b;
+  --wk-doc-accent-html: #7a5af5;
+
   /* AI 专属 */
   --wk-ai-surface: rgba(127, 59, 245, 0.03);
   --wk-ai-border: var(--wk-purple-alpha-12);
@@ -427,6 +434,12 @@ body[theme-mode="dark"] {
   /* 消息气泡双色 */
   --wk-bg-self: #1a2e2a; /* 自己的消息 — 暗色淡青 */
   --wk-bg-bubble: #1a1a2e; /* 他人 & AI 消息 — 暗色微紫 */
+
+  /* 云文档 doc_type 徽标底色（暗色，压暗以贴合 item-file 暗色约定） */
+  --wk-doc-accent-doc: #2b5fd9;
+  --wk-doc-accent-sheet: #009a24;
+  --wk-doc-accent-board: #d9603c;
+  --wk-doc-accent-html: #5f45c9;
 
   /* Shadow */
   --wk-shadow-sm: 0 1px 2px var(--wk-black-alpha-30);

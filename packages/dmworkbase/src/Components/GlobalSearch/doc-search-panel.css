@@ -39,32 +39,20 @@
   color: var(--wk-text-inverse);
   background: var(--wk-text-accent);
 }
-/* doc_type accent colours. Light values follow the product palette
-   (blue/green/orange); dark variants are dimmed to match the item-file.css
-   dark-mode convention. */
+/* doc_type accent colours. Sourced from the --wk-doc-accent-* semantic tokens
+   (theme/semantic.css), which carry both the light values and the dimmed dark
+   variants, so this file stays token-only and inherits theming automatically. */
 .wk-doc-search__icon--doc {
-  background: #3370ff;
+  background: var(--wk-doc-accent-doc);
 }
 .wk-doc-search__icon--sheet {
-  background: #00b42a;
+  background: var(--wk-doc-accent-sheet);
 }
 .wk-doc-search__icon--board {
-  background: #f7734b;
+  background: var(--wk-doc-accent-board);
 }
 .wk-doc-search__icon--html {
-  background: #7a5af5;
-}
-body[theme-mode="dark"] .wk-doc-search__icon--doc {
-  background: #2b5fd9;
-}
-body[theme-mode="dark"] .wk-doc-search__icon--sheet {
-  background: #009a24;
-}
-body[theme-mode="dark"] .wk-doc-search__icon--board {
-  background: #d9603c;
-}
-body[theme-mode="dark"] .wk-doc-search__icon--html {
-  background: #5f45c9;
+  background: var(--wk-doc-accent-html);
 }
 .wk-doc-search__meta {
   flex: 1;

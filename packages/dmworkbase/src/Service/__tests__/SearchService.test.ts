@@ -229,14 +229,44 @@ describe("SearchService request boundaries", () => {
     });
   });
 
-  it("falls back to items.length when total is not a number, and defaults items to []", async () => {
+  it("does not clamp total to items.length when total is not a number (uses Infinity so a full page still paginates), and defaults items to []", async () => {
+    // Contract: `total` is an exact post-visibility count and is always a
+    // number in practice. If it is ever absent, we must NOT fall back to
+    // items.length (that caps a full first page at one page); we use Infinity
+    // and let the full-page signal drive hasMore. updatedAt:0 coerces to null.
     postMock.mockResolvedValue({ items: [{ docId: "d1", title: "A", docType: "doc", updatedAt: 0 }] });
     const withItems = await SearchService.searchDocs({ keyword: "x", page: 1, pageSize: 20 });
-    expect(withItems.total).toBe(1);
+    expect(withItems.total).toBe(Number.POSITIVE_INFINITY);
+    expect(withItems.items).toEqual([{ docId: "d1", title: "A", docType: "doc", updatedAt: null }]);
 
     postMock.mockResolvedValue({ total: "nope" });
     const noItems = await SearchService.searchDocs({ keyword: "x", page: 1, pageSize: 20 });
-    expect(noItems).toEqual({ total: 0, items: [], rawItemCount: 0 });
+    expect(noItems).toEqual({
+      total: Number.POSITIVE_INFINITY,
+      items: [],
+      rawItemCount: 0,
+    });
+  });
+
+  it("coerces updatedAt to positive-millis-or-null (contract: number | null)", async () => {
+    postMock.mockResolvedValue({
+      total: 5,
+      items: [
+        { docId: "a", title: "A", docType: "doc", updatedAt: 1710000000000 }, // valid millis
+        { docId: "b", title: "B", docType: "doc", updatedAt: 0 }, // falsy -> null
+        { docId: "c", title: "C", docType: "doc", updatedAt: -1 }, // <=0 -> null
+        { docId: "d", title: "D", docType: "doc", updatedAt: "2024-01-01" }, // non-number -> null
+        { docId: "e", title: "E", docType: "doc", updatedAt: null }, // null stays null
+      ],
+    });
+    const result = await SearchService.searchDocs({ keyword: "x", page: 1, pageSize: 20 });
+    expect(result.items.map((it) => it.updatedAt)).toEqual([
+      1710000000000,
+      null,
+      null,
+      null,
+      null,
+    ]);
   });
 
   it("drops items missing a usable docId so /d/undefined and key collisions are impossible", async () => {
@@ -249,7 +279,8 @@ describe("SearchService request boundaries", () => {
       ],
     });
     const result = await SearchService.searchDocs({ keyword: "x", page: 1, pageSize: 20 });
-    expect(result.items).toEqual([{ docId: "d1", title: "A", docType: "doc", updatedAt: 0 }]);
+    // updatedAt:0 is coerced to null per the number|null contract.
+    expect(result.items).toEqual([{ docId: "d1", title: "A", docType: "doc", updatedAt: null }]);
     // rawItemCount preserves the backend's pre-filter page size so the pager
     // can tell a client-side drop apart from a genuine short final page.
     expect(result.rawItemCount).toBe(3);

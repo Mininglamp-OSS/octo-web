@@ -85,7 +85,7 @@ describe("DocSearchPanel — pagination stop conditions", () => {
     // stop condition depended on a shared mutable accumulator, the late "old"
     // resolution would still bump it and could push the "new" query's hasMore
     // false. With `page * PAGE_SIZE` derivation, the stale resolution is inert.
-    let releaseOld: (() => void) | null = null;
+    let releaseOld!: () => void;
     const oldGate = new Promise<void>((resolve) => {
       releaseOld = resolve;
     });
@@ -114,7 +114,7 @@ describe("DocSearchPanel — pagination stop conditions", () => {
     await screen.findByText("n0");
 
     // Now let the stale "old" request resolve.
-    releaseOld?.();
+    releaseOld();
     await oldGate;
     // Give React a tick to (not) apply the discarded response.
     await new Promise((r) => setTimeout(r, 50));
@@ -124,5 +124,47 @@ describe("DocSearchPanel — pagination stop conditions", () => {
     expect(document.body.querySelector(".wk-doc-search__loadmore")).toBeNull();
     expect(screen.queryByText("o0")).toBeNull();
     expect(screen.getByText("n0")).toBeInTheDocument();
+  });
+});
+
+describe("DocSearchPanel — updatedAt rendering (contract: number | null)", () => {
+  // The backend returns updatedAt as `number | null` epoch millis; SearchService
+  // coerces stray values to positive-millis-or-null. The panel's formatUpdatedAt
+  // must render "" for null (early return on falsy) and a date for valid millis,
+  // never an "Invalid Date".
+  function itemWith(updatedAt: number | null): DocSearchItem {
+    return { docId: "x1", title: "hello-doc", docType: "doc", updatedAt };
+  }
+
+  it("renders an empty sub line when updatedAt is null", async () => {
+    const dataSource = makeDataSource(async () => ({
+      total: 1,
+      items: [itemWith(null)],
+      rawItemCount: 1,
+    }));
+    const { container } = render(
+      <DocSearchPanel keyword="k" dataSource={dataSource} />
+    );
+    await screen.findByText("hello-doc");
+    const sub = container.querySelector(".wk-doc-search__sub");
+    expect(sub).not.toBeNull();
+    expect(sub?.textContent).toBe("");
+  });
+
+  it("renders a date (not Invalid Date) for valid epoch millis", async () => {
+    const millis = Date.UTC(2024, 0, 15, 12, 0, 0); // 2024-01-15
+    const dataSource = makeDataSource(async () => ({
+      total: 1,
+      items: [itemWith(millis)],
+      rawItemCount: 1,
+    }));
+    const { container } = render(
+      <DocSearchPanel keyword="k" dataSource={dataSource} />
+    );
+    await screen.findByText("hello-doc");
+    const sub = container.querySelector(".wk-doc-search__sub");
+    expect(sub?.textContent).toBe(new Date(millis).toLocaleDateString("en-US"));
+    expect(sub?.textContent).not.toContain("Invalid");
+    expect(sub?.textContent).not.toBe("");
   });
 });

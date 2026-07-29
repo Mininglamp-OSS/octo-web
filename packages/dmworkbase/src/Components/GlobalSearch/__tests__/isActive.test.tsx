@@ -72,7 +72,10 @@ describe("GlobalContentSearchPanel — isActive gate (source guard)", () => {
 
   it("§D shared pagination rejects stale work while disabled", () => {
     expect(paginationHookSrc).toMatch(/if\s*\(\s*!enabled\s*\|\|\s*\(cursor/);
-    expect(paginationHookSrc).toMatch(/\[enabled,\s*errorMessage,\s*search\]/);
+    // The load-next-page callback must depend on the stale-guard trio; an
+    // optional dedupeKey (docs search) may also be listed since the merge
+    // closure reads it. Order-tolerant so a formatter reshuffle won't break it.
+    expect(paginationHookSrc).toMatch(/\[(?:dedupeKey,\s*)?enabled,\s*errorMessage,\s*search\]/);
   });
 });
 

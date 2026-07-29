@@ -9,6 +9,12 @@ import "./doc-search-panel.css";
 
 const PAGE_SIZE = 20;
 
+// Stable identity extractor for the paginator's cross-page dedup. Must be
+// module-level (not an inline arrow) so useSearchPagination's `runSearch`
+// useCallback identity stays stable across renders — an inline function would
+// change every render and re-fire the search effect.
+const docDedupeKey = (item: DocSearchItem) => item.docId;
+
 interface DocSearchPanelProps {
   keyword: string;
   dataSource: GlobalSearchDataSource;
@@ -52,7 +58,7 @@ const DOC_TYPE_BADGE: Record<string, string> = {
   html: "WEB",
 };
 
-function formatUpdatedAt(ms: number, locale: string): string {
+function formatUpdatedAt(ms: number | null, locale: string): string {
   if (!ms) return "";
   try {
     return new Date(ms).toLocaleDateString(locale);
@@ -110,6 +116,7 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
   );
 
   const {
+    autoPaginationPaused,
     contentRef,
     error,
     handleScroll,
@@ -123,6 +130,9 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
     enabled: canSearch,
     search: searchPage,
     errorMessage: t("base.globalSearch.docs.searchFailed"),
+    // Offset paging has no stable cursor: index churn can repeat a docId across
+    // pages. Dedup by docId so a repeat can't collide React keys (contract #4).
+    dedupeKey: docDedupeKey,
   });
 
   const items = response.items;
@@ -156,11 +166,9 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
         ref={contentRef}
         onScroll={handleScroll}
       >
-        {items.length === 0 ? (
-          emptyState
-        ) : (
-          <>
-            {items.map((item) => (
+        {items.length === 0
+          ? emptyState
+          : items.map((item) => (
               <button
                 type="button"
                 key={item.docId}
@@ -189,28 +197,46 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
                 </span>
               </button>
             ))}
-            {loadingMore && (
-              <div className="wk-doc-search__hint" role="status">
-                {t("base.globalSearch.docs.loading")}
-              </div>
-            )}
-            {paginationError && (
-              <div className="wk-doc-search__loadmore">
-                <span>{paginationError}</span>
-                <button type="button" onClick={() => loadNextPage(true)}>
-                  {t("base.globalSearch.docs.loadMore")}
-                </button>
-              </div>
-            )}
-            {!loadingMore && !paginationError && response.hasMore && (
-              <div className="wk-doc-search__loadmore">
-                <button type="button" onClick={() => loadNextPage(true)}>
-                  {t("base.globalSearch.docs.loadMore")}
-                </button>
-              </div>
-            )}
-          </>
+        {/* Continuation controls are siblings of the results/empty branch, not
+            nested inside it — otherwise an empty accumulator (every fetched
+            page dropped by the docId filter, so items.length === 0 while the
+            server still reports hasMore) hides the only way to continue and
+            dead-ends the query. Mirrors GlobalContentSearchPanel. */}
+        {loadingMore && (
+          <div className="wk-doc-search__hint" role="status">
+            {t("base.globalSearch.docs.loading")}
+          </div>
         )}
+        {paginationError && (
+          <div className="wk-doc-search__loadmore">
+            <span>{paginationError}</span>
+            <button type="button" onClick={() => loadNextPage(true)}>
+              {t("base.globalSearch.docs.loadMore")}
+            </button>
+          </div>
+        )}
+        {!loadingMore &&
+          !paginationError &&
+          !autoPaginationPaused &&
+          response.hasMore && (
+            <div className="wk-doc-search__loadmore">
+              <button type="button" onClick={() => loadNextPage(true)}>
+                {t("base.globalSearch.docs.loadMore")}
+              </button>
+            </div>
+          )}
+        {/* Auto-pagination paused on an empty page: force a retry so a run of
+            fully-filtered pages can't strand the user with no continuation. */}
+        {autoPaginationPaused &&
+          !paginationError &&
+          !loadingMore &&
+          response.hasMore && (
+            <div className="wk-doc-search__loadmore">
+              <button type="button" onClick={() => loadNextPage(true)}>
+                {t("base.globalSearch.docs.loadMore")}
+              </button>
+            </div>
+          )}
       </div>
     </div>
   );

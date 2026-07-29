@@ -210,9 +210,18 @@ export interface DocSearchItem {
   docId: string;
   title: string;
   docType: DocSearchDocType;
-  /** updated_at as epoch millis (backend `updatedAt`). */
-  updatedAt: number;
-  /** The doc's real space id (backend `spaceId`), passed to buildDocLink's `?sp=` so the standalone preflight addresses the doc's own space. */
+  /**
+   * updated_at as epoch millis, or null (backend `updatedAt` is
+   * `number | null` — doc_meta.updated_at NOW(3), null when unset).
+   * SearchService coerces stray values to positive-millis-or-null.
+   */
+  updatedAt: number | null;
+  /**
+   * The doc's real space id (backend `spaceId`), passed to buildDocLink's
+   * `?sp=` so the standalone preflight addresses the doc's own space. The
+   * backend returns it on every item (search is single-space scoped, space_id
+   * injected by the gateway); optional only so DataSource fakes/tests may omit it.
+   */
   spaceId?: string;
   /**
    * OpenSearch-generated highlight fragment (may contain <em></em>).
