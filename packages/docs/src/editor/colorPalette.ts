@@ -79,3 +79,16 @@ export const TEXT_COLORS = PALETTE_HUES.map((h) => h.text) as readonly string[]
 
 /** Light highlight backgrounds — same hue, same column, tinted toward white for dark-text contrast. */
 export const HIGHLIGHT_COLORS = PALETTE_HUES.map((h) => toHighlightTint(h.text)) as readonly string[]
+
+/** Canonical 5×9 matrix rendered by Univer Sheet's ColorPicker. Board controls consume this
+ * matrix directly without changing the existing Doc text/highlight preset semantics above. */
+export const UNIVER_COLOR_PRESETS = [
+  ['#FFFFFF', '#E1EFFE', '#FDE8E8', '#FEECDC', '#FFF4B9', '#DEF7EC', '#D5F5F6', '#EDEBFE', '#FCE8F3'],
+  ['#CDD0D8', '#A4CAFE', '#F8B4B4', '#FDBA8C', '#FAC815', '#84E1BC', '#7EDCE2', '#CABFFD', '#F8B4D9'],
+  ['#979DAC', '#3F83F8', '#F05252', '#FF5A1F', '#D49D0F', '#0DA471', '#0694A2', '#9061F9', '#E74694'],
+  ['#414657', '#1A56DB', '#C81E1E', '#B43403', '#9A6D15', '#046C4E', '#036672', '#6C2BD9', '#BF125D'],
+  ['#000000', '#233876', '#771D1D', '#8A2C0D', '#634312', '#014737', '#014451', '#4A1D96', '#751A3D'],
+] as const
+
+export const DEFAULT_TEXT_COLOR = '#000000'
+export const DEFAULT_HIGHLIGHT_COLOR = '#FFF4B9'

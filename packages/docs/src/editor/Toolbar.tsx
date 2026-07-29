@@ -14,8 +14,15 @@ import '@univerjs/design/lib/index.css'
 // The @univerjs/design locale bundles supply the ColorPicker's own button labels (更多 / 确定 /
 // 取消). The docs toolbar mounts its own <ConfigProvider>, so we hand it the bundle matching the
 // app's current language — otherwise those labels render blank (ConfigContext.locale is undefined).
-import designZhCN from '@univerjs/design/locale/zh-CN'
-import designEnUS from '@univerjs/design/locale/en-US'
+// The @univerjs/design ColorPicker locale bundles and the shared colour-control primitives now
+// live in ./colorControl.tsx so the docs toolbar and the whiteboard native panel share one
+// implementation (getUniverPortal / designLocale / ColorSplitControl).
+import {
+  getUniverPortal,
+  designLocale,
+  ColorSplitControl,
+  IconResetColor,
+} from './colorControl.tsx'
 // Univer's own icon set (@univerjs/icons, MIT) — the SAME icons the sheet uses, so identical
 // functions read with identical glyphs across docs and sheet.
 import {
@@ -65,8 +72,13 @@ import { TableGridPicker } from './TableControls.tsx'
 import { FormulaControl } from './FormulaControl.tsx'
 import { LatexInputModal } from '../sheet/floatDom/LatexInputModal.tsx'
 import { capturePaintMarks, applyPaintMarks } from './formatPainter.ts'
-import { HIGHLIGHT_COLORS, TEXT_COLORS } from './colorPalette.ts'
+import {
+  HIGHLIGHT_COLORS,
+  TEXT_COLORS,
+  normalizeHexColor,
+} from './colorPalette.ts'
 import { t, i18n } from '../octoweb/index.ts'
+import { LINE_HEIGHTS } from './lineHeights.ts'
 import { FONT_FAMILY_ENABLED, LINE_SPACING_ENABLED } from '../config.ts'
 import { FONT_FAMILIES } from './fontFamilies.ts'
 import type { Mark } from '@tiptap/pm/model'
@@ -635,123 +647,8 @@ export function shouldShowFloatingMenu(args: {
   return isRootDepth && isEmptyTextBlock
 }
 
-// The highlight (text-background) and font-colour presets are DERIVED from one shared hue base
-// (PALETTE_HUES) in ./colorPalette.ts: TEXT_COLORS are the saturated hues, HIGHLIGHT_COLORS are the
-// same hues at the same index tinted light so dark text stays readable on top. Same count, same hue
-// order, same column ↦ same colour family across both pickers. Values stay #rrggbb so they survive
-// Yjs collaboration and the DOCX/Markdown exporters losslessly.
-
-/** The @univerjs/design locale bundle whose `design` sub-object drives the embedded ColorPicker's
- * button labels (更多 / 确定 / 取消), matched to the app's current language. Read at render so a
- * locale switch is reflected the next time the toolbar re-renders (it ticks on every selection). */
-function designLocale() {
-  const lang = (i18n.getLocale() || '').toLowerCase()
-  return (lang.startsWith('zh') ? designZhCN : designEnUS).design
-}
-
-/** "Reset colour" glyph for the picker's clear row — a swatch square with a diagonal slash, the same
- * "no colour" affordance the sheet shows next to its 重置颜色 item. Stroke line-art (not filled), so
- * it reads at 14px without .octo-tb-icon's fill. */
-const IconResetColor = () => (
-  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" className="octo-colorpicker-clear-icon">
-    <rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
-    <line x1="3.6" y1="12.4" x2="12.4" y2="3.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-  </svg>
-)
-
-/**
- * Split colour control shared by the text-colour and highlight buttons: the main button applies the
- * last-used colour, the caret opens the sheet's own Univer ColorPicker (preset grid + custom spectrum
- * + hex). ColorPicker.onChange fires exactly once per committed colour (a preset click or the custom
- * panel's 确定 button); dragging the spectrum/hue only mutates the picker's internal state, so one
- * pick = one editor transaction = one undo record + one Yjs update, matching the sheet.
- *
- * The popover closes on outside-click like the sheet's (and the docs link/list menus) — but a click
- * inside the ColorPicker's own "更多颜色" dialog, which portals to #octo-univer-portal, must NOT count
- * as outside: closing there would unmount the ColorPicker and take the dialog down with it.
- */
-function ColorSplitControl({
-  title,
-  initialColor,
-  renderIcon,
-  onMainClick,
-  onPick,
-  onClear,
-}: {
-  title: string
-  initialColor: string
-  renderIcon: (color: string) => ReactNode
-  onMainClick: (color: string) => void
-  onPick: (color: string) => void
-  onClear: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [lastColor, setLastColor] = useState<string>(initialColor)
-  const ref = useRef<HTMLSpanElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (ref.current?.contains(target)) return
-      // The ColorPicker's "更多颜色" dialog mounts in the shared Univer portal, outside this control's
-      // subtree — treat clicks there as inside so the popover (and thus the dialog) isn't torn down.
-      const portal = document.getElementById('octo-univer-portal')
-      if (portal?.contains(target)) return
-      setOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [open])
-  return (
-    <span className="octo-color-control octo-color-split" ref={ref}>
-      <Tooltip title={title}>
-        <button
-          type="button"
-          className="octo-tb-btn octo-color-main"
-          aria-label={title}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => onMainClick(lastColor)}
-        >
-          {renderIcon(lastColor)}
-        </button>
-      </Tooltip>
-      <button
-        type="button"
-        className={'octo-tb-btn octo-color-caret-btn' + (open ? ' is-active' : '')}
-        aria-label={title}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="octo-tb-caret" aria-hidden="true">▾</span>
-      </button>
-      {open && (
-        <span className="octo-color-popover octo-color-popover--picker">
-          <ColorPicker
-            format="hex"
-            value={lastColor}
-            onChange={(c) => {
-              setLastColor(c)
-              onPick(c)
-              setOpen(false)
-            }}
-          />
-          <button
-            type="button"
-            className="octo-colorpicker-clear"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              onClear()
-              setOpen(false)
-            }}
-          >
-            <IconResetColor />
-            {t('docs.toolbar.clearColor')}
-          </button>
-        </span>
-      )}
-    </span>
-  )
-}
+// Doc highlight and font-colour defaults retain their established highlight-safe and saturated
+// palettes. The shared control implementation does not change the document surface's semantics.
 
 /** Text-highlight control (SCHEMA-SPEC §3): the shared {@link ColorSplitControl} driving highlight. */
 function HighlightControl({ editor }: { editor: Editor }) {
@@ -785,8 +682,9 @@ function TextColorControl({ editor }: { editor: Editor }) {
   )
 }
 
-/** Font-size presets (px) offered by the toolbar dropdown (SCHEMA_VERSION 7). */
+/** Font-size presets (px) offered by the document toolbar (SCHEMA_VERSION 7). */
 const FONT_SIZES = ['12', '14', '16', '18', '24', '32'] as const
+
 
 /** Text-alignment options (SCHEMA_VERSION 5) — value passed to setTextAlign, icon per direction (C4). */
 const ALIGNMENTS = [
@@ -1024,8 +922,8 @@ function AlignControls({ editor }: { editor: Editor }) {
   )
 }
 
-/** Line-height presets (unitless multiplier) offered by the toolbar dropdown (SCHEMA_VERSION 17). */
-const LINE_HEIGHTS = ['1', '1.15', '1.5', '2'] as const
+/** Line-height presets (unitless multiplier) — shared with the whiteboard text toolbar via
+ *  ./lineHeights.ts so both surfaces expose the same steps (SCHEMA_VERSION 17). */
 
 /** Read the active line-height off whichever of the two block types the caret sits in. */
 function currentLineHeight(editor: Editor): string {
@@ -1679,24 +1577,6 @@ function BookmarkControl({ editor }: { editor: Editor }) {
 }
 
 /** Fixed top toolbar (frontend-design §3.1). */
-/**
- * Dedicated, docs-scoped portal host for @univerjs/design popups. They mount OUTSIDE the app tree,
- * where the Univer theme (which supplies their background color) isn't applied — so the popup surface
- * would render transparent. Hosting them under a known element lets styles.css give the popup a solid
- * background, scoped to `.octo-univer-portal` so the sheet's own Univer popups are untouched.
- */
-function getUniverPortal(): HTMLElement | null {
-  if (typeof document === 'undefined') return null
-  let el = document.getElementById('octo-univer-portal')
-  if (!el) {
-    el = document.createElement('div')
-    el.id = 'octo-univer-portal'
-    el.className = 'octo-univer-portal octo-theme'
-    document.body.appendChild(el)
-  }
-  return el
-}
-
 export function Toolbar({ editor }: { editor: Editor }) {
   useEditorTick(editor)
   const [linkOpen, setLinkOpen] = useState(false)

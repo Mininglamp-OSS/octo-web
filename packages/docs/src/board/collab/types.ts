@@ -74,6 +74,10 @@ export interface BinaryFileData {
 export interface ExcalidrawBindingAPI {
   updateScene(scene: {
     elements?: readonly ExcalidrawElement[]
+    /** Scene-level appState apply. Only `viewBackgroundColor` is driven by the binding today; other
+     *  keys pass through untouched so a caller may merge additional state. Omitting `elements` leaves
+     *  the current scene elements in place (Excalidraw merges), so an appState-only apply is cheap. */
+    appState?: { viewBackgroundColor?: string } & Record<string, unknown>
     /** Suppress capturing this programmatic apply onto Excalidraw's local undo stack (M-9). */
     captureUpdate?: unknown
   }): void

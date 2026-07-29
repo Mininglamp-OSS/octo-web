@@ -52,6 +52,7 @@ vi.mock('@excalidraw/excalidraw', () => {
       }
       return out
     },
+    redrawTextBoundingBox: () => {},
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))

@@ -34,15 +34,26 @@ export function bump(el: ExcalidrawElement, overrides: Partial<ExcalidrawElement
 export class FakeExcalidrawApi implements ExcalidrawBindingAPI {
   scene: ExcalidrawElement[] = []
   updateSceneCalls = 0
+  /** Latest canvas background colour pushed via updateScene({ appState }) (PR #1161). */
+  viewBackgroundColor?: string
   /** File binaries handed to the canvas via addFiles (image rehydrate path). */
   addedFiles: BinaryFileData[] = []
   addFilesCalls = 0
   /** Optional reentrancy hook: invoked inside updateScene to simulate Excalidraw's onChange. */
   onUpdate?: (elements: readonly ExcalidrawElement[]) => void
 
-  updateScene(scene: { elements?: readonly ExcalidrawElement[]; captureUpdate?: unknown }): void {
+  updateScene(scene: {
+    elements?: readonly ExcalidrawElement[]
+    appState?: { viewBackgroundColor?: string } & Record<string, unknown>
+    captureUpdate?: unknown
+  }): void {
     this.updateSceneCalls++
-    this.scene = [...(scene.elements ?? [])]
+    // Omitting `elements` leaves the scene in place (Excalidraw merges) — mirror that so an
+    // appState-only apply does not wipe the recorded elements.
+    if (scene.elements) this.scene = [...scene.elements]
+    if (typeof scene.appState?.viewBackgroundColor === 'string') {
+      this.viewBackgroundColor = scene.appState.viewBackgroundColor
+    }
     this.onUpdate?.(this.scene)
   }
 

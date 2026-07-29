@@ -6,6 +6,9 @@ import {
   HIGHLIGHT_TINT,
   toHighlightTint,
   normalizeHexColor,
+  UNIVER_COLOR_PRESETS,
+  DEFAULT_TEXT_COLOR,
+  DEFAULT_HIGHLIGHT_COLOR,
 } from './colorPalette.ts'
 
 // Plan A: the highlight and font-colour presets are DERIVED from one shared hue base so the two
@@ -63,6 +66,19 @@ describe('colorPalette — toHighlightTint', () => {
   it('rejects a non-#rrggbb input rather than emit a broken swatch', () => {
     expect(() => toHighlightTint('red')).toThrow()
     expect(() => toHighlightTint('#fff')).toThrow()
+  })
+})
+
+describe('colorPalette — Board Univer presets', () => {
+  it('keeps the Board picker matrix separate from Doc text/highlight presets', () => {
+    expect(UNIVER_COLOR_PRESETS).toHaveLength(5)
+    UNIVER_COLOR_PRESETS.forEach((row) => expect(row).toHaveLength(9))
+    expect(UNIVER_COLOR_PRESETS[0][0]).toBe('#FFFFFF')
+    expect(UNIVER_COLOR_PRESETS.flat()).not.toContain('transparent')
+    expect(TEXT_COLORS).not.toEqual(UNIVER_COLOR_PRESETS.flat())
+    expect(HIGHLIGHT_COLORS).not.toEqual(UNIVER_COLOR_PRESETS.flat())
+    expect(DEFAULT_TEXT_COLOR).toBe('#000000')
+    expect(DEFAULT_HIGHLIGHT_COLOR).toBe('#FFF4B9')
   })
 })
 

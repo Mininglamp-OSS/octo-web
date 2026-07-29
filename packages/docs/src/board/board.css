@@ -136,6 +136,21 @@
   display: none;
 }
 
+/* Hide Excalidraw's native top-left hamburger (☰) MainMenu trigger and the empty-canvas welcome
+   hint that arrows at it. The board exposes no burger menu — its own header/toolbar carry every
+   board action and canvas background lives on the "9" toolbar slot — so the trigger is dead brand
+   chrome. As with the UserList/Help-header rules above this is only the no-flash first-paint layer;
+   the runtime guarantee is the inline `display: none` set by installExcalidrawDebrand(). Scoped
+   under `.octo-board-canvas` for a higher specificity that wins over the vendor's dynamically-
+   imported index.css regardless of load order. */
+.octo-board-canvas .excalidraw .main-menu-trigger,
+.octo-board-canvas .excalidraw .welcome-screen-decor-hint--menu,
+.octo-board-canvas .excalidraw .welcome-screen-menu-item,
+/* The vendor line/arrow guidance is English-only and duplicates the toolbar affordance. */
+.octo-board-canvas .excalidraw .HintViewer {
+  display: none;
+}
+
 /* Version history now renders through the unified <VersionHistoryPanel> shell: the list lives in a
    right-side drawer (.octo-doc-drawer, styled in editor/styles.css and shared with doc / sheet) and
    the read-only scene preview pops in the shell's centered preview modal (.docs-version-preview-modal).
@@ -180,4 +195,42 @@
 .docs-version-preview-modal-body .octo-board-version-preview {
   height: 62vh;
   min-height: 360px;
+}
+
+.octo-board-help-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  overflow: visible;
+}
+
+/* BoardCanvasColorControl hosts the app-owned canvas-colour picker (toolbar slot 9). Its trigger is
+   Excalidraw's own native toolbar button, so the mounted control itself is hidden — only its
+   portalled popover (rendered into #octo-univer-portal on <body>, so unaffected by this rule) ever
+   shows, opened via the octo-board-canvas-color-request event. */
+.octo-board-canvas-color {
+  display: none;
+}
+
+/* Keep the approved palette glyph lighter than the near-black toolbar text. The selected button
+ * background/keybinding remain owned by Excalidraw; only the glyph tone is restored. */
+.octo-board-canvas .excalidraw [data-testid="toolbar-canvas-color"] .ToolIcon__icon > svg {
+  color: var(--color-gray-60, #7a7a7a);
+}
+
+/* The input proxy cannot shape mixed font runs. Keep its native selection invisible and render the
+ * visible highlight in the vendor's run-aware DOM selection layer instead. */
+.octo-board-canvas .excalidraw textarea.excalidraw-wysiwyg::selection {
+  color: transparent;
+  background: transparent;
+}
+
+.octo-board-canvas .excalidraw textarea.excalidraw-wysiwyg {
+  caret-color: transparent !important;
+}
+
+@keyframes octo-board-caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
 }
