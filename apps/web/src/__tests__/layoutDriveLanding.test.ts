@@ -1,53 +1,94 @@
 /**
- * PR#1146 N2 (corrected) — the drive share/invite landing pages are intercepted by the host
- * Layout (apps/web) as standalone pages that BOTH require a valid Octo session: any signed-in
- * Octo user may open a share (they need not belong to the file's Space), but an anonymous /
- * external visitor is sent to login first and bounced back to the exact landing after sign-in.
- * Mirrors the standalone `/d/:docId` interception (recover session → render when signed in,
- * else stash the return target and fall through to login).
+ * PR#1146 — drive share/invite standalone landing return-target behavior.
  *
- * Follows the source-grep convention the Layout already uses (layoutStandaloneDocPath.test.ts):
- * the component pulls in Tauri / MainPage and can't be cheaply rendered in jsdom. The
- * open-redirect-safe return allowlist for the drive shapes is covered behaviorally by
- * standaloneReturn.test.ts.
+ * Behavioral coverage of the Layout gate (prepareDriveLandingReturn) that both drive
+ * branches use, exercised against the REAL persist/consume return-path store (jsdom
+ * sessionStorage) instead of grepping the Layout source. The core R8 P1 fix is that the
+ * deep-link return target is stashed BEFORE the session/token check, so an expired stored
+ * token — which still renders the landing, whose API then 401s → global logout → hard
+ * redirect to login — no longer loses the deep-link. The open-redirect allowlist for the
+ * drive shapes is covered by standaloneReturn.test.ts and not duplicated here.
  */
-import * as fs from 'fs'
-import * as path from 'path'
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+    consumeStandaloneReturn,
+    persistStandaloneReturn,
+    prepareDriveLandingReturn,
+} from "../Layout/standaloneReturn";
 
-describe('Layout — drive share/invite landing interception (PR#1146 N2, login-required)', () => {
-  let layout: string
+const KEY = "octo.docs.standaloneReturn";
 
-  beforeAll(() => {
-    layout = fs.readFileSync(path.join(__dirname, '../Layout/index.tsx'), 'utf-8')
-  })
+function openPath(pathAndQuery: string): void {
+    window.history.replaceState(null, "", pathAndQuery);
+}
 
-  it('intercepts the share path and renders ShareLandingPage only when signed in', () => {
-    expect(layout).toMatch(/isDriveSharePath\(\s*window\.location\.pathname\s*\)/)
-    const shareBranch = layout.slice(
-      layout.indexOf('isDriveSharePath('),
-      layout.indexOf('isDriveInvitePath('),
-    )
-    // Share now requires login: recover the session, render only when authed,
-    // else persist the return target and fall through to the login screen.
-    expect(shareBranch).toMatch(/recoverOctoSessionFromStorage\(true\)/)
-    expect(shareBranch).toMatch(/if \(WKApp\.loginInfo\.token\)/)
-    expect(shareBranch).toMatch(/return <ShareLandingPage\s+token=\{shareTokenFromPath\(\)\}/)
-    expect(shareBranch).toMatch(/persistStandaloneReturn\(\)/)
-  })
+afterEach(() => {
+    window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
+    vi.restoreAllMocks();
+});
 
-  it('intercepts the invite path, recovers the session, and renders InviteLandingPage when signed in', () => {
-    expect(layout).toMatch(/isDriveInvitePath\(\s*window\.location\.pathname\s*\)/)
-    const inviteBranch = layout.slice(
-      layout.indexOf('isDriveInvitePath('),
-      layout.indexOf('Read-only shared summary deep-link'),
-    )
-    expect(inviteBranch).toMatch(/recoverOctoSessionFromStorage\(true\)/)
-    expect(inviteBranch).toMatch(/if \(WKApp\.loginInfo\.token\)/)
-    expect(inviteBranch).toMatch(/<InviteLandingPage\s+token=\{inviteTokenFromPath\(\)\}/)
-    expect(inviteBranch).toMatch(/persistStandaloneReturn\(\)/)
-  })
+describe("drive landing return-target gate (prepareDriveLandingReturn)", () => {
+    it("anonymous visitor: stashes the return target and reports no session (→ login)", () => {
+        openPath("/drive/s/sh_abc");
 
-  it('orders the share branch before the invite branch', () => {
-    expect(layout.indexOf('isDriveSharePath(')).toBeLessThan(layout.indexOf('isDriveInvitePath('))
-  })
-})
+        const rendered = prepareDriveLandingReturn(() => false);
+
+        expect(rendered).toBe(false); // fall through to the login screen
+        expect(window.sessionStorage.getItem(KEY)).toBe("/drive/s/sh_abc");
+    });
+
+    it("expired stored token: still stashes up-front, then renders — login consume recovers the deep-link", () => {
+        openPath("/drive/s/sh_abc?x=1");
+
+        // Stale/expired token passes the caller's token check → resolveSession returns true,
+        // so the landing renders. The fix is that persist already ran BEFORE that check.
+        const rendered = prepareDriveLandingReturn(() => true);
+        expect(rendered).toBe(true);
+        expect(window.sessionStorage.getItem(KEY)).toBe("/drive/s/sh_abc?x=1");
+
+        // Landing API 401 → global logout → hard redirect to login → onLogin consumes.
+        expect(consumeStandaloneReturn()).toBe("/drive/s/sh_abc?x=1");
+        expect(window.sessionStorage.getItem(KEY)).toBeNull(); // consumed exactly once
+    });
+
+    it("invite path round-trips through the real allowlist", () => {
+        openPath("/drive/invite/tok_1?foo=bar");
+
+        expect(prepareDriveLandingReturn(() => true)).toBe(true);
+        expect(consumeStandaloneReturn()).toBe("/drive/invite/tok_1?foo=bar");
+    });
+
+    it("persists REGARDLESS of session outcome (stash sits before the token gate)", () => {
+        const persist = vi.fn();
+
+        prepareDriveLandingReturn(() => true, persist);
+        prepareDriveLandingReturn(() => false, persist);
+
+        expect(persist).toHaveBeenCalledTimes(2); // both the render and the login path stash
+    });
+
+    it("runs persist before resolveSession so a resolve throw cannot skip the stash", () => {
+        const order: string[] = [];
+        const persist = vi.fn(() => order.push("persist"));
+        const resolve = vi.fn(() => {
+            order.push("resolve");
+            throw new Error("session recovery blew up");
+        });
+
+        expect(() => prepareDriveLandingReturn(resolve, persist)).toThrow();
+        expect(order).toEqual(["persist", "resolve"]);
+    });
+
+    it("valid signed-in render performs no navigation (no redirect loop)", () => {
+        openPath("/drive/s/sh_abc");
+        const href = window.location.href;
+
+        // A logged-in user simply rendering the landing: resolveSession true, key gets
+        // written, but the gate itself never navigates. onLogin is the only consumer, and
+        // it does not fire on a plain render, so the stash cannot bounce the current view.
+        prepareDriveLandingReturn(() => true);
+
+        expect(window.location.href).toBe(href); // unchanged: no assign/reload/redirect
+    });
+});

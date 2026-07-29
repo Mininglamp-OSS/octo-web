@@ -18,7 +18,7 @@ import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
-import { consumeStandaloneReturn, persistStandaloneReturn } from "./standaloneReturn";
+import { consumeStandaloneReturn, persistStandaloneReturn, prepareDriveLandingReturn } from "./standaloneReturn";
 import {
   ShareLandingPage,
   InviteLandingPage,
@@ -477,37 +477,39 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         // bounces back to the share after sign-in (isSafeReturnPath whitelists the
         // drive landing shapes). The drive module no longer rewrites the URL at
         // boot, so the pathname survives for this interception.
-        if (isDriveSharePath(window.location.pathname)) {
+        //
+        // R8 P1: stash the return target BEFORE the token gate (prepareDriveLandingReturn),
+        // not only in the anonymous fall-through. An expired stored token passes the token
+        // check and renders the landing, whose API 401s → global logout → hard redirect to
+        // login; stashing only when anonymous lost the deep-link for that expired-session
+        // chain. resolveDriveLandingSession runs the same load→recover the doc branch uses.
+        const resolveDriveLandingSession = (): boolean => {
             if (!WKApp.loginInfo.token) {
                 WKApp.loginInfo.load();
             }
             if (!WKApp.loginInfo.token) {
                 recoverOctoSessionFromStorage(true);
             }
-            if (WKApp.loginInfo.token) {
+            return !!WKApp.loginInfo.token;
+        };
+        if (isDriveSharePath(window.location.pathname)) {
+            if (prepareDriveLandingReturn(resolveDriveLandingSession)) {
                 return <ShareLandingPage token={shareTokenFromPath()} onExit={enterDriveHome} />;
             }
-            persistStandaloneReturn();
-            // Anonymous: fall through to the login screen (below) without navigating away.
+            // Anonymous/expired: return target already stashed; fall through to the login screen.
         }
 
         // Space-invite landing (`/drive/invite/:token`, PR#1146 N2). acceptInvite IS
         // authenticated, so mirror the `/d/:docId` flow: recover the octo session, render
         // the accept page when signed in, else stash the exact return target and fall
         // through to the login screen so the user bounces back to the invite after
-        // sign-in (isSafeReturnPath whitelists the drive landing shapes).
+        // sign-in (isSafeReturnPath whitelists the drive landing shapes). Same R8 P1
+        // up-front stash as the share branch above.
         if (isDriveInvitePath(window.location.pathname)) {
-            if (!WKApp.loginInfo.token) {
-                WKApp.loginInfo.load();
-            }
-            if (!WKApp.loginInfo.token) {
-                recoverOctoSessionFromStorage(true);
-            }
-            if (WKApp.loginInfo.token) {
+            if (prepareDriveLandingReturn(resolveDriveLandingSession)) {
                 return <InviteLandingPage token={inviteTokenFromPath()} onExit={enterDriveHome} />;
             }
-            persistStandaloneReturn();
-            // Anonymous: fall through to the login screen (below) without navigating away.
+            // Anonymous/expired: return target already stashed; fall through to the login screen.
         }
 
         // Read-only shared summary deep-link (`/s/share/:shareId`). It uses the same

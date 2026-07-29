@@ -68,6 +68,31 @@ export function persistStandaloneReturn(): void {
     }
 }
 
+/**
+ * Gate a drive share/invite standalone landing: stash the deep-link return target FIRST,
+ * then report whether a session is available to render the landing page.
+ *
+ * Stashing up-front — not only in the anonymous fall-through — closes the expired-session
+ * hole (PR#1146 R8 P1). An expired stored token still satisfies the caller's token check and
+ * renders the landing, whose API then 401s → global logout → hard redirect to login; without
+ * an up-front stash the deep-link was never saved and sign-in dropped the user at the app
+ * root. A valid signed-in render stashes once more harmlessly: consumeStandaloneReturn
+ * re-validates and deletes, and only the onLogin flow consumes it, so a plain render performs
+ * no navigation (no redirect loop). persist runs before resolveSession so a throw/short-circuit
+ * while resolving the session can never skip the stash.
+ *
+ * @param resolveSession Runs the branch's load→recover sequence; returns whether a token is
+ *   now present (i.e. the landing page should render).
+ * @param persist Injectable for tests; defaults to persistStandaloneReturn.
+ */
+export function prepareDriveLandingReturn(
+    resolveSession: () => boolean,
+    persist: () => void = persistStandaloneReturn,
+): boolean {
+    persist();
+    return resolveSession();
+}
+
 export function consumeStandaloneReturn(
     handlers: readonly ReturnHandler[] = []
 ): string | null {
