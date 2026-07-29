@@ -19,6 +19,10 @@ server {
         # string that the corresponding location block tests for.
         set $summary_api_url "${SUMMARY_API_URL}";
         set $market_api_url "${MARKET_API_URL}";
+        # octo-drive service (DRIVE_API_URL) upstream, as a runtime nginx variable
+        # so an unset/unresolvable host 503s its own route instead of aborting the
+        # whole container at startup (same pattern as the doc/backend hosts below).
+        set $drive_api_url "${DRIVE_API_URL}";
         # octo-doc (DOC_APP_URL) + octo-docs-backend (DOCS_BACKEND_URL) upstreams, as
         # runtime nginx variables so the doc/backend hosts resolve per-request (with a
         # resolver) instead of at config load — an unset/unresolvable host then 503s its
@@ -169,6 +173,30 @@ server {
             # upstream URI first, then proxy_pass without a URI.
             rewrite ^/market/api/v1/(.*)$ /api/v1/$1 break;
             proxy_pass  $market_api_url;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size 100m;
+        }
+
+        # octo-drive service — an INDEPENDENT backend (not octo-server) that serves
+        # its API natively under /v1/drive/* (spaces, folders, blobs, shares,
+        # public share access/download, etc.). As a prefix longer than /v1/ this
+        # wins over the octo-server /v1/ block for all drive traffic. Set
+        # DRIVE_API_URL (e.g. http://octo-drive:8080) at container start; blank
+        # yields a 503 so a deployment without drive still boots. resolver +
+        # runtime-variable proxy_pass: the drive host resolves per-request, so an
+        # unset/unresolvable DRIVE_API_URL 503s this route instead of failing
+        # nginx startup. Path+query are forwarded verbatim ($request_uri) — the
+        # drive service owns the full /v1/drive/* surface, so nothing is stripped.
+        location /v1/drive {
+            default_type application/json;
+            if ($drive_api_url = "") {
+                return 503 '{"status":503,"msg":"drive service is not configured"}';
+            }
+            resolver 127.0.0.11 ipv6=off valid=30s;
+            proxy_pass $drive_api_url$request_uri;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
