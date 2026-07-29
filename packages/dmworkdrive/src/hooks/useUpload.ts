@@ -55,6 +55,10 @@ interface Job {
 export function useUpload(onUploaded: () => void): UseUpload {
   const [items, setItems] = useState<UploadItem[]>([]);
   const jobs = useRef<Map<string, Job>>(new Map());
+  // AbortControllers for in-flight PUTs, keyed by item id, so a manual dismiss
+  // (or unmount) actually cancels the upload instead of letting it finish
+  // behind the user's back.
+  const controllers = useRef<Map<string, AbortController>>(new Map());
   // Pending auto-dismiss timers, keyed by item id, so we can cancel them on
   // manual dismiss and on unmount (avoids setState-on-unmounted + double free).
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -71,6 +75,9 @@ export function useUpload(onUploaded: () => void): UseUpload {
       clearTimeout(timer);
       timers.current.delete(id);
     }
+    // Cancel an in-flight PUT so a dismissed upload doesn't complete behind us.
+    controllers.current.get(id)?.abort();
+    controllers.current.delete(id);
     jobs.current.delete(id);
     setItems((list) => list.filter((it) => it.id !== id));
   }, []);
@@ -95,6 +102,8 @@ export function useUpload(onUploaded: () => void): UseUpload {
     () => () => {
       timers.current.forEach((t) => clearTimeout(t));
       timers.current.clear();
+      controllers.current.forEach((c) => c.abort());
+      controllers.current.clear();
     },
     [],
   );
@@ -104,6 +113,9 @@ export function useUpload(onUploaded: () => void): UseUpload {
       const job = jobs.current.get(id);
       if (!job) return;
       const { file, spaceId, parentId } = job;
+      // Fresh controller per run (retry re-prepares, so it gets a new one too).
+      const controller = new AbortController();
+      controllers.current.set(id, controller);
       try {
         patch(id, { status: 'preparing', progress: 0, error: undefined });
         const prep = await api.prepareUpload({
@@ -119,6 +131,7 @@ export function useUpload(onUploaded: () => void): UseUpload {
           contentType: prep.content_type,
           contentDisposition: prep.content_disposition,
           onProgress: (percent) => patch(id, { progress: percent }),
+          signal: controller.signal,
         });
 
         patch(id, { status: 'confirming' });
@@ -128,9 +141,14 @@ export function useUpload(onUploaded: () => void): UseUpload {
         onUploadedRef.current();
         scheduleAutoDismiss(id);
       } catch (err: unknown) {
+        // A dismiss/unmount aborts the controller; the resulting cancel is
+        // expected teardown (the row is already gone) — don't flash an error.
+        if (controller.signal.aborted) return;
         const msg = (err as Error)?.message || t('drive.upload.failed');
         patch(id, { status: 'error', error: msg });
         Toast.error(msg);
+      } finally {
+        controllers.current.delete(id);
       }
     },
     [patch, scheduleAutoDismiss],

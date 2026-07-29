@@ -7,7 +7,10 @@ vi.mock('../../api/driveApi', () => ({
   confirmUpload: vi.fn(),
 }));
 
+vi.mock('../../utils/toast', () => ({ Toast: { success: vi.fn(), error: vi.fn() } }));
+
 import * as api from '../../api/driveApi';
+import { Toast } from '../../utils/toast';
 import { useUpload } from '../useUpload';
 import type { PrepareUploadResp } from '../../bridge/types';
 
@@ -31,6 +34,7 @@ beforeEach(() => {
   vi.mocked(api.prepareUpload).mockReset();
   vi.mocked(api.putToPresignedUrl).mockReset();
   vi.mocked(api.confirmUpload).mockReset();
+  vi.mocked(Toast.error).mockReset();
 });
 
 describe('useUpload', () => {
@@ -211,5 +215,38 @@ describe('useUpload', () => {
     const allowed = ['contentType', 'contentDisposition', 'onProgress', 'signal'];
     expect(Object.keys(opts).every((k) => allowed.includes(k))).toBe(true);
     expect(JSON.stringify(opts)).not.toContain('token');
+  });
+
+  it('aborts an in-flight PUT when the row is dismissed, without flashing an error (B4)', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    vi.mocked(api.prepareUpload).mockResolvedValue(prepResp());
+    // Simulate a long PUT that only settles when its abort signal fires (like
+    // axios cancelling the request).
+    vi.mocked(api.putToPresignedUrl).mockImplementation(
+      (_url, _file, opts) =>
+        new Promise<void>((_resolve, reject) => {
+          capturedSignal = opts.signal;
+          opts.signal?.addEventListener('abort', () => reject(new Error('canceled')));
+        }),
+    );
+    const onUploaded = vi.fn();
+
+    const { result } = renderHook(() => useUpload(onUploaded));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('uploading'));
+
+    const { id } = result.current.items[0];
+    await act(async () => {
+      result.current.dismiss(id);
+      await Promise.resolve();
+    });
+
+    expect(capturedSignal?.aborted).toBe(true);
+    // Row removed, upload never confirmed, and the cancel must NOT surface as an
+    // error toast or an onUploaded refresh.
+    await waitFor(() => expect(result.current.items).toHaveLength(0));
+    expect(api.confirmUpload).not.toHaveBeenCalled();
+    expect(onUploaded).not.toHaveBeenCalled();
+    expect(Toast.error).not.toHaveBeenCalled();
   });
 });
