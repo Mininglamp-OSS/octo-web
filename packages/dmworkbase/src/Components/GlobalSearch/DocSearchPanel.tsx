@@ -9,11 +9,12 @@ import "./doc-search-panel.css";
 
 const PAGE_SIZE = 20;
 
-// Stable identity extractor for the paginator's cross-page dedup. Must be
-// module-level (not an inline arrow) so useSearchPagination's `runSearch`
-// useCallback identity stays stable across renders — an inline function would
-// change every render and re-fire the search effect.
-const docDedupeKey = (item: DocSearchItem) => item.docId;
+// Upper bound on the highlight fragment we scan/render. renderHighlight walks
+// the string with a global regex and slices around each match; an unbounded
+// fragment (a pathological OpenSearch highlight) would make that scan and the
+// resulting node array grow with the input. The backend fragment is a short
+// snippet in practice, so truncating past this bound only affects abuse cases.
+const HIGHLIGHT_MAX_LEN = 2000;
 
 interface DocSearchPanelProps {
   keyword: string;
@@ -34,7 +35,13 @@ interface DocSearchPanelProps {
 // plain React string (auto-escaped by React), and only the marked spans are
 // wrapped in <em>. This never uses dangerouslySetInnerHTML, so injected markup
 // in the fragment cannot execute.
-function renderHighlight(fragment: string): React.ReactNode {
+function renderHighlight(rawFragment: string): React.ReactNode {
+  // Bound the scan so a pathologically long fragment can't drive a large slice
+  // loop / node array (defense-in-depth; real backend fragments are short).
+  const fragment =
+    rawFragment.length > HIGHLIGHT_MAX_LEN
+      ? rawFragment.slice(0, HIGHLIGHT_MAX_LEN)
+      : rawFragment;
   const pattern = /<em>([\s\S]*?)<\/em>/gi;
   const nodes: React.ReactNode[] = [];
   let cursor = 0;
@@ -77,46 +84,28 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
   const trimmed = keyword.trim();
   const canSearch = !!trimmed && isActive && !!dataSource.searchDocs;
 
-  // Reuse the shared cursor-paginator by encoding the 1-based page as the
-  // cursor string ("2", "3", ...). searchDocs is page-based; map both ways.
-  //
-  // The stop condition is derived purely from the CURRENT request's own page
-  // number and the server total — no cross-render mutable counter. Earlier
-  // rounds kept a `loadedRef` accumulator that was `+=`-mutated inside this
-  // callback, but that ran before useSearchPagination applied its
-  // `requestIdRef` stale-response guard, so a discarded (superseded) request
-  // could still bump the shared counter and silently truncate a later valid
-  // page. `page * PAGE_SIZE` is a pure function of this request alone: a stale
-  // response can never poison a fresh query's pagination, and the hook already
-  // accumulates visible items in `response.items` for us.
+  // Keyset (search_after) pagination via the shared cursor-paginator: the hook
+  // passes the previous page's `nextCursor` back as `cursor` (undefined on the
+  // first page), and we surface the backend's `nextCursor` for the next round.
+  // hasMore is simply "the backend handed us a nextCursor" — no page/total
+  // arithmetic, so index churn between pages can't skip or repeat a row.
   const searchPage = useCallback(
     async (cursor?: string) => {
-      const page = cursor ? Number(cursor) || 1 : 1;
       const res = await dataSource.searchDocs!({
         keyword: trimmed,
-        page,
+        cursor,
         pageSize: PAGE_SIZE,
       });
-      // Full-page detection must use the backend's ORIGINAL page size, not
-      // res.items.length: SearchService.searchDocs drops items missing a
-      // usable docId, which would otherwise forge a short page and stop
-      // pagination early. rawItemCount is that pre-filter count.
-      const rawCount = res.rawItemCount ?? res.items.length;
-      // Continue only when the server returned a full page AND the pages we've
-      // requested so far haven't yet covered the reported total. Both clauses
-      // depend solely on this request, so no stale response can corrupt them.
-      const hasMore = rawCount >= PAGE_SIZE && page * PAGE_SIZE < res.total;
       return {
         items: res.items,
-        hasMore,
-        nextCursor: hasMore ? String(page + 1) : undefined,
+        hasMore: !!res.nextCursor,
+        nextCursor: res.nextCursor,
       };
     },
     [dataSource, trimmed]
   );
 
   const {
-    autoPaginationPaused,
     contentRef,
     error,
     handleScroll,
@@ -130,9 +119,6 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
     enabled: canSearch,
     search: searchPage,
     errorMessage: t("base.globalSearch.docs.searchFailed"),
-    // Offset paging has no stable cursor: index churn can repeat a docId across
-    // pages. Dedup by docId so a repeat can't collide React keys (contract #4).
-    dedupeKey: docDedupeKey,
   });
 
   const items = response.items;
@@ -215,28 +201,19 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
             </button>
           </div>
         )}
-        {!loadingMore &&
-          !paginationError &&
-          !autoPaginationPaused &&
-          response.hasMore && (
-            <div className="wk-doc-search__loadmore">
-              <button type="button" onClick={() => loadNextPage(true)}>
-                {t("base.globalSearch.docs.loadMore")}
-              </button>
-            </div>
-          )}
-        {/* Auto-pagination paused on an empty page: force a retry so a run of
-            fully-filtered pages can't strand the user with no continuation. */}
-        {autoPaginationPaused &&
-          !paginationError &&
-          !loadingMore &&
-          response.hasMore && (
-            <div className="wk-doc-search__loadmore">
-              <button type="button" onClick={() => loadNextPage(true)}>
-                {t("base.globalSearch.docs.loadMore")}
-              </button>
-            </div>
-          )}
+        {/* Manual continuation. Shown whenever there's a next page and we're not
+            mid-load or in an error state — this single branch covers both the
+            normal case and the auto-pagination-paused case (a run of fully
+            empty pages), since loadNextPage(true) forces past the pause guard.
+            Merged from two identical buttons that only differed on the
+            autoPaginationPaused flag. */}
+        {!loadingMore && !paginationError && response.hasMore && (
+          <div className="wk-doc-search__loadmore">
+            <button type="button" onClick={() => loadNextPage(true)}>
+              {t("base.globalSearch.docs.loadMore")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

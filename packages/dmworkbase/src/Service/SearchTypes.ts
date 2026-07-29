@@ -233,19 +233,19 @@ export interface DocSearchItem {
 
 export interface DocSearchQuery {
   keyword: string;
-  docType?: DocSearchDocType | DocSearchDocType[];
-  page: number; // 1-based
+  // Opaque keyset cursor (backend search_after token). Omitted on the first
+  // page; set to the previous response's nextCursor to fetch the next page.
+  cursor?: string;
   pageSize: number;
 }
 
 export interface DocSearchResponse {
   total: number;
   items: DocSearchItem[];
-  // Number of items the backend returned for this page BEFORE client-side
-  // sanitization (see SearchService.searchDocs docId filter). The pager uses
-  // this to detect a full page, so a client-drop of malformed rows can't be
-  // mistaken for a genuine short (final) page. Absent when equal to items.
-  rawItemCount?: number;
+  // Opaque keyset cursor for the NEXT page (backend `nextCursor`). Present only
+  // while a further page exists; absent => no more results, so the pager stops
+  // on `!nextCursor` rather than any offset/total arithmetic.
+  nextCursor?: string;
 }
 
 export interface GlobalSearchChannelOption {

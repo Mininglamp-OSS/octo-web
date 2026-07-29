@@ -17,35 +17,11 @@ export interface SearchPage<T> {
   hasMore: boolean;
 }
 
-// Append `next` onto `prev`, dropping any `next` item whose dedupeKey already
-// appeared (first occurrence wins). Without a dedupeKey this is a plain concat.
-function mergeDedup<T>(
-  prev: T[],
-  next: T[],
-  dedupeKey?: (item: T) => string
-): T[] {
-  if (!dedupeKey) return [...prev, ...next];
-  const seen = new Set(prev.map(dedupeKey));
-  const merged = [...prev];
-  for (const item of next) {
-    const key = dedupeKey(item);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(item);
-  }
-  return merged;
-}
-
 export interface UseSearchPaginationOptions<T> {
   enabled: boolean;
   search: (cursor?: string) => Promise<SearchPage<T>>;
   errorMessage: string;
   debounceMs?: number;
-  // Optional identity extractor. When provided, items merged across pages are
-  // deduped by this key (first occurrence wins). Offset-based paging (e.g.
-  // docs search, which has no stable cursor) can repeat a row across pages
-  // under index churn; without this the repeat would collide React keys.
-  dedupeKey?: (item: T) => string;
 }
 
 export function useSearchPagination<T>({
@@ -53,7 +29,6 @@ export function useSearchPagination<T>({
   search,
   errorMessage,
   debounceMs = 300,
-  dedupeKey,
 }: UseSearchPaginationOptions<T>) {
   const [response, setResponse] = useState<SearchPage<T>>({
     items: [],
@@ -121,9 +96,7 @@ export function useSearchPagination<T>({
           })
         );
         setResponse((previous) => ({
-          items: cursor
-            ? mergeDedup(previous.items, next.items, dedupeKey)
-            : next.items,
+          items: cursor ? [...previous.items, ...next.items] : next.items,
           nextCursor: stopPagination ? undefined : next.nextCursor,
           hasMore: stopPagination ? false : next.hasMore,
         }));
@@ -142,7 +115,7 @@ export function useSearchPagination<T>({
         }
       }
     },
-    [dedupeKey, enabled, errorMessage, search]
+    [enabled, errorMessage, search]
   );
 
   const loadNextPage = useCallback(

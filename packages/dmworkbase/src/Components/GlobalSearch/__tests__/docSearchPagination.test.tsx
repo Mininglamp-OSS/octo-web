@@ -16,20 +16,15 @@ import type {
 } from "../../../Service/SearchTypes";
 import DocSearchPanel from "../DocSearchPanel";
 
-// The pagination stop condition (DocSearchPanel's searchPage) went through
-// several revisions to close reachable "hasMore flips false while results
-// remain" defects:
-//   - A client-side docId filter can shrink a full page; full-page detection
-//     must use the backend's pre-filter count (rawItemCount), not
-//     items.length, or a full page reads as short and stops early.
-//   - The accumulated page count must not live in a cross-render mutable ref
-//     that a discarded (stale) response could still mutate ahead of the
-//     hook's request-id guard. It is now derived purely from the current
-//     request's own `page * PAGE_SIZE` versus the server total, so a stale
-//     response can never poison a fresh query's pagination.
-//
-// These tests pin those invariants so a future rewrite can't silently
-// regress them.
+// DocSearchPanel now paginates by keyset cursor (backend search_after): each
+// response carries an opaque `nextCursor` while a further page exists, and the
+// panel's stop condition is simply "no nextCursor" — no page/total arithmetic.
+// These tests pin that contract:
+//   - A response WITH nextCursor keeps the load-more control (more pages).
+//   - A response WITHOUT nextCursor stops pagination (final page), even when
+//     `total` is larger than the items rendered (total is display-only now).
+//   - A late (stale) response from a superseded keyword cannot corrupt the
+//     current query's pagination — the hook's requestId guard discards it.
 
 const PAGE_SIZE = 20;
 
@@ -44,31 +39,40 @@ function makeDataSource(
 }
 
 describe("DocSearchPanel — pagination stop conditions", () => {
-  it("does NOT stop when the backend returned a full page but the client filter dropped some (rawItemCount saves the day)", async () => {
-    // Backend genuinely returned PAGE_SIZE rows, but 2 of them are malformed
-    // and get filtered out by SearchService before reaching the panel.
-    // rawItemCount = PAGE_SIZE => still a full page => hasMore must stay true.
-    const dataSource = makeDataSource(async () => ({
-      total: 100,
-      items: Array.from({ length: PAGE_SIZE - 2 }, (_, i) => makeItem(`d${i}`)),
-      rawItemCount: PAGE_SIZE,
-    }));
+  it("keeps the load-more control when the backend returns a nextCursor (more pages)", async () => {
+    // jsdom reports all scroll metrics as 0, so the panel's auto-pagination
+    // effect always reads "near bottom" and keeps fetching the next page on its
+    // own. That is fine for this assertion: as long as every page keeps handing
+    // back a nextCursor, `response.hasMore` stays true and the load-more control
+    // must remain rendered. Give each page a distinct cursor + fresh rows so the
+    // crawl makes forward progress (no duplicate keys) and the button never
+    // disappears — the opposite of the terminal-page case covered below.
+    let call = 0;
+    const dataSource = makeDataSource(async () => {
+      call += 1;
+      const base = call * 100;
+      return {
+        total: 1000,
+        items: Array.from({ length: PAGE_SIZE }, (_, i) => makeItem(`d${base + i}`)),
+        nextCursor: `cursor-${call + 1}`,
+      };
+    });
 
     render(<DocSearchPanel keyword="k" dataSource={dataSource} />);
 
-    await screen.findByText("d0");
+    await screen.findByText("d100");
     const loadMore = await screen.findByRole("button", {
       name: "base.globalSearch.docs.loadMore",
     });
     expect(loadMore).toBeInTheDocument();
   });
 
-  it("DOES stop when the backend itself returned a short page (real end of results)", async () => {
-    // Genuine short page: rawItemCount matches items.length and is < PAGE_SIZE.
+  it("stops when the backend omits nextCursor, even if total exceeds the rendered items", async () => {
+    // No nextCursor => final page. total is display-only and must NOT resurrect
+    // a load-more control on its own.
     const dataSource = makeDataSource(async () => ({
-      total: 3,
+      total: 999,
       items: [makeItem("a"), makeItem("b"), makeItem("c")],
-      rawItemCount: 3,
     }));
 
     const { container } = render(
@@ -79,12 +83,40 @@ describe("DocSearchPanel — pagination stop conditions", () => {
     expect(container.querySelector(".wk-doc-search__loadmore")).toBeNull();
   });
 
+  it("sends the previous response's nextCursor back as the cursor on the next page", async () => {
+    const searchDocs = vi.fn(async (q: DocSearchQuery) => {
+      if (!q.cursor) {
+        return {
+          total: 40,
+          items: Array.from({ length: PAGE_SIZE }, (_, i) => makeItem(`p1_${i}`)),
+          nextCursor: "cursor-2",
+        };
+      }
+      return {
+        total: 40,
+        items: [makeItem("p2_0")],
+      };
+    });
+    const dataSource = { searchDocs } as unknown as GlobalSearchDataSource;
+
+    render(<DocSearchPanel keyword="k" dataSource={dataSource} />);
+    // First call: no cursor (first page).
+    await screen.findByText("p1_0");
+    expect(searchDocs.mock.calls[0]![0].cursor).toBeUndefined();
+
+    // jsdom's zeroed scroll metrics make the panel auto-fetch the next page;
+    // whether the second request comes from that or a manual click, it must
+    // echo page 1's nextCursor. Wait for it and assert the cursor round-trip.
+    await screen.findByText("p2_0");
+    expect(searchDocs.mock.calls[1]![0].cursor).toBe("cursor-2");
+  });
+
   it("keyword change: a late (stale) response from the previous query cannot corrupt the new query's pagination", async () => {
-    // Reproduce the P1 race directly. Keyword "old" resolves LATE (deferred),
-    // keyword "new" resolves immediately as a genuine short final page. If the
-    // stop condition depended on a shared mutable accumulator, the late "old"
-    // resolution would still bump it and could push the "new" query's hasMore
-    // false. With `page * PAGE_SIZE` derivation, the stale resolution is inert.
+    // Reproduce the stale-response race directly. Keyword "old" resolves LATE
+    // (deferred) as a full page WITH a nextCursor; keyword "new" resolves
+    // immediately as a genuine final page (no nextCursor). The hook's requestId
+    // guard must discard the late "old" resolution so it neither leaks its items
+    // nor re-arms the load-more control on the "new" query.
     let releaseOld!: () => void;
     const oldGate = new Promise<void>((resolve) => {
       releaseOld = resolve;
@@ -96,18 +128,25 @@ describe("DocSearchPanel — pagination stop conditions", () => {
         return {
           total: 1000,
           items: Array.from({ length: PAGE_SIZE }, (_, i) => makeItem(`o${i}`)),
-          rawItemCount: PAGE_SIZE,
+          nextCursor: "old-cursor-2",
         };
       }
       return {
         total: 4,
         items: Array.from({ length: 4 }, (_, i) => makeItem(`n${i}`)),
-        rawItemCount: 4,
       };
     });
 
     const { rerender } = render(
       <DocSearchPanel keyword="old" dataSource={dataSource} />
+    );
+    // The "old" first request must actually have fired before we supersede it —
+    // otherwise this would be a no-op shell, not a real stale-response test.
+    await vi.waitFor(() =>
+      expect(
+        (dataSource.searchDocs as unknown as ReturnType<typeof vi.fn>).mock.calls
+          .length
+      ).toBeGreaterThan(0)
     );
     // Switch to "new" while "old" is still in flight.
     rerender(<DocSearchPanel keyword="new" dataSource={dataSource} />);
@@ -129,7 +168,7 @@ describe("DocSearchPanel — pagination stop conditions", () => {
 
 describe("DocSearchPanel — updatedAt rendering (contract: number | null)", () => {
   // The backend returns updatedAt as `number | null` epoch millis; SearchService
-  // coerces stray values to positive-millis-or-null. The panel's formatUpdatedAt
+  // coerces stray values to plausible-millis-or-null. The panel's formatUpdatedAt
   // must render "" for null (early return on falsy) and a date for valid millis,
   // never an "Invalid Date".
   function itemWith(updatedAt: number | null): DocSearchItem {
@@ -140,7 +179,6 @@ describe("DocSearchPanel — updatedAt rendering (contract: number | null)", () 
     const dataSource = makeDataSource(async () => ({
       total: 1,
       items: [itemWith(null)],
-      rawItemCount: 1,
     }));
     const { container } = render(
       <DocSearchPanel keyword="k" dataSource={dataSource} />
@@ -156,7 +194,6 @@ describe("DocSearchPanel — updatedAt rendering (contract: number | null)", () 
     const dataSource = makeDataSource(async () => ({
       total: 1,
       items: [itemWith(millis)],
-      rawItemCount: 1,
     }));
     const { container } = render(
       <DocSearchPanel keyword="k" dataSource={dataSource} />

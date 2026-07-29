@@ -377,12 +377,19 @@ export interface LegacyGlobalSearchResponse {
   messages: LegacyGlobalSearchMessage[];
 }
 
-// Coerce a doc search item's updatedAt to positive epoch millis, or null.
-// Backend contract is `number | null`; anything else (missing, non-finite, or
-// <= 0) becomes null so DocSearchPanel.formatUpdatedAt early-returns "" rather
-// than rendering an Invalid Date.
+// Coerce a doc search item's updatedAt to a plausible epoch-millis value, or
+// null. Backend contract is `number | null` (doc_meta.updated_at NOW(3)).
+// A bare `> 0` check would let a stray SECONDS value (e.g. 1.7e9 ≈ 1970 in ms)
+// or an absurdly large number through and render a wrong/Invalid date, so we
+// bound to (1e11, 1e14): ~1973-03 up to ~5138, which admits every real millis
+// timestamp while rejecting seconds-scale and garbage values. Anything outside
+// (missing, non-finite, or out of range) becomes null so
+// DocSearchPanel.formatUpdatedAt early-returns "" instead of a bad date.
 function coerceUpdatedAt(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 1e11 &&
+    value < 1e14
     ? value
     : null;
 }
@@ -444,41 +451,42 @@ const SearchService = {
   // exclusion), so the client renders items verbatim without any filtering.
   //
   // Contract confirmed against octo-docs-backend source (osClient.ts +
-  // api/routes/docs.ts searchDocsHandler). Response shape:
-  //   { total, items: [{ docId, title, docType, updatedAt, spaceId, highlight? }] }
-  //   1. `total` — exact POST-visibility count (OS hits.total.value with
-  //      track_total_hits:true; the visible doc_id set is computed in MySQL and
-  //      pushed down as an OS `doc_id IN` filter). So `page * PAGE_SIZE < total`
-  //      is a correct stop condition and never over-counts. The fallback below
-  //      only fires if `total` is somehow not a number; it must NOT clamp to
-  //      validItems.length (that would forge hasMore=false on a full first
-  //      page) — we defer entirely to the full-page signal by using Infinity.
-  //   2. `updatedAt` — `number | null` epoch millis (NOT ISO string; the
+  // api/routes/docs.ts searchDocsHandler). Request/response shape:
+  //   req:  { q, cursor?, pageSize }  (backend also accepts an optional
+  //         docType[] kind filter, but this UI has no doc-type facet so we
+  //         never send it — omitted => no filter on the backend.)
+  //   resp: { total, items: [{ docId, title, docType, updatedAt, spaceId, highlight? }], nextCursor? }
+  //   1. Pagination is keyset (search_after), NOT offset. We send the previous
+  //      response's `nextCursor` verbatim (omitted on the first page) and read
+  //      `nextCursor` back — an opaque base64url token wrapping the last hit's
+  //      OpenSearch sort values. It is present only while a further page exists,
+  //      so the pager stops on `!nextCursor` (never a `page * size >= total`
+  //      arithmetic that offset paging can get wrong under index churn).
+  //   2. `total` — exact post-visibility count (OS hits.total.value with
+  //      track_total_hits:true). Kept for display only; it does NOT drive the
+  //      stop condition, so a missing/garbage total can't forge hasMore.
+  //   3. `updatedAt` — `number | null` epoch millis (NOT ISO string; the
   //      `string` in packages/docs/src/pages/docsApi.ts is a different REST
   //      DocMeta endpoint, unrelated to search). Coerced below to
-  //      positive-millis-or-null so a stray seconds value or garbage can't
-  //      render as an Invalid Date.
-  //   3. `spaceId` — returned on every item; search is single-space scoped
+  //      positive-millis-in-plausible-range-or-null so a stray seconds value or
+  //      garbage can't render as an Invalid Date.
+  //   4. `spaceId` — returned on every item; search is single-space scoped
   //      (OS term space_id, injected by the gateway, never from the body). We
   //      pass it through unchanged for buildDocLink's `?sp=`.
-  //   4. No cursor — pure from/size offset paging (pageSize <= pageSizeMax).
-  //      Offset paging under index churn can repeat a docId across pages, which
-  //      would collide React keys on merge; useSearchPagination dedupes merged
-  //      items by identity as a backstop (see its `dedupeKey` option).
   async searchDocs(query: DocSearchQuery): Promise<DocSearchResponse> {
     const body: Record<string, unknown> = {
       q: query.keyword,
-      page: query.page,
       pageSize: query.pageSize,
     };
-    if (query.docType !== undefined) body.docType = query.docType;
+    // Keyset cursor: omit on the first page so the backend starts from the top.
+    if (query.cursor) body.cursor = query.cursor;
     const resp = await APIClient.shared.post("docs/search", body);
     const items = Array.isArray(resp?.items) ? resp.items : [];
     // Per-item validation at the service boundary: the backend contract says
     // docId/title are always present, but a malformed item would otherwise flow
     // to key={docId} (React duplicate-key collisions on undefined) and
     // buildDocLink({docId}) -> /d/undefined. Drop items missing a usable docId,
-    // and coerce updatedAt to positive-millis-or-null (contract fact #2).
+    // and coerce updatedAt to positive-millis-or-null (contract fact #3).
     const validItems = items
       .filter(
         (it: unknown): it is DocSearchItem =>
@@ -490,18 +498,16 @@ const SearchService = {
         ...it,
         updatedAt: coerceUpdatedAt(it.updatedAt),
       }));
+    const nextCursor =
+      typeof resp?.nextCursor === "string" && resp.nextCursor !== ""
+        ? resp.nextCursor
+        : undefined;
     return {
-      // total is contractually an exact post-visibility count. If it is ever
-      // not a number, do NOT fall back to validItems.length (that caps a full
-      // page at one page); use Infinity so the pager relies solely on the
-      // full-page signal to decide hasMore.
-      total: typeof resp?.total === "number" ? resp.total : Number.POSITIVE_INFINITY,
+      // total is display-only under keyset paging; fall back to the visible
+      // count when absent (the pager relies on nextCursor, not total).
+      total: typeof resp?.total === "number" ? resp.total : validItems.length,
       items: validItems,
-      // Preserve the backend's original page size so the pager can detect a
-      // full page independently of our client-side filtering; without this,
-      // dropping a malformed row would forge a short page and prematurely
-      // stop pagination.
-      rawItemCount: items.length,
+      nextCursor,
     };
   },
 
