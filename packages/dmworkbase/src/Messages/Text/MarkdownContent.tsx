@@ -157,11 +157,12 @@ function escapeMarkdownPreservingSafeLinks(raw: string): string {
 /**
  * 预处理 Markdown 内容：
  * 1. 把独占一行的 --- / === 补充前后空行，避免被解析成 setext 标题（h2/h1）。
- * 2. 把多行 $$\n...\n$$ 合并为单行 $$...$$，避免 remark-math@6 与
+ * 2. 把多行 $$\n...\n$$ 转为 ```math 围栏代码块，避免 remark-math@6 与
  *    mdast-util-from-markdown@1（react-markdown@8 使用的版本）的 API
  *    不兼容导致 flow-math 解析崩溃（TypeError: Cannot read properties of
- *    undefined (reading 'mathFlowInside')）。单行 $$...$$ 走 text-math
- *    路径不触发该 bug，KaTeX 仍正常渲染。
+ *    undefined (reading 'mathFlowInside')）。```math 走 fenced-code 路径，
+ *    不触发该 bug，且 rehype-katex 能识别 language-math 并以 display 模式
+ *    渲染，保留块级公式语义和 .katex-display 样式。
  * 跳过 fenced code block（```...```）内的内容，避免误处理。
  */
 function normalizeContent(raw: string): string {
@@ -171,8 +172,8 @@ function normalizeContent(raw: string): string {
   const processed = parts.map((part, i) => {
     if (i % 2 === 1) return part;
     return part
-      // 合并多行 $$ 块为单行，绕过 flow-math 崩溃
-      .replace(/\$\$\n([\s\S]*?)\n\$\$/g, (_, content) => `$$${content.replace(/\n/g, " ")}$$`)
+      // 多行 $$ 块转为 ```math 围栏，绕过 flow-math 崩溃并保留 display 语义
+      .replace(/\$\$\n([\s\S]*?)\n\$\$/g, (_, content) => "```math\n" + content + "\n```")
       .replace(/([^\n])\n([-*_]{3,})\n/g, "$1\n\n$2\n\n")
       .replace(/(^|\n)([-*_]{3,})(\n|$)/g, "\n\n$2\n\n")
       .replace(/\n{3,}/g, "\n\n");

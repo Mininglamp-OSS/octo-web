@@ -80,13 +80,14 @@ describe("MarkdownContent — KaTeX layout", () => {
   });
 
   it("renders block-level math with newlines inside $$ fences", () => {
-    // Multi-line $$ blocks are normalized to single-line in normalizeContent
-    // to avoid a remark-math@6 / mdast-util-from-markdown@1 crash.
-    // KaTeX should still render the formula.
+    // Multi-line $$ blocks are converted to ```math fenced code blocks
+    // in normalizeContent to avoid a remark-math@6 / mdast-util-from-markdown@1
+    // crash. rehype-katex recognizes language-math and renders in display mode.
     const root = renderContent(
       <MarkdownContent content={"$$\n\\frac{a}{b}\n$$"} />
     );
     expect(root.querySelector(".katex")).not.toBeNull();
+    expect(root.querySelector(".katex-display")).not.toBeNull();
   });
 });
 
