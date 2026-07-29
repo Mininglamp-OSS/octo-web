@@ -22,6 +22,8 @@ import zhCN from './i18n/zh-CN.json';
 let _initialized = false;
 /** `space-changed` subscription, kept for HMR teardown. */
 let _spaceChangedHandler: (() => void) | null = null;
+/** remoteConfig (drive_on) listeners, kept so a repeat init drops them before rebinding. */
+let _configUnsubscribers: Array<() => void> = [];
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -30,6 +32,8 @@ if (import.meta.hot) {
       WKApp.mittBus.off('space-changed', _spaceChangedHandler);
       _spaceChangedHandler = null;
     }
+    for (const unsub of _configUnsubscribers) unsub();
+    _configUnsubscribers = [];
   });
 }
 
@@ -205,9 +209,20 @@ export default class DriveModule implements IModule {
     WKApp.route.register('/drive/invite/:token', () => <InviteLandingRoute />);
 
     // NavRail entry (sort 4008 — after contacts=4000 / matter=4001 cluster).
+    //
+    // Gated by the backend appconfig `drive_on` flag (WKApp.remoteConfig.driveOn):
+    // the factory returns the menu only when driveOn is true, else `undefined`
+    // (MenusManager filters falsy → the entry hides). Default false (fail-safe):
+    // drive is an independent service whose reverse-proxy route (/v1/drive) +
+    // object-storage / docs-backend deps must be deployed before the entry is
+    // usable — otherwise the backend fail-closes with 503. Ops flips drive_on on
+    // once ready. Pure display gate: /v1/drive auth still lives in the drive
+    // service. Routes stay registered so a deep-link still resolves. Mirrors
+    // DocsModule (docs_on) / LoopModule (dmloop_on).
     WKApp.menus.register(
       'drive',
       () => {
+        if (!WKApp.remoteConfig?.driveOn) return undefined;
         const m = new Menus(
           'drive',
           '/drive',
@@ -241,6 +256,28 @@ export default class DriveModule implements IModule {
     // sister modules' `space-changed` subscription (dmworksummary/module.tsx).
     _spaceChangedHandler = () => vm.reset();
     WKApp.mittBus.on('space-changed', _spaceChangedHandler);
+
+    // appconfig is fetched asynchronously, so at init() driveOn is usually still
+    // the default false. Refresh the NavRail whenever drive_on resolves/changes
+    // so the entry appears (or disappears) the moment it does. Idempotent rebind:
+    // drop any listeners a prior init() bound before re-subscribing, so repeat
+    // registration / HMR doesn't stack duplicate refresh closures on the shared
+    // remoteConfig singleton. Mirrors DocsModule._configUnsubscribers.
+    for (const unsub of _configUnsubscribers) unsub();
+    _configUnsubscribers = [];
+    const refreshMenus = (): void => WKApp.menus.refresh?.();
+    const rc = WKApp.remoteConfig;
+    if (rc) {
+      // If the first appconfig load already resolved (module inited late),
+      // addListener returns a noop — reflect current drive_on now instead.
+      if (rc.requestSuccess) {
+        refreshMenus();
+      } else {
+        _configUnsubscribers.push(rc.addListener(refreshMenus));
+      }
+      // Later toggles (ops flips drive_on after boot) go through the change listener.
+      _configUnsubscribers.push(rc.addConfigChangeListener(refreshMenus));
+    }
   }
 }
 
