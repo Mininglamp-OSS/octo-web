@@ -14,10 +14,10 @@ import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
 import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
+import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules";
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
-import { isLoopCliAuthorizePath, LOOP_CLI_AUTHORIZE_PATH } from "@octo/loop";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -388,23 +388,30 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
         }
 
-        // The CLI authorization deep-link is a full-page flow outside the normal app shell.
-        // Reuse a single stored Octo session when the clean URL carries no sid-specific token.
-        if (isLoopCliAuthorizePath(window.location.pathname)) {
-            if (!WKApp.loginInfo.token) {
-                WKApp.loginInfo.load();
-            }
-            if (!WKApp.loginInfo.token) {
-                recoverOctoSessionFromStorage(true);
-            }
+        // Enterprise full-page deep-links live outside the normal app shell. The host only owns
+        // the generic lifecycle (recover a clean sid-less session, hand over the expired-session
+        // callback, and optionally stash an anonymous return target). Concrete routes are owned by
+        // private modules, so adding a new enterprise module does not require another host branch.
+        const enterpriseStandaloneHandlers = getEnterpriseStandaloneHandlers();
+        const enterpriseStandaloneHandler = enterpriseStandaloneHandlers.find((handler) =>
+            handler.match(window.location.pathname)
+        );
+        if (enterpriseStandaloneHandler) {
+            if (!WKApp.loginInfo.token) WKApp.loginInfo.load();
+            if (!WKApp.loginInfo.token) recoverOctoSessionFromStorage(true);
             if (WKApp.loginInfo.token) {
                 if (!WKApp.shared.currentSpaceId) {
                     const cachedSpaceId = localStorage.getItem("currentSpaceId") || "";
                     if (cachedSpaceId) WKApp.shared.currentSpaceId = cachedSpaceId;
                 }
-                const cliAuthorizeComponent = WKApp.route.get(LOOP_CLI_AUTHORIZE_PATH);
-                if (cliAuthorizeComponent) return cliAuthorizeComponent;
+                const enterpriseStandalonePage = enterpriseStandaloneHandler.render({
+                    pathname: window.location.pathname,
+                    search: window.location.search,
+                    onSessionExpired: clearExpiredStandaloneSessionAndReload,
+                });
+                if (enterpriseStandalonePage) return enterpriseStandalonePage;
             }
+            if (enterpriseStandaloneHandler.persistReturnOnAnonymous) persistStandaloneReturn();
         }
 
         // Standalone document deep-link (`/d/:docId`, octo-web #512): a shareable full-window

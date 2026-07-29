@@ -281,7 +281,7 @@ export class WKRemoteConfig {
   docsOn: boolean = false;
   /**
    * Loop(回路)模块展示开关。后端字段 dmloop_on 为 true 时，前端在侧边栏 NavRail
-   * 展示「回路」(LoopModule) 入口；false 或字段缺失时隐藏。
+   * 展示企业「回路」入口；false 或字段缺失时隐藏。
    *
    * 默认 false(fail-safe): loop 依赖后端服务 + fleet 代理 + daemon 运行时一整套未就绪前保持隐藏——
    * feature 分支合入 main 也不对用户暴露；运维在依赖部署就绪后再下发 dmloop_on=true 放量。
@@ -290,7 +290,7 @@ export class WKRemoteConfig {
    */
   dmloopOn: boolean = false;
   /**
-   * 「我的 / 运行时」(PersonalModule) 模块展示开关。后端字段 dmpersonal_on 为 true 时展示入口。
+   * 企业「我的 / 运行时」入口展示开关。后端字段 dmpersonal_on 为 true 时展示入口。
    * 与 dmloop_on 分开:「我的」后续会重新设计、脱离 loop 独立演进,故独立门控(可分阶段放量)。
    * 默认 false(fail-safe),运维就绪后下发 dmpersonal_on=true。纯 UI 展示门,不承担鉴权。
    */
