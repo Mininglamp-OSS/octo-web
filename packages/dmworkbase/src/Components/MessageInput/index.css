@@ -449,13 +449,27 @@
   margin: 0;
 }
 
-/* Mention 样式 */
+/* Mention 基线样式 — @所有人/@所有AI 广播态：纯紫文字，透明背景 */
 .wk-messageinput-editor .mention {
   color: var(--wk-color-theme);
   font-weight: 600;
   background-color: transparent;
   border-radius: 0.25rem;
   padding: 0 0.125rem;
+}
+
+/* 普通成员 @mention：浅紫胶囊，对齐消息展示层 .mention-entity */
+.wk-messageinput-editor .mention.mention-user {
+  background-color: rgba(107, 61, 216, 0.08);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.wk-messageinput-editor .mention.mention-user:hover {
+  background-color: rgba(107, 61, 216, 0.12);
 }
 
 /* Placeholder - Tiptap Placeholder 扩展 */
