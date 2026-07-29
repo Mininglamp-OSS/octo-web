@@ -117,4 +117,40 @@ describe('useMembers', () => {
     });
     expect(result.current.members.map((m) => m.uid)).toEqual(['u-new']);
   });
+
+  it('clears the prior space members while the new space is still loading (N6)', async () => {
+    // Old space: I'm super_admin → canManage true.
+    vi.mocked(api.listMembers).mockResolvedValueOnce([member(ME, 'super_admin')]);
+    const { result, rerender } = renderHook(
+      (props: { sp: string }) => useMembers(props.sp, true),
+      { sp: 'sp-old' },
+    );
+    await waitFor(() => expect(result.current.canManage).toBe(true));
+
+    // Switch spaces; the new space's fetch hangs so we can observe the interim.
+    vi.mocked(api.listMembers).mockImplementationOnce(
+      () => new Promise<Member[]>(() => {}),
+    );
+    rerender({ sp: 'sp-new' });
+
+    // Members must be dropped immediately — the stale super_admin role must not
+    // keep canManage true against the new space while its list is in flight.
+    await waitFor(() => expect(result.current.members).toEqual([]));
+    expect(result.current.myRole).toBeNull();
+    expect(result.current.canManage).toBe(false);
+  });
+
+  it('clears members when the load fails (N6 fail-closed)', async () => {
+    vi.mocked(api.listMembers).mockResolvedValueOnce([member(ME, 'super_admin')]);
+    const { result, rerender } = renderHook(
+      (props: { sp: string }) => useMembers(props.sp, true),
+      { sp: 'sp-old' },
+    );
+    await waitFor(() => expect(result.current.canManage).toBe(true));
+
+    vi.mocked(api.listMembers).mockRejectedValueOnce(new Error('boom'));
+    rerender({ sp: 'sp-new' });
+    await waitFor(() => expect(result.current.members).toEqual([]));
+    expect(result.current.canManage).toBe(false);
+  });
 });

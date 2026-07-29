@@ -2,9 +2,6 @@
   "menu": {
     "title": "Drive"
   },
-  "page": {
-    "placeholder": "Drive is coming soon"
-  },
   "common": {
     "confirm": "Confirm",
     "cancel": "Cancel"
@@ -34,7 +31,8 @@
     "empty": "This folder is empty",
     "colName": "Name",
     "colSize": "Size",
-    "colUpdated": "Modified"
+    "colUpdated": "Modified",
+    "truncated": "Large folder — showing the first 200 items only"
   },
   "move": {
     "title": "Move to",
@@ -67,17 +65,10 @@
     "docPermissionFallback": "Access is governed by the document's own sharing settings",
     "generating": "Generating share link…",
     "generateFailed": "Failed to generate share link",
-    "permission": "Permission",
-    "permView": "View only",
-    "permDownload": "Download",
     "expiry": "Expiry",
     "expiry1d": "1 day",
     "expiry7d": "7 days",
     "expiry30d": "30 days",
-    "password": "Password",
-    "passwordPlaceholder": "Optional",
-    "none": "No share links yet",
-    "hasPassword": "Password",
     "expiresAt": "Expires",
     "copyLink": "Copy link",
     "copied": "Link copied",
@@ -133,9 +124,7 @@
     "joined": "Joined"
   },
   "upload": {
-    "unsafeUrl": "Blocked an unsafe upload URL",
     "failed": "Upload failed",
-    "progress": "Uploading…",
     "preparing": "Preparing…",
     "uploading": "Uploading…",
     "confirming": "Saving…",

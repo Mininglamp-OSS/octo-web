@@ -2,9 +2,6 @@
   "menu": {
     "title": "网盘"
   },
-  "page": {
-    "placeholder": "网盘功能即将上线"
-  },
   "common": {
     "confirm": "确定",
     "cancel": "取消"
@@ -34,7 +31,8 @@
     "empty": "此文件夹为空",
     "colName": "名称",
     "colSize": "大小",
-    "colUpdated": "修改时间"
+    "colUpdated": "修改时间",
+    "truncated": "列表较大，仅显示前 200 项"
   },
   "move": {
     "title": "移动到",
@@ -67,17 +65,10 @@
     "docPermissionFallback": "权限由文档自身设置决定",
     "generating": "正在生成分享链接…",
     "generateFailed": "生成分享链接失败",
-    "permission": "权限",
-    "permView": "仅查看",
-    "permDownload": "可下载",
     "expiry": "有效期",
     "expiry1d": "1 天",
     "expiry7d": "7 天",
     "expiry30d": "30 天",
-    "password": "访问密码",
-    "passwordPlaceholder": "可选",
-    "none": "暂无分享链接",
-    "hasPassword": "带密码",
     "expiresAt": "到期",
     "copyLink": "复制链接",
     "copied": "链接已复制",
@@ -133,9 +124,7 @@
     "joined": "已加入"
   },
   "upload": {
-    "unsafeUrl": "上传地址不安全，已阻止",
     "failed": "上传失败",
-    "progress": "上传中…",
     "preparing": "准备中…",
     "uploading": "上传中…",
     "confirming": "保存中…",

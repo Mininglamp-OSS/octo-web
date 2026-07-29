@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { WKApp, buildAcceptLanguage } from '@octo/base';
+import { WKApp, buildAcceptLanguage, DEFAULT_REQUEST_TIMEOUT_MS } from '@octo/base';
 import type {
   Space,
   Member,
@@ -44,15 +44,43 @@ import type {
  *
  * Kept separate from WKApp.apiClient's singleton (which is pinned to octo-server
  * at '/api/v1/') because drive is a distinct service reached at '/v1/drive/*'.
- * baseURL stays "" so requests are same-origin in the browser; both the dev Vite
- * proxy (vite.config.ts `/v1/drive`) and the prod nginx `location /v1/drive`
- * (nginx.conf.template, DRIVE_API_URL) forward '/v1/drive/*' verbatim to the
- * drive service. Mirrors dmworktodo's matterAxios.
+ * In the browser the request interceptor resolves an absolute origin so drive
+ * works outside a plain same-origin web page — the Electron desktop shell loads
+ * from `file://` and the browser extension from its own origin, where an empty
+ * baseURL would resolve against the wrong scheme/host and every drive call would
+ * fail. Mirrors dmworkmcp's mcpAxios / dmworksummary's summaryAxios.
  */
-const driveAxios = axios.create({ baseURL: '' });
+const driveAxios = axios.create({
+  baseURL: '',
+  // Isolated instance (no shared interceptors), so it never inherits the 20s
+  // default APIClient.initAxios sets on the axios singleton — set the same
+  // ceiling explicitly to avoid the UI-hang class DEFAULT_REQUEST_TIMEOUT_MS
+  // was introduced to close (a drive call with no timeout hangs forever).
+  timeout: DEFAULT_REQUEST_TIMEOUT_MS,
+});
+
+/**
+ * Resolve the drive service origin from the configured octo-server apiURL.
+ *
+ * A relative apiURL (plain web deployment) has no parsable origin → return ''
+ * so requests stay same-origin (the Vite proxy / prod nginx forward
+ * '/v1/drive/*'). An absolute apiURL (Electron `file://`, browser extension)
+ * yields the real origin so the drive path resolves against octo-server's host
+ * instead of `file://` / the extension origin. Mirrors mcpService.resolveBaseURL.
+ */
+function resolveBaseURL(): string {
+  const apiURL = WKApp.apiClient?.config?.apiURL;
+  if (!apiURL) return '';
+  try {
+    return new URL(apiURL).origin;
+  } catch {
+    return '';
+  }
+}
 
 // Inject auth headers at request time (so the token stays fresh after refresh).
 driveAxios.interceptors.request.use((config) => {
+  config.baseURL = resolveBaseURL();
   config.headers = config.headers ?? {};
   config.headers['Accept-Language'] = buildAcceptLanguage();
   const token = WKApp.loginInfo.token;
@@ -81,8 +109,22 @@ driveAxios.interceptors.response.use(undefined, (err) => {
  * unauthenticated — and (b) can't trip driveAxios's 401→logout, so opening a
  * stranger's expired/invalid share link never force-logs-out the current user
  * (PR#1146 review B2).
+ *
+ * Still needs the timeout + origin resolution (an anonymous recipient may be on
+ * the Electron shell too), so it carries a request interceptor that sets ONLY
+ * baseURL + Accept-Language — never the auth headers.
  */
-const drivePublicAxios = axios.create({ baseURL: '' });
+const drivePublicAxios = axios.create({
+  baseURL: '',
+  timeout: DEFAULT_REQUEST_TIMEOUT_MS,
+});
+
+drivePublicAxios.interceptors.request.use((config) => {
+  config.baseURL = resolveBaseURL();
+  config.headers = config.headers ?? {};
+  config.headers['Accept-Language'] = buildAcceptLanguage();
+  return config;
+});
 
 /** Base path for the drive service. Backend routes are namespaced under this. */
 const BASE = '/v1/drive';
@@ -116,7 +158,10 @@ function extractApiError(err: unknown): DriveApiError {
   };
   const data = axiosErr?.response?.data;
   const code = data?.error;
-  const msg = data?.message || (err instanceof Error ? err.message : 'Request failed');
+  const rawMsg = data?.message ?? (err instanceof Error ? err.message : 'Request failed');
+  // Defend against a non-string `message` in the error envelope (a misbehaving
+  // backend could send a number/object): coerce before length/slice.
+  const msg = String(rawMsg);
   const capped = msg.length > 200 ? msg.slice(0, 200) + '…' : msg;
   return new DriveApiError(capped, code, axiosErr?.response?.status);
 }
@@ -421,6 +466,10 @@ export async function putToPresignedUrl(
   const resp = await rawAxios.put(uploadUrl, file, {
     headers,
     timeout: 2 * 60 * 1000,
+    // Resolve every status so the explicit 2xx check below runs (and can throw a
+    // typed DriveApiError). Without this, axios rejects non-2xx with a generic
+    // AxiosError before the check — making the branch dead and its error opaque.
+    validateStatus: () => true,
     // Send file bytes as-is; don't let axios JSON-stringify them.
     transformRequest: [(data) => data],
     onUploadProgress: opts.onProgress
@@ -452,7 +501,7 @@ export async function revokeShare(shareId: string): Promise<void> {
 
 /** Recipient-side public access (no auth required by the backend). */
 export async function accessShareByToken(token: string, password?: string): Promise<ShareAccess> {
-  return publicPost<ShareAccess>(`/public/shares/${token}/access`, password ? { password } : undefined);
+  return publicPost<ShareAccess>(`/public/shares/${encodeURIComponent(token)}/access`, password ? { password } : undefined);
 }
 
 /**
@@ -465,7 +514,7 @@ export async function downloadShareByToken(
   password?: string,
 ): Promise<ShareDownload> {
   return publicPost<ShareDownload>(
-    `/public/shares/${token}/download`,
+    `/public/shares/${encodeURIComponent(token)}/download`,
     password ? { password } : undefined,
   );
 }
@@ -476,8 +525,8 @@ export async function createInvite(spaceId: string, req: CreateInviteReq): Promi
   return post<Invite>(`/spaces/${spaceId}/invites`, req);
 }
 
-export async function listInvites(spaceId: string): Promise<Invite[]> {
-  const data = await get<{ invites: Invite[] }>(`/spaces/${spaceId}/invites`);
+export async function listInvites(spaceId: string, signal?: AbortSignal): Promise<Invite[]> {
+  const data = await get<{ invites: Invite[] }>(`/spaces/${spaceId}/invites`, undefined, signal);
   return data.invites ?? [];
 }
 
@@ -486,7 +535,7 @@ export async function revokeInvite(spaceId: string, inviteId: string): Promise<v
 }
 
 export async function acceptInvite(token: string): Promise<AcceptInviteResult> {
-  return post<AcceptInviteResult>(`/invites/${token}/accept`);
+  return post<AcceptInviteResult>(`/invites/${encodeURIComponent(token)}/accept`);
 }
 
 // ─── Org picker (proxied to octo-server) ─────────────────────────────────────

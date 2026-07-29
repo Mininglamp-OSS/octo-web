@@ -49,3 +49,10 @@
   justify-content: center;
   min-height: 240px;
 }
+
+.drive-main__truncated {
+  margin: 8px 16px 0;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+  text-align: center;
+}

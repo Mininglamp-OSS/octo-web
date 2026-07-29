@@ -76,6 +76,32 @@ describe('DriveVM tenant isolation (PR#1146 review B1)', () => {
     expect(api.listSpaces).not.toHaveBeenCalled();
   });
 
+  it('a stale loadSpaces resolving after reset() does not overwrite the newer load (N1)', async () => {
+    // First load hangs so we can resolve it out of order.
+    let resolveOld: (s: Space[]) => void = () => {};
+    vi.mocked(api.listSpaces).mockImplementationOnce(
+      () => new Promise<Space[]>((res) => { resolveOld = res; }),
+    );
+    const vm = new DriveVM();
+    vm.ensureLoaded();
+    await waitFor(() => expect(api.listSpaces).toHaveBeenCalledTimes(1));
+
+    // A rapid Space switch → reset() starts a newer load that resolves first.
+    vi.mocked(api.listSpaces).mockResolvedValueOnce([space('p2', 'personal')]);
+    vm.reset();
+    await waitFor(() => expect(vm.spaces.map((s) => s.id)).toEqual(['p2']));
+
+    // The superseded first load now resolves late with the OLD tenant's spaces —
+    // the generation guard must drop it so it can't clobber the current view or
+    // leave activeSpaceId pointing at a space absent from the list.
+    resolveOld([space('p-old', 'personal'), space('old-shared', 'shared')]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(vm.spaces.map((s) => s.id)).toEqual(['p2']);
+    expect(vm.activeSpaceId).toBe('p2');
+    expect(vm.spacesLoading).toBe(false);
+  });
+
   it('ensureLoaded resets when the same instance is remounted under a different user', async () => {
     vi.mocked(api.listSpaces).mockResolvedValueOnce([space('p', 'personal')]);
     const vm = new DriveVM();

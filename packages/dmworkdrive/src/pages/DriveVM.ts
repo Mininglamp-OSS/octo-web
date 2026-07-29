@@ -32,6 +32,15 @@ export class DriveVM extends ProviderListener {
   private loadStarted = false;
   /** uid the cached spaces belong to; guards against an in-tab user change. */
   private loadedUid: string | null = null;
+  /**
+   * Monotonic load generation. Each loadSpaces() call claims the next value;
+   * only the latest generation may commit its result. A rapid space switch
+   * (reset → loadSpaces, twice) would otherwise let the FIRST load's response
+   * land after the second reset — committing the previous tenant's spaces and
+   * selecting a personal space whose id isn't in the new list (activeSpaceId
+   * dangling → empty toolbar / cross-tenant browse). Mirrors dmloop's seq guard.
+   */
+  private loadSeq = 0;
 
   get personalSpace(): Space | null {
     return this.spaces.find((s) => s.type === 'personal') ?? null;
@@ -90,13 +99,16 @@ export class DriveVM extends ProviderListener {
    * when nothing is selected yet. Mirrors the old useSpaceList contract.
    */
   async loadSpaces(): Promise<void> {
+    const seq = ++this.loadSeq;
     this.spacesLoading = true;
     this.spacesError = null;
     this.notifyListener();
     try {
       let list = await api.listSpaces();
+      if (seq !== this.loadSeq) return; // superseded by a newer load — drop it.
       if (!list.some((s) => s.type === 'personal')) {
         const personal = await api.ensurePersonalSpace();
+        if (seq !== this.loadSeq) return;
         list = [personal, ...list];
       }
       this.spaces = list;
@@ -105,11 +117,14 @@ export class DriveVM extends ProviderListener {
         if (personal) this.selectSpace(personal.id);
       }
     } catch (err: unknown) {
+      if (seq !== this.loadSeq) return; // stale failure must not clobber newer state.
       this.spacesError = (err as Error)?.message ?? 'load failed';
       Toast.error(t('drive.toast.loadFailed'));
     } finally {
-      this.spacesLoading = false;
-      this.notifyListener();
+      if (seq === this.loadSeq) {
+        this.spacesLoading = false;
+        this.notifyListener();
+      }
     }
   }
 

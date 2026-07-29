@@ -11,6 +11,8 @@ export interface UseFileListResult {
   entries: DriveEntry[];
   loading: boolean;
   error: string | null;
+  /** Server-side total when the listing was capped at PAGE_SIZE, else null. */
+  truncatedTotal: number | null;
   reload: () => void;
 }
 
@@ -26,11 +28,13 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   const [entries, setEntries] = useState<DriveEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [truncatedTotal, setTruncatedTotal] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
     if (!spaceId) {
       setEntries([]);
+      setTruncatedTotal(null);
       setLoading(false);
       return;
     }
@@ -45,7 +49,12 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
         ctrl.signal,
       );
       if (ctrl.signal.aborted) return;
-      setEntries(res.entries ?? []);
+      const list = res.entries ?? [];
+      setEntries(list);
+      // P1 fetches a single page; surface a notice when the server has more so
+      // the capped listing doesn't silently read as "the whole folder".
+      const total = res.page?.total ?? list.length;
+      setTruncatedTotal(total > list.length ? total : null);
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError') return;
       setError((err as Error)?.message ?? 'load failed');
@@ -62,5 +71,5 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
     };
   }, [load]);
 
-  return { entries, loading, error, reload: load };
+  return { entries, loading, error, truncatedTotal, reload: load };
 }

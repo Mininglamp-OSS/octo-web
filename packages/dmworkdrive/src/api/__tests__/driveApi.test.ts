@@ -289,16 +289,24 @@ describe('auth-header interceptor', () => {
     logout.mockRestore();
   });
 
-  it('wires the 401→logout interceptor on exactly one instance — the public share axios is interceptor-free (B2)', () => {
-    // accessShareByToken / downloadShareByToken run on a SEPARATE, interceptor-
-    // free axios instance (drivePublicAxios), so a stranger's expired/invalid
-    // share link returning 401 can never force-log-out the current viewer. Only
-    // driveAxios registers the request(token/X-Space-Id) + response(401→logout)
-    // interceptors, so each `.use` was called exactly once at module init.
+  it('public share axios attaches no 401→logout and no auth headers (B2)', () => {
+    // accessShareByToken / downloadShareByToken run on a SEPARATE axios instance
+    // (drivePublicAxios). It DOES carry a request interceptor now — but only to
+    // set baseURL (Electron/extension origin) + Accept-Language, never the auth
+    // headers — and crucially NO response(401→logout) interceptor, so a
+    // stranger's expired/invalid share link can never force-log-out the viewer.
     const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
-    expect(requestUse.mock.calls.length).toBe(1);
+    // Two request interceptors: driveAxios (auth) + drivePublicAxios (baseURL only).
+    expect(requestUse.mock.calls.length).toBe(2);
+    // Only driveAxios wires 401→logout.
     expect(responseUse.mock.calls.length).toBe(1);
+    // The public interceptor (registered 2nd) must NOT attach token / X-Space-Id.
+    const publicOnRequest = requestUse.mock.calls[1][0];
+    const cfg = publicOnRequest({ headers: {} });
+    expect(cfg.headers.token).toBeUndefined();
+    expect(cfg.headers['X-Space-Id']).toBeUndefined();
+    expect(cfg.headers['Accept-Language']).toBeTruthy();
   });
 });
 
@@ -346,10 +354,17 @@ describe('putToPresignedUrl — M-3 credential isolation', () => {
     expect(inst.put).not.toHaveBeenCalled();
   });
 
-  it('throws when storage returns a non-2xx status', async () => {
+  it('throws upload_failed on a non-2xx status — reachable because validateStatus resolves all', async () => {
     inst.put.mockResolvedValue({ status: 403 });
     await expect(
       putToPresignedUrl('https://storage.example.com/obj', new Blob(['x']), { contentType: 'text/plain' }),
     ).rejects.toMatchObject({ code: 'upload_failed' });
+    // Without validateStatus, real axios rejects non-2xx before the manual 2xx
+    // check runs — making that branch dead. Assert we opt into resolving every
+    // status so the typed DriveApiError('upload_failed') is genuinely reachable.
+    const [, , config] = inst.put.mock.calls[0];
+    expect(config.validateStatus).toBeTypeOf('function');
+    expect(config.validateStatus(500)).toBe(true);
+    expect(config.validateStatus(200)).toBe(true);
   });
 });

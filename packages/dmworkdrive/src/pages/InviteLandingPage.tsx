@@ -4,7 +4,8 @@ import { Button, Spin } from '@douyinfe/semi-ui';
 import { CheckCircle, AlertTriangle } from 'lucide-react';
 import * as api from '../api/driveApi';
 import { DriveApiError } from '../api/driveApi';
-import type { AcceptInviteResult } from '../bridge/types';
+import type { AcceptInviteResult, DriveRole } from '../bridge/types';
+import { ROLE_LABEL_KEY } from '../utils/roleLabel';
 import './LandingPage.css';
 
 /**
@@ -29,14 +30,6 @@ export interface InviteLandingPageProps {
   onExit?: () => void;
 }
 
-/** Map a drive role to its existing i18n label, falling back to the raw role. */
-const ROLE_KEY: Record<string, string> = {
-  editor: 'drive.invite.roleEditor',
-  uploader_downloader: 'drive.invite.roleUploaderDownloader',
-  downloader: 'drive.invite.roleDownloader',
-  preview_only: 'drive.invite.rolePreview',
-};
-
 export default function InviteLandingPage({ token, onExit }: InviteLandingPageProps) {
   const { t } = useI18n();
   const [view, setView] = useState<View>({ kind: 'accepting' });
@@ -59,7 +52,13 @@ export default function InviteLandingPage({ token, onExit }: InviteLandingPagePr
     };
   }, [token]);
 
-  const roleLabel = (role: string) => (ROLE_KEY[role] ? t(ROLE_KEY[role]) : role);
+  // Use the shared role→label SSOT (roleLabel.ts) so the landing page renders
+  // role names identically to the member roster / org picker — and covers all
+  // roles (the prior local map omitted admin/super_admin/custom).
+  const roleLabel = (role: string) => {
+    const key = ROLE_LABEL_KEY[role as DriveRole];
+    return key ? t(key) : role;
+  };
 
   return (
     <div className="drive-landing">

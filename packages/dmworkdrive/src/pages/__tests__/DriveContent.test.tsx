@@ -107,7 +107,7 @@ function stubMembers(caps: Caps = {}) {
 
 beforeEach(() => {
   vi.mocked(useMembers).mockReset();
-  vi.mocked(useFileList).mockReturnValue({ entries: [], loading: false, error: null, reload: vi.fn() });
+  vi.mocked(useFileList).mockReturnValue({ entries: [], loading: false, error: null, truncatedTotal: null, reload: vi.fn() });
   vi.mocked(useDriveOps).mockReturnValue({
     busy: false,
     createFolder: vi.fn(),

@@ -39,7 +39,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   const currentParentId = vm.currentParentId;
   const activeSpace = vm.activeSpace;
 
-  const { entries, loading: filesLoading, reload } = useFileList(activeSpaceId, currentParentId);
+  const { entries, loading: filesLoading, truncatedTotal, reload } = useFileList(activeSpaceId, currentParentId);
   const ops = useDriveOps();
   const upload = useUpload(reload);
 
@@ -192,6 +192,11 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             canEdit={canEdit}
             canShare={canShare}
           />
+        )}
+        {truncatedTotal !== null && (
+          <p className="drive-main__truncated">
+            {t('drive.file.truncated')} ({entries.length}/{truncatedTotal})
+          </p>
         )}
       </div>
 

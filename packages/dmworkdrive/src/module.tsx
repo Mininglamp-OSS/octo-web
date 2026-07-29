@@ -13,6 +13,7 @@ import DriveContent from './pages/DriveContent';
 import { DriveVM } from './pages/DriveVM';
 import ShareLandingPage from './pages/ShareLandingPage';
 import InviteLandingPage from './pages/InviteLandingPage';
+import { shareTokenFromPath, inviteTokenFromPath } from './utils/links';
 
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
@@ -50,18 +51,6 @@ const vm = new DriveVM();
 
 const PENDING_SHARE_KEY = 'octo.drive.pendingShare';
 const PENDING_INVITE_KEY = 'octo.drive.pendingInvite';
-
-function shareTokenFromPath(): string {
-  if (typeof window === 'undefined') return '';
-  const m = window.location.pathname.match(/\/drive\/s\/([^/?#]+)/);
-  return m ? decodeURIComponent(m[1]) : '';
-}
-
-function inviteTokenFromPath(): string {
-  if (typeof window === 'undefined') return '';
-  const m = window.location.pathname.match(/\/drive\/invite\/([^/?#]+)/);
-  return m ? decodeURIComponent(m[1]) : '';
-}
 
 /** Read a pending landing token: live path first, then the stashed value. */
 function readPending(key: string, fromPath: () => string): string {

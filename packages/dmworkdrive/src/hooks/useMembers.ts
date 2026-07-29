@@ -61,6 +61,10 @@ export function useMembers(spaceId: string | null, enabled: boolean): UseMembers
     // space's members land on the current view (which would misgate perms).
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    // Clear the previous space's members up front: until the new list lands,
+    // the role-derived permission gates (canEdit/canManage/…) must not run
+    // against the OLD space's role, or a downloader briefly reads as an editor.
+    setMembers([]);
     setLoading(true);
     try {
       const list = await api.listMembers(spaceId, ctrl.signal);
@@ -68,6 +72,9 @@ export function useMembers(spaceId: string | null, enabled: boolean): UseMembers
       setMembers(list);
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError') return;
+      // A failed load must also leave no stale members behind (already cleared
+      // above; keep it explicit so the permission gate stays fail-closed).
+      setMembers([]);
       Toast.error((err as Error)?.message || t('drive.toast.loadFailed'));
     } finally {
       if (!ctrl.signal.aborted) setLoading(false);

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { t } from '@octo/base';
 import * as api from '../api/driveApi';
 import type { Invite, DriveRole } from '../bridge/types';
@@ -28,25 +28,38 @@ export function useInvite(spaceId: string | null, enabled: boolean): UseInviteRe
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
+    abortRef.current?.abort();
     if (!enabled || !spaceId) {
       setInvites([]);
       setLoading(false);
       return;
     }
+    // Drop a stale response so quickly switching spaces (or reopening the modal
+    // on another space) can't let an older space's invites land on the view.
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setInvites([]);
     setLoading(true);
     try {
-      setInvites(await api.listInvites(spaceId));
+      const list = await api.listInvites(spaceId, ctrl.signal);
+      if (ctrl.signal.aborted) return;
+      setInvites(list);
     } catch (err: unknown) {
+      if ((err as Error)?.name === 'AbortError') return;
       Toast.error((err as Error)?.message || t('drive.toast.loadFailed'));
     } finally {
-      setLoading(false);
+      if (!ctrl.signal.aborted) setLoading(false);
     }
   }, [enabled, spaceId]);
 
   useEffect(() => {
     load();
+    return () => {
+      abortRef.current?.abort();
+    };
   }, [load]);
 
   const create = useCallback(

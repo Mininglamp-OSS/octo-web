@@ -25,3 +25,33 @@ export function buildShareLink(shareId: string): string {
 export function buildInviteLink(token: string): string {
   return `${origin()}/drive/invite/${encodeURIComponent(token)}`;
 }
+
+/**
+ * Decode a path segment, tolerating a malformed %-escape (returns '' instead).
+ *
+ * `decodeURIComponent('%')` (or any bad escape like `%zz`) throws a URIError.
+ * The token readers below run during module init — BEFORE React mounts — so an
+ * uncaught throw white-screens the whole SPA (even the login page). Treat an
+ * undecodable token as "no token".
+ */
+function safeDecode(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return '';
+  }
+}
+
+/** Read the share token from a `/drive/s/:id` pathname ('' if none/malformed). */
+export function shareTokenFromPath(): string {
+  if (typeof window === 'undefined') return '';
+  const m = window.location.pathname.match(/\/drive\/s\/([^/?#]+)/);
+  return m ? safeDecode(m[1]) : '';
+}
+
+/** Read the invite token from a `/drive/invite/:token` pathname ('' if none/malformed). */
+export function inviteTokenFromPath(): string {
+  if (typeof window === 'undefined') return '';
+  const m = window.location.pathname.match(/\/drive\/invite\/([^/?#]+)/);
+  return m ? safeDecode(m[1]) : '';
+}

@@ -46,8 +46,8 @@ describe('InviteLandingPage', () => {
     });
     const { getByText } = render(<InviteLandingPage token="inv-1" />);
     await waitFor(() => getByText('drive.landing.invite.joinedTitle'));
-    // role label resolves via the existing invite.roleEditor key
-    getByText('drive.landing.invite.role: drive.invite.roleEditor');
+    // role label resolves via the shared roleLabel SSOT (drive.member.role*)
+    getByText('drive.landing.invite.role: drive.member.roleEditor');
     expect(api.acceptInvite).toHaveBeenCalledWith('inv-1');
   });
 

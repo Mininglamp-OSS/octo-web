@@ -35,7 +35,7 @@ describe('useInvite', () => {
     vi.mocked(api.listInvites).mockResolvedValue([invite('i1')]);
     const { result } = renderHook(() => useInvite('sp', true));
     await waitFor(() => expect(result.current.invites.length).toBe(1));
-    expect(api.listInvites).toHaveBeenCalledWith('sp');
+    expect(api.listInvites).toHaveBeenCalledWith('sp', expect.any(AbortSignal));
   });
 
   it('creates an invite and prepends it', async () => {
