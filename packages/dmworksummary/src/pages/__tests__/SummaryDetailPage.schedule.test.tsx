@@ -1782,6 +1782,27 @@ describe('v2 对齐：定时按钮集中到 header（从团队框/个人区移�
         expect(json.indexOf('"abstract":"agent abstract"')).toBeLessThan(json.indexOf('"content":"agent summary body"'));
     });
 
+    it('multi-collab BY_PERSON uses team versions instead of hiding version history', () => {
+        const page = makePage(1);
+        const teamVersions = [{ id: 11, version: 2 }, { id: 10, version: 1 }] as any;
+        page.state = {
+            ...(page.state as any),
+            detail: {
+                ...multiCollabDetail({ can_edit_team: true }),
+                result: { id: 11, version: 2, content: 'team summary' },
+            },
+            versions: teamVersions,
+            versionsLoading: false,
+            personalVersions: [{ id: 21, version: 2 }, { id: 20, version: 1 }] as any,
+            personalVersionsLoading: false,
+        };
+
+        const context = (page as any).getActiveVersionContext();
+        expect(context?.isPersonal).toBe(false);
+        expect(context?.versions).toBe(teamVersions);
+        expect(context?.canRestore).toBe(true);
+    });
+
     it('multi-collab: renderPersonalSummary does NOT render schedule button (it lives in header)', () => {
         const page = makePage(1);
         page.state = {

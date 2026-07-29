@@ -4224,8 +4224,7 @@ body.summary-version-detail-open .summary-schedule-page {
 
 /* 宽屏阅读时为右侧目录留出视觉空间，让正文与目录作为整体略向左。 */
 @media (min-width: 1441px) {
-    .summary-detail-layout:not(.has-version-panel) .summary-detail-content-inner,
-    .summary-detail-layout:not(.has-version-panel) .summary-detail-footer {
+    .summary-detail-layout.has-toc:not(.has-version-panel) .summary-detail-content-inner {
         transform: translateX(-64px);
     }
 }

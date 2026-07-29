@@ -2288,7 +2288,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * 决定当前详情页「版本记录」应作用于哪一组版本。
      *
      * - agent 总结：无版本记录（传统 workflow 专属）→ null。
-     * - 多人协作：隐藏（恢复个人版本会误导为影响团队结果）→ null。
+     * - 多人协作：使用团队汇总版本，避免把个人版本误解为团队结果。
      * - BY_GROUP（团队）：团队汇总版本 `versions`。
      * - 单人 BY_PERSON：个人报告版本 `personalVersions`。
      *
@@ -2315,9 +2315,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             versionsRetention,
         } = this.state;
         if (!detail || detail.trigger_type === TriggerType.AGENT) return null;
-        if (this.isMultiCollab()) return null;
-
-        if (detail.summary_mode === SummaryMode.BY_PERSON) {
+        if (detail.summary_mode === SummaryMode.BY_PERSON && !this.isMultiCollab()) {
             if (!personalResult?.content || personalVersionsLoading || personalVersions.length <= 1) return null;
             return {
                 versions: personalVersions,
@@ -3717,10 +3715,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     render() {
         const { detail, loading, error, showScheduleConfig, scheduleConfig } = this.state;
         const { t } = this.context;
+        const hasToc = !this.state.versionPanelOpen
+            && !this.state.isEditing
+            && !this.state.editingTeamSummary
+            && this.state.tocItems.length >= 2;
 
         return (
             <div className="summary-detail-page">
-                <div className={`summary-detail-layout${this.state.versionPanelOpen ? " has-version-panel" : ""}`}>
+                <div className={`summary-detail-layout${this.state.versionPanelOpen ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}`}>
                     <div className="summary-detail-content-wrapper">
                     {detail && !loading && this.renderHeader()}
                     <div className="summary-detail-content-scroll" ref={this.contentScrollRef}>

@@ -72,6 +72,27 @@ function badgeByText(text: string) {
 }
 
 describe('CitationText — [n] vs [Pn] parsing', () => {
+    it('keeps same-sequence citations from different channels as distinct messages', () => {
+        render(
+            <CitationText
+                content="跨频道引用 [1][2]"
+                citations={[
+                    makeCitation({ index: 1, channel_id: 'channel-a', message_seq: 3, content: '频道 A 的消息' }),
+                    makeCitation({ index: 2, channel_id: 'channel-b', message_seq: 3, content: '频道 B 的消息' }),
+                ]}
+            />,
+        );
+
+        const groupBadge = badgeByText('[1,2]')!;
+        fireEvent.click(groupBadge);
+
+        const popover = screen.getByTestId('popover-content');
+        expect(popover.textContent).toContain('频道 A 的消息');
+        expect(popover.textContent).toContain('频道 B 的消息');
+        expect(popover.textContent).toContain('引用 [1]');
+        expect(popover.textContent).toContain('引用 [2]');
+    });
+
     it('labels each directly cited message with its reading-order number in the pinned popover', () => {
         render(
             <CitationText

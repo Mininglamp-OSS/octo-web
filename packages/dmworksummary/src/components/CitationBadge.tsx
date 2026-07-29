@@ -91,6 +91,7 @@ interface MergedMessage {
     content: string;
     sent_at: string;
     message_seq?: number;
+    channel_id?: string;
     cited: boolean;
     citation_index?: number;
 }
@@ -100,7 +101,7 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
     for (const c of groupCitations) {
         if (c.context_before) {
             for (const msg of c.context_before) {
-                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, cited: false });
+                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, channel_id: c.channel_id, cited: false });
             }
         }
         all.push({
@@ -109,12 +110,13 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
             content: c.content,
             sent_at: c.sent_at,
             message_seq: c.message_seq,
+            channel_id: c.channel_id,
             cited: true,
             citation_index: c.index,
         });
         if (c.context_after) {
             for (const msg of c.context_after) {
-                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, cited: false });
+                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, channel_id: c.channel_id, cited: false });
             }
         }
     }
@@ -122,8 +124,8 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
     const seen = new Map<string, MergedMessage>();
     for (const msg of all) {
         const key = msg.message_seq != null
-            ? `seq:${msg.message_seq}`
-            : `${msg.sender}\0${msg.content}\0${msg.sent_at}`;
+            ? `seq:${msg.channel_id ?? ""}:${msg.message_seq}`
+            : `${msg.channel_id ?? ""}\0${msg.sender}\0${msg.content}\0${msg.sent_at}`;
         const existing = seen.get(key);
         if (!existing || (msg.cited && !existing.cited)) {
             seen.set(key, msg);
@@ -132,6 +134,8 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
 
     const result = Array.from(seen.values());
     result.sort((a, b) => {
+        const channelOrder = (a.channel_id ?? "").localeCompare(b.channel_id ?? "");
+        if (channelOrder !== 0) return channelOrder;
         if (a.message_seq != null && b.message_seq != null) return a.message_seq - b.message_seq;
         return new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime();
     });
@@ -439,7 +443,7 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                 {mergedMessages.map((msg, i) => {
                     const cit = groupCitations.find(c => c.index === msg.citation_index);
                     return (
-                        <div key={msg.message_seq ?? i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
+                        <div key={msg.message_seq != null ? `${msg.channel_id ?? ""}:${msg.message_seq}` : i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
                             <MessageHeader
                                 sender={msg.sender}
                                 sentAt={msg.sent_at}
