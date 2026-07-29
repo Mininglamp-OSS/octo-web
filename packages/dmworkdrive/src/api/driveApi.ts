@@ -44,8 +44,10 @@ import type {
  *
  * Kept separate from WKApp.apiClient's singleton (which is pinned to octo-server
  * at '/api/v1/') because drive is a distinct service reached at '/v1/drive/*'.
- * baseURL stays "" so requests are same-origin in the browser and the dev/nginx
- * proxy routes '/v1/drive' to the drive service. Mirrors dmworktodo's matterAxios.
+ * baseURL stays "" so requests are same-origin in the browser; both the dev Vite
+ * proxy (vite.config.ts `/v1/drive`) and the prod nginx `location /v1/drive`
+ * (nginx.conf.template, DRIVE_API_URL) forward '/v1/drive/*' verbatim to the
+ * drive service. Mirrors dmworktodo's matterAxios.
  */
 const driveAxios = axios.create({ baseURL: '' });
 
@@ -71,6 +73,16 @@ driveAxios.interceptors.response.use(undefined, (err) => {
   }
   return Promise.reject(err);
 });
+
+/**
+ * Interceptor-free axios for the PUBLIC share endpoints (recipient-side, no
+ * auth). Kept separate from driveAxios so these calls (a) never attach the
+ * viewer's session token / X-Space-Id — a recipient may be a different user or
+ * unauthenticated — and (b) can't trip driveAxios's 401→logout, so opening a
+ * stranger's expired/invalid share link never force-logs-out the current user
+ * (PR#1146 review B2).
+ */
+const drivePublicAxios = axios.create({ baseURL: '' });
 
 /** Base path for the drive service. Backend routes are namespaced under this. */
 const BASE = '/v1/drive';
@@ -147,6 +159,16 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
   }
 }
 
+/** POST to a public (unauthenticated) endpoint via the interceptor-free instance. */
+async function publicPost<T>(path: string, data?: unknown): Promise<T> {
+  try {
+    const resp = await drivePublicAxios.post<T>(`${BASE}${path}`, data);
+    return resp.data;
+  } catch (err) {
+    throw extractApiError(err);
+  }
+}
+
 async function put<T>(path: string, data?: unknown): Promise<T> {
   try {
     const resp = await driveAxios.put<T>(`${BASE}${path}`, data);
@@ -203,8 +225,8 @@ export async function deleteSpace(spaceId: string): Promise<void> {
 
 // ─── Space members ──────────────────────────────────────────────────────────
 
-export async function listMembers(spaceId: string): Promise<Member[]> {
-  const data = await get<{ members: Member[] }>(`/spaces/${spaceId}/members`);
+export async function listMembers(spaceId: string, signal?: AbortSignal): Promise<Member[]> {
+  const data = await get<{ members: Member[] }>(`/spaces/${spaceId}/members`, undefined, signal);
   return data.members ?? [];
 }
 
@@ -430,7 +452,7 @@ export async function revokeShare(shareId: string): Promise<void> {
 
 /** Recipient-side public access (no auth required by the backend). */
 export async function accessShareByToken(token: string, password?: string): Promise<ShareAccess> {
-  return post<ShareAccess>(`/public/shares/${token}/access`, password ? { password } : undefined);
+  return publicPost<ShareAccess>(`/public/shares/${token}/access`, password ? { password } : undefined);
 }
 
 /**
@@ -442,7 +464,7 @@ export async function downloadShareByToken(
   token: string,
   password?: string,
 ): Promise<ShareDownload> {
-  return post<ShareDownload>(
+  return publicPost<ShareDownload>(
     `/public/shares/${token}/download`,
     password ? { password } : undefined,
   );

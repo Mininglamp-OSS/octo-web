@@ -288,6 +288,18 @@ describe('auth-header interceptor', () => {
     expect(logout).toHaveBeenCalled();
     logout.mockRestore();
   });
+
+  it('wires the 401→logout interceptor on exactly one instance — the public share axios is interceptor-free (B2)', () => {
+    // accessShareByToken / downloadShareByToken run on a SEPARATE, interceptor-
+    // free axios instance (drivePublicAxios), so a stranger's expired/invalid
+    // share link returning 401 can never force-log-out the current viewer. Only
+    // driveAxios registers the request(token/X-Space-Id) + response(401→logout)
+    // interceptors, so each `.use` was called exactly once at module init.
+    const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
+    const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
+    expect(requestUse.mock.calls.length).toBe(1);
+    expect(responseUse.mock.calls.length).toBe(1);
+  });
 });
 
 describe('assertSafeUploadURL', () => {
