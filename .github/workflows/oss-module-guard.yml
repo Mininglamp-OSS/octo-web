@@ -36,8 +36,10 @@ jobs:
 
           blocked_paths="$(mktemp)"
           awk -F '\t' '
-            $1 ~ /^packages\/(dmloop|dmpersonal)(\/|$)/ ||
-            $1 ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/.*(loop|personal)/ {
+            $2 != "removed" && (
+              $1 ~ /^packages\/(dmloop|dmpersonal)(\/|$)/ ||
+              $1 ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/.*(loop|personal)/
+            ) {
               print $1
             }
           ' "${changed_files}" > "${blocked_paths}"
@@ -55,7 +57,7 @@ jobs:
             [[ -f "${file}" ]] || continue
 
             case "${file}" in
-              *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.json|*.yaml|*.yml|pnpm-lock.yaml|package.json|Dockerfile*)
+              *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.json|*.yaml|*.yml|Dockerfile*)
                 if grep -nHE "@(octo|dmwork)/(loop|personal)(/|['\"[:space:]]|$)" "${file}" >> "${blocked_refs}"; then
                   true
                 fi
