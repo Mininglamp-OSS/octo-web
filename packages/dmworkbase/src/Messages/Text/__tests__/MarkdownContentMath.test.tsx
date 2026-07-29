@@ -79,3 +79,23 @@ describe("MarkdownContent — KaTeX layout", () => {
     expect(struts.length).toBeGreaterThan(1);
   });
 });
+
+describe("MarkdownContent — single-dollar currency safety", () => {
+  it("does not parse paired dollar signs as inline math", () => {
+    const root = renderContent(
+      <MarkdownContent content="I paid $5 and got $3 back" />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(root.textContent).toContain("$5");
+    expect(root.textContent).toContain("$3");
+  });
+
+  it("does not parse shell-style $VAR as inline math", () => {
+    const root = renderContent(
+      <MarkdownContent content="Set $HOME and $PATH then run" />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(root.textContent).toContain("$HOME");
+    expect(root.textContent).toContain("$PATH");
+  });
+});

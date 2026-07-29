@@ -102,7 +102,7 @@ const mathRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
   remarkGfm,
   remarkBreaks,
-  remarkMath,
+  [remarkMath, { singleDollarTextMath: false }],
 ];
 
 function rawHtmlAsTextPlugin() {
