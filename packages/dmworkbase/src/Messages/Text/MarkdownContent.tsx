@@ -53,91 +53,28 @@ interface MarkdownContentProps {
 }
 
 /**
- * 在 GitHub 默认白名单基础上，追加 highlight.js 需要的 class 属性。
- * 执行顺序：rehypeHighlight 先着色（加 hljs-* className），
- * rehypeSanitize 最后兜底清洗——白名单里的 hljs-* / language-* 才真正生效。
- * 注意：react-markdown 的输入是 Markdown 字符串，remark 直接解析成安全 AST，
- * 不存在注入 HTML 的机会（未开启 allowDangerousHtml），所以 highlight 先跑不会引入风险。
+ * Sanitize 白名单。
+ * 执行顺序：
+ *   1. rehypeHighlight 先给代码块加 hljs-* / language-* className；
+ *   2. rehypeSanitize 清洗用户内容，只保留可信的 class 与标签；
+ *   3. rehypeKatex 在数学公式路径中最后运行，直接生成完整 KaTeX DOM。
+ * 注意：
+ *   - react-markdown 未开启 allowDangerousHtml，原始 HTML 会被 rawHtmlAsTextPlugin 转成文本；
+ *   - KaTeX 输出不再经过二次 sanitize，因此本 schema 只需保留 rehype-katex 能识别的
+ *     math 标记（language-math / math-inline / math-display），无需穷举 KaTeX class。
  */
 const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
-    // 放行代码块的 language-* class（highlight.js 加的）
+    // highlight.js 产生的 language-* 以及 remark-math 交给 rehype-katex 的标记。
     code: [
       ...(defaultSchema.attributes?.code ?? []),
-      ["className", /^language-/, /^hljs/],
+      ["className", /^language-/, /^hljs/, "math-inline", "math-display"],
     ],
-    // 放行 span 上的 hljs-* class（语法高亮 token）+ KaTeX 相关 class
-    span: [
-      ...(defaultSchema.attributes?.span ?? []),
-      [
-        "className",
-        /^hljs/,
-        /^katex/,
-        /^mord/,
-        /^mbin/,
-        /^mrel/,
-        /^mopen/,
-        /^mclose/,
-        /^mpunct/,
-        /^minner/,
-        /^mop/,
-        /^mfrac/,
-        /^msqrt/,
-        /^mroot/,
-        /^mtable/,
-        /^mtr/,
-        /^mtd/,
-        /^svg/,
-        /^vlist/,
-        /^strut/,
-        /^frac-line/,
-        /^delimsizing/,
-        /^nulldelimiter/,
-        /^reset-size/,
-        /^sizing/,
-        /^fontsize-ensurer/,
-        /^base/,
-      ],
-    ],
-    // 放行 KaTeX 相关元素的 class
-    div: [...(defaultSchema.attributes?.div ?? []), ["className", /^katex/]],
-    // 放行 KaTeX math 容器的 class
-    math: [["className", /^katex/]],
-    // 放行 KaTeX SVG 属性
-    svg: [
-      ["width"],
-      ["height"],
-      ["viewBox"],
-      ["preserveAspectRatio"],
-      ["style"],
-    ],
-    path: [["d"]],
-    line: [["x1"], ["x2"], ["y1"], ["y2"]],
+    // highlight.js 产生的语法高亮 token class
+    span: [...(defaultSchema.attributes?.span ?? []), ["className", /^hljs/]],
   },
-  tagNames: [
-    ...(defaultSchema.tagNames ?? []),
-    // 放行 KaTeX 使用的 SVG 元素
-    "svg",
-    "path",
-    "line",
-    "math",
-    "annotation",
-    "semantics",
-    "mrow",
-    "mi",
-    "mo",
-    "mn",
-    "msup",
-    "msub",
-    "mfrac",
-    "mroot",
-    "msqrt",
-    "mtable",
-    "mtr",
-    "mtd",
-  ],
 };
 
 /** 基础 rehype 插件（不含 KaTeX） */
@@ -146,11 +83,11 @@ const baseRehypePlugins: any[] = [
   [rehypeSanitize, sanitizeSchema],
 ];
 
-/** 含 KaTeX 的 rehype 插件 */
+/** 含 KaTeX 的 rehype 插件：先清洗用户内容，再由 rehype-katex 生成可信 DOM */
 const mathRehypePlugins: any[] = [
   [rehypeHighlight, { aliases: { json5: "json" }, ignoreMissing: true }],
-  [rehypeKatex, { strict: false, throwOnError: false }],
   [rehypeSanitize, sanitizeSchema],
+  [rehypeKatex, { strict: false, throwOnError: false }],
 ];
 
 /** 基础 remark 插件（不含 math） */
