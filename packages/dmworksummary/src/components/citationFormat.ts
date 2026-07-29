@@ -11,6 +11,23 @@
 export const RANGE_THRESHOLD = 3;
 
 /**
+ * Normalize citation brackets occasionally emitted by LLMs to the canonical
+ * ASCII form understood by the markdown plugins. Keep this deliberately
+ * narrow: only a numeric citation or a team citation (`Pn`) is rewritten, so
+ * ordinary CJK bracketed prose is left untouched.
+ *
+ * Examples: `【1】` / `［ 1 ］` -> `[1]`, `【P2】` -> `[P2]`.
+ * This is a render-time fallback, therefore it also repairs already stored
+ * summaries without mutating their source content.
+ */
+export function normalizeCitationBrackets(content: string): string {
+    return content.replace(/[【［]\s*(P?\d{1,3})\s*[】］]/gi, (_match, token: string) => {
+        const normalizedToken = token.toUpperCase();
+        return `[${normalizedToken}]`;
+    });
+}
+
+/**
  * Group-label formatting rule (per product spec):
  *   1  citation  -> single [N] badge (handled by remarkCitation, not here)
  *   2-3 citations -> comma joined:  [37,38,39]

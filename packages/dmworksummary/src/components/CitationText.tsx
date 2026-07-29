@@ -7,7 +7,7 @@ import { visit } from 'unist-util-visit';
 import { useI18n } from '@octo/base';
 import CitationBadge, { CitationGroupBadge, TeamCitationBadge } from './CitationBadge';
 import { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
-import { buildDisplayIndexMap } from './citationFormat';
+import { buildDisplayIndexMap, normalizeCitationBrackets } from './citationFormat';
 
 export interface CitationContextValue {
     activeKey: string | null;
@@ -290,7 +290,10 @@ const CitationText: React.FC<CitationTextProps> = ({
         setActiveKey(prev => (prev === key ? null : prev));
     }, []);
 
-    const normalized = content.trim();
+    // Worker/model output should use `[n]` / `[Pn]`, but older and occasional
+    // results contain CJK full-width brackets. Normalize only valid citation
+    // tokens at render time so those results retain badge/hover/click behavior.
+    const normalized = normalizeCitationBrackets(content).trim();
     if (!normalized) {
         return <div className="summary-content-empty">{t("summary.content.empty")}</div>;
     }

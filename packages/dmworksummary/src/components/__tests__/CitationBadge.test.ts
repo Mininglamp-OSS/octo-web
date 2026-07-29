@@ -1,5 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { formatGroupLabel, RANGE_THRESHOLD, buildDisplayIndexMap } from '../citationFormat';
+import {
+    formatGroupLabel,
+    RANGE_THRESHOLD,
+    buildDisplayIndexMap,
+    normalizeCitationBrackets,
+} from '../citationFormat';
+
+describe('normalizeCitationBrackets', () => {
+    it('normalizes CJK citation brackets', () => {
+        expect(normalizeCitationBrackets('事实【1】和［ 23 ］')).toBe('事实[1]和[23]');
+    });
+
+    it('normalizes team citations and canonicalizes a lowercase p', () => {
+        expect(normalizeCitationBrackets('【P2】［p3］')).toBe('[P2][P3]');
+    });
+
+    it('leaves ordinary bracketed prose and existing citations unchanged', () => {
+        const content = '【重要】 [1] [P2] 【123个项目】';
+        expect(normalizeCitationBrackets(content)).toBe(content);
+    });
+});
 
 // Product spec for group badge label (see CitationBadge.tsx):
 //   len=1  -> handled by CitationBadge (single [N]), not tested here
