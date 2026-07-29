@@ -454,10 +454,11 @@
   color: var(--wk-color-accent);
   background-color: var(--wk-purple-alpha-08);
   border-radius: var(--wk-r-xs);
-  padding: var(--wk-sp-0-5) var(--wk-sp-2);
+  padding: 1px var(--wk-sp-2);
   font-weight: 500;
   cursor: text;
   transition: background-color 0.2s;
+  vertical-align: baseline;
 }
 
 .wk-messageinput-editor .mention:hover {

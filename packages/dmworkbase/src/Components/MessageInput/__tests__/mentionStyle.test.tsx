@@ -6,7 +6,12 @@ import { describe, expect, it } from "vitest";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import TiptapMention from "@tiptap/extension-mention";
-import { mentionNodeClass, isBroadcastSentinelUid } from "../../../Utils/mentionRender";
+import { readFileSync } from "fs";
+import path from "path";
+import { isBroadcastSentinelUid } from "../../../Utils/mentionRender";
+
+const cssPath = path.resolve(__dirname, "../index.css");
+const css = readFileSync(cssPath, "utf-8");
 
 function createMentionEditor() {
   return new Editor({
@@ -26,16 +31,6 @@ function createMentionEditor() {
       TiptapMention.configure({
         HTMLAttributes: { class: "mention" },
         suggestion: {} as any,
-        renderHTML({ options, node }) {
-          const uid = String(node.attrs.id ?? "");
-          const baseClass = options.HTMLAttributes?.class ?? "mention";
-          const cls = mentionNodeClass(uid, baseClass);
-          return [
-            "span",
-            { ...options.HTMLAttributes, class: cls },
-            `@${node.attrs.label ?? node.attrs.id}`,
-          ];
-        },
         renderText({ node }) {
           return `@${node.attrs.label ?? node.attrs.id}`;
         },
@@ -44,8 +39,29 @@ function createMentionEditor() {
   });
 }
 
-describe("Mention renderHTML", () => {
-  it("普通成员 mention 渲染为 mention class 并带 data-id/data-label", () => {
+describe("Mention CSS capsule style", () => {
+  it(".wk-messageinput-editor .mention 有浅紫胶囊背景（非 transparent）", () => {
+    const match = css.match(
+      /\.wk-messageinput-editor \.mention\s*{([^}]*)}/,
+    );
+    expect(match, ".wk-messageinput-editor .mention 规则应存在").not.toBeNull();
+    const block = match![1];
+    expect(block).toMatch(/background-color\s*:\s*var\(--wk-purple-alpha-08\)/);
+    expect(block).toMatch(/color\s*:\s*var\(--wk-color-accent\)/);
+    expect(block).not.toMatch(/background-color\s*:\s*transparent/);
+  });
+
+  it(".wk-messageinput-editor .mention:hover 有加深背景", () => {
+    const match = css.match(
+      /\.wk-messageinput-editor \.mention:hover\s*{([^}]*)}/,
+    );
+    expect(match, ":hover 规则应存在").not.toBeNull();
+    expect(match![1]).toMatch(/background-color\s*:\s*var\(--wk-purple-alpha-12\)/);
+  });
+});
+
+describe("Mention DOM rendering (default renderer with renderText)", () => {
+  it("普通成员 mention 渲染出 class=mention + data-id/data-label", () => {
     const editor = createMentionEditor();
     editor.commands.insertContent({
       type: "mention",
@@ -62,7 +78,7 @@ describe("Mention renderHTML", () => {
     expect(isBroadcastSentinelUid("user123")).toBe(false);
   });
 
-  it("@所有人(-2) 广播 mention 同样渲染为 mention class（与展示层一致）", () => {
+  it("@所有人(-2) 广播 mention 同样渲染 class=mention（与展示层 .mention-entity 一致）", () => {
     const editor = createMentionEditor();
     editor.commands.insertContent({
       type: "mention",
@@ -76,38 +92,21 @@ describe("Mention renderHTML", () => {
     expect(isBroadcastSentinelUid("-2")).toBe(true);
   });
 
-  it("@所有AI(-3) 广播 mention 同样渲染为 mention class", () => {
-    const editor = createMentionEditor();
-    editor.commands.insertContent({
-      type: "mention",
-      attrs: { id: "-3", label: "所有AI" },
-    });
-    const html = editor.getHTML();
-    editor.destroy();
-
-    expect(html).toContain('class="mention"');
-    expect(isBroadcastSentinelUid("-3")).toBe(true);
-  });
-
-  it("legacy -1 和 render-all 均为 broadcast sentinel，class 为 mention", () => {
-    for (const id of ["-1", "all"]) {
+  it("@所有AI(-3)、legacy -1、all 均为 broadcast sentinel 且 class=mention", () => {
+    for (const [id, label] of [
+      ["-3", "所有AI"],
+      ["-1", "所有人"],
+      ["all", "所有人"],
+    ] as const) {
       const editor = createMentionEditor();
       editor.commands.insertContent({
         type: "mention",
-        attrs: { id, label: id },
+        attrs: { id, label },
       });
       const html = editor.getHTML();
       editor.destroy();
       expect(html).toContain('class="mention"');
       expect(isBroadcastSentinelUid(id)).toBe(true);
     }
-  });
-
-  it("mentionNodeClass 对所有 uid 统一返回 baseClass（广播/普通成员视觉一致）", () => {
-    expect(mentionNodeClass("user123", "mention")).toBe("mention");
-    expect(mentionNodeClass("-2", "mention")).toBe("mention");
-    expect(mentionNodeClass("-3", "mention")).toBe("mention");
-    expect(mentionNodeClass("-1", "mention")).toBe("mention");
-    expect(mentionNodeClass("all", "mention")).toBe("mention");
   });
 });
