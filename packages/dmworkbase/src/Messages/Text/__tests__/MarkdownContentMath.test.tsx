@@ -78,6 +78,30 @@ describe("MarkdownContent — KaTeX layout", () => {
     const struts = root.querySelectorAll<HTMLElement>(".katex-html .pstrut");
     expect(struts.length).toBeGreaterThan(1);
   });
+
+  it("renders block-level math with newlines inside $$ fences", () => {
+    // Multi-line $$ blocks are normalized to single-line in normalizeContent
+    // to avoid a remark-math@6 / mdast-util-from-markdown@1 crash.
+    // KaTeX should still render the formula.
+    const root = renderContent(
+      <MarkdownContent content={"$$\n\\frac{a}{b}\n$$"} />
+    );
+    expect(root.querySelector(".katex")).not.toBeNull();
+  });
+});
+
+describe("MarkdownContent — KaTeX maxSize guard", () => {
+  it("clamps \\rule bomb to a bounded size", () => {
+    const root = renderContent(
+      <MarkdownContent content={String.raw`$$\rule{99999em}{99999em}$$`} />
+    );
+    const struts = root.querySelectorAll<HTMLElement>(".katex-html .strut");
+    expect(struts.length).toBeGreaterThan(0);
+    for (const s of struts) {
+      const h = parseFloat(s.style.height || "0");
+      expect(h).toBeLessThanOrEqual(10);
+    }
+  });
 });
 
 describe("MarkdownContent — single-dollar currency safety", () => {
