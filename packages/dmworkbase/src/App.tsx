@@ -237,6 +237,7 @@ export class WKRemoteConfig {
   revokeSecond: number = 2 * 60; // 撤回时间
   threadOn: boolean = false; // 子区功能开关，默认关闭
   messagesSearchOn: boolean = false; // 会话内聊天记录搜索开关，默认关闭
+  docsSearchOn: boolean = false; // 云文档全文搜索开关，默认关闭；与 docsOn(模块入口)解耦，独立灰度
   disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
   /**
    * 自定义贴纸管理入口开关。后端字段 sticker_custom_enabled 为 true 时，前端展示
@@ -407,6 +408,7 @@ export class WKRemoteConfig {
       const previousMessageReaction = this.messageReaction;
       const previousStickerUploadLimits = this.stickerUploadLimits;
       const previousDocsOn = this.docsOn;
+      const previousDocsSearchOn = this.docsSearchOn;
       const previousDmloopOn = this.dmloopOn;
       const previousDmpersonalOn = this.dmpersonalOn;
       const previousDriveOn = this.driveOn;
@@ -427,6 +429,7 @@ export class WKRemoteConfig {
         result["sticker_upload_limits"]
       );
       this.docsOn = parseRemoteBool(result["docs_on"]);
+      this.docsSearchOn = parseRemoteBool(result["docs_search_on"]);
       this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
       this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
       this.driveOn = parseRemoteBool(result["drive_on"]);
@@ -446,6 +449,7 @@ export class WKRemoteConfig {
           this.stickerUploadLimits
         ) ||
         previousDocsOn !== this.docsOn ||
+        previousDocsSearchOn !== this.docsSearchOn ||
         previousDmloopOn !== this.dmloopOn ||
         previousDmpersonalOn !== this.dmpersonalOn ||
         previousDriveOn !== this.driveOn

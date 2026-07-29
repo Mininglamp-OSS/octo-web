@@ -109,6 +109,8 @@ export interface MenusManager {
 export interface RemoteConfigLite {
   /** Docs module display switch (backend appconfig `docs_on`); false/absent → hidden. */
   docsOn: boolean
+  /** Cloud-docs full-text search switch (backend appconfig `docs_search_on`); false/absent → hidden. Decoupled from docsOn so search can be rolled out independently of the docs module. */
+  docsSearchOn: boolean
   /**
    * True once the FIRST appconfig load has resolved. Per the host contract, a subscriber that
    * registers via `addListener` after this is already true will NOT be called (addListener
