@@ -13,11 +13,12 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
-import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
+import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath } from "@octo/docs";
 import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules";
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
+import { consumeStandaloneReturn, persistStandaloneReturn } from "./standaloneReturn";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -179,7 +180,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 // the URL clean: store the known bucket sid in SessionScope, then navigate to the
                 // sid-less return path. The reloaded page still hits the right sid-keyed session
                 // bucket, without exposing `?sid=` in the address bar.
-                const standaloneReturn = consumeStandaloneReturn();
+                const standaloneReturn = consumeStandaloneReturn(getEnterpriseStandaloneHandlers());
                 if (standaloneReturn) {
                     const sessionSid = findSidForToken(localStorage, WKApp.loginInfo.token || "");
                     if (sessionSid) setSessionSid(sessionSid);

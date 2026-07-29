@@ -78,7 +78,7 @@ WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
 WKApp.shared.registerModule(new DocsModule()); // Docs module
 registerEnterpriseModules({
   registerModule: (module) => WKApp.shared.registerModule(module),
-})
+});
 
 // e2e mock: 仅在 VITE_E2E_MOCK=1 时启动 MSW Service Worker.
 // dev / prod 完全走 tree-shake 分支, 无副作用. 必须在 startup() 之前 await,

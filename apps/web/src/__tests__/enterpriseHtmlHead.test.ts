@@ -36,6 +36,15 @@ describe("enterprise HTML head injection", () => {
       "<script>window.__ENTERPRISE_HEAD__ = true</script>",
     );
   });
+
+  it("reports a clear error when the configured head path does not exist", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-enterprise-html-"));
+    const file = path.join(dir, "missing.html");
+
+    expect(() => readEnterpriseHtmlHead(file, process.cwd())).toThrow(
+      `[vite] VITE_ENTERPRISE_HTML_HEAD_PATH does not exist: ${file}`,
+    );
+  });
 });
 
 describe("enterprise modules slot", () => {

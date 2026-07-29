@@ -2,6 +2,7 @@ import { defineConfig } from "wxt";
 import tsconfigPaths from "vite-tsconfig-paths";
 import commonjs from "vite-plugin-commonjs";
 import path from "path";
+import { enterpriseModulesPlugin } from "../web/vite.enterpriseHtml";
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
@@ -13,7 +14,11 @@ export default defineConfig({
     developmentIndicator: false,
   },
   vite: () => ({
-    plugins: [commonjs(), tsconfigPaths({ root: "../../" })],
+    plugins: [
+      enterpriseModulesPlugin(undefined, path.resolve(__dirname, "../web")),
+      commonjs(),
+      tsconfigPaths({ root: "../../" }),
+    ],
     resolve: {
       dedupe: ["react", "react-dom"],
       alias: {

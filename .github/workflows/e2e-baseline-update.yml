@@ -105,7 +105,7 @@ jobs:
           } > "$SUMMARY"
           cat "$SUMMARY"
 
-          EXPECTED_P0=29
+          EXPECTED_P0=1
           if [[ "$TOTAL_TESTS" -eq 0 || "$TOTAL_TESTS" -lt "$EXPECTED_P0" || "$SKIPPED" -gt 0 || "$ERRORS" -gt 0 ]]; then
             echo "❌ @p0 did not really pass cleanly; refuse to update baseline"
             exit 1

@@ -8,6 +8,9 @@ const RESOLVED_ENTERPRISE_MODULES_ID = "\0virtual:octo-enterprise-modules";
 export function readEnterpriseHtmlHead(headPath: string | undefined, rootDir: string): string {
   if (!headPath) return "";
   const resolved = path.isAbsolute(headPath) ? headPath : path.resolve(rootDir, headPath);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`[vite] VITE_ENTERPRISE_HTML_HEAD_PATH does not exist: ${resolved}`);
+  }
   return fs.readFileSync(resolved, "utf-8");
 }
 
