@@ -19,10 +19,16 @@ import zhCN from './i18n/zh-CN.json';
 
 /** Guard against double-init (HMR in dev or future module lifecycle changes). */
 let _initialized = false;
+/** `space-changed` subscription, kept for HMR teardown. */
+let _spaceChangedHandler: (() => void) | null = null;
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     _initialized = false;
+    if (_spaceChangedHandler) {
+      WKApp.mittBus.off('space-changed', _spaceChangedHandler);
+      _spaceChangedHandler = null;
+    }
   });
 }
 
@@ -239,6 +245,13 @@ export default class DriveModule implements IModule {
       },
       4008,
     );
+
+    // Host Space switch (or in-tab user change) must not leave the drive
+    // showing the previous tenant's spaces/breadcrumb while requests already
+    // carry the new X-Space-Id. Reset + reload the shared VM. Mirrors the
+    // sister modules' `space-changed` subscription (dmworksummary/module.tsx).
+    _spaceChangedHandler = () => vm.reset();
+    WKApp.mittBus.on('space-changed', _spaceChangedHandler);
   }
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from 'react';
-import { t } from '@octo/base';
+import { t, WKApp } from '@octo/base';
 import { ProviderListener } from '@octo/base';
 import * as api from '../api/driveApi';
 import type { Space, CreateSpaceReq } from '../bridge/types';
@@ -30,6 +30,8 @@ export class DriveVM extends ProviderListener {
   path: Crumb[] = [];
 
   private loadStarted = false;
+  /** uid the cached spaces belong to; guards against an in-tab user change. */
+  private loadedUid: string | null = null;
 
   get personalSpace(): Space | null {
     return this.spaces.find((s) => s.type === 'personal') ?? null;
@@ -50,8 +52,36 @@ export class DriveVM extends ProviderListener {
 
   /** Kick off the initial space load once, on first pane mount. */
   ensureLoaded(): void {
-    if (this.loadStarted) return;
+    const uid = WKApp.loginInfo.uid ?? '';
+    if (this.loadStarted) {
+      // Same singleton, different user in-tab (no full page reload): drop the
+      // prior user's cached spaces and reload under the new identity.
+      if (this.loadedUid !== uid) this.reset();
+      return;
+    }
     this.loadStarted = true;
+    this.loadedUid = uid;
+    void this.loadSpaces();
+  }
+
+  /**
+   * Drop all cached per-tenant state on a host Space switch (or in-tab user
+   * change) and immediately reload for the new context. The drive request
+   * headers (X-Space-Id / token) follow the host, so a stale space list /
+   * breadcrumb must never outlive the switch. No-op before the first load —
+   * nothing tenant-specific is cached yet. Logout is covered separately by the
+   * host's hard redirect (App.logout → window.location.replace), which tears
+   * down this module-level singleton entirely.
+   */
+  reset(): void {
+    if (!this.loadStarted) return;
+    this.spaces = [];
+    this.spacesError = null;
+    this.activeSpaceId = null;
+    this.path = [];
+    this.loadedUid = WKApp.loginInfo.uid ?? '';
+    this.spacesLoading = true;
+    this.notifyListener();
     void this.loadSpaces();
   }
 
