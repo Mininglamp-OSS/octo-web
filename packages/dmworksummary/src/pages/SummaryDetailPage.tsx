@@ -139,14 +139,21 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     declare context: React.ContextType<typeof I18nContext>;
 
     private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
+    private regenerateVoiceMode: RegenerateMode | null = null;
+
+    private handleRegenerateVoiceRecordingStart = () => {
+        this.regenerateVoiceMode = this.state.regenerateMode;
+    };
 
     private handleRegenerateInputVoice = (
         text: string,
         mode: ReplaceMode,
         savedRange?: SelectionRange
     ) => {
+        const regenerateMode = this.regenerateVoiceMode ?? this.state.regenerateMode;
+        this.regenerateVoiceMode = null;
         this.setState((prev) => {
-            const field = prev.regenerateMode === "refine" ? "refineFeedback" : "regenerateTopic";
+            const field = regenerateMode === "refine" ? "refineFeedback" : "regenerateTopic";
             return {
                 [field]: applyRegenerateVoiceInput(
                     prev[field],
@@ -1164,12 +1171,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     handleRegenerate = () => {
         const { detail } = this.state;
         if (this.taskId == null) return;
+        this.regenerateVoiceMode = null;
         this.setState({
             showRegenerateModal: true,
             regenerateMode: "refine",
-            regenerateTopic: detail?.title || "",
+            regenerateTopic: detail?.topic || detail?.title || "",
             refineFeedback: "",
         });
+    };
+
+    private hasRegenerateRefineBaseResult = () => {
+        const { detail, personalResult } = this.state;
+        return detail?.summary_mode === SummaryMode.BY_PERSON && !this.shouldOperateOnTeamSummary()
+            ? Boolean(personalResult?.id)
+            : Boolean(detail?.result_id);
     };
 
     private handleRegenerateModeChange = (regenerateMode: RegenerateMode) => {
@@ -1554,6 +1569,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleRegenerateCancel = () => {
+        this.regenerateVoiceMode = null;
         this.setState({ showRegenerateModal: false });
     };
 
@@ -3702,6 +3718,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     className="summary-confirm"
                     centered
                     maskClosable
+                    onCancel={this.handleRegenerateCancel}
                 >
                     <div className="summary-confirm-body">
                         <div className="summary-confirm-main">
@@ -3770,6 +3787,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             <VoiceInputButton
                                 inputRef={this.regenerateTopicRef}
                                 onTranscribed={this.handleRegenerateInputVoice}
+                                onRecordingStart={this.handleRegenerateVoiceRecordingStart}
                                 getCurrentText={() => this.state.regenerateMode === "refine"
                                     ? this.state.refineFeedback
                                     : this.state.regenerateTopic}
@@ -3791,12 +3809,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <button
                             type="button"
                             className="summary-confirm-btn summary-confirm-btn--dark"
-                            disabled={this.state.regenerateSubmitting || !(this.state.regenerateMode === "refine"
+                            disabled={this.state.regenerateSubmitting || (this.state.regenerateMode === "refine" && !this.hasRegenerateRefineBaseResult()) || !(this.state.regenerateMode === "refine"
                                 ? this.state.refineFeedback.trim()
                                 : this.state.regenerateTopic.trim())}
                             onClick={this.handleRegenerateConfirm}
                         >
-                            {this.state.regenerateSubmitting ? t("summary.create.submitting") : t("summary.common.confirm")}
+                            {this.state.regenerateSubmitting
+                                ? t("summary.create.submitting")
+                                : t(this.state.regenerateMode === "refine" ? "summary.detail.refineAction" : "summary.detail.regenerate")}
                         </button>
                     </div>
                 </Modal>
