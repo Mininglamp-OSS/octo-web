@@ -154,6 +154,9 @@ export default defineConfig(({ mode }) => {
             env.VITE_SUMMARY_API_URL || apiOrigin || "http://localhost:8080",
           changeOrigin: true,
           secure: false,
+          rewrite: env.VITE_SUMMARY_API_URL
+            ? (path: string) => path.replace(/^\/summary/, "")
+            : undefined,
         },
         // Marketplace (MCP catalog) API — must be before the general /api/ rule.
         // octo-marketplace serves its own /api/v1/*; the /market prefix is
