@@ -575,10 +575,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         renderHTML({ options, node }) {
           const uid = String(node.attrs.id ?? "");
           const isBroadcast = isBroadcastSentinelUid(uid);
-          const extraClass = isBroadcast ? "" : " mention-user";
+          const baseClass = options.HTMLAttributes?.class ?? "mention";
+          const cls = isBroadcast ? baseClass : `${baseClass} mention-user`;
           return [
             "span",
-            { ...options.HTMLAttributes, class: `mention${extraClass}` },
+            { ...options.HTMLAttributes, class: cls },
             `@${node.attrs.label ?? node.attrs.id}`,
           ];
         },
