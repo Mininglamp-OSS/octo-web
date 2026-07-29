@@ -299,7 +299,7 @@ export class MentionModel {
 // them without an import cycle through this large editor module.
 import {
   buildMentionDropdownItems,
-  isBroadcastSentinelUid,
+  mentionNodeClass,
 } from "../../Utils/mentionRender";
 import {
   parseSendMentionText,
@@ -574,9 +574,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         ),
         renderHTML({ options, node }) {
           const uid = String(node.attrs.id ?? "");
-          const isBroadcast = isBroadcastSentinelUid(uid);
           const baseClass = options.HTMLAttributes?.class ?? "mention";
-          const cls = isBroadcast ? baseClass : `${baseClass} mention-user`;
+          const cls = mentionNodeClass(uid, baseClass);
           return [
             "span",
             { ...options.HTMLAttributes, class: cls },

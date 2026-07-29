@@ -6,12 +6,8 @@ import { describe, expect, it } from "vitest";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import TiptapMention from "@tiptap/extension-mention";
-import { isBroadcastSentinelUid } from "../../../Utils/mentionRender";
+import { mentionNodeClass, isBroadcastSentinelUid } from "../../../Utils/mentionRender";
 
-/**
- * 与生产代码 MessageInput/index.tsx 保持一致的 TiptapMention 配置，
- * 防止 renderLabel / renderText / renderHTML 之间的短路行为在测试里被绕过。
- */
 function createMentionEditor() {
   return new Editor({
     extensions: [
@@ -32,9 +28,8 @@ function createMentionEditor() {
         suggestion: {} as any,
         renderHTML({ options, node }) {
           const uid = String(node.attrs.id ?? "");
-          const isBroadcast = isBroadcastSentinelUid(uid);
           const baseClass = options.HTMLAttributes?.class ?? "mention";
-          const cls = isBroadcast ? baseClass : `${baseClass} mention-user`;
+          const cls = mentionNodeClass(uid, baseClass);
           return [
             "span",
             { ...options.HTMLAttributes, class: cls },
@@ -49,8 +44,8 @@ function createMentionEditor() {
   });
 }
 
-describe("Mention renderHTML class distinction", () => {
-  it("普通成员 mention 渲染包含 mention-user class 并带 data-id/data-label", () => {
+describe("Mention renderHTML", () => {
+  it("普通成员 mention 渲染为 mention class 并带 data-id/data-label", () => {
     const editor = createMentionEditor();
     editor.commands.insertContent({
       type: "mention",
@@ -62,11 +57,12 @@ describe("Mention renderHTML class distinction", () => {
     expect(html).toContain('data-type="mention"');
     expect(html).toContain('data-id="user123"');
     expect(html).toContain('data-label="Alice"');
-    expect(html).toContain("mention-user");
+    expect(html).toContain('class="mention"');
     expect(html).toContain("@Alice");
+    expect(isBroadcastSentinelUid("user123")).toBe(false);
   });
 
-  it("@所有人(-2) 广播 mention 不包含 mention-user class", () => {
+  it("@所有人(-2) 广播 mention 同样渲染为 mention class（与展示层一致）", () => {
     const editor = createMentionEditor();
     editor.commands.insertContent({
       type: "mention",
@@ -76,11 +72,11 @@ describe("Mention renderHTML class distinction", () => {
     editor.destroy();
 
     expect(html).toContain('class="mention"');
-    expect(html).not.toContain("mention-user");
     expect(html).toContain("@所有人");
+    expect(isBroadcastSentinelUid("-2")).toBe(true);
   });
 
-  it("@所有AI(-3) 广播 mention 不包含 mention-user class", () => {
+  it("@所有AI(-3) 广播 mention 同样渲染为 mention class", () => {
     const editor = createMentionEditor();
     editor.commands.insertContent({
       type: "mention",
@@ -90,10 +86,10 @@ describe("Mention renderHTML class distinction", () => {
     editor.destroy();
 
     expect(html).toContain('class="mention"');
-    expect(html).not.toContain("mention-user");
+    expect(isBroadcastSentinelUid("-3")).toBe(true);
   });
 
-  it("legacy @all(-1) 和 render-all 均为 broadcast，不含 mention-user", () => {
+  it("legacy -1 和 render-all 均为 broadcast sentinel，class 为 mention", () => {
     for (const id of ["-1", "all"]) {
       const editor = createMentionEditor();
       editor.commands.insertContent({
@@ -102,7 +98,16 @@ describe("Mention renderHTML class distinction", () => {
       });
       const html = editor.getHTML();
       editor.destroy();
-      expect(html).not.toContain("mention-user");
+      expect(html).toContain('class="mention"');
+      expect(isBroadcastSentinelUid(id)).toBe(true);
     }
+  });
+
+  it("mentionNodeClass 对所有 uid 统一返回 baseClass（广播/普通成员视觉一致）", () => {
+    expect(mentionNodeClass("user123", "mention")).toBe("mention");
+    expect(mentionNodeClass("-2", "mention")).toBe("mention");
+    expect(mentionNodeClass("-3", "mention")).toBe("mention");
+    expect(mentionNodeClass("-1", "mention")).toBe("mention");
+    expect(mentionNodeClass("all", "mention")).toBe("mention");
   });
 });

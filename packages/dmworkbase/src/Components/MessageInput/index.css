@@ -449,27 +449,18 @@
   margin: 0;
 }
 
-/* 广播态：纯紫文字，透明背景 */
+/* @mention 胶囊：广播与普通成员视觉一致，对齐消息展示层 .mention-entity */
 .wk-messageinput-editor .mention {
-  color: var(--wk-color-theme);
-  font-weight: 600;
-  background-color: transparent;
-  border-radius: var(--wk-r-xs);
-  padding: 0 var(--wk-sp-0-5);
-}
-
-/* 普通成员 @mention：浅紫胶囊，对齐消息展示层 .mention-entity */
-.wk-messageinput-editor .mention.mention-user {
   color: var(--wk-color-accent);
   background-color: var(--wk-purple-alpha-08);
   border-radius: var(--wk-r-xs);
   padding: var(--wk-sp-0-5) var(--wk-sp-2);
   font-weight: 500;
-  cursor: pointer;
+  cursor: text;
   transition: background-color 0.2s;
 }
 
-.wk-messageinput-editor .mention.mention-user:hover {
+.wk-messageinput-editor .mention:hover {
   background-color: var(--wk-purple-alpha-12);
 }
 

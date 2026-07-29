@@ -143,6 +143,16 @@ export function isBroadcastSentinelUid(uid: string): boolean {
   );
 }
 
+/**
+ * 输入框 mention 节点在编辑器内的 DOM class：
+ * 广播 sentinel（@所有人/@所有AI/legacy）与普通成员视觉一致（胶囊背景），
+ * 统一返回 baseClass；此前版本给广播加无背景分支，但消息展示层
+ * uid==="all" 同样走 .mention-entity 胶囊，输入侧不一致会造成发送后跳变。
+ */
+export function mentionNodeClass(uid: string, baseClass: string = "mention"): string {
+  return baseClass;
+}
+
 // Internal control char that tags a broadcast-sentinel marker as originating
 // from a sanctioned editor mention node (typed-@ dropdown) rather than from
 // untrusted literal text. The send serializer prefixes a sentinel uid with this
