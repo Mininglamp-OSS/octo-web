@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useI18n, buildDocLink } from '@octo/base';
 import { Modal, Input, Button, Spin } from '@douyinfe/semi-ui';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Link2Off } from 'lucide-react';
 import { useShare } from '../../hooks/useShare';
 import type { DriveEntry } from '../../bridge/types';
 import { buildShareLink } from '../../utils/links';
@@ -19,25 +19,31 @@ export interface ShareModalProps {
  * (no permission/expiry/password options) and copies it to the clipboard:
  *
  * - blob → a permanent public download link (reused if the file already has a
- *   valid one), permission fixed to download.
+ *   valid one), permission fixed to download. The user can explicitly revoke it.
  * - doc  → the doc's own `/d/:docId` address; drive does not gate access, so we
- *   only note that the document's own sharing settings apply.
+ *   only note that the document's own sharing settings apply (nothing to revoke).
  */
 export default function ShareModal({ visible, entry, onClose }: ShareModalProps) {
   const { t } = useI18n();
   const isDoc = entry?.type === 'doc';
   // Never auto-load the share list — ensure() does its own lookup, and the
   // WeCom flow shows a single link rather than a manageable list.
-  const { ensure, creating } = useShare(entry?.id ?? null, false);
+  const { ensure, revoke, creating } = useShare(entry?.id ?? null, false);
 
   const [link, setLink] = useState('');
   const [copied, setCopied] = useState(false);
+  /** id of the blob share backing `link`, so it can be revoked. Empty for docs. */
+  const [shareId, setShareId] = useState('');
+  const [revoked, setRevoked] = useState(false);
+  const [revoking, setRevoking] = useState(false);
 
   useEffect(() => {
     if (!visible || !entry) return;
     let cancelled = false;
     setLink('');
     setCopied(false);
+    setShareId('');
+    setRevoked(false);
 
     (async () => {
       let url = '';
@@ -46,7 +52,9 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
         url = entry.ref_id ? buildDocLink({ docId: entry.ref_id }) : '';
       } else {
         const share = await ensure();
+        if (cancelled) return;
         url = share ? buildShareLink(share.id) : '';
+        if (share) setShareId(share.id);
       }
       if (cancelled) return;
       if (!url) {
@@ -65,7 +73,12 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
     return () => {
       cancelled = true;
     };
-  }, [visible, entry, isDoc, ensure, t]);
+    // `t` is intentionally omitted: it's only read for the error toast, and the
+    // i18n `t` identity can change per render — including it would re-run the
+    // effect (re-issuing ensure()) on every state update. The real triggers are
+    // the open/entry inputs. Matches InviteLandingPage's [token]-only effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, entry, isDoc, ensure]);
 
   const handleCopy = async () => {
     if (!link) return;
@@ -75,6 +88,19 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
       Toast.success(t('drive.share.copied'));
     } catch {
       Toast.error(link);
+    }
+  };
+
+  const handleRevoke = async () => {
+    if (!shareId || revoking) return;
+    setRevoking(true);
+    // useShare.revoke toasts success/failure itself; only clear the link on success.
+    const ok = await revoke(shareId);
+    setRevoking(false);
+    if (ok) {
+      setLink('');
+      setShareId('');
+      setRevoked(true);
     }
   };
 
@@ -93,6 +119,10 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
           <Spin />
           <p className="drive-share__muted">{t('drive.share.generating')}</p>
         </div>
+      ) : revoked ? (
+        <div className="drive-share__oneshot">
+          <p className="drive-share__message">{t('drive.share.revoked')}</p>
+        </div>
       ) : (
         <div className="drive-share__oneshot">
           <p className="drive-share__message">{message}</p>
@@ -107,6 +137,19 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
               {copied ? t('drive.share.copied') : t('drive.share.copyLink')}
             </Button>
           </div>
+          {!isDoc && shareId && (
+            <div className="drive-share__revokerow">
+              <Button
+                theme="borderless"
+                type="danger"
+                icon={<Link2Off size={16} />}
+                loading={revoking}
+                onClick={handleRevoke}
+              >
+                {t('drive.share.revoke')}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </Modal>

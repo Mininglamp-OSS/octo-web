@@ -22,6 +22,7 @@ import ShareModal from '../index';
 import type { DriveEntry } from '../../../bridge/types';
 
 const ensure = vi.fn();
+const revoke = vi.fn();
 const writeText = vi.fn().mockResolvedValue(undefined);
 
 function entry(over: Partial<DriveEntry>): DriveEntry {
@@ -43,6 +44,7 @@ function entry(over: Partial<DriveEntry>): DriveEntry {
 
 beforeEach(() => {
   ensure.mockReset();
+  revoke.mockReset();
   writeText.mockReset();
   vi.mocked(useShare).mockReturnValue({
     shares: [],
@@ -51,7 +53,7 @@ beforeEach(() => {
     reload: vi.fn(),
     create: vi.fn(),
     ensure,
-    revoke: vi.fn(),
+    revoke,
   });
   Object.assign(navigator, { clipboard: { writeText } });
 });
@@ -80,6 +82,44 @@ describe('ShareModal (WeCom one-shot)', () => {
     const input = container.querySelector('input') as HTMLInputElement;
     expect(input.value).toContain('/d/doc-9');
     expect(writeText).toHaveBeenCalledWith(input.value);
+    unmount();
+  });
+
+  it('blob: offers a revoke action; on success clears the link and shows the revoked state (B3)', async () => {
+    ensure.mockResolvedValue({ id: 'sh-blob', file_id: 7, permission: 'download' });
+    revoke.mockResolvedValue(true);
+    const { getByText, getByRole, click, queryByText, unmount } = render(
+      <ShareModal visible entry={entry({ type: 'blob' })} onClose={() => {}} />,
+    );
+    await waitFor(() => getByText('drive.share.blobGenerated'));
+    click(getByRole('button', { name: 'drive.share.revoke' }));
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('sh-blob'));
+    // Revoked: the link/copy row is gone, the revoked notice shows.
+    await waitFor(() => getByText('drive.share.revoked'));
+    expect(queryByText('drive.share.blobGenerated')).toBeNull();
+    unmount();
+  });
+
+  it('blob: a failed revoke keeps the link (no revoked state) (B3)', async () => {
+    ensure.mockResolvedValue({ id: 'sh-blob', file_id: 7, permission: 'download' });
+    revoke.mockResolvedValue(false);
+    const { getByText, getByRole, click, queryByText, unmount } = render(
+      <ShareModal visible entry={entry({ type: 'blob' })} onClose={() => {}} />,
+    );
+    await waitFor(() => getByText('drive.share.blobGenerated'));
+    click(getByRole('button', { name: 'drive.share.revoke' }));
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('sh-blob'));
+    expect(queryByText('drive.share.revoked')).toBeNull();
+    getByText('drive.share.blobGenerated');
+    unmount();
+  });
+
+  it('doc: never shows a revoke action (nothing drive-managed to revoke)', async () => {
+    const { getByText, queryByRole, unmount } = render(
+      <ShareModal visible entry={entry({ type: 'doc', ref_id: 'doc-9' })} onClose={() => {}} />,
+    );
+    await waitFor(() => getByText('drive.share.docGenerated'));
+    expect(queryByRole('button', { name: 'drive.share.revoke' })).toBeNull();
     unmount();
   });
 });

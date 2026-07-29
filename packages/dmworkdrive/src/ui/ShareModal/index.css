@@ -30,3 +30,8 @@
   align-items: center;
   gap: 8px;
 }
+
+.drive-share__revokerow {
+  display: flex;
+  justify-content: flex-end;
+}

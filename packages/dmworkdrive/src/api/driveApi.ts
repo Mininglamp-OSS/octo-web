@@ -94,9 +94,16 @@ driveAxios.interceptors.request.use((config) => {
   return config;
 });
 
-// Mirror APIClient: an expired token (401) logs the user out.
+// Mirror APIClient: an expired token (401) logs the user out — EXCEPT on the
+// share landing endpoints. A 401 from `/public/shares/:token/*` means the share
+// itself rejected the caller (bad/expired token, wrong password, not a permitted
+// viewer), NOT that the viewer's own octo session died — so logging them out
+// would be wrong. ShareLandingPage classifies that response by its share-domain
+// error code instead. Every other drive API 401 still logs out.
 driveAxios.interceptors.response.use(undefined, (err) => {
-  if (err?.response?.status === 401) {
+  const url: string = err?.config?.url ?? '';
+  const isShareEndpoint = url.includes('/public/shares/');
+  if (err?.response?.status === 401 && !isShareEndpoint) {
     WKApp.shared.logout();
   }
   return Promise.reject(err);
@@ -431,7 +438,12 @@ export async function putToPresignedUrl(
   const rawAxios = axios.create();
   const resp = await rawAxios.put(uploadUrl, file, {
     headers,
-    timeout: 2 * 60 * 1000,
+    // No time limit on the byte transfer: a large file over a slow link can
+    // legitimately take minutes, and a fixed ceiling would abort a healthy
+    // upload. The caller's AbortController (opts.signal) is the sole cancel
+    // mechanism. (The control-plane driveAxios keeps DEFAULT_REQUEST_TIMEOUT_MS —
+    // this exemption is only for the raw object-storage PUT.)
+    timeout: 0,
     // Resolve every status so the explicit 2xx check below runs (and can throw a
     // typed DriveApiError). Without this, axios rejects non-2xx with a generic
     // AxiosError before the check — making the branch dead and its error opaque.

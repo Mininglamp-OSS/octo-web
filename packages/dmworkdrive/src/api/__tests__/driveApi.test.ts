@@ -292,21 +292,54 @@ describe('auth-header interceptor', () => {
     expect(config.headers['Accept-Language']).toBeTruthy();
   });
 
-  it('logs out on 401', async () => {
+  it('logs out on a 401 from a normal drive API', async () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
     const onError = responseUse.mock.calls[0][1];
-    await expect(onError({ response: { status: 401 } })).rejects.toBeDefined();
+    await expect(
+      onError({ response: { status: 401 }, config: { url: '/v1/drive/spaces' } }),
+    ).rejects.toBeDefined();
     expect(logout).toHaveBeenCalled();
     logout.mockRestore();
   });
 
-  it('shares run on the single authed drive instance — one request + one 401→logout interceptor (N2 correction)', () => {
-    // PR#1146 N2 was corrected: share access/download require a valid Octo
-    // session, so they run on the SAME authed driveAxios (no separate anonymous
-    // instance). Exactly one request interceptor (token/X-Space-Id/Accept-Language)
-    // and one response(401→logout) interceptor are registered at module load; an
-    // expired session on a share call logging the user out is intended behavior.
+  it('does NOT log out on a 401 from the share endpoints (B1) — share rejects the token, not the session', async () => {
+    const logout = vi.spyOn(WKApp.shared, 'logout');
+    const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
+    const onError = responseUse.mock.calls[0][1];
+    // These are the exact URLs accessShareByToken / downloadShareByToken issue.
+    for (const url of [
+      '/v1/drive/public/shares/tok/access',
+      '/v1/drive/public/shares/tok/download',
+    ]) {
+      await expect(onError({ response: { status: 401 }, config: { url } })).rejects.toBeDefined();
+    }
+    expect(logout).not.toHaveBeenCalled();
+    logout.mockRestore();
+  });
+
+  it('share access/download reject with a typed error (no logout) so the page can classify the code (B1)', async () => {
+    // Exercise the real functions: a share-path 401 surfaces as a DriveApiError
+    // carrying the server code, and must not tear down the viewer's session.
+    const logout = vi.spyOn(WKApp.shared, 'logout');
+    inst.post.mockRejectedValue({
+      response: { status: 401, data: { error: 'wrong_password', message: 'bad password' } },
+      config: { url: '/v1/drive/public/shares/tok/access' },
+    });
+    await expect(driveApi.accessShareByToken('tok', 'nope')).rejects.toMatchObject({
+      code: 'wrong_password',
+      status: 401,
+    });
+    expect(logout).not.toHaveBeenCalled();
+    logout.mockRestore();
+  });
+
+  it('shares run on the single authed drive instance — one request + one response interceptor (N2)', () => {
+    // Share access/download require a valid Octo session, so they run on the SAME
+    // authed driveAxios (no separate anonymous instance): one request interceptor
+    // (token/X-Space-Id/Accept-Language) and one response interceptor registered at
+    // module load. The response interceptor logs out on a normal 401 but EXEMPTS
+    // the share endpoints (see B1 tests above).
     const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
     expect(requestUse.mock.calls.length).toBe(1);
@@ -354,6 +387,10 @@ describe('putToPresignedUrl — M-3 credential isolation', () => {
     expect(config.headers['X-Space-Id']).toBeUndefined();
     // Raw bytes must not be JSON-transformed.
     expect(Array.isArray(config.transformRequest)).toBe(true);
+    // B4: no time limit on the object-storage PUT — a large file over a slow link
+    // can take minutes; opts.signal (AbortController) is the only cancel path.
+    expect(config.timeout).toBe(0);
+    expect(config.signal).toBeUndefined();
   });
 
   it('refuses an unsafe URL and never PUTs', async () => {
