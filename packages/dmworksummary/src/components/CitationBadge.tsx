@@ -169,12 +169,24 @@ function MessageAvatar({ name, uid }: { name: string; uid?: string }) {
     );
 }
 
-function MessageHeader({ sender, sentAt, uid, jumpLink }: { sender: string; sentAt: string; uid?: string; jumpLink?: React.ReactNode }) {
+function MessageHeader({ sender, sentAt, uid, referenceLabel, jumpLink }: {
+    sender: string;
+    sentAt: string;
+    uid?: string;
+    referenceLabel?: number;
+    jumpLink?: React.ReactNode;
+}) {
+    const { t } = useI18n();
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <MessageAvatar name={sender} uid={uid} />
                 <span style={{ fontSize: 14, fontWeight: 500, lineHeight: '20px', color: '#1C1C23' }}>{sender}</span>
+                {referenceLabel != null && (
+                    <span className="citation-reference-tag">
+                        {t("summary.citation.referenceTag", { values: { index: referenceLabel } })}
+                    </span>
+                )}
                 <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)', fontFamily: 'Inter, sans-serif', letterSpacing: '-0.01em' }}>{formatTime(sentAt)}</span>
                 <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>：</span>
             </div>
@@ -322,6 +334,7 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
                         sender={citation.sender}
                         sentAt={citation.sent_at}
                         uid={citation.sender_uid}
+                        referenceLabel={shownIndex}
                         jumpLink={<JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />}
                     />
                     <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
@@ -371,6 +384,11 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
         [indicesKey, citations]
     );
     const mergedMessages = useMemo(() => mergeGroupMessages(groupCitations), [groupCitations]);
+    const displayIndexByRawIndex = useMemo(() => {
+        const map = new Map<number, number>();
+        indices.forEach((rawIndex, i) => map.set(rawIndex, displayIndices?.[i] ?? rawIndex));
+        return map;
+    }, [indicesKey, displayIndices?.join(',')]);
 
     const pinned = activeKey === badgeKey;
     const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
@@ -426,6 +444,9 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                                 sender={msg.sender}
                                 sentAt={msg.sent_at}
                                 uid={msg.sender_uid}
+                                referenceLabel={msg.cited && msg.citation_index != null
+                                    ? displayIndexByRawIndex.get(msg.citation_index)
+                                    : undefined}
                                 jumpLink={msg.cited && cit ? <JumpLink citation={cit} badgeKey={badgeKey} closeKey={closeKey} /> : undefined}
                             />
                             <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>

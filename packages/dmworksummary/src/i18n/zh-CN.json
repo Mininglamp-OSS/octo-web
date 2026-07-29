@@ -582,6 +582,7 @@
         "jumpToOriginal": "跳转到原文 →",
         "source": "来源：{{source}}",
         "sourceDefault": "未知来源",
+        "referenceTag": "引用 [{{index}}]",
         "member": "成员：{{name}}"
     },
     "share": {

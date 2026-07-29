@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Dropdown, Modal } from "@douyinfe/semi-ui";
-import { MoreHorizontal, AlertTriangle, X } from "lucide-react";
+import { Dropdown, Modal, Tooltip } from "@douyinfe/semi-ui";
+import { MoreHorizontal, AlertTriangle, Bot, FileText, X } from "lucide-react";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
@@ -20,6 +20,8 @@ interface SummaryCardProps {
     onEdit?: (taskId: number) => void;
     onCancel?: (taskId: number) => void;
 }
+
+const CARD_DESCRIPTION_MAX_LENGTH = 80;
 
 /** 相对时间格式化 */
 function formatRelativeTime(dateStr: string, t: (key: string, opts?: any) => string): string {
@@ -53,10 +55,12 @@ function getStatusColor(status: number): string | null {
             return "#FF8800";
         case TaskStatus.FAILED:
             return "#F65E58";
+        case TaskStatus.COMPLETED:
+            return "var(--wk-color-success)";
         case TaskStatus.CANCELLED:
             return "rgba(28, 28, 35, 0.4)";
         default:
-            return null; // COMPLETED 不显示状态文字
+            return null;
     }
 }
 
@@ -73,13 +77,19 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         || isPendingInvite;
 
     const displayTitle = deriveSummaryDisplayContent(task.topic || task.title || task.task_no);
+    const description = task.topic?.trim() || "";
+    const showDescription = description !== displayTitle
+        && Array.from(description).length <= CARD_DESCRIPTION_MAX_LENGTH;
     const displayStatus = displaysWaiting ? TaskStatus.PENDING : task.status;
     const statusColor = getStatusColor(displayStatus);
-    const statusText = displayStatus !== TaskStatus.COMPLETED ? getStatusLabel(displayStatus) : null;
+    const statusText = getStatusLabel(displayStatus);
 
     const isGenerating = task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING;
-    // Type tag: agent-conversation summaries vs the traditional workflow ("快速总结").
+    // Type icon: agent-conversation summaries vs the traditional workflow ("快速总结").
     const isAgentType = task.trigger_type === TriggerType.AGENT;
+    const typeLabel = isAgentType
+        ? t("summary.summaryCard.agentType")
+        : t("summary.summaryCard.quickType");
     const sourceInfo = getSourceInfo(task, t);
     const relativeTime = formatRelativeTime(task.created_at, t);
     const isCreator = task.creator_id != null && task.creator_id === currentUid;
@@ -123,9 +133,9 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                 </div>
             )}
             {/* 源信息 + 状态文字（非 generating 时显示） */}
-            {!isGenerating && sourceInfo && (
+            {!isGenerating && (sourceInfo || statusText) && (
                 <div className="summary-card-top">
-                    <span className="summary-card-source">{sourceInfo}</span>
+                    {sourceInfo && <span className="summary-card-source">{sourceInfo}</span>}
                     {statusText && (
                         <span className="summary-card-status" style={{ color: statusColor ?? undefined }}>
                             {statusText}
@@ -134,15 +144,24 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                 </div>
             )}
 
-            {/* 标题 + 描述 */}
+            {/* 标题行：类型图标 + 标题；来源保持在上一行 */}
             <div className="summary-card-body">
-                <div className="summary-card-title">{displayTitle}</div>
-                {task.topic && task.topic !== displayTitle && (
-                    <div className="summary-card-desc">{task.topic}</div>
+                <div className="summary-card-title-row">
+                    <Tooltip content={typeLabel} position="top">
+                        <span
+                            className={`summary-card-type-icon summary-card-type-icon--${isAgentType ? "agent" : "quick"}`}
+                            role="img"
+                            aria-label={typeLabel}
+                            tabIndex={0}
+                        >
+                            {isAgentType ? <Bot size={14} /> : <FileText size={14} />}
+                        </span>
+                    </Tooltip>
+                    <div className="summary-card-title">{displayTitle}</div>
+                </div>
+                {showDescription && (
+                    <div className="summary-card-desc">{description}</div>
                 )}
-                <span className={`summary-card-type-tag summary-card-type-tag--${isAgentType ? "agent" : "quick"}`}>
-                    {isAgentType ? t("summary.summaryCard.agentType") : t("summary.summaryCard.quickType")}
-                </span>
             </div>
 
             {/* 底部：时间 + 操作菜单 */}

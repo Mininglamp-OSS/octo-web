@@ -104,8 +104,19 @@
 }
 
 /* 详情页内容容器 */
+.summary-detail-layout {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    display: flex;
+    overflow: hidden;
+}
+
 .summary-detail-content-wrapper {
-    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -175,7 +186,7 @@
 .summary-detail-content-inner {
     max-width: 984px;
     margin: 0 auto;
-    padding: 80px 80px 24px 80px;
+    padding: 24px 80px;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -401,6 +412,7 @@
 }
 
 .summary-card-status {
+    margin-left: auto;
     font-size: 12px;
     font-weight: 400;
     line-height: 18px;
@@ -409,33 +421,48 @@
     flex-shrink: 0;
 }
 
-/* Body: title + description */
+/* Body: icon/title row + description */
 .summary-card-body {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
-/* 类型标签:Agent 总结(紫)/ 快速总结(蓝),对齐版本管理原型 */
-.summary-card-type-tag {
-    align-self: flex-start;
-    margin-top: 2px;
-    padding: 1px 8px;
-    border-radius: var(--wk-r-full, 999px);
-    font-size: 12px;
-    line-height: 18px;
-    font-weight: 500;
+.summary-card-title-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
 }
-.summary-card-type-tag--agent {
-    color: #7c5cf6;
-    background: rgba(124, 92, 246, 0.1);
+
+/* 总结类型图标：悬停/聚焦后由 Tooltip 展示完整类型名称。 */
+.summary-card-type-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border-radius: var(--wk-r-full);
+    transition: background-color 140ms ease, color 140ms ease;
 }
-.summary-card-type-tag--quick {
-    color: #2f76e6;
-    background: rgba(47, 118, 230, 0.1);
+.summary-card-type-icon--agent {
+    color: var(--wk-color-accent);
+    background: var(--wk-bg-selected);
+}
+.summary-card-type-icon--quick {
+    color: var(--wk-color-info);
+    background: var(--wk-color-info-bg);
+}
+.summary-card-type-icon:hover,
+.summary-card-type-icon:focus-visible {
+    color: var(--wk-text-primary);
+    outline: none;
 }
 
 .summary-card-title {
+    min-width: 0;
+    padding-top: 2px;
     font-size: 14px;
     font-weight: 500;
     line-height: 18px;
@@ -859,13 +886,20 @@
 }
 
 /* ========== Detail Page ========== */
-/* Title row (moved into content-inner, no fixed header) */
+/* Fixed detail toolbar: remains above the independently scrolling body. */
 .summary-detail-title-row {
+    flex: 0 0 auto;
+    min-height: 49px;
+    padding: 12px 24px;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    border-bottom: 1px solid var(--wk-border-subtle);
+    background: var(--wk-bg-surface);
+    position: relative;
+    z-index: 20;
 }
 
 .summary-detail-header {
@@ -913,10 +947,10 @@
 
 .summary-detail-title {
     margin: 0;
-    font-size: 24px;
+    font-size: 17px;
     font-weight: 600;
     color: #1C1C23;
-    line-height: 36px;
+    line-height: 24px;
     overflow: visible !important;
     text-overflow: clip !important;
     white-space: normal !important;
@@ -1231,6 +1265,29 @@
     font-weight: 600;
     color: var(--semi-color-text-0);
     line-height: 1.5;
+}
+
+.summary-detail-my-summary-header {
+    margin-bottom: 0;
+}
+
+.summary-detail-agent-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--wk-sp-1);
+    flex: none;
+    padding: 0 var(--wk-sp-2);
+    border-radius: var(--wk-r-full);
+    background: var(--wk-ai-surface);
+    color: var(--wk-color-accent);
+    box-shadow: inset 0 0 0 1px var(--wk-ai-border);
+    font-size: var(--wk-text-size-xs);
+    font-weight: var(--wk-font-medium);
+    line-height: 20px;
+}
+
+.summary-detail-inline-edit.semi-button {
+    flex: none;
 }
 
 .summary-detail-section-toggle {
@@ -3941,16 +3998,9 @@ body.summary-version-detail-open .summary-schedule-page {
     color: var(--wk-color-accent);
 }
 
-/* 遮罩 */
+/* 桌面端版本栏参与横向布局，不遮挡正文。 */
 .version-panel-scrim {
-    position: absolute;
-    inset: 0;
-    z-index: 20;
-    border: 0;
-    padding: 0;
-    background: rgba(28, 28, 35, 0.28);
-    cursor: pointer;
-    animation: version-scrim-in 160ms ease;
+    display: none;
 }
 @keyframes version-scrim-in {
     from { opacity: 0; }
@@ -3959,22 +4009,46 @@ body.summary-version-detail-open .summary-schedule-page {
 
 /* 面板本体 */
 .version-panel {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 21;
-    width: min(440px, 92%);
+    position: relative;
+    z-index: 6;
+    width: 320px;
+    min-width: 320px;
+    height: 100%;
     display: flex;
     flex-direction: column;
     background: var(--wk-bg-surface);
     border-left: 1px solid var(--wk-border-default);
-    box-shadow: -12px 0 32px rgba(28, 28, 35, 0.10);
     animation: version-panel-in 200ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 @keyframes version-panel-in {
     from { transform: translateX(24px); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
+}
+
+/* 与原型一致：可用宽度不足时退化为覆盖式面板。 */
+@media (max-width: 1199px) {
+    .version-panel-scrim {
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        display: block;
+        border: 0;
+        padding: 0;
+        background: rgba(28, 28, 35, 0.28);
+        cursor: pointer;
+        animation: version-scrim-in 160ms ease;
+    }
+
+    .version-panel {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 21;
+        width: min(320px, 100%);
+        min-width: 0;
+        box-shadow: -12px 0 32px rgba(28, 28, 35, 0.10);
+    }
 }
 
 .version-panel__header {
@@ -4153,13 +4227,23 @@ body.summary-version-detail-open .summary-schedule-page {
 .summary-detail-toc {
     position: absolute;
     top: 84px;
-    right: 20px;
+    /* 正文与目录整体左移 64px；目录仍与 984px 正文列保持 16px 间距。 */
+    left: calc(50% + 444px);
+    right: auto;
     z-index: 5;
     width: 192px;
     max-height: calc(100% - 132px);
     overflow-y: auto;
     padding-left: var(--wk-sp-4);
     border-left: 1px solid var(--wk-border-subtle);
+}
+
+/* 宽屏阅读时为右侧目录留出视觉空间，让正文与目录作为整体略向左。 */
+@media (min-width: 1441px) {
+    .summary-detail-layout:not(.has-version-panel) .summary-detail-content-inner,
+    .summary-detail-layout:not(.has-version-panel) .summary-detail-footer {
+        transform: translateX(-64px);
+    }
 }
 
 /* 窄面板下隐藏，避免与居中正文重叠 */
@@ -4201,8 +4285,8 @@ body.summary-version-detail-open .summary-schedule-page {
     color: var(--wk-text-primary);
 }
 .summary-detail-toc-item.is-active {
-    background: var(--wk-bg-selected);
-    color: var(--wk-color-accent);
+    background: var(--wk-bg-item-hover);
+    color: var(--wk-text-primary);
 }
 .summary-detail-toc-item.is-h1 .summary-detail-toc-text {
     font-weight: 600;
@@ -4216,7 +4300,7 @@ body.summary-version-detail-open .summary-schedule-page {
     line-height: 20px;
 }
 .summary-detail-toc-item.is-active .summary-detail-toc-index {
-    color: var(--wk-color-accent);
+    color: var(--wk-text-secondary);
 }
 .summary-detail-toc-text {
     flex: 1;

@@ -20,17 +20,10 @@ export function formatGroupLabel(indices: number[]): string {
     if (indices.length <= RANGE_THRESHOLD) {
         return indices.join(',');
     }
-    // Range form is only meaningful when the display indices are contiguous and
-    // strictly ascending. After reading-order renumbering a group's display
-    // indices can be reordered/gapped (e.g. [4,1,2,3] -> "4-3" backwards, or
-    // [1,3,4,5] -> "1-5" implying a [2] that isn't in the group), so fall back
-    // to the explicit comma list in those cases (#1003 review P2).
-    const contiguousAscending = indices.every(
-        (v, i) => i === 0 || v === indices[i - 1] + 1,
-    );
-    return contiguousAscending
-        ? `${indices[0]}-${indices[indices.length - 1]}`
-        : indices.join(',');
+    // Product rule: a large group is always represented as one compact range.
+    // Reused citations can make reading-order display indices gapped or
+    // reordered, so derive stable bounds instead of falling back to a long list.
+    return `${Math.min(...indices)}-${Math.max(...indices)}`;
 }
 
 /**

@@ -19,16 +19,12 @@ describe('formatGroupLabel', () => {
         expect(formatGroupLabel([30, 31, 32, 33, 34, 35])).toBe('30-35');
     });
 
-    it('falls back to comma list when a >3 display list is non-contiguous', () => {
-        // After reading-order renumbering a group's display indices can be
-        // gapped; range form would imply members that aren't there (#1003 P2).
-        expect(formatGroupLabel([2, 5, 9, 14])).toBe('2,5,9,14');
+    it('collapses a non-contiguous >3 display list to its bounds', () => {
+        expect(formatGroupLabel([2, 5, 9, 14])).toBe('2-14');
     });
 
-    it('falls back to comma list when a >3 display list is not ascending', () => {
-        // e.g. same-channel group whose later members were numbered earlier —
-        // range would render backwards ("4-3") which is nonsense (#1003 P2).
-        expect(formatGroupLabel([4, 1, 2, 3])).toBe('4,1,2,3');
+    it('uses stable ascending bounds when a >3 display list is reordered', () => {
+        expect(formatGroupLabel([4, 1, 2, 3])).toBe('1-4');
     });
 
     it('RANGE_THRESHOLD is the documented value (guards against silent regressions)', () => {

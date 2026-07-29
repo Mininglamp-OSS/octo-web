@@ -72,6 +72,28 @@ function badgeByText(text: string) {
 }
 
 describe('CitationText — [n] vs [Pn] parsing', () => {
+    it('labels each directly cited message with its reading-order number in the pinned popover', () => {
+        render(
+            <CitationText
+                content="组合引用 [8][9]"
+                citations={[
+                    makeCitation({ index: 8, message_seq: 108, content: '第一条被引用消息' }),
+                    makeCitation({ index: 9, message_seq: 109, content: '第二条被引用消息' }),
+                ]}
+            />,
+        );
+
+        const groupBadge = badgeByText('[1–2]')!;
+        expect(groupBadge).toBeTruthy();
+        fireEvent.click(groupBadge);
+
+        const popover = screen.getByTestId('popover-content');
+        expect(popover.textContent).toContain('引用 [1]');
+        expect(popover.textContent).toContain('引用 [2]');
+        expect(popover.textContent).not.toContain('引用 [8]');
+        expect(popover.textContent).not.toContain('引用 [9]');
+    });
+
     it('1) renders normal [n] and team [P1] side by side without crosstalk', () => {
         render(
             <CitationText

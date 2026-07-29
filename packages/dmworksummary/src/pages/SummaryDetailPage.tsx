@@ -11,7 +11,7 @@ import {
     Dropdown,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
-import { ChevronDown, Check, X } from "lucide-react";
+import { Bot, ChevronDown, Check, X } from "lucide-react";
 import { Channel, MessageText } from "wukongimjssdk";
 import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -2488,61 +2488,117 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     renderCompleted() {
-        const { detail } = this.state;
+        const { detail, personalExpanded, isEditing } = this.state;
         const { t } = this.context;
         if (!detail || !detail.result) return null;
+        const canEdit = detail.status === TaskStatus.COMPLETED
+            && !!detail.permissions?.can_edit
+            && detail.trigger_type !== TriggerType.AGENT
+            && !isEditing
+            && !this.state.showVersionDetailModal;
         return (
             <div className="summary-detail-result">
-                {/* Meta info: creation time + source chips */}
-                <div className="summary-detail-meta">
-                    <div className="summary-detail-meta-time">
-                        {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
-                    </div>
-                    {detail.sources && detail.sources.length > 0 && (
-                        <div className="summary-detail-source-chips">
-                            {detail.sources.map((src, i) => (
-                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                    {src.source_name || src.source_id}
-                                </span>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                <hr className="summary-detail-meta-divider" />
-                <div className="summary-detail-result-header">
-                    <h3>{t("summary.detail.contentTitle")}</h3>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div className="summary-detail-result-badges">
-                            <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
-                                {t("summary.common.version", { values: { version: detail.result.version } })}
-                            </Tag>
-                            <Tag color="green" size="small">
-                                {t("summary.common.messagesCount", { values: { count: detail.result.total_msg_count } })}
-                            </Tag>
-                            {detail.result_is_edited && detail.result_edited_at && (
-                                <Tag color="orange" size="small">
-                                    {t("summary.detail.edited")}
-                                </Tag>
+                {this.renderMySummaryHeader(canEdit)}
+                {personalExpanded && (
+                    <>
+                        {/* Meta info: creation time + source chips */}
+                        <div className="summary-detail-meta">
+                            <div className="summary-detail-meta-time">
+                                {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
+                            </div>
+                            {detail.sources && detail.sources.length > 0 && (
+                                <div className="summary-detail-source-chips">
+                                    {detail.sources.map((src, i) => (
+                                        <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                            {src.source_name || src.source_id}
+                                        </span>
+                                    ))}
+                                </div>
                             )}
                         </div>
-                    </div>
-                </div>
-                {this.state.showVersionDetailModal ? this.renderVersionPreview() : (
-                    <div className="summary-detail-result-content">
-                        <AbstractCallout abstract={detail.result.abstract} title={this.context.t("summary.detail.abstractTitle")} />
-                        <CitationText content={detail.result.content} citations={detail.result.citations || []} />
-                    </div>
+                        <hr className="summary-detail-meta-divider" />
+                        <div className="summary-detail-result-header">
+                            <h3>{t("summary.detail.contentTitle")}</h3>
+                            <div className="summary-detail-result-badges">
+                                <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
+                                    {t("summary.common.version", { values: { version: detail.result.version } })}
+                                </Tag>
+                                <Tag color="green" size="small">
+                                    {t("summary.common.messagesCount", { values: { count: detail.result.total_msg_count } })}
+                                </Tag>
+                                {detail.result_is_edited && detail.result_edited_at && (
+                                    <Tag color="orange" size="small">{t("summary.detail.edited")}</Tag>
+                                )}
+                            </div>
+                        </div>
+                        {isEditing ? (
+                            <div className="summary-detail-content-box">
+                                <SummaryEditor
+                                    taskId={detail.task_id}
+                                    baseResultId={detail.result_id || 0}
+                                    initialContent={detail.result.content || ""}
+                                    onSave={this.handleEditSave}
+                                    onCancel={this.handleEditCancel}
+                                    exposeSave={(fn) => { this.editorSaveFn = fn; }}
+                                />
+                            </div>
+                        ) : this.state.showVersionDetailModal ? this.renderVersionPreview() : (
+                            <div className="summary-detail-result-content">
+                                <AbstractCallout
+                                    abstract={this.state.personalResult?.abstract || detail.result.abstract}
+                                    title={this.context.t("summary.detail.abstractTitle")}
+                                />
+                                <CitationText content={detail.result.content} citations={detail.result.citations || []} />
+                            </div>
+                        )}
+                        <div className="summary-detail-result-footer">
+                            <span className="summary-detail-result-time">
+                                {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
+                            </span>
+                            {detail.result_is_edited && detail.result_edited_at && (
+                                <span className="summary-detail-result-time">
+                                    {t("summary.detail.lastEditedAt", { values: { time: formatDate(detail.result_edited_at) } })}
+                                </span>
+                            )}
+                        </div>
+                    </>
                 )}
-                <div className="summary-detail-result-footer">
-                    <span className="summary-detail-result-time">
-                        {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
-                    </span>
-                    {detail.result_is_edited && detail.result_edited_at && (
-                        <span className="summary-detail-result-time">
-                            {t("summary.detail.lastEditedAt", { values: { time: formatDate(detail.result_edited_at) } })}
+            </div>
+        );
+    }
+
+    private renderMySummaryHeader(canEdit: boolean) {
+        const { detail, personalExpanded } = this.state;
+        const { t } = this.context;
+        const isAgent = detail?.trigger_type === TriggerType.AGENT;
+        return (
+            <div className="summary-detail-section-header summary-detail-my-summary-header">
+                <button
+                    type="button"
+                    className="summary-detail-section-toggle"
+                    onClick={this.togglePersonalExpanded}
+                    aria-expanded={personalExpanded}
+                >
+                    <ChevronDown size={14} className={`summary-detail-chevron${personalExpanded ? " summary-detail-chevron--expanded" : ""}`} />
+                    <span>{t("summary.detail.mySummary")}</span>
+                    {isAgent && (
+                        <span className="summary-detail-agent-tag">
+                            <Bot size={12} aria-hidden />
+                            {t("summary.summaryCard.agentType")}
                         </span>
                     )}
-                </div>
+                </button>
+                {canEdit && (
+                    <Button
+                        className="summary-detail-inline-edit"
+                        size="small"
+                        theme="borderless"
+                        icon={<IconEdit />}
+                        onClick={this.handleStartEdit}
+                    >
+                        {t("summary.common.edit")}
+                    </Button>
+                )}
             </div>
         );
     }
@@ -2555,17 +2611,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (personalLoading) {
             return (
                 <div className="summary-detail-personal">
-                    <div className="summary-detail-section-header">
-                        <button
-                            type="button"
-                            className="summary-detail-section-toggle"
-                            onClick={this.togglePersonalExpanded}
-                        >
-                            <ChevronDown size={14} className={`summary-detail-chevron${personalExpanded ? " summary-detail-chevron--expanded" : ""}`} />
-                            <span>{t("summary.detail.mySummary")}</span>
-                        </button>
-                    </div>
-                    <Spin size="small" />
+                    {this.renderMySummaryHeader(false)}
+                    {personalExpanded && <Spin size="small" />}
                 </div>
             );
         }
@@ -2573,8 +2620,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (personalResult.content?.trim() && !this.canRevealPersonalContent()) return null;
         const { isEditing, detail: stateDetail } = this.state;
         const isProcessing = stateDetail && (stateDetail.status === TaskStatus.PENDING || stateDetail.status === TaskStatus.PROCESSING) && !personalResult?.content;
+        const canEdit = !!detail
+            && detail.status === TaskStatus.COMPLETED
+            && !!detail.permissions?.can_edit
+            && detail.trigger_type !== TriggerType.AGENT
+            && !isEditing
+            && !this.state.showVersionDetailModal;
         return (
             <div className="summary-detail-personal">
+                {this.renderMySummaryHeader(canEdit)}
+                {personalExpanded && (<>
                 {/* Meta info: creation time + source chips */}
                 {detail && (
                     <div className="summary-detail-meta">
@@ -2600,6 +2655,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </div>
                         {this.renderWorkflowProgress()}
                     </div>
+                ) : this.state.showVersionDetailModal ? (
+                    this.renderVersionPreview()
                 ) : (
                     <>
                         {!isEditing && personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
@@ -2627,6 +2684,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         )}
                     </>
                 )}
+                </>)}
             </div>
         );
     }
@@ -3488,7 +3546,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const showCancel = !!detail && canCancel(detail.status);
         const showDelete = !!detail && isCreator;
         const showLeave = !!detail && isParticipant && !isCreator;
-        const showEdit = !!detail && detail.status === TaskStatus.COMPLETED && !!detail.permissions?.can_edit && detail.trigger_type !== TriggerType.AGENT && !this.state.isEditing;
         const canSchedule = !!detail?.permissions?.can_schedule && detail?.trigger_type !== TriggerType.AGENT && !this.state.isEditing && !this.state.editingTeamSummary;
         const scheduleItem = this.state.scheduleItem;
         const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
@@ -3579,21 +3636,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             })}
                         />
                     )}
-                    {/* 其余次要操作收进 ⋯：编辑 / 定时 / 取消 / 离开 */}
-                    {(showEdit || showSchedule || showCancel || showLeave) && (
+                    {/* 其余次要操作收进 ⋯：定时 / 取消 / 离开；编辑位于正文标题行。 */}
+                    {(showSchedule || showCancel || showLeave) && (
                         <Dropdown
                             trigger="click"
                             position="bottomRight"
                             render={
                                     <Dropdown.Menu>
-                                        {showEdit && (
-                                            <Dropdown.Item
-                                                icon={<IconEdit />}
-                                                onClick={this.handleStartEdit}
-                                            >
-                                                {t("summary.common.edit")}
-                                            </Dropdown.Item>
-                                        )}
                                         {showSchedule && (
                                             <Dropdown.Item
                                                 icon={<IconClock />}
@@ -3643,10 +3692,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         return (
             <div className="summary-detail-page">
-                <div className="summary-detail-content-wrapper">
+                <div className={`summary-detail-layout${this.state.versionPanelOpen ? " has-version-panel" : ""}`}>
+                    <div className="summary-detail-content-wrapper">
+                    {detail && !loading && this.renderHeader()}
                     <div className="summary-detail-content-scroll" ref={this.contentScrollRef}>
                         <div className="summary-detail-content-inner">
-                        {detail && !loading && this.renderHeader()}
                         {loading && (
                             <div className="summary-detail-loading">
                                 <Spin size="large" />
@@ -3798,14 +3848,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             </>
                         )}
                     </div>
-                </div>
-                </div>
+                    </div>
+                    </div>
 
-                {/* 本文目录：右侧浮动大纲（宽屏显示，编辑/版本面板时隐藏） */}
-                {this.renderToc()}
+                    {/* 本文目录：右侧浮动大纲（宽屏显示，编辑/版本面板时隐藏） */}
+                    {this.renderToc()}
 
-                {/* 版本记录：右侧滑入面板 + 遮罩（页面级，覆盖在内容之上） */}
-                {this.renderVersionPanel()}
+                    {/* 桌面端与正文并排；窄屏退化为带遮罩的覆盖面板。 */}
+                    {this.renderVersionPanel()}
+                </div>
 
                 {/* Edit mode footer */}
                 {(this.state.isEditing || this.state.editingTeamSummary || this.state.editingMyDraft || this.state.editingPersonalReport) && (
