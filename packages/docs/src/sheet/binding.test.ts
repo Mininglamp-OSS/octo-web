@@ -17,7 +17,7 @@ import {
   SHEET_LIST_FIELD,
 } from './binding.ts'
 
-type Cell = { v?: unknown; f?: string; s?: Record<string, unknown> } | null
+type Cell = { v?: unknown; f?: string; s?: Record<string, unknown> | string } | null
 
 /** Univer's value mutation id — its real setValue triggers this; we mirror that to test echo. */
 const SET_RANGE = 'sheet.mutation.set-range-values'
@@ -28,6 +28,17 @@ class FakeSheet {
   readonly colWidths = new Map<number, number>()
   readonly rowHeights = new Map<number, number>()
   readonly merges = new Set<string>() // `sr:sc:er:ec`
+  /**
+   * Univer's shared style pool. Real Univer stores a cell's style BY REFERENCE — `cell.s` is a
+   * short id into this pool, and every cell sharing a look shares one id — so a fake that only
+   * ever inlines `s` as an object leaves the id-resolution path (binding.ts `resolveStyle`)
+   * untested. That is exactly how the select-all hang shipped.
+   */
+  readonly styles = new Map<string, Record<string, unknown>>()
+  /** Facade style resolutions served (NOT memo hits) — the perf guard asserts on this. */
+  styleResolveCalls = 0
+  /** Per-cell `setValue` calls. The batched remote-apply path must drive this to zero. */
+  setValueCalls = 0
   constructor(
     private readonly univer: FakeUniver,
     private readonly id: string = 'local-1',
@@ -102,11 +113,18 @@ class FakeSheet {
         }
         return grid
       },
-      // Single-cell form.
+      // Single-cell form. Mirrors real Univer: an `s` that is a style ID must be looked up in the
+      // workbook's style pool, which is the call the binding memoizes.
       getCellStyleData(): Record<string, unknown> | null {
-        return self.cells.get(self.k(r, c))?.s ?? null
+        const s = self.cells.get(self.k(r, c))?.s
+        if (typeof s === 'string') {
+          self.styleResolveCalls++
+          return self.styles.get(s) ?? null
+        }
+        return s ?? null
       },
       setValue(v: Cell): void {
+        self.setValueCalls++
         self.poke(r, c, v)
         // Univer's real setValue emits a set-range-values mutation; mirror it so the echo
         // guard (applyingRemote) is actually exercised when the binding writes remote cells.
@@ -131,6 +149,16 @@ class FakeUniver {
   /** When true, insertSheet returns null — simulates Univer refusing to create a sheet, which
    * leaves a remote registry entry unmapped locally (the P1-4 delete-guard scenario). */
   blockInsertSheet = false
+  /**
+   * Workbook unit id. NULL by default, which is what keeps the binding on the per-cell fallback for
+   * every pre-existing test: `applyCellsBatched` bails the moment `getId()` is undefined. Set it
+   * (see setupBatched) to opt a test into the batched remote-apply path.
+   */
+  unitId: string | null = null
+  /** Every command/mutation dispatched through syncExecuteCommand, in order. */
+  readonly mutations: Array<{ id: string; params: unknown }> = []
+  /** When true, syncExecuteCommand reports failure so the per-cell retry path can be asserted. */
+  failBatch = false
   private readonly handlers = new Set<(cmd: { id: string; params?: unknown }) => void>()
   constructor() {
     this.sheets = [new FakeSheet(this, 'local-1', 'Sheet1')]
@@ -155,6 +183,7 @@ class FakeUniver {
   getActiveWorkbook() {
     const self = this
     return {
+      getId: () => self.unitId ?? undefined,
       getActiveSheet: () => self.active(),
       getSheets: () => self.sheets,
       getSheetBySheetId: (id: string) => self.sheets.find((s) => s.getSheetId() === id) ?? null,
@@ -177,6 +206,25 @@ class FakeUniver {
     this.handlers.add(cb)
     return { dispose: () => this.handlers.delete(cb) }
   }
+  /**
+   * Univer's low-level command bus, used by the binding to write a whole remote batch as ONE
+   * `set-range-values` mutation. Mirrors the real handler: walk the SPARSE `{[row]: {[col]: cell}}`
+   * matrix and write only the keys present, then dispatch to listeners (a real mutation goes through
+   * the same bus `onCommandExecuted` observes, so the applyingRemote guard must hold here too).
+   */
+  syncExecuteCommand(id: string, params: unknown): boolean {
+    this.mutations.push({ id, params })
+    if (this.failBatch) return false
+    if (id !== SET_RANGE) return true
+    const p = params as { subUnitId?: string; cellValue?: Record<string, Record<string, Cell>> }
+    const sheet = this.sheets.find((s) => s.getSheetId() === p.subUnitId)
+    if (!sheet || !p.cellValue) return false
+    for (const [rowStr, row] of Object.entries(p.cellValue)) {
+      for (const [colStr, cell] of Object.entries(row)) sheet.poke(Number(rowStr), Number(colStr), cell)
+    }
+    this.fire({ id })
+    return true
+  }
   /** Simulate Univer dispatching a command (what a real edit/toolbar action produces). */
   fire(cmd: { id: string; params?: unknown }): void {
     for (const h of [...this.handlers]) h(cmd)
@@ -194,6 +242,19 @@ function setup(canWrite = true) {
   return { univer, doc, binding, cellMap, dimMap, mergeMap }
 }
 
+/**
+ * Opt a test into the BATCHED remote-apply path: the binding takes it only when the workbook
+ * exposes an id and the facade has syncExecuteCommand. `setup()` leaves unitId null, so every other
+ * test keeps exercising the per-cell fallback.
+ */
+function setupBatched(canWrite = true) {
+  const univer = new FakeUniver()
+  univer.unitId = 'fake-book'
+  const doc = new Y.Doc()
+  const binding = new UniverYjsBinding(univer as never, doc, () => canWrite)
+  return { univer, doc, binding, cellMap: doc.getMap(SHEET_YMAP_FIELD) }
+}
+
 /** Push a peer's change into `doc` the way Hocuspocus does: apply a remote (non-local) update. */
 function applyRemote(doc: Y.Doc, mutate: (peer: Y.Doc) => void): void {
   const peer = new Y.Doc()
@@ -201,6 +262,22 @@ function applyRemote(doc: Y.Doc, mutate: (peer: Y.Doc) => void): void {
   Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc))
   mutate(peer)
   Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer, Y.encodeStateVector(doc)))
+}
+
+/**
+ * Mimic what Univer's `SetStyleCommand` does when the selection is the whole sheet (clicking the
+ * top-left select-all corner): write a style into EVERY declared cell. Univer dedups looks, so all
+ * of them reference ONE pooled style id — the property the binding's memo relies on.
+ */
+function fillStyle(
+  sheet: FakeSheet,
+  rows: number,
+  cols: number,
+  styleId: string,
+  style: Record<string, unknown>,
+): void {
+  sheet.styles.set(styleId, style)
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) sheet.poke(r, c, { s: styleId })
 }
 
 describe('UniverYjsBinding — local edit -> Y.Map', () => {
@@ -240,6 +317,74 @@ describe('UniverYjsBinding — local edit -> Y.Map', () => {
   })
 })
 
+describe('UniverYjsBinding — style-id resolution (select-all must not hang)', () => {
+  const RED = { bg: { rgb: '#ff0000' }, ht: 2 }
+
+  it('resolves a pooled style id into the style object before replicating it', () => {
+    const { univer, cellMap } = setup()
+    univer.sheet.styles.set('st-red', RED)
+    univer.sheet.poke(0, 0, { v: 'hi', s: 'st-red' })
+    univer.fire({ id: SET_RANGE })
+    // The id is LOCAL to this client's style pool, so the resolved object must go on the wire.
+    expect(cellMap.get('default!0:0')).toEqual({ v: 'hi', s: RED })
+  })
+
+  it('resolves each distinct style id once, no matter how many cells share it', () => {
+    // 200x50 = 10k cells, the shape of a select-all + "set background" on a real sheet (1000x100).
+    // Before the memo this cost one getRange() + one CELL_CONTENT interceptor walk PER CELL, which
+    // is what hung the tab; the whole sheet shares ONE pooled style, so one resolution is correct.
+    const { univer, cellMap } = setup()
+    fillStyle(univer.sheet, 200, 50, 'st-red', RED)
+    univer.fire({ id: SET_RANGE })
+    expect(univer.sheet.styleResolveCalls).toBe(1)
+    // …and every cell still replicated, with the style resolved — the memo is a speedup, not a skip.
+    expect(cellMap.size).toBe(200 * 50)
+    expect(cellMap.get('default!0:0')).toEqual({ s: RED })
+    expect(cellMap.get('default!199:49')).toEqual({ s: RED })
+  })
+
+  it('does not let the memo bleed one style id into another', () => {
+    const { univer, cellMap } = setup()
+    const BLUE = { bg: { rgb: '#0000ff' } }
+    univer.sheet.styles.set('st-red', RED)
+    univer.sheet.styles.set('st-blue', BLUE)
+    univer.sheet.poke(0, 0, { s: 'st-red' })
+    univer.sheet.poke(0, 1, { s: 'st-blue' })
+    univer.sheet.poke(1, 0, { s: 'st-red' })
+    univer.sheet.poke(1, 1, { s: 'st-blue' })
+    univer.fire({ id: SET_RANGE })
+    expect(univer.sheet.styleResolveCalls).toBe(2) // one per DISTINCT id, not one per cell
+    expect(cellMap.get('default!0:0')).toEqual({ s: RED })
+    expect(cellMap.get('default!0:1')).toEqual({ s: BLUE })
+    expect(cellMap.get('default!1:0')).toEqual({ s: RED })
+    expect(cellMap.get('default!1:1')).toEqual({ s: BLUE })
+  })
+
+  it('replicates a style-only change (same value, new style id)', () => {
+    const { univer, cellMap } = setup()
+    const BOLD = { bl: 1 }
+    univer.sheet.styles.set('st-red', RED)
+    univer.sheet.styles.set('st-bold', BOLD)
+    univer.sheet.poke(0, 0, { v: 1, s: 'st-red' })
+    univer.fire({ id: SET_RANGE })
+    expect(cellMap.get('default!0:0')).toEqual({ v: 1, s: RED })
+    // Only the style changes — the diff must still see it (stylesEqual compares the resolved
+    // objects, so a re-pointed id has to survive as a real change).
+    univer.sheet.poke(0, 0, { v: 1, s: 'st-bold' })
+    univer.fire({ id: SET_RANGE })
+    expect(cellMap.get('default!0:0')).toEqual({ v: 1, s: BOLD })
+  })
+
+  it('drops an unresolvable style id instead of replicating the raw id', () => {
+    const { univer, cellMap } = setup()
+    // A dangling id (pool entry missing) must not leak the local id onto the wire, where a peer
+    // would resolve it against ITS pool and render an unrelated style.
+    univer.sheet.poke(0, 0, { v: 'x', s: 'st-gone' })
+    univer.fire({ id: SET_RANGE })
+    expect(cellMap.get('default!0:0')).toEqual({ v: 'x' })
+  })
+})
+
 describe('UniverYjsBinding — remote -> Univer', () => {
   it('applies a remote cell into the active sheet', () => {
     const { univer, doc } = setup()
@@ -269,6 +414,119 @@ describe('UniverYjsBinding — remote -> Univer', () => {
     applyRemote(doc, (peer) => peer.getMap(SHEET_YMAP_FIELD).delete('default!1:1'))
     // setValue({ v: null }) → poke clears the cell.
     expect(univer.sheet.cells.has('1:1')).toBe(false)
+  })
+})
+
+describe('UniverYjsBinding — batched remote apply (the select-all hang)', () => {
+  it('writes a whole remote batch with ONE mutation instead of a command per cell', () => {
+    const { univer, doc } = setupBatched()
+    applyRemote(doc, (peer) => {
+      const m = peer.getMap(SHEET_YMAP_FIELD)
+      m.set('default!0:0', { v: 'a' })
+      m.set('default!0:1', { v: 'b' })
+      m.set('default!5:9', { v: 'c' })
+    })
+    expect(univer.mutations.filter((m) => m.id === SET_RANGE)).toHaveLength(1)
+    expect(univer.sheet.setValueCalls).toBe(0)
+    expect(univer.sheet.cells.get('0:0')).toEqual({ v: 'a' })
+    expect(univer.sheet.cells.get('0:1')).toEqual({ v: 'b' })
+    expect(univer.sheet.cells.get('5:9')).toEqual({ v: 'c' })
+  })
+
+  it('sends the batch as a SPARSE matrix (no dense fill of the bounding box)', () => {
+    const { univer, doc } = setupBatched()
+    applyRemote(doc, (peer) => {
+      const m = peer.getMap(SHEET_YMAP_FIELD)
+      m.set('default!0:0', { v: 'tl' })
+      m.set('default!9:9', { v: 'br' })
+    })
+    const params = univer.mutations.find((m) => m.id === SET_RANGE)?.params as {
+      unitId: string
+      subUnitId: string
+      cellValue: Record<string, Record<string, unknown>>
+    }
+    expect(params.unitId).toBe('fake-book')
+    expect(params.subUnitId).toBe('local-1')
+    // Two opposite corners of a 10×10 box = 2 row entries, not 100 cells.
+    expect(Object.keys(params.cellValue)).toEqual(['0', '9'])
+    expect(params.cellValue['0']).toEqual({ 0: { v: 'tl' } })
+    expect(params.cellValue['9']).toEqual({ 9: { v: 'br' } })
+  })
+
+  it('keeps a full-sheet style change at one mutation (the 100k-command regression)', () => {
+    // Select-all + set style writes one key per DECLARED cell — 100k in production (1000×100).
+    // Reproduce the SHAPE at a size a unit test can hold: the whole batch must still cost ONE
+    // dispatch. Before this fix each key was its own SetRangeValuesCommand, on every open.
+    const { univer, doc } = setupBatched()
+    const ROWS = 100
+    const COLS = 20
+    applyRemote(doc, (peer) => {
+      const m = peer.getMap(SHEET_YMAP_FIELD)
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) m.set(`default!${r}:${c}`, { s: { bg: { rgb: '#ff0000' } } })
+      }
+    })
+    expect(univer.mutations.filter((m) => m.id === SET_RANGE)).toHaveLength(1)
+    expect(univer.sheet.setValueCalls).toBe(0)
+    expect(univer.sheet.cells.size).toBe(ROWS * COLS)
+  })
+
+  it('does not echo a batched apply back into the Y.Map', () => {
+    const { univer, doc, cellMap } = setupBatched()
+    const localTxns = vi.fn()
+    doc.on('afterTransaction', (txn: Y.Transaction) => {
+      if (txn.local && txn.changed.size > 0) localTxns(txn)
+    })
+    // The fake dispatches the mutation through the same bus onCommandExecuted observes, exactly as
+    // real Univer does — so applyingRemote has to hold on this path too.
+    applyRemote(doc, (peer) => peer.getMap(SHEET_YMAP_FIELD).set('default!0:0', { v: 'x' }))
+    expect(univer.sheet.cells.get('0:0')).toEqual({ v: 'x' })
+    expect(localTxns).not.toHaveBeenCalled()
+    expect(cellMap.get('default!0:0')).toEqual({ v: 'x' })
+  })
+
+  it('clears a cell through the batch when a peer deletes its key', () => {
+    const { univer, doc } = setupBatched()
+    applyRemote(doc, (peer) => peer.getMap(SHEET_YMAP_FIELD).set('default!1:1', { v: 'v' }))
+    expect(univer.sheet.cells.get('1:1')).toEqual({ v: 'v' })
+    applyRemote(doc, (peer) => peer.getMap(SHEET_YMAP_FIELD).delete('default!1:1'))
+    expect(univer.sheet.cells.has('1:1')).toBe(false)
+  })
+
+  it('retries per cell when the batch mutation reports failure', () => {
+    const { univer, doc } = setupBatched()
+    univer.failBatch = true
+    applyRemote(doc, (peer) => {
+      const m = peer.getMap(SHEET_YMAP_FIELD)
+      m.set('default!0:0', { v: 'a' })
+      m.set('default!1:0', { v: 'b' })
+    })
+    // The batch was attempted and refused, so both cells still land — via the facade.
+    expect(univer.mutations.filter((m) => m.id === SET_RANGE)).toHaveLength(1)
+    expect(univer.sheet.setValueCalls).toBe(2)
+    expect(univer.sheet.cells.get('0:0')).toEqual({ v: 'a' })
+    expect(univer.sheet.cells.get('1:0')).toEqual({ v: 'b' })
+  })
+
+  it('falls back to per-cell writes when the workbook exposes no id', () => {
+    // setup() leaves unitId null — the config every other test runs under. Assert it explicitly so
+    // batching can never silently become mandatory.
+    const { univer, doc } = setup()
+    applyRemote(doc, (peer) => peer.getMap(SHEET_YMAP_FIELD).set('default!2:2', { v: 'z' }))
+    expect(univer.mutations.filter((m) => m.id === SET_RANGE)).toHaveLength(0)
+    expect(univer.sheet.setValueCalls).toBe(1)
+    expect(univer.sheet.cells.get('2:2')).toEqual({ v: 'z' })
+  })
+
+  it('records lastSeen for batched cells so the next local diff is a no-op', () => {
+    const { univer, doc, cellMap } = setupBatched()
+    applyRemote(doc, (peer) => peer.getMap(SHEET_YMAP_FIELD).set('default!0:0', { v: 'remote' }))
+    const observer = vi.fn()
+    cellMap.observe(observer)
+    // Without lastSeen bookkeeping on the batched path, the next trigger would "rediscover" the
+    // peer's cell as a local edit and write it straight back.
+    univer.fire({ id: SET_RANGE })
+    expect(observer).not.toHaveBeenCalled()
   })
 })
 
