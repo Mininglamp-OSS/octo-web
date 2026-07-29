@@ -469,21 +469,33 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             // Anonymous: fall through to the login screen (below) without navigating away.
         }
 
-        // Drive public-share landing (`/drive/s/:token`, PR#1146 N2). The share
-        // access/download endpoints are ANONYMOUS by design (an external recipient
-        // has no octo account), so this page must render WITHOUT the login gate —
-        // the old drive-module boot rewrite sent it to `/drive` and the login layout
-        // swallowed it, so accessShareByToken was never called. Render it standalone
-        // for everyone; a signed-in viewer's session is irrelevant to the public calls.
+        // Drive share landing (`/drive/s/:token`, PR#1146 N2). Access requires a
+        // valid Octo session — any signed-in Octo user may open a share (they need
+        // not belong to the file's Space), but external/anonymous visitors may not.
+        // Mirror the `/d/:docId` flow: recover the session, render when signed in,
+        // else stash the exact return target and fall through to login so the user
+        // bounces back to the share after sign-in (isSafeReturnPath whitelists the
+        // drive landing shapes). The drive module no longer rewrites the URL at
+        // boot, so the pathname survives for this interception.
         if (isDriveSharePath(window.location.pathname)) {
-            return <ShareLandingPage token={shareTokenFromPath()} onExit={enterDriveHome} />;
+            if (!WKApp.loginInfo.token) {
+                WKApp.loginInfo.load();
+            }
+            if (!WKApp.loginInfo.token) {
+                recoverOctoSessionFromStorage(true);
+            }
+            if (WKApp.loginInfo.token) {
+                return <ShareLandingPage token={shareTokenFromPath()} onExit={enterDriveHome} />;
+            }
+            persistStandaloneReturn();
+            // Anonymous: fall through to the login screen (below) without navigating away.
         }
 
         // Space-invite landing (`/drive/invite/:token`, PR#1146 N2). acceptInvite IS
         // authenticated, so mirror the `/d/:docId` flow: recover the octo session, render
         // the accept page when signed in, else stash the exact return target and fall
         // through to the login screen so the user bounces back to the invite after
-        // sign-in (isSafeReturnPath now whitelists the drive landing shapes).
+        // sign-in (isSafeReturnPath whitelists the drive landing shapes).
         if (isDriveInvitePath(window.location.pathname)) {
             if (!WKApp.loginInfo.token) {
                 WKApp.loginInfo.load();

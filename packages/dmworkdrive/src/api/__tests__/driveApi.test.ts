@@ -289,23 +289,20 @@ describe('auth-header interceptor', () => {
     logout.mockRestore();
   });
 
-  it('public share axios attaches no 401→logout and no auth headers (B2)', () => {
-    // accessShareByToken / downloadShareByToken run on a SEPARATE axios instance
-    // (drivePublicAxios). It DOES carry a request interceptor now — but only to
-    // set baseURL (Electron/extension origin) + Accept-Language, never the auth
-    // headers — and crucially NO response(401→logout) interceptor, so a
-    // stranger's expired/invalid share link can never force-log-out the viewer.
+  it('shares run on the single authed drive instance — one request + one 401→logout interceptor (N2 correction)', () => {
+    // PR#1146 N2 was corrected: share access/download require a valid Octo
+    // session, so they run on the SAME authed driveAxios (no separate anonymous
+    // instance). Exactly one request interceptor (token/X-Space-Id/Accept-Language)
+    // and one response(401→logout) interceptor are registered at module load; an
+    // expired session on a share call logging the user out is intended behavior.
     const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
-    // Two request interceptors: driveAxios (auth) + drivePublicAxios (baseURL only).
-    expect(requestUse.mock.calls.length).toBe(2);
-    // Only driveAxios wires 401→logout.
+    expect(requestUse.mock.calls.length).toBe(1);
     expect(responseUse.mock.calls.length).toBe(1);
-    // The public interceptor (registered 2nd) must NOT attach token / X-Space-Id.
-    const publicOnRequest = requestUse.mock.calls[1][0];
-    const cfg = publicOnRequest({ headers: {} });
-    expect(cfg.headers.token).toBeUndefined();
-    expect(cfg.headers['X-Space-Id']).toBeUndefined();
+    // That single request interceptor attaches the session token.
+    const onRequest = requestUse.mock.calls[0][0];
+    const cfg = onRequest({ headers: {} });
+    expect(cfg.headers.token).toBe('test-token-abc');
     expect(cfg.headers['Accept-Language']).toBeTruthy();
   });
 });

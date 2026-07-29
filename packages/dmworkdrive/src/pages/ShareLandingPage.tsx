@@ -11,15 +11,17 @@ import { Toast } from '../utils/toast';
 import './LandingPage.css';
 
 /**
- * Public share-access landing page at `/drive/s/:id` (the share id doubles as
- * the access token). Validates the token — prompting for a password when the
- * share is password-gated — then shows the file metadata returned by the
- * public `POST /v1/drive/public/shares/:token/access` endpoint.
+ * Share-access landing page at `/drive/s/:id` (the share id doubles as the
+ * access token). Requires a valid Octo session (the host Layout gates this route
+ * behind login): any signed-in Octo user may open the share regardless of the
+ * file's Space membership. Validates the token — prompting for a password when
+ * the share is password-gated — then shows the file metadata returned by
+ * `POST /v1/drive/public/shares/:token/access`.
  *
- * Download goes through the public `POST /v1/drive/public/shares/:token/download`
- * endpoint: it re-checks the same token+password+expiry and returns the
- * anonymous object-storage URL, so an external (unauthenticated) recipient
- * downloads the bytes directly without drive membership.
+ * Download goes through `POST /v1/drive/public/shares/:token/download`: it
+ * re-checks the same token+password+expiry and returns the object-storage URL,
+ * so the recipient downloads the bytes directly without needing Space membership.
+ * (The `/public/...` path name is a backend-route label; the request is authed.)
  */
 
 type View =

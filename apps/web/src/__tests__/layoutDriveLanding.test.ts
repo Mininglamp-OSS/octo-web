@@ -1,41 +1,38 @@
 /**
- * PR#1146 N2 — the drive share/invite landing pages are intercepted by the host Layout
- * (apps/web) as standalone pages: the public SHARE page renders anonymously (its endpoints
- * need no auth, so an external recipient with no octo account must reach it WITHOUT the login
- * gate), and the authenticated INVITE page mirrors the `/d/:docId` flow (recover session →
- * render when signed in, else stash the return target and fall through to login).
+ * PR#1146 N2 (corrected) — the drive share/invite landing pages are intercepted by the host
+ * Layout (apps/web) as standalone pages that BOTH require a valid Octo session: any signed-in
+ * Octo user may open a share (they need not belong to the file's Space), but an anonymous /
+ * external visitor is sent to login first and bounced back to the exact landing after sign-in.
+ * Mirrors the standalone `/d/:docId` interception (recover session → render when signed in,
+ * else stash the return target and fall through to login).
  *
  * Follows the source-grep convention the Layout already uses (layoutStandaloneDocPath.test.ts):
- * the component pulls in Tauri / MainPage and can't be cheaply rendered in jsdom, so these guards
- * lock the wiring. Behavioral coverage of the open-redirect-safe return lives in the @octo/docs
- * StandaloneDocPage unit tests (isSafeReturnPath drive-path cases).
+ * the component pulls in Tauri / MainPage and can't be cheaply rendered in jsdom. The
+ * open-redirect-safe return allowlist for the drive shapes is covered behaviorally by
+ * standaloneReturn.test.ts.
  */
 import * as fs from 'fs'
 import * as path from 'path'
 
-describe('Layout — drive share/invite landing interception (PR#1146 N2)', () => {
+describe('Layout — drive share/invite landing interception (PR#1146 N2, login-required)', () => {
   let layout: string
 
   beforeAll(() => {
     layout = fs.readFileSync(path.join(__dirname, '../Layout/index.tsx'), 'utf-8')
   })
 
-  it('intercepts the public share path and renders ShareLandingPage', () => {
+  it('intercepts the share path and renders ShareLandingPage only when signed in', () => {
     expect(layout).toMatch(/isDriveSharePath\(\s*window\.location\.pathname\s*\)/)
-    expect(layout).toMatch(/<ShareLandingPage\s+token=\{shareTokenFromPath\(\)\}/)
-  })
-
-  it('renders the share page ANONYMOUSLY — no session recovery/login gate in the share branch', () => {
-    // The share branch must return before any token/session check. Extract it and assert it
-    // neither recovers a session nor persists a return target (both are invite-only concerns).
     const shareBranch = layout.slice(
       layout.indexOf('isDriveSharePath('),
       layout.indexOf('isDriveInvitePath('),
     )
-    expect(shareBranch).toMatch(/return <ShareLandingPage/)
-    expect(shareBranch).not.toMatch(/recoverOctoSessionFromStorage/)
-    expect(shareBranch).not.toMatch(/persistStandaloneReturn/)
-    expect(shareBranch).not.toMatch(/loginInfo\.token/)
+    // Share now requires login: recover the session, render only when authed,
+    // else persist the return target and fall through to the login screen.
+    expect(shareBranch).toMatch(/recoverOctoSessionFromStorage\(true\)/)
+    expect(shareBranch).toMatch(/if \(WKApp\.loginInfo\.token\)/)
+    expect(shareBranch).toMatch(/return <ShareLandingPage\s+token=\{shareTokenFromPath\(\)\}/)
+    expect(shareBranch).toMatch(/persistStandaloneReturn\(\)/)
   })
 
   it('intercepts the invite path, recovers the session, and renders InviteLandingPage when signed in', () => {
@@ -47,7 +44,6 @@ describe('Layout — drive share/invite landing interception (PR#1146 N2)', () =
     expect(inviteBranch).toMatch(/recoverOctoSessionFromStorage\(true\)/)
     expect(inviteBranch).toMatch(/if \(WKApp\.loginInfo\.token\)/)
     expect(inviteBranch).toMatch(/<InviteLandingPage\s+token=\{inviteTokenFromPath\(\)\}/)
-    // Anonymous invite: stash the exact target so the post-login bounce returns to the invite.
     expect(inviteBranch).toMatch(/persistStandaloneReturn\(\)/)
   })
 

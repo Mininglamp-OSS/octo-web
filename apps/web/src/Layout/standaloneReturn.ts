@@ -8,6 +8,28 @@ const STANDALONE_DOC_PATH = /^\/d\/([A-Za-z0-9_-]+)\/?$/;
 const STANDALONE_SUMMARY_PATH = /^\/s\/([A-Za-z0-9_-]+)\/?$/;
 const STANDALONE_SUMMARY_SHARE_PATH = /^\/s\/share\/([A-Za-z0-9_-]+)\/?$/;
 
+// `/drive/s/:token` and `/drive/invite/:token` — drive share / space-invite landings
+// (PR#1146 N2). Both require login: a signed-in user who opens the link while logged
+// out is bounced back here after sign-in. Matches a SINGLE path segment before decode
+// (no `/`, `?`, `#`); isSafeDriveLandingPath then decodes and re-checks the token so an
+// encoded slash / control char / malformed %-escape / extra segment can't smuggle
+// redirect structure past this allowlist. Narrow on purpose — never arbitrary `/drive/*`.
+const STANDALONE_DRIVE_PATH = /^\/drive\/(?:s|invite)\/([^/?#]+)\/?$/;
+
+function isSafeDriveLandingPath(pathname: string): boolean {
+    const m = STANDALONE_DRIVE_PATH.exec(pathname);
+    if (!m) return false;
+    let token: string;
+    try {
+        token = decodeURIComponent(m[1]);
+    } catch {
+        return false;
+    }
+    if (token.length === 0) return false;
+    // eslint-disable-next-line no-control-regex
+    return !/[/\\?#\x00-\x1f\x7f]/.test(token);
+}
+
 type ReturnHandler = Pick<EnterpriseStandaloneHandler, "match" | "persistReturnOnAnonymous">;
 
 function isSafeReturnPath(path: string | null, handlers: readonly ReturnHandler[]): path is string {
@@ -29,6 +51,7 @@ function isSafeReturnPath(path: string | null, handlers: readonly ReturnHandler[
     if (STANDALONE_DOC_PATH.test(url.pathname)) return true;
     if (STANDALONE_SUMMARY_PATH.test(url.pathname)) return true;
     if (STANDALONE_SUMMARY_SHARE_PATH.test(url.pathname)) return true;
+    if (isSafeDriveLandingPath(url.pathname)) return true;
     return handlers.some((handler) => handler.persistReturnOnAnonymous && handler.match(url.pathname));
 }
 

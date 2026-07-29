@@ -102,30 +102,6 @@ driveAxios.interceptors.response.use(undefined, (err) => {
   return Promise.reject(err);
 });
 
-/**
- * Interceptor-free axios for the PUBLIC share endpoints (recipient-side, no
- * auth). Kept separate from driveAxios so these calls (a) never attach the
- * viewer's session token / X-Space-Id — a recipient may be a different user or
- * unauthenticated — and (b) can't trip driveAxios's 401→logout, so opening a
- * stranger's expired/invalid share link never force-logs-out the current user
- * (PR#1146 review B2).
- *
- * Still needs the timeout + origin resolution (an anonymous recipient may be on
- * the Electron shell too), so it carries a request interceptor that sets ONLY
- * baseURL + Accept-Language — never the auth headers.
- */
-const drivePublicAxios = axios.create({
-  baseURL: '',
-  timeout: DEFAULT_REQUEST_TIMEOUT_MS,
-});
-
-drivePublicAxios.interceptors.request.use((config) => {
-  config.baseURL = resolveBaseURL();
-  config.headers = config.headers ?? {};
-  config.headers['Accept-Language'] = buildAcceptLanguage();
-  return config;
-});
-
 /** Base path for the drive service. Backend routes are namespaced under this. */
 const BASE = '/v1/drive';
 
@@ -198,16 +174,6 @@ async function get<T>(
 async function post<T>(path: string, data?: unknown): Promise<T> {
   try {
     const resp = await driveAxios.post<T>(`${BASE}${path}`, data);
-    return resp.data;
-  } catch (err) {
-    throw extractApiError(err);
-  }
-}
-
-/** POST to a public (unauthenticated) endpoint via the interceptor-free instance. */
-async function publicPost<T>(path: string, data?: unknown): Promise<T> {
-  try {
-    const resp = await drivePublicAxios.post<T>(`${BASE}${path}`, data);
     return resp.data;
   } catch (err) {
     throw extractApiError(err);
@@ -499,21 +465,28 @@ export async function revokeShare(shareId: string): Promise<void> {
   return del<void>(`/shares/${shareId}`);
 }
 
-/** Recipient-side public access (no auth required by the backend). */
+/**
+ * Recipient-side share access. Requires a valid Octo session: any signed-in Octo
+ * user may open a share (regardless of whether they belong to the file's Space);
+ * external/anonymous visitors cannot. Sent through the authed `driveAxios`, so a
+ * 401 (expired session) triggers the normal logout. The path keeps the
+ * `/public/shares/...` name for backend-route compatibility, but the request
+ * carries the session token.
+ */
 export async function accessShareByToken(token: string, password?: string): Promise<ShareAccess> {
-  return publicPost<ShareAccess>(`/public/shares/${encodeURIComponent(token)}/access`, password ? { password } : undefined);
+  return post<ShareAccess>(`/public/shares/${encodeURIComponent(token)}/access`, password ? { password } : undefined);
 }
 
 /**
- * Recipient-side public download (no auth). Reuses the same token+password+expiry
- * check as accessShareByToken, then returns the anonymous object-storage URL
- * persisted at upload time so an external receiver downloads the bytes directly.
+ * Recipient-side share download. Reuses the same token+password+expiry check as
+ * accessShareByToken and returns the object-storage URL. Authed like access —
+ * any signed-in Octo user may download.
  */
 export async function downloadShareByToken(
   token: string,
   password?: string,
 ): Promise<ShareDownload> {
-  return publicPost<ShareDownload>(
+  return post<ShareDownload>(
     `/public/shares/${encodeURIComponent(token)}/download`,
     password ? { password } : undefined,
   );

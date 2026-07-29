@@ -828,40 +828,6 @@ describe('standalone return target — open-redirect-safe post-login bounce (blo
     }
   })
 
-  it('accepts a safe same-origin drive share / invite landing target (PR#1146 N2)', () => {
-    for (const good of [
-      '/drive/s/sh_abc',
-      '/drive/s/sh_abc/',
-      '/drive/invite/tok-9_x',
-      '/drive/invite/tok_1?foo=bar', // query stripped from pathname before matching
-    ]) {
-      window.sessionStorage.setItem(STANDALONE_RETURN_KEY, good)
-      expect(consumeStandaloneReturn()).toBe(good)
-    }
-  })
-
-  it('rejects drive paths that smuggle structure or fall outside the exact s/invite shape (N2)', () => {
-    const hostileDrive = [
-      '/drive/invite/a/b', // extra path segment — not a single-segment token
-      '/drive/s/a%2Fb', // encoded slash → decodes to a/b
-      '/drive/s/a%5Cb', // encoded backslash → decodes to a\b
-      '/drive/s/%', // malformed %-escape → decodeURIComponent throws
-      '/drive/s/%zz', // malformed %-escape
-      '/drive/s/', // empty token
-      '/drive/s', // no token segment
-      '/drive/invite', // no token segment
-      '/drive/foo/x', // wrong action (only s | invite)
-      '/drive', // namespace root
-      '/drive/', // namespace root slash
-      '/drive/s/a/../../settings', // traversal → multiple segments
-    ]
-    for (const bad of hostileDrive) {
-      window.sessionStorage.setItem(STANDALONE_RETURN_KEY, bad)
-      expect(consumeStandaloneReturn()).toBeNull()
-      expect(window.sessionStorage.getItem(STANDALONE_RETURN_KEY)).toBeNull()
-    }
-  })
-
   it('AC-11 anonymous entry: the sign-in terminal stashes a safe, consumable return target', async () => {
     window.history.pushState({}, '', '/d/d_locked_out')
     wk.apiClient.responder = (method, url) => {

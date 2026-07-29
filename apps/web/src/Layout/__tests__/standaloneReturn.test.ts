@@ -28,6 +28,37 @@ describe("standalone return target", () => {
         expect(consumeStandaloneReturn()).toBe("/s/share/share_abc?sp=space1");
     });
 
+    it("accepts the exact drive share / invite landing shapes (PR#1146 N2)", () => {
+        for (const good of [
+            "/drive/s/sh_abc",
+            "/drive/s/sh_abc/",
+            "/drive/invite/tok-9_x",
+            "/drive/invite/tok_1?foo=bar",
+        ]) {
+            window.sessionStorage.setItem(KEY, good);
+            expect(consumeStandaloneReturn()).toBe(good);
+        }
+    });
+
+    it("rejects drive paths that smuggle structure or miss the exact s/invite shape (N2)", () => {
+        for (const bad of [
+            "/drive/invite/a/b", // extra path segment
+            "/drive/s/a%2Fb", // encoded slash → decodes to a/b
+            "/drive/s/a%5Cb", // encoded backslash
+            "/drive/s/%", // malformed %-escape
+            "/drive/s/%zz", // malformed %-escape
+            "/drive/s/", // empty token
+            "/drive/s", // no token segment
+            "/drive/foo/x", // wrong action
+            "/drive", // namespace root
+            "/drive/s/a/../../settings", // traversal
+        ]) {
+            window.sessionStorage.setItem(KEY, bad);
+            expect(consumeStandaloneReturn()).toBeNull();
+            expect(window.sessionStorage.getItem(KEY)).toBeNull();
+        }
+    });
+
     it("accepts enterprise return targets only when a persistent handler owns the path", () => {
         window.sessionStorage.setItem(KEY, "/loop/cli-authorize?code=abc");
         expect(
