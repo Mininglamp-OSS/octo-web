@@ -80,14 +80,36 @@ describe("MarkdownContent — KaTeX layout", () => {
   });
 
   it("renders block-level math with newlines inside $$ fences", () => {
-    // Multi-line $$ blocks are converted to ```math fenced code blocks
-    // in normalizeContent to avoid a remark-math@6 / mdast-util-from-markdown@1
-    // crash. rehype-katex recognizes language-math and renders in display mode.
+    // With the mdast-util-from-markdown v2 override, remark-math@6's
+    // flow-math path works natively. Block $$ produces .katex-display.
     const root = renderContent(
       <MarkdownContent content={"$$\n\\frac{a}{b}\n$$"} />
     );
     expect(root.querySelector(".katex")).not.toBeNull();
     expect(root.querySelector(".katex-display")).not.toBeNull();
+  });
+
+  it("does not crash on bare $$ or unclosed fence", () => {
+    // These previously triggered TypeError in mdast-util-math@3's
+    // exitMathFlowFence due to the v1/v2 CompileContext mismatch.
+    expect(() => renderContent(<MarkdownContent content="$$" />)).not.toThrow();
+    expect(() => renderContent(<MarkdownContent content={"$$\n\\frac{a}{b}"} />)).not.toThrow();
+    expect(() => renderContent(<MarkdownContent content={"$$\n$$"} />)).not.toThrow();
+  });
+
+  it("does not crash on progressive streaming prefix", () => {
+    // Simulates a bot streaming $$\nE = mc^2\n$$ — the prefix
+    // before the closing fence arrives must not throw.
+    const prefixes = [
+      "$$",
+      "$$\n",
+      "$$\nE",
+      "$$\nE = mc^2",
+      "$$\nE = mc^2\n",
+    ];
+    for (const p of prefixes) {
+      expect(() => renderContent(<MarkdownContent content={p} />)).not.toThrow();
+    }
   });
 });
 
