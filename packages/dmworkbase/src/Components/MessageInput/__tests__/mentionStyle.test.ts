@@ -12,7 +12,7 @@ function blockFor(selector: string): string {
 }
 
 describe("MessageInput mention style", () => {
-  it("renders editor mentions as visible pills", () => {
+  it("renders ordinary member mentions as visible pills", () => {
     const mentionBlock = blockFor(".wk-messageinput-editor .mention");
 
     expect(mentionBlock).toContain("background-color: var(--wk-accent-tint-08");
@@ -21,9 +21,13 @@ describe("MessageInput mention style", () => {
     expect(mentionBlock).not.toContain("background-color: transparent");
   });
 
-  it("keeps broadcast mention sentinels on the same pill style", () => {
-    expect(css).not.toContain('.wk-messageinput-editor .mention[data-id="-1"]');
-    expect(css).not.toContain('.wk-messageinput-editor .mention[data-id="-2"]');
-    expect(css).not.toContain('.wk-messageinput-editor .mention[data-id="-3"]');
+  it("keeps broadcast mention sentinels as text-only highlights", () => {
+    for (const uid of ["-1", "-2", "-3"]) {
+      expect(css).toContain(`.wk-messageinput-editor .mention[data-id="${uid}"]`);
+    }
+
+    const broadcastBlock = blockFor('.wk-messageinput-editor .mention[data-id="-3"]');
+    expect(broadcastBlock).toContain("background-color: transparent");
+    expect(broadcastBlock).toContain("padding: 0 var(--wk-sp-0-5)");
   });
 });

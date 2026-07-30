@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
 //
-// GH#295 regression — Web 端「@所有人」必须像普通 @某人 一样高亮渲染。
+// Web 端广播 mention 需要保持三等级视觉里的纯紫文字高亮。
 //
 // 背景：广播 mention（"@所有人"）在 buildMessageMentions 里被合成为
 // {name:"@所有人", uid:"all"}（见 Utils/mentionRender.ts），交给
-// MarkdownContent 渲染。此前的覆盖止步于「合成返回值」层，没有 DOM 级断言，
-// 无法证明合成出来的广播 mention 真的落成了 `span.mention-entity` 高亮节点。
-// 本测试补上这一段缺口：直接 render MarkdownContent，断言广播 mention 产出
-// 与普通成员 mention 同款的 `.mention-entity` 高亮 span。
+// MarkdownContent 渲染。这里直接 render MarkdownContent，断言广播 mention 产出
+// 非交互的 `.mention-highlight`，同时普通成员 mention 仍是 `.mention-entity` 胶囊。
 
 import React from "react";
 import ReactDOM from "react-dom";
@@ -53,19 +51,19 @@ function renderContent(element: React.ReactElement) {
   return container;
 }
 
-describe("MarkdownContent — broadcast mention (@所有人) 高亮渲染 (GH#295)", () => {
-  it("把广播 mention 渲染成 span.mention-entity，文本为 @所有人", () => {
+describe("MarkdownContent — broadcast mention (@所有人) 高亮渲染", () => {
+  it("把广播 mention 渲染成 span.mention-highlight，文本为 @所有人", () => {
     const mentions: MentionInfo[] = [{ name: "@所有人", uid: "all" }];
     const root = renderContent(
       <MarkdownContent content="@所有人 测试一下" mentions={mentions} />
     );
 
-    const entity = root.querySelector("span.mention-entity");
-    expect(entity).not.toBeNull();
-    expect(entity?.textContent).toBe("@所有人");
+    const highlight = root.querySelector("span.mention-highlight");
+    expect(highlight).not.toBeNull();
+    expect(highlight?.textContent).toBe("@所有人");
   });
 
-  it("广播 mention 与普通成员 mention 同款高亮（视觉一致）", () => {
+  it("广播 mention 与普通成员 mention 保持三等级视觉区分", () => {
     const mentions: MentionInfo[] = [
       { name: "@所有人", uid: "all" },
       { name: "@张三", uid: "uid_zhang" },
@@ -74,10 +72,13 @@ describe("MarkdownContent — broadcast mention (@所有人) 高亮渲染 (GH#29
       <MarkdownContent content="@所有人 和 @张三 看一下" mentions={mentions} />
     );
 
-    const entities = Array.from(
-      root.querySelectorAll("span.mention-entity")
+    const highlights = Array.from(
+      root.querySelectorAll("span.mention-highlight")
     ).map((el) => el.textContent);
-    expect(entities).toContain("@所有人");
+    const entities = Array.from(root.querySelectorAll("span.mention-entity")).map(
+      (el) => el.textContent
+    );
+    expect(highlights).toContain("@所有人");
     expect(entities).toContain("@张三");
   });
 });

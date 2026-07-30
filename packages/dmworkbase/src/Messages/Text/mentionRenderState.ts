@@ -10,7 +10,7 @@ export interface MentionRenderState {
 
 export function getMentionRenderState(uid?: string): MentionRenderState {
   if (uid === "all") {
-    return { className: "mention-entity", interactive: false };
+    return { className: "mention-highlight", interactive: false };
   }
   if (uid === "channel") {
     return { className: "mention-highlight", interactive: false };
