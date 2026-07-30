@@ -473,15 +473,15 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                                 jumpLink={msg.cited && cit ? <JumpLink citation={cit} badgeKey={badgeKey} closeKey={closeKey} /> : undefined}
                             />
                             {spansMultipleSources && (
-                                // yujiawei PR #1154 round-5 P2-1: when the
-                                // group spans multiple sources, every message
-                                // needs an attribution line — an empty `source`
-                                // must fall back to `sourceDefault` so a reader
-                                // does not visually inherit the previous
-                                // message's label. Without this, the popover
-                                // header "Multiple sources" contradicts a
-                                // message that carries no attribution and
-                                // sits directly under an explicit source line.
+                                // When the group spans multiple sources,
+                                // every message needs an attribution line —
+                                // an empty `source` must fall back to
+                                // `sourceDefault` so a reader does not
+                                // visually inherit the previous message's
+                                // label. Without this, the popover header
+                                // "Multiple sources" contradicts a message
+                                // that carries no attribution and sits
+                                // directly under an explicit source line.
                                 <div className="citation-msg-source" style={{ paddingLeft: 24 }}>
                                     {t("summary.citation.source", { values: { source: msg.source || t("summary.citation.sourceDefault") } })}
                                 </div>

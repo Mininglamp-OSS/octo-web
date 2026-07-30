@@ -121,7 +121,7 @@ interface SummaryDetailPageState {
      * clamped to 320–720px) is a container-query context whose width can
      * be far below the viewport, so a viewport-keyed @media rule alone
      * would leave the body text clipped 36px off the panel's left edge
-     * (yujiawei PR #1154 round-7 P1). Null until the first observer
+     * (see shouldShowToc). Null until the first observer
      * callback. */
     layoutWidth: number | null;
     versionDetailLoading: boolean;
@@ -298,22 +298,29 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.addEventListener("summary-list-unmount", this.handleListPageUnmount);
         window.addEventListener("summary-detail-regenerate", this.handleRegenerateFromList);
         window.addEventListener("summary-detail-edit", this.handleEditFromList);
-        // Observe the SummaryDetailPage layout container's width so
-        // `.has-toc` can be gated on real layout room rather than viewport
+        // Observe the SummaryDetailPage layout container's width so the
+        // TOC (`.has-toc` shift + the <aside> mount + the CSS visibility
+        // rule) can be gated on real layout room rather than viewport
         // size — the chat side panel is a container-query context and can
-        // be as narrow as 320px on any viewport (yujiawei PR #1154 round-7
-        // P1). ResizeObserver is well-supported everywhere we ship; the
-        // callback runs synchronously with layout so no fallback is needed.
-        if (this.layoutRef.current && typeof ResizeObserver !== "undefined") {
-            this.layoutResizeObserver = new ResizeObserver((entries) => {
-                for (const entry of entries) {
-                    const w = Math.round(entry.contentRect.width);
-                    if (w !== this.state.layoutWidth) {
-                        this.setState({ layoutWidth: w });
+        // be as narrow as 320px on any viewport. Seed layoutWidth with a
+        // synchronous getBoundingClientRect so the first paint knows the
+        // real container width, then keep it in sync with a ResizeObserver.
+        // Fail-closed: layoutWidth null keeps the TOC off until we have a
+        // real measurement (see shouldShowToc).
+        if (this.layoutRef.current) {
+            const initialWidth = Math.round(this.layoutRef.current.getBoundingClientRect().width);
+            if (initialWidth > 0 && initialWidth !== this.state.layoutWidth) {
+                this.setState({ layoutWidth: initialWidth });
+            }
+            if (typeof ResizeObserver !== "undefined") {
+                this.layoutResizeObserver = new ResizeObserver((entries) => {
+                    for (const entry of entries) {
+                        const w = Math.round(entry.contentRect.width);
+                        this.setState((prev) => (w === prev.layoutWidth ? null : { layoutWidth: w }));
                     }
-                }
-            });
-            this.layoutResizeObserver.observe(this.layoutRef.current);
+                });
+                this.layoutResizeObserver.observe(this.layoutRef.current);
+            }
         }
         this.loadDetail();
         if (this.props.emitSelection) {
@@ -1590,13 +1597,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         try {
             await api.restoreSummaryVersion(requestTaskId, version.result_id);
             if (this.taskId !== requestTaskId) return false;
-            // yujiawei PR #1154 round-7 P2-2: an editor may have opened while
-            // we were awaiting the API. loadDetail() clears every editing
-            // flag and nulls editorSaveFn, so proceeding would tear down a
-            // freshly mounted editor. Re-check the four editing flags and
-            // treat "any editing now" as a refusal to complete the restore.
+            // The entry-gate at the four handleStartEdit* handlers already
+            // refuses to open an editor while a restore is in flight, so
+            // this branch is defence in depth: if it does trigger (racing
+            // events / imperative callers), the mutation has committed on
+            // the server, so we still tell the user and refresh — silent
+            // stale UI would be worse than tearing down whichever editor
+            // opened despite the entry-gate. Info-level toast rather than
+            // success because the caller-driven refresh below is what makes
+            // the change visible.
             const post = this.state;
             if (post.isEditing || post.editingTeamSummary || post.editingMyDraft || post.editingPersonalReport) {
+                Toast.info(t("summary.detail.versionRestored"));
+                this.loadDetail();
                 return false;
             }
             Toast.success(t("summary.detail.versionRestored"));
@@ -1632,18 +1645,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         try {
             await api.restorePersonalSummaryVersion(requestTaskId, version.result_id);
             if (this.taskId !== requestTaskId) return false;
-            // yujiawei PR #1154 round-7 P2-2: re-check the four editing flags
-            // after the await — the same window applies to the personal
-            // restore path.
+            // Defence in depth (see the team-restore twin above); the
+            // entry-gate at handleStartEdit* already refuses to open an
+            // editor while a restore is in flight, so this branch should
+            // only be reachable in racing/imperative paths. If it does
+            // trigger, the mutation has already committed on the server,
+            // so still tell the user and refresh.
             const post = this.state;
+            const refreshPersonal = () => {
+                const seq = this.nextScheduleSeq();
+                this.loadPersonalResult(seq, true);
+                this.loadMembers(seq);
+                this.loadPersonalVersions(this.taskId!);
+            };
             if (post.isEditing || post.editingTeamSummary || post.editingMyDraft || post.editingPersonalReport) {
+                Toast.info(t("summary.detail.versionRestored"));
+                refreshPersonal();
                 return false;
             }
             Toast.success(t("summary.detail.versionRestored"));
-            const seq = this.nextScheduleSeq();
-            this.loadPersonalResult(seq, true);
-            this.loadMembers(seq);
-            this.loadPersonalVersions(this.taskId);
+            refreshPersonal();
             return true;
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return false;
@@ -1654,10 +1675,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
+    /** Monotonic sequence for handleViewVersion so a late-arriving response
+     * from an older request cannot clobber a newer selection. Compared
+     * after the `await` (same shape as nextScheduleSeq). */
+    private viewVersionSeq = 0;
+
     handleViewVersion = async (version: SummaryVersionItem, isPersonal: boolean) => {
         if (this.taskId == null || this.state.versionDetailLoading) return;
         const requestTaskId = this.taskId;
         const requestResultId = version.result_id;
+        const seq = ++this.viewVersionSeq;
         this.setState({
             showVersionDetailModal: true,
             versionDetailLoading: true,
@@ -1669,41 +1696,56 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 ? await api.getPersonalSummaryVersion(requestTaskId, requestResultId)
                 : await api.getSummaryVersion(requestTaskId, requestResultId);
             if (this.taskId !== requestTaskId) return;
-            // Panel may have been closed by the user while we were fetching
-            // (mochashanyao PR #1154 round-6 P2-2). If so, drop the response
-            // rather than reopening state we just cleared.
+            // Drop the response if a newer selection has since been made
+            // (viewVersionSeq bumped) or the user closed the panel while we
+            // were fetching (handleCloseVersionDetail/Panel cleared the
+            // modal flag). Either way we let the newer request or the
+            // explicit close win, rather than reviving state we just cleared.
+            if (seq !== this.viewVersionSeq) return;
             if (!this.state.showVersionDetailModal) return;
             if (detail.result_id !== requestResultId) {
-                this.setState({ showVersionDetailModal: false, versionDetailLoading: false, versionDetail: null });
+                this.setState({ showVersionDetailModal: false, versionDetail: null });
                 return;
             }
-            this.setState({ versionDetail: detail, versionDetailLoading: false });
+            this.setState({ versionDetail: detail });
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
+            if (seq !== this.viewVersionSeq) return;
             Toast.error(err.message || t("summary.common.operationFailed"));
-            this.setState({ showVersionDetailModal: false, versionDetailLoading: false, versionDetail: null });
+            this.setState({ showVersionDetailModal: false, versionDetail: null });
+        } finally {
+            // Guarantee versionDetailLoading is cleared even on early
+            // returns (panel closed, seq stale, request superseded). Any
+            // future early-return above will keep the invariant that a
+            // stranded loading flag cannot silently disable subsequent
+            // previews — handleViewVersion would otherwise itself be gated
+            // by the flag it just leaked (see the guard at the top).
+            // Skip the write when this request has been superseded by a
+            // newer one: the newer request owns the flag.
+            if (seq === this.viewVersionSeq) {
+                this.setState({ versionDetailLoading: false });
+            }
         }
     };
 
     handleCloseVersionDetail = () => {
-        // yujiawei PR #1154 round-7 P2-3: match the round-6 fix on
-        // handleCloseVersionPanel — never trap the user behind an in-flight
-        // fetch. The completion handler at openVersionPreview already checks
-        // showVersionDetailModal after `await` resumes and drops the
-        // response if we closed here, so a late arrival cannot revive it.
+        // Close unconditionally — never trap the user behind an in-flight
+        // fetch. handleViewVersion's completion handler drops the response
+        // if showVersionDetailModal was cleared while awaiting.
         this.setState({ showVersionDetailModal: false, versionDetail: null, versionDetailLoading: false });
     };
 
-    /** 关闭版本记录面板：一并退出中部只读预览，回到当前可编辑内容。
+    /** Close the version records side panel: also exit the read-only preview
+     * in the centre column, returning to the editable current content.
      *
-     * mochashanyao PR #1154 round-6 P2-2: do NOT early-return on
-     * versionDetailLoading. A slow version-detail request otherwise traps the
-     * user in the panel until the fetch resolves, with no visible cancel.
-     * Instead, close the panel unconditionally — the load-completion handler
-     * writes into `versionDetail` but the panel is already closed, so the
-     * stale result is never surfaced. If we want to hard-cancel the in-flight
-     * fetch itself we would need an AbortController; that is a broader change
-     * and not required to unblock the close action.
+     * Do NOT early-return on versionDetailLoading. A slow version-detail
+     * request otherwise traps the user in the panel until the fetch
+     * resolves, with no visible cancel. Instead, close the panel
+     * unconditionally — the load-completion handler writes into
+     * `versionDetail` but the panel is already closed, so the stale
+     * result is never surfaced. Hard-cancelling the in-flight fetch
+     * itself would need an AbortController; that is a broader change and
+     * not required to unblock the close action.
      */
     handleCloseVersionPanel = () => {
         this.setState({ versionPanelOpen: false, showVersionDetailModal: false, versionDetail: null, versionDetailLoading: false });
@@ -2520,16 +2562,30 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
+    // Single authoritative predicate for whether the TOC should be visible.
+    // Used by both render() (to add `.has-toc` and shift the content column)
+    // and renderToc() (to actually mount the <aside>) so the two can never
+    // disagree. Threshold derived from the CSS geometry: the <aside> is
+    // position:absolute at left: calc(50% + 444px) with width 192px inside
+    // an overflow:hidden layout, so its right edge lands at L/2 + 636 and
+    // it only fits when L >= 1272px (984px reading column + 192px TOC +
+    // 2×48px gutter). Fail-closed: layoutWidth null before the first
+    // observer callback means we do NOT mount the TOC — better a missing
+    // TOC on first paint than a clipped one on every laptop 1441–1627px.
+    private static readonly TOC_MIN_LAYOUT_WIDTH = 1272;
+
+    private shouldShowToc(): boolean {
+        const { versionPanelOpen, isEditing, editingTeamSummary, editingMyDraft, editingPersonalReport, tocItems, layoutWidth } = this.state;
+        if (versionPanelOpen || isEditing || editingTeamSummary || editingMyDraft || editingPersonalReport) return false;
+        if (!tocItems || tocItems.length < 2) return false;
+        return layoutWidth != null && layoutWidth >= SummaryDetailPage.TOC_MIN_LAYOUT_WIDTH;
+    }
+
     renderToc() {
-        const { tocItems, activeTocId, versionPanelOpen, isEditing, editingTeamSummary, editingMyDraft, editingPersonalReport } = this.state;
-        // 编辑态 / 版本面板打开时不显示目录，避免与右侧面板抢占空间。
-        // yujiawei PR #1154 round-5 P2-7: also gate on editingMyDraft and
-        // editingPersonalReport so the TOC does not stay mounted (and the
-        // parent's `has-toc` layout class does not stay applied) while the
-        // team body is hidden behind either of those two editors, which was
-        // shifting the footer 64px off-centre at ≥1441px.
-        if (versionPanelOpen || isEditing || editingTeamSummary || editingMyDraft || editingPersonalReport) return null;
-        if (!tocItems || tocItems.length < 2) return null;
+        // Single predicate for both mount and layout-shift gates so they
+        // cannot fall out of sync — see shouldShowToc().
+        if (!this.shouldShowToc()) return null;
+        const { tocItems, activeTocId } = this.state;
         const { t } = this.context;
         return (
             <aside className="summary-detail-toc" aria-label={t("summary.detail.tocTitle")}>
@@ -2638,7 +2694,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 {/* BY_GROUP 完成模式下,renderCompleted 是唯一显示团队/最终
                     总结的路径 —— 内容不能被"我的总结"header 折叠掉,否则
                     用户在多人 BY_GROUP 单人视角下点一下 header 就再也看不
-                    到内容了(mochashanyao PR #1154 round-6 P1)。 */}
+                    到内容了。 */}
                 <>
                     {/* Meta info: creation time + source chips */}
                     <div className="summary-detail-meta">
@@ -2684,11 +2740,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     ) : this.state.showVersionDetailModal ? this.renderVersionPreview() : (
                         <div className="summary-detail-result-content">
                             <AbstractCallout
-                                // mochashanyao PR #1154 round-6 P2-1: BY_GROUP
-                                // path is a team view, so prefer the team-level
-                                // detail.result.abstract; fall back to
-                                // personalResult.abstract only when the team
-                                // one is missing.
+                                // renderCompleted is a team view, so prefer
+                                // the team-level detail.result.abstract; fall
+                                // back to personalResult.abstract only when
+                                // the team one is missing.
                                 abstract={detail.result.abstract || this.state.personalResult?.abstract}
                                 title={this.context.t("summary.detail.abstractTitle")}
                             />
@@ -3365,16 +3420,29 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
+    /** True while a version restore request is in flight (either scope).
+     * The four `handleStartEdit*` entry points refuse to open an editor
+     * while this is true: opening one otherwise races the restore's
+     * post-`await` cleanup, and the post-`await` guard on the restore
+     * would then silently discard a mutation the server already committed.
+     * Refusing at the edit entry rather than absorbing at the restore end
+     * makes the failure mode a no-op click (predictable) instead of a
+     * silent stale UI. */
+    private isRestoreInFlight(): boolean {
+        return this.state.restoringVersionId != null || this.state.restoringPersonalVersionId != null;
+    }
+
     handleStartEdit = () => {
-        // F1：进入单人个人总结编辑时互斥关闭另两个编辑态。
-        // OCT-21：同时关闭草稿编辑态（纵深防御）。
-        // P1-1：进入编辑必须展开个人总结区，否则编辑器不挂载而保存栏仍在，
-        // 会出现「有保存栏无编辑器」甚至保存到陈旧闭包的问题。
-        // yujiawei PR #1154 round-7 P2-1: also clear the version panel /
-        // preview state so entering the editor does not leave a stale
-        // read-only preview mounted underneath (and its scroll lock stuck
-        // on <html>/<body>) — the panel's own close button is unmounted by
-        // the editor, so the user has no way to recover from a stale panel.
+        // Mutually-exclusive with the other editors; entering ensures the
+        // personal section is expanded so the editor mounts (otherwise the
+        // save bar appears without the editor and saves can hit a stale
+        // closure). Also clear any stale version panel / preview state so
+        // the read-only historical body cannot render underneath the
+        // editor and the scroll lock cannot get stuck; `versionDetailLoading`
+        // is cleared so a request in flight when the user starts editing
+        // does not strand the flag and silently disable future previews.
+        // Refuse while a version restore is in flight — see isRestoreInFlight.
+        if (this.isRestoreInFlight()) return;
         this.setState({
             isEditing: true,
             editingTeamSummary: false,
@@ -3384,12 +3452,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             versionPanelOpen: false,
             showVersionDetailModal: false,
             versionDetail: null,
+            versionDetailLoading: false,
         });
     };
 
     togglePersonalExpanded = () => {
         this.setState((prev) => {
-            // P1-1：编辑进行中禁止折叠个人总结区，避免隐藏编辑器却保留保存栏。
+            // Editors depend on personalExpanded being true to mount; refuse
+            // to collapse while any inline editor is open so we do not hide
+            // the editor while leaving its save bar visible.
             if (prev.personalExpanded && (prev.isEditing || prev.editingMyDraft || prev.editingPersonalReport)) {
                 return null;
             }
@@ -3406,11 +3477,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ isEditing: false });
     };
 
-    // need3：进入/退出「自己的个人报告」行内编辑。保存走 personal-edit（后端自动重算团队）。
+    // Enter/exit inline edit for "my personal report" (multi-collab). Save
+    // goes through personal-edit, which recomputes the team result server-side.
     handleStartEditPersonalReport = () => {
-        // F1：互斥——只留 editingPersonalReport，关闭团队/单人编辑态。
-        // OCT-21：同时关闭草稿编辑态。
-        // yujiawei PR #1154 round-7 P2-1: clear stale version panel/preview.
+        // Mutually-exclusive with the other three editors. Clear stale
+        // version panel/preview state (including the loading flag; see the
+        // handleStartEdit note above). Refuse while a restore is in flight.
+        if (this.isRestoreInFlight()) return;
         this.setState({
             editingPersonalReport: true,
             editingTeamSummary: false,
@@ -3419,22 +3492,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             versionPanelOpen: false,
             showVersionDetailModal: false,
             versionDetail: null,
+            versionDetailLoading: false,
         });
     };
     handleEditPersonalReportSave = () => {
         this.setState({ editingPersonalReport: false });
-        // need6：保存后 loadDetail 刷新（后端已触发团队重算）；同时重拉个人/成员。
+        // Save triggers team recompute server-side; reload the whole detail
+        // so members and personal state stay consistent.
         this.loadDetail();
     };
     handleEditPersonalReportCancel = () => {
         this.setState({ editingPersonalReport: false });
     };
 
-    // need4：进入/退出「团队总结」行内编辑（仅 creator）。保存走既有 PUT /summaries/:id/edit。
+    // Enter/exit inline edit for the team result (creator only). Save uses
+    // the existing PUT /summaries/:id/edit endpoint.
     handleStartEditTeam = () => {
-        // F1：互斥——只留 editingTeamSummary，关闭个人/单人编辑态。
-        // OCT-21：同时关闭草稿编辑态。
-        // yujiawei PR #1154 round-7 P2-1: clear stale version panel/preview.
+        // Mutually-exclusive with the other three editors. Clear stale
+        // version panel/preview state (including the loading flag).
+        // Refuse while a restore is in flight.
+        if (this.isRestoreInFlight()) return;
         this.setState({
             editingTeamSummary: true,
             editingPersonalReport: false,
@@ -3443,6 +3520,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             versionPanelOpen: false,
             showVersionDetailModal: false,
             versionDetail: null,
+            versionDetailLoading: false,
         });
     };
     handleEditTeamSave = () => {
@@ -3453,10 +3531,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ editingTeamSummary: false });
     };
 
-    // OCT-21：提交前编辑「我自己」的个人报告草稿。三件套与 handleStartEditPersonalReport 对齐。
+    // Pre-submit edit of "my own" personal-report draft. Symmetrical with
+    // handleStartEditPersonalReport (Enter / Save / Cancel).
     handleStartEditMyDraft = () => {
-        // 互斥：只留 editingMyDraft，关闭其他三种编辑态。
-        // yujiawei PR #1154 round-7 P2-1: clear stale version panel/preview.
+        // Mutually-exclusive with the other three editors. Clear stale
+        // version panel/preview state (including the loading flag).
+        // Refuse while a restore is in flight.
+        if (this.isRestoreInFlight()) return;
         this.setState({
             editingMyDraft: true,
             isEditing: false,
@@ -3465,6 +3546,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             versionPanelOpen: false,
             showVersionDetailModal: false,
             versionDetail: null,
+            versionDetailLoading: false,
         });
     };
     handleEditMyDraftSave = () => {
@@ -3886,23 +3968,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     render() {
         const { detail, loading, error, showScheduleConfig, scheduleConfig } = this.state;
         const { t } = this.context;
-        // TOC needs ~984px reading column + 192px TOC + gutters ≈ 1200px of
-        // real layout width. Gate on the observed layout width so the chat
-        // side panel (320–720px) never picks up `.has-toc` even at 1920px
-        // viewport (yujiawei PR #1154 round-7 P1). Null (pre-observer) is
-        // treated as "unknown, allow" so the first paint on a full-page
-        // route still gets the TOC — the ResizeObserver callback runs
-        // synchronously with layout in every browser we ship, so the flash
-        // is a single frame at worst on the panel.
-        const TOC_MIN_LAYOUT_WIDTH = 1200;
-        const layoutFitsToc = this.state.layoutWidth == null || this.state.layoutWidth >= TOC_MIN_LAYOUT_WIDTH;
-        const hasToc = !this.state.versionPanelOpen
-            && !this.state.isEditing
-            && !this.state.editingTeamSummary
-            && !this.state.editingMyDraft
-            && !this.state.editingPersonalReport
-            && this.state.tocItems.length >= 2
-            && layoutFitsToc;
+        const hasToc = this.shouldShowToc();
 
         return (
             <div className="summary-detail-page">

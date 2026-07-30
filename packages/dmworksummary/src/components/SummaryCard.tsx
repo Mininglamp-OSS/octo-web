@@ -76,12 +76,11 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         || isPendingInvite;
 
     const displayTitle = deriveSummaryDisplayContent(task.topic || task.title || task.task_no);
-    // yujiawei PR #1154 round-5 P2-5/P2-6: keep the description truthy so an
-    // empty topic does not render a 4px-tall empty `.summary-card-desc`, and
-    // do NOT gate on length — .summary-card-desc already uses
-    // `-webkit-line-clamp: 2; overflow: hidden` (src/index.css:476-485), so a
-    // topic of any length clamps visually instead of vanishing outright at the
-    // 81st character (regression vs main).
+    // Keep the description truthy so an empty topic does not render a
+    // 4px-tall empty `.summary-card-desc`, and do NOT gate on length —
+    // `.summary-card-desc` already uses `-webkit-line-clamp: 2; overflow:
+    // hidden` (src/index.css:476-485), so a topic of any length clamps
+    // visually instead of vanishing outright at the 81st character.
     const description = task.topic?.trim() || "";
     const showDescription = description !== "" && description !== displayTitle;
     const displayStatus = displaysWaiting ? TaskStatus.PENDING : task.status;

@@ -4304,16 +4304,14 @@ body.summary-version-detail-open .summary-schedule-page {
     border-left: 1px solid var(--wk-border-subtle);
 }
 
-/* 宽屏阅读时为右侧目录留出视觉空间，让正文与目录作为整体略向左。 */
-@media (min-width: 1441px) {
-    .summary-detail-layout.has-toc:not(.has-version-panel) .summary-detail-content-inner {
-        transform: translateX(-64px);
-    }
-}
-
-/* 窄面板下隐藏，避免与居中正文重叠 */
-@media (max-width: 1440px) {
-    .summary-detail-toc { display: none; }
+/* TOC layout shift; gated in JS via shouldShowToc() so the class is only
+ * present when the layout container is wide enough for the 192px TOC
+ * column. The previous viewport @media rules were removed because
+ * SummaryDetailPage renders inside a container-query context (the chat
+ * side panel), so viewport-keyed rules are not safe here — see the same
+ * warning at index.css:2988 and dmworkbase/src/Pages/Chat/index.css:870. */
+.summary-detail-layout.has-toc:not(.has-version-panel) .summary-detail-content-inner {
+    transform: translateX(-64px);
 }
 
 .summary-detail-toc-title {
