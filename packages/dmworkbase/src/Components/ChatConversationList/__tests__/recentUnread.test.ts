@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  getChatNavRecentUnreadSnapshot,
   getRecentConversationUnreadCount,
-  setChatNavRecentUnreadSnapshot,
   shouldShowChatNavUnreadBadge,
 } from "../recentUnread";
 
@@ -31,11 +29,17 @@ describe("chatUnreadBadge", () => {
     expect(unreadCount).toBe(10);
   });
 
-  it("stores the recent-list unread count as the NavRail source of truth", () => {
-    setChatNavRecentUnreadSnapshot(12);
-    expect(getChatNavRecentUnreadSnapshot()).toBe(12);
+  it("skips parent-muted threads with the same muted predicate as the recent list", () => {
+    const conversations = [
+      { id: "visible-dm", unread: 3, muted: false, parentMuted: false },
+      { id: "parent-muted-thread", unread: 7, muted: false, parentMuted: true },
+    ];
 
-    setChatNavRecentUnreadSnapshot(0);
-    expect(getChatNavRecentUnreadSnapshot()).toBe(0);
+    const unreadCount = getRecentConversationUnreadCount(
+      conversations,
+      (conversation) => conversation.muted || conversation.parentMuted,
+    );
+
+    expect(unreadCount).toBe(3);
   });
 });

@@ -15,13 +15,3 @@ export function getRecentConversationUnreadCount<T extends RecentUnreadConversat
 export function shouldShowChatNavUnreadBadge(currentMenuId: string | undefined, unreadCount: number): boolean {
     return currentMenuId !== undefined && currentMenuId !== "chat" && unreadCount > 0
 }
-
-let chatNavRecentUnreadSnapshot = 0
-
-export function setChatNavRecentUnreadSnapshot(unreadCount: number): void {
-    chatNavRecentUnreadSnapshot = unreadCount
-}
-
-export function getChatNavRecentUnreadSnapshot(): number {
-    return chatNavRecentUnreadSnapshot
-}

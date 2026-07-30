@@ -23,9 +23,7 @@ import { ContextMenusData } from "../ContextMenus"
 import { useI18n } from "../../i18n"
 import { getImChannelInfo } from "../../im-runtime/channelRuntime"
 export {
-    getChatNavRecentUnreadSnapshot,
     getRecentConversationUnreadCount,
-    setChatNavRecentUnreadSnapshot,
     shouldShowChatNavUnreadBadge,
 } from "./recentUnread"
 

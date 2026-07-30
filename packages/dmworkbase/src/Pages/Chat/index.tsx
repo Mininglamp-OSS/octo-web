@@ -12,7 +12,6 @@ import {
 import ChatConversationList, {
   getRecentConversationUnreadCount,
   isMutedForRecentConversation,
-  setChatNavRecentUnreadSnapshot,
 } from "../../Components/ChatConversationList";
 import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
@@ -218,11 +217,6 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     conversations,
     isMutedForRecentConversation
   );
-
-  React.useEffect(() => {
-    setChatNavRecentUnreadSnapshot(recentUnread);
-    WKApp.menus.refresh();
-  }, [recentUnread]);
 
   return (
     <SidebarTabBar

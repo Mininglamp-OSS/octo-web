@@ -17,12 +17,11 @@ export * from './Service/RoutePath'
 export * from './Service/DataSource/DataProvider'
 export { default as ChatPage } from "./Pages/Chat"
 export {
-  getChatNavRecentUnreadSnapshot,
   getRecentConversationUnreadCount,
   isMutedForRecentConversation,
-  setChatNavRecentUnreadSnapshot,
   shouldShowChatNavUnreadBadge,
 } from "./Components/ChatConversationList"
+export { ConversationWrap } from './Service/Model'
 export * from './Components/ChannelSetting/context'
 export * from './Service/DataSource/DataSource'
 export * from './Service/IncomingWebhook'
