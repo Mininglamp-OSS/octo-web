@@ -48,8 +48,10 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
     (async () => {
       let url = '';
       if (isDoc) {
-        // Pure frontend: same /d/:docId address used to open the mounted doc.
-        url = entry.ref_id ? buildDocLink({ docId: entry.ref_id }) : '';
+        // Pure frontend: same /d/:docId address used to open the mounted doc,
+        // carrying the doc's OWN space as ?sp= (entry.doc_space_id). Absent ⇒ omit
+        // sp; never fall back to entry.space_id (drive mount space, cross-tenant wrong).
+        url = entry.ref_id ? buildDocLink({ docId: entry.ref_id, space: entry.doc_space_id }) : '';
       } else {
         const share = await ensure();
         if (cancelled) return;

@@ -59,14 +59,20 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
 
   // Type-1 doc: jump to the standalone docs page (preview/editor). The mounted
   // entry carries the doc id in ref_id; buildDocLink is the same /d/:docId form
-  // used by forwarded-doc links (@octo/base).
+  // used by forwarded-doc links (@octo/base). Carry the doc's OWN space as ?sp=
+  // so cross-space recipients hit the right doc; when absent, omit sp (do NOT
+  // fall back to entry.space_id — that is drive's mount space, wrong across tenants).
   const handleOpenDoc = useCallback(
     (entry: DriveEntry) => {
       if (!entry.ref_id) {
         Toast.error(t('drive.toast.opFailed'));
         return;
       }
-      window.open(buildDocLink({ docId: entry.ref_id }), '_blank', 'noopener,noreferrer');
+      window.open(
+        buildDocLink({ docId: entry.ref_id, space: entry.doc_space_id }),
+        '_blank',
+        'noopener,noreferrer',
+      );
     },
     [t],
   );

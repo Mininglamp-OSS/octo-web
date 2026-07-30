@@ -25,7 +25,16 @@ vi.mock('../../ui/UploadButton', async () => {
 
 // Children unrelated to toolbar gating — inert shells.
 vi.mock('../../ui/Breadcrumb', () => ({ default: () => null }));
-vi.mock('../../ui/FileList', () => ({ default: () => null }));
+// FileList captures its props so a test can invoke onOpenDoc directly and assert
+// on the doc link DriveContent builds (buildDocLink with the doc's real space).
+const fileListRef = vi.hoisted(() => ({ current: null as null | Record<string, unknown> }));
+vi.mock('../../ui/FileList', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  default: (props: any) => {
+    fileListRef.current = props;
+    return null;
+  },
+}));
 vi.mock('../../ui/NameInputModal', () => ({ default: () => null }));
 vi.mock('../../ui/MoveModal', () => ({ default: () => null }));
 vi.mock('../../ui/UploadProgress', () => ({ default: () => null }));
@@ -208,5 +217,57 @@ describe('DriveContent — reset modals on space switch (Q8)', () => {
       ReactDOM.render(<DriveContent vm={vmWith(space('B', 'shared'))} />, r.container);
     });
     expect(r.queryByText('INVITE_OPEN')).toBeNull();
+  });
+});
+
+describe('DriveContent — open doc carries the doc\'s real space (Round-12)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function docEntry(over: Record<string, unknown>): any {
+    return {
+      id: 5,
+      space_id: 'mountSpace',
+      parent_id: 0,
+      name: 'design.doc',
+      is_folder: false,
+      type: 'doc',
+      ref_id: 'doc-9',
+      size: 0,
+      source: 'user-mount',
+      owner_uid: 'u',
+      created_at: '',
+      updated_at: '',
+      ...over,
+    };
+  }
+
+  it('opens /d/:docId?sp=<doc_space_id> when the doc carries its real space', async () => {
+    stubMembers({ canDownload: true });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    render(<DriveContent vm={vmWith(space('mountSpace', 'shared'))} />);
+    await waitFor(() => expect(fileListRef.current).not.toBeNull());
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (fileListRef.current!.onOpenDoc as any)(docEntry({ doc_space_id: 'realDocSpace' }));
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://test.local/d/doc-9?sp=realDocSpace',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    openSpy.mockRestore();
+  });
+
+  it('omits sp and never falls back to the drive mount space when doc_space_id is absent', async () => {
+    stubMembers({ canDownload: true });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    render(<DriveContent vm={vmWith(space('mountSpace', 'shared'))} />);
+    await waitFor(() => expect(fileListRef.current).not.toBeNull());
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (fileListRef.current!.onOpenDoc as any)(docEntry({}));
+    const url = openSpy.mock.calls[0][0] as string;
+    expect(url).toBe('https://test.local/d/doc-9');
+    expect(url).not.toContain('sp=');
+    expect(url).not.toContain('mountSpace');
+    openSpy.mockRestore();
   });
 });

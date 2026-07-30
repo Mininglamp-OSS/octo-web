@@ -71,6 +71,10 @@ export interface DriveEntry {
   type: FileType;
   ref_type?: FileType;
   ref_id?: string;
+  /** doc-only: the doc's OWN octo space (docs-backend doc_meta.space_id), for
+   *  building `/d/:docId?sp=`. Absent for blobs/folders and when NULL server-side
+   *  (omitempty). NOT space_id — that is drive's mount space, wrong across tenants. */
+  doc_space_id?: string;
   size: number;
   content_type?: string;
   source: FileSource;
@@ -103,6 +107,9 @@ export interface DocRef {
   parent_id: number;
   doc_id: string;
   title: string;
+  /** the doc's OWN octo space (docs-backend doc_meta.space_id), for `/d/:docId?sp=`.
+   *  Absent when NULL server-side (omitempty). See DriveEntry.doc_space_id. */
+  doc_space_id?: string;
   source: string;
   owner_uid: string;
   created_at: string;

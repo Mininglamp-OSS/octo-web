@@ -122,4 +122,35 @@ describe('ShareModal (WeCom one-shot)', () => {
     expect(queryByRole('button', { name: 'drive.share.revoke' })).toBeNull();
     unmount();
   });
+
+  it('doc: carries the real doc space as ?sp= when doc_space_id is present', async () => {
+    const { getByText, container, unmount } = render(
+      <ShareModal
+        visible
+        entry={entry({ type: 'doc', ref_id: 'doc-9', space_id: 'sp1', doc_space_id: 'realDocSpace' })}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => getByText('drive.share.docGenerated'));
+    const input = container.querySelector('input') as HTMLInputElement;
+    expect(input.value).toContain('/d/doc-9');
+    expect(input.value).toContain('?sp=realDocSpace');
+    unmount();
+  });
+
+  it('doc: omits ?sp= and never falls back to the drive mount space when doc_space_id is absent', async () => {
+    const { getByText, container, unmount } = render(
+      <ShareModal
+        visible
+        entry={entry({ type: 'doc', ref_id: 'doc-9', space_id: 'sp1' })}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => getByText('drive.share.docGenerated'));
+    const input = container.querySelector('input') as HTMLInputElement;
+    expect(input.value).toContain('/d/doc-9');
+    expect(input.value).not.toContain('sp=');
+    expect(input.value).not.toContain('sp1');
+    unmount();
+  });
 });
