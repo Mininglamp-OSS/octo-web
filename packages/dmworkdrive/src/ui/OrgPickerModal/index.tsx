@@ -29,7 +29,7 @@ export interface OrgPickerModalProps {
  */
 export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }: OrgPickerModalProps) {
   const { t } = useI18n();
-  const { candidates, loading, query, search } = useOrgSearch();
+  const { candidates, loading, query, search, error, retry } = useOrgSearch();
   const { members } = useMembers(spaceId ?? null, visible);
   const [selected, setSelected] = useState<Record<string, OrgCandidate>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -43,15 +43,17 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
 
   // Reset picker-local state whenever it opens/closes or the target drive space
   // changes. Clearing `selected` on a spaceId change is the guard that stops
-  // Space A's picks from being confirmed against Space B. Calling search('')
-  // when visible resets the local query filter so a reopened picker starts from
-  // the full roster instead of a stale search term — this is a purely local
-  // filter reset, not a fetch: useOrgSearch loads the roster once and reloads it
-  // only on the host `space-changed` event, independent of this effect. Gating
-  // on `visible` skips the reset for a mounted-but-hidden picker.
+  // Space A's picks from being confirmed against Space B. On becoming visible we
+  // either retry a failed roster load or, for a good cache, just reset the local
+  // query filter — reopening a successfully-cached picker never re-fetches
+  // (search('') is a purely local reset; the roster is loaded once by
+  // useOrgSearch and reloaded only on the host `space-changed` event). Gating on
+  // `visible` skips this for a mounted-but-hidden picker.
   useEffect(() => {
     setSelected({});
-    if (visible) search('');
+    if (!visible) return;
+    if (error) retry();
+    else search('');
   }, [visible, spaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = useCallback(
@@ -108,6 +110,13 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
         {loading ? (
           <div className="drive-org__center">
             <Spin />
+          </div>
+        ) : error ? (
+          <div className="drive-org__center drive-org__error">
+            <span className="drive-org__empty">{t('drive.org.loadFailed')}</span>
+            <button type="button" className="drive-org__retry" onClick={retry}>
+              {t('drive.org.retry')}
+            </button>
           </div>
         ) : candidates.length === 0 ? (
           <div className="drive-org__center drive-org__empty">

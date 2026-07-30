@@ -10,6 +10,15 @@ export interface UseOrgSearchResult {
   loading: boolean;
   query: string;
   search: (q: string) => void;
+  /**
+   * True when the last roster load failed (network/abort-independent error, or
+   * a truncated response — see F2). Distinct from an empty-but-successful
+   * roster (`error: false`, `candidates: []`), so the UI can show a retry
+   * affordance instead of the ordinary "no members" hint.
+   */
+  error: boolean;
+  /** Re-run the roster load (used by the failure-state retry affordance). */
+  retry: () => void;
 }
 
 /** A candidate plus its precomputed lowercased "name\npinyin" match text. */
@@ -53,6 +62,7 @@ export function useOrgSearch(): UseOrgSearchResult {
   const [candidates, setCandidates] = useState<OrgCandidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
+  const [error, setError] = useState(false);
   const indexRef = useRef<IndexedCandidate[]>([]);
   // Latest query, read when a fetch resolves so a keystroke made *during* the
   // load isn't clobbered by the full roster (F2). setQuery drives render; this
@@ -62,7 +72,7 @@ export function useOrgSearch(): UseOrgSearchResult {
 
   const load = useCallback(() => {
     // Supersede any in-flight generation, then drop the previous space's
-    // cache/query/candidates synchronously.
+    // cache/query/candidates/error synchronously.
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -70,22 +80,39 @@ export function useOrgSearch(): UseOrgSearchResult {
     queryRef.current = '';
     setQuery('');
     setCandidates([]);
+    setError(false);
     setLoading(true);
     void (async () => {
       try {
         const res = await api.listOrgMembers(ctrl.signal);
         if (ctrl.signal.aborted) return;
-        const index = (res.candidates ?? []).map((item) => ({
+        const list = res.candidates ?? [];
+        // F2: the backend pages the roster to exhaustion and returns the
+        // authoritative total. A numeric total that disagrees with the delivered
+        // count means the list was truncated (e.g. a server-side page cap) —
+        // refuse to cache a partial roster silently, since a partial roster is
+        // exactly the "search finds nobody" symptom this change fixes. A
+        // non-numeric total is treated as "unknown, don't assert" rather than a
+        // hard failure, so a benign response-shape drift can't wedge the picker.
+        if (typeof res.total === 'number' && res.total !== list.length) {
+          indexRef.current = [];
+          setCandidates([]);
+          setError(true);
+          return;
+        }
+        const index = list.map((item) => ({
           item,
           searchText: buildSearchText(item),
         }));
         indexRef.current = index;
+        setError(false);
         // Honour a query typed while the roster was loading (F2), not the full list.
         setCandidates(filterLocal(index, queryRef.current));
       } catch (err: unknown) {
         if ((err as Error)?.name === 'AbortError' || ctrl.signal.aborted) return;
         indexRef.current = [];
         setCandidates([]);
+        setError(true);
       } finally {
         if (!ctrl.signal.aborted) setLoading(false);
       }
@@ -108,5 +135,5 @@ export function useOrgSearch(): UseOrgSearchResult {
     setCandidates(filterLocal(indexRef.current, q));
   }, []);
 
-  return { candidates, loading, query, search };
+  return { candidates, loading, query, search, error, retry: load };
 }

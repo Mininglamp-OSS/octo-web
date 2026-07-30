@@ -283,6 +283,23 @@ describe('auth-header interceptor', () => {
     expect(config.headers['Accept-Language']).toBeTruthy();
   });
 
+  it('reads the LATEST host X-Space-Id at request time, not a value captured earlier (F3)', () => {
+    // The org-members fetch is scoped only by this header, so a host space switch
+    // between two requests must be reflected — the interceptor reads
+    // WKApp.shared.currentSpaceId on each call rather than closing over it.
+    const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
+    const onRequest = requestUse.mock.calls[0][0];
+    const original = WKApp.shared.currentSpaceId;
+    try {
+      WKApp.shared.currentSpaceId = 'space-A';
+      expect(onRequest({ headers: {} }).headers['X-Space-Id']).toBe('space-A');
+      WKApp.shared.currentSpaceId = 'space-B';
+      expect(onRequest({ headers: {} }).headers['X-Space-Id']).toBe('space-B');
+    } finally {
+      WKApp.shared.currentSpaceId = original;
+    }
+  });
+
   it('logs out on a 401 from a normal drive API', async () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;

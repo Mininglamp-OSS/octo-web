@@ -72,6 +72,8 @@ beforeEach(() => {
     loading: false,
     query: '',
     search: vi.fn(),
+    error: false,
+    retry: vi.fn(),
   }));
   vi.mocked(useMembers).mockReturnValue({
     members: [],

@@ -16,6 +16,19 @@
   font-size: 13px;
 }
 
+.drive-org__error {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drive-org__retry {
+  border: none;
+  background: transparent;
+  color: var(--semi-color-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
 .drive-org__row {
   display: flex;
   align-items: center;

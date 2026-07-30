@@ -121,6 +121,8 @@
     "searchPlaceholder": "Search by name / account",
     "noResult": "No matches",
     "hint": "Type to search organization members",
+    "loadFailed": "Failed to load members",
+    "retry": "Retry",
     "joined": "Joined"
   },
   "upload": {

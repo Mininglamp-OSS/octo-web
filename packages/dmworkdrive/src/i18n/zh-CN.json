@@ -121,6 +121,8 @@
     "searchPlaceholder": "搜索姓名 / 账号",
     "noResult": "无匹配结果",
     "hint": "输入关键词搜索组织成员",
+    "loadFailed": "成员加载失败",
+    "retry": "重试",
     "joined": "已加入"
   },
   "upload": {

@@ -45,6 +45,8 @@ function stub(candidates: OrgCandidate[], over: Partial<ReturnType<typeof useOrg
     loading: false,
     query: '',
     search: vi.fn(),
+    error: false,
+    retry: vi.fn(),
     ...over,
   });
 }
@@ -172,6 +174,79 @@ describe('OrgPickerModal', () => {
     // empty search fired for the new space rather than keeping Space A results.
     expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(true);
     expect(search.mock.calls.length).toBeGreaterThan(searchCallsBeforeSwitch);
+    expect(search).toHaveBeenLastCalledWith('');
+  });
+
+  it('shows an explicit load-failure state with a retry action (not the empty hint)', () => {
+    stub([], { error: true });
+    const { getByText, queryByText } = render(
+      <OrgPickerModal visible onClose={() => {}} onConfirm={() => {}} />,
+    );
+    expect(getByText('drive.org.loadFailed')).toBeInTheDocument();
+    expect(getByText('drive.org.retry')).toBeInTheDocument();
+    // A failure must NOT read as an ordinary empty roster / no-match.
+    expect(queryByText('drive.org.hint')).toBeNull();
+    expect(queryByText('drive.org.noResult')).toBeNull();
+  });
+
+  it('clicking retry re-runs the roster load', () => {
+    const retry = vi.fn();
+    stub([], { error: true, retry });
+    const { getByText, click } = render(
+      <OrgPickerModal visible onClose={() => {}} onConfirm={() => {}} />,
+    );
+    // Mounting visible+error already auto-retried once; the button adds one more.
+    const before = retry.mock.calls.length;
+    click(getByText('drive.org.retry'));
+    expect(retry.mock.calls.length).toBe(before + 1);
+  });
+
+  it('auto-retries a failed roster when reopened (hidden→visible)', () => {
+    const retry = vi.fn();
+    const search = vi.fn();
+    stub([], { error: true, retry, search });
+
+    function Wrapper() {
+      const [visible, setVisible] = React.useState(false);
+      return (
+        <>
+          <button aria-label="__show__" onClick={() => setVisible(true)}>
+            show
+          </button>
+          <OrgPickerModal visible={visible} onClose={() => {}} onConfirm={() => {}} />
+        </>
+      );
+    }
+
+    const { getByRole, click } = render(<Wrapper />);
+    expect(retry).not.toHaveBeenCalled();
+    click(getByRole('button', { name: '__show__' }));
+    // Reopening a failed picker retries the fetch; it does not fall back to a
+    // local-only search('') reset.
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it('never re-fetches a good cache on reopen — only resets the local filter', () => {
+    const retry = vi.fn();
+    const search = vi.fn();
+    stub([{ uid: 'u1', name: 'Alice' }], { error: false, retry, search });
+
+    function Wrapper() {
+      const [visible, setVisible] = React.useState(false);
+      return (
+        <>
+          <button aria-label="__show__" onClick={() => setVisible(true)}>
+            show
+          </button>
+          <OrgPickerModal visible={visible} onClose={() => {}} onConfirm={() => {}} />
+        </>
+      );
+    }
+
+    const { getByRole, click } = render(<Wrapper />);
+    click(getByRole('button', { name: '__show__' }));
+    expect(retry).not.toHaveBeenCalled();
     expect(search).toHaveBeenLastCalledWith('');
   });
 });

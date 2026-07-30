@@ -179,4 +179,73 @@ describe('useOrgSearch', () => {
     expect(result.current.candidates).toEqual([cand('u1', '张三')]);
     unmount();
   });
+
+  // ── F1: load-failure state + retry ─────────────────────────────────────────
+
+  it('sets error and clears the cache when the roster load fails', async () => {
+    vi.mocked(api.listOrgMembers).mockRejectedValueOnce(new Error('network down'));
+    const { result, unmount } = renderHook(() => useOrgSearch());
+
+    await waitFor(() => expect(result.current.error).toBe(true));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.candidates).toEqual([]);
+    unmount();
+  });
+
+  it('retry() reloads after a failure and recovers the roster on success', async () => {
+    vi.mocked(api.listOrgMembers).mockRejectedValueOnce(new Error('network down'));
+    const { result, unmount } = renderHook(() => useOrgSearch());
+    await waitFor(() => expect(result.current.error).toBe(true));
+
+    vi.mocked(api.listOrgMembers).mockResolvedValueOnce(resp([cand('u1', 'Alice')]));
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.candidates).toEqual([cand('u1', 'Alice')]));
+    expect(result.current.error).toBe(false);
+    expect(api.listOrgMembers).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
+  it('an empty-but-successful roster is not an error (distinct from a failure)', async () => {
+    vi.mocked(api.listOrgMembers).mockResolvedValueOnce(resp([]));
+    const { result, unmount } = renderHook(() => useOrgSearch());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe(false);
+    expect(result.current.candidates).toEqual([]);
+    unmount();
+  });
+
+  // ── F2: truncation hard check (total must equal delivered count) ────────────
+
+  it('treats a truncated roster (total > candidates.length) as a load error and caches nothing', async () => {
+    // Server-side page cap: claims 5 members but only delivered 2.
+    vi.mocked(api.listOrgMembers).mockResolvedValueOnce({
+      candidates: [cand('u1', 'Alice'), cand('u2', 'Bob')],
+      total: 5,
+    });
+    const { result, unmount } = renderHook(() => useOrgSearch());
+
+    await waitFor(() => expect(result.current.error).toBe(true));
+    expect(result.current.candidates).toEqual([]);
+    // Nothing cached: a keystroke still surfaces nothing (no partial roster).
+    act(() => result.current.search('ali'));
+    expect(result.current.candidates).toEqual([]);
+    unmount();
+  });
+
+  it('recovers from a truncated response on retry when the full roster arrives', async () => {
+    vi.mocked(api.listOrgMembers).mockResolvedValueOnce({
+      candidates: [cand('u1', 'Alice')],
+      total: 3,
+    });
+    const { result, unmount } = renderHook(() => useOrgSearch());
+    await waitFor(() => expect(result.current.error).toBe(true));
+
+    vi.mocked(api.listOrgMembers).mockResolvedValueOnce(
+      resp([cand('u1', 'Alice'), cand('u2', 'Bob'), cand('u3', 'Carol')]),
+    );
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.candidates.length).toBe(3));
+    expect(result.current.error).toBe(false);
+    unmount();
+  });
 });
