@@ -424,6 +424,7 @@
     "clearAnchor": "取消定位",
     "placeholder": "写下评论…",
     "send": "发送",
+    "readOnlyHint": "你只有只读权限，无法评论。",
     "handleWithAI": "立即处理",
     "anonymous": "匿名",
     "agentInstructionTitle": "让 AI 处理评论：{{request}} (doc {{slug}} · {{target}})"
@@ -505,8 +506,18 @@
   },
   "role": {
     "reader": "只读",
+    "commenter": "可评论",
     "writer": "可编辑",
     "admin": "管理员"
+  },
+  "ai": {
+    "undo": "撤销本次修改",
+    "undoConfirm": "确定撤销本次 AI 修改？将发布一个恢复到修改前内容的新版本。",
+    "undoConflict": "已有后续修改，不能直接撤销；请查看版本差异。",
+    "undoSuccess": "已在新版本中撤销本次 AI 修改。"
+  },
+  "permission": {
+    "changed": "你对该文档的权限已变化，视图已刷新。"
   },
   "share": {
     "title": "链接分享范围",

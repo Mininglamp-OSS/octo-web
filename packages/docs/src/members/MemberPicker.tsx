@@ -4,7 +4,7 @@ import { fetchAllSpaceMembers, fetchMyBots, t, type SpaceMemberLite } from '../o
 import { colorFromId } from '../awareness/presence.ts'
 import { sortPickerMembers } from './sort.ts'
 
-const DEFAULT_ROLES: Role[] = ['reader', 'writer', 'admin']
+const DEFAULT_ROLES: Role[] = ['reader', 'commenter', 'writer', 'admin']
 
 /** First glyph of a name for the fallback avatar (uppercased; '?' when empty). */
 function initial(name: string): string {

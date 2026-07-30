@@ -21,8 +21,9 @@ interface ListAccessRequestsResult {
   items: AccessRequest[]
 }
 
-/** Grantable roles when approving — reader/writer only (mirrors forward-grant, AC-3/AC-16). */
-export type AccessRequestRole = 'reader' | 'writer'
+/** Grantable roles when approving — reader/commenter/writer (no admin; four-role redesign). Mirrors
+ *  the docs-backend access-request approve contract (parseReqRole: reader|commenter|writer). */
+export type AccessRequestRole = 'reader' | 'commenter' | 'writer'
 
 /** Distinct marker so the UI can grey the button "already requested" instead of erroring. */
 export class AccessRequestConflictError extends Error {
@@ -76,5 +77,5 @@ export async function denyAccessRequest(docId: string, requestId: string): Promi
 
 /** Narrowing helper for callers that want to keep `Role` and `AccessRequestRole` in sync. */
 export function isAccessRequestRole(role: Role): role is Role & AccessRequestRole {
-  return role === 'reader' || role === 'writer'
+  return role === 'reader' || role === 'commenter' || role === 'writer'
 }

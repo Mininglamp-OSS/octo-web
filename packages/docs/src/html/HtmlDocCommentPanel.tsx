@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { canForwardToChat, openDocForward, t } from '../octoweb/index.ts'
+import type { Role } from '../auth/roles.ts'
 import { avatarUrlForUid } from './htmlAvatar.ts'
 import {
   createComment,
@@ -26,10 +27,13 @@ import { buildAgentInstruction, truncateAnchorText, type AgentInstructionDoc } f
 export interface HtmlDocCommentPanelProps {
   docId: string
   space: string
-  role?: string
-  /** Backend-authoritative authorship (window.__ODOC_CAP__.isAuthor). Read-only viewers must not
-   *  see the "让 AI 处理" entry at all — it is an author-only forward to chat, not a viewer action. */
-  isAuthor?: boolean
+  /** Backend-resolved role (may be null while resolving). Kept for context / future gating. */
+  role?: Role | null
+  /** commenter+ may compose root comments, 划词评论 and replies. reader is strictly read-only:
+   *  the list still renders, but textarea / send / reply / selection-target controls are hidden. */
+  mayComment?: boolean
+  /** writer/admin may forward a thread to the AI (“让 AI 处理”). reader/commenter never see it. */
+  mayEdit?: boolean
   slug: string
   /** Route selector used for listing comments (`latest` or `vN`). */
   listVersion: string
@@ -112,7 +116,8 @@ function CommentMeta({ author, createdAt }: { author?: OctoDocAuthor | null; cre
 export function HtmlDocCommentPanel({
   docId,
   space,
-  isAuthor,
+  mayComment = false,
+  mayEdit = false,
   slug,
   listVersion,
   mutationVersion,
@@ -125,6 +130,10 @@ export function HtmlDocCommentPanel({
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Per-thread reply state (commenter+): only one open reply box at a time.
+  const [replyingToId, setReplyingToId] = useState<string | null>(null)
+  const [replyDraft, setReplyDraft] = useState('')
+  const [replyBusy, setReplyBusy] = useState(false)
 
   const reload = useCallback(async () => {
     try {
@@ -139,13 +148,21 @@ export function HtmlDocCommentPanel({
     void reload()
   }, [reload])
 
-  async function submit() {
-    if (draft.trim() === '') return
+  // A concrete positive integer version is required for every mutation (PR #1096 contract:
+  // list may use `latest`, mutations must target a concrete version). Shared by root + reply.
+  function requireMutationVersion(): number | null {
     const version = mutationVersion
     if (typeof version !== 'number' || !Number.isInteger(version) || version <= 0) {
       setError(t('docs.comment.errorVersion'))
-      return
+      return null
     }
+    return version
+  }
+
+  async function submit() {
+    if (!mayComment || draft.trim() === '') return
+    const version = requireMutationVersion()
+    if (version == null) return
     setBusy(true)
     try {
       await createComment(slug, {
@@ -160,6 +177,38 @@ export function HtmlDocCommentPanel({
       setError(t('docs.state.error'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  function startReply(threadId: string) {
+    setReplyingToId(threadId)
+    setReplyDraft('')
+  }
+
+  function cancelReply() {
+    setReplyingToId(null)
+    setReplyDraft('')
+  }
+
+  async function submitReply(thread: OctoDocCommentThread) {
+    if (!mayComment || replyDraft.trim() === '') return
+    const version = requireMutationVersion()
+    if (version == null) return
+    setReplyBusy(true)
+    try {
+      // A reply carries parentId and NO anchor (contract is exclusive; the data layer enforces it).
+      await createComment(slug, {
+        text: replyDraft.trim(),
+        version,
+        parentId: thread.id,
+      })
+      cancelReply()
+      await reload()
+    } catch {
+      // Keep the reply text so the user can retry.
+      setError(t('docs.state.error'))
+    } finally {
+      setReplyBusy(false)
     }
   }
 
@@ -213,7 +262,41 @@ export function HtmlDocCommentPanel({
                   <p className="octo-html-doc-comment-reply-text">{r.text}</p>
                 </div>
               ))}
-              {isAuthor && (
+              {/* Reply (commenter+): inline composer under the thread. reader never sees it. */}
+              {mayComment && replyingToId === thread.id ? (
+                <div className="octo-html-doc-comment-reply-compose">
+                  <textarea
+                    className="octo-comment-input"
+                    value={replyDraft}
+                    placeholder={t('docs.comment.replyPlaceholder')}
+                    onChange={(e) => setReplyDraft(e.target.value)}
+                  />
+                  <div className="octo-html-doc-comment-reply-actions">
+                    <button
+                      type="button"
+                      className="octo-doc-primary-btn"
+                      disabled={replyBusy || replyDraft.trim() === ''}
+                      onClick={() => void submitReply(thread)}
+                    >
+                      {t('docs.comment.reply')}
+                    </button>
+                    <button type="button" className="octo-tb-btn" onClick={cancelReply}>
+                      {t('docs.comment.cancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                mayComment && (
+                  <button
+                    type="button"
+                    className="octo-tb-btn octo-html-doc-comment-reply-btn"
+                    onClick={() => startReply(thread.id)}
+                  >
+                    {t('docs.comment.reply')}
+                  </button>
+                )
+              )}
+              {mayEdit && (
                 <button
                   type="button"
                   className="octo-html-doc-comment-ai octo-doc-primary-btn"
@@ -229,31 +312,39 @@ export function HtmlDocCommentPanel({
         })}
       </ul>
 
-      <div className="octo-html-doc-comments-compose">
-        <div className="octo-html-doc-comments-target" data-testid="pending-anchor">
-          {pendingAnchor ? (
-            <>
-              <span>
-                {t('docs.comment.targetAnchor')}: {anchorLabel(pendingAnchor)}
-              </span>
-              <button type="button" className="octo-tb-btn octo-html-doc-comments-clear" onClick={onClearPendingAnchor}>
-                {t('docs.comment.clearAnchor')}
-              </button>
-            </>
-          ) : (
-            <span>{t('docs.comment.targetDoc')}</span>
-          )}
+      {/* Composer (commenter+): reader is strictly read-only — the list above is enough, and the
+          textarea / send / selection-target block is hidden entirely. */}
+      {mayComment ? (
+        <div className="octo-html-doc-comments-compose">
+          <div className="octo-html-doc-comments-target" data-testid="pending-anchor">
+            {pendingAnchor ? (
+              <>
+                <span>
+                  {t('docs.comment.targetAnchor')}: {anchorLabel(pendingAnchor)}
+                </span>
+                <button type="button" className="octo-tb-btn octo-html-doc-comments-clear" onClick={onClearPendingAnchor}>
+                  {t('docs.comment.clearAnchor')}
+                </button>
+              </>
+            ) : (
+              <span>{t('docs.comment.targetDoc')}</span>
+            )}
+          </div>
+          <textarea
+            className="octo-comment-input"
+            value={draft}
+            placeholder={t('docs.comment.placeholder')}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button type="button" className="octo-doc-primary-btn" disabled={busy || draft.trim() === ''} onClick={submit}>
+            {t('docs.comment.send')}
+          </button>
         </div>
-        <textarea
-          className="octo-comment-input"
-          value={draft}
-          placeholder={t('docs.comment.placeholder')}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button type="button" className="octo-doc-primary-btn" disabled={busy || draft.trim() === ''} onClick={submit}>
-          {t('docs.comment.send')}
-        </button>
-      </div>
+      ) : (
+        <p className="octo-html-doc-comments-readonly" role="note">
+          {t('docs.comment.readOnlyHint')}
+        </p>
+      )}
     </aside>
   )
 }

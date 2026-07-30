@@ -22,7 +22,7 @@ import { getDoc, getUserName } from '../pages/docsApi.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
 import { avatarUrlForUid } from './htmlAvatar.ts'
-import { canManage, type Role } from '../auth/roles.ts'
+import { canComment, canEdit, canManage, isRole, type Role } from '../auth/roles.ts'
 import { useAccessRequests } from '../access-request/useAccessRequests.ts'
 import { buildDocLink } from '../forward/link.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
@@ -228,7 +228,11 @@ export function HtmlDocView({
   // the slug/initial and forward授权 stays greyed, without crashing.
   const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
   const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
-  const [role, setRole] = useState<Role | null>(null)
+  // Backend-resolved role (docs-backend getDoc → resolveRole). Renamed from `role` to make the
+  // distinction from the props.role explicit. null = still resolving or a fail-soft 403/404 miss;
+  // all write UI stays closed until it settles (fail closed). An unknown/unexpected role string is
+  // rejected by isRole() and left as null rather than trusted.
+  const [resolvedRole, setResolvedRole] = useState<Role | null>(null)
   useEffect(() => {
     let cancelled = false
     // standalone /d/:docId mounts before the space is restored, so the request interceptor injects
@@ -244,7 +248,8 @@ export function HtmlDocView({
         if (cancelled) return
         if (typeof m?.ownerId === 'string' && m.ownerId) setOwnerId(m.ownerId)
         if (typeof m?.createdAt === 'string' && m.createdAt) setCreatedAt(m.createdAt)
-        if (m?.role) setRole(m.role)
+        // Fail closed on an unknown role string: only a recognised four-role value is trusted.
+        if (isRole(m?.role)) setResolvedRole(m.role)
       })
       .catch(() => {
         /* fail-soft: creator/created/role stay undefined; header uses fallbacks, canGrant=false */
@@ -303,7 +308,12 @@ export function HtmlDocView({
   // grants-side hiding, so a docs-backend admin who is not the author never sees a guaranteed-403
   // affordance whose backend is octo-doc /v1/docs/{slug} (author-only).
   const creatorUid = ownerId
-  const canManageBackend = role != null && canManage(role)
+  // Centralised capability derivation from the backend-resolved role (fail closed while null).
+  // These are the single seam every write affordance gates on — never viewer-uid vs __ODOC__.
+  const mayComment = resolvedRole != null && canComment(resolvedRole)
+  const mayEdit = resolvedRole != null && canEdit(resolvedRole)
+  const mayManage = resolvedRole != null && canManage(resolvedRole)
+  const canManageBackend = mayManage
   const canOpenPanel = isAuthor || canManageBackend
   const pendingAccess = useAccessRequests(docId, canManageBackend)
   // Browser-openable address for forwarding this doc to chat. Build the PATH-style standalone
@@ -320,16 +330,16 @@ export function HtmlDocView({
   // against POST /docs/{docId}/forward-grant. Early-return while role is still loading so we never
   // send canGrant=false before resolveRole has spoken (mirrors EditorShell's `if (!role) return`).
   const doForward = useCallback(() => {
-    if (!canForward || !role) return
+    if (!canForward || !resolvedRole) return
     startDocForward({
       docId,
       title: headerTitle,
-      role,
+      role: resolvedRole,
       currentUid: getCurrentUid(),
       ownerId,
       space,
     })
-  }, [canForward, docId, headerTitle, role, ownerId, space])
+  }, [canForward, docId, headerTitle, resolvedRole, ownerId, space])
 
   const handleDeleted = useCallback(
     (id: string) => {
@@ -418,6 +428,8 @@ export function HtmlDocView({
   )
 
   const onFrameSelectionChange = useCallback(() => {
+    // Only a commenter+ may lift a selection anchor; a reader's selection is never actionable.
+    if (!mayComment) return
     const doc = frameRef.current?.contentDocument
     const body = doc?.body
     const sel = doc?.getSelection?.() ?? doc?.defaultView?.getSelection?.() ?? null
@@ -425,7 +437,7 @@ export function HtmlDocView({
     if (!body.contains(sel.getRangeAt(0).commonAncestorContainer)) return
     const anchor = buildAnchorFromSelection(sel)
     if (anchor) setPendingAnchor(anchor)
-  }, [])
+  }, [mayComment])
 
   const cleanupFrameSelectionWatcher = useCallback(() => {
     selectionDocRef.current?.removeEventListener('selectionchange', onFrameSelectionChange)
@@ -464,6 +476,16 @@ export function HtmlDocView({
       cleanupFrameSelectionWatcher()
     }
   }, [cleanupFrameSelectionWatcher, state.status])
+
+  // A runtime downgrade to reader (mayComment=false) or a switch to code mode must drop any
+  // pending selection anchor and stop watching selections — code mode has no submittable anchor
+  // and a reader must never carry one into a (now hidden) composer.
+  useEffect(() => {
+    if (!mayComment || mode === 'code') {
+      setPendingAnchor(null)
+      cleanupFrameSelectionWatcher()
+    }
+  }, [mayComment, mode, cleanupFrameSelectionWatcher])
 
   useEffect(() => {
     return () => {
@@ -531,7 +553,7 @@ export function HtmlDocView({
               surface, e.g. standalone /d/) AND on role (mirrors EditorShell.tsx role && canForward:
               while role is unresolved — getDoc 404 fail-soft or still loading — the button hides
               instead of rendering a silent no-op the doForward guard would swallow). */}
-          {role && canForward && (
+          {resolvedRole && canForward && (
             <button
               type="button"
               className="octo-tb-btn octo-doc-forward-btn"
@@ -580,7 +602,7 @@ export function HtmlDocView({
               // Twin of the toolbar Forward at :579 — same `role && canForward` gate so both
               // affordances hide together when role is unresolved (getDoc 404 fail-soft), instead of
               // leaving a dead menu row that doForward's role guard would swallow.
-              ...(role && canForward
+              ...(resolvedRole && canForward
                 ? [
                     {
                       key: 'forward',
@@ -640,7 +662,7 @@ export function HtmlDocView({
               creatorUid={creatorUid}
               onClose={() => setMembersOpen(false)}
               docId={docId}
-              role={role}
+              role={resolvedRole}
               isAuthor={isAuthor}
               accessRequests={pendingAccess}
             />
@@ -712,7 +734,9 @@ export function HtmlDocView({
             <HtmlDocCommentPanel
               docId={docId}
               space={space}
-              isAuthor={isAuthor}
+              role={resolvedRole}
+              mayComment={mayComment}
+              mayEdit={mayEdit}
               slug={effectiveSlug}
               listVersion={viewVersion}
               mutationVersion={meta?.version}

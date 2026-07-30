@@ -424,6 +424,7 @@
     "clearAnchor": "Clear target",
     "placeholder": "Write a comment…",
     "send": "Send",
+    "readOnlyHint": "You have read-only access — commenting is disabled.",
     "handleWithAI": "Hand off to AI",
     "anonymous": "Anonymous",
     "agentInstructionTitle": "Ask AI to handle comment: {{request}} (doc {{slug}} · {{target}})"
@@ -505,8 +506,18 @@
   },
   "role": {
     "reader": "Reader",
+    "commenter": "Commenter",
     "writer": "Writer",
     "admin": "Admin"
+  },
+  "ai": {
+    "undo": "Undo this change",
+    "undoConfirm": "Undo this AI change? A new version will be published that restores the previous content.",
+    "undoConflict": "A later change already exists, so this can't be undone directly. Open the version diff to review.",
+    "undoSuccess": "The AI change was undone in a new version."
+  },
+  "permission": {
+    "changed": "Your access to this document changed. The view has been refreshed."
   },
   "share": {
     "title": "Link sharing",

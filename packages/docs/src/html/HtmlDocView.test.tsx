@@ -413,6 +413,13 @@ describe('HtmlDocView — read-only rendering', () => {
   })
 
   it('keeps a selected anchor locked when selection collapses after focusing the comment input', async () => {
+    // commenter+ so the composer + selection watcher are active (reader is read-only, no anchor).
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
     stubFetch((url) => {
       if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p data-odoc-aid="a1">selected words</p>')
@@ -434,6 +441,12 @@ describe('HtmlDocView — read-only rendering', () => {
   })
 
   it('clears the locked anchor only through the explicit target cancel action', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
     stubFetch((url) => {
       if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p data-odoc-aid="a2">clearable words</p>')
@@ -453,6 +466,12 @@ describe('HtmlDocView — read-only rendering', () => {
   })
 
   it('uses the rendered numeric version when posting from the latest route with an element anchor', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
     const spy = stubFetch((url, init) => {
       if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'new1' })
       if (url.includes('/comments')) return jsonResponse({ data: [] })
@@ -626,6 +645,11 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
   })
 
   it('lists comments for the in-page history version while mutating the rendered version', async () => {
+    // commenter+ so the composer renders (four-role redesign: reader is read-only).
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
     const spy = stubFetch((url, init) => {
       if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'new1' })
       if (url.endsWith('/v1/docs/slug-1/versions')) {

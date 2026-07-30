@@ -119,12 +119,16 @@ function makeSheet(activeCell: { key: string; a1: string; sheetId: string } | nu
   } as unknown as CollabSheet
 }
 
-function renderPanel(sheet: CollabSheet | null, comments: UseDocComments = makeComments()) {
+function renderPanel(
+  sheet: CollabSheet | null,
+  comments: UseDocComments = makeComments(),
+  role: 'reader' | 'commenter' | 'writer' | 'admin' = 'commenter',
+) {
   return render(
     createElement(SheetCommentPanel, {
       docId: 'doc-1',
       sheet,
-      role: 'reader' as const,
+      role,
       comments,
     }),
   )
@@ -143,6 +147,12 @@ describe('SheetCommentPanel — compose entry button (XIN-1337)', () => {
     expect(entry).toBeTruthy()
     expect(entry.disabled).toBe(false)
     // …and the composer is hidden until the user clicks the entry button.
+    expect(document.querySelector('.octo-mention-composer')).toBeNull()
+  })
+
+  it('reader is read-only: the compose entry button is not rendered (four-role redesign)', () => {
+    renderPanel(makeSheet({ key: 'default!0:0', a1: 'A1', sheetId: 'default' }), makeComments(), 'reader')
+    expect(screen.queryByRole('button', { name: /docs\.comment\.commentButton/ })).toBeNull()
     expect(document.querySelector('.octo-mention-composer')).toBeNull()
   })
 

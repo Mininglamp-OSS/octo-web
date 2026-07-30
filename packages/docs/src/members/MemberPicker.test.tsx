@@ -89,13 +89,13 @@ describe('MemberPicker (Problem 1)', () => {
     expect(addBtn.disabled).toBe(true)
   })
 
-  it('offers all three roles when roles prop is omitted (rich-doc: zero regression)', async () => {
+  it('offers all four roles when roles prop is omitted (rich-doc: zero regression)', async () => {
     render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
     await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
     const options = screen.getAllByRole('option') as HTMLOptionElement[]
     // role dropdown options (the member rows use role="option" too, so filter to the <option>s).
     const roleOptions = options.filter((o) => o.tagName === 'OPTION')
-    expect(roleOptions.map((o) => o.value)).toEqual(['reader', 'writer', 'admin'])
+    expect(roleOptions.map((o) => o.value)).toEqual(['reader', 'commenter', 'writer', 'admin'])
   })
 
   it('restricts the role dropdown to a single "reader" option when roles={[\'reader\']} (HTML doc)', async () => {
@@ -115,15 +115,15 @@ describe('MemberPicker (Problem 1)', () => {
     expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'reader')
   })
 
-  it('falls back to the three default roles when roles={[]} (empty is a no-op, not a foot-gun)', async () => {
+  it('falls back to the four default roles when roles={[]} (empty is a no-op, not a foot-gun)', async () => {
     const onAdd = vi.fn()
     render(<MemberPicker space="s_1" existingUids={new Set()} roles={[]} onAdd={onAdd} />)
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
     const roleOptions = (screen.getAllByRole('option') as HTMLElement[]).filter(
       (o) => o.tagName === 'OPTION',
     ) as HTMLOptionElement[]
-    // Dropdown is non-empty (falls back to the three defaults) instead of rendering zero options.
-    expect(roleOptions.map((o) => o.value)).toEqual(['reader', 'writer', 'admin'])
+    // Dropdown is non-empty (falls back to the four defaults) instead of rendering zero options.
+    expect(roleOptions.map((o) => o.value)).toEqual(['reader', 'commenter', 'writer', 'admin'])
     // add() submits a valid Role ('writer' default), never undefined.
     fireEvent.click(screen.getByText('Ada Lovelace'))
     fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)

@@ -13,7 +13,7 @@ import {
   type Invite,
 } from './api.ts'
 
-const DEFAULT_ROLES: Role[] = ['reader', 'writer', 'admin']
+const DEFAULT_ROLES: Role[] = ['reader', 'commenter', 'writer', 'admin']
 
 /** Selectable expiry window (#A6): 1–7 days. */
 const EXPIRY_DAYS = Array.from(

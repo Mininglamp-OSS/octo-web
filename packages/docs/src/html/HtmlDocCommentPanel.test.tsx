@@ -169,6 +169,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         slug="my-slug"
         listVersion="v2"
         mutationVersion={2}
+        mayComment
         pendingAnchor={{ kind: 'text', text: 'selected words' }}
       />
     )
@@ -209,6 +210,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         slug="s"
         listVersion="latest"
         mutationVersion={mutationVersion}
+        mayComment
       />
     )
 
@@ -231,6 +233,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
         space="sp"
         slug="s"
         listVersion="v1"
+        mayComment
         pendingAnchor={{ kind: 'text', text: 'selected words' }}
         onClearPendingAnchor={onClearPendingAnchor}
       />
@@ -247,7 +250,7 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
 
   it('shows doc-level target state when there is no pending anchor', async () => {
     stubFetch(() => jsonResponse({ data: [] }))
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" mayComment />)
 
     await waitFor(() => expect(screen.getByTestId('pending-anchor')).toBeTruthy())
 
@@ -306,7 +309,7 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
         ],
       })
     )
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="the-slug" listVersion="v5" isAuthor />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="the-slug" listVersion="v5" mayEdit />)
     await waitFor(() => expect(screen.getByText('make this formal')).toBeTruthy())
 
     const btn = screen.getByText('docs.comment.handleWithAI') as HTMLButtonElement
@@ -334,7 +337,7 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
     setWKApp(wk)
 
     stubFetch(() => jsonResponse({ data: [{ id: 'c1', text: 'x', replies: [] }] }))
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" isAuthor />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" mayEdit />)
     await waitFor(() => expect(screen.getByText('x')).toBeTruthy())
 
     const btn = screen.getByText('docs.comment.handleWithAI') as HTMLButtonElement
@@ -344,17 +347,101 @@ describe('HtmlDocCommentPanel — "让 AI 处理" (trigger mode C, explicit)', (
     expect(wk.openDocForwardCalls).toHaveLength(0)
   })
 
-  it('hides "让 AI 处理" from non-authors (read-only viewers): button not rendered at all', async () => {
+  it('hides "让 AI 处理" from reader/commenter (mayEdit=false): button not rendered at all', async () => {
     stubFetch(() => jsonResponse({ data: [{ id: 'c1', text: 'viewer sees no AI btn', replies: [] }] }))
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" isAuthor={false} />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" mayEdit={false} mayComment />)
     await waitFor(() => expect(screen.getByText('viewer sees no AI btn')).toBeTruthy())
     expect(screen.queryByText('docs.comment.handleWithAI')).toBeNull()
   })
 
-  it('renders "让 AI 处理" for authors', async () => {
+  it('renders "让 AI 处理" for writer/admin (mayEdit)', async () => {
     stubFetch(() => jsonResponse({ data: [{ id: 'c1', text: 'author sees AI btn', replies: [] }] }))
-    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" isAuthor />)
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" mayEdit />)
     await waitFor(() => expect(screen.getByText('author sees AI btn')).toBeTruthy())
     expect(screen.getByText('docs.comment.handleWithAI')).toBeTruthy()
+  })
+})
+
+describe('HtmlDocCommentPanel — four-role capability gating', () => {
+  it('reader (mayComment=false): list renders, composer/send/reply hidden, read-only hint shown', async () => {
+    stubFetch(() =>
+      jsonResponse({ data: [{ id: 'c1', text: 'reader sees this thread', replies: [] }] })
+    )
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" mayComment={false} />)
+    await waitFor(() => expect(screen.getByText('reader sees this thread')).toBeTruthy())
+    // No composer textarea, no send button, no reply button.
+    expect(screen.queryByPlaceholderText('docs.comment.placeholder')).toBeNull()
+    expect(screen.queryByText('docs.comment.send')).toBeNull()
+    expect(screen.queryByText('docs.comment.reply')).toBeNull()
+    // The read-only hint replaces the composer.
+    expect(screen.getByText('docs.comment.readOnlyHint')).toBeTruthy()
+  })
+
+  it('commenter (mayComment): composer and per-thread reply button are available', async () => {
+    stubFetch(() =>
+      jsonResponse({ data: [{ id: 'c1', text: 'a thread to reply to', replies: [] }] })
+    )
+    render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" mayComment />)
+    await waitFor(() => expect(screen.getByText('a thread to reply to')).toBeTruthy())
+    expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy()
+    expect(screen.getByText('docs.comment.send')).toBeTruthy()
+    // Reply affordance present; read-only hint absent.
+    expect(screen.getByText('docs.comment.reply')).toBeTruthy()
+    expect(screen.queryByText('docs.comment.readOnlyHint')).toBeNull()
+  })
+
+  it('reply posts with parentId + concrete version and NO anchor', async () => {
+    const spy = stubFetch((url, init) => {
+      if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'r-new' })
+      return jsonResponse({ data: [{ id: 'c1', text: 'root thread', replies: [] }] })
+    })
+    render(
+      <HtmlDocCommentPanel
+        docId="d1"
+        space="sp"
+        slug="reply-slug"
+        listVersion="latest"
+        mutationVersion={7}
+        mayComment
+      />
+    )
+    await waitFor(() => expect(screen.getByText('root thread')).toBeTruthy())
+    // Open the reply composer for the thread.
+    fireEvent.click(screen.getByText('docs.comment.reply'))
+    const box = await waitFor(() => screen.getByPlaceholderText('docs.comment.replyPlaceholder'))
+    fireEvent.change(box, { target: { value: 'my reply text' } })
+    // The reply's own submit button (there are now two 'reply' labels: the toggle + submit).
+    const replyButtons = screen.getAllByText('docs.comment.reply')
+    fireEvent.click(replyButtons[replyButtons.length - 1])
+
+    await waitFor(() => {
+      const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST')
+      expect(post).toBeTruthy()
+    })
+    const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST') as unknown as [
+      string,
+      RequestInit,
+    ]
+    const body = JSON.parse(String(post[1].body))
+    expect(body).toMatchObject({ slug: 'reply-slug', text: 'my reply text', version: 7, parent_id: 'c1' })
+    expect(body.anchor).toBeUndefined()
+  })
+
+  it('reply does not POST when the mutation version is not a concrete positive integer', async () => {
+    const spy = stubFetch((url, init) => {
+      if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'r-new' })
+      return jsonResponse({ data: [{ id: 'c1', text: 'root thread', replies: [] }] })
+    })
+    render(
+      <HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="latest" mayComment />
+    )
+    await waitFor(() => expect(screen.getByText('root thread')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.comment.reply'))
+    const box = await waitFor(() => screen.getByPlaceholderText('docs.comment.replyPlaceholder'))
+    fireEvent.change(box, { target: { value: 'must not post' } })
+    const replyButtons = screen.getAllByText('docs.comment.reply')
+    fireEvent.click(replyButtons[replyButtons.length - 1])
+    expect(screen.getByRole('alert').textContent).toContain('docs.comment.errorVersion')
+    expect(spy.mock.calls.some((c) => (c[1] as RequestInit)?.method === 'POST')).toBe(false)
   })
 })

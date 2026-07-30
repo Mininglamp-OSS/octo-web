@@ -11,8 +11,9 @@
 
 import { apiClient, type ApiError } from '../octoweb/index.ts'
 
-/** Roles a forwarder may grant — reader/writer only (no commenter/admin, AC-3/AC-16). */
-export type ForwardGrantRole = 'reader' | 'writer'
+/** Roles a forwarder may grant — reader/commenter/writer (no admin; four-role redesign). The
+ *  docs-backend forward-grant route accepts exactly these three (parseGrantRole) and refuses admin. */
+export type ForwardGrantRole = 'reader' | 'commenter' | 'writer'
 
 /** Per-uid grant outcome, mapped from the HTTP status so the caller can aggregate N/M. */
 export type ForwardGrantOutcome = 'ok' | 'not_found' | 'forbidden' | 'error'

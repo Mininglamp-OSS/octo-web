@@ -10,7 +10,7 @@ import type { Role } from '../auth/roles.ts'
 import { type AccessRequestRole, isAccessRequestRole } from './api.ts'
 import type { UseAccessRequestsResult } from './useAccessRequests.ts'
 
-const DEFAULT_REQUEST_ROLES: AccessRequestRole[] = ['reader', 'writer']
+const DEFAULT_REQUEST_ROLES: AccessRequestRole[] = ['reader', 'commenter', 'writer']
 
 export function PendingRequests({
   requests,
