@@ -2659,7 +2659,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
 
-    renderVersionPreview() {
+    renderVersionPreview(hidePlainCitations = true) {
         const { t } = this.context;
         const { versionDetail, versionDetailLoading } = this.state;
         if (!this.state.showVersionDetailModal) return null;
@@ -2689,6 +2689,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             teamCitations={versionDetail.team_citations || []}
                             members={this.state.members}
                             disableTeamMemberPreview
+                            hidePlainCitations={hidePlainCitations}
                         />
                     </div>
                 ) : null}
@@ -2754,7 +2755,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 exposeSave={(fn) => { this.editorSaveFn = fn; }}
                             />
                         </div>
-                    ) : this.state.showVersionDetailModal ? this.renderVersionPreview() : (
+                    ) : this.state.showVersionDetailModal ? this.renderVersionPreview(false) : (
                         <div className="summary-detail-result-content">
                             <AbstractCallout
                                 // renderCompleted is a team view, so prefer
@@ -2893,7 +2894,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {this.renderWorkflowProgress()}
                     </div>
                 ) : this.state.showVersionDetailModal ? (
-                    this.renderVersionPreview()
+                    this.renderVersionPreview(false)
                 ) : (
                     <>
                         {!isEditing && personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
@@ -3089,7 +3090,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {/* need4：团队编辑按钮移到 more dropdown，不再在卡片内独立渲染。 */}
                     </div>
                 </div>
-                {this.state.showVersionDetailModal ? this.renderVersionPreview() : (
+                {this.state.showVersionDetailModal ? this.renderVersionPreview(true) : (
                     <div className="summary-detail-content-box">
                         <AbstractCallout abstract={detail.result.abstract} title={this.context.t("summary.detail.abstractTitle")} />
                         <CitationText

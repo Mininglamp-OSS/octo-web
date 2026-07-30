@@ -68,6 +68,28 @@ function makePage(taskId: number | string) {
     return page;
 }
 
+describe('SummaryDetailPage — 历史版本引用隐私', () => {
+    it('团队历史预览默认隐藏原始聊天引用', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            showVersionDetailModal: true,
+            versionDetailLoading: false,
+            versionDetail: {
+                result_id: 10,
+                version: 2,
+                content: 'team history [1]',
+                citations: [{ index: 1, content: 'private message' }],
+                team_citations: [],
+            },
+        };
+
+        const tree = (page as any).renderVersionPreview();
+        const citationText = collectElements(tree).find((el) => el.props?.content === 'team history [1]');
+        expect(citationText?.props.hidePlainCitations).toBe(true);
+    });
+});
+
 describe('SummaryDetailPage — 返回分享卡片所在群聊', () => {
     it('分享入口打开原总结时通知左侧列表选中同一个 task', () => {
         const page = new SummaryDetailPage({
