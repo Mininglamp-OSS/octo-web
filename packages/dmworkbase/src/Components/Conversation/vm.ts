@@ -1248,10 +1248,15 @@ export default class ConversationVM extends ProviderListener {
     async onDownArrow() {
         const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
         let onlyScroll = false
+        let latestLoadedMessage: MessageWrap | undefined
         if (conversation && conversation.lastMessage) {
             if (this.messagesOfOrigin && this.messagesOfOrigin.length > 0) {
-                const lastMessage = this.messagesOfOrigin[this.messagesOfOrigin.length - 1]
-                if (lastMessage.messageSeq >= conversation.lastMessage.messageSeq) {
+                latestLoadedMessage = this.messagesOfOrigin[this.messagesOfOrigin.length - 1]
+                const latestKnownMessageSeq = Math.max(
+                    conversation.lastMessage.messageSeq,
+                    this.lastMessage?.messageSeq || 0
+                )
+                if (latestLoadedMessage.messageSeq >= latestKnownMessageSeq) {
                     onlyScroll = true
                 }
             }
@@ -1259,6 +1264,12 @@ export default class ConversationVM extends ProviderListener {
 
         if (onlyScroll) {
             this.scrollToBottom(true)
+            this.browseToMessageSeq = Math.max(
+                this.browseToMessageSeq,
+                latestLoadedMessage?.messageSeq || 0
+            )
+            this.showScrollToBottomBtn = false
+            await this.refreshNewMsgCount()
         } else {
             return this.requestMessagesOfFirstPage(0)
         }
