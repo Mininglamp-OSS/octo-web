@@ -15,6 +15,8 @@ vi.mock("@octo/base", () => ({
   getCurrentImChannelInfo: vi.fn(),
   getCurrentImChannelSubscribers: vi.fn(),
   notifyCurrentImSubscriberChangeListeners: vi.fn(),
+  setCurrentImChannelSubscribersCache: vi.fn(),
+  SubscriberStatus: { normal: 1 },
   syncCurrentImChannelSubscribers: vi.fn(),
 }));
 
@@ -209,7 +211,10 @@ describe("group create runtime bridge", () => {
 
   it("adds subscribers directly for an existing group and refreshes member state", async () => {
     const runtime = createRuntime({
-      getCurrentChannelSubscribers: vi.fn(() => [{ uid: "owner" }]),
+      getCurrentChannelSubscribers: vi
+        .fn()
+        .mockReturnValueOnce([{ uid: "owner" }])
+        .mockReturnValueOnce([{ uid: "owner" }, { uid: "synced" }]),
     });
 
     await submitGroupCreateAction({
@@ -245,9 +250,46 @@ describe("group create runtime bridge", () => {
       expect.objectContaining({ channelID: "group-1" }),
       [
         { uid: "owner" },
-        expect.objectContaining({ uid: "alice", name: "member:alice" }),
-        expect.objectContaining({ uid: "bob", name: "member:bob" }),
+        { uid: "synced" },
+        expect.objectContaining({
+          uid: "alice",
+          name: "member:alice",
+          status: 1,
+        }),
+        expect.objectContaining({
+          uid: "bob",
+          name: "member:bob",
+          status: 1,
+        }),
       ]
+    );
+  });
+
+  it("refetches and normalizes an existing-group subscriber that is not renderable yet", async () => {
+    const runtime = createRuntime({
+      getCurrentChannelSubscribers: vi
+        .fn()
+        .mockReturnValueOnce([{ uid: "alice" }])
+        .mockReturnValueOnce([{ uid: "alice" }]),
+      fetchChannelSubscriber: vi.fn((channel, uid) =>
+        Promise.resolve({ uid, name: `member:${uid}` })
+      ),
+    });
+
+    await submitGroupCreateAction({
+      action: "addMember",
+      channel: { channelID: "group-1", channelType: ChannelTypeGroup },
+      selectedUids: ["alice"],
+      runtime,
+    });
+
+    expect(runtime.fetchChannelSubscriber).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" }),
+      "alice"
+    );
+    expect(runtime.setCurrentChannelSubscribers).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" }),
+      [expect.objectContaining({ uid: "alice", status: 1 })]
     );
   });
 

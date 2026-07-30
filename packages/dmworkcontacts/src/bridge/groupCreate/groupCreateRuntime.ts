@@ -6,6 +6,7 @@ import {
   getCurrentImChannelSubscribers,
   notifyCurrentImSubscriberChangeListeners,
   setCurrentImChannelSubscribersCache,
+  SubscriberStatus,
   syncCurrentImChannelSubscribers,
   WKApp,
 } from "@octo/base";
@@ -243,8 +244,25 @@ function activeSubscriber(subscriber: any) {
   return (
     subscriber &&
     !subscriber.isDeleted &&
-    (subscriber.status === undefined || subscriber.status === 1)
+    subscriber.status === SubscriberStatus.normal
   );
+}
+
+function normalizeFetchedSubscriber(
+  subscriber: any | undefined,
+  channel: Channel
+) {
+  if (!subscriber || subscriber.isDeleted) {
+    return undefined;
+  }
+  if (subscriber.status === undefined) {
+    subscriber.status = SubscriberStatus.normal;
+  }
+  if (subscriber.status !== SubscriberStatus.normal) {
+    return undefined;
+  }
+  subscriber.channel = channel;
+  return subscriber;
 }
 
 async function patchSubscriberCacheAfterAdd(
@@ -258,24 +276,38 @@ async function patchSubscriberCacheAfterAdd(
   }
 
   const currentSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
-  const nextSubscribers = [...currentSubscribers];
+  const uidsToFetch = Array.from(targetUids).filter((uid) => {
+    const index = currentSubscribers.findIndex(
+      (subscriber) => subscriber?.uid === uid
+    );
+    return index < 0 || !activeSubscriber(currentSubscribers[index]);
+  });
+
+  const fetchedSubscribers = (
+    await Promise.all(
+      uidsToFetch.map((uid) =>
+        runtime.fetchChannelSubscriber(channel, uid).catch(() => undefined)
+      )
+    )
+  )
+    .map((subscriber) => normalizeFetchedSubscriber(subscriber, channel))
+    .filter(Boolean);
+
+  if (fetchedSubscribers.length === 0) {
+    return false;
+  }
+
+  const latestSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
+  const nextSubscribers = [...latestSubscribers];
   let changed = false;
 
-  for (const uid of targetUids) {
+  for (const subscriber of fetchedSubscribers) {
     const index = nextSubscribers.findIndex(
-      (subscriber) => subscriber?.uid === uid
+      (item) => item?.uid === subscriber.uid
     );
     if (index >= 0 && activeSubscriber(nextSubscribers[index])) {
       continue;
     }
-
-    const subscriber = await runtime.fetchChannelSubscriber(channel, uid).catch(
-      () => undefined
-    );
-    if (!subscriber) {
-      continue;
-    }
-    subscriber.channel = channel;
     if (index >= 0) {
       nextSubscribers[index] = subscriber;
     } else {

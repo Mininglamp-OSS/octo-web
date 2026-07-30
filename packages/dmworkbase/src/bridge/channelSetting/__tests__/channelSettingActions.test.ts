@@ -19,6 +19,7 @@ import {
   type ChannelSettingActionRuntime,
 } from "../channelSettingActions";
 import { ChannelField } from "../../../Service/DataSource/DataSource";
+import { SubscriberStatus } from "../../../Service/Const";
 
 vi.mock("../../../App", () => ({
   default: {},
@@ -27,7 +28,9 @@ vi.mock("../../../App", () => ({
 vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
   deleteCurrentImChannelInfo: vi.fn(),
   fetchCurrentImChannelInfo: vi.fn(),
+  getCurrentImChannelSubscribers: vi.fn(() => []),
   notifyCurrentImSubscriberChangeListeners: vi.fn(),
+  setCurrentImChannelSubscribersCache: vi.fn(),
   syncCurrentImChannelSubscribers: vi.fn(),
 }));
 
@@ -152,7 +155,10 @@ describe("channel setting actions", () => {
 
   it("fills newly added subscribers when sync leaves the local cache incomplete", async () => {
     const runtime = createRuntime({
-      getCurrentChannelSubscribers: vi.fn(() => [{ uid: "owner" }]),
+      getCurrentChannelSubscribers: vi
+        .fn()
+        .mockReturnValueOnce([{ uid: "owner" }])
+        .mockReturnValueOnce([{ uid: "owner" }, { uid: "synced" }]),
       fetchChannelSubscriber: vi.fn((channel, uid) =>
         Promise.resolve({ uid, name: `member:${uid}` })
       ),
@@ -171,11 +177,47 @@ describe("channel setting actions", () => {
     );
     expect(runtime.setCurrentChannelSubscribers).toHaveBeenCalledWith(channel, [
       { uid: "owner" },
-      expect.objectContaining({ uid: "alice", name: "member:alice", channel }),
+      { uid: "synced" },
+      expect.objectContaining({
+        uid: "alice",
+        name: "member:alice",
+        channel,
+        status: SubscriberStatus.normal,
+      }),
     ]);
     expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenCalledWith(
       channel
     );
+  });
+
+  it("refetches and normalizes a cached subscriber that is not renderable yet", async () => {
+    const runtime = createRuntime({
+      getCurrentChannelSubscribers: vi
+        .fn()
+        .mockReturnValueOnce([{ uid: "alice" }])
+        .mockReturnValueOnce([{ uid: "alice" }]),
+      fetchChannelSubscriber: vi.fn((channel, uid) =>
+        Promise.resolve({ uid, name: `member:${uid}` })
+      ),
+    });
+    const channel = new Channel("group-1", ChannelTypeGroup);
+
+    await addChannelSettingSubscribers({
+      channel,
+      uids: ["alice"],
+      runtime,
+    });
+
+    expect(runtime.fetchChannelSubscriber).toHaveBeenCalledWith(
+      channel,
+      "alice"
+    );
+    expect(runtime.setCurrentChannelSubscribers).toHaveBeenCalledWith(channel, [
+      expect.objectContaining({
+        uid: "alice",
+        status: SubscriberStatus.normal,
+      }),
+    ]);
   });
 
   it("does not refresh members when adding subscribers fails", async () => {

@@ -13,7 +13,7 @@ import {
   updateChannelSubscriberAttr,
   updateThread as updateThreadApi,
 } from "../../Service/ChannelSettingService";
-import { EndpointID } from "../../Service/Const";
+import { EndpointID, SubscriberStatus } from "../../Service/Const";
 import {
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
@@ -35,8 +35,11 @@ export interface ChannelSettingActionRuntime {
   deleteCurrentChannelInfo(channel: Channel): void;
   exitChannel(channel: Channel): Promise<void>;
   fetchCurrentChannelInfo(channel: Channel): Promise<any>;
-  fetchChannelSubscriber(channel: Channel, uid: string): Promise<any | undefined>;
-  getCurrentChannelSubscribers(channel: Channel): any[];
+  fetchChannelSubscriber(
+    channel: Channel,
+    uid: string
+  ): Promise<ChannelSettingSubscriber | undefined>;
+  getCurrentChannelSubscribers(channel: Channel): ChannelSettingSubscriber[];
   findConversation(channel: Channel): any | undefined;
   getLoginUid(): string | undefined;
   invokeClearChannelMessages(channel: Channel): void;
@@ -48,7 +51,10 @@ export interface ChannelSettingActionRuntime {
   saveChannel(channel: Channel, save: boolean): Promise<void>;
   showConversation(channel: Channel): void;
   notifyCurrentChannelSubscribers(channel: Channel): void;
-  setCurrentChannelSubscribers(channel: Channel, subscribers: any[]): void;
+  setCurrentChannelSubscribers(
+    channel: Channel,
+    subscribers: ChannelSettingSubscriber[]
+  ): void;
   syncCurrentChannelSubscribers(channel: Channel): Promise<any>;
   topChannel(channel: Channel, top: boolean): Promise<void>;
   transferOwner(channel: Channel, uid: string): Promise<void>;
@@ -67,6 +73,14 @@ export interface ChannelSettingActionRuntime {
     shortId: string,
     data: Record<string, any>
   ): Promise<void>;
+}
+
+interface ChannelSettingSubscriber {
+  uid?: string;
+  status?: number;
+  isDeleted?: boolean;
+  channel?: Channel;
+  [key: string]: any;
 }
 
 function defaultRuntime(): ChannelSettingActionRuntime {
@@ -202,8 +216,25 @@ function activeSubscriber(subscriber: any) {
   return (
     subscriber &&
     !subscriber.isDeleted &&
-    (subscriber.status === undefined || subscriber.status === 1)
+    subscriber.status === SubscriberStatus.normal
   );
+}
+
+function normalizeFetchedSubscriber(
+  subscriber: ChannelSettingSubscriber | undefined,
+  channel: Channel
+) {
+  if (!subscriber || subscriber.isDeleted) {
+    return undefined;
+  }
+  if (subscriber.status === undefined) {
+    subscriber.status = SubscriberStatus.normal;
+  }
+  if (subscriber.status !== SubscriberStatus.normal) {
+    return undefined;
+  }
+  subscriber.channel = channel;
+  return subscriber;
 }
 
 async function patchSubscriberCacheAfterMemberMutation(
@@ -230,24 +261,38 @@ async function patchSubscriberCacheAfterMemberMutation(
     return false;
   }
 
-  const nextSubscribers = [...currentSubscribers];
+  const uidsToFetch = Array.from(targetUids).filter((uid) => {
+    const index = currentSubscribers.findIndex(
+      (subscriber) => subscriber?.uid === uid
+    );
+    return index < 0 || !activeSubscriber(currentSubscribers[index]);
+  });
+
+  const fetchedSubscribers = (
+    await Promise.all(
+      uidsToFetch.map((uid) =>
+        runtime.fetchChannelSubscriber(channel, uid).catch(() => undefined)
+      )
+    )
+  )
+    .map((subscriber) => normalizeFetchedSubscriber(subscriber, channel))
+    .filter(Boolean) as ChannelSettingSubscriber[];
+
+  if (fetchedSubscribers.length === 0) {
+    return false;
+  }
+
+  const latestSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
+  const nextSubscribers = [...latestSubscribers];
   let changed = false;
 
-  for (const uid of targetUids) {
+  for (const subscriber of fetchedSubscribers) {
     const index = nextSubscribers.findIndex(
-      (subscriber) => subscriber?.uid === uid
+      (item) => item?.uid === subscriber.uid
     );
     if (index >= 0 && activeSubscriber(nextSubscribers[index])) {
       continue;
     }
-
-    const subscriber = await runtime.fetchChannelSubscriber(channel, uid).catch(
-      () => undefined
-    );
-    if (!subscriber) {
-      continue;
-    }
-    subscriber.channel = channel;
     if (index >= 0) {
       nextSubscribers[index] = subscriber;
     } else {
