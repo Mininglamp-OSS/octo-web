@@ -9,12 +9,19 @@
  * IM connect / channel info / messages 走 fake-provider, 不走 HTTP.
  *
  * URL 匹配约定: 用星号通配前缀 + 模块路径 (例 star-slash-common-slash-appconfig)
- * 兼容 apiClient.get 的多种前缀. 参考 loop-empty.ts 现有 handler 写法.
+ * 兼容 apiClient.get 的多种前缀.
  */
 import { http, HttpResponse } from "msw";
 
 const MOCK_UID = "e2e-user-1";
 const MOCK_SPACE_ID = "e2e-space-001";
+const MOCK_APP_CONFIG = {
+  docs_on: "0",
+  dmloop_on: "0",
+  dmpersonal_on: "0",
+  thread_on: false,
+  oidc_providers: [],
+};
 
 // Space fixture (单 space, 用户是 owner).
 const MOCK_SPACE = {
@@ -32,6 +39,12 @@ const MOCK_SPACE = {
 
 export const chatBaselineHandlers = [
   // === Common / config ===
+  http.get("*/api/v1/common/appconfig", () =>
+    HttpResponse.json(MOCK_APP_CONFIG)
+  ),
+  http.get("*/common/appconfig", () =>
+    HttpResponse.json(MOCK_APP_CONFIG)
+  ),
   // shape: { version, list: [{ key, name, url }] } - 见 packages/dmworkbase/src/Service/EmojiService.ts:30
   http.get("*/api/v1/common/emojis", () =>
     HttpResponse.json({ version: 0, list: [] })

@@ -36,7 +36,12 @@ export interface MentionRenderFlags {
  * `@member` parts with synthetic `@所有人` / `@所有AI` entries derived
  * from the three-state mention flags. Synthetic entries reuse the
  * `uid: "all"` sentinel so MarkdownContent can keep them non-clickable
- * while applying the same visual style as ordinary member mentions.
+ * while applying the broadcast text-only highlight required by #1153.
+ *
+ * GH#295 originally locked broadcast mentions as visible highlights rather
+ * than inert text. #1153 keeps that visibility but clarifies the three-level
+ * visual split: ordinary members are pill entities; broadcast mentions are
+ * pure-purple, non-interactive highlights.
  *
  * Dedup is by visible name — if the conversation already contains a
  * literal `@所有人` member part (rare; admins can rename members), the
@@ -62,8 +67,8 @@ export function buildMessageMentions(
   const all = flags.all === true || flags.all === 1;
   // Plan X: when ais flag is set, all=1 is a backward-compat artifact of the
   // server rewrite (legacy @所有人 → ais=1 + preserve all=1). Do not render
-  // the @所有人 pill from all alone when ais is present — only render it from
-  // explicit humans=1.
+  // the @所有人 highlight from all alone when ais is present — only render it
+  // from explicit humans=1.
   const highlightAll = !!flags.humans || (!flags.ais && all);
   const highlightAis = !!flags.ais;
 

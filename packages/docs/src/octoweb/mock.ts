@@ -130,12 +130,14 @@ export class MockMenusManager {
  */
 export class MockRemoteConfig implements RemoteConfigLite {
   docsOn: boolean
+  docsSearchOn: boolean
   /** Mirrors the host contract: true once the first appconfig load has resolved. */
   requestSuccess = false
   private loadListeners: Array<() => void> = []
   private changeListeners: Array<() => void> = []
   constructor(docsOn = true) {
     this.docsOn = docsOn
+    this.docsSearchOn = docsOn
   }
   addListener(cb: () => void): () => void {
     // Mirror the host: subscribing after the first load already resolved returns a noop, so a

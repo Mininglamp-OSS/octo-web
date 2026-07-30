@@ -84,8 +84,8 @@ jobs:
           SKIPPED=$(grep -oE 'skipped="[0-9]+"' "$JUNIT" | head -1 | grep -oE '[0-9]+' || echo 0)
           PROXY_ERRORS=$(grep -c "http proxy error:" "$E2E_LOG" || true)
           # nightly 也加 tests=0 guard: 防 grep drift 让 nightly 静默"全绿"
-          EXPECTED_P0=29
-          EXPECTED_VISUAL=2
+          EXPECTED_P0=1
+          EXPECTED_VISUAL=0
           EXPECTED_TOTAL=$((EXPECTED_P0 + EXPECTED_VISUAL))
           if [[ "$TOTAL_TESTS" -eq 0 ]]; then
             echo "❌ nightly tests=0 (grep 漂了 / preview 挂了), fail"

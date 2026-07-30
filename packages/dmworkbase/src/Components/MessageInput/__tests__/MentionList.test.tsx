@@ -94,6 +94,24 @@ describe("MentionList interaction mode", () => {
     expect(options[1].className).not.toContain("is-selected");
   });
 
+  it("renders bot badges with mention-list alignment classes", () => {
+    renderMentionList(vi.fn(), [
+      { uid: "uid-human", name: "Alice", icon: "avatar://alice" },
+      { uid: "uid-bot", name: "Bot Alpha", icon: "avatar://bot", isBot: true },
+    ]);
+
+    const [humanOption, botOption] = optionElements();
+    const content = botOption.querySelector(".mention-list-item-content");
+    const badge = botOption.querySelector(".ai-badge");
+
+    expect(content).not.toBeNull();
+    expect(content?.textContent).toContain("Bot Alpha");
+    expect(badge).not.toBeNull();
+    expect(badge?.classList.contains("ai-badge-small")).toBe(true);
+    expect(badge?.classList.contains("mention-list-item-ai-badge")).toBe(true);
+    expect(humanOption.querySelector(".ai-badge")).toBeNull();
+  });
+
   it("switches to mouse mode on pointer movement and uses click for mouse selection", () => {
     const command = vi.fn();
     renderMentionList(command);

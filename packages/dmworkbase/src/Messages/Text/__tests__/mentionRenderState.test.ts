@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest"
 import { getMentionRenderState } from "../mentionRenderState"
 
 describe("getMentionRenderState", () => {
-    it("renders broadcast mentions like ordinary member mentions without enabling clicks", () => {
+    it("renders broadcast mentions as non-interactive text highlights", () => {
         expect(getMentionRenderState("all")).toEqual({
-            className: "mention-entity",
+            className: "mention-highlight",
             interactive: false,
         })
     })

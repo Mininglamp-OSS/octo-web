@@ -111,6 +111,42 @@ export function resolveBoardWsUrl(collabWsUrl?: string): string {
 export const TOKEN_REFRESH_LEEWAY_MS = 30_000
 
 /**
+ * Canonical Octo Docs CLI reference URL, surfaced by the "?" onboarding help (Mininglamp-OSS/octo-docs-backend#125).
+ *
+ * The onboarding help shows a self-bind prompt an agent can paste to configure and use octo-cli;
+ * that prompt LINKS here for the full, version-sensitive command reference instead of duplicating
+ * it.
+ *
+ * Canonical location + maintenance owner (issue #125 acceptance criterion): the canonical reference
+ * IS the `octo-cli` repository (`Mininglamp-OSS/octo-cli`), whose README and `skills/octo-docs/*`
+ * ship with the CLI binary and are therefore version-accurate by construction; its maintainer is
+ * the octo-cli repo's CODEOWNERS group, which already owns every command-shape change. Deployments
+ * that host a mirrored docs site can repoint this at build time via `VITE_DOCS_CLI_REFERENCE_URL`
+ * without a code change — the default is not a placeholder.
+ *
+ * The value is scheme-guarded: only `http(s):` is accepted, so a mistyped/hostile build arg cannot
+ * turn this into a `javascript:`/`data:` link inside a trusted-looking modal (`rel="noopener
+ * noreferrer"` validates the opener, never the destination).
+ */
+const CLI_REFERENCE_URL_DEFAULT = 'https://github.com/Mininglamp-OSS/octo-cli'
+
+/**
+ * Exported for direct unit testing: `CLI_REFERENCE_URL` is resolved once at module load from a
+ * build arg, so a test can only assert the default through it and would still pass if this guard
+ * were deleted. Test the guard itself with hostile values instead.
+ */
+export function httpUrlOr(value: unknown, fallback: string): string {
+  const s = typeof value === 'string' ? value.trim() : ''
+  if (s.length === 0) return fallback
+  return /^https?:\/\//i.test(s) ? s : fallback
+}
+
+export const CLI_REFERENCE_URL = httpUrlOr(
+  import.meta.env?.VITE_DOCS_CLI_REFERENCE_URL,
+  CLI_REFERENCE_URL_DEFAULT,
+)
+
+/**
  * Feature flag for the body-font (fontFamily) toolbar entry (SCHEMA_VERSION 16).
  *
  * DEFAULT ON (boss decision 2026-07-14). This gates ONLY the toolbar's font-family selector —

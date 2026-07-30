@@ -26,6 +26,13 @@ export interface GroupCreateSpaceMember {
   robot?: boolean | number;
 }
 
+export interface GroupCreateSubscriberRecord {
+  uid?: string;
+  status?: number;
+  isDeleted?: boolean;
+  [key: string]: any;
+}
+
 export interface GroupCreateSubmitOptions {
   categoryId?: string;
   name?: string;
@@ -44,8 +51,13 @@ export interface GroupCreateRuntime {
   getAvatarUser(uid: string): string;
   getContactsList(): GroupCreateContactRecord[];
   getCurrentChannelInfo(channel: Channel): any;
-  getCurrentChannelSubscribers(channel: Channel): Array<{ uid: string }>;
+  getCurrentChannelSubscribers(channel: Channel): GroupCreateSubscriberRecord[];
   getCurrentSpaceId(): string | undefined;
+  fetchCurrentChannelInfo(channel: Channel): Promise<any>;
+  fetchChannelSubscriber(
+    channel: Channel,
+    uid: string
+  ): Promise<GroupCreateSubscriberRecord | undefined>;
   getLoginUid(): string | undefined;
   getSpaceMembers(
     spaceId: string,
@@ -56,6 +68,11 @@ export interface GroupCreateRuntime {
   showConversation(
     channel: Channel,
     options?: { fromSidebarList?: boolean }
+  ): void;
+  notifyCurrentChannelSubscribers(channel: Channel): void;
+  setCurrentChannelSubscribers(
+    channel: Channel,
+    subscribers: GroupCreateSubscriberRecord[]
   ): void;
   syncCurrentChannelSubscribers(channel: Channel): Promise<any>;
 }

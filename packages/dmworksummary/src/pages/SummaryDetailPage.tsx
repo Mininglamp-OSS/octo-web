@@ -22,6 +22,7 @@ import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
+import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
@@ -138,30 +139,31 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     declare context: React.ContextType<typeof I18nContext>;
 
     private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
+    private regenerateVoiceMode: RegenerateMode | null = null;
 
-    private handleRegenerateTopicVoice = (
+    private handleRegenerateVoiceRecordingStart = () => {
+        this.regenerateVoiceMode = this.state.regenerateMode;
+    };
+
+    private handleRegenerateInputVoice = (
         text: string,
         mode: ReplaceMode,
         savedRange?: SelectionRange
     ) => {
-        if (mode === "all") {
-            this.setState({ regenerateTopic: text.slice(0, SUMMARY_INPUT_MAX_LENGTH) });
-        } else if (mode === "selection" && savedRange) {
-            this.setState((prev) => {
-                const before = prev.regenerateTopic.slice(0, savedRange.from);
-                const after = prev.regenerateTopic.slice(savedRange.to);
-                const budget = Math.max(0, SUMMARY_INPUT_MAX_LENGTH - before.length - after.length);
-                return { regenerateTopic: before + text.slice(0, budget) + after };
-            });
-        } else {
-            this.setState((prev) => {
-                const pos = savedRange?.from ?? prev.regenerateTopic.length;
-                const before = prev.regenerateTopic.slice(0, pos);
-                const after = prev.regenerateTopic.slice(pos);
-                const budget = Math.max(0, SUMMARY_INPUT_MAX_LENGTH - before.length - after.length);
-                return { regenerateTopic: before + text.slice(0, budget) + after };
-            });
-        }
+        const regenerateMode = this.regenerateVoiceMode ?? this.state.regenerateMode;
+        this.regenerateVoiceMode = null;
+        this.setState((prev) => {
+            const field = regenerateMode === "refine" ? "refineFeedback" : "regenerateTopic";
+            return {
+                [field]: applyRegenerateVoiceInput(
+                    prev[field],
+                    text,
+                    mode,
+                    savedRange,
+                    SUMMARY_INPUT_MAX_LENGTH,
+                ),
+            } as Pick<SummaryDetailPageState, typeof field>;
+        });
     };
 
     state: SummaryDetailPageState = {
@@ -1169,11 +1171,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     handleRegenerate = () => {
         const { detail } = this.state;
         if (this.taskId == null) return;
+        this.regenerateVoiceMode = null;
         this.setState({
             showRegenerateModal: true,
-            regenerateMode: "full",
-            regenerateTopic: detail?.title || "",
+            regenerateMode: "refine",
+            regenerateTopic: detail?.topic || detail?.title || "",
+            refineFeedback: "",
         });
+    };
+
+    private hasRegenerateRefineBaseResult = () => {
+        const { detail, personalResult } = this.state;
+        return detail?.summary_mode === SummaryMode.BY_PERSON && !this.shouldOperateOnTeamSummary()
+            ? Boolean(personalResult?.id)
+            : Boolean(detail?.result_id);
+    };
+
+    private handleRegenerateModeChange = (regenerateMode: RegenerateMode) => {
+        this.setState({ regenerateMode });
     };
 
     handleRetry = async () => {
@@ -1283,7 +1298,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId || refineController.signal.aborted) return;
                     if (!refined) throw new Error(t("summary.common.operationFailed"));
                     restoreRefineDraft = null;
-                    Toast.success(t("summary.detail.refineSuccess"));
+                    Toast.success(t("summary.detail.refineSuccess", { values: { version: refined!.version ?? "" } }));
                     this.appendLocalScheduleInstruction(trimmed);
                     this.reloadScheduleAfterInstructionChange(requestTaskId);
                     this.setState((prev) => {
@@ -1367,7 +1382,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId || refineController.signal.aborted) return;
                     if (!refined) throw new Error(t("summary.common.operationFailed"));
                     restoreRefineDraft = null;
-                    Toast.success(t("summary.detail.refineSuccess"));
+                    Toast.success(t("summary.detail.refineSuccess", { values: { version: refined!.version ?? "" } }));
                     this.appendLocalScheduleInstruction(trimmed);
                     this.reloadScheduleAfterInstructionChange(requestTaskId);
                     this.setState((prev) => {
@@ -1409,6 +1424,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         detail: {
                             ...prev.detail,
                             title: trimmed || prev.detail.title,
+                            topic: trimmed || prev.detail.topic,
                             status: TaskStatus.PENDING,
                         },
                     } as Pick<SummaryDetailPageState, "showRegenerateModal" | "detail"> : { showRegenerateModal: false } as Pick<SummaryDetailPageState, "showRegenerateModal">);
@@ -1424,6 +1440,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         detail: prev.detail ? {
                             ...prev.detail,
                             title: trimmed || prev.detail.title,
+                            topic: trimmed || prev.detail.topic,
                         } : prev.detail,
                         personalResult: prev.personalResult ? {
                             ...prev.personalResult,
@@ -1554,6 +1571,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleRegenerateCancel = () => {
+        this.regenerateVoiceMode = null;
         this.setState({ showRegenerateModal: false });
     };
 
@@ -3702,6 +3720,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     className="summary-confirm"
                     centered
                     maskClosable
+                    onCancel={this.handleRegenerateCancel}
                 >
                     <div className="summary-confirm-body">
                         <div className="summary-confirm-main">
@@ -3714,18 +3733,74 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </button>
                     </div>
                     <div className="summary-regenerate-content">
+                        <div className="summary-regenerate-mode-list" role="radiogroup">
+                            {(["refine", "full"] as const).map((mode) => {
+                                const selected = this.state.regenerateMode === mode;
+                                const titleKey = mode === "refine"
+                                    ? "summary.detail.refineModeTitle"
+                                    : "summary.detail.fullRegenerateModeTitle";
+                                const descKey = mode === "refine"
+                                    ? "summary.detail.refineModeDesc"
+                                    : "summary.detail.fullRegenerateModeDesc";
+                                return (
+                                    <label
+                                        key={mode}
+                                        className={`summary-regenerate-mode${selected ? " summary-regenerate-mode--selected" : ""}`}
+                                    >
+                                        <input
+                                            type="radio"
+                                            name="summary-regenerate-mode"
+                                            value={mode}
+                                            checked={selected}
+                                            onChange={() => this.handleRegenerateModeChange(mode)}
+                                            className="summary-regenerate-mode__input"
+                                        />
+                                        <span className="summary-regenerate-mode__indicator" aria-hidden="true" />
+                                        <span>
+                                            <span className="summary-regenerate-mode__title">{t(titleKey)}</span>
+                                            <span className="summary-regenerate-mode__desc">{t(descKey)}</span>
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        <label className="summary-regenerate-input-label" htmlFor="summary-regenerate-input">
+                            {t(this.state.regenerateMode === "refine"
+                                ? "summary.detail.refineFeedbackLabel"
+                                : "summary.detail.regenerateTopicLabel")}
+                        </label>
                         <div className="summary-regenerate-textarea-wrap">
                             <textarea
+                                id="summary-regenerate-input"
                                 ref={this.regenerateTopicRef}
                                 className="summary-regenerate-textarea"
                                 rows={3}
-                                maxLength={1000}
-                                placeholder={t("summary.create.placeholder")}
-                                value={this.state.regenerateTopic}
-                                onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
+                                maxLength={SUMMARY_INPUT_MAX_LENGTH}
+                                placeholder={t(this.state.regenerateMode === "refine"
+                                    ? "summary.detail.refineFeedbackPlaceholder"
+                                    : "summary.detail.regenerateTopicPlaceholder")}
+                                value={this.state.regenerateMode === "refine"
+                                    ? this.state.refineFeedback
+                                    : this.state.regenerateTopic}
+                                onChange={(e) => this.setState(this.state.regenerateMode === "refine"
+                                    ? { refineFeedback: e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH) }
+                                    : { regenerateTopic: e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH) })}
+                            />
+                            <VoiceInputButton
+                                inputRef={this.regenerateTopicRef}
+                                onTranscribed={this.handleRegenerateInputVoice}
+                                onRecordingStart={this.handleRegenerateVoiceRecordingStart}
+                                getCurrentText={() => (this.regenerateVoiceMode ?? this.state.regenerateMode) === "refine"
+                                    ? this.state.refineFeedback
+                                    : this.state.regenerateTopic}
+                                showModeMenu
+                                size="sm"
+                                className="wk-vib--textarea-corner"
                             />
                             <span className="summary-regenerate-char-count">
-                                {this.state.regenerateTopic.length}/1000
+                                {(this.state.regenerateMode === "refine"
+                                    ? this.state.refineFeedback
+                                    : this.state.regenerateTopic).length}/{SUMMARY_INPUT_MAX_LENGTH}
                             </span>
                         </div>
                     </div>
@@ -3736,10 +3811,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <button
                             type="button"
                             className="summary-confirm-btn summary-confirm-btn--dark"
-                            disabled={this.state.regenerateSubmitting || !this.state.regenerateTopic.trim()}
+                            disabled={this.state.regenerateSubmitting || (this.state.regenerateMode === "refine" && !this.hasRegenerateRefineBaseResult()) || !(this.state.regenerateMode === "refine"
+                                ? this.state.refineFeedback.trim()
+                                : this.state.regenerateTopic.trim())}
                             onClick={this.handleRegenerateConfirm}
                         >
-                            {this.state.regenerateSubmitting ? t("summary.create.submitting") : t("summary.common.confirm")}
+                            {this.state.regenerateSubmitting
+                                ? t("summary.create.submitting")
+                                : t(this.state.regenerateMode === "refine" ? "summary.detail.refineAction" : "summary.detail.regenerate")}
                         </button>
                     </div>
                 </Modal>

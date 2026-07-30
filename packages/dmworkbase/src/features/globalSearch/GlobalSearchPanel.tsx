@@ -9,6 +9,7 @@ import TabGroup from "../../Components/GlobalSearch/tab-group";
 import TabFile from "../../Components/GlobalSearch/tab-file";
 import { Channel } from "wukongimjssdk";
 import GlobalContentSearchPanel from "../../Components/GlobalSearch/GlobalContentSearchPanel";
+import DocSearchPanel from "../../Components/GlobalSearch/DocSearchPanel";
 import GlobalSearchFilterPanel, {
   type GlobalSearchFilterApplyMeta,
 } from "../../Components/GlobalSearch/GlobalSearchFilterPanel";
@@ -21,7 +22,10 @@ import {
   type GlobalSearchDataSource,
   type GlobalSearchFilters,
 } from "../../Service/SearchTypes";
-import type { ChannelSearchItem } from "../../Service/SearchTypes";
+import type {
+  ChannelSearchItem,
+  DocSearchItem,
+} from "../../Service/SearchTypes";
 import { canLocateChannelSearchItem } from "../../bridge/channelSearch/locate";
 import WKApp from "../../App";
 import { t as translate } from "../../i18n";
@@ -48,6 +52,10 @@ export interface GlobalSearchProps {
   dataSource?: GlobalSearchDataSource;
   contentSearchEnabled?: boolean;
   onLocateContentItem?: (item: ChannelSearchItem) => void;
+  // Host-provided opener for a cloud-docs search hit (docs tab). Route/endpoint
+  // is a deployment concern; when omitted the docs tab still searches but the
+  // click is a no-op (see handleOpenDoc).
+  onOpenDoc?: (item: DocSearchItem) => void;
   initialState?: Partial<GlobalSearchState>;
 }
 
@@ -180,6 +188,25 @@ export default class GlobalSearch extends Component<
     this.props.hideModal?.();
   };
 
+  // Cloud-docs tab: open the clicked doc via the host `onOpenDoc`, which the Chat
+  // host wires to buildDocLink -> window.open in a new browser tab. We keep this
+  // search modal open (the current page is untouched) so the user can open more
+  // results in a row. When the prop is unwired (future reuse) this is a no-op
+  // plus a dev-only console hint rather than a bogus navigation.
+  handleOpenDoc = (item: DocSearchItem) => {
+    if (this.props.onOpenDoc) {
+      this.props.onOpenDoc(item);
+      return;
+    }
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[GlobalSearch] onOpenDoc not wired; cannot open cloud doc",
+        item.docId
+      );
+    }
+  };
+
   // 同时挂载所有 tab 组件，通过 display 切换可见性。
   // 避免切 tab 时 unmount 导致 <img>/VisibilityTrigger 全部重建，进而重新
   // 触发头像请求（浏览器 HTTP cache 不一定命中，网络面板会看到"全量重拉"）。
@@ -279,6 +306,25 @@ export default class GlobalSearch extends Component<
               onClick={onClickOf("file")}
             />
           )}
+        </div>
+        <div className="wk-search-tabs__panel" style={panelStyle("docs")}>
+          <DocSearchPanel
+            keyword={vm.keyword}
+            dataSource={this.globalDataSource}
+            // Gate the panel on docsOn && docsSearchOn as well as the selected
+            // tab: the tab LIST is gated in GlobalSearchVM, but selectedTabKey
+            // can stay "docs" if either flag is revoked mid-session (remote-config
+            // refresh). Without this the tab button disappears while the panel
+            // keeps querying a now-disabled feature. remoteConfig is an
+            // always-fresh singleton and the config listener force-updates
+            // this component, so the panel deactivates on the same refresh.
+            isActive={
+              currentKey === "docs" &&
+              WKApp.remoteConfig.docsOn &&
+              WKApp.remoteConfig.docsSearchOn
+            }
+            onOpenDoc={this.handleOpenDoc}
+          />
         </div>
         {showSharedFilter && (
           <aside className="wk-search-tabs__shared-filter">

@@ -8,9 +8,9 @@ incoming Webhook messages.
 - Only the Fleet issue link actually clicked by the user is handled. Plain body
   text and unrelated links preserve their existing behavior.
 - The base package parses the deep link and owns the generic panel shell. Task
-  data and the canonical Loop issue detail UI are injected by `@octo/loop`
-  through the `chatWebhookIssuePreview` endpoint, preserving dependency
-  direction.
+  data and the canonical Loop issue detail UI are injected by an enterprise
+  Loop module through the `chatWebhookIssuePreview` endpoint, preserving
+  dependency direction.
 - Width is stored independently under
   `wk-webhook-issue-preview-panel-width`. Narrow chat areas use an overlay.
 
@@ -36,11 +36,8 @@ drag/close shell lives in `ui/ResizableRightPanel`.
 - `ui/ResizableRightPanel/`: shared drag, close, overlay, and persisted-width
   shell.
 - `features/webhookMessagePreview/`: chat-side panel host.
-- `packages/dmloop/src/api/issuePreviewApi.ts`: read-only task snapshot API.
-- `packages/dmloop/src/bridge/useIssuePreview.ts`: request state and retry.
-- `packages/dmloop/src/panel/IssueDetailPage.tsx`: canonical full/detail-panel
-  renderer; snapshot mode disables mutations without changing Loop page mode.
-- `packages/dmloop/src/features/webhookIssuePreview/`: scoped snapshot adapter.
+- Enterprise Loop module: read-only task snapshot API, request state and retry,
+  canonical detail renderer, and scoped snapshot adapter.
 
 ## PR scope
 

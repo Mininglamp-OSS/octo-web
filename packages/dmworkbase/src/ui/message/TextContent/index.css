@@ -34,28 +34,28 @@
 
 /* @所有人/@频道：Figma — 纯紫色文字，无背景，不可点击 */
 .wk-msg-text-content .mention-highlight {
-  color: rgba(127, 59, 245, 1);
+  color: var(--wk-text-accent);
   font-weight: 400;
   cursor: default;
 }
 
 /* 普通用户：紫色文字 + 浅紫背景（次优先级） */
 .wk-msg-text-content .mention-entity {
-  color: #6B3DD8;
-  background-color: rgba(107, 61, 216, 0.08);
-  border-radius: 4px;
-  padding: 2px 8px;
+  color: var(--wk-text-mention-entity);
+  background-color: var(--wk-accent-tint-08);
+  border-radius: var(--wk-r-mention-entity);
+  padding: var(--wk-sp-0-5) var(--wk-sp-2);
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
 .wk-msg-text-content .mention-entity:hover {
-  background-color: rgba(107, 61, 216, 0.12);
+  background-color: var(--wk-accent-tint-12);
 }
 
 /* 降级：未解析 @ — 纯紫色文字，无背景 */
 .wk-msg-text-content .mention-fallback {
-  color: #6B3DD8;
+  color: var(--wk-text-mention-entity);
   font-weight: 400;
 }

@@ -40,12 +40,24 @@ export default class GlobalSearchVM extends ProviderListener {
         { tab: t("base.globalSearch.tab.files"), itemKey: "files" },
       ];
     }
-    return [
+    const tabs = [
       { tab: t("base.globalSearch.tab.contacts"), itemKey: "contacts" },
       { tab: t("base.globalSearch.tab.groups"), itemKey: "groups" },
       { tab: t("base.globalSearch.tab.chat"), itemKey: "messages" },
       { tab: t("base.globalSearch.tab.files"), itemKey: "files" },
     ];
+    // Cloud-docs search hits /api/v1/docs/search on the independent docs-backend.
+    // Gate on TWO flags: docsOn (the docs-backend/module is deployed at all) AND
+    // docsSearchOn (search specifically is enabled + the index is populated). The
+    // module flag alone is not enough — the search endpoint is a separate capability
+    // behind a separate switch, and lands in a separate backend PR, so a docs_on=true
+    // deployment without search would otherwise show a tab whose every query 404s
+    // into a permanent "search failed". docsSearchOn defaults false, so the tab stays
+    // hidden until ops flips docs_search_on on once search is actually ready.
+    if (WKApp.remoteConfig.docsOn && WKApp.remoteConfig.docsSearchOn) {
+      tabs.push({ tab: t("base.globalSearch.tab.docs"), itemKey: "docs" });
+    }
+    return tabs;
   }
 
   public get selectedTabKey() {

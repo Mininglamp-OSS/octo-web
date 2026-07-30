@@ -1,0 +1,63 @@
+.drive-invite__common {
+  padding-bottom: 8px;
+}
+
+.drive-invite__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drive-invite__label {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+.drive-invite__linkbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.drive-invite__list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.drive-invite__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+}
+
+.drive-invite__empty {
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+}
+
+.drive-invite__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--semi-color-fill-0);
+}
+
+.drive-invite__expiry {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+.drive-invite__orgpane {
+  padding: 16px 0;
+}
+
+.drive-invite__hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+}

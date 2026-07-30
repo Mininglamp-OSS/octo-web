@@ -155,6 +155,7 @@ describe("SkillListPage", () => {
       await vi.runOnlyPendingTimersAsync();
     });
 
+    vi.mocked(api.getCategories).mockClear();
     vi.mocked(api.getSkills).mockClear();
     fireEvent.change(screen.getByPlaceholderText(searchPlaceholder), {
       target: { value: "ci" },
@@ -166,6 +167,13 @@ describe("SkillListPage", () => {
       await vi.runOnlyPendingTimersAsync();
     });
 
+    expect(api.getCategories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: "ci",
+        tags: [],
+        signal: expect.any(AbortSignal),
+      })
+    );
     expect(api.getSkills).toHaveBeenCalledWith(
       {
         q: "ci",
@@ -184,6 +192,8 @@ describe("SkillListPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: tagFilterName }));
     const tagOption = await screen.findByRole("option", { name: "纪要" });
+    vi.mocked(api.getCategories).mockClear();
+    vi.mocked(api.getSkills).mockClear();
     fireEvent.click(tagOption);
 
     expect(
@@ -194,13 +204,34 @@ describe("SkillListPage", () => {
       "true"
     );
     expect(screen.getByText(selectedTagsText)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(api.getCategories).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: "",
+          tags: ["纪要"],
+          signal: expect.any(AbortSignal),
+        })
+      );
+      expect(api.getSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: ["纪要"] }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
+    });
 
+    vi.mocked(api.getCategories).mockClear();
     fireEvent.click(screen.getByRole("button", { name: clearFilterName }));
 
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "纪要" })).toHaveAttribute(
         "aria-selected",
         "false"
+      );
+      expect(api.getCategories).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: "",
+          tags: [],
+          signal: expect.any(AbortSignal),
+        })
       );
     });
     expect(screen.getByText(noSelectedTagsText)).toBeInTheDocument();

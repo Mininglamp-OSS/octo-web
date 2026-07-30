@@ -1,0 +1,75 @@
+.drive-org__list {
+  margin-top: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.drive-org__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+}
+
+.drive-org__empty {
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+}
+
+.drive-org__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px;
+}
+
+.drive-org__row:hover {
+  background: var(--semi-color-fill-0);
+}
+
+.drive-org__row--on {
+  background: var(--semi-color-primary-light-default);
+}
+
+.drive-org__check {
+  width: 16px;
+  flex-shrink: 0;
+  color: var(--semi-color-primary);
+}
+
+.drive-org__name {
+  font-size: 14px;
+}
+
+.drive-org__sub {
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}
+
+.drive-org__row--joined {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.drive-org__row--joined:hover {
+  background: transparent;
+}
+
+.drive-org__joined {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.drive-org__joined-hint {
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}

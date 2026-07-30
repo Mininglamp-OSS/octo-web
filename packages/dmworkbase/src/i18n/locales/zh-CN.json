@@ -38,6 +38,12 @@
   "conversationList.mentionMarker": "@我",
   "conversationList.minutesAgoShort": "{{count}}分钟",
   "conversationList.toggleThreads": "展开或收起子区",
+  "profileOnlineStatus.online": "在线",
+  "profileOnlineStatus.offline": "离线",
+  "profileOnlineStatus.justOffline": "刚刚离线",
+  "profileOnlineStatus.minutesAgo": "离线 {{count}} 分钟前",
+  "profileOnlineStatus.hoursAgo": "离线 {{count}} 小时前",
+  "profileOnlineStatus.lastOnline": "上次在线 {{time}}",
   "conversationList.typing": "正在输入",
   "chatPage.archivedThreadNotice": "该子区已归档。发送消息后，子区会恢复为活跃状态。",
   "chatPage.channelSettings": "频道设置",
@@ -1350,5 +1356,12 @@
   "secrets.error.deleteFailed": "删除失败，请重试",
   "secrets.error.copyFailed": "复制失败",
   "secrets.pasteGuard.title": "已拦截密钥粘贴",
-  "secrets.pasteGuard.content": "为避免密钥进入聊天，已拦截这次明文粘贴。点这里改用密钥管理保存。"
+  "secrets.pasteGuard.content": "为避免密钥进入聊天，已拦截这次明文粘贴。点这里改用密钥管理保存。",
+  "globalSearch.tab.docs": "云文档",
+  "globalSearch.docs.emptyHint": "输入关键词搜索云文档",
+  "globalSearch.docs.noResults": "没有找到相关云文档",
+  "globalSearch.docs.loading": "搜索中…",
+  "globalSearch.docs.searchFailed": "搜索失败，请稍后重试",
+  "globalSearch.docs.loadMore": "加载更多",
+  "globalSearch.docs.popupBlocked": "浏览器拦截了新标签页，请允许本站弹窗后重新点击该文档。"
 }

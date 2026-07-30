@@ -626,16 +626,7 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
    侧边面板布局（子区 + 文件预览共用）
    ============================================ */
 
-/* 子区打开时，设置面板贴在子区左侧（overlay 在消息区上，不占子区空间） */
-.wk-chat-content-right.wk-chat-threadpanel-open.wk-chat-channelsetting-open
-  .wk-chat-channelsetting {
-  right: var(--wk-width-thread-panel);
-}
-
-/* 设置面板为 overlay，子区+设置同时打开时消息区宽度只减去子区宽度 */
-
-/* 只有侧边面板打开时 */
-/* 子区打开时（无论设置是否开着），消息区宽度减去子区宽度 */
+/* 子区/文件预览打开时，消息区宽度减去右侧面板宽度 */
 .wk-chat-content-right.wk-chat-threadpanel-open .wk-chat-content-chat {
   width: calc(100% - var(--wk-width-thread-panel));
 }
@@ -644,9 +635,7 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
   width: calc(100% - var(--wk-width-resizable-right-panel));
 }
 
-.wk-chat-content-right.wk-chat-webhook-preview-open[
-    data-resizable-right-panel-layout="overlay"
-  ]
+.wk-chat-content-right.wk-chat-webhook-preview-open[data-resizable-right-panel-layout="overlay"]
   .wk-chat-content-chat {
   visibility: hidden;
   width: 0;
@@ -885,10 +874,4 @@ body[theme-mode="dark"] .wk-chat-popover {
 
 .wk-chat-content-right.wk-chat-summary-panel-open .wk-chat-content-chat {
   width: calc(100% - var(--wk-width-summary-panel));
-}
-
-/* 总结面板打开时，设置面板贴在总结面板左侧（对齐子区/事项让位行为，避免被遮挡） */
-.wk-chat-content-right.wk-chat-summary-panel-open.wk-chat-channelsetting-open
-  .wk-chat-channelsetting {
-  right: var(--wk-width-summary-panel);
 }

@@ -121,6 +121,9 @@
     "languageShortZh": "中文",
     "scanLogin": "QR login",
     "ssoButton": "Octo login",
+    "ssoConfigFallback": "Login configuration is temporarily unavailable. You can still use account password login.",
+    "ssoConfigLoadingSub": "Please wait. Available login methods will appear shortly.",
+    "ssoConfigLoadingTitle": "Loading login configuration",
     "ssoFlowHint": "Login and registration continue on the unified authentication page.",
     "ssoStartFailed": "Unable to start {{provider}} login",
     "welcome": "Welcome back"

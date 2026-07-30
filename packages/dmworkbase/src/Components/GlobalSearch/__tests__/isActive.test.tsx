@@ -72,6 +72,7 @@ describe("GlobalContentSearchPanel — isActive gate (source guard)", () => {
 
   it("§D shared pagination rejects stale work while disabled", () => {
     expect(paginationHookSrc).toMatch(/if\s*\(\s*!enabled\s*\|\|\s*\(cursor/);
+    // The load-next-page callback depends on exactly the stale-guard trio.
     expect(paginationHookSrc).toMatch(/\[enabled,\s*errorMessage,\s*search\]/);
   });
 });

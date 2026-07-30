@@ -2,11 +2,25 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 import commonjs from "vite-plugin-commonjs";
+import {
+  enterpriseHtmlHeadPlugin,
+  enterpriseModulesPlugin,
+  parseEnterpriseFsAllow,
+  readEnterpriseHtmlHead,
+} from "./vite.enterpriseHtml";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const apiUrl = env.VITE_API_URL;
   const isElectronBuild = env.VITE_ELECTRON_BUILD === "true";
+  const enterpriseHtmlHead = readEnterpriseHtmlHead(
+    env.VITE_ENTERPRISE_HTML_HEAD_PATH,
+    process.cwd()
+  );
+  const enterpriseFsAllow = parseEnterpriseFsAllow(
+    env.VITE_ENTERPRISE_FS_ALLOW,
+    process.cwd()
+  );
 
   // 提取 origin
   let apiOrigin: string;
@@ -50,6 +64,8 @@ export default defineConfig(({ mode }) => {
           ];
         },
       },
+      enterpriseHtmlHeadPlugin(enterpriseHtmlHead),
+      enterpriseModulesPlugin(env.VITE_ENTERPRISE_MODULES_ENTRY, process.cwd(), enterpriseFsAllow),
       // TODO: remove after all require() calls are migrated to import (chore/migrate-require-to-import)
       commonjs(),
       react(),
@@ -138,7 +154,9 @@ export default defineConfig(({ mode }) => {
             env.VITE_SUMMARY_API_URL || apiOrigin || "http://localhost:8080",
           changeOrigin: true,
           secure: false,
-          rewrite: (path: string) => path.replace(/^\/summary/, ""),
+          rewrite: env.VITE_SUMMARY_API_URL
+            ? (path: string) => path.replace(/^\/summary/, "")
+            : undefined,
         },
         // Marketplace (MCP catalog) API — must be before the general /api/ rule.
         // octo-marketplace serves its own /api/v1/*; the /market prefix is
@@ -172,6 +190,14 @@ export default defineConfig(({ mode }) => {
         },
         "/api/": {
           target: apiOrigin,
+          changeOrigin: true,
+          secure: false,
+        },
+        // Drive service API — drive serves /v1/drive/* natively; route it to
+        // the drive service. MUST precede the general /v1/ rule below (vite
+        // matches proxy keys in insertion order, first prefix wins).
+        "/v1/drive": {
+          target: env.VITE_DRIVE_API_URL || apiOrigin,
           changeOrigin: true,
           secure: false,
         },

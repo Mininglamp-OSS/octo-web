@@ -38,6 +38,12 @@
   "conversationList.mentionMarker": "@me",
   "conversationList.minutesAgoShort": "{{count}}m",
   "conversationList.toggleThreads": "Expand or collapse threads",
+  "profileOnlineStatus.online": "Online",
+  "profileOnlineStatus.offline": "Offline",
+  "profileOnlineStatus.justOffline": "Just went offline",
+  "profileOnlineStatus.minutesAgo": "Offline {{count}} min ago",
+  "profileOnlineStatus.hoursAgo": "Offline {{count}} hr ago",
+  "profileOnlineStatus.lastOnline": "Last online {{time}}",
   "conversationList.typing": "typing",
   "chatPage.archivedThreadNotice": "This thread is archived. Sending a message will restore it to active status.",
   "chatPage.channelSettings": "Channel settings",
@@ -1350,5 +1356,12 @@
   "secrets.error.deleteFailed": "Delete failed, please try again",
   "secrets.error.copyFailed": "Copy failed",
   "secrets.pasteGuard.title": "Secret paste blocked",
-  "secrets.pasteGuard.content": "We blocked pasting a possible API key into chat to keep it out of your messages. Click here to save it in Secrets instead."
+  "secrets.pasteGuard.content": "We blocked pasting a possible API key into chat to keep it out of your messages. Click here to save it in Secrets instead.",
+  "globalSearch.tab.docs": "Cloud Docs",
+  "globalSearch.docs.emptyHint": "Type a keyword to search cloud docs",
+  "globalSearch.docs.noResults": "No related cloud docs found",
+  "globalSearch.docs.loading": "Searching…",
+  "globalSearch.docs.searchFailed": "Search failed, please try again",
+  "globalSearch.docs.loadMore": "Load more",
+  "globalSearch.docs.popupBlocked": "Your browser blocked the new tab. Allow pop-ups for this site, then click the document again."
 }
