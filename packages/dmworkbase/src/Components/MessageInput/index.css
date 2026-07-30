@@ -451,10 +451,17 @@
 
 /* Mention 样式 */
 .wk-messageinput-editor .mention {
-  color: var(--wk-color-theme);
+  color: var(--wk-text-accent, var(--wk-color-theme));
   font-weight: 600;
+  background-color: var(--wk-accent-tint-08, var(--wk-bg-selected));
+  border-radius: var(--wk-r-xs);
+  padding: 0 var(--wk-sp-1);
+}
+
+.wk-messageinput-editor .mention[data-id="-1"],
+.wk-messageinput-editor .mention[data-id="-2"],
+.wk-messageinput-editor .mention[data-id="-3"] {
   background-color: transparent;
-  border-radius: 0.25rem;
   padding: 0 0.125rem;
 }
 
