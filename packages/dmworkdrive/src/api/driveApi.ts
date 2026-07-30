@@ -579,6 +579,11 @@ export async function acceptInvite(token: string): Promise<AcceptInviteResult> {
  * request interceptor injects (the octo space id, NOT the drive `space_id`);
  * drive proxies to octo-server and pages the roster exhaustively. Candidates
  * carry uid + name only — pinyin/keyword matching happens client-side.
+ *
+ * Contract: the response is a complete roster plus an authoritative `total`
+ * equal to `candidates.length`. The caller rejects any incomplete or malformed
+ * response (mismatched/missing/non-numeric total) rather than caching a partial
+ * roster — it does not client-side paginate.
  */
 export async function listOrgMembers(signal?: AbortSignal): Promise<OrgSearchResponse> {
   return get<OrgSearchResponse>('/org/members', undefined, signal);

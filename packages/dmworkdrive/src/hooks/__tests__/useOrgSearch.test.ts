@@ -248,4 +248,47 @@ describe('useOrgSearch', () => {
     expect(result.current.error).toBe(false);
     unmount();
   });
+
+  it('rejects a malformed/missing total as a load error (total must be a valid count)', async () => {
+    // The server contract requires an authoritative numeric total; a
+    // missing/string/NaN/negative total is a broken response, not a partial-ok.
+    const bad: Array<Record<string, unknown>> = [
+      { candidates: [cand('u1', 'Alice')] }, // total missing
+      { candidates: [cand('u1', 'Alice')], total: '1' }, // string
+      { candidates: [cand('u1', 'Alice')], total: NaN }, // NaN
+      { candidates: [cand('u1', 'Alice')], total: -1 }, // negative
+      { candidates: [cand('u1', 'Alice'), cand('u2', 'Bob')], total: 1 }, // mismatch
+    ];
+    for (const res of bad) {
+      vi.mocked(api.listOrgMembers).mockReset();
+      vi.mocked(api.listOrgMembers).mockResolvedValueOnce(res as unknown as OrgSearchResponse);
+      const { result, unmount } = renderHook(() => useOrgSearch());
+      await waitFor(() => expect(result.current.error).toBe(true));
+      expect(result.current.candidates).toEqual([]);
+      unmount();
+    }
+  });
+
+  // ── F2: account fields (username/email/phone) are locally searchable ────────
+
+  it('filters locally by username / email / phone — no extra backend call', async () => {
+    const roster: OrgCandidate[] = [
+      { uid: 'u1', name: 'Alice', username: 'alice.w', email: 'alice@corp.com', phone: '13800001111' },
+      { uid: 'u2', name: 'Bob', username: 'bob.k', email: 'bob@corp.com', phone: '13900002222' },
+    ];
+    vi.mocked(api.listOrgMembers).mockResolvedValue({ candidates: roster, total: roster.length });
+    const { result, unmount } = renderHook(() => useOrgSearch());
+    await waitFor(() => expect(result.current.candidates.length).toBe(2));
+
+    act(() => result.current.search('alice.w')); // username
+    expect(result.current.candidates).toEqual([roster[0]]);
+    act(() => result.current.search('bob@corp')); // email
+    expect(result.current.candidates).toEqual([roster[1]]);
+    act(() => result.current.search('13800001111')); // phone
+    expect(result.current.candidates).toEqual([roster[0]]);
+
+    // All local: the roster was fetched exactly once.
+    expect(api.listOrgMembers).toHaveBeenCalledTimes(1);
+    unmount();
+  });
 });

@@ -27,11 +27,20 @@ interface IndexedCandidate {
   searchText: string;
 }
 
-/** Build the local match text: name + its (simplified) pinyin, both lowercased. */
+/**
+ * Build the local match text: name + its (simplified) pinyin, plus the account
+ * fields (username/email/phone), all lowercased. Mirrors the picker's "search by
+ * name / account" placeholder and the row subtitle, so a keyword matching any of
+ * those hits locally.
+ */
 function buildSearchText(c: OrgCandidate): string {
   const name = (c.name || '').toLowerCase();
   const pinyin = getPinyin(toSimplized(name)).toLowerCase();
-  return `${name}\n${pinyin}`;
+  const account = [c.username, c.email, c.phone]
+    .filter((v): v is string => !!v)
+    .map((v) => v.toLowerCase())
+    .join('\n');
+  return `${name}\n${pinyin}\n${account}`;
 }
 
 function filterLocal(index: IndexedCandidate[], q: string): OrgCandidate[] {
@@ -87,14 +96,20 @@ export function useOrgSearch(): UseOrgSearchResult {
         const res = await api.listOrgMembers(ctrl.signal);
         if (ctrl.signal.aborted) return;
         const list = res.candidates ?? [];
-        // F2: the backend pages the roster to exhaustion and returns the
-        // authoritative total. A numeric total that disagrees with the delivered
-        // count means the list was truncated (e.g. a server-side page cap) —
-        // refuse to cache a partial roster silently, since a partial roster is
-        // exactly the "search finds nobody" symptom this change fixes. A
-        // non-numeric total is treated as "unknown, don't assert" rather than a
-        // hard failure, so a benign response-shape drift can't wedge the picker.
-        if (typeof res.total === 'number' && res.total !== list.length) {
+        // F2: server contract — /org/members returns an exhaustive roster plus an
+        // authoritative count, so `total` must be a finite, non-negative integer
+        // that exactly equals the delivered candidate count. Anything else
+        // (missing/NaN/string/negative total, or a count mismatch from a
+        // server-side page cap) means the roster is incomplete or malformed:
+        // reject it as a load error rather than silently caching a partial list —
+        // a partial roster is exactly the "search finds nobody" symptom. This
+        // guard is a contract tripwire, not client-side paging.
+        const complete =
+          typeof res.total === 'number' &&
+          Number.isInteger(res.total) &&
+          res.total >= 0 &&
+          res.total === list.length;
+        if (!complete) {
           indexRef.current = [];
           setCandidates([]);
           setError(true);
