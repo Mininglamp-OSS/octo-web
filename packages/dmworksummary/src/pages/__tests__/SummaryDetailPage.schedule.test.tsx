@@ -134,7 +134,7 @@ describe('SummaryDetailPage — 返回分享卡片所在群聊', () => {
 
 it('keeps regeneration voice insertion within the 2000-character limit', () => {
     const page = makePage(1);
-    page.state = { ...page.state, regenerateTopic: '总'.repeat(1999) };
+    page.state = { ...page.state, regenerateMode: 'full', regenerateTopic: '总'.repeat(1999) };
 
     (page as any).handleRegenerateInputVoice('语音内容', 'insert', { from: 1999, to: 1999 });
 

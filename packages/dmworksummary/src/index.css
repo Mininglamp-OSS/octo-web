@@ -711,7 +711,7 @@
 
 .summary-regenerate-textarea {
     width: 100%;
-    height: calc(var(--wk-sp-3) * 6);
+    height: calc(var(--wk-text-size-md) * 1.5 * 2 + var(--wk-sp-2) + var(--wk-sp-3) + var(--wk-sp-4));
     padding: var(--wk-sp-2) calc(var(--wk-sp-5) * 2) calc(var(--wk-sp-3) + var(--wk-sp-4)) var(--wk-sp-3);
     border: none;
     outline: none;

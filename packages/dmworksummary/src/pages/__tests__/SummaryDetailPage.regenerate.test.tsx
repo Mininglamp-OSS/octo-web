@@ -59,7 +59,7 @@ function makePage() {
             task_id: 1,
             title: "Legacy title",
             topic: "Preferred topic",
-            summary_mode: SummaryMode.BY_CHAT,
+            summary_mode: SummaryMode.BY_GROUP,
             result_id: 10,
             result: { content: "Existing result" },
         },

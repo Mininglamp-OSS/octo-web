@@ -1298,7 +1298,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId || refineController.signal.aborted) return;
                     if (!refined) throw new Error(t("summary.common.operationFailed"));
                     restoreRefineDraft = null;
-                    Toast.success(t("summary.detail.refineSuccess"));
+                    Toast.success(t("summary.detail.refineSuccess", { values: { version: refined!.version ?? "" } }));
                     this.appendLocalScheduleInstruction(trimmed);
                     this.reloadScheduleAfterInstructionChange(requestTaskId);
                     this.setState((prev) => {
@@ -1382,7 +1382,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId || refineController.signal.aborted) return;
                     if (!refined) throw new Error(t("summary.common.operationFailed"));
                     restoreRefineDraft = null;
-                    Toast.success(t("summary.detail.refineSuccess"));
+                    Toast.success(t("summary.detail.refineSuccess", { values: { version: refined!.version ?? "" } }));
                     this.appendLocalScheduleInstruction(trimmed);
                     this.reloadScheduleAfterInstructionChange(requestTaskId);
                     this.setState((prev) => {
@@ -1424,6 +1424,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         detail: {
                             ...prev.detail,
                             title: trimmed || prev.detail.title,
+                            topic: trimmed || prev.detail.topic,
                             status: TaskStatus.PENDING,
                         },
                     } as Pick<SummaryDetailPageState, "showRegenerateModal" | "detail"> : { showRegenerateModal: false } as Pick<SummaryDetailPageState, "showRegenerateModal">);
@@ -1439,6 +1440,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         detail: prev.detail ? {
                             ...prev.detail,
                             title: trimmed || prev.detail.title,
+                            topic: trimmed || prev.detail.topic,
                         } : prev.detail,
                         personalResult: prev.personalResult ? {
                             ...prev.personalResult,
@@ -3788,7 +3790,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 inputRef={this.regenerateTopicRef}
                                 onTranscribed={this.handleRegenerateInputVoice}
                                 onRecordingStart={this.handleRegenerateVoiceRecordingStart}
-                                getCurrentText={() => this.state.regenerateMode === "refine"
+                                getCurrentText={() => (this.regenerateVoiceMode ?? this.state.regenerateMode) === "refine"
                                     ? this.state.refineFeedback
                                     : this.state.regenerateTopic}
                                 showModeMenu
