@@ -442,7 +442,7 @@ class Login extends Component<any, LoginState> {
             const hasSsoProvider = !!ssoProvider
             const ssoConfigPending = ENTERPRISE_SSO_ENABLED && !WKApp.remoteConfig.requestSuccess && !WKApp.remoteConfig.requestFailed
             const ssoConfigFallback = ENTERPRISE_SSO_ENABLED && WKApp.remoteConfig.requestFailed
-            const showSsoLogin = ENTERPRISE_SSO_ENABLED && !ssoConfigPending && hasSsoProvider
+            const showSsoLogin = ENTERPRISE_SSO_ENABLED && !ssoConfigPending && !ssoConfigFallback && hasSsoProvider
             const showDefaultSloganSub = !showSsoLogin
             const renderLocalPasswordLogin = () => (
                 <div className="wk-login-content-form">

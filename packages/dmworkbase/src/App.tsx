@@ -203,6 +203,24 @@ export {
 } from "./Service/OidcConfig";
 export type { OidcProviderConfig } from "./Service/OidcConfig";
 
+function oidcProvidersEqual(
+  a: OidcProviderConfig[],
+  b: OidcProviderConfig[]
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    if (!other) return false;
+    return (
+      item.id === other.id &&
+      item.name === other.name &&
+      item.authorizePath === other.authorizePath &&
+      item.accountUrl === other.accountUrl &&
+      item.resetPasswordUrl === other.resetPasswordUrl
+    );
+  });
+}
+
 // StickerUploadLimits 解析同理抽到 ./Service/StickerUploadConfig：独立 leaf 文件,
 // 不拖 App.tsx 的重依赖链路, EmojiToolbar 的 vitest 可以直接测 parse 的边界情况。
 import {
@@ -415,6 +433,8 @@ export class WKRemoteConfig {
       const previousDmloopOn = this.dmloopOn;
       const previousDmpersonalOn = this.dmpersonalOn;
       const previousDriveOn = this.driveOn;
+      const previousRequestFailed = this.requestFailed;
+      const previousOidcProviders = this.oidcProviders;
       this.requestSuccess = true;
       this.requestFailed = false;
       this.revokeSecond = result["revoke_second"];
@@ -454,7 +474,9 @@ export class WKRemoteConfig {
         previousDocsOn !== this.docsOn ||
         previousDmloopOn !== this.dmloopOn ||
         previousDmpersonalOn !== this.dmpersonalOn ||
-        previousDriveOn !== this.driveOn
+        previousDriveOn !== this.driveOn ||
+        previousRequestFailed !== this.requestFailed ||
+        !oidcProvidersEqual(previousOidcProviders, this.oidcProviders)
       ) {
         this.notifyConfigChangeListeners();
       }

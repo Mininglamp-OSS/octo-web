@@ -37,6 +37,9 @@ describe("login page presentation", () => {
     expect(source).toContain(
       "const ssoConfigFallback = ENTERPRISE_SSO_ENABLED && WKApp.remoteConfig.requestFailed"
     );
+    expect(source).toContain(
+      "const showSsoLogin = ENTERPRISE_SSO_ENABLED && !ssoConfigPending && !ssoConfigFallback && hasSsoProvider"
+    );
     expect(source).toContain("aria-busy={ssoConfigPending}");
     expect(source).toContain('role="status"');
     expect(source).toContain("t('login.ssoConfigLoadingTitle')");
@@ -46,6 +49,12 @@ describe("login page presentation", () => {
     expect(source).toContain("wk-login-content-phonelogin--primary");
     expect(appSource).toContain("requestFailed: boolean = false;");
     expect(appSource).toContain("this.requestFailed = true;");
+    expect(appSource).toContain("const previousRequestFailed = this.requestFailed;");
+    expect(appSource).toContain("const previousOidcProviders = this.oidcProviders;");
+    expect(appSource).toContain("previousRequestFailed !== this.requestFailed");
+    expect(appSource).toContain(
+      "!oidcProvidersEqual(previousOidcProviders, this.oidcProviders)"
+    );
     expect(appSource).toContain("this.notifyListeners();");
     expect(styles).toContain(".wk-login-content-phonelogin--primary");
     expect(styles).toContain(".wk-login-content-config-status");
