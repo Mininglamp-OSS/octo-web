@@ -9,6 +9,11 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     globals: true,
     setupFiles: ['src/test/setup.ts'],
+    server: {
+      deps: {
+        inline: ['@excalidraw/excalidraw', 'open-color'],
+      },
+    },
   },
   resolve: {
     // Yjs / y-protocols / prosemirror-* MUST resolve to a single physical copy

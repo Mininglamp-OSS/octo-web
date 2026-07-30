@@ -128,6 +128,27 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+// Excalidraw 0.18.1 renders its top-left MainMenu trigger as a `<button class="dropdown-menu-button
+// main-menu-trigger zen-mode-transition" data-testid="main-menu-trigger">` inside the canvas-actions
+// region, plus (on an empty canvas) a welcome-screen hint that arrows at it. This mirrors that markup
+// so the "hamburger is dead chrome on the board" hide is a real 0.18.1 tripwire.
+function mainMenuTrigger(): HTMLElement {
+  const region = document.createElement('div')
+  region.className = 'App-menu__left'
+
+  const button = document.createElement('button')
+  button.className = 'dropdown-menu-button main-menu-trigger zen-mode-transition'
+  button.setAttribute('data-testid', 'main-menu-trigger')
+  region.appendChild(button)
+
+  const hint = document.createElement('div')
+  hint.className = 'welcome-screen-decor welcome-screen-decor-hint welcome-screen-decor-hint--menu'
+  hint.textContent = 'Open menu'
+  region.appendChild(hint)
+
+  return region
+}
+
 // Excalidraw 0.18.1 renders the collaborator avatar stack in the canvas top-right zone as a
 // `.UserList__wrapper` > `.UserList` holding one `.UserList__collaborator` avatar per remote peer.
 // This mirrors that markup so the XIN-680 hide (avatar stack redundant with the header PresenceBar)
@@ -350,6 +371,33 @@ describe('installExcalidrawDebrand', () => {
     await new Promise((r) => setTimeout(r, 0))
 
     expect(document.querySelector<HTMLElement>('.UserList__wrapper')?.style.display).toBe('none')
+    dispose()
+  })
+
+  it('hides the native top-left hamburger MainMenu trigger and its welcome hint', () => {
+    const region = mainMenuTrigger()
+    document.body.append(region)
+
+    const dispose = installExcalidrawDebrand(document)
+
+    const trigger = region.querySelector<HTMLElement>('.main-menu-trigger')
+    expect(trigger).not.toBeNull()
+    // Hidden via inline style (beats the vendor stylesheet regardless of load order); the node stays
+    // so Excalidraw's React tree can still reconcile it.
+    expect(trigger!.style.display).toBe('none')
+    const hint = region.querySelector<HTMLElement>('.welcome-screen-decor-hint--menu')
+    expect(hint!.style.display).toBe('none')
+    dispose()
+  })
+
+  it('hides the hamburger trigger mounted AFTER install (canvas mounts later)', async () => {
+    const dispose = installExcalidrawDebrand(document)
+
+    document.body.append(mainMenuTrigger())
+    await Promise.resolve()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(document.querySelector<HTMLElement>('.main-menu-trigger')?.style.display).toBe('none')
     dispose()
   })
 })

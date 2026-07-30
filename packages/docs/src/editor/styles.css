@@ -241,6 +241,21 @@
   align-items: center;
   gap: 6px;
 }
+/* Font-family option row: the face name, plus a trailing "font not installed" marker pushed to the
+   far edge (parity with the board text controls' font picker). */
+.octo-tb-font-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.octo-tb-font-warning {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  color: var(--octo-muted, #8a919e);
+  font-size: 14px;
+}
 /* Compact icon-triggered dropdown (line-spacing / paragraph-spacing): a fixed icon + tiny caret,
    so the control stays narrow instead of showing the value as wide text. */
 .octo-tb-iconselect {
@@ -1300,6 +1315,12 @@ body.octo-row-resizing {
   border-radius: 8px;
   padding: 12px 16px;
   overflow-x: auto;
+}
+/* Base code-block text colour: pinned to the unified foreground variable so plain code and any
+   untokenised spans render in a defined, theme-aware colour (following light/dark) rather than
+   inheriting a stray text-colour mark from surrounding prose. Syntax tokens override per-class below. */
+.octo-prose pre code {
+  color: var(--octo-fg);
 }
 /* Code-block syntax highlighting (lowlight / highlight.js token classes).
    Compact, theme-variable-driven palette so it follows light/dark automatically. */

@@ -33,6 +33,8 @@ export { sanitizeFractionalIndices, isExcalidrawFractionalIndex } from './fracti
 export {
   ELEMENTS_FIELD,
   FILES_FIELD,
+  APPSTATE_FIELD,
+  VIEW_BACKGROUND_COLOR_KEY,
   WB_SCHEMA_VERSION,
   WB_ELEMENT_TYPES,
   normalizeElement,

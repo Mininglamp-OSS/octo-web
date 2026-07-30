@@ -11,7 +11,7 @@ import {
 import { DocTitle } from '../editor/EditorShell.tsx'
 import { DocTerminal } from '../editor/DocTerminal.tsx'
 import { PresenceBar } from '../editor/PresenceBar.tsx'
-import { DocMoreMenu, DeleteIcon, OpenNewPageIcon, HistoryIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
+import { DocMoreMenu, DeleteIcon, ExportIcon, OpenNewPageIcon, HistoryIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { BoardVersionPanel } from './BoardVersionPanel.tsx'
 import { BoardErrorBoundary } from './BoardErrorBoundary.tsx'
@@ -26,9 +26,18 @@ import type { Role } from '../auth/roles.ts'
 import type { ConnState } from '../collab/createCollabEditor.ts'
 import { i18n, t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
 import { loadBoardScene, persistBoardScene, clearBoardScene, forgetBoard, type BoardScene } from './boardStore.ts'
-import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
 import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
+import { installBoardNativeRelabel } from './boardNativeRelabel.ts'
 import { installLibraryControlButtons } from './libraryControlButtons.ts'
+import { installNativePanelExtensions } from './nativePanelInject.tsx'
+import type { NativePanelTextRuntime } from './NativePanelTextControls.tsx'
+import { BoardCanvasColorControl } from './BoardCanvasColorControl.tsx'
+import {
+  applyPendingTextMarksToNewElements,
+  resetPendingTextDefaults,
+} from './boardTextDefaults.ts'
+import { DEFAULT_BOARD_FONT_FAMILY, BOARD_FONT_FAMILIES } from './boardFontFamilies.ts'
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData, FileFetchRef } from './collab/index.ts'
 import { makeGenerateIdForFile, dataURLToBlob, sanitizeFractionalIndices } from './collab/index.ts'
@@ -125,6 +134,12 @@ type LoadLibraryFromBlobFn = (blob: Blob) => Promise<unknown[]>
  * being statically imported.
  */
 type SerializeLibraryFn = (items: unknown[]) => string
+type SerializeSceneFn = (
+  elements: readonly ExcalidrawElement[],
+  appState: Record<string, unknown>,
+  files: Record<string, BinaryFileData>,
+  type: 'local' | 'database',
+) => string
 
 /** The slice of the imperative Excalidraw API the library control buttons drive. */
 interface ExcalidrawLibraryApi {
@@ -273,10 +288,6 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const [currentTitle, setCurrentTitle] = useState(title)
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
-  // Excalidraw's `MainMenu` compound component, captured off the same dynamic import. Rendered as a
-  // child of the canvas so our de-branded menu (no "Excalidraw links" group) replaces the built-in
-  // fallback menu (XIN-531 item 1).
-  const [MainMenu, setMainMenu] = useState<ExcalidrawMainMenu | null>(null)
   const [failed, setFailed] = useState(false)
   const [role, setRole] = useState<Role | undefined>(undefined)
   // Whether the role lookup / collab-token has resolved (success OR failure). Distinguishes
@@ -336,9 +347,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // a ref) because the listener effect depends on it, so a canvas that mounts AFTER peers arrive
   // re-subscribes and replays the current map — covering either arrival order (peers resolved
   // before the heavy canvas chunk, or after).
-  const [excalidrawApi, setExcalidrawApi] = useState<{
-    updateScene: (scene: { collaborators: Map<string, BoardCollaborator> }) => void
-  } | null>(null)
+  const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null)
 
   // Excalidraw's restore/reconcile helpers, captured off the same dynamic import as the component
   // (XIN-87). Held in refs because they are pure module functions, not render state — they are read
@@ -351,10 +360,21 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // Excalidraw's `serializeLibraryAsJSON`, captured off the same import. Read by the save-to-file
   // button (XIN-621 ①) to serialize the current library for download.
   const serializeLibraryRef = useRef<SerializeLibraryFn | null>(null)
+  const serializeSceneRef = useRef<SerializeSceneFn | null>(null)
+  // Excalidraw's live element-mutation primitives (`mutateElement` / `redrawTextBoundingBox`),
+  // captured off the same dynamic import and handed to the native-panel text controls so THEY never
+  // statically import the client-only vendor bundle (which would defeat the lazy chunk split and
+  // break SSR — see NativePanelTextRuntime). Populated in the import `.then` before the injector runs.
+  const textRuntimeRef = useRef<NativePanelTextRuntime | null>(null)
   // Raw imperative Excalidraw API handle, stashed by `handleApi` on canvas mount. Held in a ref (not
   // read during render) so the access-gated effect below can wire it into the binding once — and
   // only once — access is confirmed (P1a).
   const boardApiRef = useRef<unknown>(null)
+  // Wrapper around the LIVE Excalidraw canvas. The native-panel injector scopes all of its DOM
+  // queries/subscriptions to this element instead of a document-wide `.excalidraw` lookup, so it can
+  // never latch onto a SECOND Excalidraw in the page — most importantly the read-only version-history
+  // preview (BoardScenePreview), which also renders `.excalidraw` inside `.octo-board-canvas`.
+  const liveCanvasRef = useRef<HTMLDivElement>(null)
 
   // Fail-closed editability (P1-2). On the collab (permissioned) path the canvas is read-only until
   // an authoritative editable role (writer/admin) is confirmed — an unresolved role, an unknown
@@ -425,12 +445,30 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           reconcileElements?: ReconcileElementsFn
           loadLibraryFromBlob?: LoadLibraryFromBlobFn
           serializeLibraryAsJSON?: SerializeLibraryFn
+          serializeAsJSON?: SerializeSceneFn
+          mutateElement?: NativePanelTextRuntime['mutateElement']
+          redrawTextBoundingBox?: NativePanelTextRuntime['redrawTextBoundingBox']
+          FONT_FAMILY?: Record<string, number>
         }
         restoreElementsRef.current = m.restoreElements ?? null
         reconcileElementsRef.current = m.reconcileElements ?? null
         loadLibraryFromBlobRef.current = m.loadLibraryFromBlob ?? null
         serializeLibraryRef.current = m.serializeLibraryAsJSON ?? null
-        setMainMenu(() => mod.MainMenu as unknown as ExcalidrawMainMenu)
+        serializeSceneRef.current = m.serializeAsJSON ?? null
+        // Hand the native-panel text controls Excalidraw's own mutation primitives (kept off a static
+        // vendor import there). Both are exported from the patched runtime bundle + declaration barrel.
+        if (m.mutateElement && m.redrawTextBoundingBox) {
+          textRuntimeRef.current = {
+            mutateElement: m.mutateElement,
+            redrawTextBoundingBox: m.redrawTextBoundingBox,
+          }
+        }
+        // Register the Board font faces into Excalidraw's FONT_FAMILY id map at load time (was a
+        // module-load side effect of the now-removed static import in NativePanelTextControls), so
+        // text created with a Board face resolves to its numeric id before the canvas first paints.
+        if (m.FONT_FAMILY) {
+          for (const font of BOARD_FONT_FAMILIES) m.FONT_FAMILY[font.value] = font.id
+        }
         setExcalidraw(() => mod.Excalidraw as unknown as ExcalidrawComponent)
       })
       .catch((err) => {
@@ -472,6 +510,17 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     if (!Excalidraw || typeof document === 'undefined') return
     return installExcalidrawDebrand(document)
   }, [Excalidraw])
+
+  // Locale relabel for the native Excalidraw labels its bundled zh-CN locale leaves untranslated
+  // ("Arrow type" / "More options"), which otherwise render in English under a Chinese app locale.
+  // Sourced from the product's own i18n via t(); a visible no-op under en-US. Re-runs on locale
+  // change so switching language repaints the labels. See boardNativeRelabel.ts.
+  useEffect(() => {
+    if (!Excalidraw || typeof document === 'undefined') return
+    const rootEl = liveCanvasRef.current
+    if (!rootEl) return
+    return installBoardNativeRelabel(rootEl)
+  }, [Excalidraw, langCode])
 
   // XIN-621 ① (was XIN-601): read a picked `.excalidrawlib` and load it through the imperative
   // library API. This is exactly what the library panel's "..." → "Load" item did; the injected
@@ -520,7 +569,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
             document.body.appendChild(a)
             a.click()
             a.remove()
-            URL.revokeObjectURL(url)
+            setTimeout(() => URL.revokeObjectURL(url), 0)
           }
           // Return the items unchanged — this is a read, not a mutation.
           return current
@@ -558,6 +607,34 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     })
   }, [Excalidraw, importLibraryFromFile, saveLibraryToFile, resetLibrary])
 
+  // Native right-side properties panel: replace the S/M/L/XL font-size buttons, the 3-button text-
+  // align row, and the 5-swatch stroke picker (which stands in for text colour on text elements)
+  // with the docs surface's shared FONT_SIZES, TEXT_COLORS and TEXT_ALIGNS controls, and add
+  // element-level bold / italic / underline / line-height fields. Injection is guarded on the raw
+  // imperative Excalidraw API (from handleApi) — before that lands we have no scene handle to
+  // wire the controls to. Read-only sessions skip injection entirely so viewers see unmodified
+  // Excalidraw. See ./nativePanelInject.tsx for the api.onChange + selector strategy.
+  useEffect(() => {
+    if (!Excalidraw || typeof document === 'undefined') return
+    const api = boardApiRef.current as ExcalidrawImperativeAPI | null
+    if (!excalidrawApi || !api) return
+    // Scope the injector to the LIVE canvas wrapper ref so it never queries or mutates DOM outside
+    // this board's Excalidraw — in particular it must never latch onto the version-history preview's
+    // second `.excalidraw`. The wrapper is present whenever `Excalidraw` is loaded (this effect is
+    // gated on that), so the ref is populated by the time the effect runs; bail if it somehow is not.
+    const rootEl = liveCanvasRef.current
+    if (!rootEl) return
+    return installNativePanelExtensions(rootEl, api, {
+      readOnly,
+      defaultsKey: docId,
+      textRuntime: textRuntimeRef.current ?? undefined,
+    })
+  }, [Excalidraw, excalidrawApi, readOnly, docId])
+
+  // Pending B/I/U tool defaults are intentionally ephemeral and board-scoped. Clear them when this
+  // board changes or unmounts so a later board cannot inherit another board's creation defaults.
+  useEffect(() => () => resetPendingTextDefaults(docId), [docId])
+
   // Presence status for the header bar (XIN-601 item 2). The board owns its collab session directly
   // (not via useCollabEditor), so mirror that hook's wiring: seed from the provider's current state
   // and subscribe to its status/synced events. Inert on the M1 standalone path (no provider). Guarded
@@ -573,11 +650,15 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         }
       | undefined
     if (!provider) return
-    setSynced(provider.isSynced ?? provider.synced ?? false)
+    const transitionSynced = (nextSynced: boolean) => {
+      collabSession?.binding.setSynced?.(nextSynced)
+      setSynced(nextSynced)
+    }
+    transitionSynced(provider.isSynced ?? provider.synced ?? false)
     if (provider.status) setConnState(provider.status)
     if (typeof provider.on !== 'function' || typeof provider.off !== 'function') return
     const onStatus = (e: { status: ConnState }) => setConnState(e.status)
-    const onSynced = () => setSynced(true)
+    const onSynced = () => transitionSynced(true)
     provider.on('status', onStatus)
     provider.on('synced', onSynced)
     return () => {
@@ -755,23 +836,72 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const onChange = useCallback<ExcalidrawChange>(
     (elements, appState, files) => {
       if (readOnly) return // never persist from a read-only session
+      const activeAppState = appState as typeof appState & {
+        selectedElementIds?: Record<string, boolean>
+        editingTextElement?: { id?: string } | null
+        newElement?: { id?: string } | null
+      }
+      const selectedElementIds = activeAppState.selectedElementIds ?? {}
+      const localActiveTextIds = new Set<string>([
+        ...Object.keys(selectedElementIds).filter((id) => selectedElementIds[id] === true),
+        ...(activeAppState.editingTextElement?.id ? [activeAppState.editingTextElement.id] : []),
+        ...(activeAppState.newElement?.id ? [activeAppState.newElement.id] : []),
+      ])
+      const markedElements = applyPendingTextMarksToNewElements(
+        docId,
+        elements as readonly ExcalidrawElement[],
+        localActiveTextIds,
+      ) as readonly ExcalidrawElement[]
+      if (markedElements !== elements) {
+        // Excalidraw has no currentItemCustomData. Stamp the pending B/I/U defaults onto a newly
+        // created text element through the imperative scene path, then persist/sync that stamped
+        // scene below. The helper returns the original array after first observation, preventing an
+        // onChange → updateScene loop.
+        ;(boardApiRef.current as ExcalidrawImperativeAPI | null)?.updateScene({
+          elements: markedElements as never,
+        })
+      }
       // M2: when bound to a collab session, route the edit through the binding (diff → CAS →
       // Y.Doc under LOCAL_ORIGIN; the binding's guards stop a remote apply from echoing back).
       if (collabSession) {
         collabSession.binding.handleLocalChange(
-          elements as readonly ExcalidrawElement[],
+          markedElements,
           files as Record<string, BinaryFileData>,
         )
+        const provider = collabSession.provider as
+          | { isSynced?: boolean; synced?: boolean }
+          | undefined
+        if (provider && (provider.isSynced ?? provider.synced ?? false)) {
+          collabSession.binding.handleLocalAppState?.(
+            appState as { viewBackgroundColor?: unknown },
+          )
+        }
       }
       // Local mirror stays as the offline-first fallback (boardStore §M1↔M2 seam).
-      latestScene.current = { elements: [...elements], appState, files }
+      latestScene.current = { elements: [...markedElements], appState, files }
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => {
         saveTimer.current = null
         if (latestScene.current) persistLocal(latestScene.current)
       }, SAVE_DEBOUNCE_MS)
     },
-    [readOnly, collabSession, persistLocal],
+    [readOnly, collabSession, persistLocal, docId],
+  )
+
+  // PR #1161: explicit picks and every Excalidraw appState writer share the same provider sync gate.
+  // Reading the live provider flag here prevents a stale React `synced` render from opening a write
+  // window while sessions change; the binding keeps its own fail-closed gate as a second defence.
+  const commitCanvasColor = useCallback(
+    (color: string) => {
+      const session = collabSession
+      if (!session) return
+      const provider = session.provider as
+        | { isSynced?: boolean; synced?: boolean }
+        | undefined
+      if (!provider || !(provider.isSynced ?? provider.synced ?? false)) return
+      session.binding.handleLocalAppState?.({ viewBackgroundColor: color })
+    },
+    [collabSession],
   )
 
   // M2: capture the imperative Excalidraw API on canvas mount. It feeds two consumers: presence
@@ -781,7 +911,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // below does that wiring; here we only stash the raw handle and flag the canvas as mounted.
   const handleApi = useCallback((api: unknown) => {
     boardApiRef.current = api
-    setExcalidrawApi(api as { updateScene: (scene: { collaborators: Map<string, BoardCollaborator> }) => void })
+    setExcalidrawApi(api as ExcalidrawImperativeAPI)
   }, [])
 
   // XIN-702 image binary bridge. Upload a freshly inserted image to the doc object store and return
@@ -1058,6 +1188,32 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Excalidraw, collabSession, accessConfirmed])
 
+  // PR #1161: the authoritative canvas background colour from the Y.Doc, used to seed initialData on
+  // a cold reopen so the canvas mounts with the synced colour rather than Excalidraw's white default.
+  // Fail closed like initialElements (no hydration before access is confirmed); undefined on the
+  // standalone path or before the doc has synced — the later setApi->applyRemoteAppState paints it.
+  const initialViewBackgroundColor: string | undefined = accessConfirmed
+    ? collabSession?.binding.snapshotViewBackgroundColor?.() || undefined
+    : undefined
+
+  // Excalidraw initialData appState, built here (not inline in JSX) so the conditional
+  // viewBackgroundColor seed is plain JS. The doc-authoritative colour is applied AFTER the local
+  // mirror spread so a synced value wins on a cold reopen; when absent the mirror's own persisted
+  // colour (standalone path) or Excalidraw's default stands.
+  const initialBoardAppState: Record<string, unknown> = {
+    ...initialSceneRef.current?.appState,
+    // Doc/Sheet and Board share Arial as the default face. Excalidraw otherwise initializes new text
+    // with Excalifont before the replacement panel is touched.
+    currentItemFontFamily:
+      initialSceneRef.current?.appState?.currentItemFontFamily ?? DEFAULT_BOARD_FONT_FAMILY,
+    // A new text element always starts from the product text default, not a stale Excalidraw/session
+    // swatch. Existing elements keep their authored strokeColor.
+    currentItemStrokeColor: '#000000',
+  }
+  if (initialViewBackgroundColor) {
+    initialBoardAppState.viewBackgroundColor = initialViewBackgroundColor
+  }
+
   // P1 (revoke teardown, standalone share page): a runtime terminal transition — 4403 access
   // revoked / board deleted (→ 'deleted'), 'not-found', 'locked', or session-lost 'login' — must
   // TEAR DOWN the canvas, not merely flip it read-only. The `readOnly` gate above only disables
@@ -1087,11 +1243,72 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       onClick: onOpenInNewPage,
     })
   }
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+  const sceneSnapshot = () => {
+    const api = boardApiRef.current as ExcalidrawImperativeAPI | null
+    return api
+      ? {
+          elements: api.getSceneElements() as unknown as readonly ExcalidrawElement[],
+          appState: api.getAppState() as unknown as Record<string, unknown>,
+          files: api.getFiles() as unknown as Record<string, BinaryFileData>,
+        }
+      : null
+  }
+  moreItems.push({
+    key: 'save-board-file',
+    label: t('docs.board.saveFile'),
+    icon: ExportIcon,
+    onClick: () => {
+      const scene = sceneSnapshot()
+      const serialize = serializeSceneRef.current
+      if (!scene || !serialize) return
+      downloadBlob(new Blob([serialize(scene.elements, scene.appState, scene.files, 'local')], { type: 'application/json' }), `${currentTitle || 'board'}.excalidraw`)
+    },
+  })
+  moreItems.push({
+    key: 'export-image',
+    label: t('docs.board.exportImage'),
+    icon: ExportIcon,
+    onClick: () => {
+      ;(boardApiRef.current as { updateScene?: (scene: Record<string, unknown>) => void } | null)
+        ?.updateScene?.({ appState: { openDialog: { name: 'imageExport' } } })
+    },
+  })
   moreItems.push({
     key: 'history',
     label: t('docs.toolbar.history'),
     icon: HistoryIcon,
     onClick: () => setVersionOpen((v) => !v),
+  })
+  moreItems.push({
+    key: 'help',
+    label: t('docs.board.help'),
+    icon: (
+      <svg
+        className="octo-doc-more-rowicon octo-board-help-icon"
+        width="20"
+        height="20"
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+      >
+        <circle cx="10" cy="10" r="6.5" />
+        <path d="M8.1 8a2 2 0 0 1 2-1.7c1.2 0 2.1.75 2.1 1.85 0 .95-.55 1.45-1.4 1.95-.7.42-.8.85-.8 1.55" />
+        <circle cx="10" cy="14" r=".6" fill="currentColor" stroke="none" />
+      </svg>
+    ),
+    onClick: () => {
+      ;(boardApiRef.current as { updateScene?: (scene: Record<string, unknown>) => void } | null)
+        ?.updateScene?.({ appState: { openDialog: { name: 'help' } } })
+    },
   })
   const deleteItem: DocMoreMenuItem | undefined = manage
     ? {
@@ -1178,7 +1395,8 @@ export function BoardShell(props: BoardShellProps): ReactElement {
 
       {/* Delete confirm — the shared centered modal, identical to the document's and sheet's
           delete dialog. Board-specific wording (title/message) with the generic delete/cancel
-          button labels. */}
+          button labels. The canvas "reset" affordance is Excalidraw's own native More-tools action;
+          the board adds no separate reset dialog of its own. */}
       <ConfirmModal
         open={del.confirming}
         title={t('docs.board.deleteConfirmTitle')}
@@ -1202,11 +1420,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         ) : !Excalidraw ? (
           <div className="octo-board-state">{t('docs.state.loading')}</div>
         ) : (
-          <BoardErrorBoundary>
-            <Excalidraw
+          <div ref={liveCanvasRef} className="octo-board-live-canvas">
+            <BoardErrorBoundary>
+              <Excalidraw
               initialData={{
                 elements: initialElements,
-                appState: initialSceneRef.current?.appState,
+                appState: initialBoardAppState,
                 files: initialSceneRef.current?.files,
                 scrollToContent: true,
               }}
@@ -1224,13 +1443,22 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               // XIN-702 / P1: content-address inserted images without crypto.subtle so an insert on a
               // plain-http LAN does not throw the digest error and yields a peer-stable file id.
               generateIdForFile={boardGenerateIdForFile}
-            >
-              {/* De-branded hamburger menu: Excalidraw's default items minus the "Excalidraw
-                  links" (Socials) group (XIN-531 item 1). */}
-              {MainMenu && <BoardMainMenu MainMenu={MainMenu} />}
-            </Excalidraw>
+            />
           </BoardErrorBoundary>
+          </div>
         )}
+
+        {/* App-owned canvas-colour picker for toolbar slot 9. Renders nothing visible (its trigger
+            is the native toolbar button); it opens on the `octo-board-canvas-color-request` document
+            event the patched Excalidraw button + digit-9 shortcut dispatch, writes viewBackgroundColor
+            back through the live imperative API, and commits an explicit pick into the shared doc via
+            onColorCommit (PR #1161 authority gate). */}
+        <BoardCanvasColorControl
+          excalidrawAPI={excalidrawApi}
+          readOnly={readOnly}
+          rootRef={liveCanvasRef}
+          onColorCommit={commitCanvasColor}
+        />
 
         {/* Version history opens in a right-side DRAWER (decision #1), aligned with the doc / sheet
             version panels (aside.octo-doc-drawer): the list + save / restore / rename / delete live
