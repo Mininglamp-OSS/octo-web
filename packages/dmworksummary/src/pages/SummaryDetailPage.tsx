@@ -1586,6 +1586,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 ? await api.getPersonalSummaryVersion(requestTaskId, requestResultId)
                 : await api.getSummaryVersion(requestTaskId, requestResultId);
             if (this.taskId !== requestTaskId) return;
+            // Panel may have been closed by the user while we were fetching
+            // (mochashanyao PR #1154 round-6 P2-2). If so, drop the response
+            // rather than reopening state we just cleared.
+            if (!this.state.showVersionDetailModal) return;
             if (detail.result_id !== requestResultId) {
                 this.setState({ showVersionDetailModal: false, versionDetailLoading: false, versionDetail: null });
                 return;
@@ -1603,10 +1607,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ showVersionDetailModal: false, versionDetail: null });
     };
 
-    /** 关闭版本记录面板：一并退出中部只读预览，回到当前可编辑内容。 */
+    /** 关闭版本记录面板：一并退出中部只读预览，回到当前可编辑内容。
+     *
+     * mochashanyao PR #1154 round-6 P2-2: do NOT early-return on
+     * versionDetailLoading. A slow version-detail request otherwise traps the
+     * user in the panel until the fetch resolves, with no visible cancel.
+     * Instead, close the panel unconditionally — the load-completion handler
+     * writes into `versionDetail` but the panel is already closed, so the
+     * stale result is never surfaced. If we want to hard-cancel the in-flight
+     * fetch itself we would need an AbortController; that is a broader change
+     * and not required to unblock the close action.
+     */
     handleCloseVersionPanel = () => {
-        if (this.state.versionDetailLoading) return;
-        this.setState({ versionPanelOpen: false, showVersionDetailModal: false, versionDetail: null });
+        this.setState({ versionPanelOpen: false, showVersionDetailModal: false, versionDetail: null, versionDetailLoading: false });
     };
 
     handleRegenerateCancel = () => {
@@ -2512,7 +2525,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     renderCompleted() {
-        const { detail, personalExpanded, isEditing } = this.state;
+        const { detail, isEditing } = this.state;
         const { t } = this.context;
         if (!detail || !detail.result) return null;
         const canEdit = detail.status === TaskStatus.COMPLETED
@@ -2523,70 +2536,77 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div className="summary-detail-result">
                 {this.renderMySummaryHeader(canEdit)}
-                {personalExpanded && (
-                    <>
-                        {/* Meta info: creation time + source chips */}
-                        <div className="summary-detail-meta">
-                            <div className="summary-detail-meta-time">
-                                {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
-                            </div>
-                            {detail.sources && detail.sources.length > 0 && (
-                                <div className="summary-detail-source-chips">
-                                    {detail.sources.map((src, i) => (
-                                        <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                            {src.source_name || src.source_id}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
+                {/* BY_GROUP 完成模式下,renderCompleted 是唯一显示团队/最终
+                    总结的路径 —— 内容不能被"我的总结"header 折叠掉,否则
+                    用户在多人 BY_GROUP 单人视角下点一下 header 就再也看不
+                    到内容了(mochashanyao PR #1154 round-6 P1)。 */}
+                <>
+                    {/* Meta info: creation time + source chips */}
+                    <div className="summary-detail-meta">
+                        <div className="summary-detail-meta-time">
+                            {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        <hr className="summary-detail-meta-divider" />
-                        <div className="summary-detail-result-header">
-                            <h3>{t("summary.detail.contentTitle")}</h3>
-                            <div className="summary-detail-result-badges">
-                                <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
-                                    {t("summary.common.version", { values: { version: detail.result.version } })}
-                                </Tag>
-                                <Tag color="green" size="small">
-                                    {t("summary.common.messagesCount", { values: { count: detail.result.total_msg_count } })}
-                                </Tag>
-                                {detail.result_is_edited && detail.result_edited_at && (
-                                    <Tag color="orange" size="small">{t("summary.detail.edited")}</Tag>
-                                )}
-                            </div>
-                        </div>
-                        {isEditing ? (
-                            <div className="summary-detail-content-box">
-                                <SummaryEditor
-                                    taskId={detail.task_id}
-                                    baseResultId={detail.result_id || 0}
-                                    initialContent={detail.result.content || ""}
-                                    onSave={this.handleEditSave}
-                                    onCancel={this.handleEditCancel}
-                                    exposeSave={(fn) => { this.editorSaveFn = fn; }}
-                                />
-                            </div>
-                        ) : this.state.showVersionDetailModal ? this.renderVersionPreview() : (
-                            <div className="summary-detail-result-content">
-                                <AbstractCallout
-                                    abstract={this.state.personalResult?.abstract || detail.result.abstract}
-                                    title={this.context.t("summary.detail.abstractTitle")}
-                                />
-                                <CitationText content={detail.result.content} citations={detail.result.citations || []} />
+                        {detail.sources && detail.sources.length > 0 && (
+                            <div className="summary-detail-source-chips">
+                                {detail.sources.map((src, i) => (
+                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
+                                        {src.source_name || src.source_id}
+                                    </span>
+                                ))}
                             </div>
                         )}
-                        <div className="summary-detail-result-footer">
-                            <span className="summary-detail-result-time">
-                                {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
-                            </span>
+                    </div>
+                    <hr className="summary-detail-meta-divider" />
+                    <div className="summary-detail-result-header">
+                        <h3>{t("summary.detail.contentTitle")}</h3>
+                        <div className="summary-detail-result-badges">
+                            <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
+                                {t("summary.common.version", { values: { version: detail.result.version } })}
+                            </Tag>
+                            <Tag color="green" size="small">
+                                {t("summary.common.messagesCount", { values: { count: detail.result.total_msg_count } })}
+                            </Tag>
                             {detail.result_is_edited && detail.result_edited_at && (
-                                <span className="summary-detail-result-time">
-                                    {t("summary.detail.lastEditedAt", { values: { time: formatDate(detail.result_edited_at) } })}
-                                </span>
+                                <Tag color="orange" size="small">{t("summary.detail.edited")}</Tag>
                             )}
                         </div>
-                    </>
-                )}
+                    </div>
+                    {isEditing ? (
+                        <div className="summary-detail-content-box">
+                            <SummaryEditor
+                                taskId={detail.task_id}
+                                baseResultId={detail.result_id || 0}
+                                initialContent={detail.result.content || ""}
+                                onSave={this.handleEditSave}
+                                onCancel={this.handleEditCancel}
+                                exposeSave={(fn) => { this.editorSaveFn = fn; }}
+                            />
+                        </div>
+                    ) : this.state.showVersionDetailModal ? this.renderVersionPreview() : (
+                        <div className="summary-detail-result-content">
+                            <AbstractCallout
+                                // mochashanyao PR #1154 round-6 P2-1: BY_GROUP
+                                // path is a team view, so prefer the team-level
+                                // detail.result.abstract; fall back to
+                                // personalResult.abstract only when the team
+                                // one is missing.
+                                abstract={detail.result.abstract || this.state.personalResult?.abstract}
+                                title={this.context.t("summary.detail.abstractTitle")}
+                            />
+                            <CitationText content={detail.result.content} citations={detail.result.citations || []} />
+                        </div>
+                    )}
+                    <div className="summary-detail-result-footer">
+                        <span className="summary-detail-result-time">
+                            {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
+                        </span>
+                        {detail.result_is_edited && detail.result_edited_at && (
+                            <span className="summary-detail-result-time">
+                                {t("summary.detail.lastEditedAt", { values: { time: formatDate(detail.result_edited_at) } })}
+                            </span>
+                        )}
+                    </div>
+                </>
             </div>
         );
     }
