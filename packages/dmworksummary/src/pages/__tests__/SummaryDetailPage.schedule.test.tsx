@@ -90,6 +90,15 @@ describe('SummaryDetailPage — 历史版本引用隐私', () => {
     });
 });
 
+describe('SummaryDetailPage — 窄容器布局', () => {
+    it('渲染版本面板 overlay class 时不会引用未定义的宽度常量', () => {
+        const page = makePage(1);
+        page.state = { ...(page.state as any), layoutWidth: 360, loading: true };
+        expect(() => page.render()).not.toThrow();
+        expect(JSON.stringify(page.render())).toContain('version-panel-overlay');
+    });
+});
+
 describe('SummaryDetailPage — 返回分享卡片所在群聊', () => {
     it('分享入口打开原总结时通知左侧列表选中同一个 task', () => {
         const page = new SummaryDetailPage({
