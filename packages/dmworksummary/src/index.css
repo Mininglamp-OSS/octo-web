@@ -376,14 +376,14 @@
     font-size: 12px;
     font-weight: 400;
     line-height: 16px;
-    color: #7F3BF5;
+    color: var(--wk-color-accent);
 }
 
 .summary-card-generating-spinner {
     width: 20px;
     height: 20px;
     border: 3px solid rgba(127, 59, 245, 0.2);
-    border-top-color: #7F3BF5;
+    border-top-color: var(--wk-color-accent);
     border-radius: 50%;
     animation: summary-card-spin 0.6s linear infinite;
 }
@@ -1878,7 +1878,7 @@
     display: inline-flex;
     align-items: center;
     background: rgba(127, 59, 245, 0.08);
-    color: #7F3BF5;
+    color: var(--wk-color-accent);
     border-radius: 99px;
     padding: 2px 6px;
     margin-left: 2px;
@@ -1944,7 +1944,7 @@
     width: 4px;
     height: 4px;
     display: inline-block;
-    background: #7F3BF5;
+    background: var(--wk-color-accent);
     border-radius: 50%;
 }
 
@@ -2480,7 +2480,7 @@
     padding: 0;
     font-size: 14px;
     line-height: 20px;
-    color: #7F3BF5;
+    color: var(--wk-color-accent);
     font-family: inherit;
 }
 
@@ -2489,7 +2489,7 @@
 }
 
 .summary-workbench-add-chat .semi-icon {
-    color: #7F3BF5;
+    color: var(--wk-color-accent);
 }
 
 /* Chat chips - selected chats display */
@@ -2630,7 +2630,7 @@
 }
 
 .chat-summary-template-card:active .chat-summary-template-card-title {
-    color: #7F3BF5;
+    color: var(--wk-color-accent);
 }
 
 .chat-summary-template-card:active .chat-summary-template-card-desc {
@@ -3133,7 +3133,7 @@
 }
 
 .chat-summary-template-edit:hover {
-    color: #7F3BF5;
+    color: var(--wk-color-accent);
     background: rgba(127, 59, 245, 0.06);
 }
 
@@ -3659,7 +3659,7 @@ body.summary-version-detail-open .summary-schedule-page {
 }
 
 .chat-selector-tab--active {
-    color: #7F3BF5;
+    color: var(--wk-color-accent);
     font-weight: 500;
 }
 
@@ -4004,7 +4004,7 @@ body.summary-version-detail-open .summary-schedule-page {
 .summary-version-preview-banner-icon {
     flex: 0 0 auto;
     margin-top: 2px;
-    color: #7c5cf6;
+    color: var(--wk-color-accent);
 }
 .summary-version-preview-banner-copy {
     flex: 1;
