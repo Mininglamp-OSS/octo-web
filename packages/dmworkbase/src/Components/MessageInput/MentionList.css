@@ -27,6 +27,11 @@
 
 .mention-list-item .wk-messageinput-iconbox {
   margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.mention-list-item .wk-messageinput-icon {
+  object-fit: cover;
 }
 
 .mention-list-item-content {
