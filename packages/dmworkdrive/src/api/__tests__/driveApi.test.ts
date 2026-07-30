@@ -232,22 +232,13 @@ describe('share / invite / org', () => {
     expect(inst.post).toHaveBeenCalledWith('/v1/drive/invites/tok/accept', undefined);
   });
 
-  it('searchOrgUser GETs /org/search with an empty q to list team members', async () => {
+  it('listOrgMembers GETs /org/members (space scoped by the X-Space-Id header)', async () => {
     inst.get.mockResolvedValue(ok({ candidates: [{ uid: 'u1' }, { uid: 'u2' }], total: 2 }));
-    const res = await driveApi.searchOrgUser({ q: '   ' });
-    expect(inst.get).toHaveBeenCalledWith('/v1/drive/org/search', {
-      params: { q: '   ' },
+    const res = await driveApi.listOrgMembers();
+    expect(inst.get).toHaveBeenCalledWith('/v1/drive/org/members', {
+      params: {},
     });
     expect(res.total).toBe(2);
-  });
-
-  it('searchOrgUser GETs /org/search for a non-empty query', async () => {
-    inst.get.mockResolvedValue(ok({ candidates: [{ uid: 'u1' }], total: 1 }));
-    const res = await driveApi.searchOrgUser({ q: 'bob', limit: 20 });
-    expect(inst.get).toHaveBeenCalledWith('/v1/drive/org/search', {
-      params: { q: 'bob', limit: '20' },
-    });
-    expect(res.total).toBe(1);
   });
 });
 

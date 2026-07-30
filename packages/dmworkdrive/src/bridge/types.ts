@@ -352,12 +352,6 @@ export interface MountableDocsParams {
   page_size?: number;
 }
 
-export interface OrgSearchParams {
-  q: string;
-  space_id?: string;
-  limit?: number;
-}
-
 // ─── List / composite responses ──────────────────────────────────────────────
 
 export interface BrowseResponse {

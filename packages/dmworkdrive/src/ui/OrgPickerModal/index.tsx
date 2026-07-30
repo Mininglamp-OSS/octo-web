@@ -29,7 +29,7 @@ export interface OrgPickerModalProps {
  */
 export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }: OrgPickerModalProps) {
   const { t } = useI18n();
-  const { candidates, loading, query, search } = useOrgSearch(spaceId);
+  const { candidates, loading, query, search } = useOrgSearch();
   const { members } = useMembers(spaceId ?? null, visible);
   const [selected, setSelected] = useState<Record<string, OrgCandidate>>({});
   const [submitting, setSubmitting] = useState(false);

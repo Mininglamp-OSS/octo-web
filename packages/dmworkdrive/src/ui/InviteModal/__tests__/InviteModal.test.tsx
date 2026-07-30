@@ -63,13 +63,12 @@ beforeEach(() => {
   addMembers.mockReset();
   vi.mocked(useOrgSearch).mockReset();
   vi.mocked(useMembers).mockReset();
-  vi.mocked(useOrgSearch).mockImplementation((spaceId?: string) => ({
-    // Space-scoped candidates: switching spaceId must swap the offered users,
-    // so Space A's picks can't even be seen (let alone selected) under Space B.
-    candidates:
-      spaceId === 'space-B'
-        ? [{ uid: 'u2', name: 'Bob' }]
-        : [{ uid: 'u1', name: 'Alice' }],
+  vi.mocked(useOrgSearch).mockImplementation(() => ({
+    // The picker roster is the caller's octo-space roster (host-scoped, fetched
+    // once via space-changed) — it does NOT vary with the drive spaceId. Cross-
+    // space safety comes from clearing selection + closing the picker on switch,
+    // not from swapping candidates, so offer a stable roster here.
+    candidates: [{ uid: 'u1', name: 'Alice' }, { uid: 'u2', name: 'Bob' }],
     loading: false,
     query: '',
     search: vi.fn(),
@@ -127,12 +126,13 @@ describe('InviteModal ↔ OrgPicker cross-space safety', () => {
     click(getByRole('button', { name: '__toB__' }));
     expect(queryByRole('button', { name: '__ok__' })).toBeNull();
 
-    // Reopen in Space B: only Space B members are offered — Alice (Space A) is
-    // no longer visible or selectable, and confirm starts disabled.
+    // Reopen after the switch: selection was cleared, so confirm starts disabled
+    // and Space A's pick (u1) is not carried over. The roster is the same octo-
+    // space roster (host-scoped), so both users stay offered — the anti-leak
+    // guarantee is the cleared selection, not a swapped candidate list.
     click(getByRole('button', { name: 'drive.invite.pickMembers' }));
-    expect(queryByRole('button', { name: 'Alice' })).toBeNull();
-    expect(queryByRole('button', { name: 'Bob' })).not.toBeNull();
     expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(queryByRole('button', { name: 'Bob' })).not.toBeNull();
 
     // Prove no cross-space leak: pick Bob (u2) in B and confirm.
     click(getByRole('button', { name: 'Bob' }));

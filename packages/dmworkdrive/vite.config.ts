@@ -15,6 +15,11 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // Real (self-contained, dependency-free) pinyin helpers the org picker
+      // uses for local search — aliased before the '@octo/base' barrel mock so
+      // the deep imports resolve to the actual util instead of the stub.
+      '@octo/base/src/Utils/pinYin': path.resolve(__dirname, '../dmworkbase/src/Utils/pinYin.ts'),
+      '@octo/base/src/Utils/t2s': path.resolve(__dirname, '../dmworkbase/src/Utils/t2s.ts'),
       '@octo/base': path.resolve(__dirname, 'src/__mocks__/dmworkBase.ts'),
       // Semi UI pulls lottie-web transitively; its canvas init throws in jsdom.
       'lottie-web': path.resolve(__dirname, 'src/__mocks__/lottieStub.ts'),

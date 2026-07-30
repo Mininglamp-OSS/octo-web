@@ -36,7 +36,6 @@ import type {
   DriveRole,
   BrowseParams,
   MountableDocsParams,
-  OrgSearchParams,
 } from '../bridge/types';
 
 /**
@@ -575,19 +574,14 @@ export async function acceptInvite(token: string): Promise<AcceptInviteResult> {
 // ─── Org picker (proxied to octo-server) ─────────────────────────────────────
 
 /**
- * Org-member picker source. A non-empty `q` keyword-searches octo-server
- * (single-user lookup); an empty `q` lists the caller's current octo space
- * members (drive branches on the X-Space-Id header the interceptor sends).
+ * List every member of the caller's current octo space, for the org picker's
+ * fetch-once-then-filter-locally flow. Scoped by the `X-Space-Id` header the
+ * request interceptor injects (the octo space id, NOT the drive `space_id`);
+ * drive proxies to octo-server and pages the roster exhaustively. Candidates
+ * carry uid + name only — pinyin/keyword matching happens client-side.
  */
-export async function searchOrgUser(
-  params: OrgSearchParams,
-  signal?: AbortSignal,
-): Promise<OrgSearchResponse> {
-  return get<OrgSearchResponse>(
-    '/org/search',
-    params as unknown as Record<string, unknown>,
-    signal,
-  );
+export async function listOrgMembers(signal?: AbortSignal): Promise<OrgSearchResponse> {
+  return get<OrgSearchResponse>('/org/members', undefined, signal);
 }
 
 export type { DriveRole };
