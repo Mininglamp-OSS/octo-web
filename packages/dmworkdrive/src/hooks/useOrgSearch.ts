@@ -56,6 +56,27 @@ export function useOrgSearch(spaceId?: string): UseOrgSearchResult {
     [run],
   );
 
+  // On a space switch, synchronously drop everything scoped to the previous
+  // space: cancel the pending debounce, abort the in-flight request (each run's
+  // AbortController doubles as its generation guard, so a late Space A response
+  // returns early instead of writing back), and clear query/candidates now.
+  // Without this the picker keeps showing — and lets a user select — Space A's
+  // members during the window before Space B's debounced load resolves. The
+  // caller triggers a fresh load for the new space when the picker (re)opens.
+  // Skip the initial mount: there is no previous space to reset.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    abortRef.current?.abort();
+    setCandidates([]);
+    setQuery('');
+    setLoading(false);
+  }, [spaceId]);
+
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useI18n } from '@octo/base';
 import { Modal, Select, Button, Spin, Tag, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { Copy, Trash2, Link2, UserPlus } from 'lucide-react';
@@ -46,6 +46,16 @@ export default function InviteModal({ visible, spaceId, onClose }: InviteModalPr
   const [role, setRole] = useState<DriveRole>('editor');
   const [expiryDays, setExpiryDays] = useState<number>(7);
   const [orgOpen, setOrgOpen] = useState(false);
+
+  // The org picker belongs to the space (and open state) of the invite modal
+  // that spawned it. Force it shut whenever the parent modal hides or the active
+  // space changes, so a picker opened in Space A can't linger visible — and
+  // later confirm — against a newly selected Space B (PR #1146 cross-space
+  // blocker). Combined with the `visible && orgOpen` gate below, the picker is
+  // never reachable outside the space it was opened in.
+  useEffect(() => {
+    setOrgOpen(false);
+  }, [visible, spaceId]);
 
   const roleOptions = [
     { label: t('drive.invite.roleEditor'), value: 'editor' },
@@ -152,7 +162,7 @@ export default function InviteModal({ visible, spaceId, onClose }: InviteModalPr
       </Modal>
 
       <OrgPickerModal
-        visible={orgOpen}
+        visible={visible && orgOpen}
         spaceId={spaceId ?? undefined}
         onClose={() => setOrgOpen(false)}
         onConfirm={async (uids) => {

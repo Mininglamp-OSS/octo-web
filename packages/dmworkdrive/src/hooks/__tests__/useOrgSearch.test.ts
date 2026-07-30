@@ -64,4 +64,53 @@ describe('useOrgSearch', () => {
       expect.anything(),
     );
   });
+
+  it('clears candidates/query/loading synchronously on a space switch (no stale carry)', async () => {
+    vi.mocked(api.searchOrgUser).mockResolvedValue(resp([cand('a1', 'A-Alice'), cand('a2', 'A-Bob')]));
+    const { result, rerender } = renderHook((sp: string) => useOrgSearch(sp), 'space-A' as string);
+
+    act(() => result.current.search('alice'));
+    expect(result.current.query).toBe('alice');
+    await waitFor(() => expect(result.current.candidates.length).toBe(2));
+
+    // Switch space: state is dropped immediately, without waiting for a debounce
+    // or a new response to land.
+    act(() => rerender('space-B'));
+    expect(result.current.candidates).toEqual([]);
+    expect(result.current.query).toBe('');
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('a late Space A response cannot write back after switching to Space B; B search uses B params', async () => {
+    let resolveA!: (v: OrgSearchResponse) => void;
+    // First call (Space A) hangs until we resolve it manually; later calls (B) resolve normally.
+    vi.mocked(api.searchOrgUser).mockResolvedValue(resp([cand('b1', 'B-Carol')]));
+    vi.mocked(api.searchOrgUser).mockImplementationOnce(
+      () => new Promise<OrgSearchResponse>((res) => { resolveA = res; }),
+    );
+
+    const { result, rerender } = renderHook((sp: string) => useOrgSearch(sp), 'space-A' as string);
+
+    act(() => result.current.search('alice'));
+    await waitFor(() => expect(result.current.loading).toBe(true)); // A request in-flight
+
+    // Switch to B: A's request is aborted and state cleared.
+    act(() => rerender('space-B'));
+    expect(result.current.candidates).toEqual([]);
+
+    // A's response arrives late — must be discarded (aborted-signal guard).
+    await act(async () => {
+      resolveA(resp([cand('a1', 'A-Alice'), cand('a2', 'A-Bob')]));
+      await Promise.resolve();
+    });
+    expect(result.current.candidates).toEqual([]);
+
+    // A fresh search now targets Space B only.
+    act(() => result.current.search('carol'));
+    await waitFor(() => expect(result.current.candidates).toEqual([cand('b1', 'B-Carol')]));
+    expect(api.searchOrgUser).toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: 'carol', space_id: 'space-B' }),
+      expect.anything(),
+    );
+  });
 });

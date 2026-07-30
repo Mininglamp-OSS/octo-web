@@ -143,4 +143,35 @@ describe('OrgPickerModal', () => {
     click(getByRole('button', { name: '__ok__' }));
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it('clears selection and re-searches when the target space changes (no cross-space carry)', () => {
+    const search = vi.fn();
+    stub([{ uid: 'u1', name: 'Alice' }, { uid: 'u2', name: 'Bob' }], { search });
+
+    function Wrapper() {
+      const [spaceId, setSpaceId] = React.useState('space-A');
+      return (
+        <>
+          <button aria-label="__switch__" onClick={() => setSpaceId('space-B')}>
+            switch
+          </button>
+          <OrgPickerModal visible spaceId={spaceId} onClose={() => {}} onConfirm={() => {}} />
+        </>
+      );
+    }
+
+    const { getByRole, click } = render(<Wrapper />);
+    // Select Alice in Space A → confirm becomes enabled.
+    click(getByRole('button', { name: 'Alice' }));
+    expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(false);
+
+    const searchCallsBeforeSwitch = search.mock.calls.length;
+    click(getByRole('button', { name: '__switch__' }));
+
+    // Space changed: selection cleared (confirm disabled again) and a fresh
+    // empty search fired for the new space rather than keeping Space A results.
+    expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(search.mock.calls.length).toBeGreaterThan(searchCallsBeforeSwitch);
+    expect(search).toHaveBeenLastCalledWith('');
+  });
 });

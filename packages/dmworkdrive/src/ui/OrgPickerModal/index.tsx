@@ -41,13 +41,17 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
     return map;
   }, [members]);
 
-  // Reset selection each time the modal opens.
+  // Reset all space-scoped state whenever the picker opens/closes or the target
+  // space changes. Clearing `selected` on a spaceId change is the guard that
+  // stops Space A's picks from being confirmed against Space B; re-running the
+  // (empty) search when visible refreshes the candidate list + query for the new
+  // space instead of leaving Space A's stale results behind. The search is gated
+  // on `visible` so a mounted-but-hidden picker doesn't fire an org query on
+  // every space switch.
   useEffect(() => {
-    if (visible) {
-      setSelected({});
-      search('');
-    }
-  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+    setSelected({});
+    if (visible) search('');
+  }, [visible, spaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = useCallback(
     (c: OrgCandidate) => {
@@ -65,7 +69,9 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
   const selectedUids = Object.keys(selected);
 
   const handleConfirm = async () => {
-    if (selectedUids.length === 0 || submitting) return;
+    // `!visible` guards against a stale confirm firing after a space switch has
+    // hidden the picker (the parent also clears selection on spaceId change).
+    if (!visible || selectedUids.length === 0 || submitting) return;
     setSubmitting(true);
     await onConfirm(selectedUids);
     setSubmitting(false);
