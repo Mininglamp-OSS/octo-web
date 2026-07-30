@@ -2409,9 +2409,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     renderToc() {
-        const { tocItems, activeTocId, versionPanelOpen, isEditing, editingTeamSummary } = this.state;
+        const { tocItems, activeTocId, versionPanelOpen, isEditing, editingTeamSummary, editingMyDraft, editingPersonalReport } = this.state;
         // 编辑态 / 版本面板打开时不显示目录，避免与右侧面板抢占空间。
-        if (versionPanelOpen || isEditing || editingTeamSummary) return null;
+        // yujiawei PR #1154 round-5 P2-7: also gate on editingMyDraft and
+        // editingPersonalReport so the TOC does not stay mounted (and the
+        // parent's `has-toc` layout class does not stay applied) while the
+        // team body is hidden behind either of those two editors, which was
+        // shifting the footer 64px off-centre at ≥1441px.
+        if (versionPanelOpen || isEditing || editingTeamSummary || editingMyDraft || editingPersonalReport) return null;
         if (!tocItems || tocItems.length < 2) return null;
         const { t } = this.context;
         return (
@@ -3729,6 +3734,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const hasToc = !this.state.versionPanelOpen
             && !this.state.isEditing
             && !this.state.editingTeamSummary
+            && !this.state.editingMyDraft
+            && !this.state.editingPersonalReport
             && this.state.tocItems.length >= 2;
 
         return (

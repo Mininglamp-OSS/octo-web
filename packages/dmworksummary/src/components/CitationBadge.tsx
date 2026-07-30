@@ -427,7 +427,7 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
     // P1-2：一个分组可能跨多个频道（相邻角标合并时不再限定同频道）。此时钉住视图
     // 不能只用第一个频道的 source 作总标题，否则会把其它频道的消息挂到错误来源名下。
     const spansMultipleSources = new Set(
-        groupCitations.map((c) => `${c.channel_id ?? ""} ${c.source ?? ""}`)
+        groupCitations.map((c) => `${c.channel_id ?? ""}\0${c.source ?? ""}`)
     ).size > 1;
 
     // Hover preview: first up-to-3 cited messages compact. Pinned: full timeline + jump.
@@ -472,9 +472,18 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                                     : undefined}
                                 jumpLink={msg.cited && cit ? <JumpLink citation={cit} badgeKey={badgeKey} closeKey={closeKey} /> : undefined}
                             />
-                            {spansMultipleSources && msg.source && (
+                            {spansMultipleSources && (
+                                // yujiawei PR #1154 round-5 P2-1: when the
+                                // group spans multiple sources, every message
+                                // needs an attribution line — an empty `source`
+                                // must fall back to `sourceDefault` so a reader
+                                // does not visually inherit the previous
+                                // message's label. Without this, the popover
+                                // header "Multiple sources" contradicts a
+                                // message that carries no attribution and
+                                // sits directly under an explicit source line.
                                 <div className="citation-msg-source" style={{ paddingLeft: 24 }}>
-                                    {t("summary.citation.source", { values: { source: msg.source } })}
+                                    {t("summary.citation.source", { values: { source: msg.source || t("summary.citation.sourceDefault") } })}
                                 </div>
                             )}
                             <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
