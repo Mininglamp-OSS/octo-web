@@ -16,7 +16,6 @@ function makeMockMainMenu(): ExcalidrawMainMenu {
   const MainMenu = ({ children }: { children?: ReactNode }) => <div data-menu="root">{children}</div>
   return Object.assign(MainMenu, {
     DefaultItems: {
-      LoadScene: item('LoadScene'),
       SaveToActiveFile: item('SaveToActiveFile'),
       Export: item('Export'),
       SaveAsImage: item('SaveAsImage'),
@@ -39,7 +38,6 @@ describe('BoardMainMenu', () => {
     )
 
     expect(rendered).toEqual([
-      'LoadScene',
       'SaveToActiveFile',
       'Export',
       'SaveAsImage',
@@ -52,5 +50,6 @@ describe('BoardMainMenu', () => {
     ])
     // The de-brand: no Socials / "Excalidraw links" item is composed.
     expect(rendered).not.toContain('Socials')
+    expect(rendered).not.toContain('LoadScene')
   })
 })

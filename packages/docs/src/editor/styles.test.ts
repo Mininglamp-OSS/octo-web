@@ -61,3 +61,13 @@ describe("document scroll container overflow (XIN-1048 #5)", () => {
     expect(rule).toMatch(/overflow-x:\s*hidden/);
   });
 });
+
+describe("document typography controls match Sheet selectors", () => {
+  it("keeps font family and size borderless without a persistent ring", () => {
+    const rule = classRule(".octo-tb-sel--font .octo-tb-sheet-select,\n.octo-tb-sel--size .octo-tb-sheet-select");
+    expect(rule).toMatch(/height:\s*24px/);
+    expect(rule).toMatch(/border:\s*0/);
+    expect(rule).toMatch(/background:\s*transparent/);
+    expect(rule).toMatch(/box-shadow:\s*none/);
+  });
+});

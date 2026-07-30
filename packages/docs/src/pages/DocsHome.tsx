@@ -8,7 +8,8 @@ import { HtmlDocView } from '../html/HtmlDocView.tsx'
 import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
 import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
 import { docsApiBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
-import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
+import { isBoardDoc, isBoardIdLocally, persistBoardScene, rememberBoard } from '../board/boardStore.ts'
+import { BoardImportSchemaError, BoardImportStorageError, importBoardScene } from '../board/boardImport.ts'
 import { runMarkdownImport, runDocxImport, ImportContentCorruptError } from '../editor/importFlow.ts'
 import '../editor/styles.css'
 import {
@@ -17,7 +18,7 @@ import {
   DEFAULT_DOC_ID,
   DOC_TARGET_STORAGE_KEY,
 } from '../config.ts'
-import { createDoc, getDoc, recordDocView, type DocListItem } from './docsApi.ts'
+import { createDoc, deleteDoc, getDoc, recordDocView, type DocListItem } from './docsApi.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { createInvite, buildInviteUrl } from '../invite/api.ts'
 import { canManage, type Role } from '../auth/roles.ts'
@@ -348,6 +349,24 @@ function HtmlRowIcon(): React.ReactElement {
   )
 }
 
+function WordImportIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M4 1.5h5L12.5 5v9H3.5V2zM9 1.5V5h3.5" stroke="currentColor" />
+      <path d="m5.2 7 1.1 4 1.2-3 1.2 3 1.1-4" stroke="currentColor" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function MarkdownImportIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="1.5" y="3" width="13" height="10" rx="1" stroke="currentColor" />
+      <path d="M3.5 10V6.5L5.5 9l2-2.5V10M10 7.5l1.5 2 1.5-2M11.5 6v4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 /**
  * Layered empty states A–F (frontend-design §5.3). Each variant carries its OWN i18n title + CTA
  * keys — A ("看", browse) and B ("建", create) are deliberately NOT merged (product MF1). C/D/F cover
@@ -479,6 +498,7 @@ function DocsList({
   const [creating, setCreating] = useState(false)
   const [newMenuAt, setNewMenuAt] = useState<{ left: number; top: number } | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const boardImportInputRef = useRef<HTMLInputElement>(null)
   // Client-side pin (置顶) — persisted in localStorage; pinned docs sort to the top. Pin is a
   // "我的文档" affordance ONLY: the recent tab renders the server's `viewed_at DESC` order verbatim
   // with no client re-sort and no pin menu item (frontend-design §5.4).
@@ -581,6 +601,52 @@ function DocsList({
       setCreating(false)
     } catch {
       setCreateError(t('docs.state.error'))
+      setCreating(false)
+    }
+  }
+
+  const onImportBoard = async (file: File) => {
+    if (creating) return
+    // Match Excalidraw's own JSON file limit. Larger scenes cannot be reliably retained by the
+    // localStorage mirror and previously failed only after the server document had been created.
+    const MAX_IMPORT_BYTES = 4 * 1024 * 1024
+    if (file.size > MAX_IMPORT_BYTES) {
+      setCreateError(t('docs.board.importTooLarge'))
+      return
+    }
+    setCreating(true)
+    try {
+      const raw: unknown = JSON.parse(await file.text())
+      const title = file.name.replace(/\.excalidraw$/i, '').trim() || t('docs.board.untitled')
+      // Validate, serialize and perform a real localStorage write/read before createDoc. This makes
+      // quota/private-mode failures fail closed without leaving an empty server-side Board. The
+      // existing authenticated owner delete API rolls back the unlikely second-write failure.
+      const created = await importBoardScene(
+        raw,
+        () => createDoc({
+          title,
+          spaceId: space || undefined,
+          folderId: folder || undefined,
+          docType: 'board',
+        }),
+        (docId) => deleteDoc(docId, { spaceId: space || undefined }),
+        uid,
+      )
+      rememberBoard(created.docId, uid)
+      setCreateError(null)
+      onSelect(created.docId, 'board')
+      reloadViews()
+    } catch (error) {
+      setCreateError(
+        error instanceof SyntaxError
+          ? t('docs.board.importParseError')
+          : error instanceof BoardImportSchemaError
+            ? t('docs.board.importError')
+            : error instanceof BoardImportStorageError
+              ? t('docs.board.importStorageError')
+              : t('docs.state.error'),
+      )
+    } finally {
       setCreating(false)
     }
   }
@@ -875,25 +941,12 @@ function DocsList({
             phrasing-content wrapper would trip React's DOM-nesting validation. */}
         <div className="octo-docs-list-header-actions">
           <OnboardingHelp />
-          <span
-            className="octo-docs-list-new"
-            style={{ display: 'inline-flex', alignItems: 'stretch', padding: 0, overflow: 'hidden' }}
-          >
+          <span className="octo-docs-list-new octo-docs-new-split">
             <button
               type="button"
+              className="octo-docs-new-primary"
               onClick={() => onCreate()}
               disabled={creating}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                background: 'transparent',
-                border: 'none',
-                color: 'inherit',
-                font: 'inherit',
-                padding: '6px 8px 6px 12px',
-                cursor: creating ? 'default' : 'pointer',
-              }}
             >
               <span className="octo-docs-list-new-icon" aria-hidden="true">+</span>
               {t('docs.list.new')}
@@ -908,17 +961,7 @@ function DocsList({
                 const r = box.getBoundingClientRect()
                 setNewMenuAt(newMenuAt ? null : { left: r.left, top: r.bottom + 6 })
               }}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                background: 'transparent',
-                border: 'none',
-                borderLeft: '1px solid rgba(255,255,255,0.45)',
-                color: 'inherit',
-                padding: '0 12px',
-                fontSize: 11,
-                cursor: creating ? 'default' : 'pointer',
-              }}
+              className="octo-docs-new-caret"
             >
               ▾
             </button>
@@ -928,9 +971,8 @@ function DocsList({
           <PortalMenu at={newMenuAt} onClose={() => setNewMenuAt(null)}>
             <button
               type="button"
-              className="octo-tb-btn"
+              className="octo-docs-new-menu-item"
               disabled={creating}
-              style={{ display: 'block', width: '100%', textAlign: 'left' }}
               onClick={() => {
                 setNewMenuAt(null)
                 void onCreate('board')
@@ -941,23 +983,22 @@ function DocsList({
             </button>
             <button
               type="button"
-              className="octo-tb-btn"
+              className="octo-docs-new-menu-item"
               disabled={creating}
-              style={{ display: 'block', width: '100%', textAlign: 'left' }}
               onClick={() => {
                 setNewMenuAt(null)
                 void onCreate('sheet')
               }}
             >
-              ▦ {t('docs.sheet.new')}
+              <span className="octo-docs-new-menu-icon" aria-hidden="true"><SheetRowIcon /></span>
+              {t('docs.sheet.new')}
             </button>
             {/* plan Task 6: "new HTML" launches the embedded bot-DM flow — it only closes the menu and
                 calls onCreateHtml; it NEVER calls createDoc (no placeholder doc is created up front). */}
             <button
               type="button"
-              className="octo-tb-btn"
+              className="octo-docs-new-menu-item"
               disabled={creating}
-              style={{ display: 'block', width: '100%', textAlign: 'left' }}
               onClick={() => {
                 setNewMenuAt(null)
                 onCreateHtml()
@@ -974,48 +1015,71 @@ function DocsList({
                 <div
                   role="separator"
                   aria-hidden="true"
-                  style={{ borderTop: '1px solid #ebebeb', margin: '6px 0' }}
+                  className="octo-docs-new-menu-separator"
                 />
                 <button
                   type="button"
-                  className="octo-tb-btn"
+                  className="octo-docs-new-menu-item"
                   disabled={creating}
-                  style={{ display: 'block', width: '100%', textAlign: 'left' }}
                   onClick={() => {
                     setNewMenuAt(null)
                     importInputRef.current?.click()
                   }}
                 >
-                  📄 {t('docs.sheet.importExcel')}
+                  <span className="octo-docs-new-menu-icon" aria-hidden="true"><SheetRowIcon /></span>
+                  {t('docs.sheet.importExcel')}
                 </button>
                 <button
                   type="button"
-                  className="octo-tb-btn"
+                  className="octo-docs-new-menu-item"
                   disabled={creating}
-                  style={{ display: 'block', width: '100%', textAlign: 'left' }}
                   onClick={() => {
                     setNewMenuAt(null)
                     void onImportWord()
                   }}
                 >
-                  📃 {t('docs.import.word')}
+                  <span className="octo-docs-new-menu-icon" aria-hidden="true"><WordImportIcon /></span>
+                  {t('docs.import.word')}
                 </button>
                 <button
                   type="button"
-                  className="octo-tb-btn"
+                  className="octo-docs-new-menu-item"
                   disabled={creating}
-                  style={{ display: 'block', width: '100%', textAlign: 'left' }}
                   onClick={() => {
                     setNewMenuAt(null)
                     void onImportMarkdown()
                   }}
                 >
-                  📝 {t('docs.import.markdown')}
+                  <span className="octo-docs-new-menu-icon" aria-hidden="true"><MarkdownImportIcon /></span>
+                  {t('docs.import.markdown')}
+                </button>
+                <button
+                  type="button"
+                  className="octo-docs-new-menu-item"
+                  disabled={creating}
+                  onClick={() => {
+                    setNewMenuAt(null)
+                    boardImportInputRef.current?.click()
+                  }}
+                >
+                  <span className="octo-docs-new-menu-icon" aria-hidden="true"><BoardRowIcon /></span>
+                  {t('docs.board.importFile')}
                 </button>
               </>
             )}
           </PortalMenu>
         )}
+        <input
+          ref={boardImportInputRef}
+          type="file"
+          accept=".excalidraw,application/json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) void onImportBoard(file)
+            e.currentTarget.value = ''
+          }}
+        />
         <input
           ref={importInputRef}
           type="file"

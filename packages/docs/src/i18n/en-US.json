@@ -61,6 +61,17 @@
   "board": {
     "readOnly": "Read-only",
     "saveFailed": "Not saved — local storage is full or unavailable",
+    "canvasColor": "Canvas color",
+    "canvasActions": "Canvas tools",
+    "find": "Find",
+    "saveFile": "Save to file",
+    "exportImage": "Export as image",
+    "help": "Help",
+    "importFile": "Import board file",
+    "importError": "This board file has an invalid or unsupported structure.",
+    "importParseError": "Could not read this file as JSON.",
+    "importStorageError": "Could not store the imported board. Free up browser storage and try again.",
+    "importTooLarge": "The board file is too large (over 4 MiB).",
     "untitled": "Untitled board",
     "deleteEntry": "Delete board",
     "deleteConfirmTitle": "Delete board",
@@ -70,6 +81,66 @@
     "saveLibrary": "Save to file",
     "resetLibrary": "Reset library",
     "resetLibraryConfirm": "Reset the library? This will clear all saved items and can't be undone.",
+    "comment": {
+      "add": "Add comment",
+      "addHere": "Add comment here",
+      "empty": "No board comments yet. Select an element or comment on the current board position.",
+      "placeholder": "Write a comment about this position…",
+      "element": "Board element",
+      "selection": "Multiple board elements",
+      "point": "Board position",
+      "orphaned": "The original board element was deleted",
+      "markerLoadFailed": "Comment markers could not be loaded. Please try again.",
+      "contextMenu": "Comment",
+      "elementTypes": {
+        "element": "Element",
+        "text": "Text",
+        "frame": "Frame",
+        "rectangle": "Rectangle",
+        "ellipse": "Ellipse",
+        "diamond": "Diamond",
+        "arrow": "Arrow",
+        "line": "Line",
+        "freedraw": "Free draw",
+        "image": "Image",
+        "embeddable": "Embed"
+      }
+    },
+    "nativePanel": {
+      "group": "Text controls",
+      "fontSize": "Font size",
+      "textColor": "Text color",
+      "strokeColor": "Stroke color",
+      "backgroundColor": "Fill color",
+      "style": "Style",
+      "bold": "Bold",
+      "italic": "Italic",
+      "underline": "Underline",
+      "lineHeight": "Line height",
+      "mixed": "Mixed",
+      "align": {
+        "group": "Alignment",
+        "left": "Align left",
+        "center": "Align center",
+        "right": "Align right",
+        "justify": "Justify"
+      },
+      "fontNotSupported": "This font isn't installed; a substitute is used."
+    },
+    "nativeExcalidraw": {
+      "arrowType": "Arrow type",
+      "moreOptions": "More options",
+      "frameTool": "Frame",
+      "find": "Find on canvas",
+      "findPlaceholder": "Find text on canvas...",
+      "generate": "Generate",
+      "sharpArrow": "Sharp arrow",
+      "curvedArrow": "Curved arrow",
+      "elbowArrow": "Elbow arrow",
+      "crowfootOne": "Crow's foot (one)",
+      "crowfootMany": "Crow's foot (many)",
+      "crowfootOneOrMany": "Crow's foot (one or many)"
+    },
     "version": {
       "title": "Version history",
       "close": "Close",
@@ -148,6 +219,7 @@
     "fontFamilyDefault": "Default font",
     "fontSearchPlaceholder": "Search fonts",
     "fontNoMatch": "No matching fonts",
+    "fontNotSupported": "This font isn't installed; a substitute is used.",
     "tabStart": "Home",
     "tabInsert": "Insert",
     "font": {
@@ -615,15 +687,6 @@
       "changed": "Changed",
       "emptyCell": "(empty)",
       "emptyGrid": "(empty sheet)"
-    },
-    "fontLabels": {
-      "pingfang": "PingFang SC",
-      "hiraginoSansGB": "Hiragino Sans GB",
-      "stxihei": "STXihei",
-      "yuanti": "Yuanti SC",
-      "hannotate": "Hannotate SC",
-      "hanzipen": "HanziPen SC",
-      "wawati": "Wawati SC"
     },
     "formula": {
       "insert": "Insert formula",

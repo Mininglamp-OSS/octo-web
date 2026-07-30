@@ -13,7 +13,6 @@ type MenuComponent = ComponentType<Record<string, unknown>>
 
 export type ExcalidrawMainMenu = ComponentType<{ children?: ReactNode }> & {
   DefaultItems: {
-    LoadScene: MenuComponent
     SaveToActiveFile: MenuComponent
     Export: MenuComponent
     SaveAsImage: MenuComponent
@@ -34,16 +33,14 @@ export type ExcalidrawMainMenu = ComponentType<{ children?: ReactNode }> & {
  * fallback menu, so composing the default items without `Socials` is the supported way to remove
  * the brand links without patching the vendored library.
  *
- * The item set and order deliberately mirror Excalidraw 0.18.1's own `DefaultMainMenu` (load /
- * save / export / save-as-image / search / help / clear — separator — theme / background); only
- * the "Excalidraw links" group and its now-redundant leading separator are dropped, so nothing
- * else about the menu changes.
+ * File import lives in the document homepage's New dropdown, so the native LoadScene entry is
+ * deliberately omitted along with the upstream "Excalidraw links" group. This keeps one product
+ * entrance for importing boards while preserving the rest of Excalidraw's useful local actions.
  */
 export function BoardMainMenu({ MainMenu }: { MainMenu: ExcalidrawMainMenu }): ReactElement {
   const items = MainMenu.DefaultItems
   return (
     <MainMenu>
-      <items.LoadScene />
       <items.SaveToActiveFile />
       <items.Export />
       <items.SaveAsImage />

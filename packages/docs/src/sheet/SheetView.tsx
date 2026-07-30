@@ -106,17 +106,19 @@ function SheetCommentComposer({
 }: {
   anchor: CellAnchor
   dark: boolean
-  onSubmit: (body: string) => Promise<void>
+  onSubmit: (body: string) => Promise<string | null>
   onCancel: () => void
   spaceId?: string
 }) {
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const submit = async () => {
     if (busy || !body.trim()) return
     setBusy(true)
+    setSubmitError(null)
     try {
-      await onSubmit(body.trim())
+      setSubmitError(await onSubmit(body.trim()))
     } finally {
       setBusy(false)
     }
@@ -147,6 +149,7 @@ function SheetCommentComposer({
         onSubmit={() => void submit()}
         onCancel={onCancel}
       />
+      {submitError && <p className="octo-member-error" role="alert">{submitError}</p>}
       <div className="octo-comment-compose-actions" style={{ marginTop: 6, display: 'flex', gap: 8 }}>
         <button type="button" className="octo-tb-btn" disabled={busy || !body.trim()} onClick={() => void submit()}>
           {t('docs.sheet.comment.menu')}
@@ -788,8 +791,9 @@ export function SheetView(props: SheetViewProps) {
             onCancel={() => setComposer(null)}
             onSubmit={async (body) => {
               const enc = btoa(composer.key)
-              await comments.createRoot({ body, anchorStart: enc, anchorEnd: enc, anchorText: composer.a1 })
-              setComposer(null)
+              const result = await comments.createRoot({ body, anchorStart: enc, anchorEnd: enc, anchorText: composer.a1 })
+              if (result.ok) setComposer(null)
+              return result.error
             }}
           />
         )}

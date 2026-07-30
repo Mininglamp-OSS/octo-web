@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react'
 import { createElement } from 'react'
 import { cellMatches, parseCell, SheetCommentPanel, type SheetCell } from './SheetCommentPanel.tsx'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import type { UseDocComments } from '../comments/useDocComments.ts'
+import type { CommentThread } from '../comments/api.ts'
+import type { CommentMutationResult } from '../comments/useDocComments.ts'
 import type { CollabSheet } from './CollabSheet.ts'
 
 // Locks the cross-sheet active-thread selection contract: highlighting a thread must match
@@ -95,18 +97,42 @@ function makeComments(overrides: Partial<UseDocComments> = {}): UseDocComments {
   return {
     threads: [],
     loading: false,
+    loadingThreadIds: new Set(),
     error: null,
     nextCursor: null,
     includeResolved: false,
     setIncludeResolved: () => {},
     refresh: async () => {},
     loadMore: async () => {},
-    createRoot: async () => {},
-    reply: async () => {},
-    editBody: async () => {},
-    resolve: async () => {},
-    remove: async () => {},
+    loadThread: async () => true,
+    createRoot: async () => ({ ok: true, error: null }),
+    reply: async () => ({ ok: true, error: null }),
+    editBody: async () => ({ ok: true, error: null }),
+    resolve: async () => ({ ok: true, error: null }),
+    remove: async () => ({ ok: true, error: null }),
     ...overrides,
+  }
+}
+
+const failed = (error: string): CommentMutationResult => ({ ok: false, error })
+
+function commentThread(id: number, resolved = false): CommentThread {
+  const cell = `default!${id - 1}:0`
+  return {
+    id,
+    docId: 'doc-1',
+    parentId: null,
+    authorUid: 'u_self',
+    body: `comment ${id}`,
+    anchorStart: btoa(cell),
+    anchorEnd: btoa(cell),
+    anchorText: `A${id}`,
+    resolved,
+    resolvedBy: null,
+    resolvedAt: null,
+    createdAt: '2026-07-30T00:00:00.000Z',
+    updatedAt: '2026-07-30T00:00:00.000Z',
+    replies: [],
   }
 }
 
@@ -119,12 +145,16 @@ function makeSheet(activeCell: { key: string; a1: string; sheetId: string } | nu
   } as unknown as CollabSheet
 }
 
-function renderPanel(sheet: CollabSheet | null, comments: UseDocComments = makeComments()) {
+function renderPanel(
+  sheet: CollabSheet | null,
+  comments: UseDocComments = makeComments(),
+  role: 'reader' | 'writer' = 'reader',
+) {
   return render(
     createElement(SheetCommentPanel, {
       docId: 'doc-1',
       sheet,
-      role: 'reader' as const,
+      role,
       comments,
     }),
   )
@@ -175,5 +205,45 @@ describe('SheetCommentPanel — compose entry button (XIN-1337)', () => {
     renderPanel(makeSheet(null))
     fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.commentButton/ }))
     expect(screen.getByRole('button', { name: /docs\.sheet\.comment\.current/ })).toBeTruthy()
+  })
+})
+
+describe('SheetCommentPanel — mutation failures', () => {
+  beforeEach(() => {
+    setWKApp(createMockWKApp())
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+  afterEach(() => cleanup())
+
+  it('renders delete and resolve/reopen failures as alerts beside only the affected rows', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const remove = vi.fn(async () => failed('Delete A1 failed.'))
+    const resolve = vi.fn(async (id: number, resolved: boolean) =>
+      failed(`${resolved ? 'Resolve' : 'Reopen'} A${id} failed.`),
+    )
+    renderPanel(
+      makeSheet({ key: 'default!0:0', a1: 'A1', sheetId: 'default' }),
+      makeComments({ threads: [commentThread(1), commentThread(2), commentThread(3, true)], remove, resolve }),
+      'writer',
+    )
+
+    const row1 = screen.getByText('A1').closest('li')!
+    const row2 = screen.getByText('A2').closest('li')!
+    const row3 = screen.getByText('A3').closest('li')!
+
+    fireEvent.click(within(row1).getByRole('button', { name: 'docs.comment.delete' }))
+    expect((await within(row1).findByRole('alert')).textContent).toBe('Delete A1 failed.')
+    expect(within(row2).queryByRole('alert')).toBeNull()
+    expect(within(row3).queryByRole('alert')).toBeNull()
+
+    fireEvent.click(within(row2).getByRole('button', { name: 'docs.comment.resolve' }))
+    await waitFor(() => expect(within(row2).getByRole('alert').textContent).toBe('Resolve A2 failed.'))
+    expect(within(row1).getByRole('alert').textContent).toBe('Delete A1 failed.')
+    expect(within(row3).queryByRole('alert')).toBeNull()
+
+    fireEvent.click(within(row3).getByRole('button', { name: 'docs.comment.reopen' }))
+    await waitFor(() => expect(within(row3).getByRole('alert').textContent).toBe('Reopen A3 failed.'))
+    expect(resolve).toHaveBeenCalledWith(2, true)
+    expect(resolve).toHaveBeenCalledWith(3, false)
   })
 })

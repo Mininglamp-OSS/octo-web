@@ -12,6 +12,7 @@ import type { Editor } from '@tiptap/core'
 import { encodeAnchorRange, type EncodedAnchor } from './anchor.ts'
 import { t } from '../octoweb/index.ts'
 import type { CreateRootInput } from './api.ts'
+import type { CommentMutationResult } from './useDocComments.ts'
 import { MentionComposer } from '../mentions/MentionComposer.tsx'
 
 export function CommentBubble({
@@ -20,7 +21,7 @@ export function CommentBubble({
   spaceId,
 }: {
   editor: Editor
-  onCreate: (input: CreateRootInput) => Promise<void>
+  onCreate: (input: CreateRootInput) => Promise<CommentMutationResult>
   spaceId?: string
 }) {
   const [pending, setPending] = useState<EncodedAnchor | null>(null)
@@ -52,13 +53,14 @@ export function CommentBubble({
     setBusy(true)
     setError(null)
     try {
-      await onCreate({
+      const result = await onCreate({
         body: body.trim(),
         anchorStart: pending.anchorStart,
         anchorEnd: pending.anchorEnd,
         anchorText: pending.anchorText,
       })
-      cancel()
+      if (result.ok) cancel()
+      else setError(result.error ?? t('docs.comment.errorAdd'))
     } catch {
       setError(t('docs.comment.errorAdd'))
     } finally {

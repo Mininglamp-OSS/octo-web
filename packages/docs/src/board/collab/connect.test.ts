@@ -111,6 +111,34 @@ describe('createWhiteboardSession — runtime permission wiring (P1-1 / P1-3)', 
     expect(disposeToken).toHaveBeenCalledWith(DOC_NAME)
   })
 
+  it('notifies comment subscribers only for this board', () => {
+    const s = createWhiteboardSession({ ...BASE, initialRole: 'writer', initialEpoch: 1 })
+    const changed = vi.fn()
+    s.subscribeCommentChanges(changed)
+    FakeProvider.last!.emit('stateless', {
+      payload: JSON.stringify({ type: 'comment.changed', docId: BASE.board, commentId: 3, action: 'updated' }),
+    })
+    FakeProvider.last!.emit('stateless', {
+      payload: JSON.stringify({ type: 'comment.changed', docId: 'another-board', action: 'deleted' }),
+    })
+    FakeProvider.last!.emit('stateless', { payload: '{bad-json' })
+    expect(changed).toHaveBeenCalledTimes(1)
+  })
+
+  it('isolates comment subscriber exceptions so later listeners still run', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const s = createWhiteboardSession({ ...BASE, initialRole: 'writer', initialEpoch: 1 })
+    const later = vi.fn()
+    s.subscribeCommentChanges(() => { throw new Error('listener failed') })
+    s.subscribeCommentChanges(later)
+    FakeProvider.last!.emit('stateless', {
+      payload: JSON.stringify({ type: 'comment.changed', docId: BASE.board }),
+    })
+    expect(later).toHaveBeenCalledTimes(1)
+    expect(error).toHaveBeenCalled()
+    error.mockRestore()
+  })
+
   it('tears down to a terminal "deleted" state + read-only on a 4403 close (P1-3)', () => {
     const s = createWhiteboardSession({ ...BASE, initialRole: 'writer', initialEpoch: 1 })
     const terminals: string[] = []

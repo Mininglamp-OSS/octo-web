@@ -21,23 +21,11 @@ export function PortalMenu({
 }): React.ReactElement {
   return createPortal(
     <>
-      <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000 }} />
+      <div className="octo-portal-menu-backdrop" onMouseDown={onClose} />
       <div
         role="menu"
-        style={{
-          position: 'fixed',
-          left: at.left,
-          top: at.top,
-          zIndex: 1001,
-          background: '#fff',
-          color: '#333',
-          border: '1px solid #dadce0',
-          borderRadius: 8,
-          boxShadow: '0 6px 18px rgba(0,0,0,0.16)',
-          padding: 6,
-          minWidth,
-          whiteSpace: 'nowrap',
-        }}
+        className="octo-portal-menu"
+        style={{ left: at.left, top: at.top, minWidth }}
       >
         {children}
       </div>

@@ -102,6 +102,12 @@ export const chatBaselineHandlers = [
   http.post("*/api/v1/message/channel/sync", () =>
     HttpResponse.json({ messages: [] })
   ),
+  // showConversation() reads per-conversation metadata after opening a chat.
+  // Keep this in the baseline so a passing interaction cannot leak to Vite's
+  // dead CI proxy and become a false green.
+  http.post("*/conversations/:channelId/:channelType/extra", () =>
+    HttpResponse.json({})
+  ),
 
   // === OBO / persona ===
   http.get("*/api/v1/obo/grants", () => HttpResponse.json([])),

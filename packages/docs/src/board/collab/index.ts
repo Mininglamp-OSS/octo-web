@@ -33,6 +33,8 @@ export { sanitizeFractionalIndices, isExcalidrawFractionalIndex } from './fracti
 export {
   ELEMENTS_FIELD,
   FILES_FIELD,
+  APPSTATE_FIELD,
+  VIEW_BACKGROUND_COLOR_KEY,
   WB_SCHEMA_VERSION,
   WB_ELEMENT_TYPES,
   normalizeElement,
@@ -52,7 +54,7 @@ export {
   writeElementFields,
   jsonEqual,
 } from './yElement.ts'
-export { emptyTelemetry, AwarenessSurface } from './telemetry.ts'
+export { DEFAULT_BINDING_TELEMETRY, emptyTelemetry, AwarenessSurface } from './telemetry.ts'
 export type { BindingTelemetry, AwarenessState } from './telemetry.ts'
 export {
   setLocalPresenceUser,

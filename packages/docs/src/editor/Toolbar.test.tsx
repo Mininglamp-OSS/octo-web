@@ -26,10 +26,15 @@ vi.mock('@univerjs/design', async () => {
   return {
     ConfigProvider: ({ children }: { children: React.ReactNode }) => children,
     Tooltip: ({ children }: { children: React.ReactNode }) => children,
-    Select: ({ value, options, onChange }: { value: string; options: { label: unknown; value: string }[]; onChange?: (v: string) => void }) =>
+    Select: ({ value, options, onChange, className, borderless }: { value: string; options: { label: unknown; value: string }[]; onChange?: (v: string) => void; className?: string; borderless?: boolean }) =>
       React.createElement(
         'select',
-        { className: 'univer-select-mock', value, onChange: (e: React.ChangeEvent<HTMLSelectElement>) => onChange?.(e.target.value) },
+        {
+          className: ['univer-select-mock', className].filter(Boolean).join(' '),
+          'data-borderless': borderless ? 'true' : 'false',
+          value,
+          onChange: (e: React.ChangeEvent<HTMLSelectElement>) => onChange?.(e.target.value),
+        },
         (options ?? []).map((o) =>
           React.createElement('option', { key: String(o.value), value: o.value }, typeof o.label === 'string' ? o.label : String(o.value)),
         ),
@@ -687,5 +692,10 @@ describe('Toolbar — font family precedes font size (XIN-1048 #7b)', () => {
     expect(family).toBeTruthy()
     expect(size).toBeTruthy()
     expect(family.compareDocumentPosition(size) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    for (const control of [family, size]) {
+      const select = control.querySelector('.octo-tb-sheet-select')
+      expect(select).toBeTruthy()
+      expect(select?.getAttribute('data-borderless')).toBe('true')
+    }
   })
 })

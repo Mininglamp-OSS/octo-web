@@ -190,23 +190,26 @@
      so the ribbon fits the pane. */
   overflow: visible;
 }
-/* Square off the @univerjs/design controls in the toolbar to match the sheet's rectangular controls
-   (the design-system default renders more rounded / pill-like on short controls). Scoped to the
-   toolbar row, so the dropdown popups — which portal to document.body, outside .octo-toolbar — keep
-   their own radius, and nothing outside the toolbar is affected. The `.octo-toolbar [class^=…]`
-   descendant selector (specificity 0,2,0) outranks the design system's single utility class
-   (0,1,0), so it wins without needing !important. */
-.octo-toolbar [class^="univer-"],
-.octo-toolbar [class*=" univer-"] {
+/* Font-family and font-size use Univer's borderless toolbar treatment, matching Sheet's native
+   selector: no persistent border/ring in default, focus, or open states; feedback is the shared
+   gray toolbar hover surface. Keep this scoped to the two typography controls so block/alignment
+   selects retain their existing document-specific appearance. */
+.octo-tb-sel--font .octo-tb-sheet-select,
+.octo-tb-sel--size .octo-tb-sheet-select {
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
   border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
 }
-/* …but the squaring rule above also flattens the Univer ColorPicker's ROUND preset swatches (and its
-   circular preview / slider handles, all `univer-rounded-full`) into 4px squares. The sheet keeps
-   them round because it has no such squaring override. Restore the circle radius for rounded-full
-   elements inside the picker popover so docs matches the sheet's round swatches. Same descendant
-   specificity (0,2,0) as the squaring rule but later in source, so it wins without !important. */
-.octo-color-popover--picker [class*="univer-rounded-full"] {
-  border-radius: 9999px;
+.octo-tb-sel--font .octo-tb-sheet-select:hover,
+.octo-tb-sel--size .octo-tb-sheet-select:hover,
+.octo-tb-sel--font .octo-tb-sheet-select[data-state="open"],
+.octo-tb-sel--size .octo-tb-sheet-select[data-state="open"] {
+  border-color: transparent;
+  background: var(--univer-gray-100, #f3f4f6);
+  box-shadow: none;
 }
 /* Size the @univerjs/design <Select> triggers (font / size / block-type) to their content instead
    of the design system's fixed wide box — the sheet's font-size box is only a few chars wide. These
@@ -240,6 +243,21 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+/* Font-family option row: the face name, plus a trailing "font not installed" marker pushed to the
+   far edge (parity with the board text controls' font picker). */
+.octo-tb-font-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.octo-tb-font-warning {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  color: var(--octo-muted, #8a919e);
+  font-size: 14px;
 }
 /* Compact icon-triggered dropdown (line-spacing / paragraph-spacing): a fixed icon + tiny caret,
    so the control stays narrow instead of showing the value as wide text. */
@@ -1300,6 +1318,12 @@ body.octo-row-resizing {
   border-radius: 8px;
   padding: 12px 16px;
   overflow-x: auto;
+}
+/* Base code-block text colour: pinned to the unified foreground variable so plain code and any
+   untokenised spans render in a defined, theme-aware colour (following light/dark) rather than
+   inheriting a stray text-colour mark from surrounding prose. Syntax tokens override per-class below. */
+.octo-prose pre code {
+  color: var(--octo-fg);
 }
 /* Code-block syntax highlighting (lowlight / highlight.js token classes).
    Compact, theme-variable-driven palette so it follows light/dark automatically. */
@@ -3005,11 +3029,32 @@ body.octo-row-resizing {
   cursor: default;
 }
 .octo-docs-new-menu-icon {
-  flex: 0 0 auto;
+  flex: 0 0 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--octo-fg-3, #86909c);
+}
+.octo-docs-new-menu-separator {
+  height: 1px;
+  margin: 6px 8px;
+  background: var(--wk-border-subtle, #e5e6eb);
+}
+.octo-portal-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--wk-z-dropdown, 1000);
+}
+.octo-portal-menu {
+  position: fixed;
+  z-index: calc(var(--wk-z-dropdown, 1000) + 1);
+  padding: 4px;
+  border: 1px solid var(--wk-border-subtle, #e5e6eb);
+  border-radius: var(--wk-r-overlay, 12px);
+  background: var(--wk-bg-surface, #fff);
+  color: var(--wk-text-primary, #1f2329);
+  box-shadow: var(--wk-shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.16));
+  white-space: nowrap;
 }
 .octo-docs-new-menu-soon {
   margin-left: auto;
@@ -4590,4 +4635,57 @@ div:has(> .octo-link-bubble) {
 }
 .octo-docs-bot-chat-status[data-state='failed'] {
   color: var(--wk-color-danger);
+}
+
+/* Document-home New menu — approved prototype treatment. Kept after legacy rules so the
+   split button and menu consistently use the shared brand/theme tokens. */
+.octo-docs-list-new {
+  min-height: 32px;
+  overflow: hidden;
+  padding: 0;
+  border-radius: var(--wk-r-full, 9999px);
+  background: var(--wk-brand-primary, #1c1c23);
+  color: var(--wk-text-inverse, #fff);
+  box-shadow: var(--wk-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.08));
+}
+.octo-docs-list-new:hover:not(:disabled) {
+  background: var(--wk-brand-primary-hover, #303039);
+}
+.octo-docs-new-primary,
+.octo-docs-new-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.octo-docs-new-primary {
+  gap: 4px;
+  padding: 4px 8px 4px 12px;
+}
+.octo-docs-new-caret {
+  padding: 0 10px;
+  border-left: 1px solid var(--wk-white-alpha-40, rgba(255, 255, 255, 0.4));
+  font-size: 11px;
+}
+.octo-docs-new-primary:disabled,
+.octo-docs-new-caret:disabled {
+  cursor: default;
+}
+.octo-docs-new-menu-item {
+  gap: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: var(--wk-r-md, 8px);
+  color: var(--wk-text-primary, #1f2329);
+}
+.octo-docs-new-menu-item:hover:not(:disabled) {
+  background: var(--wk-bg-hover, #dfe0e2);
+}
+.octo-docs-new-menu-item:disabled {
+  color: var(--wk-text-disabled, #c9cdd4);
 }

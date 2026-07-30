@@ -43,10 +43,11 @@ vi.mock('../editor/EditorShell.tsx', () => ({
   ),
 }))
 
-// Replace the whiteboard shell (which lazy-loads the heavy Excalidraw chunk + a canvas) with a
-// marker so the board-create / board-open flows are testable in jsdom without Excalidraw.
-vi.mock('../board/BoardShell.tsx', () => ({
-  BoardShell: (props: { docId: string }) => (
+// Replace the whole board session boundary, not only BoardShell. BoardSession owns the
+// HocuspocusProvider, so mocking the leaf still opens a real undici WebSocket before rendering the
+// marker and leaves asynchronous Event errors after the assertions finish.
+vi.mock('../board/BoardSession.tsx', () => ({
+  BoardSession: (props: { docId: string }) => (
     <div data-testid="board-shell">
       <span data-testid="board-doc">{props.docId}</span>
     </div>
@@ -414,7 +415,7 @@ describe('DocsHome navigation (split-pane)', () => {
     })
   })
 
-  it('exposes the three import entries inside the "New" dropdown and drops the standalone import button', async () => {
+  it('exposes all four import entries inside the "New" dropdown and drops the standalone import button', async () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
@@ -432,13 +433,150 @@ describe('DocsHome navigation (split-pane)', () => {
     // Import entries are not rendered until the "New" dropdown is opened.
     expect(screen.queryByText('docs.sheet.importExcel', { exact: false })).toBeNull()
 
-    // Opening the single "New" dropdown surfaces both the create entries and the three import entries.
+    // Opening the single "New" dropdown surfaces both create entries and all four import entries.
     fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
     expect(screen.getByText('docs.list.newBoard')).toBeTruthy()
     expect(screen.getByText('docs.sheet.new', { exact: false })).toBeTruthy()
     expect(screen.getByText('docs.sheet.importExcel', { exact: false })).toBeTruthy()
     expect(screen.getByText('docs.import.word', { exact: false })).toBeTruthy()
     expect(screen.getByText('docs.import.markdown', { exact: false })).toBeTruthy()
+    expect(screen.getByText('docs.board.importFile', { exact: false })).toBeTruthy()
+  })
+
+  it('imports an Excalidraw file from the homepage and opens the new board', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = (method, url, body) => {
+      calls.push({ method, url, body })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      if (method === 'post' && url === '/docs') {
+        return {
+          data: {
+            docId: 'b_imported',
+            documentName: 'doc:b_imported',
+            title: 'Imported board',
+            spaceId: 'demo',
+            folderId: 'f_default',
+            ownerId: 'u_self',
+            role: 'admin',
+            docType: 'board',
+          },
+          status: 201,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { container } = render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+    const input = container.querySelector<HTMLInputElement>('input[accept*=".excalidraw"]')
+    expect(input).toBeTruthy()
+    const file = new File(['board'], 'Imported board.excalidraw', { type: 'application/json' })
+    Object.defineProperty(file, 'text', {
+      value: async () => JSON.stringify({
+        type: 'excalidraw',
+        elements: [{
+          id: 'shape-1', type: 'rectangle', x: 1, y: 2, width: 100, height: 80, angle: 0,
+          version: 1, versionNonce: 1,
+        }],
+        appState: { viewBackgroundColor: '#fafafa' },
+        files: {},
+      }),
+    })
+    fireEvent.change(input!, { target: { files: [file] } })
+
+    await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_imported')
+    const create = calls.find((call) => call.method === 'post' && call.url === '/docs')
+    expect(create?.body).toMatchObject({ title: 'Imported board', docType: 'board' })
+    const sceneKey = Object.keys(window.localStorage).find((key) =>
+      key.startsWith('octo.board.scene.') && key.endsWith('.b_imported'),
+    )
+    expect(sceneKey).toBeTruthy()
+    expect(JSON.parse(window.localStorage.getItem(sceneKey!)!)).toMatchObject({
+      elements: [{
+        id: 'shape-1', type: 'rectangle', x: 1, y: 2, width: 100, height: 80, angle: 0,
+        version: 1, versionNonce: 1,
+      }],
+      appState: { viewBackgroundColor: '#fafafa' },
+    })
+  })
+
+  it('distinguishes malformed JSON from an invalid board schema', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => method === 'get' && url.startsWith('/docs')
+      ? { data: { total: 0, items: [] }, status: 200 }
+      : { data: {}, status: 200 }
+    const { container } = render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+    const input = container.querySelector<HTMLInputElement>('input[accept*=".excalidraw"]')!
+    const file = new File(['{'], 'broken.excalidraw', { type: 'application/json' })
+    Object.defineProperty(file, 'text', { value: async () => '{' })
+    fireEvent.change(input, { target: { files: [file] } })
+    await waitFor(() => expect(screen.getByText('docs.board.importParseError')).toBeTruthy())
+  })
+
+  it('shows the storage-specific error without creating a server board when staging fails', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: string[] = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push(`${method} ${url}`)
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    const { container } = render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+    const input = container.querySelector<HTMLInputElement>('input[accept*=".excalidraw"]')!
+    const file = new File(['board'], 'stored.excalidraw', { type: 'application/json' })
+    Object.defineProperty(file, 'text', {
+      value: async () => JSON.stringify({
+        type: 'excalidraw',
+        elements: [{
+          id: 'shape-1', type: 'rectangle', x: 1, y: 2, width: 100, height: 80, angle: 0,
+          version: 1, versionNonce: 1,
+        }],
+        appState: {},
+        files: {},
+      }),
+    })
+    const storageSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota', 'QuotaExceededError')
+    })
+    try {
+      fireEvent.change(input, { target: { files: [file] } })
+      await waitFor(() => expect(screen.getByText('docs.board.importStorageError')).toBeTruthy())
+      expect(calls).not.toContain('post /docs')
+    } finally {
+      storageSpy.mockRestore()
+    }
+  })
+
+  it('rejects JSON with an elements array that is not an Excalidraw scene', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: string[] = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push(`${method} ${url}`)
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    const { container } = render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+    const input = container.querySelector<HTMLInputElement>('input[accept*=".excalidraw"]')!
+    const file = new File(['{}'], 'fake.excalidraw', { type: 'application/json' })
+    Object.defineProperty(file, 'text', { value: async () => JSON.stringify({ elements: [] }) })
+    fireEvent.change(input, { target: { files: [file] } })
+    await waitFor(() => expect(screen.getByText('docs.board.importError')).toBeTruthy())
+    expect(calls).not.toContain('post /docs')
   })
 
   it('opens an existing document inline in the right pane and marks it active', async () => {
