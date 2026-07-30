@@ -147,4 +147,40 @@ describe('InviteLandingPage', () => {
     await waitFor(() => getByText('drive.landing.invite.errorTitle'));
     expect(onClearReturn).not.toHaveBeenCalled();
   });
+
+  it('fires onClearReturn when a non-session error rejects AFTER unmount (no residual stash)', async () => {
+    let reject!: (e: unknown) => void;
+    vi.mocked(api.acceptInvite).mockReturnValue(
+      new Promise((_res, rej) => {
+        reject = rej;
+      }) as ReturnType<typeof api.acceptInvite>,
+    );
+    const onClearReturn = vi.fn();
+    const { unmount } = render(
+      <InviteLandingPage token="inv-unmount" onClearReturn={onClearReturn} />,
+    );
+    // Unmount while acceptInvite is still pending, then reject with a non-session error.
+    unmount();
+    reject(new DriveApiError('boom', 'internal', 500));
+    await waitFor(() => expect(onClearReturn).toHaveBeenCalledTimes(1));
+  });
+
+  it('does NOT fire onClearReturn on a session 401 that rejects AFTER unmount (stash kept)', async () => {
+    let reject!: (e: unknown) => void;
+    vi.mocked(api.acceptInvite).mockReturnValue(
+      new Promise((_res, rej) => {
+        reject = rej;
+      }) as ReturnType<typeof api.acceptInvite>,
+    );
+    const onClearReturn = vi.fn();
+    const { unmount } = render(
+      <InviteLandingPage token="inv-unmount-401" onClearReturn={onClearReturn} />,
+    );
+    unmount();
+    reject(new DriveApiError('unauthorized', 'unauthorized', 401));
+    // Give the rejected microtask a tick to settle, then assert it stayed uncalled.
+    await waitFor(() => expect(api.acceptInvite).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onClearReturn).not.toHaveBeenCalled();
+  });
 });

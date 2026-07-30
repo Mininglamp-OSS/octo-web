@@ -53,11 +53,13 @@ export default function InviteLandingPage({ token, onExit, onClearReturn }: Invi
         onClearReturn?.();
         if (active) setView({ kind: 'joined', result });
       } catch (err) {
-        if (!active) return;
-        // Retain the stash ONLY for a session 401 (logout fired → return after
-        // re-login). Clearing on every other failure stops a later account from
-        // replaying this invite URL and auto-accepting under a new identity (R10).
+        // Clear the stash on every failure EXCEPT a genuine session 401 — and do
+        // it BEFORE the unmount guard. Otherwise a non-session failure that lands
+        // after this page unmounts would skip cleanup, leaving the stashed invite
+        // URL for a later account on the same tab to replay (PR#1146 R11). A
+        // session 401 (logout fired) still retains the stash for post-login return.
         if (!api.isSessionExpiredError(err)) onClearReturn?.();
+        if (!active) return;
         const notFound = err instanceof DriveApiError && err.code === 'not_found';
         const denied = err instanceof DriveApiError && err.code === 'permission_denied';
         setView({ kind: notFound || denied ? 'invalid' : 'error' });
