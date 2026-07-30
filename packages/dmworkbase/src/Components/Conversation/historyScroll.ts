@@ -1,4 +1,5 @@
 export const TOP_HISTORY_TRIGGER_OFFSET = 250
+export const BOTTOM_SCROLL_TOLERANCE = 20
 
 export interface PulldownScrollRestoreInput {
     previousScrollHeight: number
@@ -39,4 +40,17 @@ export function shouldPulldownOnWheel(deltaY: number, scrollTop: number, isFullS
         return true
     }
     return scrollTop <= TOP_HISTORY_TRIGGER_OFFSET
+}
+
+export function shouldShowScrollToBottom(
+    scrollOffsetTop: number,
+    lastMessageHeight?: number
+): boolean {
+    if (scrollOffsetTop <= BOTTOM_SCROLL_TOLERANCE) {
+        return false
+    }
+    if (lastMessageHeight === undefined) {
+        return true
+    }
+    return scrollOffsetTop > lastMessageHeight + BOTTOM_SCROLL_TOLERANCE
 }

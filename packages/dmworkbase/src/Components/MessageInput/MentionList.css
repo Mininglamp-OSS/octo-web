@@ -29,6 +29,17 @@
   margin-right: 8px;
 }
 
+.mention-list-item-content {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mention-list-item-ai-badge {
+  margin-left: 4px;
+  align-self: center;
+}
+
 /* @ 提醒选人弹窗「@SpaceName」后缀（企微风格），小字次要色 */
 .mention-list-item-space {
   margin-left: 6px;

@@ -154,7 +154,9 @@ export default defineConfig(({ mode }) => {
             env.VITE_SUMMARY_API_URL || apiOrigin || "http://localhost:8080",
           changeOrigin: true,
           secure: false,
-          rewrite: (path: string) => path.replace(/^\/summary/, ""),
+          rewrite: env.VITE_SUMMARY_API_URL
+            ? (path: string) => path.replace(/^\/summary/, "")
+            : undefined,
         },
         // Marketplace (MCP catalog) API — must be before the general /api/ rule.
         // octo-marketplace serves its own /api/v1/*; the /market prefix is
@@ -188,6 +190,14 @@ export default defineConfig(({ mode }) => {
         },
         "/api/": {
           target: apiOrigin,
+          changeOrigin: true,
+          secure: false,
+        },
+        // Drive service API — drive serves /v1/drive/* natively; route it to
+        // the drive service. MUST precede the general /v1/ rule below (vite
+        // matches proxy keys in insertion order, first prefix wins).
+        "/v1/drive": {
+          target: env.VITE_DRIVE_API_URL || apiOrigin,
           changeOrigin: true,
           secure: false,
         },

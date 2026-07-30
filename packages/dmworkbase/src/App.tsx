@@ -296,6 +296,17 @@ export class WKRemoteConfig {
    */
   dmpersonalOn: boolean = false;
   /**
+   * 网盘(DriveModule)模块展示开关。后端字段 drive_on 为 true 时，前端在侧边栏 NavRail
+   * 展示网盘入口；false 或字段缺失时隐藏。
+   *
+   * 默认 false(fail-safe): drive 是独立部署的服务，其反向代理路由(/v1/drive)、对象存储 /
+   * docs-backend 只读依赖未就绪前保持隐藏——feature 分支合入 main 也不对用户暴露(后端
+   * DRIVE_API_URL 为空时 fail-closed 返 503)；运维在 drive 部署就绪后再下发 drive_on=true。
+   * 镜像 docs_on / dmloop_on,纯 UI 展示门,不承担鉴权:/v1/drive 相关接口的权限校验仍由
+   * drive 服务负责。
+   */
+  driveOn: boolean = false;
+  /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
    * 顶层 oidc_account_url / oidc_reset_password_url 是后端兼容老前端用的,新前端只读这里。
@@ -398,6 +409,7 @@ export class WKRemoteConfig {
       const previousDocsOn = this.docsOn;
       const previousDmloopOn = this.dmloopOn;
       const previousDmpersonalOn = this.dmpersonalOn;
+      const previousDriveOn = this.driveOn;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
@@ -417,6 +429,7 @@ export class WKRemoteConfig {
       this.docsOn = parseRemoteBool(result["docs_on"]);
       this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
       this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
+      this.driveOn = parseRemoteBool(result["drive_on"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -434,7 +447,8 @@ export class WKRemoteConfig {
         ) ||
         previousDocsOn !== this.docsOn ||
         previousDmloopOn !== this.dmloopOn ||
-        previousDmpersonalOn !== this.dmpersonalOn
+        previousDmpersonalOn !== this.dmpersonalOn ||
+        previousDriveOn !== this.driveOn
       ) {
         this.notifyConfigChangeListeners();
       }

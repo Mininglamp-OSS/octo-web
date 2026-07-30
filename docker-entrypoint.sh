@@ -42,7 +42,17 @@ export DOCS_BACKEND_URL
 MARKET_API_URL="${MARKET_API_URL%/}"
 export MARKET_API_URL
 
-envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+# octo-drive service upstream for the /v1/drive location (independent backend,
+# not octo-server). Blank by default (503 when unset) — same shape as the hosts
+# above. Trailing slash stripped: proxy_pass uses `$drive_api_url$request_uri`,
+# so a trailing slash would produce a double-slash upstream. Must be in the
+# envsubst allowlist or the literal `${DRIVE_API_URL}` would survive into the
+# generated config and defeat the blank-value guard (`if ($drive_api_url = "")`).
+: "${DRIVE_API_URL:=}"
+DRIVE_API_URL="${DRIVE_API_URL%/}"
+export DRIVE_API_URL
+
+envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"

@@ -22,6 +22,7 @@ import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
+import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
@@ -113,6 +114,16 @@ interface SummaryDetailPageState {
     tocItems: { id: string; text: string; level: number }[];
     /** 当前滚动高亮的目录项 id */
     activeTocId: string;
+    /** Width of the SummaryDetailPage layout container, tracked with a
+     * ResizeObserver on this.layoutRef. Used to gate the `.has-toc` layout
+     * shift so it only applies when the container is actually wide enough
+     * for the TOC to render — the chat side panel (`.wk-summary-panel`,
+     * clamped to 320–720px) is a container-query context whose width can
+     * be far below the viewport, so a viewport-keyed @media rule alone
+     * would leave the body text clipped 36px off the panel's left edge
+     * (yujiawei PR #1154 round-7 P1). Null until the first observer
+     * callback. */
+    layoutWidth: number | null;
     versionDetailLoading: boolean;
     versionDetail: SummaryVersionDetail | null;
     versionDetailIsPersonal: boolean;
@@ -165,32 +176,35 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
     private contentScrollRef = React.createRef<HTMLDivElement>();
+    private layoutRef = React.createRef<HTMLDivElement>();
+    private layoutResizeObserver: ResizeObserver | null = null;
     private tocObserver: IntersectionObserver | null = null;
     private tocSignature = "";
+    private regenerateVoiceMode: RegenerateMode | null = null;
 
-    private handleRegenerateTopicVoice = (
+    private handleRegenerateVoiceRecordingStart = () => {
+        this.regenerateVoiceMode = this.state.regenerateMode;
+    };
+
+    private handleRegenerateInputVoice = (
         text: string,
         mode: ReplaceMode,
         savedRange?: SelectionRange
     ) => {
-        if (mode === "all") {
-            this.setState({ regenerateTopic: text.slice(0, SUMMARY_INPUT_MAX_LENGTH) });
-        } else if (mode === "selection" && savedRange) {
-            this.setState((prev) => {
-                const before = prev.regenerateTopic.slice(0, savedRange.from);
-                const after = prev.regenerateTopic.slice(savedRange.to);
-                const budget = Math.max(0, SUMMARY_INPUT_MAX_LENGTH - before.length - after.length);
-                return { regenerateTopic: before + text.slice(0, budget) + after };
-            });
-        } else {
-            this.setState((prev) => {
-                const pos = savedRange?.from ?? prev.regenerateTopic.length;
-                const before = prev.regenerateTopic.slice(0, pos);
-                const after = prev.regenerateTopic.slice(pos);
-                const budget = Math.max(0, SUMMARY_INPUT_MAX_LENGTH - before.length - after.length);
-                return { regenerateTopic: before + text.slice(0, budget) + after };
-            });
-        }
+        const regenerateMode = this.regenerateVoiceMode ?? this.state.regenerateMode;
+        this.regenerateVoiceMode = null;
+        this.setState((prev) => {
+            const field = regenerateMode === "refine" ? "refineFeedback" : "regenerateTopic";
+            return {
+                [field]: applyRegenerateVoiceInput(
+                    prev[field],
+                    text,
+                    mode,
+                    savedRange,
+                    SUMMARY_INPUT_MAX_LENGTH,
+                ),
+            } as Pick<SummaryDetailPageState, typeof field>;
+        });
     };
 
     state: SummaryDetailPageState = {
@@ -230,6 +244,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         versionPanelOpen: false,
         tocItems: [],
         activeTocId: "",
+        layoutWidth: null,
         versionDetailLoading: false,
         versionDetail: null,
         versionDetailIsPersonal: false,
@@ -283,6 +298,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.addEventListener("summary-list-unmount", this.handleListPageUnmount);
         window.addEventListener("summary-detail-regenerate", this.handleRegenerateFromList);
         window.addEventListener("summary-detail-edit", this.handleEditFromList);
+        // Observe the SummaryDetailPage layout container's width so
+        // `.has-toc` can be gated on real layout room rather than viewport
+        // size — the chat side panel is a container-query context and can
+        // be as narrow as 320px on any viewport (yujiawei PR #1154 round-7
+        // P1). ResizeObserver is well-supported everywhere we ship; the
+        // callback runs synchronously with layout so no fallback is needed.
+        if (this.layoutRef.current && typeof ResizeObserver !== "undefined") {
+            this.layoutResizeObserver = new ResizeObserver((entries) => {
+                for (const entry of entries) {
+                    const w = Math.round(entry.contentRect.width);
+                    if (w !== this.state.layoutWidth) {
+                        this.setState({ layoutWidth: w });
+                    }
+                }
+            });
+            this.layoutResizeObserver.observe(this.layoutRef.current);
+        }
         this.loadDetail();
         if (this.props.emitSelection) {
             const activeTaskId = this.taskId;
@@ -355,6 +387,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     componentWillUnmount() {
         this.unmounted = true;
         this.teardownTocObserver();
+        if (this.layoutResizeObserver) {
+            this.layoutResizeObserver.disconnect();
+            this.layoutResizeObserver = null;
+        }
         window.removeEventListener("summary-status-change", this.handleStatusChangeEvent);
         window.removeEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.removeEventListener("summary-list-unmount", this.handleListPageUnmount);
@@ -1211,11 +1247,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     handleRegenerate = () => {
         const { detail } = this.state;
         if (this.taskId == null) return;
+        this.regenerateVoiceMode = null;
         this.setState({
             showRegenerateModal: true,
-            regenerateMode: "full",
-            regenerateTopic: detail?.title || "",
+            regenerateMode: "refine",
+            regenerateTopic: detail?.topic || detail?.title || "",
+            refineFeedback: "",
         });
+    };
+
+    private hasRegenerateRefineBaseResult = () => {
+        const { detail, personalResult } = this.state;
+        return detail?.summary_mode === SummaryMode.BY_PERSON && !this.shouldOperateOnTeamSummary()
+            ? Boolean(personalResult?.id)
+            : Boolean(detail?.result_id);
+    };
+
+    private handleRegenerateModeChange = (regenerateMode: RegenerateMode) => {
+        this.setState({ regenerateMode });
     };
 
     handleRetry = async () => {
@@ -1333,7 +1382,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId || refineController.signal.aborted) return;
                     if (!refined) throw new Error(t("summary.common.operationFailed"));
                     restoreRefineDraft = null;
-                    Toast.success(t("summary.detail.refineSuccess"));
+                    Toast.success(t("summary.detail.refineSuccess", { values: { version: refined!.version ?? "" } }));
                     this.appendLocalScheduleInstruction(trimmed);
                     this.reloadScheduleAfterInstructionChange(requestTaskId);
                     this.setState((prev) => {
@@ -1417,7 +1466,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId || refineController.signal.aborted) return;
                     if (!refined) throw new Error(t("summary.common.operationFailed"));
                     restoreRefineDraft = null;
-                    Toast.success(t("summary.detail.refineSuccess"));
+                    Toast.success(t("summary.detail.refineSuccess", { values: { version: refined!.version ?? "" } }));
                     this.appendLocalScheduleInstruction(trimmed);
                     this.reloadScheduleAfterInstructionChange(requestTaskId);
                     this.setState((prev) => {
@@ -1459,6 +1508,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         detail: {
                             ...prev.detail,
                             title: trimmed || prev.detail.title,
+                            topic: trimmed || prev.detail.topic,
                             status: TaskStatus.PENDING,
                         },
                     } as Pick<SummaryDetailPageState, "showRegenerateModal" | "detail"> : { showRegenerateModal: false } as Pick<SummaryDetailPageState, "showRegenerateModal">);
@@ -1474,6 +1524,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         detail: prev.detail ? {
                             ...prev.detail,
                             title: trimmed || prev.detail.title,
+                            topic: trimmed || prev.detail.topic,
                         } : prev.detail,
                         personalResult: prev.personalResult ? {
                             ...prev.personalResult,
@@ -1539,6 +1590,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         try {
             await api.restoreSummaryVersion(requestTaskId, version.result_id);
             if (this.taskId !== requestTaskId) return false;
+            // yujiawei PR #1154 round-7 P2-2: an editor may have opened while
+            // we were awaiting the API. loadDetail() clears every editing
+            // flag and nulls editorSaveFn, so proceeding would tear down a
+            // freshly mounted editor. Re-check the four editing flags and
+            // treat "any editing now" as a refusal to complete the restore.
+            const post = this.state;
+            if (post.isEditing || post.editingTeamSummary || post.editingMyDraft || post.editingPersonalReport) {
+                return false;
+            }
             Toast.success(t("summary.detail.versionRestored"));
             this.loadDetail();
             return true;
@@ -1572,6 +1632,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         try {
             await api.restorePersonalSummaryVersion(requestTaskId, version.result_id);
             if (this.taskId !== requestTaskId) return false;
+            // yujiawei PR #1154 round-7 P2-2: re-check the four editing flags
+            // after the await — the same window applies to the personal
+            // restore path.
+            const post = this.state;
+            if (post.isEditing || post.editingTeamSummary || post.editingMyDraft || post.editingPersonalReport) {
+                return false;
+            }
             Toast.success(t("summary.detail.versionRestored"));
             const seq = this.nextScheduleSeq();
             this.loadPersonalResult(seq, true);
@@ -1619,8 +1686,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleCloseVersionDetail = () => {
-        if (this.state.versionDetailLoading) return;
-        this.setState({ showVersionDetailModal: false, versionDetail: null });
+        // yujiawei PR #1154 round-7 P2-3: match the round-6 fix on
+        // handleCloseVersionPanel — never trap the user behind an in-flight
+        // fetch. The completion handler at openVersionPreview already checks
+        // showVersionDetailModal after `await` resumes and drops the
+        // response if we closed here, so a late arrival cannot revive it.
+        this.setState({ showVersionDetailModal: false, versionDetail: null, versionDetailLoading: false });
     };
 
     /** 关闭版本记录面板：一并退出中部只读预览，回到当前可编辑内容。
@@ -1639,6 +1710,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleRegenerateCancel = () => {
+        this.regenerateVoiceMode = null;
         this.setState({ showRegenerateModal: false });
     };
 
@@ -3298,7 +3370,21 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // OCT-21：同时关闭草稿编辑态（纵深防御）。
         // P1-1：进入编辑必须展开个人总结区，否则编辑器不挂载而保存栏仍在，
         // 会出现「有保存栏无编辑器」甚至保存到陈旧闭包的问题。
-        this.setState({ isEditing: true, editingTeamSummary: false, editingPersonalReport: false, editingMyDraft: false, personalExpanded: true });
+        // yujiawei PR #1154 round-7 P2-1: also clear the version panel /
+        // preview state so entering the editor does not leave a stale
+        // read-only preview mounted underneath (and its scroll lock stuck
+        // on <html>/<body>) — the panel's own close button is unmounted by
+        // the editor, so the user has no way to recover from a stale panel.
+        this.setState({
+            isEditing: true,
+            editingTeamSummary: false,
+            editingPersonalReport: false,
+            editingMyDraft: false,
+            personalExpanded: true,
+            versionPanelOpen: false,
+            showVersionDetailModal: false,
+            versionDetail: null,
+        });
     };
 
     togglePersonalExpanded = () => {
@@ -3324,7 +3410,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     handleStartEditPersonalReport = () => {
         // F1：互斥——只留 editingPersonalReport，关闭团队/单人编辑态。
         // OCT-21：同时关闭草稿编辑态。
-        this.setState({ editingPersonalReport: true, editingTeamSummary: false, isEditing: false, editingMyDraft: false });
+        // yujiawei PR #1154 round-7 P2-1: clear stale version panel/preview.
+        this.setState({
+            editingPersonalReport: true,
+            editingTeamSummary: false,
+            isEditing: false,
+            editingMyDraft: false,
+            versionPanelOpen: false,
+            showVersionDetailModal: false,
+            versionDetail: null,
+        });
     };
     handleEditPersonalReportSave = () => {
         this.setState({ editingPersonalReport: false });
@@ -3339,7 +3434,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     handleStartEditTeam = () => {
         // F1：互斥——只留 editingTeamSummary，关闭个人/单人编辑态。
         // OCT-21：同时关闭草稿编辑态。
-        this.setState({ editingTeamSummary: true, editingPersonalReport: false, isEditing: false, editingMyDraft: false });
+        // yujiawei PR #1154 round-7 P2-1: clear stale version panel/preview.
+        this.setState({
+            editingTeamSummary: true,
+            editingPersonalReport: false,
+            isEditing: false,
+            editingMyDraft: false,
+            versionPanelOpen: false,
+            showVersionDetailModal: false,
+            versionDetail: null,
+        });
     };
     handleEditTeamSave = () => {
         this.setState({ editingTeamSummary: false });
@@ -3352,11 +3456,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // OCT-21：提交前编辑「我自己」的个人报告草稿。三件套与 handleStartEditPersonalReport 对齐。
     handleStartEditMyDraft = () => {
         // 互斥：只留 editingMyDraft，关闭其他三种编辑态。
+        // yujiawei PR #1154 round-7 P2-1: clear stale version panel/preview.
         this.setState({
             editingMyDraft: true,
             isEditing: false,
             editingPersonalReport: false,
             editingTeamSummary: false,
+            versionPanelOpen: false,
+            showVersionDetailModal: false,
+            versionDetail: null,
         });
     };
     handleEditMyDraftSave = () => {
@@ -3778,16 +3886,30 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     render() {
         const { detail, loading, error, showScheduleConfig, scheduleConfig } = this.state;
         const { t } = this.context;
+        // TOC needs ~984px reading column + 192px TOC + gutters ≈ 1200px of
+        // real layout width. Gate on the observed layout width so the chat
+        // side panel (320–720px) never picks up `.has-toc` even at 1920px
+        // viewport (yujiawei PR #1154 round-7 P1). Null (pre-observer) is
+        // treated as "unknown, allow" so the first paint on a full-page
+        // route still gets the TOC — the ResizeObserver callback runs
+        // synchronously with layout in every browser we ship, so the flash
+        // is a single frame at worst on the panel.
+        const TOC_MIN_LAYOUT_WIDTH = 1200;
+        const layoutFitsToc = this.state.layoutWidth == null || this.state.layoutWidth >= TOC_MIN_LAYOUT_WIDTH;
         const hasToc = !this.state.versionPanelOpen
             && !this.state.isEditing
             && !this.state.editingTeamSummary
             && !this.state.editingMyDraft
             && !this.state.editingPersonalReport
-            && this.state.tocItems.length >= 2;
+            && this.state.tocItems.length >= 2
+            && layoutFitsToc;
 
         return (
             <div className="summary-detail-page">
-                <div className={`summary-detail-layout${this.state.versionPanelOpen ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}`}>
+                <div
+                    ref={this.layoutRef}
+                    className={`summary-detail-layout${this.state.versionPanelOpen ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}`}
+                >
                     <div className="summary-detail-content-wrapper">
                     {detail && !loading && this.renderHeader()}
                     <div className="summary-detail-content-scroll" ref={this.contentScrollRef}>
@@ -4013,6 +4135,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     className="summary-confirm"
                     centered
                     maskClosable
+                    onCancel={this.handleRegenerateCancel}
                 >
                     <div className="summary-confirm-body">
                         <div className="summary-confirm-main">
@@ -4025,18 +4148,74 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </button>
                     </div>
                     <div className="summary-regenerate-content">
+                        <div className="summary-regenerate-mode-list" role="radiogroup">
+                            {(["refine", "full"] as const).map((mode) => {
+                                const selected = this.state.regenerateMode === mode;
+                                const titleKey = mode === "refine"
+                                    ? "summary.detail.refineModeTitle"
+                                    : "summary.detail.fullRegenerateModeTitle";
+                                const descKey = mode === "refine"
+                                    ? "summary.detail.refineModeDesc"
+                                    : "summary.detail.fullRegenerateModeDesc";
+                                return (
+                                    <label
+                                        key={mode}
+                                        className={`summary-regenerate-mode${selected ? " summary-regenerate-mode--selected" : ""}`}
+                                    >
+                                        <input
+                                            type="radio"
+                                            name="summary-regenerate-mode"
+                                            value={mode}
+                                            checked={selected}
+                                            onChange={() => this.handleRegenerateModeChange(mode)}
+                                            className="summary-regenerate-mode__input"
+                                        />
+                                        <span className="summary-regenerate-mode__indicator" aria-hidden="true" />
+                                        <span>
+                                            <span className="summary-regenerate-mode__title">{t(titleKey)}</span>
+                                            <span className="summary-regenerate-mode__desc">{t(descKey)}</span>
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                        <label className="summary-regenerate-input-label" htmlFor="summary-regenerate-input">
+                            {t(this.state.regenerateMode === "refine"
+                                ? "summary.detail.refineFeedbackLabel"
+                                : "summary.detail.regenerateTopicLabel")}
+                        </label>
                         <div className="summary-regenerate-textarea-wrap">
                             <textarea
+                                id="summary-regenerate-input"
                                 ref={this.regenerateTopicRef}
                                 className="summary-regenerate-textarea"
                                 rows={3}
-                                maxLength={1000}
-                                placeholder={t("summary.create.placeholder")}
-                                value={this.state.regenerateTopic}
-                                onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
+                                maxLength={SUMMARY_INPUT_MAX_LENGTH}
+                                placeholder={t(this.state.regenerateMode === "refine"
+                                    ? "summary.detail.refineFeedbackPlaceholder"
+                                    : "summary.detail.regenerateTopicPlaceholder")}
+                                value={this.state.regenerateMode === "refine"
+                                    ? this.state.refineFeedback
+                                    : this.state.regenerateTopic}
+                                onChange={(e) => this.setState(this.state.regenerateMode === "refine"
+                                    ? { refineFeedback: e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH) }
+                                    : { regenerateTopic: e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH) })}
+                            />
+                            <VoiceInputButton
+                                inputRef={this.regenerateTopicRef}
+                                onTranscribed={this.handleRegenerateInputVoice}
+                                onRecordingStart={this.handleRegenerateVoiceRecordingStart}
+                                getCurrentText={() => (this.regenerateVoiceMode ?? this.state.regenerateMode) === "refine"
+                                    ? this.state.refineFeedback
+                                    : this.state.regenerateTopic}
+                                showModeMenu
+                                size="sm"
+                                className="wk-vib--textarea-corner"
                             />
                             <span className="summary-regenerate-char-count">
-                                {this.state.regenerateTopic.length}/1000
+                                {(this.state.regenerateMode === "refine"
+                                    ? this.state.refineFeedback
+                                    : this.state.regenerateTopic).length}/{SUMMARY_INPUT_MAX_LENGTH}
                             </span>
                         </div>
                     </div>
@@ -4047,10 +4226,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <button
                             type="button"
                             className="summary-confirm-btn summary-confirm-btn--dark"
-                            disabled={this.state.regenerateSubmitting || !this.state.regenerateTopic.trim()}
+                            disabled={this.state.regenerateSubmitting || (this.state.regenerateMode === "refine" && !this.hasRegenerateRefineBaseResult()) || !(this.state.regenerateMode === "refine"
+                                ? this.state.refineFeedback.trim()
+                                : this.state.regenerateTopic.trim())}
                             onClick={this.handleRegenerateConfirm}
                         >
-                            {this.state.regenerateSubmitting ? t("summary.create.submitting") : t("summary.common.confirm")}
+                            {this.state.regenerateSubmitting
+                                ? t("summary.create.submitting")
+                                : t(this.state.regenerateMode === "refine" ? "summary.detail.refineAction" : "summary.detail.regenerate")}
                         </button>
                     </div>
                 </Modal>

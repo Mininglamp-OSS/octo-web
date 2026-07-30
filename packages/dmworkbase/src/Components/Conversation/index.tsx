@@ -77,6 +77,7 @@ import {
 } from "./foldSessionSummary";
 import {
   getScrollAnchorOffsetY,
+  shouldShowScrollToBottom,
   shouldPulldownOnWheel,
   TOP_HISTORY_TRIGGER_OFFSET,
 } from "./historyScroll";
@@ -1528,12 +1529,14 @@ export class Conversation
 
   async clearDraftAfterSend(
     sendDraftGeneration: number,
-    remoteDraftAtSend: string
+    remoteDraftAtSend: string,
+    draftAtSend: string
   ) {
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
     if (
       !shouldClearDraftAfterSend({
         liveDraft: this.messageInputContext()?.text() || "",
+        draftAtSend,
         remoteDraft: remoteExtra?.draft || "",
         remoteDraftAtSend,
         draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
@@ -2131,20 +2134,10 @@ export class Conversation
       this.vm.lastLocalMessageElement = this.getMessageElement(
         this.vm.lastMessage
       ); // 最新消息
-      if (this.vm.lastLocalMessageElement) {
-        // 如果有最新消息的dom则判断是否在可见范围内
-        if (
-          scrollOffsetTop >
-          this.vm.lastLocalMessageElement.clientHeight + 20
-        ) {
-          // 如果滚动距离超过了第一个元素则显示“滚动到底部”
-          this.vm.showScrollToBottomBtn = true;
-        } else {
-          this.vm.showScrollToBottomBtn = false;
-        }
-      } else {
-        this.vm.showScrollToBottomBtn = true;
-      }
+      this.vm.showScrollToBottomBtn = shouldShowScrollToBottom(
+        scrollOffsetTop,
+        this.vm.lastLocalMessageElement?.clientHeight
+      );
     }
 
     this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
@@ -2858,6 +2851,8 @@ export class Conversation
                         const sendDraftGeneration = this.draftSaveGeneration;
                         const remoteDraftAtSend =
                           this.vm.currentConversation?.remoteExtra?.draft || "";
+                        const draftAtSend =
+                          this.messageInputContext()?.text() || "";
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // ── 回复/编辑处理 ──────────────
@@ -3117,7 +3112,8 @@ export class Conversation
                           if (mixedSent) {
                             await this.clearDraftAfterSend(
                               sendDraftGeneration,
-                              remoteDraftAtSend
+                              remoteDraftAtSend,
+                              draftAtSend
                             );
                           }
                           return finishRichTextMixedSend(
@@ -3196,7 +3192,8 @@ export class Conversation
                             if (mixedSent) {
                               await this.clearDraftAfterSend(
                                 sendDraftGeneration,
-                                remoteDraftAtSend
+                                remoteDraftAtSend,
+                                draftAtSend
                               );
                             }
                             // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
@@ -3277,7 +3274,8 @@ export class Conversation
                         if (anyMessageSent) {
                           await this.clearDraftAfterSend(
                             sendDraftGeneration,
-                            remoteDraftAtSend
+                            remoteDraftAtSend,
+                            draftAtSend
                           );
                         }
                         if (anyMessageSent) this.props.onMessageSent?.();

@@ -6,6 +6,11 @@ const sdkState = vi.hoisted(() => ({
     sendingQueues: new Map<number, unknown>(),
     channelInfos: new Map<string, any>(),
     syncMessages: vi.fn(),
+    conversation: null as any,
+    notifyConversationListeners: vi.fn(),
+    scrollToBottom: vi.fn(),
+    markConversationUnread: vi.fn(() => Promise.resolve()),
+    emit: vi.fn(),
 }))
 
 vi.mock("wukongimjssdk", () => {
@@ -45,8 +50,8 @@ vi.mock("wukongimjssdk", () => {
                     notifySubscribeChangeListeners: () => {},
                 },
                 conversationManager: {
-                    findConversation: () => null,
-                    notifyConversationListeners: () => {},
+                    findConversation: () => sdkState.conversation,
+                    notifyConversationListeners: sdkState.notifyConversationListeners,
                     addConversationListener: () => {},
                     removeConversationListener: () => {},
                 },
@@ -95,9 +100,9 @@ vi.mock("../../../App", () => ({
         loginInfo: { uid: "me" },
         config: { pageSizeOfMessage: 30 },
         dataSource: { channelDataSource: { subscribers: () => Promise.resolve([]) } },
-        mittBus: { on: () => {}, off: () => {} },
+        mittBus: { on: () => {}, off: () => {}, emit: sdkState.emit },
         conversationProvider: {
-            markConversationUnread: () => Promise.resolve(),
+            markConversationUnread: sdkState.markConversationUnread,
             syncMessages: sdkState.syncMessages,
         },
         shared: { currentSpaceId: "", notifyMessageDeleteListener: () => {} },
@@ -118,7 +123,7 @@ vi.mock("../../../Service/Provider", () => ({
         didUnMount() {}
     },
 }))
-vi.mock("react-scroll", () => ({ animateScroll: { scrollToBottom: () => {} }, scroller: { scrollTo: () => {} } }))
+vi.mock("react-scroll", () => ({ animateScroll: { scrollToBottom: sdkState.scrollToBottom }, scroller: { scrollTo: () => {} } }))
 vi.mock("../../../Service/Const", () => ({
     EndpointID: {},
     MessageContentTypeConst: { time: 1001, historySplit: 1002, rtcData: 1003 },
@@ -219,6 +224,12 @@ describe("ConversationVM message ordering", () => {
         sdkState.sendingQueues.clear()
         sdkState.channelInfos.clear()
         sdkState.syncMessages.mockReset()
+        sdkState.conversation = null
+        sdkState.notifyConversationListeners.mockReset()
+        sdkState.scrollToBottom.mockReset()
+        sdkState.markConversationUnread.mockReset()
+        sdkState.markConversationUnread.mockResolvedValue(undefined)
+        sdkState.emit.mockReset()
         document.body.innerHTML = ""
     })
 
@@ -571,5 +582,67 @@ describe("ConversationVM message ordering", () => {
 
         expect(() => vm.updateReplyMessageContent({ messageID: "m1", contentEdit: "edited" } as any)).not.toThrow()
         expect(replyMsg.content.reply.content).toBe("edited")
+    })
+
+    it("clears stale unread state when the down arrow already points to the latest loaded message (#1173)", async () => {
+        const vm = new ConversationVM(channel)
+        const latest = wrap({
+            clientMsgNo: "latest",
+            messageSeq: 10,
+            timestamp: 100,
+            content: { text: "latest" },
+            fromUID: "u1",
+        })
+        sdkState.conversation = {
+            channel,
+            lastMessage: latest.message,
+            unread: 1,
+        }
+        vm.messagesOfOrigin = [latest]
+        vm.lastMessage = latest
+        vm.browseToMessageSeq = 9
+        vm.unreadCount = 1
+        vm.showScrollToBottomBtn = true
+
+        await vm.onDownArrow()
+
+        expect(sdkState.scrollToBottom).toHaveBeenCalled()
+        expect(vm.browseToMessageSeq).toBe(10)
+        expect(vm.unreadCount).toBe(0)
+        expect(vm.showScrollToBottomBtn).toBe(false)
+        expect(sdkState.markConversationUnread).toHaveBeenCalledWith(channel, 0)
+    })
+
+    it("keeps unread state when the server has a newer message that is not loaded yet (#1173)", async () => {
+        const vm = new ConversationVM(channel)
+        const loaded = wrap({
+            clientMsgNo: "loaded",
+            messageSeq: 10,
+            timestamp: 100,
+            content: { text: "loaded" },
+            fromUID: "u1",
+        })
+        sdkState.conversation = {
+            channel,
+            lastMessage: rawMessage(11),
+            unread: 1,
+        }
+        vm.messagesOfOrigin = [loaded]
+        vm.lastMessage = loaded
+        vm.browseToMessageSeq = 9
+        vm.unreadCount = 1
+        vm.showScrollToBottomBtn = true
+        const requestLatest = vi
+            .spyOn(vm, "requestMessagesOfFirstPage")
+            .mockResolvedValue(undefined as any)
+
+        await vm.onDownArrow()
+
+        expect(requestLatest).toHaveBeenCalledWith(0)
+        expect(sdkState.scrollToBottom).not.toHaveBeenCalled()
+        expect(vm.browseToMessageSeq).toBe(9)
+        expect(vm.unreadCount).toBe(1)
+        expect(vm.showScrollToBottomBtn).toBe(true)
+        expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
     })
 })

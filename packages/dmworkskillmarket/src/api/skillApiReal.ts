@@ -316,9 +316,18 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
-export function getCategories(opts?: RequestOptions): Promise<Category[]> {
+export interface CategoryListOptions extends RequestOptions {
+  q?: string;
+  tags?: string[];
+}
+
+export function getCategories(opts?: CategoryListOptions): Promise<Category[]> {
+  const params = new URLSearchParams();
+  if (opts?.q) params.set("q", opts.q);
+  if (opts?.tags?.length) params.set("tags", opts.tags.join(","));
+  const qs = params.toString();
   return request<RawCategory[]>(
-    "/skill_categories",
+    `/skill_categories${qs ? `?${qs}` : ""}`,
     opts?.signal ? { signal: opts.signal } : undefined
   ).then((items) => items.map(mapCategory));
 }
