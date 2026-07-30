@@ -21,26 +21,40 @@ describe("login page presentation", () => {
     expect(source).not.toContain("hasAcknowledgedMigrationNotice");
     expect(source).not.toContain("acknowledgeMigrationNotice");
     expect(source).not.toContain("LOGIN_MIGRATION_NOTICE_ACK_KEY");
-    expect(source).toContain("addConfigChangeListener(forceUpdate)");
+    expect(source).toContain("addConfigChangeListener(this.forceRender)");
   });
 
-  it("holds stable space while enterprise SSO config is still loading", () => {
+  it("shows recoverable states while enterprise SSO config is still loading or unavailable", () => {
     const source = readRepoFile("packages/dmworklogin/src/login.tsx");
     const styles = readRepoFile("packages/dmworklogin/src/login.css");
+    const appSource = readRepoFile("packages/dmworkbase/src/App.tsx");
+    const zhCN = readRepoFile("packages/dmworklogin/src/i18n/zh-CN.json");
+    const enUS = readRepoFile("packages/dmworklogin/src/i18n/en-US.json");
 
     expect(source).toContain(
-      "const ssoConfigPending = ENTERPRISE_SSO_ENABLED && !WKApp.remoteConfig.requestSuccess"
+      "const ssoConfigPending = ENTERPRISE_SSO_ENABLED && !WKApp.remoteConfig.requestSuccess && !WKApp.remoteConfig.requestFailed"
     );
     expect(source).toContain(
-      "const showLocalPasswordLogin = !ENTERPRISE_SSO_ENABLED || (!ssoConfigPending && !hasSsoProvider)"
+      "const ssoConfigFallback = ENTERPRISE_SSO_ENABLED && WKApp.remoteConfig.requestFailed"
     );
-    expect(source).toContain("{!ssoConfigPending && (");
+    expect(source).toContain("aria-busy={ssoConfigPending}");
+    expect(source).toContain('role="status"');
+    expect(source).toContain("t('login.ssoConfigLoadingTitle')");
+    expect(source).toContain("t('login.ssoConfigFallback')");
     expect(source).toContain("showSsoLogin ? (");
-    expect(source).toContain("{showLocalPasswordLogin && (");
+    expect(source).toContain("renderLocalPasswordLogin()");
     expect(source).toContain("wk-login-content-phonelogin--primary");
+    expect(appSource).toContain("requestFailed: boolean = false;");
+    expect(appSource).toContain("this.requestFailed = true;");
+    expect(appSource).toContain("this.notifyListeners();");
     expect(styles).toContain(".wk-login-content-phonelogin--primary");
+    expect(styles).toContain(".wk-login-content-config-status");
+    expect(styles).toContain(".wk-login-content-sso-config-fallback");
     expect(styles).toContain("min-height: calc(var(--wk-sp-12) * 6);");
-    expect(styles).not.toContain("wk-login-content-config-skeleton");
+    expect(zhCN).toContain('"ssoConfigLoadingTitle": "正在加载登录配置"');
+    expect(enUS).toContain(
+      '"ssoConfigLoadingTitle": "Loading login configuration"'
+    );
   });
 
   it("keeps registration discoverable without competing with the primary login action", () => {
