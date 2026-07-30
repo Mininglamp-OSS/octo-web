@@ -41,13 +41,14 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
     return map;
   }, [members]);
 
-  // Reset all space-scoped state whenever the picker opens/closes or the target
-  // space changes. Clearing `selected` on a spaceId change is the guard that
-  // stops Space A's picks from being confirmed against Space B; re-running the
-  // (empty) search when visible refreshes the candidate list + query for the new
-  // space instead of leaving Space A's stale results behind. The search is gated
-  // on `visible` so a mounted-but-hidden picker doesn't fire an org query on
-  // every space switch.
+  // Reset picker-local state whenever it opens/closes or the target drive space
+  // changes. Clearing `selected` on a spaceId change is the guard that stops
+  // Space A's picks from being confirmed against Space B. Calling search('')
+  // when visible resets the local query filter so a reopened picker starts from
+  // the full roster instead of a stale search term — this is a purely local
+  // filter reset, not a fetch: useOrgSearch loads the roster once and reloads it
+  // only on the host `space-changed` event, independent of this effect. Gating
+  // on `visible` skips the reset for a mounted-but-hidden picker.
   useEffect(() => {
     setSelected({});
     if (visible) search('');
