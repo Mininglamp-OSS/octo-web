@@ -417,6 +417,23 @@ export function SheetCommentPanel({
         )}
       </div>
 
+      {/* Anchor-precision notice. A sheet comment anchors to an ABSOLUTE cell coordinate
+          (`${sheetId}!${row}:${col}` — see parseCell above) and nothing re-maps that coordinate
+          when rows/columns are inserted or removed, so a comment can end up pointing at a
+          different cell. We cannot detect that either: anchorText holds the A1 label, not a
+          snapshot of the cell's content, so a drifted coordinate still parses as valid and is
+          indistinguishable from a correct one. Until anchors are re-mapped, state the limitation
+          unconditionally rather than implying a precision we do not deliver — a conditional
+          "this one looks stale" badge is not implementable here and would imply the unbadged
+          ones are verified. Rendered only when there is something to read; on an empty list it
+          would be pure noise. Reuses .octo-comment-empty for the muted caption look (it tracks
+          --octo-muted, so light/dark both follow the theme). */}
+      {threads.length > 0 && (
+        <p className="octo-comment-empty" style={{ margin: '0 0 4px' }}>
+          {t('docs.sheet.comment.anchorNotice')}
+        </p>
+      )}
+
       {canComment(role) && (
         <div className="octo-comment-compose">
           {composing ? (
