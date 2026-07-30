@@ -135,7 +135,7 @@ async function registerMenus() {
   }, 4000)
 
   WKApp.menus.register("summary", (_context) => {
-    const m = new Menus("summary", "/summary", "", <SummaryIcon />, <SummaryIcon />)
+    const m = new Menus("summary", "/summary", t("app.nav.summary"), <SummaryIcon />, <SummaryIcon />)
     m.onPress = () => {
       WKApp.routeLeft.popToRoot()
       const page = WKApp.route.get("/summary/create")
