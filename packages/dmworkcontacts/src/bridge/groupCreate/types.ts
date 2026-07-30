@@ -44,8 +44,10 @@ export interface GroupCreateRuntime {
   getAvatarUser(uid: string): string;
   getContactsList(): GroupCreateContactRecord[];
   getCurrentChannelInfo(channel: Channel): any;
-  getCurrentChannelSubscribers(channel: Channel): Array<{ uid: string }>;
+  getCurrentChannelSubscribers(channel: Channel): Array<any>;
   getCurrentSpaceId(): string | undefined;
+  fetchCurrentChannelInfo(channel: Channel): Promise<any>;
+  fetchChannelSubscriber(channel: Channel, uid: string): Promise<any | undefined>;
   getLoginUid(): string | undefined;
   getSpaceMembers(
     spaceId: string,
@@ -57,5 +59,7 @@ export interface GroupCreateRuntime {
     channel: Channel,
     options?: { fromSidebarList?: boolean }
   ): void;
+  notifyCurrentChannelSubscribers(channel: Channel): void;
+  setCurrentChannelSubscribers(channel: Channel, subscribers: any[]): void;
   syncCurrentChannelSubscribers(channel: Channel): Promise<any>;
 }

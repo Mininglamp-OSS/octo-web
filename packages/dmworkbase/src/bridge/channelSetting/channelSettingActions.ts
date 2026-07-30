@@ -17,6 +17,9 @@ import { EndpointID } from "../../Service/Const";
 import {
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
+  getCurrentImChannelSubscribers,
+  notifyCurrentImSubscriberChangeListeners,
+  setCurrentImChannelSubscribersCache,
   syncCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
 import {
@@ -32,6 +35,8 @@ export interface ChannelSettingActionRuntime {
   deleteCurrentChannelInfo(channel: Channel): void;
   exitChannel(channel: Channel): Promise<void>;
   fetchCurrentChannelInfo(channel: Channel): Promise<any>;
+  fetchChannelSubscriber(channel: Channel, uid: string): Promise<any | undefined>;
+  getCurrentChannelSubscribers(channel: Channel): any[];
   findConversation(channel: Channel): any | undefined;
   getLoginUid(): string | undefined;
   invokeClearChannelMessages(channel: Channel): void;
@@ -42,6 +47,8 @@ export interface ChannelSettingActionRuntime {
   remarkChannel(channel: Channel, remark: string): Promise<void>;
   saveChannel(channel: Channel, save: boolean): Promise<void>;
   showConversation(channel: Channel): void;
+  notifyCurrentChannelSubscribers(channel: Channel): void;
+  setCurrentChannelSubscribers(channel: Channel, subscribers: any[]): void;
   syncCurrentChannelSubscribers(channel: Channel): Promise<any>;
   topChannel(channel: Channel, top: boolean): Promise<void>;
   transferOwner(channel: Channel, uid: string): Promise<void>;
@@ -65,9 +72,7 @@ export interface ChannelSettingActionRuntime {
 function defaultRuntime(): ChannelSettingActionRuntime {
   return {
     addSubscribers(channel, uids) {
-      return addChannelSubscribersApi(channel, uids).then(() =>
-        syncChannelSubscribersAfterMemberMutation(channel, "addSubscribers")
-      );
+      return addChannelSubscribersApi(channel, uids);
     },
     clearConversationMessages(conversation) {
       return WKApp.conversationProvider.clearConversationMessages(conversation);
@@ -88,6 +93,12 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     },
     fetchCurrentChannelInfo(channel) {
       return fetchCurrentImChannelInfo(channel);
+    },
+    fetchChannelSubscriber(channel, uid) {
+      return WKApp.dataSource.channelDataSource.subscriber(channel, uid);
+    },
+    getCurrentChannelSubscribers(channel) {
+      return getCurrentImChannelSubscribers(channel);
     },
     findConversation(channel) {
       return findCurrentImConversation(channel);
@@ -114,9 +125,7 @@ function defaultRuntime(): ChannelSettingActionRuntime {
       WKApp.shared.notifyListener();
     },
     removeSubscribers(channel, uids) {
-      return removeChannelSubscribersApi(channel, uids).then(() =>
-        syncChannelSubscribersAfterMemberMutation(channel, "removeSubscribers")
-      );
+      return removeChannelSubscribersApi(channel, uids);
     },
     remarkChannel(channel, remark) {
       return updateChannelSetting({ remark }, channel);
@@ -126,6 +135,12 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     },
     showConversation(channel) {
       WKApp.endpoints.showConversation(channel);
+    },
+    notifyCurrentChannelSubscribers(channel) {
+      notifyCurrentImSubscriberChangeListeners(channel);
+    },
+    setCurrentChannelSubscribers(channel, subscribers) {
+      setCurrentImChannelSubscribersCache(channel, subscribers);
     },
     syncCurrentChannelSubscribers(channel) {
       return syncCurrentImChannelSubscribers(channel);
@@ -148,15 +163,103 @@ function defaultRuntime(): ChannelSettingActionRuntime {
   };
 }
 
-async function syncChannelSubscribersAfterMemberMutation(
+async function refreshChannelStateAfterMemberMutation(
+  runtime: ChannelSettingActionRuntime,
   channel: Channel,
-  action: "addSubscribers" | "removeSubscribers"
+  action: "addSubscribers" | "removeSubscribers",
+  uids: string[]
 ) {
+  let shouldNotifySubscribers = false;
+
   try {
-    await syncCurrentImChannelSubscribers(channel);
+    await runtime.syncCurrentChannelSubscribers(channel);
+    shouldNotifySubscribers = true;
   } catch (err) {
     console.warn(`[${action}] syncSubscribes failed`, err);
   }
+
+  const cachePatched = await patchSubscriberCacheAfterMemberMutation(
+    runtime,
+    channel,
+    action,
+    uids
+  );
+
+  if (cachePatched) {
+    shouldNotifySubscribers = true;
+  }
+
+  if (shouldNotifySubscribers) {
+    runtime.notifyCurrentChannelSubscribers(channel);
+  }
+
+  await runtime.fetchCurrentChannelInfo(channel).catch((err) => {
+    console.warn(`[${action}] fetchChannelInfo failed`, err);
+  });
+}
+
+function activeSubscriber(subscriber: any) {
+  return (
+    subscriber &&
+    !subscriber.isDeleted &&
+    (subscriber.status === undefined || subscriber.status === 1)
+  );
+}
+
+async function patchSubscriberCacheAfterMemberMutation(
+  runtime: ChannelSettingActionRuntime,
+  channel: Channel,
+  action: "addSubscribers" | "removeSubscribers",
+  uids: string[]
+) {
+  const targetUids = new Set(uids.filter(Boolean));
+  if (targetUids.size === 0) {
+    return false;
+  }
+
+  const currentSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
+
+  if (action === "removeSubscribers") {
+    const nextSubscribers = currentSubscribers.filter(
+      (subscriber) => !targetUids.has(subscriber?.uid)
+    );
+    if (nextSubscribers.length !== currentSubscribers.length) {
+      runtime.setCurrentChannelSubscribers(channel, nextSubscribers);
+      return true;
+    }
+    return false;
+  }
+
+  const nextSubscribers = [...currentSubscribers];
+  let changed = false;
+
+  for (const uid of targetUids) {
+    const index = nextSubscribers.findIndex(
+      (subscriber) => subscriber?.uid === uid
+    );
+    if (index >= 0 && activeSubscriber(nextSubscribers[index])) {
+      continue;
+    }
+
+    const subscriber = await runtime.fetchChannelSubscriber(channel, uid).catch(
+      () => undefined
+    );
+    if (!subscriber) {
+      continue;
+    }
+    subscriber.channel = channel;
+    if (index >= 0) {
+      nextSubscribers[index] = subscriber;
+    } else {
+      nextSubscribers.push(subscriber);
+    }
+    changed = true;
+  }
+
+  if (changed) {
+    runtime.setCurrentChannelSubscribers(channel, nextSubscribers);
+  }
+  return changed;
 }
 
 function runtimeOrDefault(runtime?: ChannelSettingActionRuntime) {
@@ -168,8 +271,12 @@ export async function addChannelSettingSubscribers(params: {
   uids: string[];
   runtime?: ChannelSettingActionRuntime;
 }) {
-  await runtimeOrDefault(params.runtime).addSubscribers(
+  const runtime = runtimeOrDefault(params.runtime);
+  await runtime.addSubscribers(params.channel, params.uids);
+  await refreshChannelStateAfterMemberMutation(
+    runtime,
     params.channel,
+    "addSubscribers",
     params.uids
   );
 }
@@ -196,8 +303,12 @@ export async function removeChannelSettingSubscribers(params: {
   uids: string[];
   runtime?: ChannelSettingActionRuntime;
 }) {
-  await runtimeOrDefault(params.runtime).removeSubscribers(
+  const runtime = runtimeOrDefault(params.runtime);
+  await runtime.removeSubscribers(params.channel, params.uids);
+  await refreshChannelStateAfterMemberMutation(
+    runtime,
     params.channel,
+    "removeSubscribers",
     params.uids
   );
 }

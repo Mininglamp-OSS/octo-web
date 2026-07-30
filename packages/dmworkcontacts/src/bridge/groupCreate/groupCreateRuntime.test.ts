@@ -11,8 +11,10 @@ import type { GroupCreateRuntime } from "./types";
 
 vi.mock("@octo/base", () => ({
   WKApp: {},
+  fetchCurrentImChannelInfo: vi.fn(),
   getCurrentImChannelInfo: vi.fn(),
   getCurrentImChannelSubscribers: vi.fn(),
+  notifyCurrentImSubscriberChangeListeners: vi.fn(),
   syncCurrentImChannelSubscribers: vi.fn(),
 }));
 
@@ -31,10 +33,16 @@ function createRuntime(
     getCurrentChannelInfo: vi.fn(() => ({})),
     getCurrentChannelSubscribers: vi.fn(() => []),
     getCurrentSpaceId: vi.fn(() => undefined),
+    fetchCurrentChannelInfo: vi.fn(() => Promise.resolve(undefined)),
+    fetchChannelSubscriber: vi.fn((channel, uid) =>
+      Promise.resolve({ uid, name: `member:${uid}` })
+    ),
     getLoginUid: vi.fn(() => "self"),
     getSpaceMembers: vi.fn(() => Promise.resolve([])),
     getSuperGroupSubscribers: vi.fn(() => Promise.resolve([])),
     showConversation: vi.fn(),
+    notifyCurrentChannelSubscribers: vi.fn(),
+    setCurrentChannelSubscribers: vi.fn(),
     syncCurrentChannelSubscribers: vi.fn(() => Promise.resolve(undefined)),
     ...overrides,
   };
@@ -194,10 +202,15 @@ describe("group create runtime bridge", () => {
     expect(runtime.showConversation).toHaveBeenCalledWith(
       expect.objectContaining({ channelID: "group-created" })
     );
+    expect(runtime.syncCurrentChannelSubscribers).not.toHaveBeenCalled();
+    expect(runtime.notifyCurrentChannelSubscribers).not.toHaveBeenCalled();
+    expect(runtime.fetchCurrentChannelInfo).not.toHaveBeenCalled();
   });
 
-  it("adds subscribers directly for an existing group", async () => {
-    const runtime = createRuntime();
+  it("adds subscribers directly for an existing group and refreshes member state", async () => {
+    const runtime = createRuntime({
+      getCurrentChannelSubscribers: vi.fn(() => [{ uid: "owner" }]),
+    });
 
     await submitGroupCreateAction({
       action: "addMember",
@@ -211,5 +224,79 @@ describe("group create runtime bridge", () => {
       ["alice", "bob"]
     );
     expect(runtime.createChannel).not.toHaveBeenCalled();
+    expect(runtime.syncCurrentChannelSubscribers).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" })
+    );
+    expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" })
+    );
+    expect(runtime.fetchCurrentChannelInfo).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" })
+    );
+    expect(runtime.fetchChannelSubscriber).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" }),
+      "alice"
+    );
+    expect(runtime.fetchChannelSubscriber).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" }),
+      "bob"
+    );
+    expect(runtime.setCurrentChannelSubscribers).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" }),
+      [
+        { uid: "owner" },
+        expect.objectContaining({ uid: "alice", name: "member:alice" }),
+        expect.objectContaining({ uid: "bob", name: "member:bob" }),
+      ]
+    );
+  });
+
+  it("does not refresh member state when adding subscribers to an existing group fails", async () => {
+    const runtime = createRuntime({
+      addSubscribers: vi.fn(() => Promise.reject(new Error("add failed"))),
+    });
+
+    await expect(
+      submitGroupCreateAction({
+        action: "addMember",
+        channel: { channelID: "group-1", channelType: ChannelTypeGroup },
+        selectedUids: ["alice"],
+        runtime,
+      })
+    ).rejects.toThrow("add failed");
+
+    expect(runtime.syncCurrentChannelSubscribers).not.toHaveBeenCalled();
+    expect(runtime.notifyCurrentChannelSubscribers).not.toHaveBeenCalled();
+    expect(runtime.fetchCurrentChannelInfo).not.toHaveBeenCalled();
+  });
+
+  it("still fills newly added subscribers when existing group sync fails", async () => {
+    const runtime = createRuntime({
+      getCurrentChannelSubscribers: vi.fn(() => [{ uid: "owner" }]),
+      syncCurrentChannelSubscribers: vi.fn(() =>
+        Promise.reject(new Error("sync failed"))
+      ),
+    });
+
+    await submitGroupCreateAction({
+      action: "addMember",
+      channel: { channelID: "group-1", channelType: ChannelTypeGroup },
+      selectedUids: ["alice"],
+      runtime,
+    });
+
+    expect(runtime.setCurrentChannelSubscribers).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" }),
+      [
+        { uid: "owner" },
+        expect.objectContaining({ uid: "alice", name: "member:alice" }),
+      ]
+    );
+    expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" })
+    );
+    expect(runtime.fetchCurrentChannelInfo).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" })
+    );
   });
 });

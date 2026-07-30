@@ -1,8 +1,11 @@
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 
 import {
+  fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
   getCurrentImChannelSubscribers,
+  notifyCurrentImSubscriberChangeListeners,
+  setCurrentImChannelSubscribersCache,
   syncCurrentImChannelSubscribers,
   WKApp,
 } from "@octo/base";
@@ -46,6 +49,12 @@ function createDefaultGroupCreateRuntime(): GroupCreateRuntime {
     getCurrentSpaceId() {
       return WKApp.shared.currentSpaceId;
     },
+    fetchCurrentChannelInfo(channel) {
+      return fetchCurrentImChannelInfo(channel);
+    },
+    fetchChannelSubscriber(channel, uid) {
+      return WKApp.dataSource.channelDataSource.subscriber(channel, uid);
+    },
     getLoginUid() {
       return WKApp.loginInfo.uid;
     },
@@ -63,6 +72,12 @@ function createDefaultGroupCreateRuntime(): GroupCreateRuntime {
     },
     showConversation(channel, options) {
       WKApp.endpoints.showConversation(channel, options);
+    },
+    notifyCurrentChannelSubscribers(channel) {
+      notifyCurrentImSubscriberChangeListeners(channel);
+    },
+    setCurrentChannelSubscribers(channel, subscribers) {
+      setCurrentImChannelSubscribersCache(channel, subscribers);
     },
     syncCurrentChannelSubscribers(channel) {
       return syncCurrentImChannelSubscribers(channel);
@@ -191,6 +206,90 @@ export async function loadGroupCreateCandidates(params: {
   });
 }
 
+async function refreshGroupMemberStateAfterMutation(
+  runtime: GroupCreateRuntime,
+  channel: Channel,
+  addedUids: string[]
+) {
+  let shouldNotifySubscribers = false;
+
+  try {
+    await runtime.syncCurrentChannelSubscribers(channel);
+    shouldNotifySubscribers = true;
+  } catch (err) {
+    console.warn("[addMember] syncSubscribes failed", err);
+  }
+
+  const cachePatched = await patchSubscriberCacheAfterAdd(
+    runtime,
+    channel,
+    addedUids
+  );
+
+  if (cachePatched) {
+    shouldNotifySubscribers = true;
+  }
+
+  if (shouldNotifySubscribers) {
+    runtime.notifyCurrentChannelSubscribers(channel);
+  }
+
+  await runtime.fetchCurrentChannelInfo(channel).catch((err) => {
+    console.warn("[addMember] fetchChannelInfo failed", err);
+  });
+}
+
+function activeSubscriber(subscriber: any) {
+  return (
+    subscriber &&
+    !subscriber.isDeleted &&
+    (subscriber.status === undefined || subscriber.status === 1)
+  );
+}
+
+async function patchSubscriberCacheAfterAdd(
+  runtime: GroupCreateRuntime,
+  channel: Channel,
+  addedUids: string[]
+) {
+  const targetUids = new Set(addedUids.filter(Boolean));
+  if (targetUids.size === 0) {
+    return false;
+  }
+
+  const currentSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
+  const nextSubscribers = [...currentSubscribers];
+  let changed = false;
+
+  for (const uid of targetUids) {
+    const index = nextSubscribers.findIndex(
+      (subscriber) => subscriber?.uid === uid
+    );
+    if (index >= 0 && activeSubscriber(nextSubscribers[index])) {
+      continue;
+    }
+
+    const subscriber = await runtime.fetchChannelSubscriber(channel, uid).catch(
+      () => undefined
+    );
+    if (!subscriber) {
+      continue;
+    }
+    subscriber.channel = channel;
+    if (index >= 0) {
+      nextSubscribers[index] = subscriber;
+    } else {
+      nextSubscribers.push(subscriber);
+    }
+    changed = true;
+  }
+
+  if (changed) {
+    runtime.setCurrentChannelSubscribers(channel, nextSubscribers);
+  }
+  return changed;
+}
+
 export async function submitGroupCreateAction(params: {
   action: GroupCreateSubmitAction;
   channel: GroupCreateChannelInput;
@@ -233,5 +332,10 @@ export async function submitGroupCreateAction(params: {
   }
 
   await runtime.addSubscribers(channel, params.selectedUids);
+  await refreshGroupMemberStateAfterMutation(
+    runtime,
+    channel,
+    params.selectedUids
+  );
   return undefined;
 }
