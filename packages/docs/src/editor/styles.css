@@ -2822,9 +2822,21 @@ body.octo-row-resizing {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Orphaned: the quote is a historical snapshot of text that is no longer in the document, so it
+   is struck through — distinguishable at a glance from a live quote, without having to read the
+   adjacent label. Deliberately NO opacity here: the base color is already var(--octo-muted,
+   #86909c) at ~2.9:1 on white, and dimming meaningful body text further would take it to ~1.9:1,
+   well under WCAG AA (4.5:1). The strike-through plus the adjacent orange (orphaned) label carry
+   the state instead. */
+.octo-comment-quote.is-orphaned {
+  text-decoration: line-through;
+}
 .octo-comment-orphan {
   color: #d4691e;
   font-size: 12px;
+  /* Status label must stay fully legible; the quote is the item that shrinks (it sets
+     overflow: hidden + text-overflow: ellipsis, which also zeroes its automatic minimum size). */
+  flex-shrink: 0;
 }
 .octo-comment-resolved-badge {
   font-size: 11px;
@@ -2834,6 +2846,10 @@ body.octo-row-resizing {
   border-radius: 999px;
   border: 1px solid #2f9e44;
   color: #2f9e44;
+  /* Same reason as the orphan label: without this the badge is a shrinkable flex sibling and a
+     long quote collapses it to ~1 CJK glyph per line, wrapping the pill to 3 lines. */
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .octo-comment-body {
   padding: 4px 0;

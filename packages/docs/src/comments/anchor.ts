@@ -169,7 +169,14 @@ export function resolveAnchorRange(
   if (!b) return null
   const from = relativePositionToAbsolutePosition(b.ydoc, b.type, startRel, b.mapping)
   const to = relativePositionToAbsolutePosition(b.ydoc, b.type, endRel, b.mapping)
-  if (from == null || to == null) return null // ORPHAN — anchored content was deleted.
+  // ORPHAN (null resolve). Do NOT delete this as dead code: it looks unreachable because ordinary
+  // editing never hits it — deleting the anchored text leaves both RelativePositions resolvable and
+  // COLLAPSED onto the same index (see the collapsed case below, which is the hot path; pinned by
+  // anchor.test.ts:76). A null resolve happens when the referenced client/clock is absent from THIS
+  // doc's state vector — a fresh or wholesale-rewritten doc, e.g. version restore — while the
+  // stored anchor bytes stay put (pinned by anchor.test.ts:58-68). Both cases route to the orphan
+  // path; only the trigger differs.
+  if (from == null || to == null) return null
   // ORPHAN (collapsed): a root comment is always created from a NON-empty selection,
   // so a zero-width resolved range means the anchored text was deleted and the two
   // RelativePositions collapsed onto the same index (Yjs does NOT return null in this
