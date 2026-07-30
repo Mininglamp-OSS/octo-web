@@ -3,6 +3,11 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@octo/base", () => ({
+    // Provide a `default` export for SummaryDetailPage.renderHeader's
+    // `WKApp.loginInfo.uid` read; @octo/base exports the WKApp singleton
+    // as default, so the mock has to as well or the render throws
+    // "No 'default' export is defined on the '@octo/base' mock".
+    default: { loginInfo: {} },
     I18nContext: React.createContext({ t: (key: string) => key }),
     t: (key: string) => key,
     ForwardService: {},
@@ -18,7 +23,7 @@ vi.mock("../../components/CitationText", () => ({ default: () => null }));
 vi.mock("../../components/SelectedSourcesPanel", () => ({ default: () => null }));
 vi.mock("../../components/ScheduleConfigModal", () => ({ default: () => null }));
 vi.mock("../../components/SummaryEditor", () => ({ default: () => null }));
-vi.mock("../../components/SummaryVersionHistory", () => ({ default: () => null }));
+vi.mock("../../components/SummaryVersionPanel", () => ({ default: () => null }));
 vi.mock("../../components/OverflowTooltip", () => ({ default: () => null }));
 
 vi.mock("wukongimjssdk", () => ({

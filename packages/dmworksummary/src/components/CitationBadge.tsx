@@ -132,9 +132,17 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
 
     const seen = new Map<string, MergedMessage>();
     for (const msg of all) {
+        // Include BOTH channel_id and source in the identity so it agrees
+        // with spansMultipleSources at :438 (which keys on the same pair).
+        // Falling back to just channel_id was the round-9 regression: when
+        // two citations from different sources both omitted channel_id and
+        // shared a message_seq, they collided on `seq::N` and one was
+        // silently dropped from the popover while the header still claimed
+        // "multiple sources".
+        const identity = `${msg.channel_id ?? ""}\0${msg.source ?? ""}`;
         const key = msg.message_seq != null
-            ? `seq:${msg.channel_id ?? ""}:${msg.message_seq}`
-            : `${msg.channel_id ?? ""}\0${msg.sender}\0${msg.content}\0${msg.sent_at}`;
+            ? `seq:${identity}:${msg.message_seq}`
+            : `${identity}\0${msg.sender}\0${msg.content}\0${msg.sent_at}`;
         const existing = seen.get(key);
         if (!existing || (msg.cited && !existing.cited)) {
             seen.set(key, msg);

@@ -2574,9 +2574,21 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // TOC on first paint than a clipped one on every laptop 1441–1627px.
     private static readonly TOC_MIN_LAYOUT_WIDTH = 1272;
 
+    /** True iff the version panel is both flagged open AND has a valid
+     * active context to render. Guards against `versionPanelOpen` being
+     * stuck true when getActiveVersionContext() has since returned null
+     * (list reload, load error, versions dropping to <= 1) — leaving
+     * `.has-version-panel` on with nothing on screen to toggle would
+     * suppress the TOC via shouldShowToc with no way for the user to
+     * recover. */
+    private isVersionPanelActuallyOpen(): boolean {
+        return this.state.versionPanelOpen && this.getActiveVersionContext() != null;
+    }
+
     private shouldShowToc(): boolean {
-        const { versionPanelOpen, isEditing, editingTeamSummary, editingMyDraft, editingPersonalReport, tocItems, layoutWidth } = this.state;
-        if (versionPanelOpen || isEditing || editingTeamSummary || editingMyDraft || editingPersonalReport) return false;
+        const { isEditing, editingTeamSummary, editingMyDraft, editingPersonalReport, tocItems, layoutWidth } = this.state;
+        if (this.isVersionPanelActuallyOpen()) return false;
+        if (isEditing || editingTeamSummary || editingMyDraft || editingPersonalReport) return false;
         if (!tocItems || tocItems.length < 2) return false;
         return layoutWidth != null && layoutWidth >= SummaryDetailPage.TOC_MIN_LAYOUT_WIDTH;
     }
@@ -3858,7 +3870,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     background: versionPanelActive ? "var(--wk-color-accent)" : "var(--wk-bg-selected)",
                                     borderColor: versionPanelActive ? "var(--wk-color-accent)" : "var(--wk-ai-border)",
                                 }}
-                                onClick={() => this.setState((s) => ({ versionPanelOpen: !s.versionPanelOpen }))}
+                                onClick={() => {
+                                    // Route the close half of the toggle
+                                    // through handleCloseVersionPanel so it
+                                    // also clears showVersionDetailModal /
+                                    // versionDetail / versionDetailLoading.
+                                    // Otherwise closing the panel from this
+                                    // trigger while a preview is open leaves
+                                    // the centre column on the read-only
+                                    // historical body with editing silently
+                                    // disabled (canEdit tests
+                                    // !showVersionDetailModal).
+                                    if (this.state.versionPanelOpen) {
+                                        this.handleCloseVersionPanel();
+                                    } else {
+                                        this.setState({ versionPanelOpen: true });
+                                    }
+                                }}
                                 aria-expanded={this.state.versionPanelOpen}
                             >
                                 {t("summary.detail.versionRecords")}
@@ -3974,7 +4002,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             <div className="summary-detail-page">
                 <div
                     ref={this.layoutRef}
-                    className={`summary-detail-layout${this.state.versionPanelOpen ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}`}
+                    className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}`}
                 >
                     <div className="summary-detail-content-wrapper">
                     {detail && !loading && this.renderHeader()}

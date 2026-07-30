@@ -113,6 +113,33 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
         expect(popover.textContent).toContain('研发群 B');
     });
 
+    it('preserves both cited messages when a group spans sources without channel_id', () => {
+        // Regression for the round-9 dedup collision: `channel_id` is
+        // optional on CitationItem but `source` is required, so two
+        // citations from different sources that both omit channel_id and
+        // share message_seq previously collapsed to the same key
+        // `seq::N` and one message was silently dropped from the popover
+        // while the header still claimed "multiple sources".
+        render(
+            <CitationText
+                content="缺 channel_id 的跨来源引用 [1][2]"
+                citations={[
+                    makeCitation({ index: 1, channel_id: undefined, message_seq: 3, source: '产品群 A', content: 'MSG-SOURCE-A' }),
+                    makeCitation({ index: 2, channel_id: undefined, message_seq: 3, source: '研发群 B', content: 'MSG-SOURCE-B' }),
+                ]}
+            />,
+        );
+
+        const groupBadge = badgeByText('[1,2]')!;
+        fireEvent.click(groupBadge);
+
+        const popover = screen.getByTestId('popover-content');
+        expect(popover.textContent).toContain('MSG-SOURCE-A');
+        expect(popover.textContent).toContain('MSG-SOURCE-B');
+        expect(popover.textContent).toContain('产品群 A');
+        expect(popover.textContent).toContain('研发群 B');
+    });
+
     it('labels each directly cited message with its reading-order number in the pinned popover', () => {
         render(
             <CitationText
