@@ -43,6 +43,7 @@ vi.mock('@excalidraw/excalidraw', async () => {
   const MainMenu = (() => null) as unknown as { DefaultItems: Record<string, unknown> }
   MainMenu.DefaultItems = {}
   return {
+    FONT_FAMILY: {},
     Excalidraw,
     MainMenu,
     restoreElements: (els: readonly unknown[] | null | undefined) => {
@@ -56,8 +57,11 @@ vi.mock('@excalidraw/excalidraw', async () => {
       return arr
     },
     reconcileElements: (local: readonly unknown[]) => [...local],
+    redrawTextBoundingBox: () => {},
+    mutateElement: (element: Record<string, unknown>, updates: Record<string, unknown>) => Object.assign(element, updates),
     loadLibraryFromBlob: async () => [],
     serializeLibraryAsJSON: () => '[]',
+    serializeAsJSON: () => '{}',
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))

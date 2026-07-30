@@ -77,6 +77,7 @@ vi.mock('@excalidraw/excalidraw', () => {
     Excalidraw,
     MainMenu,
     restoreElements: (els: readonly unknown[] | null | undefined) => (els ? [...els] : []),
+    redrawTextBoundingBox: () => {},
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))

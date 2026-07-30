@@ -88,6 +88,20 @@ const HELP_DIALOG_HEADER_SELECTOR = '.HelpDialog__header'
 // not carry this class, so removing it leaves every local capability intact.
 const LIBRARY_BROWSE_BUTTON_SELECTOR = '.library-menu-browse-button'
 
+// Excalidraw's native top-left hamburger (☰) MainMenu trigger and the empty-canvas welcome-screen
+// hint that points at it. In 0.18.1 the trigger button is part of the `MainMenu` component itself
+// (not its contents), so it renders unconditionally whether the host supplies a custom `<MainMenu>`
+// or falls back to `DefaultMainMenu` — there is NO UIOptions flag to suppress the whole trigger. The
+// board deliberately exposes no burger menu (its own header/toolbar carry every board action, and
+// canvas background moved onto the "9" toolbar slot), so the trigger is pure dead brand chrome that
+// the user reported still showing. We hide it (and the welcome-screen menu hint/center item that
+// arrows at it) the same inline-`display:none` way as the other seam-less surfaces above. The button
+// carries both `.dropdown-menu-button` and `.main-menu-trigger`; we key on the specific
+// `.main-menu-trigger` so other dropdown buttons (font family, arrowheads, …) are untouched.
+const MAIN_MENU_TRIGGER_SELECTOR = '.main-menu-trigger'
+const WELCOME_SCREEN_MENU_HINT_SELECTOR =
+  '.welcome-screen-decor-hint--menu, .welcome-screen-menu-item'
+
 // Excalidraw's built-in collaborator avatar stack (XIN-680). It renders in the canvas top-right
 // zone (`.layer-ui__wrapper__top-right`), by the 素材库 library controls, from appState.collaborators
 // — the same data that draws the remote cursors. The board already shows the canonical presence
@@ -163,6 +177,13 @@ function debrandWithin(el: Element): void {
   // 素材库). The board's own header PresenceBar is the canonical display; cursors are unaffected.
   el.querySelectorAll(COLLABORATOR_USERLIST_SELECTOR).forEach(hideElementInline)
   if (el.matches(COLLABORATOR_USERLIST_SELECTOR)) hideElementInline(el)
+
+  // Hide the native top-left hamburger MainMenu trigger and the empty-canvas welcome hint/center
+  // menu item that points at it. The board exposes no burger menu at all, so this is dead chrome.
+  el.querySelectorAll(MAIN_MENU_TRIGGER_SELECTOR).forEach(hideElementInline)
+  if (el.matches(MAIN_MENU_TRIGGER_SELECTOR)) hideElementInline(el)
+  el.querySelectorAll(WELCOME_SCREEN_MENU_HINT_SELECTOR).forEach(hideElementInline)
+  if (el.matches(WELCOME_SCREEN_MENU_HINT_SELECTOR)) hideElementInline(el)
 
   // Item 3: the "更多工具 → Mermaid 至 Excalidraw" dropdown item. Matched by its "Mermaid" text
   // rather than the data-testid, which Excalidraw shares with the web-embed tool item.

@@ -13,6 +13,8 @@ on:
       - "packages/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "patches/**"
+      - "scripts/verify-excalidraw-patch.mjs"
       - ".github/workflows/e2e.yml"
       - ".github/workflows/e2e-nightly.yml"
       - ".github/workflows/e2e-baseline-bootstrap.yml"
@@ -37,6 +39,8 @@ jobs:
           cache: "pnpm"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Verify Excalidraw package patch
+        run: pnpm verify:excalidraw-patch
       - name: Build e2e bundle (tree-shakes MSW into build-e2e/)
         working-directory: apps/web
         run: pnpm build:e2e

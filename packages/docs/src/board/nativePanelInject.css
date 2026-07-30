@@ -1,0 +1,315 @@
+/* Octo text controls injected into Excalidraw's native properties panel. Scoped so no styles leak
+   into the canvas. Ordinary controls use brand black/alpha states; purple remains AI/Thread-only. */
+.octo-board-native-inject__panel {
+  --wk-brand-primary: #1c1c23;
+  --wk-brand-alpha-06: rgba(28, 28, 35, 0.06);
+  --wk-brand-alpha-10: rgba(28, 28, 35, 0.10);
+  --wk-brand-alpha-20: rgba(28, 28, 35, 0.20);
+  --wk-black-alpha-08: rgba(0, 0, 0, 0.08);
+  --wk-black-alpha-16: rgba(0, 0, 0, 0.16);
+  --wk-text-primary: #1f2329;
+  --wk-bg-surface: #ffffff;
+  --wk-r-sm: 6px;
+  display: flex;
+  flex-direction: column;
+  row-gap: 12px;
+  color: var(--wk-text-primary);
+  font-family: -apple-system, "SF Pro Text", "PingFang SC", "Inter", "Noto Sans SC", sans-serif;
+  font-size: 14px;
+}
+
+.octo-board-native-inject__panel fieldset.octo-board-native-inject__fs {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.octo-board-native-inject__panel legend {
+  display: block;
+  margin: 0 0 4px;
+  padding: 0;
+  color: var(--wk-text-primary);
+  font-size: 12px;
+  font-weight: 400;
+  user-select: none;
+}
+
+.octo-board-native-inject__select-host,
+.octo-board-native-inject__font-size-trigger {
+  width: 100%;
+  min-width: 0;
+}
+
+.octo-board-native-inject__font-select {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.octo-board-native-inject__univer-select {
+  width: 100%;
+  min-width: 0;
+  color: var(--wk-text-primary);
+}
+
+.octo-board-native-inject__univer-select > div {
+  color: var(--wk-text-primary);
+}
+
+.octo-board-native-inject__test-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Font size is a preset combobox that also accepts a typed value — never a number spinner. Suppress
+   any browser spin buttons defensively so the up/down arrows can never reappear. */
+.octo-board-native-inject__font-size::-webkit-outer-spin-button,
+.octo-board-native-inject__font-size::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.octo-board-native-inject__font-size {
+  width: 100%;
+  height: var(--wk-sp-8);
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 var(--wk-sp-8) 0 var(--wk-sp-3);
+  border: 0;
+  outline: 0;
+  color: var(--wk-text-primary);
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* “混合值”是当前选择状态，不是提示性占位文案；用与正常值相同的正文色和不透明度。 */
+.octo-board-native-inject__font-size::placeholder {
+  color: var(--wk-text-primary);
+  opacity: 1;
+}
+
+.octo-board-native-inject__font-size-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: var(--wk-sp-8);
+  box-sizing: border-box;
+  border: 1px solid var(--octo-border, var(--wk-black-alpha-08));
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  transition: border-color 200ms;
+}
+
+.octo-board-native-inject__font-size-trigger:hover,
+.octo-board-native-inject__font-size-trigger:focus-within {
+  border-color: var(--wk-brand-primary);
+}
+
+.octo-board-native-inject__font-size-trigger:focus-within {
+  box-shadow: 0 0 0 2px var(--wk-brand-alpha-06);
+}
+
+.octo-board-native-inject__font-size-arrow {
+  position: absolute;
+  right: var(--wk-sp-2);
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+  color: var(--wk-text-primary);
+  pointer-events: none;
+}
+
+.octo-board-native-inject__font-size-menu {
+  display: grid;
+  width: var(--radix-popover-trigger-width, 100%);
+  min-width: calc(var(--wk-sp-8) * 2);
+  max-height: 320px;
+  box-sizing: border-box;
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-1-5);
+  overflow-y: auto;
+}
+
+.octo-board-native-inject__font-size-option {
+  width: 100%;
+  padding: var(--wk-sp-1-5) var(--wk-sp-2);
+  border: 0;
+  border-radius: var(--wk-r-xs);
+  color: var(--wk-text-primary);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.octo-board-native-inject__font-size-option:hover,
+.octo-board-native-inject__font-size-option[aria-selected="true"] {
+  background: var(--wk-brand-alpha-06);
+}
+
+.octo-board-native-inject__color {
+  display: inline-flex;
+  align-items: center;
+}
+
+.octo-board-color-icon {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--wk-black-alpha-08);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+/* Mixed multi-selection: the members disagree on this colour, so show a neutral checkerboard
+   instead of any one member's colour. Keeps the "mixed" state visually explicit. */
+.octo-board-color-icon--mixed {
+  background-image:
+    linear-gradient(45deg, var(--wk-black-alpha-16) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--wk-black-alpha-16) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--wk-black-alpha-16) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--wk-black-alpha-16) 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+
+.octo-board-native-inject__marks,
+.octo-board-native-inject__aligns {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.octo-board-native-inject__mark-btn,
+.octo-board-native-inject__align-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--wk-black-alpha-08);
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  cursor: pointer;
+  transition: background 150ms cubic-bezier(.16, 1, .3, 1),
+    border-color 150ms cubic-bezier(.16, 1, .3, 1),
+    box-shadow 150ms cubic-bezier(.16, 1, .3, 1);
+}
+
+.octo-board-native-inject__mark-btn:hover,
+.octo-board-native-inject__align-btn:hover {
+  background: var(--wk-brand-alpha-06);
+}
+
+.octo-board-native-inject__mark-btn:focus-visible,
+.octo-board-native-inject__align-btn:focus-visible {
+  outline: 0;
+  border-color: var(--wk-brand-primary);
+  box-shadow: 0 0 0 2px var(--wk-brand-alpha-20);
+}
+
+.octo-board-native-inject__mark-btn--on,
+.octo-board-native-inject__align-btn--on {
+  color: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+  background: var(--wk-brand-alpha-10);
+}
+
+
+/* The replacement is taller than Excalidraw's compact controls. Scroll the native island instead
+   of clipping Layer/Actions; the colour picker portals to body and is not horizontally clipped. */
+.excalidraw .panelColumn.octo-board-native-panel-column {
+  max-height: calc(100vh - 144px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+.octo-board-color-popover {
+  position: fixed;
+  z-index: 400;
+  margin: 0;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+}
+
+/* App-owned typography menus. They portal to the same root as Sheet controls but keep geometry
+   explicit so the menu always opens immediately below the real trigger and never overlaps it. */
+.octo-board-native-inject__font-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--wk-sp-8);
+  box-sizing: border-box;
+  padding: 0 var(--wk-sp-8) 0 var(--wk-sp-3);
+  border: 1px solid var(--octo-border, var(--wk-black-alpha-08));
+  border-radius: var(--wk-r-md);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.octo-board-native-inject__font-menu,
+.octo-board-native-inject__font-size-menu {
+  position: fixed;
+  z-index: 1200;
+  box-sizing: border-box;
+  max-height: min(320px, calc(100vh - 16px));
+  padding: var(--wk-sp-1-5);
+  overflow-y: auto;
+  border: 1px solid var(--octo-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--wk-r-md);
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(31, 35, 41, 0.16);
+}
+
+.octo-board-native-inject__font-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 32px;
+  gap: 16px;
+  padding: var(--wk-sp-1-5) var(--wk-sp-2);
+  border: 0;
+  border-radius: var(--wk-r-xs);
+  color: var(--wk-text-primary);
+  background: transparent;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.octo-board-native-inject__font-option:hover,
+.octo-board-native-inject__font-option[aria-selected="true"] {
+  background: rgba(28, 28, 35, 0.06);
+}
+
+.octo-board-native-inject__font-warning {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: #a6a6a6;
+}
+
+/* The menu itself is a high fixed portal. Keep missing-font help above it and on one line; without
+ * this the default tooltip can open leftward underneath the menu and only expose its last words. */
+.octo-board-native-inject__font-tooltip {
+  z-index: 1300;
+  max-width: none;
+  white-space: nowrap;
+}

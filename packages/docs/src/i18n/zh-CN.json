@@ -61,6 +61,15 @@
   "board": {
     "readOnly": "只读",
     "saveFailed": "未保存 — 本地存储已满或不可用",
+    "canvasColor": "画布颜色",
+    "canvasActions": "画布工具",
+    "find": "查找",
+    "saveFile": "保存到文件",
+    "exportImage": "导出为图片",
+    "help": "帮助",
+    "importFile": "从 Excalidraw 导入",
+    "importError": "无法导入该画板文件，请确认是有效的 .excalidraw 文件",
+    "importTooLarge": "画板文件过大（超过 20MB），无法导入",
     "untitled": "未命名画板",
     "deleteEntry": "删除画板",
     "deleteConfirmTitle": "删除画板",
@@ -70,6 +79,41 @@
     "saveLibrary": "导出到文件",
     "resetLibrary": "清空素材库",
     "resetLibraryConfirm": "确认清空素材库？此操作不可恢复。",
+    "nativePanel": {
+      "group": "文字属性",
+      "fontSize": "字号",
+      "textColor": "文字颜色",
+      "strokeColor": "描边颜色",
+      "backgroundColor": "填充颜色",
+      "style": "样式",
+      "bold": "加粗",
+      "italic": "斜体",
+      "underline": "下划线",
+      "lineHeight": "行高",
+      "mixed": "混合值",
+      "align": {
+        "group": "对齐方式",
+        "left": "左对齐",
+        "center": "居中对齐",
+        "right": "右对齐",
+        "justify": "两端对齐"
+      },
+      "fontNotSupported": "未安装该字体，已使用替代字体。"
+    },
+    "nativeExcalidraw": {
+      "arrowType": "箭头类型",
+      "moreOptions": "更多选项",
+      "frameTool": "画框",
+      "find": "查找",
+      "findPlaceholder": "查找",
+      "generate": "生成",
+      "sharpArrow": "直线箭头",
+      "curvedArrow": "曲线箭头",
+      "elbowArrow": "折线箭头",
+      "crowfootOne": "鸦爪（一）",
+      "crowfootMany": "鸦爪（多）",
+      "crowfootOneOrMany": "鸦爪（一或多）"
+    },
     "version": {
       "title": "版本历史",
       "close": "关闭",
@@ -148,6 +192,7 @@
     "fontFamilyDefault": "默认字体",
     "fontSearchPlaceholder": "搜索字体",
     "fontNoMatch": "无匹配字体",
+    "fontNotSupported": "未安装该字体，已使用替代字体。",
     "tabStart": "开始",
     "tabInsert": "插入",
     "font": {
@@ -611,15 +656,6 @@
       "changed": "修改",
       "emptyCell": "（空）",
       "emptyGrid": "（空表格）"
-    },
-    "fontLabels": {
-      "pingfang": "苹方",
-      "hiraginoSansGB": "冬青黑体",
-      "stxihei": "华文细黑",
-      "yuanti": "圆体",
-      "hannotate": "手札体",
-      "hanzipen": "翩翩体",
-      "wawati": "娃娃体"
     },
     "formula": {
       "insert": "插入公式",

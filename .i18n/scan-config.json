@@ -37,6 +37,10 @@
       "reason": "Toolbar font-family presets. The only CJK literals are the localized family-name aliases inside the CSS font-family values (e.g. \"微软雅黑\", \"宋体\") that must byte-match the native font name so browsers matching a font by its Chinese name still render it; they are font resource identifiers, not translatable UI copy (mirrors export/docx/styles.ts). The user-facing display name is localized separately via the labelKey i18n keys resolved with t()."
     },
     {
+      "path": "packages/docs/src/board/boardFontFamilies.ts",
+      "reason": "Board (Excalidraw) font-family catalogue. Its CJK literals are the localized family-name aliases inside the CSS font-family values (e.g. \"宋体\", \"黑体\") that must byte-match the native font name so browsers matching a font by its Chinese name still render it on the canvas; they are font resource identifiers, not translatable UI copy (same category as editor/fontFamilies.ts). The user-facing display name is localized separately via the labelKey i18n keys resolved with t()."
+    },
+    {
       "path": "packages/docs/src/html-create/createHtmlTask.ts",
       "reason": "Generated agent-facing publish prompt protocol. Its Chinese directives are copied or forwarded byte-for-byte to a Bot and are covered by protocol tests; modal UI labels and copy status remain localized in the docs namespace."
     },

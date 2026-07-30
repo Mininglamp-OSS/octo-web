@@ -19,6 +19,7 @@ import { LocaleType, mergeLocales, ICommandService, CommandType, IContextService
 import { IMenuManagerService, RibbonInsertGroup, MenuItemType, IFontService, ILocalFileService } from '@univerjs/ui'
 import { createUniver } from './createUniver.ts'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
+import { SHEET_FONT_ADDITIONS } from '../editor/fontFamilies.ts'
 import { MathFormula, OCTO_MATH_FORMULA_KEY } from './floatDom/MathFormula.tsx'
 import { MentionChip, OCTO_MENTION_CHIP_KEY } from './floatDom/MentionChip.tsx'
 import { setFormulaSaveHandler, setDrawingBlurHandler, setFormulaResizeHandler, setFormulaStyleHandler, setFormulaDeleteHandler, requestFormulaPicker } from './floatDom/formulaBridge.ts'
@@ -331,26 +332,17 @@ export class CollabSheet {
       } | undefined
       if (typeof fontSvc?.removeFont === 'function') fontSvc.removeFont('Microsoft YaHei')
       // Extend the picker with common macOS-available CJK + Latin fonts (Univer's built-in list is
-      // only ~12). `label` is shown verbatim (localeService.t falls through unknown keys); `value` is
-      // the CSS font-family the cell stores/exports. These use native font names that render directly
-      // on macOS — cross-platform @font-face aliasing (for the ones we keep) is a follow-up.
+      // only ~12). These come from the ONE authoritative font catalogue shared with the Doc toolbar
+      // and the Board text controls (editor/fontFamilies.ts) so all three surfaces offer the same
+      // faces under the same localized names — no separate sheet-only list to drift. `label` is shown
+      // verbatim (localeService.t falls through unknown keys) and resolves via the SHARED
+      // `docs.toolbar.font.*` keys; `value` is the bare CSS font-family the cell stores/exports.
       if (typeof fontSvc?.addFont === 'function') {
-        const EXTRA_FONTS = [
-          { value: 'Calibri', label: 'Calibri', category: 'sans-serif' },
-          { value: 'PingFang SC', label: t('docs.sheet.fontLabels.pingfang'), category: 'sans-serif' },
-          { value: 'Hiragino Sans GB', label: t('docs.sheet.fontLabels.hiraginoSansGB'), category: 'sans-serif' },
-          { value: 'STXihei', label: t('docs.sheet.fontLabels.stxihei'), category: 'sans-serif' },
-          { value: 'Yuanti SC', label: t('docs.sheet.fontLabels.yuanti'), category: 'sans-serif' },
-          { value: 'Hannotate SC', label: t('docs.sheet.fontLabels.hannotate'), category: 'handwriting' },
-          { value: 'HanziPen SC', label: t('docs.sheet.fontLabels.hanzipen'), category: 'handwriting' },
-          { value: 'Wawati SC', label: t('docs.sheet.fontLabels.wawati'), category: 'handwriting' },
-          { value: 'Georgia', label: 'Georgia', category: 'serif' },
-          { value: 'Palatino', label: 'Palatino', category: 'serif' },
-          { value: 'Courier New', label: 'Courier New', category: 'monospace' },
-          { value: 'Trebuchet MS', label: 'Trebuchet MS', category: 'sans-serif' },
-          { value: 'Comic Sans MS', label: 'Comic Sans MS', category: 'handwriting' },
-          { value: 'Impact', label: 'Impact', category: 'display' },
-        ]
+        const EXTRA_FONTS = SHEET_FONT_ADDITIONS.map((f) => ({
+          value: f.value,
+          label: t(f.labelKey),
+          category: f.category,
+        }))
         for (const f of EXTRA_FONTS) {
           try { if (!fontSvc.getFontByValue?.(f.value)) fontSvc.addFont(f) } catch { /* already present */ }
         }

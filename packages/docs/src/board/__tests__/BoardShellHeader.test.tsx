@@ -15,24 +15,35 @@ vi.mock('@excalidraw/excalidraw', async () => {
   const Excalidraw = ({
     children,
     excalidrawAPI,
+    UIOptions,
   }: {
     children?: ReactNode
     excalidrawAPI?: (api: unknown) => void
+    UIOptions?: { tools?: Record<string, boolean> }
   }) => {
     useEffect(() => {
       excalidrawAPI?.(api)
     }, [excalidrawAPI])
-    return <div data-testid="excalidraw-canvas">{children}</div>
+    return (
+      <div data-testid="excalidraw-canvas" data-ui-tools={JSON.stringify(UIOptions?.tools ?? {})}>
+        {children}
+      </div>
+    )
   }
   const MainMenu = (() => null) as unknown as { DefaultItems: Record<string, unknown> }
   MainMenu.DefaultItems = {}
   return {
+    FONT_FAMILY: {},
     Excalidraw,
     MainMenu,
     restoreElements: (els: readonly unknown[] | null | undefined) => (els ? [...els] : []),
     reconcileElements: (local: readonly unknown[]) => [...local],
+    redrawTextBoundingBox: () => {},
+    mutateElement: (element: Record<string, unknown>, updates: Record<string, unknown>) => Object.assign(element, updates),
     loadLibraryFromBlob: async () => [],
     serializeLibraryAsJSON: () => '[]',
+    serializeAsJSON: () => '{}',
+    exportToBlob: async () => new Blob(),
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
@@ -96,6 +107,16 @@ describe('BoardShell header alignment with the doc header (XIN-601 item 2)', () 
     expect(moreBtn).not.toBeNull()
     // …so the old always-visible standalone delete button is gone from the header.
     expect(document.querySelector('.octo-doc-delete-btn')).toBeNull()
+  })
+
+  it('does not inject Excalidraw MainMenu or leave an empty canvas-menu button', async () => {
+    render(
+      <BoardShell docId="doc-1" title="Shared board" space="s1" collabSession={makeSession('admin')} collab />,
+    )
+
+    const canvas = await screen.findByTestId('excalidraw-canvas')
+    expect(canvas.children).toHaveLength(0)
+    expect(canvas.querySelector('[data-menu="root"]')).toBeNull()
   })
 
   it('collapses delete into the ≡ menu as the destructive row for a manage role', async () => {
