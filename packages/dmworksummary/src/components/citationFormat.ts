@@ -14,16 +14,17 @@ export const RANGE_THRESHOLD = 3;
  * Group-label formatting rule (per product spec):
  *   1  citation  -> single [N] badge (handled by remarkCitation, not here)
  *   2-3 citations -> comma joined:  [37,38,39]
- *   >3 citations  -> range:         [30-35]
+ *   >3 contiguous citations -> range: [30-35]
+ *   >3 gapped citations     -> list:  [1,6,7,8]
  */
 export function formatGroupLabel(indices: number[]): string {
     if (indices.length <= RANGE_THRESHOLD) {
         return indices.join(',');
     }
-    // Product rule: a large group is always represented as one compact range.
-    // Reused citations can make reading-order display indices gapped or
-    // reordered, so derive stable bounds instead of falling back to a long list.
-    return `${Math.min(...indices)}-${Math.max(...indices)}`;
+    const sorted = [...new Set(indices)].sort((a, b) => a - b);
+    const contiguous = sorted.every((value, i) => i === 0 || value === sorted[i - 1] + 1);
+    if (sorted.length === 1) return `${sorted[0]}`;
+    return contiguous ? `${sorted[0]}-${sorted[sorted.length - 1]}` : sorted.join(',');
 }
 
 /**

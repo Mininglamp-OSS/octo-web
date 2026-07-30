@@ -180,6 +180,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private layoutResizeObserver: ResizeObserver | null = null;
     private tocObserver: IntersectionObserver | null = null;
     private tocSignature = "";
+    private tocHeadingNodes: HTMLElement[] = [];
     private regenerateVoiceMode: RegenerateMode | null = null;
 
     private handleRegenerateVoiceRecordingStart = () => {
@@ -2513,6 +2514,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (this.state.tocItems.length) this.setState({ tocItems: [], activeTocId: "" });
             this.teardownTocObserver();
             this.tocSignature = "";
+            this.tocHeadingNodes = [];
             return;
         }
         // 目录只列 h2 分节，编号与正文 CSS counter（md-section，仅 h2 递增）一致。
@@ -2522,8 +2524,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             return { id: el.id, text: (el.textContent || "").trim(), level: 2 };
         }).filter((it) => it.text);
         const sig = items.map((it) => `${it.id}:${it.text}`).join("|");
-        if (sig === this.tocSignature) return;
+        const sameNodes = heads.length === this.tocHeadingNodes.length
+            && heads.every((head, i) => head === this.tocHeadingNodes[i]);
+        if (sig === this.tocSignature && sameNodes) return;
         this.tocSignature = sig;
+        this.tocHeadingNodes = heads;
         this.setState({ tocItems: items });
         this.setupTocObserver(root, heads);
     };
@@ -2702,7 +2707,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             && !this.state.showVersionDetailModal;
         return (
             <div className="summary-detail-result">
-                {this.renderMySummaryHeader(canEdit)}
+                {this.renderTeamSummaryHeader(canEdit)}
                 {/* BY_GROUP 完成模式下,renderCompleted 是唯一显示团队/最终
                     总结的路径 —— 内容不能被"我的总结"header 折叠掉,否则
                     用户在多人 BY_GROUP 单人视角下点一下 header 就再也看不
@@ -2773,6 +2778,28 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         )}
                     </div>
                 </>
+            </div>
+        );
+    }
+
+    private renderTeamSummaryHeader(canEdit: boolean) {
+        const { t } = this.context;
+        return (
+            <div className="summary-detail-section-header summary-detail-my-summary-header">
+                <div className="summary-detail-section-toggle">
+                    <span>{t("summary.detail.teamSummary")}</span>
+                </div>
+                {canEdit && (
+                    <Button
+                        className="summary-detail-inline-edit"
+                        size="small"
+                        theme="borderless"
+                        icon={<IconEdit />}
+                        onClick={this.handleStartEdit}
+                    >
+                        {t("summary.common.edit")}
+                    </Button>
+                )}
             </div>
         );
     }
@@ -4002,7 +4029,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             <div className="summary-detail-page">
                 <div
                     ref={this.layoutRef}
-                    className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}`}
+                    className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}${this.state.layoutWidth > 0 && this.state.layoutWidth < TOC_MIN_LAYOUT_WIDTH ? " version-panel-overlay" : ""}`}
                 >
                     <div className="summary-detail-content-wrapper">
                     {detail && !loading && this.renderHeader()}

@@ -4091,9 +4091,9 @@ body.summary-version-detail-open .summary-schedule-page {
     to { transform: translateX(0); opacity: 1; }
 }
 
-/* 与原型一致：可用宽度不足时退化为覆盖式面板。 */
-@media (max-width: 1199px) {
-    .version-panel-scrim {
+/* 可用容器宽度不足时退化为覆盖式面板。宽度 class 由 layout ResizeObserver
+ * 驱动，不能使用 viewport media query：详情页也会渲染在窄聊天侧栏中。 */
+.summary-detail-layout.version-panel-overlay .version-panel-scrim {
         position: absolute;
         inset: 0;
         z-index: 20;
@@ -4103,9 +4103,9 @@ body.summary-version-detail-open .summary-schedule-page {
         background: rgba(28, 28, 35, 0.28);
         cursor: pointer;
         animation: version-scrim-in 160ms ease;
-    }
+}
 
-    .version-panel {
+.summary-detail-layout.version-panel-overlay .version-panel {
         position: absolute;
         top: 0;
         right: 0;
@@ -4114,7 +4114,6 @@ body.summary-version-detail-open .summary-schedule-page {
         width: min(320px, 100%);
         min-width: 0;
         box-shadow: -12px 0 32px rgba(28, 28, 35, 0.10);
-    }
 }
 
 .version-panel__header {

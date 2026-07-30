@@ -100,10 +100,10 @@ interface MergedMessage {
 function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
     // 频道在阅读序里首次出现的次序，用于把消息按「频道段」排列（P1-2）：
     // 段之间保持引用出现的阅读序，段内再按消息序，避免 localeCompare 打乱阅读序。
-    const channelFirstSeen = new Map<string, number>();
+    const sourceFirstSeen = new Map<string, number>();
     for (const c of groupCitations) {
-        const ch = c.channel_id ?? "";
-        if (!channelFirstSeen.has(ch)) channelFirstSeen.set(ch, channelFirstSeen.size);
+        const sourceIdentity = `${c.channel_id ?? ""}\0${c.source ?? ""}`;
+        if (!sourceFirstSeen.has(sourceIdentity)) sourceFirstSeen.set(sourceIdentity, sourceFirstSeen.size);
     }
     const all: MergedMessage[] = [];
     for (const c of groupCitations) {
@@ -152,8 +152,8 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
     const result = Array.from(seen.values());
     result.sort((a, b) => {
         // 先按频道段的阅读序（首次出现次序），再在段内按消息序/时间。
-        const ca = channelFirstSeen.get(a.channel_id ?? "") ?? 0;
-        const cb = channelFirstSeen.get(b.channel_id ?? "") ?? 0;
+        const ca = sourceFirstSeen.get(`${a.channel_id ?? ""}\0${a.source ?? ""}`) ?? 0;
+        const cb = sourceFirstSeen.get(`${b.channel_id ?? ""}\0${b.source ?? ""}`) ?? 0;
         if (ca !== cb) return ca - cb;
         if (a.message_seq != null && b.message_seq != null) return a.message_seq - b.message_seq;
         return new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime();
@@ -442,7 +442,7 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
     const previewContent = !pinned ? (
         <div className="citation-mini-preview">
             {groupCitations.slice(0, 3).map((c, i) => (
-                <div key={c.message_seq ?? i} className="citation-cited-msg">
+                <div key={c.message_seq != null ? `${c.channel_id ?? ""}\0${c.source ?? ""}:${c.message_seq}` : i} className="citation-cited-msg">
                     <div className="citation-msg-header">
                         <span className="citation-msg-sender">{c.sender}</span>
                         <span className="citation-msg-time">{formatTime(c.sent_at)}</span>
@@ -470,7 +470,7 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                 {mergedMessages.map((msg, i) => {
                     const cit = groupCitations.find(c => c.index === msg.citation_index);
                     return (
-                        <div key={msg.message_seq != null ? `${msg.channel_id ?? ""}:${msg.message_seq}` : i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
+                        <div key={msg.message_seq != null ? `${msg.channel_id ?? ""}\0${msg.source ?? ""}:${msg.message_seq}` : i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
                             <MessageHeader
                                 sender={msg.sender}
                                 sentAt={msg.sent_at}

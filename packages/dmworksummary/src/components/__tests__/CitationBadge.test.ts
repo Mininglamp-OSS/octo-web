@@ -19,12 +19,16 @@ describe('formatGroupLabel', () => {
         expect(formatGroupLabel([30, 31, 32, 33, 34, 35])).toBe('30-35');
     });
 
-    it('collapses a non-contiguous >3 display list to its bounds', () => {
-        expect(formatGroupLabel([2, 5, 9, 14])).toBe('2-14');
+    it('does not imply that a non-contiguous display list is a full range', () => {
+        expect(formatGroupLabel([2, 5, 9, 14])).toBe('2,5,9,14');
     });
 
     it('uses stable ascending bounds when a >3 display list is reordered', () => {
         expect(formatGroupLabel([4, 1, 2, 3])).toBe('1-4');
+    });
+
+    it('does not render duplicate indices as a misleading range', () => {
+        expect(formatGroupLabel([1, 1, 1, 1])).toBe('1');
     });
 
     it('RANGE_THRESHOLD is the documented value (guards against silent regressions)', () => {
