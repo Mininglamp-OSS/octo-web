@@ -335,6 +335,11 @@
    保留以下 CSS 变量定义以备后续重启暗黑模式功能
    ============================================================ */
 body[theme-mode="dark"] {
+  --wk-accent-tint-06: rgba(127, 59, 245, 0.1);
+  --wk-accent-tint-08: rgba(127, 59, 245, 0.12);
+  --wk-accent-tint-10: rgba(127, 59, 245, 0.16);
+  --wk-accent-tint-12: rgba(127, 59, 245, 0.2);
+
   /* 背景层 */
   --wk-bg-deep: var(--wk-neutral-900);
   --wk-bg-base: var(--wk-neutral-850);

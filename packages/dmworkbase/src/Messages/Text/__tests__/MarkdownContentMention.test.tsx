@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 //
-// Web 端广播 mention 需要保持三等级视觉里的纯紫文字高亮。
+// GH#295 regression — Web 端广播 mention 需要保持可见高亮。
+// GH#1153 明确该高亮属于三等级视觉里的纯紫文字，而不是普通成员胶囊。
 //
 // 背景：广播 mention（"@所有人"）在 buildMessageMentions 里被合成为
 // {name:"@所有人", uid:"all"}（见 Utils/mentionRender.ts），交给

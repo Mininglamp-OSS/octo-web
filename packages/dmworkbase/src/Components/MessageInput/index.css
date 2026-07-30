@@ -453,7 +453,7 @@
 .wk-messageinput-editor .mention {
   color: var(--wk-text-accent, var(--wk-color-theme));
   font-weight: 600;
-  background-color: var(--wk-accent-tint-08, var(--wk-bg-selected));
+  background-color: var(--wk-bg-selected);
   border-radius: var(--wk-r-xs);
   padding: 0 var(--wk-sp-1);
 }
