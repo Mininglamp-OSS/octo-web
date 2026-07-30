@@ -452,13 +452,15 @@ describe('HtmlDocView — read-only rendering', () => {
     expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a2')
   })
 
-  it('submits a comment with the locked anchor after the selection collapses', async () => {
+  it('uses the rendered numeric version when posting from the latest route with an element anchor', async () => {
     const spy = stubFetch((url, init) => {
       if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'new1' })
       if (url.includes('/comments')) return jsonResponse({ data: [] })
-      return htmlResponse('<p data-odoc-aid="a3">post anchored words</p>')
+      return htmlResponse(
+        '<script>window.__ODOC__ = {"version":4};</script><p data-odoc-aid="a3">post anchored words</p>'
+      )
     })
-    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" version="v4" />)
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" />)
     const frame = await waitForFrame(container)
     const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a3">post anchored words</p>')
     const anchored = frameDoc.querySelector('p') as HTMLElement
@@ -482,6 +484,12 @@ describe('HtmlDocView — read-only rendering', () => {
       RequestInit
     ]
     const body = JSON.parse(String(post[1].body))
+    expect(
+      spy.mock.calls.some(([url, init]) =>
+        (init?.method ?? 'GET') === 'GET' && String(url).includes('/v1/comments?slug=slug-1&version=latest')
+      )
+    ).toBe(true)
+    expect(body.version).toBe(4)
     expect(body.anchor).toMatchObject({ kind: 'element', aid: 'a3' })
   })
 })
@@ -615,6 +623,40 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(screen.queryByTestId('html-doc-comment-panel')).toBeNull()
     fireEvent.click(screen.getByTitle('docs.toolbar.comments'))
     expect(screen.getByTestId('html-doc-comment-panel')).toBeTruthy()
+  })
+
+  it('lists comments for the in-page history version while mutating the rendered version', async () => {
+    const spy = stubFetch((url, init) => {
+      if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'new1' })
+      if (url.endsWith('/v1/docs/slug-1/versions')) {
+        return jsonResponse({ data: { versions: [{ n: 4 }, { n: 3 }] } })
+      }
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
+      const renderedVersion = url.endsWith('/v/3') ? 3 : 4
+      return htmlResponse(`<script>window.__ODOC__ = {"version":${renderedVersion}};</script><p>body</p>`)
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" />)
+    await waitForFrame(container)
+
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    fireEvent.click(screen.getByText('docs.toolbar.history'))
+    await waitFor(() => expect(screen.getAllByText('docs.version.view')).toHaveLength(2))
+    fireEvent.click(screen.getAllByText('docs.version.view')[1])
+
+    await waitFor(() => {
+      expect(
+        spy.mock.calls.some(([url, init]) =>
+          (init?.method ?? 'GET') === 'GET' && String(url).includes('/v1/comments?slug=slug-1&version=3')
+        )
+      ).toBe(true)
+    })
+
+    fireEvent.change(screen.getByPlaceholderText('docs.comment.placeholder'), { target: { value: 'version note' } })
+    fireEvent.click(screen.getByText('docs.comment.send'))
+
+    await waitFor(() => expect(spy.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true))
+    const post = spy.mock.calls.find(([, init]) => init?.method === 'POST') as unknown as [string, RequestInit]
+    expect(JSON.parse(String(post[1].body)).version).toBe(3)
   })
 
   it('hides the member button entirely for a non-author viewer', async () => {
