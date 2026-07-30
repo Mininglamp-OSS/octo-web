@@ -1525,7 +1525,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleRestoreVersion = async (version: SummaryVersionItem): Promise<boolean> => {
-        if (this.taskId == null || this.state.restoringVersionId != null) return false;
+        const { isEditing, editingTeamSummary, editingMyDraft, editingPersonalReport } = this.state;
+        if (
+            this.taskId == null ||
+            this.state.restoringVersionId != null ||
+            isEditing ||
+            editingTeamSummary ||
+            editingMyDraft ||
+            editingPersonalReport
+        ) return false;
         const requestTaskId = this.taskId;
         this.setState({ restoringVersionId: version.result_id });
         try {
@@ -1545,7 +1553,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
 
     handleRestorePersonalVersion = async (version: SummaryVersionItem): Promise<boolean> => {
-        if (this.taskId == null || this.state.restoringPersonalVersionId != null) return false;
+        const { isEditing, editingTeamSummary, editingMyDraft, editingPersonalReport } = this.state;
+        if (
+            this.taskId == null ||
+            this.state.restoringPersonalVersionId != null ||
+            isEditing ||
+            editingTeamSummary ||
+            editingMyDraft ||
+            editingPersonalReport
+        ) return false;
         const requestTaskId = this.taskId;
         this.setState({
             restoringPersonalVersionId: version.result_id,
@@ -2329,8 +2345,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             restoringVersionId,
             restoringPersonalVersionId,
             versionsRetention,
+            isEditing,
+            editingTeamSummary,
+            editingMyDraft,
+            editingPersonalReport,
         } = this.state;
-        if (!detail || detail.trigger_type === TriggerType.AGENT) return null;
+        if (
+            !detail ||
+            detail.trigger_type === TriggerType.AGENT ||
+            isEditing ||
+            editingTeamSummary ||
+            editingMyDraft ||
+            editingPersonalReport
+        ) return null;
         if (detail.summary_mode === SummaryMode.BY_PERSON && !this.isMultiCollab()) {
             if (!personalResult?.content || personalVersionsLoading || personalVersions.length <= 1) return null;
             return {

@@ -1803,6 +1803,38 @@ describe('v2 对齐：定时按钮集中到 header（从团队框/个人区移�
         expect(context?.canRestore).toBe(true);
     });
 
+    it.each(['isEditing', 'editingTeamSummary', 'editingMyDraft', 'editingPersonalReport'])(
+        'hides version restore while %s is active',
+        (editingFlag) => {
+            const page = makePage(1);
+            page.state = {
+                ...(page.state as any),
+                detail: {
+                    ...multiCollabDetail({ can_edit_team: true }),
+                    result: { id: 11, version: 2, content: 'team summary' },
+                },
+                versions: [{ id: 11, version: 2 }, { id: 10, version: 1 }] as any,
+                versionsLoading: false,
+                [editingFlag]: true,
+            };
+
+            expect((page as any).getActiveVersionContext()).toBeNull();
+        },
+    );
+
+    it('refuses a stale restore callback while editing and preserves the draft', async () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            isEditing: true,
+            restoringVersionId: null,
+        };
+
+        await expect((page as any).handleRestoreVersion({ result_id: 10, version: 1 })).resolves.toBe(false);
+        expect(api.restoreSummaryVersion).not.toHaveBeenCalled();
+        expect((page.state as any).isEditing).toBe(true);
+    });
+
     it('multi-collab: renderPersonalSummary does NOT render schedule button (it lives in header)', () => {
         const page = makePage(1);
         page.state = {
