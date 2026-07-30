@@ -458,13 +458,6 @@
   padding: 0 var(--wk-sp-1);
 }
 
-.wk-messageinput-editor .mention[data-id="-1"],
-.wk-messageinput-editor .mention[data-id="-2"],
-.wk-messageinput-editor .mention[data-id="-3"] {
-  background-color: transparent;
-  padding: 0 0.125rem;
-}
-
 /* Placeholder - Tiptap Placeholder 扩展 */
 .wk-messageinput-editor .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
