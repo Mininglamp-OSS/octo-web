@@ -24,6 +24,25 @@ describe("login page presentation", () => {
     expect(source).toContain("addConfigChangeListener(forceUpdate)");
   });
 
+  it("holds stable space while enterprise SSO config is still loading", () => {
+    const source = readRepoFile("packages/dmworklogin/src/login.tsx");
+    const styles = readRepoFile("packages/dmworklogin/src/login.css");
+
+    expect(source).toContain(
+      "const ssoConfigPending = ENTERPRISE_SSO_ENABLED && !WKApp.remoteConfig.requestSuccess"
+    );
+    expect(source).toContain(
+      "const showLocalPasswordLogin = !ENTERPRISE_SSO_ENABLED || (!ssoConfigPending && !hasSsoProvider)"
+    );
+    expect(source).toContain("{!ssoConfigPending && (");
+    expect(source).toContain("showSsoLogin ? (");
+    expect(source).toContain("{showLocalPasswordLogin && (");
+    expect(source).toContain("wk-login-content-phonelogin--primary");
+    expect(styles).toContain(".wk-login-content-phonelogin--primary");
+    expect(styles).toContain("min-height: calc(var(--wk-sp-12) * 6);");
+    expect(styles).not.toContain("wk-login-content-config-skeleton");
+  });
+
   it("keeps registration discoverable without competing with the primary login action", () => {
     const source = readRepoFile("packages/dmworklogin/src/login.tsx");
     const styles = readRepoFile("packages/dmworklogin/src/login.css");

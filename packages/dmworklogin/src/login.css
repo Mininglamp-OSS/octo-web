@@ -514,6 +514,10 @@
     width: 100%;
 }
 
+.wk-login-content-phonelogin--primary {
+    min-height: calc(var(--wk-sp-12) * 6);
+}
+
 /* ---- QR scan panel ---- */
 .wk-login-content-scanlogin {
     display: none;
