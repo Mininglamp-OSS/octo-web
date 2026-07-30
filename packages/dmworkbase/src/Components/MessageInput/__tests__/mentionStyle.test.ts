@@ -63,12 +63,11 @@ describe("MessageInput mention style", () => {
   it("renders ordinary member mentions as visible pills", () => {
     const declarations = declarationsFor(".wk-messageinput-editor .mention");
 
-    expect(declarations.color).toBe(
-      "var(--wk-text-accent, var(--wk-color-theme))",
-    );
-    expect(declarations["background-color"]).toBe("var(--wk-bg-selected)");
-    expect(declarations["border-radius"]).toBe("var(--wk-r-xs)");
-    expect(declarations.padding).toBe("0 var(--wk-sp-1)");
+    expect(declarations.color).toBe("var(--wk-text-mention-entity)");
+    expect(declarations["font-weight"]).toBe("500");
+    expect(declarations["background-color"]).toBe("var(--wk-accent-tint-08)");
+    expect(declarations["border-radius"]).toBe("var(--wk-r-mention-entity)");
+    expect(declarations.padding).toBe("var(--wk-sp-0-5) var(--wk-sp-2)");
   });
 
   it("keeps broadcast mention sentinels as text-only highlights", () => {
@@ -82,6 +81,10 @@ describe("MessageInput mention style", () => {
       const selector = `.wk-messageinput-editor .mention[data-id="${uid}"]`;
       const declarations = declarationsFor(selector);
 
+      expect(declarations.color).toBe(
+        "var(--wk-text-accent, var(--wk-color-theme))",
+      );
+      expect(declarations["font-weight"]).toBe("400");
       expect(declarations["background-color"]).toBe("transparent");
       expect(declarations.padding).toBe("0 var(--wk-sp-0-5)");
     }

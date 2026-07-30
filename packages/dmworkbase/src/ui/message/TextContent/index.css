@@ -41,11 +41,11 @@
 
 /* 普通用户：紫色文字 + 浅紫背景（次优先级） */
 .wk-msg-text-content .mention-entity {
-  color: var(--wk-text-accent);
-  background-color: var(--wk-bg-selected);
-  border-radius: var(--wk-r-xs);
-  padding: 0 var(--wk-sp-1);
-  font-weight: 600;
+  color: var(--wk-text-mention-entity);
+  background-color: var(--wk-accent-tint-08);
+  border-radius: var(--wk-r-mention-entity);
+  padding: var(--wk-sp-0-5) var(--wk-sp-2);
+  font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
 }
@@ -56,6 +56,6 @@
 
 /* 降级：未解析 @ — 纯紫色文字，无背景 */
 .wk-msg-text-content .mention-fallback {
-  color: var(--wk-text-accent);
+  color: var(--wk-text-mention-entity);
   font-weight: 400;
 }

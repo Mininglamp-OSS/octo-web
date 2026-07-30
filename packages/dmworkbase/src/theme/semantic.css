@@ -208,6 +208,7 @@
   --wk-r-md: 8px; /* Figma: 消息气泡, 图片 */
   --wk-r-lg: 16px; /* Figma: 头像 */
   --wk-r-xl: 20px;
+  --wk-r-mention-entity: 4px; /* 已发布普通成员 mention 胶囊圆角 */
   --wk-r-full: 9999px;
   --wk-r-circle: 50%; /* circle — for avatars; distinct from --wk-r-full (9999px pill shape) */
   --wk-avatar-radius: var(--wk-r-circle);
@@ -270,6 +271,7 @@
   --wk-text-accent: var(
     --wk-purple-500
   ); /* Figma: #7F3BF5 AI链接/Thread（紫色点缀） */
+  --wk-text-mention-entity: #6B3DD8; /* 已发布普通成员 mention 胶囊文字色 */
   --wk-text-inverse: var(--wk-neutral-0);
 
   /* 边框 */
@@ -398,6 +400,7 @@ body[theme-mode="dark"] {
   --wk-text-tertiary: #7a7f96;
   --wk-text-disabled: var(--wk-neutral-500); /* 暗色禁用态文字 */
   --wk-text-accent: var(--wk-purple-400); /* 暗色下用浅紫 */
+  --wk-text-mention-entity: var(--wk-purple-400);
   --wk-text-inverse: var(--wk-neutral-900);
 
   /* 边框 */
