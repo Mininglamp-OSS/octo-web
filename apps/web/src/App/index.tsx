@@ -1,17 +1,16 @@
-import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, t } from '@octo/base';
+import { ChatPage, EndpointCategory, WKApp, Menus, getChatNavRecentUnreadSnapshot, shouldShowChatNavUnreadBadge, t } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
 import './index.css';
 import AppLayout from '../Layout';
-import { WKSDK, ChannelTypePerson } from 'wukongimjssdk';
+import { WKSDK } from 'wukongimjssdk';
 import { clearFaviconBadge } from '../utils/faviconBadge';
 import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
-import { getChatUnreadCount, shouldShowChatNavUnreadBadge } from './chatUnreadBadge';
 
 let _summaryBadgeCount = 0;
 let _badgeListenerSetup = false;
@@ -109,14 +108,7 @@ async function registerMenus() {
 
   WKApp.menus.register("chat", (_context) => {
     const m = new Menus("chat", "/", t("app.nav.chat"), <ChatIcon />, <ChatIcon />)
-    const badge = getChatUnreadCount({
-      conversations: WKSDK.shared().conversationManager.conversations,
-      currentSpaceId: WKApp.shared.currentSpaceId,
-      personChannelType: ChannelTypePerson,
-      getChannelInfo: (channel) => WKSDK.shared().channelManager.getChannelInfo(channel),
-      shouldSkipChannelForSpace,
-      shouldSkipPersonConversationForSpace,
-    });
+    const badge = getChatNavRecentUnreadSnapshot();
 
     // favicon 角标已下线
     clearFaviconBadge()
