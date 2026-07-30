@@ -449,13 +449,15 @@
   margin: 0;
 }
 
-/* Mention 样式 */
+/* @mention 胶囊：广播与普通成员视觉一致，对齐消息展示层 .mention-entity */
 .wk-messageinput-editor .mention {
-  color: var(--wk-color-theme);
-  font-weight: 600;
-  background-color: transparent;
-  border-radius: 0.25rem;
-  padding: 0 0.125rem;
+  color: var(--wk-color-accent);
+  background-color: var(--wk-purple-alpha-08);
+  border-radius: var(--wk-r-xs);
+  padding: var(--wk-sp-px) var(--wk-sp-2);
+  font-weight: 500;
+  cursor: text;
+  vertical-align: baseline;
 }
 
 /* Placeholder - Tiptap Placeholder 扩展 */
