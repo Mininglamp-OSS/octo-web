@@ -7,7 +7,7 @@
 // is shared with the live board, so opening a preview after the board has mounted costs nothing.
 //
 // The canvas is `viewModeEnabled` (no editing affordances). It deliberately does not compose the
-// live board's BoardMainMenu: save/export/clear/theme actions are not meaningful in an ephemeral
+// live board's host menu: save/export/clear/theme actions are not meaningful in an ephemeral
 // historical preview, and a hidden/unreachable hamburger is a misleading affordance.
 
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement } from 'react'

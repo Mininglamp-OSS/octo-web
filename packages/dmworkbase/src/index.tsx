@@ -132,6 +132,8 @@ export { resolveExternalForViewer } from './Utils/externalViewer'
 export type { ExternalViewerInput, ExternalViewerResult } from './Utils/externalViewer'
 export { default as VoiceInputButton } from './Components/VoiceInputButton'
 export type { ReplaceMode, SelectionRange } from './Components/VoiceInputButton'
+export { default as AiBadge } from './Components/AiBadge'
+export { Toast as OctoToast } from '@douyinfe/semi-ui'
 
 // Claw components
 export { default as ClawOverviewTab } from './Components/ClawOverviewTab'

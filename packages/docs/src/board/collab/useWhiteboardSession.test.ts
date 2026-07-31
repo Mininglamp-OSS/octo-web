@@ -63,6 +63,29 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
     await waitFor(() => expect(created[0]!.destroy).toHaveBeenCalledTimes(1)) // last release destroys
   })
 
+  it('returns null synchronously on an A → B uid switch before B session resolves', async () => {
+    const useWhiteboardSession = await importHook()
+    let uid = 'u_a'
+    const options = () => ({ uid, space: 'demo', folder: 'f_default', board: 'd_board1' })
+    const hook = renderHook(() => useWhiteboardSession(options()))
+
+    await waitFor(() => expect(hook.result.current).not.toBeNull())
+    const sessionA = hook.result.current
+    expect(created[0]!.opts.uid).toBe('u_a')
+
+    // This rerender is the real key-change first frame. React has not run the old [key] effect's
+    // cleanup or acquired B yet, so the state still physically holds A. The hook must nevertheless
+    // synchronously return null rather than exposing A under B's identity.
+    uid = 'u_b'
+    hook.rerender()
+    expect(hook.result.current).toBeNull()
+    expect(hook.result.current).not.toBe(sessionA)
+
+    await waitFor(() => expect(hook.result.current).not.toBeNull())
+    expect(hook.result.current).not.toBe(sessionA)
+    expect(created.at(-1)!.opts.uid).toBe('u_b')
+  })
+
   it('builds a distinct session per board id', async () => {
     const useWhiteboardSession = await importHook()
     renderHook(() => useWhiteboardSession({ uid: 'u_self', space: 'demo', folder: 'f_default', board: 'd_board1' }))

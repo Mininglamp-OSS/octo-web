@@ -314,7 +314,7 @@
 .octo-board-comment-marker:focus-visible,
 .octo-board-comment-marker.is-active {
   transform: scale(1.15);
-  outline: 2px solid rgb(51 112 255 / 28%);
+  outline: 2px solid var(--wk-brand-alpha-20, rgb(28 28 35 / 20%));
   outline-offset: 2px;
 }
 .octo-board-comment-marker.is-orphaned {
@@ -332,24 +332,48 @@
     margin: 3px;
   }
 }
-.octo-board-comment-context-menu {
+.octo-board-context-menu {
   position: absolute;
   z-index: 1000;
-  width: max-content;
-  max-width: calc(100vw - 16px);
+  width: 240px;
+  max-width: calc(100% - 16px);
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--octo-fg-4, #86909c) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
   padding: 4px;
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 8px;
   background: var(--octo-bg-1, #fff);
   box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
 }
-.octo-board-comment-context-menu button {
+.octo-board-context-menu::-webkit-scrollbar {
+  width: 8px;
+}
+.octo-board-context-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+.octo-board-context-menu::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--octo-fg-4, #86909c);
+  background-clip: padding-box;
+}
+.octo-board-context-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--octo-fg-3, #646a73);
+  background-clip: padding-box;
+}
+.octo-board-context-menu button {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: auto;
-  min-height: 32px;
-  padding: 0 8px;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
   border: 0;
   border-radius: 6px;
   color: var(--octo-fg-1, #1d2129);
@@ -357,18 +381,51 @@
   text-align: left;
   cursor: pointer;
 }
-.octo-board-comment-entry-icon,
-.octo-board-comment-menu-icon {
+.octo-board-comment-entry-icon {
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
   font-size: 14px;
   line-height: 18px;
 }
-.octo-board-comment-context-menu button:hover,
-.octo-board-comment-context-menu button:focus-visible {
+.octo-board-context-menu-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.octo-board-context-menu-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  color: currentcolor;
+}
+.octo-board-context-menu button:hover,
+.octo-board-context-menu button:focus-visible {
   background: var(--octo-fill-1, #f2f3f5);
   outline: none;
+}
+.octo-board-context-menu-separator {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--octo-border, #e5e6eb);
+}
+.octo-board-context-menu kbd {
+  color: var(--octo-fg-4, #86909c);
+  font: inherit;
+  font-size: 12px;
+}
+.octo-board-context-menu button.is-destructive {
+  color: var(--octo-danger, #f53f3f);
+}
+body[theme-mode='dark'] .octo-board-context-menu,
+[data-theme='dark'] .octo-board-context-menu {
+  border-color: var(--octo-border, #3a3d44);
+  background: var(--octo-bg-1, #202124);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 40%);
 }
 .octo-board-live-canvas {
   position: relative;
@@ -451,4 +508,35 @@
   .octo-board-header-actions > .octo-tb-btn {
     padding-inline: 4px;
   }
+}
+
+/* Keep Excalidraw action feedback aligned with Octo's shared toast surface. */
+.octo-board-live-canvas .excalidraw .Toast {
+  width: auto;
+  min-width: 240px;
+  max-width: min(420px, calc(100% - 32px));
+  margin-left: 0;
+  padding: 10px 16px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  color: var(--octo-fg-1, #1d2129);
+  background: var(--octo-bg-1, #fff);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 14%);
+  transform: translateX(-50%);
+}
+
+.octo-board-live-canvas .excalidraw .Toast .Toast__message {
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+body[theme-mode='dark'] .octo-board-live-canvas .excalidraw .Toast,
+[data-theme='dark'] .octo-board-live-canvas .excalidraw .Toast {
+  border-color: var(--octo-border, #3a3d44);
+  color: var(--octo-fg-1, #f2f3f5);
+  background: var(--octo-bg-1, #202124);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 40%);
 }

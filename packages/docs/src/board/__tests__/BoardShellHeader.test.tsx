@@ -16,16 +16,19 @@ vi.mock('@excalidraw/excalidraw', async () => {
     children,
     excalidrawAPI,
     UIOptions,
+    renderDefaultMainMenu = true,
   }: {
     children?: ReactNode
     excalidrawAPI?: (api: unknown) => void
     UIOptions?: { tools?: Record<string, boolean> }
+    renderDefaultMainMenu?: boolean
   }) => {
     useEffect(() => {
       excalidrawAPI?.(api)
     }, [excalidrawAPI])
     return (
       <div data-testid="excalidraw-canvas" data-ui-tools={JSON.stringify(UIOptions?.tools ?? {})}>
+        {renderDefaultMainMenu && <button data-testid="main-menu-trigger" type="button">Menu</button>}
         {children}
       </div>
     )
@@ -126,15 +129,14 @@ describe('BoardShell header alignment with the doc header (XIN-601 item 2)', () 
     expect(document.querySelector('.octo-doc-delete-btn')).toBeNull()
   })
 
-  it('keeps the de-branded Excalidraw MainMenu while reserving board import for the homepage', async () => {
+  it('does not render the Excalidraw upper-left MainMenu entry', async () => {
     render(
       <BoardShell docId="doc-1" title="Shared board" space="s1" collabSession={makeSession('admin')} collab />,
     )
 
     const canvas = await screen.findByTestId('excalidraw-canvas')
-    const menu = canvas.querySelector('[data-menu="root"]')
-    expect(menu).not.toBeNull()
-    expect(menu?.querySelector('[data-item="LoadScene"]')).toBeNull()
+    expect(canvas.querySelector('[data-menu="root"]')).toBeNull()
+    expect(canvas.querySelector('[data-testid="main-menu-trigger"]')).toBeNull()
   })
 
   it('collapses delete into the ≡ menu as the destructive row for a manage role', async () => {

@@ -2104,6 +2104,42 @@ describe('DocsHome — recent row merges viewed/updated into the latest event (X
 // bumps the reload token, which re-runs useDocsView's fetch effect (re-sending each tab's remembered
 // q/creators/types, so search/filter survives). These guard that refetch — and that it does NOT fire
 // for an unrelated menu (no over-refetch).
+describe('DocsHome — bot-created documents reuse the conversation AI badge', () => {
+  it('renders the robot label inside the real shared badge without duplicate text', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/robot/space_bots')) {
+        return { data: [{ uid: 'bot_1', name: 'Publisher' }], status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        return {
+          data: {
+            total: 1,
+            items: [{ docId: 'd_bot', title: 'AI Document', ownerId: 'bot_1', role: 'admin' }],
+            nextCursor: null,
+          },
+          status: 200,
+        }
+      }
+      return { data: { total: 0, items: [], nextCursor: null }, status: 200 }
+    }
+
+    render(<DocsHome />)
+
+    await waitFor(() => expect(screen.getByText('AI Document')).toBeTruthy())
+    const label = await screen.findByText('docs.list.botBadge')
+    expect(label.classList.contains('ai-badge')).toBe(true)
+    expect(label.classList.contains('ai-badge-small')).toBe(true)
+    expect(label.classList.contains('octo-docs-list-row-bot-badge')).toBe(true)
+    expect(label.textContent).toBe('docs.list.botBadge')
+    expect(screen.getAllByText('docs.list.botBadge')).toHaveLength(1)
+  })
+})
+
 describe('DocsHome — re-activating the docs nav entry refetches the recent list (XIN-1307)', () => {
   // Count only the paged recent-list GETs, not the sibling /docs/recent/creators lookups.
   const recentListGets = (wk: ReturnType<typeof createMockWKApp>) =>

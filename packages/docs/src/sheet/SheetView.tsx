@@ -99,13 +99,11 @@ type CellAnchor = {
  */
 function SheetCommentComposer({
   anchor,
-  dark,
   onSubmit,
   onCancel,
   spaceId,
 }: {
   anchor: CellAnchor
-  dark: boolean
   onSubmit: (body: string) => Promise<string | null>
   onCancel: () => void
   spaceId?: string
@@ -135,9 +133,6 @@ function SheetCommentComposer({
         width: 230,
         padding: 8,
         borderRadius: 6,
-        background: dark ? '#2a2a2a' : '#fff',
-        border: `1px solid ${dark ? '#444' : '#dadce0'}`,
-        boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
       }}
     >
       <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 4 }}>{t('docs.sheet.comment.menu')} {anchor.a1}</div>
@@ -180,11 +175,6 @@ export function SheetView(props: SheetViewProps) {
   const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
   const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
   const [creatorName, setCreatorName] = useState<string | undefined>(undefined)
-  // Track the APP theme (body[theme-mode], set by dmworkbase across web/desktop) with a
-  // fallback to the OS preference. The shared .octo-theme CSS only follows prefers-color-scheme,
-  // so we theme the sheet chrome ourselves from the app signal to stay consistent.
-  const [dark, setDark] = useState(false)
-
   const { uid, space, folder, doc, docId, disableOfflineCache, onTitleSaved, onDeleted, onOpenInNewPage, moreMenuLeadItems, creatorNicknameOnly } = props
   const userId = props.user.id
   const names = useMemberNames(space)
@@ -336,24 +326,6 @@ export function SheetView(props: SheetViewProps) {
     const name = names.get(userId)
     if (sheet && name) sheet.updatePresenceName(name)
   }, [sheet, names, userId])
-
-  // Follow the app theme: react to body[theme-mode] changes and OS preference.
-  useEffect(() => {
-    const detect = () => {
-      const m = document.body.getAttribute('theme-mode')
-      return m ? m === 'dark' : !!window.matchMedia?.('(prefers-color-scheme: dark)').matches
-    }
-    setDark(detect())
-    const mo = new MutationObserver(() => setDark(detect()))
-    mo.observe(document.body, { attributes: true, attributeFilter: ['theme-mode'] })
-    const mq = window.matchMedia?.('(prefers-color-scheme: dark)')
-    const onMq = () => setDark(detect())
-    mq?.addEventListener?.('change', onMq)
-    return () => {
-      mo.disconnect()
-      mq?.removeEventListener?.('change', onMq)
-    }
-  }, [])
 
   const saveTitle = () => {
     if (!manage) return
@@ -731,8 +703,8 @@ export function SheetView(props: SheetViewProps) {
     creatorName || (ownerId ? ownerId.slice(0, 8) : t('docs.moreMenu.unknownCreator'))
 
   return (
-    <div className="octo-doc octo-doc--editor octo-theme" style={{ display: 'flex', flexDirection: 'column', height: '100%', background: dark ? '#1f1f1f' : undefined, color: dark ? '#e8eaed' : undefined }}>
-      <header className="octo-doc-header" style={dark ? { background: '#1f1f1f', color: '#e8eaed', borderBottom: '1px solid #333' } : undefined}>
+    <div className="octo-doc octo-doc--editor octo-theme">
+      <header className="octo-doc-header">
         <input
           className="octo-doc-title"
           value={title}
@@ -746,7 +718,7 @@ export function SheetView(props: SheetViewProps) {
             // gets duplicated ("test" → "testtest"). A real (non-composing) Enter still saves.
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur()
           }}
-          style={{ border: 'none', background: 'transparent', outline: 'none', color: 'inherit', flex: '0 1 auto', minWidth: 0, maxWidth: '55%' }}
+          style={{ border: 'none', background: 'transparent', outline: 'none', color: 'inherit', flex: '1 1 auto', minWidth: 0 }}
         />
         <div className="octo-doc-header-right">
           {sheet && <PresenceBar provider={sheet.provider} connState={conn} synced={conn === 'connected'} names={names} />}
@@ -786,7 +758,6 @@ export function SheetView(props: SheetViewProps) {
         {composer && (
           <SheetCommentComposer
             anchor={composer}
-            dark={dark}
             spaceId={space}
             onCancel={() => setComposer(null)}
             onSubmit={async (body) => {

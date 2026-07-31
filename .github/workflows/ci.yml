@@ -107,6 +107,8 @@ jobs:
           src/pages/docsApi.import.test.ts
       - name: Verify Excalidraw patch
         run: pnpm verify:excalidraw-patch
+      - name: Verify Web build cache key
+        run: pnpm verify:web-build-cache-key
       - name: Board and comment unit tests
         run: >-
           pnpm --filter @octo/docs exec vitest run
@@ -116,6 +118,8 @@ jobs:
           src/board/boardImport.test.ts
       - name: Build
         run: pnpm build
+      - name: Verify Excalidraw production bundle
+        run: pnpm verify:excalidraw-build
       - name: Lint
         run: pnpm lint
       - name: WKModal Semi override guard

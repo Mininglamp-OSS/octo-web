@@ -6,8 +6,8 @@ import {
   useState,
   type ComponentType,
   type ReactElement,
-  type ReactNode,
 } from 'react'
+import { OctoToast } from '@octo/base'
 import { DocTitle } from '../editor/EditorShell.tsx'
 import { DocTerminal } from '../editor/DocTerminal.tsx'
 import { PresenceBar } from '../editor/PresenceBar.tsx'
@@ -17,6 +17,7 @@ import { BoardVersionPanel } from './BoardVersionPanel.tsx'
 import { BoardCommentPanel, type BoardAnchorTarget } from './BoardCommentPanel.tsx'
 import { BoardInlineCommentComposer } from './BoardInlineCommentComposer.tsx'
 import { BoardCommentMarkers } from './BoardCommentMarkers.tsx'
+import { BoardContextMenu, type BoardContextMenuItem } from './BoardContextMenu.tsx'
 import { useBoardCommentMarkers } from './useBoardCommentMarkers.ts'
 import { boardElementTypeLabelKey, decodeBoardCommentAnchor } from './boardCommentAnchor.ts'
 import {
@@ -27,7 +28,6 @@ import {
 import { useDocComments, useRefreshCommentsOnOpen } from '../comments/useDocComments.ts'
 import type { CommentThread } from '../comments/api.ts'
 import { BoardErrorBoundary } from './BoardErrorBoundary.tsx'
-import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { useAccessRequests } from '../access-request/useAccessRequests.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
@@ -98,6 +98,8 @@ interface ExcalidrawProps {
   /** Local pointer stream we publish into provider.awareness so peers see this cursor (XIN-111). */
   onPointerUpdate?: ExcalidrawPointerUpdate
   onScrollChange?: (scrollX: number, scrollY: number, zoom: { value: number }) => void
+  renderDefaultMainMenu?: boolean
+  onContextMenu?: (payload: BoardExcalidrawContextMenuPayload) => void
   viewModeEnabled?: boolean
   theme?: 'light' | 'dark'
   langCode?: string
@@ -109,10 +111,82 @@ interface ExcalidrawProps {
    */
   generateIdForFile?: (file: File) => string | Promise<string>
   UIOptions?: Record<string, unknown>
-  /** Custom menu / dialog composition rendered inside the canvas (we supply a de-branded MainMenu). */
-  children?: ReactNode
+}
+interface BoardExcalidrawContextMenuPayload {
+  event: MouseEvent
+  type: 'canvas' | 'element'
+  sceneX: number
+  sceneY: number
+  selectedElementIds: Readonly<Record<string, boolean>>
 }
 type ExcalidrawComponent = ComponentType<ExcalidrawProps>
+
+interface BoardElementRevision {
+  readonly version: number
+  readonly versionNonce: number
+}
+
+/** Only the immutable element fields inspected while calculating a safe cut closure. */
+interface BoardCutClosureElement extends BoardElementRevision {
+  readonly id: string
+  readonly type: string
+  readonly isDeleted?: boolean
+  readonly frameId?: string | null
+  readonly containerId?: string | null
+  readonly boundElements?: readonly { readonly id: string }[] | null
+  readonly startBinding?: { readonly elementId: string } | null
+  readonly endBinding?: { readonly elementId: string } | null
+}
+
+/**
+ * Returns the complete live element closure that Excalidraw copy/delete may read or mutate.
+ * Frame containment is directional (deleting a frame releases descendants, deleting a child does
+ * not touch sibling frame contents); bindings are traversed both ways because deletion repair can
+ * rewrite either endpoint's metadata.
+ */
+function getBoardCutRevisionClosure(
+  elements: readonly BoardCutClosureElement[],
+  selectedIds: readonly string[],
+): Map<string, BoardElementRevision> {
+  const liveElements = elements.filter((element) => !element.isDeleted)
+  const byId = new Map(liveElements.map((element) => [element.id, element]))
+  const affected = new Set(selectedIds)
+  let changed = true
+
+  while (changed) {
+    changed = false
+    const add = (id: string | null | undefined) => {
+      if (id && byId.has(id) && !affected.has(id)) {
+        affected.add(id)
+        changed = true
+      }
+    }
+
+    for (const element of liveElements) {
+      if (affected.has(element.id)) {
+        element.boundElements?.forEach((binding) => add(binding.id))
+        add(element.containerId)
+        add(element.startBinding?.elementId)
+        add(element.endBinding?.elementId)
+        if (element.type === 'frame' || element.type === 'magicframe') {
+          liveElements.forEach((candidate) => {
+            if (candidate.frameId === element.id) add(candidate.id)
+          })
+        }
+      }
+
+      if (element.containerId && affected.has(element.containerId)) add(element.id)
+      if (element.boundElements?.some((binding) => affected.has(binding.id))) add(element.id)
+      if (element.startBinding?.elementId && affected.has(element.startBinding.elementId)) add(element.id)
+      if (element.endBinding?.elementId && affected.has(element.endBinding.elementId)) add(element.id)
+    }
+  }
+
+  return new Map([...affected].flatMap((id) => {
+    const element = byId.get(id)
+    return element ? [[id, { version: element.version, versionNonce: element.versionNonce }]] : []
+  }))
+}
 
 /**
  * Structural view of the two Excalidraw collaboration helpers BoardShell injects into the binding
@@ -247,11 +321,14 @@ const boardGenerateIdForFile = makeGenerateIdForFile()
  */
 const MAX_BOARD_IMAGE_BYTES = 10 * 1024 * 1024
 
-/** Best-effort theme: follow the OS preference, matching the docs `.octo-theme` media query. */
-function prefersDark(): boolean {
-  if (typeof window === 'undefined' || !window.matchMedia) return false
+/** Follow the app's explicit theme first, then the OS preference when the host has no override. */
+function isBoardDarkTheme(): boolean {
   try {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
+    if (typeof document !== 'undefined') {
+      const mode = document.body.getAttribute('theme-mode')
+      if (mode) return mode === 'dark'
+    }
+    return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches
   } catch {
     return false
   }
@@ -306,7 +383,6 @@ export function BoardShell(props: BoardShellProps): ReactElement {
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   const getSceneVersionRef = useRef<GetSceneVersion | null>(null)
-  const [MainMenu, setMainMenu] = useState<ExcalidrawMainMenu | null>(null)
   const [failed, setFailed] = useState(false)
   const [role, setRole] = useState<Role | undefined>(undefined)
   // Whether the role lookup / collab-token has resolved (success OR failure). Distinguishes
@@ -318,7 +394,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // P2 #6: the standalone path has no other store, so a failed local save is silent data loss.
   // Flip this when persistBoardScene reports a failed write so the header can surface it.
   const [saveFailed, setSaveFailed] = useState(false)
-  const [dark, setDark] = useState(prefersDark)
+  const [dark, setDark] = useState(isBoardDarkTheme)
 
   // --- Header parity with the doc editor (XIN-601 item 2) ---
   // The board header now mirrors the doc editor's right-hand cluster (presence → forward → members
@@ -337,10 +413,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const loadingCommentIdRef = useRef<number | null>(null)
   const [pendingPointTarget, setPendingPointTarget] = useState<BoardAnchorTarget | null>(null)
   const [inlineCommentTarget, setInlineCommentTarget] = useState<BoardAnchorTarget | null>(null)
-  const [commentContextMenu, setCommentContextMenu] = useState<{
+  const [boardContextMenu, setBoardContextMenu] = useState<{
     clientX: number
     clientY: number
     target: BoardAnchorTarget
+    type: 'canvas' | 'element'
+    commentOnly: boolean
   } | null>(null)
   const [boardViewRevision, setBoardViewRevision] = useState(0)
   const [commentOverlayBounds, setCommentOverlayBounds] = useState<BoardCommentOverlayBounds | null>(null)
@@ -436,13 +514,25 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // authoritative role and no terminal transition. The standalone path (own-browser localStorage,
   // no cross-user concern beyond the uid scoping) is always confirmed. Gating hydration this way
   // means protected cached content is never painted before access is confirmed (P1-1).
-  const accessConfirmed = collabMode ? roleResolved && role !== undefined && !terminalActive : true
+  const accessConfirmed = collabMode
+    ? collabSession != null && roleResolved && role !== undefined && !terminalActive
+    : true
 
   // Initial scene is read from the uid-scoped local mirror the first time access is confirmed, so a
   // reopened / refreshed board paints its own content — but never a previous user's, and never
-  // before access is confirmed.
+  // before access is confirmed. BoardShell survives an in-place account switch, therefore these
+  // one-shot refs must be keyed to the cache identity rather than the component lifetime. Reset
+  // synchronously when (uid, docId) changes so the next authorized Excalidraw mount cannot consume
+  // the previous account's imported scene and echo it into the new session's Y.Doc.
   const initialSceneRef = useRef<BoardScene | null>(null)
   const initialSceneLoadedRef = useRef(false)
+  const initialSceneIdentityRef = useRef<string | null>(null)
+  const initialSceneIdentity = `${uid ?? 'anonymous'}::${docId}`
+  if (initialSceneIdentityRef.current !== initialSceneIdentity) {
+    initialSceneIdentityRef.current = initialSceneIdentity
+    initialSceneLoadedRef.current = false
+    initialSceneRef.current = null
+  }
   if (accessConfirmed && !initialSceneLoadedRef.current) {
     initialSceneLoadedRef.current = true
     initialSceneRef.current = loadBoardScene(docId, uid)
@@ -517,7 +607,6 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           mutateElement?: NativePanelTextRuntime['mutateElement']
           redrawTextBoundingBox?: NativePanelTextRuntime['redrawTextBoundingBox']
           FONT_FAMILY?: Record<string, number>
-          MainMenu?: ExcalidrawMainMenu
           getSceneVersion?: GetSceneVersion
         }
         restoreElementsRef.current = m.restoreElements ?? null
@@ -541,7 +630,6 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         if (m.FONT_FAMILY) {
           for (const font of BOARD_FONT_FAMILIES) m.FONT_FAMILY[font.value] = font.id
         }
-        setMainMenu(() => m.MainMenu ?? null)
         setExcalidraw(() => mod.Excalidraw as unknown as ExcalidrawComponent)
       })
       .catch((err) => {
@@ -560,16 +648,18 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     return installSvgFileInputPreprocessor(document)
   }, [])
 
-  // Follow OS theme changes live so the canvas re-themes with the rest of the app.
+  // Follow the host theme attribute live; use OS preference only while the host has no override.
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => setDark(mq.matches)
-    try {
-      mq.addEventListener('change', onChange)
-      return () => mq.removeEventListener('change', onChange)
-    } catch {
-      return undefined
+    if (typeof document === 'undefined') return
+    const mq = typeof window !== 'undefined' ? window.matchMedia?.('(prefers-color-scheme: dark)') : undefined
+    const sync = () => setDark(isBoardDarkTheme())
+    const observer = new MutationObserver(sync)
+    observer.observe(document.body, { attributes: true, attributeFilter: ['theme-mode'] })
+    mq?.addEventListener?.('change', sync)
+    sync()
+    return () => {
+      observer.disconnect()
+      mq?.removeEventListener?.('change', sync)
     }
   }, [])
 
@@ -997,11 +1087,6 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     liveCanvasRef.current?.dispatchEvent(new CustomEvent('octo-board-view-changed'))
   }, [])
 
-  const mainMenuChild = useMemo(
-    () => MainMenu ? <BoardMainMenu MainMenu={MainMenu} /> : null,
-    [MainMenu],
-  )
-
   useEffect(() => () => {
     if (boardViewFrameRef.current != null) cancelAnimationFrame(boardViewFrameRef.current)
     boardViewFrameRef.current = null
@@ -1301,44 +1386,192 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     ? clampBoardCommentOverlay(left, top, width, height, commentOverlayBounds)
     : { left, top }, [commentOverlayBounds])
 
-  useEffect(() => {
+  const onBoardContextMenu = useCallback((payload: BoardExcalidrawContextMenuPayload) => {
     const host = liveCanvasRef.current
-    if (!host || !role) return
-    const openPointComment = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null
-      if (!target?.closest('canvas') || !event.altKey) return
-      const api = boardApiRef.current as ExcalidrawImperativeAPI | null
-      const appState = api?.getAppState()
-      if (!api || !appState) return
-      const zoom = appState.zoom?.value ?? 1
-      const x = (event.clientX - (appState.offsetLeft ?? 0)) / zoom - (appState.scrollX ?? 0)
-      const y = (event.clientY - (appState.offsetTop ?? 0)) / zoom - (appState.scrollY ?? 0)
-      // Alt+right-click is the distinct comment seam. Plain right-click remains exclusively native,
-      // so Excalidraw's menu and our overlay can never stack on the same gesture.
-      event.preventDefault()
-      event.stopPropagation()
-      const hasSelection = Object.values(appState.selectedElementIds ?? {}).some(Boolean)
-      const hostRect = host.getBoundingClientRect()
-      const menuPoint = placeCommentOverlay(event.clientX - hostRect.left, event.clientY - hostRect.top, 190, 40)
-      setCommentContextMenu({
-        clientX: menuPoint.left,
-        clientY: menuPoint.top,
-        target: hasSelection
-          ? getBoardCommentTarget()
-          : {
-              anchor: { version: 1, kind: 'point', x, y },
-              label: `${t('docs.board.comment.point')} · ${Math.round(x)}, ${Math.round(y)}`,
-            },
+    if (!host) return
+    // This callback runs after Excalidraw has hit-tested and normalized selection. Its presence is
+    // also the opt-in that prevents the vendor menu from opening, so no native/Octo stack exists.
+    const target: BoardAnchorTarget = payload.type === 'element'
+      ? getBoardCommentTarget()
+      : {
+          anchor: { version: 1, kind: 'point', x: payload.sceneX, y: payload.sceneY },
+          label: `${t('docs.board.comment.point')} · ${Math.round(payload.sceneX)}, ${Math.round(payload.sceneY)}`,
+        }
+    const hostRect = host.getBoundingClientRect()
+    setBoardContextMenu({
+      clientX: payload.event.clientX - hostRect.left,
+      clientY: payload.event.clientY - hostRect.top,
+      target,
+      type: payload.type,
+      commentOnly: payload.event.altKey,
+    })
+  }, [getBoardCommentTarget])
+
+  const boardContextMenuItems = useMemo((): BoardContextMenuItem[] => {
+    if (!boardContextMenu) return []
+    const api = boardApiRef.current as (ExcalidrawImperativeAPI & {
+      executeAction(name: string, value?: unknown): boolean
+      executeActionWithHostFeedback(name: string, value?: unknown): Promise<boolean>
+      isActionAvailable(name: string): boolean
+    }) | null
+    const items: BoardContextMenuItem[] = []
+    const run = (name: string, feedback?: { success: string; error: string }) => () => {
+      if (!feedback) {
+        api?.executeAction(name)
+        return
+      }
+      void api?.executeActionWithHostFeedback(name).then((executed) => {
+        if (executed) OctoToast.success(feedback.success)
+      }).catch(() => {
+        OctoToast.error(feedback.error)
       })
     }
-    const closeMenu = () => setCommentContextMenu(null)
-    host.addEventListener('contextmenu', openPointComment, true)
-    window.addEventListener('pointerdown', closeMenu)
-    return () => {
-      host.removeEventListener('contextmenu', openPointComment, true)
-      window.removeEventListener('pointerdown', closeMenu)
+    const runCut = () => {
+      if (!api) return
+      const initialAppState = api.getAppState()
+      const selectedIds = Object.keys(initialAppState.selectedElementIds)
+        .filter((id) => initialAppState.selectedElementIds[id])
+      const selectedRevisions = getBoardCutRevisionClosure(api.getSceneElements(), selectedIds)
+      if (initialAppState.editingLinearElement
+        || !selectedIds.length
+        || selectedIds.some((id) => !selectedRevisions.has(id))) {
+        OctoToast.error(t('docs.board.contextMenu.cutFailed'))
+        return
+      }
+      void (async () => {
+        try {
+          const copied = await api.executeActionWithHostFeedback('copy')
+          if (!copied) {
+            OctoToast.error(t('docs.board.contextMenu.cutFailed'))
+            return
+          }
+        } catch {
+          OctoToast.error(t('docs.board.contextMenu.cutFailed'))
+          return
+        }
+
+        const currentAppState = api.getAppState()
+        const currentSelection = currentAppState.selectedElementIds
+        const currentSelectedIds = Object.keys(currentSelection).filter((id) => currentSelection[id])
+        const selectionUnchanged = selectedIds.length === currentSelectedIds.length
+          && selectedIds.every((id) => currentSelection[id])
+        const currentRevisions = getBoardCutRevisionClosure(api.getSceneElements(), selectedIds)
+        const elementsUnchanged = selectedRevisions.size === currentRevisions.size
+          && [...selectedRevisions].every(([id, before]) => {
+            const current = currentRevisions.get(id)
+            return !!current
+              && current.version === before.version
+              && current.versionNonce === before.versionNonce
+          })
+        if (currentAppState.editingLinearElement || !selectionUnchanged || !elementsUnchanged) {
+          OctoToast.error(t('docs.board.contextMenu.cutSelectionChanged'))
+          return
+        }
+
+        try {
+          const deleted = await api.executeActionWithHostFeedback('deleteSelectedElements')
+          if (!deleted) {
+            OctoToast.error(t('docs.board.contextMenu.cutDeleteFailed'))
+            return
+          }
+          OctoToast.success(t('docs.board.contextMenu.cutSuccess'))
+        } catch {
+          OctoToast.error(t('docs.board.contextMenu.cutDeleteFailed'))
+        }
+      })()
     }
-  }, [role, excalidrawApi, getBoardCommentTarget, placeCommentOverlay])
+    if (role && canComment(role)) {
+      items.push({
+        id: 'comment',
+        label: t('docs.board.comment.contextMenu'),
+        shortcut: '⌘⇧M',
+        onSelect: () => {
+          setInlineCommentTarget(boardContextMenu.target)
+          setCommentsOpen(false)
+          setVersionOpen(false)
+        },
+      })
+    }
+    if (boardContextMenu.commentOnly) return items
+    const available = (name: string) => !!api?.isActionAvailable(name)
+    const add = (id: string, name: string, shortcut?: string, options?: { destructive?: boolean; separatorBefore?: boolean; feedback?: { success: string; error: string } }) => {
+      if (available(name)) items.push({ id, label: t(`docs.board.contextMenu.${id}`), shortcut, onSelect: run(name, options?.feedback), ...options })
+    }
+    const copyFeedback = (format?: 'PNG' | 'SVG') => ({
+      success: format
+        ? t('docs.board.contextMenu.copySuccessFormat', { values: { format } })
+        : t('docs.board.contextMenu.copySuccess'),
+      error: format
+        ? t('docs.board.contextMenu.copyFailedFormat', { values: { format } })
+        : t('docs.board.contextMenu.copyFailed'),
+    })
+    if (boardContextMenu.type === 'canvas') {
+      if (!readOnly) add('paste', 'paste', '⌘V', { separatorBefore: items.length > 0 })
+      add('copyAsPng', 'copyAsPng', undefined, { separatorBefore: items.length > 0, feedback: copyFeedback('PNG') })
+      add('copyAsSvg', 'copyAsSvg', undefined, { feedback: copyFeedback('SVG') })
+      add('copyText', 'copyText', undefined, { feedback: copyFeedback() })
+      if (!readOnly) {
+        add('selectAll', 'selectAll', '⌘A', { separatorBefore: true })
+        add('unlockAll', 'unlockAllElements')
+      }
+      return items
+    }
+    add('copy', 'copy', '⌘C', { separatorBefore: items.length > 0, feedback: copyFeedback() })
+    add('copyAsPng', 'copyAsPng', undefined, { feedback: copyFeedback('PNG') })
+    add('copyAsSvg', 'copyAsSvg', undefined, { feedback: copyFeedback('SVG') })
+    add('copyText', 'copyText', undefined, { feedback: copyFeedback() })
+    add('copyElementLink', 'copyElementLink', undefined, { feedback: copyFeedback() })
+    if (readOnly) return items
+    // The native programmatic cut does not await clipboard writes. Compose a safe host-owned cut:
+    // copy first, and delete only after Excalidraw confirms that the clipboard write succeeded.
+    if (!api?.getAppState().editingLinearElement
+      && available('copy')
+      && available('deleteSelectedElements')) {
+      items.push({
+        id: 'cut',
+        label: t('docs.board.contextMenu.cut'),
+        shortcut: '⌘X',
+        onSelect: runCut,
+      })
+    }
+    add('paste', 'paste', '⌘V')
+    add('duplicate', 'duplicateSelection', '⌘D')
+    add('copyStyles', 'copyStyles', '⌘⌥C', {
+      separatorBefore: true,
+      feedback: {
+        success: t('docs.board.contextMenu.copyStylesSuccess'),
+        error: t('docs.board.contextMenu.copyStylesFailed'),
+      },
+    })
+    add('pasteStyles', 'pasteStyles', '⌘⌥V')
+    if (available('ungroup')) add('ungroup', 'ungroup', '⌘⇧G', { separatorBefore: true })
+    else add('group', 'group', '⌘G', { separatorBefore: true })
+    add('selectFrameContents', 'selectAllElementsInFrame')
+    add('removeFromFrame', 'removeAllElementsFromFrame')
+    add('wrapInFrame', 'wrapSelectionInFrame')
+    add('crop', 'cropEditor', undefined, { separatorBefore: true })
+    add('autoResize', 'autoResize')
+    add('unbindText', 'unbindText')
+    add('bindText', 'bindText')
+    add('wrapText', 'wrapTextInContainer')
+    add('editLine', 'toggleLinearEditor')
+    add('link', 'hyperlink', '⌘K')
+    add('addToLibrary', 'addToLibrary', undefined, {
+      feedback: {
+        success: t('docs.board.contextMenu.addToLibrarySuccess'),
+        error: t('docs.board.contextMenu.addToLibraryFailed'),
+      },
+    })
+    add('bringToFront', 'bringToFront', '⌘⇧]', { separatorBefore: true })
+    add('bringForward', 'bringForward', '⌘]')
+    add('sendBackward', 'sendBackward', '⌘[')
+    add('sendToBack', 'sendToBack', '⌘⇧[')
+    add('flipHorizontal', 'flipHorizontal', '⇧H', { separatorBefore: true })
+    add('flipVertical', 'flipVertical', '⇧V')
+    add('lock', 'toggleElementLock', undefined, { separatorBefore: true })
+    add('delete', 'deleteSelectedElements', '⌫', { destructive: true, separatorBefore: true })
+    return items
+  }, [boardContextMenu, readOnly, role])
 
   useEffect(() => {
     const onShortcut = (event: KeyboardEvent) => {
@@ -1788,7 +2021,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       <div className="octo-board-canvas">
         {failed ? (
           <div className="octo-board-state octo-error">{t('docs.state.error')}</div>
-        ) : !Excalidraw ? (
+        ) : !Excalidraw || !accessConfirmed ? (
+          // A collab canvas must not mount before its authoritative role resolves. Besides keeping
+          // cached content fail-closed, this makes Excalidraw consume imported local initialData on
+          // its FIRST mount. Mounting an empty read-only canvas earlier is lossy because initialData
+          // is one-shot: when access later resolves, the imported scene cannot replace that empty
+          // initial state and therefore never reaches onChange → binding.handleLocalChange → Yjs.
           <div className="octo-board-state">{t('docs.state.loading')}</div>
         ) : (
           <div ref={liveCanvasRef} className="octo-board-live-canvas" onDropCapture={blockNativeSceneDrop}>
@@ -1809,6 +2047,8 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               collaborators={collaboratorsRef.current}
               onPointerUpdate={onPointerUpdate}
               onScrollChange={onScrollChange}
+              renderDefaultMainMenu={false}
+              onContextMenu={onBoardContextMenu}
               UIOptions={{ canvasActions: { loadScene: false } }}
               viewModeEnabled={readOnly}
               theme={dark ? 'dark' : 'light'}
@@ -1816,9 +2056,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               // XIN-702 / P1: content-address inserted images without crypto.subtle so an insert on a
               // plain-http LAN does not throw the digest error and yields a peer-stable file id.
               generateIdForFile={boardGenerateIdForFile}
-            >
-              {mainMenuChild}
-            </Excalidraw>
+            />
           </BoardErrorBoundary>
           </div>
         )}
@@ -1879,27 +2117,14 @@ export function BoardShell(props: BoardShellProps): ReactElement {
             event the patched Excalidraw button + digit-9 shortcut dispatch, writes viewBackgroundColor
             back through the live imperative API, and commits an explicit pick into the shared doc via
             the shared onColorCommit authority gate. */}
-        {commentContextMenu && (
-          <div
-            className="octo-board-comment-context-menu"
-            role="menu"
-            style={{ left: commentContextMenu.clientX, top: commentContextMenu.clientY }}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setInlineCommentTarget(commentContextMenu.target)
-                setCommentContextMenu(null)
-                setCommentsOpen(false)
-                setVersionOpen(false)
-              }}
-            >
-              <span className="octo-board-comment-menu-icon" aria-hidden="true">💬</span>
-              {t('docs.board.comment.contextMenu')}
-            </button>
-          </div>
+        {boardContextMenu && boardContextMenuItems.length > 0 && (
+          <BoardContextMenu
+            left={boardContextMenu.clientX}
+            top={boardContextMenu.clientY}
+            items={boardContextMenuItems}
+            bounds={commentOverlayBounds ?? undefined}
+            onClose={() => setBoardContextMenu(null)}
+          />
         )}
         <BoardCanvasColorControl
           excalidrawAPI={excalidrawApi}

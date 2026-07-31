@@ -12,7 +12,7 @@
 //
 // The host monorepo's real quality gate is `vite build` (rolldown) + lint + i18n,
 // NOT a cross-package `tsc` (apps/web has no tsc typecheck job; sibling feature
-// packages like @octo/loop have no typecheck script at all). So docs typecheck must
+// packages have no typecheck script at all). So docs typecheck must
 // likewise stop at the `@octo/base` boundary instead of auditing the host's source.
 //
 // This file declares ONLY the exact surface octoweb/index.ts imports from
@@ -36,6 +36,20 @@ declare module '@octo/base' {
     getLocale(): string
     init(): void
   }
+
+  // Shared host feedback and semantic AI badge used by Board/Docs surfaces.
+  export const OctoToast: {
+    success(message: string): void
+    error(message: string): void
+  }
+  export interface AiBadgeProps {
+    size?: 'default' | 'small'
+    className?: string
+    children?: unknown
+    title?: string
+    'aria-label'?: string
+  }
+  export function AiBadge(props: AiBadgeProps): any
 
   // Synchronous one-shot translation (non-component reads).
   export function t(key: string, values?: Record<string, unknown>): string

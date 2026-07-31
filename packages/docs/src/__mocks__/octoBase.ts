@@ -1,3 +1,5 @@
+import { createElement } from 'react'
+
 // Test stub for `@octo/base`, wired via the vitest alias in vitest.config.ts.
 //
 // Importing the real `@octo/base` would pull the whole app (WKSDK, semi-ui, the full
@@ -49,6 +51,28 @@ export function t(key: string) {
 // useI18n stub: mirrors the I18nProvider context shape the real hook returns.
 export function useI18n() {
   return { t: (key: string) => key, locale: 'en-US' as const }
+}
+
+export const OctoToast = {
+  success: () => undefined,
+  error: () => undefined,
+  warning: () => undefined,
+}
+
+export function AiBadge({
+  size = 'default',
+  className,
+  children = 'AI',
+}: {
+  size?: 'default' | 'small'
+  className?: string
+  children?: React.ReactNode
+}) {
+  return createElement(
+    'span',
+    { className: `ai-badge ai-badge-${size}${className ? ` ${className}` : ''}` },
+    children,
+  )
 }
 
 // NavRail menu entry stub mirroring packages/dmworkbase/src/Service/Menus.ts. DocsModule

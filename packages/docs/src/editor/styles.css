@@ -1,23 +1,23 @@
 /* Theme tokens (frontend-design §3.6) — light/dark via CSS variables, .octo-prose namespace. */
 .octo-theme {
-  --octo-bg: #ffffff;
-  --octo-fg: #1f2329;
-  --octo-muted: #8a919e;
-  --octo-accent: #3370ff;
-  --octo-border: #e5e6eb;
-  --octo-hover: #f2f3f5;
+  --octo-bg: var(--wk-bg-surface);
+  --octo-fg: var(--wk-text-primary);
+  --octo-muted: var(--wk-text-tertiary);
+  --octo-accent: var(--wk-brand-primary);
+  --octo-border: var(--wk-border-default);
+  --octo-hover: var(--wk-bg-hover);
   /* Shared elevation for overlay-anchored cards (preview/diff modal + destructive confirm). */
   --octo-modal-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
 }
 
 @media (prefers-color-scheme: dark) {
   .octo-theme {
-    --octo-bg: #1b1c1e;
-    --octo-fg: #e8e9eb;
-    --octo-muted: #8a919e;
-    --octo-accent: #5b86ff;
-    --octo-border: #2e2f33;
-    --octo-hover: #2a2b2e;
+    --octo-bg: var(--wk-bg-surface);
+    --octo-fg: var(--wk-text-primary);
+    --octo-muted: var(--wk-text-tertiary);
+    --octo-accent: var(--wk-brand-primary);
+    --octo-border: var(--wk-border-default);
+    --octo-hover: var(--wk-bg-hover);
   }
 }
 
@@ -292,8 +292,10 @@
    so defining the vars ON it lets its own bg/text classes resolve → the dark pill returns. Values
    are Univer's own default palette, so sheet tooltips (same role) resolve identically — no change. */
 .octo-theme,
-[data-radix-popper-content-wrapper],
-[role="tooltip"] {
+#octo-univer-portal,
+.octo-univer-color-dialog,
+[data-radix-popper-content-wrapper]:has([class*="univer-"]),
+[role="tooltip"][class*="univer-"] {
   --univer-white: #ffffff;
   --univer-black: #000000;
   --univer-gray-50: #f9fafb;
@@ -2955,11 +2957,11 @@ body.octo-row-resizing {
   font-weight: 500;
   cursor: pointer;
   color: #fff;
-  background: var(--octo-active-fg, #1664ff);
+  background: var(--wk-brand-primary, #1c1c23);
   transition: background 0.15s ease;
 }
 .octo-docs-list-new:hover:not(:disabled) {
-  background: var(--octo-active-fg-hover, #0e4fd6);
+  background: var(--wk-brand-primary-hover, #303039);
 }
 .octo-docs-list-new:disabled {
   opacity: 0.6;
@@ -3090,11 +3092,11 @@ body.octo-row-resizing {
 .octo-docs-list-row:hover {
   background: var(--octo-hover-bg, #f2f3f5);
 }
-/* Selected: light background bar + left accent bar (no harsh outline). */
+/* Selected: shared Octo semantic treatment, with no legacy blue accent. */
 .octo-docs-list-item-active > .octo-docs-list-row,
 .octo-docs-list-row[aria-current='true'] {
-  background: var(--octo-active-bg, #e8f3ff);
-  border-left-color: var(--octo-active-fg, #1664ff);
+  background: var(--wk-bg-selected, rgb(127 59 245 / 6%));
+  border-left-color: transparent;
 }
 .octo-docs-list-row-icon {
   flex: 0 0 auto;
@@ -3105,7 +3107,7 @@ body.octo-row-resizing {
 }
 .octo-docs-list-item-active > .octo-docs-list-row .octo-docs-list-row-icon,
 .octo-docs-list-row[aria-current='true'] .octo-docs-list-row-icon {
-  color: var(--octo-active-fg, #1664ff);
+  color: var(--wk-icon-default, rgb(28 28 35 / 60%));
 }
 .octo-docs-list-row-text {
   display: flex;
@@ -3123,17 +3125,18 @@ body.octo-row-resizing {
 .octo-docs-list-item-active > .octo-docs-list-row .octo-docs-list-row-title,
 .octo-docs-list-row[aria-current='true'] .octo-docs-list-row-title {
   font-weight: 600;
-  color: var(--octo-active-fg, #1664ff);
+  color: var(--wk-text-primary, #1f2329);
 }
 /* Untitled placeholder shows muted/grey so real titles stand out. */
 .octo-docs-list-row-title-untitled {
   color: var(--octo-fg-3, #86909c);
 }
-/* Bot badge: a small capsule after a bot-created doc's title so it's easy to tell apart. */
+/* Keep the real conversation AI badge visible after a truncated title. */
 .octo-docs-list-row-title-line {
   display: flex;
   align-items: center;
-  min-width: 0; /* let the title ellipsis, keep the badge fully visible */
+  min-width: 0;
+  gap: 6px;
 }
 .octo-docs-list-row-title-line .octo-docs-list-row-title {
   min-width: 0;
@@ -3141,14 +3144,6 @@ body.octo-row-resizing {
 }
 .octo-docs-list-row-bot-badge {
   flex: none;
-  margin-left: 6px;
-  padding: 0 6px;
-  font-size: 11px;
-  line-height: 16px;
-  font-weight: 500;
-  color: var(--octo-active-fg, #1664ff);
-  background: var(--octo-active-bg, rgba(22, 100, 255, 0.1));
-  border-radius: 8px;
   white-space: nowrap;
 }
 .octo-docs-list-row-sub {
@@ -3184,28 +3179,32 @@ body.octo-row-resizing {
    control library is introduced (frontend-design §4 / §5). */
 .octo-docs-tabs {
   display: flex;
+  align-items: stretch;
   gap: 4px;
+  height: 48px;
   padding: 0 4px;
   margin-bottom: 8px;
 }
 .octo-docs-tab {
+  height: 48px;
   border: none;
   background: transparent;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
+  padding: 0 12px;
+  font-size: 14px;
+  line-height: 21px;
   font-weight: 500;
   cursor: pointer;
-  color: var(--octo-fg-3, #86909c);
+  color: var(--wk-text-secondary, rgb(28 28 35 / 60%));
   border-bottom: 2px solid transparent;
   transition: color 0.12s ease, border-color 0.12s ease;
 }
 .octo-docs-tab:hover {
-  color: var(--octo-fg, #1f2329);
+  color: var(--wk-text-primary, #1c1c23);
 }
 .octo-docs-tab-active {
-  color: var(--octo-active-fg, #1664ff);
-  border-bottom-color: var(--octo-active-fg, #1664ff);
+  color: var(--wk-text-primary, #1c1c23);
+  font-weight: 600;
+  border-bottom-color: var(--wk-brand-primary, #1c1c23);
 }
 
 .octo-docs-toolbar {
@@ -3279,8 +3278,8 @@ body.octo-row-resizing {
   background: var(--octo-hover-bg, #f2f3f5);
 }
 .octo-docs-filter-btn-active {
-  border-color: var(--octo-active-fg, #1664ff);
-  color: var(--octo-active-fg, #1664ff);
+  border-color: var(--wk-border-strong, rgb(28 28 35 / 24%));
+  color: var(--wk-text-primary, #1c1c23);
 }
 /* Narrow tier: tighten the filter buttons so search + both filters hold one
    more width step before the filter group wraps to a second row. */
@@ -3329,8 +3328,8 @@ body.octo-row-resizing {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: var(--octo-active-bg, #e8f3ff);
-  color: var(--octo-active-fg, #1664ff);
+  background: var(--wk-brand-tint-04, rgb(28 28 35 / 4%));
+  color: var(--wk-text-primary, #1c1c23);
   border-radius: 12px;
   padding: 2px 6px 2px 10px;
   font-size: 12px;
@@ -3385,16 +3384,16 @@ body.octo-row-resizing {
   font-size: 14px;
 }
 .octo-docs-empty-cta {
-  border: 1px solid var(--octo-active-fg, #1664ff);
+  border: 1px solid var(--wk-border-strong, rgb(28 28 35 / 24%));
   background: transparent;
-  color: var(--octo-active-fg, #1664ff);
+  color: var(--wk-text-primary, #1c1c23);
   border-radius: 6px;
   padding: 6px 16px;
   font-size: 13px;
   cursor: pointer;
 }
 .octo-docs-empty-cta:hover {
-  background: var(--octo-active-bg, #e8f3ff);
+  background: var(--wk-bg-hover, rgb(28 28 35 / 6%));
 }
 .octo-docs-empty-actions {
   display: flex;
@@ -4689,3 +4688,290 @@ div:has(> .octo-link-bubble) {
 .octo-docs-new-menu-item:disabled {
   color: var(--wk-text-disabled, #c9cdd4);
 }
+
+/* ── Docs + Sheet semantic theme restoration ────────────────────────────────
+   Keep authored document/cell colours untouched. These rules only migrate application chrome
+   onto the host's semantic layer, including app-owned Sheet surfaces around Univer. */
+.octo-theme {
+  --octo-bg: var(--wk-bg-surface);
+  --octo-bg-2: var(--wk-bg-base);
+  --octo-surface: var(--wk-bg-surface);
+  --octo-fg: var(--wk-text-primary);
+  --octo-fg-2: var(--wk-text-secondary);
+  --octo-fg-3: var(--wk-text-tertiary);
+  --octo-muted: var(--wk-text-tertiary);
+  --octo-accent: var(--wk-brand-primary);
+  --octo-active-fg: var(--wk-brand-primary);
+  --octo-active-fg-hover: var(--wk-brand-primary-hover);
+  --octo-active-bg: var(--wk-bg-selected);
+  --octo-accent-weak: var(--wk-bg-selected);
+  --octo-border: var(--wk-border-default);
+  --octo-hover: var(--wk-bg-hover);
+  --octo-hover-bg: var(--wk-bg-hover);
+  --octo-modal-shadow: var(--wk-shadow-lg);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  font-family: var(--wk-font-sans);
+}
+
+/* Univer's standalone controls portal outside the themed root. Scope its palette only to known
+   Univer portal surfaces; never theme every ARIA dialog/tooltip on the page. */
+#octo-univer-portal,
+.octo-univer-color-dialog,
+[data-radix-popper-content-wrapper]:has([class*="univer-"]),
+[role="tooltip"][class*="univer-"] {
+  --univer-white: var(--wk-bg-surface);
+  --univer-black: var(--wk-text-primary);
+  --univer-gray-50: var(--wk-bg-base);
+  --univer-gray-100: var(--wk-bg-hover);
+  --univer-gray-200: var(--wk-border-subtle);
+  --univer-gray-300: var(--wk-border-default);
+  --univer-gray-400: var(--wk-icon-muted);
+  --univer-gray-500: var(--wk-text-tertiary);
+  --univer-gray-600: var(--wk-text-secondary);
+  --univer-gray-700: var(--wk-text-primary);
+  --univer-gray-800: var(--wk-bg-elevated);
+  --univer-gray-900: var(--wk-text-primary);
+  --univer-primary-50: var(--wk-brand-tint-03);
+  --univer-primary-100: var(--wk-brand-tint-04);
+  --univer-primary-200: var(--wk-brand-tint-08);
+  --univer-primary-300: var(--wk-brand-tint-12);
+  --univer-primary-500: var(--wk-brand-primary);
+  --univer-primary-600: var(--wk-brand-primary-hover);
+  --univer-primary-700: var(--wk-brand-primary);
+  --univer-primary-900: var(--wk-brand-primary);
+}
+.octo-univer-color-dialog {
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+/* Shell, header and scrolling body. */
+.octo-doc,
+.octo-doc-standalone,
+.octo-docs-split-right,
+.octo-doc-body {
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+}
+.octo-doc--editor {
+  padding: 0;
+  font-family: var(--wk-font-sans);
+}
+.octo-doc-header {
+  min-height: 56px;
+  padding: 12px 24px;
+  align-items: center;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--wk-border-subtle);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+}
+.octo-doc-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  margin: 0;
+  overflow: hidden;
+  color: var(--wk-text-primary);
+  font: var(--wk-text-h2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.octo-doc-title-input {
+  border-color: var(--wk-border-strong);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  box-shadow: 0 0 0 2px var(--wk-brand-primary-ring);
+}
+.octo-doc-back,
+.octo-doc-more-btn {
+  color: var(--wk-icon-default);
+}
+.octo-doc-title-editable:hover,
+.octo-doc-back:hover,
+.octo-doc-more-btn:hover,
+.octo-doc-more-btn.is-active {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+.octo-doc-scroll {
+  padding: 0 24px 24px;
+  scrollbar-color: var(--wk-border-strong) transparent;
+}
+
+/* Toolbar and editor chrome. */
+.octo-toolbar-wrap {
+  margin: 0 -24px;
+  padding: 0 24px 8px;
+  transform: none;
+  background: var(--wk-bg-surface);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  box-shadow: var(--wk-shadow-sm);
+}
+.octo-tb-tab {
+  color: var(--wk-text-secondary);
+  border-radius: var(--wk-r-full);
+}
+.octo-tb-tab:hover,
+.octo-tb-tab.is-active {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+.octo-toolbar {
+  border-top-color: var(--wk-border-subtle);
+  border-bottom: 0;
+  background: var(--wk-bg-surface);
+}
+.octo-tb-btn {
+  color: var(--wk-icon-default);
+  border-radius: var(--wk-r-full);
+}
+.octo-tb-btn:hover,
+.octo-color-caret-btn.is-active {
+  color: var(--wk-icon-hover);
+  background: var(--wk-bg-hover);
+}
+.octo-tb-btn.is-active {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-selected);
+  box-shadow: none;
+}
+.octo-tb-btn:focus-visible,
+.octo-tb-tab:focus-visible,
+.octo-doc-back:focus-visible,
+.octo-doc-more-btn:focus-visible {
+  outline: 2px solid var(--wk-brand-primary-ring);
+  outline-offset: 1px;
+}
+.octo-tb-sep { background: var(--wk-border-default); }
+.octo-editor-region { padding-top: 24px; }
+.octo-editor-main,
+.octo-prose .ProseMirror { color: var(--wk-text-primary); }
+.octo-drag-handle,
+.octo-insert-handle { color: var(--wk-icon-muted); }
+.octo-drag-handle:hover,
+.octo-insert-handle:hover {
+  color: var(--wk-icon-hover);
+  background: var(--wk-bg-hover);
+}
+
+/* Drawers, menus, dialogs and app-owned Sheet overlays. */
+.octo-doc-drawer {
+  background: var(--wk-bg-surface);
+  border-left-color: var(--wk-border-default);
+  box-shadow: var(--wk-shadow-lg);
+}
+.octo-color-popover,
+.octo-bubble-menu,
+.octo-floating-menu,
+.octo-link-bubble,
+.octo-doc-more-panel,
+.octo-docs-list-row-menu,
+.octo-slash-menu,
+.octo-suggest-menu,
+.octo-emoji-popover {
+  background: var(--wk-bg-surface);
+  border-color: var(--wk-border-subtle);
+  box-shadow: var(--wk-shadow-lg);
+}
+.octo-doc-more-head,
+.octo-doc-more-sublist { background: var(--wk-bg-base); }
+.octo-doc-more-name,
+.octo-doc-more-item { color: var(--wk-text-primary); }
+.octo-doc-more-item:hover { background: var(--wk-bg-hover); }
+.octo-doc-more-sep { background: var(--wk-border-subtle); }
+.octo-modal-overlay,
+.octo-confirm-overlay { background: var(--wk-black-alpha-40); }
+.octo-modal,
+.octo-confirm-modal,
+.octo-modal-overlay .octo-version-confirm {
+  border-color: var(--wk-border-subtle);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  box-shadow: var(--wk-shadow-lg);
+}
+.octo-sheet-comment-composer {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-elevated);
+  border: 1px solid var(--wk-border-default);
+  box-shadow: var(--wk-shadow-lg);
+}
+.octo-sheet-terminal {
+  color: var(--wk-text-tertiary);
+  background: var(--wk-bg-surface);
+}
+
+/* Docs Home list. Ordinary tabs intentionally remain the current black 48px contract. */
+.octo-docs-list-only,
+.octo-docs-split {
+  --octo-active-fg: var(--wk-brand-primary);
+  --octo-active-fg-hover: var(--wk-brand-primary-hover);
+  --octo-active-bg: var(--wk-bg-selected);
+  background: var(--wk-bg-base);
+  color: var(--wk-text-primary);
+  font-family: var(--wk-font-sans);
+}
+.octo-docs-split-left {
+  background: var(--wk-bg-base);
+  border-right-color: var(--wk-border-default);
+}
+.octo-docs-list-header { border-bottom-color: var(--wk-border-subtle); }
+.octo-docs-list-title { color: var(--wk-text-primary); }
+.octo-docs-list-new {
+  background: var(--wk-brand-primary);
+  color: var(--wk-text-inverse);
+}
+.octo-docs-list-new:hover:not(:disabled) { background: var(--wk-brand-primary-hover); }
+.octo-docs-new-menu-item { color: var(--wk-text-primary); }
+.octo-docs-new-menu-item:hover:not(:disabled) { background: var(--wk-bg-hover); }
+.octo-docs-tabs {
+  height: 48px;
+  border-bottom-color: var(--wk-border-divider);
+}
+.octo-docs-tab {
+  height: 48px;
+  color: var(--wk-text-secondary);
+}
+.octo-docs-tab:hover,
+.octo-docs-tab-active { color: var(--wk-text-primary); }
+.octo-docs-tab-active {
+  border-bottom-color: var(--wk-brand-primary);
+  font-weight: 600;
+}
+.octo-docs-search,
+.octo-docs-filter-btn {
+  border-color: var(--wk-border-default);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+}
+.octo-docs-search:focus-within {
+  border-color: var(--wk-border-strong);
+  box-shadow: 0 0 0 2px var(--wk-brand-primary-ring);
+}
+.octo-docs-filter-btn-active,
+.octo-docs-filter-chip {
+  border-color: var(--wk-border-strong);
+  color: var(--wk-text-primary);
+  background: var(--wk-brand-tint-04);
+}
+.octo-docs-list-row { color: var(--wk-text-primary); }
+.octo-docs-list-row:hover { background: var(--wk-bg-hover); }
+.octo-docs-list-item-active > .octo-docs-list-row,
+.octo-docs-list-row[aria-current='true'] {
+  background: var(--wk-bg-selected);
+  border-left-color: transparent;
+}
+.octo-docs-list-item-active > .octo-docs-list-row .octo-docs-list-row-icon,
+.octo-docs-list-row[aria-current='true'] .octo-docs-list-row-icon,
+.octo-docs-list-item-active > .octo-docs-list-row .octo-docs-list-row-title,
+.octo-docs-list-row[aria-current='true'] .octo-docs-list-row-title {
+  color: var(--wk-text-primary);
+}
+.octo-docs-empty-cta {
+  border-color: var(--wk-border-strong);
+  color: var(--wk-text-primary);
+}
+.octo-docs-empty-cta:hover { background: var(--wk-bg-hover); }
