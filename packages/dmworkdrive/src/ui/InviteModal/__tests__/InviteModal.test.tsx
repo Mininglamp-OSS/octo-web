@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '../../../__tests__/harness';
+import { render, act } from '../../../__tests__/harness';
 
 // Semi barrel drags in jsdom-hostile deps; stub the primitives InviteModal +
 // its nested OrgPickerModal use. The mocked Modal only renders its OK button
@@ -57,6 +57,7 @@ vi.mock('../../../hooks/useMembers', () => ({ useMembers: vi.fn() }));
 
 import { useOrgSearch } from '../../../hooks/useOrgSearch';
 import { useMembers } from '../../../hooks/useMembers';
+import { WKApp } from '@octo/base';
 import InviteModal from '../index';
 
 beforeEach(() => {
@@ -145,6 +146,25 @@ describe('InviteModal ↔ OrgPicker cross-space safety', () => {
     for (const call of addMembers.mock.calls) {
       expect(call[0]).not.toContain('u1');
     }
+  });
+
+  it('clears the picker selection on a host space-changed so a stale pick is not submitted to the new tenant', () => {
+    const { getByRole, click } = render(<Harness />);
+
+    // Open the picker (drive space unchanged) and select Alice (u1).
+    click(getByRole('button', { name: 'drive.invite.pickMembers' }));
+    click(getByRole('button', { name: 'Alice' }));
+    expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(false);
+
+    // Host octo-space switch fires while the picker is open with a live selection.
+    // The API interceptor would send the NEW host X-Space-Id at request time, so a
+    // carried-over uid would be added to the wrong tenant — selection must clear
+    // synchronously on the same event.
+    act(() => WKApp.mittBus.emit('space-changed'));
+
+    expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(true);
+    click(getByRole('button', { name: '__ok__' }));
+    expect(addMembers).not.toHaveBeenCalled();
   });
 
   it('forces the picker shut when the parent modal hides (does not reopen on its own)', () => {

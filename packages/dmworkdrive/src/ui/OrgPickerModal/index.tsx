@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useI18n } from '@octo/base';
+import { useI18n, WKApp } from '@octo/base';
 import { Modal, Input, Spin, Tag } from '@douyinfe/semi-ui';
 import { Check, Search } from 'lucide-react';
 import { useOrgSearch } from '../../hooks/useOrgSearch';
@@ -56,6 +56,20 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
     else search('');
   }, [visible, spaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A host octo-space switch (drive `spaceId` unchanged) reloads the roster in
+  // useOrgSearch but leaves this modal's `selected` untouched. Subscribe to the
+  // same host event and clear the selection synchronously, so a stale pick from
+  // the previous tenant can't be confirmed into the new space — the API
+  // interceptor injects the latest X-Space-Id at request time, so a stale uid
+  // would be added to the wrong space. Mounted for the modal's whole lifetime
+  // (the picker is always mounted, hidden or not); loading also gates confirm
+  // below, covering the reload in-flight window.
+  useEffect(() => {
+    const handler = () => setSelected({});
+    WKApp.mittBus.on('space-changed', handler);
+    return () => WKApp.mittBus.off('space-changed', handler);
+  }, []);
+
   const toggle = useCallback(
     (c: OrgCandidate) => {
       if (memberRoleByUid[c.uid]) return; // already a member — not selectable
@@ -72,9 +86,10 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
   const selectedUids = Object.keys(selected);
 
   const handleConfirm = async () => {
-    // `!visible` guards against a stale confirm firing after a space switch has
-    // hidden the picker (the parent also clears selection on spaceId change).
-    if (!visible || selectedUids.length === 0 || submitting) return;
+    // Guards against a stale confirm: `!visible` (a space switch hid the picker),
+    // and `loading` (a host space-changed is reloading the roster — block the
+    // in-flight window so a pre-switch selection can't be submitted mid-reload).
+    if (!visible || selectedUids.length === 0 || submitting || loading) return;
     setSubmitting(true);
     await onConfirm(selectedUids);
     setSubmitting(false);
@@ -96,7 +111,7 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
         selectedUids.length ? `${t('drive.org.confirm')} (${selectedUids.length})` : t('drive.org.confirm')
       }
       cancelText={t('drive.common.cancel')}
-      okButtonProps={{ disabled: selectedUids.length === 0 }}
+      okButtonProps={{ disabled: selectedUids.length === 0 || loading }}
       width={480}
     >
       <Input

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, waitFor } from '../../../__tests__/harness';
+import { render, waitFor, act } from '../../../__tests__/harness';
 
 vi.mock('@douyinfe/semi-ui', async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,6 +36,7 @@ vi.mock('../../../hooks/useMembers', () => ({ useMembers: vi.fn() }));
 
 import { useOrgSearch } from '../../../hooks/useOrgSearch';
 import { useMembers } from '../../../hooks/useMembers';
+import { WKApp } from '@octo/base';
 import OrgPickerModal from '../index';
 import type { OrgCandidate, Member } from '../../../bridge/types';
 
@@ -248,5 +249,50 @@ describe('OrgPickerModal', () => {
     click(getByRole('button', { name: '__show__' }));
     expect(retry).not.toHaveBeenCalled();
     expect(search).toHaveBeenLastCalledWith('');
+  });
+
+  it('clears the selection on a host space-changed so stale uids cannot be confirmed', () => {
+    const onConfirm = vi.fn();
+    stub([{ uid: 'u1', name: 'Alice' }, { uid: 'u2', name: 'Bob' }]);
+    const { getByRole, click } = render(
+      <OrgPickerModal visible onClose={() => {}} onConfirm={onConfirm} />,
+    );
+    // Select Alice in the current host space → confirm enabled.
+    click(getByRole('button', { name: 'Alice' }));
+    expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(false);
+
+    // Host octo-space switch (drive spaceId unchanged): selection must clear
+    // synchronously so a pre-switch pick can't be submitted to the new tenant.
+    act(() => WKApp.mittBus.emit('space-changed'));
+
+    expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(true);
+    click(getByRole('button', { name: '__ok__' }));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('disables confirm while the roster is reloading, even with a live selection', () => {
+    stub([{ uid: 'u1', name: 'Alice' }]);
+
+    function Wrapper() {
+      const [, force] = React.useState(0);
+      return (
+        <>
+          <button aria-label="__rerender__" onClick={() => force((n) => n + 1)}>
+            r
+          </button>
+          <OrgPickerModal visible onClose={() => {}} onConfirm={() => {}} />
+        </>
+      );
+    }
+
+    const { getByRole, click } = render(<Wrapper />);
+    click(getByRole('button', { name: 'Alice' }));
+    expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(false);
+
+    // The host-switch reload flips loading true while the selection is still set;
+    // confirm must be blocked for the in-flight window.
+    stub([{ uid: 'u1', name: 'Alice' }], { loading: true });
+    click(getByRole('button', { name: '__rerender__' }));
+    expect((getByRole('button', { name: '__ok__' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
