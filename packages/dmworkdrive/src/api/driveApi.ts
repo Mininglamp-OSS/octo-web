@@ -426,6 +426,20 @@ export async function confirmUpload(
   return post<DriveBlob>(`/files/${fileId}/confirm-upload`, req);
 }
 
+/**
+ * Cancel a still-pending upload, best-effort (spec §2 D-3).
+ *
+ * Idempotent on the backend: 204 whether the pending record still existed or
+ * was already gone / unknown id. A 409 means confirm-upload already won the
+ * race — the file is confirmed, not cancellable — so the caller surfaces the
+ * confirmed result instead of a phantom removal rather than treating it as an
+ * error. Runs on the authed `driveAxios` like the other logged-in file ops
+ * (this is a drive-member action, NOT an anonymous share endpoint).
+ */
+export async function cancelUpload(fileId: number): Promise<void> {
+  return post<void>(`/files/${fileId}/cancel-upload`);
+}
+
 export async function getDownloadUrl(fileId: number): Promise<DownloadResp> {
   return get<DownloadResp>(`/files/${fileId}/download`);
 }

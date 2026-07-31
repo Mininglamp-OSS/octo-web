@@ -190,6 +190,21 @@ describe('two-phase upload endpoints', () => {
     expect(inst.post).toHaveBeenCalledWith('/v1/drive/files/7/confirm-upload', { actual_size: 5 });
   });
 
+  it('cancelUpload POSTs /files/:id/cancel-upload with no body', async () => {
+    inst.post.mockResolvedValue(ok(undefined));
+    await driveApi.cancelUpload(7);
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/files/7/cancel-upload', undefined);
+  });
+
+  it('cancelUpload surfaces a 409 (confirm already won) as a typed DriveApiError', async () => {
+    inst.post.mockRejectedValue({ response: { status: 409, data: { error: 'conflict' } } });
+    await expect(driveApi.cancelUpload(7)).rejects.toMatchObject({
+      name: 'DriveApiError',
+      status: 409,
+      code: 'conflict',
+    });
+  });
+
   it('getDownloadUrl GETs /files/:id/download', async () => {
     inst.get.mockResolvedValue(ok({ url: 'https://s/dl', filename: 'a.txt' }));
     const res = await driveApi.getDownloadUrl(7);
