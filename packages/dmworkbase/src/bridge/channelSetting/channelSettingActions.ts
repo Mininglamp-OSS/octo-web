@@ -197,12 +197,13 @@ async function refreshChannelStateAfterMemberMutation(
   let notifiedLocalRemoval = false;
 
   if (action === "removeSubscribers") {
-    const cachePatchedBeforeSync = await patchSubscriberCacheAfterMemberMutation(
-      runtime,
-      channel,
-      action,
-      uids
-    );
+    const cachePatchedBeforeSync =
+      await patchSubscriberCacheAfterMemberMutation(
+        runtime,
+        channel,
+        action,
+        uids
+      );
     if (cachePatchedBeforeSync) {
       runtime.notifyCurrentChannelSubscribers(channel);
       notifiedLocalRemoval = true;
@@ -272,7 +273,8 @@ async function patchSubscriberCacheAfterMemberMutation(
     return false;
   }
 
-  const currentSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
+  const currentSubscribers =
+    runtime.getCurrentChannelSubscribers(channel) || [];
 
   if (action === "removeSubscribers") {
     const nextSubscribers = currentSubscribers.filter(
@@ -375,13 +377,13 @@ export async function removeChannelSettingSubscribers(params: {
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   await runtime.removeSubscribers(params.channel, params.uids);
-  runtime.markRemovedChannelSubscribers(params.channel, params.uids);
   await refreshChannelStateAfterMemberMutation(
     runtime,
     params.channel,
     "removeSubscribers",
     params.uids
   );
+  runtime.markRemovedChannelSubscribers(params.channel, params.uids);
 }
 
 export async function updateChannelSettingField(params: {

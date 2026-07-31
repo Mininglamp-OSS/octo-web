@@ -56,7 +56,9 @@ function currentImChannelSubscribersRuntime<
   >;
 }
 
-function currentImSubscribeCacheRuntime<TSubscriber>() {
+function currentImSubscribeCacheRuntime<
+  TSubscriber extends ImSubscriberLike
+>() {
   return currentImRuntime() as unknown as ImSubscribeCacheRuntimeSdk<TSubscriber>;
 }
 
@@ -83,10 +85,7 @@ export function fetchCurrentImChannelInfo<
 export function deleteCurrentImChannelInfo<TChannel extends ImChannelLike>(
   channel: TChannel
 ) {
-  deleteImChannelInfo(
-    currentImChannelCacheRuntime<TChannel>(),
-    channel
-  );
+  deleteImChannelInfo(currentImChannelCacheRuntime<TChannel>(), channel);
 }
 
 export function setCurrentImChannelInfoCache<
@@ -121,7 +120,7 @@ export function getCurrentImChannelSubscribers<
 
 export function getCurrentImChannelSubscriberOfMe<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(channel: TChannel) {
   return getImChannelSubscriberOfMe<TChannel, TSubscriber>(
     currentImChannelSubscribersRuntime<TChannel, TSubscriber>(),

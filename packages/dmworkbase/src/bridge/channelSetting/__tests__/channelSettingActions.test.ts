@@ -128,9 +128,10 @@ describe("channel setting actions", () => {
       channel,
       ["alice"]
     );
-    expect(runtime.markRemovedChannelSubscribers).toHaveBeenCalledWith(channel, [
-      "bob",
-    ]);
+    expect(runtime.markRemovedChannelSubscribers).toHaveBeenCalledWith(
+      channel,
+      ["bob"]
+    );
     expect(runtime.syncCurrentChannelSubscribers).toHaveBeenCalledTimes(2);
     expect(runtime.syncCurrentChannelSubscribers).toHaveBeenNthCalledWith(
       1,
@@ -141,8 +142,14 @@ describe("channel setting actions", () => {
       channel
     );
     expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenCalledTimes(2);
-    expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenNthCalledWith(1, channel);
-    expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenNthCalledWith(2, channel);
+    expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenNthCalledWith(
+      1,
+      channel
+    );
+    expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenNthCalledWith(
+      2,
+      channel
+    );
     expect(runtime.fetchCurrentChannelInfo).toHaveBeenCalledTimes(2);
     expect(runtime.fetchCurrentChannelInfo).toHaveBeenNthCalledWith(1, channel);
     expect(runtime.fetchCurrentChannelInfo).toHaveBeenNthCalledWith(2, channel);
@@ -279,6 +286,13 @@ describe("channel setting actions", () => {
     expect(runtime.setCurrentChannelSubscribers).toHaveBeenCalledWith(channel, [
       { uid: "owner" },
     ]);
+    expect(
+      vi.mocked(runtime.setCurrentChannelSubscribers).mock
+        .invocationCallOrder[0]
+    ).toBeLessThan(
+      vi.mocked(runtime.markRemovedChannelSubscribers).mock
+        .invocationCallOrder[0]
+    );
     expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenCalledWith(
       channel
     );
@@ -434,7 +448,9 @@ describe("channel setting actions", () => {
   it("exits a group and removes the local conversation even if delete fails", async () => {
     const onDeleteConversationError = vi.fn();
     const runtime = createRuntime({
-      deleteConversation: vi.fn(() => Promise.reject(new Error("delete failed"))),
+      deleteConversation: vi.fn(() =>
+        Promise.reject(new Error("delete failed"))
+      ),
     });
     const channel = new Channel("group-1", ChannelTypeGroup);
 
