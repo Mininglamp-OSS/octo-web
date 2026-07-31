@@ -455,4 +455,175 @@ describe('useUpload', () => {
     expect(api.prepareUpload).toHaveBeenCalledTimes(2);
     expect(api.confirmUpload).toHaveBeenCalledWith(99, { actual_size: 5 });
   });
+
+  it('a PUT-failed error row retains its pending id, and dismiss reclaims it', async () => {
+    vi.mocked(api.prepareUpload).mockResolvedValue(prepResp({ file_id: 42 }));
+    vi.mocked(api.putToPresignedUrl).mockRejectedValue(new Error('put boom'));
+    vi.mocked(api.cancelUpload).mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useUpload(vi.fn()));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
+    // The failed run must NOT have cancelled yet — the id is held on the Job so
+    // a later dismiss/retry can still reclaim the leaked pending record.
+    expect(api.cancelUpload).not.toHaveBeenCalled();
+
+    const { id } = result.current.items[0];
+    await act(async () => {
+      result.current.dismiss(id);
+      await Promise.resolve();
+    });
+
+    expect(api.cancelUpload).toHaveBeenCalledWith(42);
+    await waitFor(() => expect(result.current.items).toHaveLength(0));
+  });
+
+  it('retry reclaims the stale pending id BEFORE re-preparing a fresh one', async () => {
+    vi.mocked(api.prepareUpload)
+      .mockResolvedValueOnce(prepResp({ file_id: 42 }))
+      .mockResolvedValueOnce(prepResp({ file_id: 99 }));
+    vi.mocked(api.putToPresignedUrl)
+      .mockRejectedValueOnce(new Error('put boom'))
+      .mockResolvedValue(undefined);
+    vi.mocked(api.confirmUpload).mockResolvedValue({} as never);
+    vi.mocked(api.cancelUpload).mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useUpload(vi.fn()));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
+
+    const { id } = result.current.items[0];
+    act(() => result.current.retry(id));
+    await waitFor(() => expect(result.current.items[0].status).toBe('done'));
+
+    // Stale id reclaimed, and the reclaim happened before the second prepare.
+    expect(api.cancelUpload).toHaveBeenCalledWith(42);
+    expect(api.prepareUpload).toHaveBeenCalledTimes(2);
+    const cancelOrder = vi.mocked(api.cancelUpload).mock.invocationCallOrder[0];
+    const reprepareOrder = vi.mocked(api.prepareUpload).mock.invocationCallOrder[1];
+    expect(cancelOrder).toBeLessThan(reprepareOrder);
+    // Confirm targets the FRESH id, never the reclaimed one.
+    expect(api.confirmUpload).toHaveBeenCalledWith(99, { actual_size: 5 });
+  });
+
+  it('retry cleanup 409 (old run already confirmed) aborts retry, drops the row, refreshes once', async () => {
+    vi.mocked(api.prepareUpload).mockResolvedValue(prepResp({ file_id: 42 }));
+    vi.mocked(api.putToPresignedUrl).mockRejectedValue(new Error('put boom'));
+    vi.mocked(api.cancelUpload).mockRejectedValue(new DriveApiError('conflict', 'conflict', 409));
+    const onUploaded = vi.fn();
+
+    const { result } = renderHook(() => useUpload(onUploaded));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
+
+    const { id } = result.current.items[0];
+    await act(async () => {
+      result.current.retry(id);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // 409 => the old run really confirmed: no second prepare (would duplicate
+    // the file), row removed, real list refreshed exactly once.
+    expect(api.prepareUpload).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(result.current.items).toHaveLength(0));
+    expect(onUploaded).toHaveBeenCalledTimes(1);
+  });
+
+  it('retry survives a non-409 cancel failure: re-prepares a fresh id, never reuses the old, no id in the warn', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      vi.mocked(api.prepareUpload)
+        .mockResolvedValueOnce(prepResp({ file_id: 42 }))
+        .mockResolvedValueOnce(prepResp({ file_id: 99 }));
+      vi.mocked(api.putToPresignedUrl)
+        .mockRejectedValueOnce(new Error('put boom'))
+        .mockResolvedValue(undefined);
+      vi.mocked(api.confirmUpload).mockResolvedValue({} as never);
+      vi.mocked(api.cancelUpload).mockRejectedValue(new Error('network down'));
+
+      const { result } = renderHook(() => useUpload(vi.fn()));
+      act(() => result.current.addFiles([makeFile()], 'sp', 0));
+      await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
+
+      const { id } = result.current.items[0];
+      act(() => result.current.retry(id));
+      await waitFor(() => expect(result.current.items[0].status).toBe('done'));
+
+      expect(api.cancelUpload).toHaveBeenCalledWith(42);
+      expect(api.prepareUpload).toHaveBeenCalledTimes(2);
+      // Fresh id used, the failed-cancel old id (42) is never reused.
+      expect(api.confirmUpload).toHaveBeenCalledWith(99, { actual_size: 5 });
+      // The breadcrumb must not leak the file id / name / url / token.
+      expect(warn).toHaveBeenCalled();
+      const line = String(warn.mock.calls[0][0]);
+      expect(line).toContain('cancel-upload failed');
+      expect(line).not.toContain('42');
+      expect(line).not.toContain('a.pdf');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('unmount during confirming does not refresh when confirm later resolves', async () => {
+    let resolveConfirm: (b: unknown) => void = () => {};
+    vi.mocked(api.prepareUpload).mockResolvedValue(prepResp());
+    vi.mocked(api.putToPresignedUrl).mockResolvedValue(undefined);
+    vi.mocked(api.confirmUpload).mockImplementation(
+      () => new Promise((res) => { resolveConfirm = res; }) as never,
+    );
+    vi.mocked(api.cancelUpload).mockResolvedValue(undefined);
+    const onUploaded = vi.fn();
+
+    const { result, unmount } = renderHook(() => useUpload(onUploaded));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('confirming'));
+
+    await act(async () => {
+      unmount();
+      await Promise.resolve();
+    });
+    // Confirm resolves AFTER unmount — the cancelled + unmounted run must stay silent.
+    await act(async () => {
+      resolveConfirm({});
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onUploaded).not.toHaveBeenCalled();
+    // Unmount still fire-and-forget reclaims the known pending id.
+    expect(api.cancelUpload).toHaveBeenCalledWith(42);
+  });
+
+  it('unmount then a cancel-409 does not refresh', async () => {
+    let rejectCancel: (e: unknown) => void = () => {};
+    vi.mocked(api.prepareUpload).mockResolvedValue(prepResp());
+    vi.mocked(api.putToPresignedUrl).mockImplementation(
+      (_url, _file, opts) =>
+        new Promise<void>((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () => reject(new Error('canceled')));
+        }),
+    );
+    vi.mocked(api.cancelUpload).mockImplementation(
+      () => new Promise((_res, rej) => { rejectCancel = rej; }),
+    );
+    const onUploaded = vi.fn();
+
+    const { result, unmount } = renderHook(() => useUpload(onUploaded));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('uploading'));
+
+    await act(async () => {
+      unmount();
+      await Promise.resolve();
+    });
+    // A 409 landing after unmount (confirm won) must not refresh a dead component.
+    await act(async () => {
+      rejectCancel(new DriveApiError('conflict', 'conflict', 409));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onUploaded).not.toHaveBeenCalled();
+  });
 });

@@ -38,6 +38,15 @@ interface Job {
   file: File;
   spaceId: string;
   parentId: number;
+  /**
+   * file_id of the current run's pending record, kept on the Job (not the
+   * RunCtl) so it OUTLIVES a terminal error: the RunCtl is deleted in `finally`,
+   * but the error row lingers in the UI and its later dismiss/retry still needs
+   * this id to reclaim the leaked pending record. Set once prepare returns;
+   * cleared on confirmed success and after a cancel is issued (204/409). No run
+   * has prepared yet while undefined.
+   */
+  pendingFileId?: number;
 }
 
 type RunPhase = 'preparing' | 'uploading' | 'confirming' | 'settled';
@@ -98,6 +107,9 @@ export function useUpload(onUploaded: () => void): UseUpload {
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const onUploadedRef = useRef(onUploaded);
   onUploadedRef.current = onUploaded;
+  // Flips false on unmount so no async continuation calls the parent's
+  // onUploaded (a refresh) after the component is gone.
+  const mounted = useRef(true);
 
   const patch = useCallback((id: string, next: Partial<UploadItem>) => {
     setItems((list) => list.map((it) => (it.id === id ? { ...it, ...next } : it)));
@@ -107,32 +119,39 @@ export function useUpload(onUploaded: () => void): UseUpload {
   // cancel-409 can both signal "the file is really confirmed" for the same run,
   // in either order; without this guard they would each fire onUploaded and
   // refresh twice. Per-run (not global) so independent uploads still each
-  // refresh exactly once.
+  // refresh exactly once. Suppressed after unmount (nothing to refresh).
   const refreshOnce = useCallback((ctl: RunCtl) => {
     if (ctl.refreshed) return;
     ctl.refreshed = true;
-    onUploadedRef.current();
+    if (mounted.current) onUploadedRef.current();
   }, []);
 
-  // Best-effort cancel of a known pending file_id. Idempotent on the backend
-  // (204 even if already gone). A 409 means confirm-upload won the race, so the
-  // file is genuinely confirmed — refresh (once) to reflect it rather than
-  // leaving a phantom-removed row. Every other failure is swallowed: the
-  // backend confirmed-only filter keeps any orphan pending invisible, so we
-  // never alarm the user with a misleading "cancel failed". No-op if we don't
-  // yet have a file_id (prepare still in flight).
+  // Best-effort cancel of a pending file_id. Idempotent on the backend (204
+  // even if already gone). A 409 means confirm-upload won the race, so the file
+  // is genuinely confirmed — the caller's `onConfirmWon` reflects it (refresh /
+  // stop retry) rather than leaving a phantom-removed row. Every other failure
+  // (network / 5xx / 403) is swallowed for the user: the backend confirmed-only
+  // read filter keeps any orphan pending invisible, and we cannot safely retry
+  // cleanup here — but we log a fixed-format breadcrumb (status/code only,
+  // never file name / URL / token / id) so a front/back publish-order mismatch
+  // is still discoverable.
   const bestEffortCancel = useCallback(
-    async (ctl: RunCtl) => {
-      if (ctl.fileId === undefined) return;
+    async (fileId: number, onConfirmWon?: () => void) => {
       try {
-        await api.cancelUpload(ctl.fileId);
+        await api.cancelUpload(fileId);
       } catch (err) {
         if (err instanceof DriveApiError && err.status === 409) {
-          refreshOnce(ctl);
+          onConfirmWon?.();
+          return;
         }
+        const status = err instanceof DriveApiError ? err.status : undefined;
+        const code = err instanceof DriveApiError ? err.code : undefined;
+        console.warn(
+          `[drive] cancel-upload failed (best-effort); status=${status ?? 'n/a'} code=${code ?? 'n/a'}`,
+        );
       }
     },
-    [refreshOnce],
+    [],
   );
 
   const dismiss = useCallback(
@@ -143,6 +162,7 @@ export function useUpload(onUploaded: () => void): UseUpload {
         timers.current.delete(id);
       }
       const ctl = runs.current.get(id);
+      const job = jobs.current.get(id);
       if (ctl && ctl.phase !== 'settled') {
         // In-flight row: this is a genuine cancel, not just a panel dismiss.
         ctl.cancelled = true;
@@ -152,13 +172,21 @@ export function useUpload(onUploaded: () => void): UseUpload {
         // handled as "confirm won"). While prepare is still in flight there is
         // no id yet — the run itself cancels once prepare returns.
         if (ctl.fileId !== undefined) {
-          void bestEffortCancel(ctl);
+          void bestEffortCancel(ctl.fileId, () => refreshOnce(ctl));
         }
+      } else if (job?.pendingFileId !== undefined) {
+        // No live run (typically a terminal error row: the RunCtl was already
+        // deleted in `finally`), but a prior run left a pending record behind.
+        // Reclaim it. A 409 means that old run actually confirmed — refresh the
+        // real list to surface the file instead of dropping it silently.
+        void bestEffortCancel(job.pendingFileId, () => {
+          if (mounted.current) onUploadedRef.current();
+        });
       }
       jobs.current.delete(id);
       setItems((list) => list.filter((it) => it.id !== id));
     },
-    [bestEffortCancel],
+    [bestEffortCancel, refreshOnce],
   );
 
   // Auto-remove a successfully finished row after a short delay so the panel
@@ -179,21 +207,23 @@ export function useUpload(onUploaded: () => void): UseUpload {
 
   useEffect(
     () => () => {
+      mounted.current = false;
       timers.current.forEach((tm) => clearTimeout(tm));
       timers.current.clear();
       runs.current.forEach((ctl) => {
         ctl.cancelled = true;
         ctl.controller.abort();
         // Reclaim the pending record if we already have an id. Fire-and-forget
-        // with no 409 refresh: the component is gone, there is nothing to
-        // refresh, and we must not setState after unmount.
+        // and no onConfirmWon: the component is gone, there is nothing to
+        // refresh, and mounted is already false so any refresh would be
+        // suppressed anyway. (Only surfaces the safe non-409 warn.)
         if (ctl.fileId !== undefined) {
-          void api.cancelUpload(ctl.fileId).catch(() => {});
+          void bestEffortCancel(ctl.fileId);
         }
       });
       runs.current.clear();
     },
-    [],
+    [bestEffortCancel],
   );
 
   const runItem = useCallback(
@@ -214,10 +244,13 @@ export function useUpload(onUploaded: () => void): UseUpload {
           content_type: file.type || 'application/octet-stream',
         });
         ctl.fileId = prep.file_id;
+        // Persist on the Job too, so a later terminal error still exposes this
+        // pending id to dismiss/retry after the RunCtl is gone.
+        job.pendingFileId = prep.file_id;
         // Cancel arrived while preparing: we now have a file_id, so best-effort
         // clean up the pending record and never start the PUT.
         if (ctl.cancelled) {
-          void bestEffortCancel(ctl);
+          void bestEffortCancel(ctl.fileId, () => refreshOnce(ctl));
           return;
         }
 
@@ -232,7 +265,7 @@ export function useUpload(onUploaded: () => void): UseUpload {
         // Guards the narrow window where cancel lands just as the PUT resolves
         // (an abort mid-PUT throws instead and is handled in catch).
         if (ctl.cancelled) {
-          void bestEffortCancel(ctl);
+          void bestEffortCancel(ctl.fileId, () => refreshOnce(ctl));
           return;
         }
 
@@ -249,6 +282,8 @@ export function useUpload(onUploaded: () => void): UseUpload {
         }
 
         ctl.phase = 'settled';
+        // Confirmed: no pending record left to reclaim.
+        job.pendingFileId = undefined;
         patch(id, { status: 'done', progress: 100 });
         refreshOnce(ctl);
         scheduleAutoDismiss(id);
@@ -282,7 +317,40 @@ export function useUpload(onUploaded: () => void): UseUpload {
     [runItem],
   );
 
-  const retry = useCallback((id: string) => void runItem(id), [runItem]);
+  // Restart a failed item. Before the fresh prepare, best-effort reclaim the
+  // pending record the failed run left behind so we don't leak it. A 409 means
+  // that old run actually confirmed on the backend — starting a new upload
+  // would duplicate the file, so we stop the retry, drop the row, and refresh
+  // the real list to show the confirmed file. A non-409 cancel failure is
+  // non-fatal: we still re-prepare (the backend confirmed-only filter hides the
+  // orphan), and the fresh prepare produces a NEW id — the old one is never
+  // reused. runItem then re-prepares from scratch.
+  const retryRun = useCallback(
+    async (id: string) => {
+      const job = jobs.current.get(id);
+      if (!job) return;
+      const stalePending = job.pendingFileId;
+      if (stalePending !== undefined) {
+        // Reflect the cleanup immediately: hide the error/retry affordance.
+        patch(id, { status: 'preparing', progress: 0, error: undefined });
+        let confirmWon = false;
+        await bestEffortCancel(stalePending, () => {
+          confirmWon = true;
+        });
+        job.pendingFileId = undefined;
+        if (confirmWon) {
+          jobs.current.delete(id);
+          setItems((list) => list.filter((it) => it.id !== id));
+          if (mounted.current) onUploadedRef.current();
+          return;
+        }
+      }
+      void runItem(id);
+    },
+    [bestEffortCancel, patch, runItem],
+  );
+
+  const retry = useCallback((id: string) => void retryRun(id), [retryRun]);
 
   return { items, addFiles, retry, dismiss };
 }
