@@ -6,6 +6,7 @@ import {
   fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
   getCurrentImChannelLocallyRemovedSubscriberUids,
+  getCurrentImChannelSubscribersCacheRaw,
   getCurrentImChannelSubscriberOfMe,
   getCurrentImChannelSubscribers,
   clearCurrentImChannelSubscribersLocallyRemoved,
@@ -145,9 +146,7 @@ describe("currentChannelRuntime", () => {
   it("reads the current user's subscriber from the current SDK runtime", () => {
     const channel = { channelID: "g1", channelType: 2 };
     const subscriber = { uid: "me", role: 1 };
-    hoisted.sdk.channelManager.getSubscribeOfMe.mockReturnValueOnce(
-      subscriber
-    );
+    hoisted.sdk.channelManager.getSubscribeOfMe.mockReturnValueOnce(subscriber);
 
     expect(getCurrentImChannelSubscriberOfMe(channel)).toBe(subscriber);
     expect(hoisted.shared).toHaveBeenCalledTimes(1);
@@ -170,6 +169,7 @@ describe("currentChannelRuntime", () => {
     expect(hoisted.sdk.channelManager.subscribeCacheMap.get("2@g1")).toBe(
       subscribers
     );
+    expect(getCurrentImChannelSubscribersCacheRaw(channel)).toBe(subscribers);
   });
 
   it("filters locally removed subscribers in the current SDK runtime", () => {
@@ -202,6 +202,25 @@ describe("currentChannelRuntime", () => {
     expect(hoisted.shared).toHaveBeenCalledTimes(1);
     expect(hoisted.sdk.channelManager.syncSubscribes).toHaveBeenCalledWith(
       channel
+    );
+  });
+
+  it("reconciles locally removed subscribers after a successful current sync", async () => {
+    const channel = {
+      channelID: "g-current-sync-local-remove",
+      channelType: 2,
+      getChannelKey: () => "2@g-current-sync-local-remove",
+    };
+    hoisted.sdk.channelManager.subscribeCacheMap.set(channel.getChannelKey(), [
+      { uid: "owner" },
+    ]);
+    markCurrentImChannelSubscribersLocallyRemoved(channel, ["removed"]);
+    hoisted.sdk.channelManager.syncSubscribes.mockResolvedValueOnce(undefined);
+
+    await syncCurrentImChannelSubscribers(channel);
+
+    expect(getCurrentImChannelLocallyRemovedSubscriberUids(channel)).toEqual(
+      []
     );
   });
 

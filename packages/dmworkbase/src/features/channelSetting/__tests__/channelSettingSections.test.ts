@@ -180,7 +180,6 @@ describe("channel setting section builders", () => {
     expect(context.push).toHaveBeenCalledTimes(1);
     const [view, config] = context.push.mock.calls[0];
     expect(view.props.canSelect).toBeUndefined();
-    expect(view.props.header).toBeUndefined();
     expect(view.props.removeAction).toBeTruthy();
     expect(config.title).toBeTruthy();
     expect(config.showFinishButton).toBeUndefined();

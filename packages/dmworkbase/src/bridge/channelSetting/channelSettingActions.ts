@@ -18,6 +18,7 @@ import {
   clearCurrentImChannelSubscribersLocallyRemoved,
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
+  getCurrentImChannelSubscribersCacheRaw,
   getCurrentImChannelSubscribers,
   markCurrentImChannelSubscribersLocallyRemoved,
   notifyCurrentImSubscriberChangeListeners,
@@ -41,6 +42,9 @@ export interface ChannelSettingActionRuntime {
     channel: Channel,
     uid: string
   ): Promise<ChannelSettingSubscriber | undefined>;
+  getCurrentChannelSubscribersRaw(
+    channel: Channel
+  ): ChannelSettingSubscriber[] | undefined;
   getCurrentChannelSubscribers(channel: Channel): ChannelSettingSubscriber[];
   findConversation(channel: Channel): any | undefined;
   getLoginUid(): string | undefined;
@@ -114,6 +118,9 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     },
     fetchChannelSubscriber(channel, uid) {
       return WKApp.dataSource.channelDataSource.subscriber(channel, uid);
+    },
+    getCurrentChannelSubscribersRaw(channel) {
+      return getCurrentImChannelSubscribersCacheRaw(channel);
     },
     getCurrentChannelSubscribers(channel) {
       return getCurrentImChannelSubscribers(channel);
@@ -195,6 +202,7 @@ async function refreshChannelStateAfterMemberMutation(
 ) {
   let shouldNotifySubscribers = false;
   let notifiedLocalRemoval = false;
+  let syncSucceeded = false;
 
   if (action === "removeSubscribers") {
     const cachePatchedBeforeSync =
@@ -208,13 +216,19 @@ async function refreshChannelStateAfterMemberMutation(
       runtime.notifyCurrentChannelSubscribers(channel);
       notifiedLocalRemoval = true;
     }
+    runtime.markRemovedChannelSubscribers(channel, uids);
   }
 
   try {
     await runtime.syncCurrentChannelSubscribers(channel);
+    syncSucceeded = true;
     shouldNotifySubscribers = true;
   } catch (err) {
     console.warn(`[${action}] syncSubscribes failed`, err);
+  }
+
+  if (action === "removeSubscribers" && syncSucceeded) {
+    clearConfirmedRemovedSubscriberTombstones(runtime, channel, uids);
   }
 
   const cachePatched = await patchSubscriberCacheAfterMemberMutation(
@@ -235,6 +249,21 @@ async function refreshChannelStateAfterMemberMutation(
   await runtime.fetchCurrentChannelInfo(channel).catch((err) => {
     console.warn(`[${action}] fetchChannelInfo failed`, err);
   });
+}
+
+function clearConfirmedRemovedSubscriberTombstones(
+  runtime: ChannelSettingActionRuntime,
+  channel: Channel,
+  uids: string[]
+) {
+  const rawSubscribers = runtime.getCurrentChannelSubscribersRaw(channel);
+  if (!rawSubscribers) return;
+
+  const rawUids = new Set(rawSubscribers.map((subscriber) => subscriber?.uid));
+  const confirmedAbsentUids = uids.filter((uid) => uid && !rawUids.has(uid));
+  if (confirmedAbsentUids.length > 0) {
+    runtime.clearRemovedChannelSubscribers(channel, confirmedAbsentUids);
+  }
 }
 
 function activeSubscriber(subscriber: any) {
@@ -383,7 +412,6 @@ export async function removeChannelSettingSubscribers(params: {
     "removeSubscribers",
     params.uids
   );
-  runtime.markRemovedChannelSubscribers(params.channel, params.uids);
 }
 
 export async function updateChannelSettingField(params: {

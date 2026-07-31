@@ -87,9 +87,8 @@ export class SubscriberListVM extends ProviderListener {
     if (!this._isMounted || requestVersion !== this._requestVersion) return;
     this.hasMore = subscribers && subscribers.length >= this.limit;
     if (subscribers) {
-      const visibleSubscribers = this.filterLocallyRemovedSubscribers(
-        subscribers
-      );
+      const visibleSubscribers =
+        this.filterLocallyRemovedSubscribers(subscribers);
       const filtered = this.filter
         ? visibleSubscribers.filter(this.filter)
         : visibleSubscribers;
@@ -167,8 +166,6 @@ export class SubscriberListVM extends ProviderListener {
   };
 
   refreshCurrentSearch = () => {
-    this.currPage = 1;
-    this.subscribers = [];
-    this.requestSubscribers();
+    this.requestSubscribers(++this._requestVersion, this.subscribers);
   };
 }

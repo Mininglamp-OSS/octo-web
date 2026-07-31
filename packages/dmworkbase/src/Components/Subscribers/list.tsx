@@ -1,4 +1,4 @@
-import React, { Component, ReactNode } from "react";
+import React, { Component } from "react";
 import Provider from "../../Service/Provider";
 import { SubscriberListVM } from "./list_vm";
 import { IconSearchStroked } from "@douyinfe/semi-icons";
@@ -42,7 +42,6 @@ export interface SubscriberListProps {
   humansOnly?: boolean;
   /** 可选的本地搜索实现；未提供时保持原有服务端搜索。 */
   localSearch?: (keyword: string) => Subscriber[];
-  header?: ReactNode;
   removeAction?: {
     canRemove: (subscriber: Subscriber) => boolean;
     onRemove: (subscriber: Subscriber) => Promise<void>;
@@ -92,12 +91,11 @@ export class SubscriberList extends Component<
     this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(
       this.channelInfoListener
     );
-    this.unsubscribeSubscriberChangeListener = addCurrentImSubscriberChangeListener(
-      (channel: Channel) => {
+    this.unsubscribeSubscriberChangeListener =
+      addCurrentImSubscriberChangeListener((channel: Channel) => {
         if (!channel?.isEqual?.(this.props.channel)) return;
         this.currentVM?.refreshCurrentSearch();
-      }
-    );
+      });
   }
 
   componentWillUnmount() {
@@ -329,7 +327,7 @@ export class SubscriberList extends Component<
   };
 
   render() {
-    const { canSelect, header, removeAction } = this.props;
+    const { canSelect, removeAction } = this.props;
     return (
       <>
         <Provider
@@ -357,7 +355,6 @@ export class SubscriberList extends Component<
                   this.handleScroll(e, vm);
                 }}
               >
-                {header}
                 <div className="wk-indextable-search-box">
                   <div className="wk-indextable-search-icon">
                     <IconSearchStroked className="wk-subscrierlist-search-icon" />

@@ -5,6 +5,7 @@ import {
   deleteImChannelInfo,
   fetchImChannelInfo,
   getImChannelInfo,
+  getImChannelSubscribersCacheRaw,
   getImChannelSubscriberOfMe,
   getImChannelSubscribers,
   getImChannelLocallyRemovedSubscriberUids,
@@ -103,7 +104,9 @@ describe("channelRuntime", () => {
 
     notifyImChannelInfoListeners(sdk, channelInfo);
 
-    expect(sdk.channelManager.notifyListeners).toHaveBeenCalledWith(channelInfo);
+    expect(sdk.channelManager.notifyListeners).toHaveBeenCalledWith(
+      channelInfo
+    );
   });
 
   it("returns an unsubscribe when adding a channel info listener", () => {
@@ -186,7 +189,7 @@ describe("channelRuntime", () => {
     expect(sdk.channelManager.subscribeCacheMap.get("2@g1")).toBe(subscribers);
   });
 
-  it("filters locally removed subscribers from reads and cache writes until cleared", () => {
+  it("filters locally removed subscribers from reads while keeping raw cache authoritative", () => {
     const sdk = createSdk();
     const channel = {
       channelID: "g-local-remove",
@@ -204,13 +207,15 @@ describe("channelRuntime", () => {
     ]);
 
     setImChannelSubscribersCache(sdk, channel, subscribers);
-    expect(sdk.channelManager.subscribeCacheMap.get("2@g-local-remove")).toEqual(
-      [{ uid: "owner" }]
-    );
+    expect(
+      sdk.channelManager.subscribeCacheMap.get("2@g-local-remove")
+    ).toEqual(subscribers);
+    expect(getImChannelSubscribersCacheRaw(sdk, channel)).toBe(subscribers);
 
+    setImChannelSubscribersCache(sdk, channel, [{ uid: "owner" }]);
+    expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
     clearImChannelSubscribersLocallyRemoved(channel, ["removed"]);
     expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
-    expect(getImChannelSubscribers(sdk, channel)).toBe(subscribers);
   });
 
   it("returns an unsubscribe when adding a subscriber change listener", () => {

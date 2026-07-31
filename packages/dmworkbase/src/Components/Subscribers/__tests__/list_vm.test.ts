@@ -265,9 +265,11 @@ describe("SubscriberListVM local search", () => {
     expect(listener).toHaveBeenCalledOnce();
   });
 
-  it("refreshes the current keyword from page one when subscribers change", async () => {
+  it("refreshes the current keyword without clearing loaded rows or resetting pagination", async () => {
     subscribersRequest.mockResolvedValue(localResult);
     const vm = new SubscriberListVM(channel);
+    const listener = vi.fn();
+    vm.addListener(listener);
     (vm as any)._isMounted = true;
     vm.keyword = "wei";
     vm.currPage = 3;
@@ -275,12 +277,18 @@ describe("SubscriberListVM local search", () => {
 
     vm.refreshCurrentSearch();
 
+    expect(vm.currPage).toBe(3);
+    expect(vm.subscribers).toEqual([{ uid: "stale", name: "Stale" }]);
+    expect(listener).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledOnce());
     expect(subscribersRequest).toHaveBeenCalledWith(channel, {
-      page: 1,
+      page: 3,
       limit: vm.limit,
       keyword: "wei",
     });
-    expect(vm.subscribers).toEqual(localResult);
+    expect(vm.subscribers).toEqual([
+      { uid: "stale", name: "Stale" },
+      ...localResult,
+    ]);
   });
 });

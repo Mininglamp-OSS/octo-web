@@ -116,6 +116,25 @@ function filterLocallyRemovedSubscribers<
   return filtered.length === subscribers.length ? subscribers : filtered;
 }
 
+export function reconcileImChannelSubscribersLocallyRemoved<
+  TChannel extends ImChannelLike,
+  TSubscriber extends ImSubscriberLike
+>(channel: TChannel, subscribers: TSubscriber[] | undefined) {
+  const removed = removedUidSet(channel);
+  if (!removed || !subscribers) return;
+
+  const visibleUids = new Set(validUids(subscribers.map((item) => item?.uid)));
+  removed.forEach((uid) => {
+    if (!visibleUids.has(uid)) {
+      removed.delete(uid);
+    }
+  });
+
+  if (removed.size === 0) {
+    locallyRemovedSubscriberUids.delete(channelKey(channel));
+  }
+}
+
 export function getImChannelInfo<
   TChannel extends ImChannelLike,
   TChannelInfo extends ImChannelInfoLike
@@ -207,6 +226,13 @@ export function getImSubscribeCacheMap<
   return sdk.channelManager.subscribeCacheMap;
 }
 
+export function getImChannelSubscribersCacheRaw<
+  TChannel extends ImChannelCacheKeyLike,
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
+>(sdk: ImSubscribeCacheRuntimeSdk<TSubscriber>, channel: TChannel) {
+  return sdk.channelManager.subscribeCacheMap.get(channel.getChannelKey());
+}
+
 export function setImChannelSubscribersCache<
   TChannel extends ImChannelCacheKeyLike,
   TSubscriber extends ImSubscriberLike = ImSubscriberLike
@@ -217,8 +243,9 @@ export function setImChannelSubscribersCache<
 ) {
   sdk.channelManager.subscribeCacheMap.set(
     channel.getChannelKey(),
-    filterLocallyRemovedSubscribers(channel, subscribers)
+    subscribers
   );
+  reconcileImChannelSubscribersLocallyRemoved(channel, subscribers);
 }
 
 export function markImChannelSubscribersLocallyRemoved<

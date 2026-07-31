@@ -6,12 +6,14 @@ import {
   fetchImChannelInfo,
   getImChannelInfo,
   getImChannelLocallyRemovedSubscriberUids,
+  getImChannelSubscribersCacheRaw,
   getImChannelSubscriberOfMe,
   getImChannelSubscribers,
   clearImChannelSubscribersLocallyRemoved,
   notifyImChannelInfoListeners,
   notifyImSubscriberChangeListeners,
   markImChannelSubscribersLocallyRemoved,
+  reconcileImChannelSubscribersLocallyRemoved,
   setImChannelInfoCache,
   setImChannelSubscribersCache,
   syncImChannelSubscribers,
@@ -139,6 +141,16 @@ export function setCurrentImChannelSubscribersCache<
   );
 }
 
+export function getCurrentImChannelSubscribersCacheRaw<
+  TChannel extends ImChannelCacheKeyLike,
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
+>(channel: TChannel) {
+  return getImChannelSubscribersCacheRaw<TChannel, TSubscriber>(
+    currentImSubscribeCacheRuntime<TSubscriber>(),
+    channel
+  );
+}
+
 export function markCurrentImChannelSubscribersLocallyRemoved<
   TChannel extends ImChannelLike
 >(channel: TChannel, uids: string[]) {
@@ -164,7 +176,18 @@ export function syncCurrentImChannelSubscribers<
   return syncImChannelSubscribers<TChannel, TSubscriber>(
     currentImChannelSubscribersRuntime<TChannel, TSubscriber>(),
     channel
-  );
+  ).then((result) => {
+    const maybeCacheKey = channel as TChannel & Partial<ImChannelCacheKeyLike>;
+    if (maybeCacheKey.getChannelKey) {
+      reconcileImChannelSubscribersLocallyRemoved(
+        channel,
+        getCurrentImChannelSubscribersCacheRaw(
+          maybeCacheKey as TChannel & ImChannelCacheKeyLike
+        )
+      );
+    }
+    return result;
+  });
 }
 
 export function addCurrentImChannelInfoListener<

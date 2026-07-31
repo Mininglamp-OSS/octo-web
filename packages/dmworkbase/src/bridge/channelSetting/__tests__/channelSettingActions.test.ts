@@ -50,6 +50,7 @@ function createRuntime(
     fetchChannelSubscriber: vi.fn((channel, uid) =>
       Promise.resolve({ uid, name: `member:${uid}` })
     ),
+    getCurrentChannelSubscribersRaw: vi.fn(() => undefined),
     getCurrentChannelSubscribers: vi.fn(() => []),
     findConversation: vi.fn(),
     getLoginUid: vi.fn(() => "self"),
@@ -293,10 +294,50 @@ describe("channel setting actions", () => {
       vi.mocked(runtime.markRemovedChannelSubscribers).mock
         .invocationCallOrder[0]
     );
+    expect(
+      vi.mocked(runtime.markRemovedChannelSubscribers).mock
+        .invocationCallOrder[0]
+    ).toBeLessThan(
+      vi.mocked(runtime.syncCurrentChannelSubscribers).mock
+        .invocationCallOrder[0]
+    );
     expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenCalledWith(
       channel
     );
     expect(runtime.fetchCurrentChannelInfo).toHaveBeenCalledWith(channel);
+  });
+
+  it("clears local removal tombstones after a successful sync confirms the uid is absent", async () => {
+    const runtime = createRuntime({
+      getCurrentChannelSubscribers: vi
+        .fn()
+        .mockReturnValueOnce([{ uid: "owner" }, { uid: "hermes" }])
+        .mockReturnValueOnce([{ uid: "owner" }]),
+      getCurrentChannelSubscribersRaw: vi.fn(() => [{ uid: "owner" }]),
+    });
+    const channel = new Channel("group-1", ChannelTypeGroup);
+
+    await removeChannelSettingSubscribers({
+      channel,
+      uids: ["hermes"],
+      runtime,
+    });
+
+    expect(runtime.markRemovedChannelSubscribers).toHaveBeenCalledWith(
+      channel,
+      ["hermes"]
+    );
+    expect(runtime.clearRemovedChannelSubscribers).toHaveBeenCalledWith(
+      channel,
+      ["hermes"]
+    );
+    expect(
+      vi.mocked(runtime.markRemovedChannelSubscribers).mock
+        .invocationCallOrder[0]
+    ).toBeLessThan(
+      vi.mocked(runtime.clearRemovedChannelSubscribers).mock
+        .invocationCallOrder[0]
+    );
   });
 
   it("removes members from the local cache before waiting for a later sync", async () => {
@@ -336,6 +377,10 @@ describe("channel setting actions", () => {
         .fn()
         .mockReturnValueOnce([{ uid: "owner" }, { uid: "hermes" }])
         .mockReturnValueOnce([{ uid: "owner" }, { uid: "hermes" }]),
+      getCurrentChannelSubscribersRaw: vi.fn(() => [
+        { uid: "owner" },
+        { uid: "hermes" },
+      ]),
     });
     const channel = new Channel("group-1", ChannelTypeGroup);
 
@@ -357,6 +402,7 @@ describe("channel setting actions", () => {
       [{ uid: "owner" }]
     );
     expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenCalledTimes(2);
+    expect(runtime.clearRemovedChannelSubscribers).not.toHaveBeenCalled();
   });
 
   it("updates group fields and current user's group nickname", async () => {
