@@ -210,33 +210,41 @@ export function useUpload(onUploaded: () => void): UseUpload {
   );
 
   useEffect(
-    () => () => {
-      mounted.current = false;
-      timers.current.forEach((tm) => clearTimeout(tm));
-      timers.current.clear();
-      runs.current.forEach((ctl) => {
-        ctl.cancelled = true;
-        ctl.controller.abort();
-        // Reclaim the pending record if we already have an id. Fire-and-forget
-        // and no onConfirmWon: the component is gone, there is nothing to
-        // refresh, and mounted is already false so any refresh would be
-        // suppressed anyway. (Only surfaces the safe non-409 warn.)
-        if (ctl.fileId !== undefined) {
-          void bestEffortCancel(ctl.fileId);
-        }
-      });
-      // Terminal-error rows have no live RunCtl (deleted in `finally`) but may
-      // still retain a pending id on the Job. Reclaim those too so leaving the
-      // page directly doesn't strand them. Skip ids already handled by a live
-      // run above — a live run's ctl.fileId equals its job.pendingFileId, and
-      // cancelling twice would fire a redundant request.
-      jobs.current.forEach((job, id) => {
-        if (!runs.current.has(id) && job.pendingFileId !== undefined) {
-          void bestEffortCancel(job.pendingFileId);
-        }
-      });
-      runs.current.clear();
-      jobs.current.clear();
+    () => {
+      // Re-arm on every effect setup. React 18 StrictMode runs effects
+      // setup→cleanup→setup in dev on the SAME hook instance (same refs); the
+      // cleanup below sets this false, so without re-arming here `mounted` would
+      // stay false for the whole real lifetime and suppress every post-confirm
+      // refresh / retry. Stable deps mean this never re-runs in production.
+      mounted.current = true;
+      return () => {
+        mounted.current = false;
+        timers.current.forEach((tm) => clearTimeout(tm));
+        timers.current.clear();
+        runs.current.forEach((ctl) => {
+          ctl.cancelled = true;
+          ctl.controller.abort();
+          // Reclaim the pending record if we already have an id. Fire-and-forget
+          // and no onConfirmWon: the component is gone, there is nothing to
+          // refresh, and mounted is already false so any refresh would be
+          // suppressed anyway. (Only surfaces the safe non-409 warn.)
+          if (ctl.fileId !== undefined) {
+            void bestEffortCancel(ctl.fileId);
+          }
+        });
+        // Terminal-error rows have no live RunCtl (deleted in `finally`) but may
+        // still retain a pending id on the Job. Reclaim those too so leaving the
+        // page directly doesn't strand them. Skip ids already handled by a live
+        // run above — a live run's ctl.fileId equals its job.pendingFileId, and
+        // cancelling twice would fire a redundant request.
+        jobs.current.forEach((job, id) => {
+          if (!runs.current.has(id) && job.pendingFileId !== undefined) {
+            void bestEffortCancel(job.pendingFileId);
+          }
+        });
+        runs.current.clear();
+        jobs.current.clear();
+      };
     },
     [bestEffortCancel],
   );
