@@ -11,8 +11,10 @@ import type { GroupCreateRuntime } from "./types";
 
 vi.mock("@octo/base", () => ({
   WKApp: {},
+  clearCurrentImChannelSubscribersLocallyRemoved: vi.fn(),
   fetchCurrentImChannelInfo: vi.fn(),
   getCurrentImChannelInfo: vi.fn(),
+  getCurrentImChannelLocallyRemovedSubscriberUids: vi.fn(() => []),
   getCurrentImChannelSubscribers: vi.fn(),
   notifyCurrentImSubscriberChangeListeners: vi.fn(),
   setCurrentImChannelSubscribersCache: vi.fn(),
@@ -43,6 +45,8 @@ function createRuntime(
     getSpaceMembers: vi.fn(() => Promise.resolve([])),
     getSuperGroupSubscribers: vi.fn(() => Promise.resolve([])),
     showConversation: vi.fn(),
+    clearRemovedChannelSubscribers: vi.fn(),
+    getRemovedChannelSubscriberUids: vi.fn(() => []),
     notifyCurrentChannelSubscribers: vi.fn(),
     setCurrentChannelSubscribers: vi.fn(),
     syncCurrentChannelSubscribers: vi.fn(() => Promise.resolve(undefined)),
@@ -129,6 +133,38 @@ describe("group create runtime bridge", () => {
       },
     ]);
     expect(runtime.syncCurrentChannelSubscribers).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not exclude locally removed subscribers from add-member candidates", async () => {
+    const runtime = createRuntime({
+      getCurrentSpaceId: vi.fn(() => "space-1"),
+      getCurrentChannelSubscribers: vi.fn(() => [
+        { uid: "owner" },
+        { uid: "removed" },
+      ]),
+      getRemovedChannelSubscriberUids: vi.fn(() => ["removed"]),
+      getSpaceMembers: vi.fn((spaceId, page) =>
+        Promise.resolve(
+          page === 1
+            ? [
+                { uid: "owner", name: "Owner" },
+                { uid: "removed", name: "Removed" },
+                { uid: "new", name: "New" },
+              ]
+            : []
+        )
+      ),
+    });
+
+    await expect(
+      loadGroupCreateCandidates({
+        channel: { channelID: "group-1", channelType: ChannelTypeGroup },
+        runtime,
+      })
+    ).resolves.toEqual([
+      { uid: "removed", name: "Removed", avatar: undefined, robot: false },
+      { uid: "new", name: "New", avatar: undefined, robot: false },
+    ]);
   });
 
   it("falls back to contacts list when space members cannot be loaded", async () => {
@@ -229,6 +265,10 @@ describe("group create runtime bridge", () => {
       ["alice", "bob"]
     );
     expect(runtime.createChannel).not.toHaveBeenCalled();
+    expect(runtime.clearRemovedChannelSubscribers).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-1" }),
+      ["alice", "bob"]
+    );
     expect(runtime.syncCurrentChannelSubscribers).toHaveBeenCalledWith(
       expect.objectContaining({ channelID: "group-1" })
     );

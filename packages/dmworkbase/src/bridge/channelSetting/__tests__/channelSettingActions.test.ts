@@ -26,9 +26,11 @@ vi.mock("../../../App", () => ({
 }));
 
 vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
+  clearCurrentImChannelSubscribersLocallyRemoved: vi.fn(),
   deleteCurrentImChannelInfo: vi.fn(),
   fetchCurrentImChannelInfo: vi.fn(),
   getCurrentImChannelSubscribers: vi.fn(() => []),
+  markCurrentImChannelSubscribersLocallyRemoved: vi.fn(),
   notifyCurrentImSubscriberChangeListeners: vi.fn(),
   setCurrentImChannelSubscribersCache: vi.fn(),
   syncCurrentImChannelSubscribers: vi.fn(),
@@ -59,6 +61,8 @@ function createRuntime(
     remarkChannel: vi.fn(() => Promise.resolve()),
     saveChannel: vi.fn(() => Promise.resolve()),
     showConversation: vi.fn(),
+    clearRemovedChannelSubscribers: vi.fn(),
+    markRemovedChannelSubscribers: vi.fn(),
     notifyCurrentChannelSubscribers: vi.fn(),
     setCurrentChannelSubscribers: vi.fn(),
     syncCurrentChannelSubscribers: vi.fn(() => Promise.resolve()),
@@ -69,6 +73,14 @@ function createRuntime(
     updateThread: vi.fn(() => Promise.resolve()),
     ...overrides,
   };
+}
+
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 describe("channel setting actions", () => {
@@ -112,6 +124,13 @@ describe("channel setting actions", () => {
 
     expect(runtime.addSubscribers).toHaveBeenCalledWith(channel, ["alice"]);
     expect(runtime.removeSubscribers).toHaveBeenCalledWith(channel, ["bob"]);
+    expect(runtime.clearRemovedChannelSubscribers).toHaveBeenCalledWith(
+      channel,
+      ["alice"]
+    );
+    expect(runtime.markRemovedChannelSubscribers).toHaveBeenCalledWith(channel, [
+      "bob",
+    ]);
     expect(runtime.syncCurrentChannelSubscribers).toHaveBeenCalledTimes(2);
     expect(runtime.syncCurrentChannelSubscribers).toHaveBeenNthCalledWith(
       1,
@@ -264,6 +283,66 @@ describe("channel setting actions", () => {
       channel
     );
     expect(runtime.fetchCurrentChannelInfo).toHaveBeenCalledWith(channel);
+  });
+
+  it("removes members from the local cache before waiting for a later sync", async () => {
+    const sync = deferred();
+    const runtime = createRuntime({
+      getCurrentChannelSubscribers: vi.fn(() => [
+        { uid: "owner" },
+        { uid: "hermes" },
+      ]),
+      syncCurrentChannelSubscribers: vi.fn(() => sync.promise),
+    });
+    const channel = new Channel("group-1", ChannelTypeGroup);
+
+    const remove = removeChannelSettingSubscribers({
+      channel,
+      uids: ["hermes"],
+      runtime,
+    });
+    await vi.waitFor(() =>
+      expect(runtime.setCurrentChannelSubscribers).toHaveBeenCalledWith(
+        channel,
+        [{ uid: "owner" }]
+      )
+    );
+
+    sync.resolve();
+    await remove;
+
+    expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenCalledWith(
+      channel
+    );
+  });
+
+  it("reapplies local removal if a successful sync still returns a stale member", async () => {
+    const runtime = createRuntime({
+      getCurrentChannelSubscribers: vi
+        .fn()
+        .mockReturnValueOnce([{ uid: "owner" }, { uid: "hermes" }])
+        .mockReturnValueOnce([{ uid: "owner" }, { uid: "hermes" }]),
+    });
+    const channel = new Channel("group-1", ChannelTypeGroup);
+
+    await removeChannelSettingSubscribers({
+      channel,
+      uids: ["hermes"],
+      runtime,
+    });
+
+    expect(runtime.setCurrentChannelSubscribers).toHaveBeenCalledTimes(2);
+    expect(runtime.setCurrentChannelSubscribers).toHaveBeenNthCalledWith(
+      1,
+      channel,
+      [{ uid: "owner" }]
+    );
+    expect(runtime.setCurrentChannelSubscribers).toHaveBeenNthCalledWith(
+      2,
+      channel,
+      [{ uid: "owner" }]
+    );
+    expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenCalledTimes(2);
   });
 
   it("updates group fields and current user's group nickname", async () => {

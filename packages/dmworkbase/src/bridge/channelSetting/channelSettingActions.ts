@@ -15,9 +15,11 @@ import {
 } from "../../Service/ChannelSettingService";
 import { EndpointID, SubscriberStatus } from "../../Service/Const";
 import {
+  clearCurrentImChannelSubscribersLocallyRemoved,
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
   getCurrentImChannelSubscribers,
+  markCurrentImChannelSubscribersLocallyRemoved,
   notifyCurrentImSubscriberChangeListeners,
   setCurrentImChannelSubscribersCache,
   syncCurrentImChannelSubscribers,
@@ -50,6 +52,8 @@ export interface ChannelSettingActionRuntime {
   remarkChannel(channel: Channel, remark: string): Promise<void>;
   saveChannel(channel: Channel, save: boolean): Promise<void>;
   showConversation(channel: Channel): void;
+  clearRemovedChannelSubscribers(channel: Channel, uids: string[]): void;
+  markRemovedChannelSubscribers(channel: Channel, uids: string[]): void;
   notifyCurrentChannelSubscribers(channel: Channel): void;
   setCurrentChannelSubscribers(
     channel: Channel,
@@ -150,6 +154,12 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     showConversation(channel) {
       WKApp.endpoints.showConversation(channel);
     },
+    clearRemovedChannelSubscribers(channel, uids) {
+      clearCurrentImChannelSubscribersLocallyRemoved(channel, uids);
+    },
+    markRemovedChannelSubscribers(channel, uids) {
+      markCurrentImChannelSubscribersLocallyRemoved(channel, uids);
+    },
     notifyCurrentChannelSubscribers(channel) {
       notifyCurrentImSubscriberChangeListeners(channel);
     },
@@ -184,6 +194,20 @@ async function refreshChannelStateAfterMemberMutation(
   uids: string[]
 ) {
   let shouldNotifySubscribers = false;
+  let notifiedLocalRemoval = false;
+
+  if (action === "removeSubscribers") {
+    const cachePatchedBeforeSync = await patchSubscriberCacheAfterMemberMutation(
+      runtime,
+      channel,
+      action,
+      uids
+    );
+    if (cachePatchedBeforeSync) {
+      runtime.notifyCurrentChannelSubscribers(channel);
+      notifiedLocalRemoval = true;
+    }
+  }
 
   try {
     await runtime.syncCurrentChannelSubscribers(channel);
@@ -203,7 +227,7 @@ async function refreshChannelStateAfterMemberMutation(
     shouldNotifySubscribers = true;
   }
 
-  if (shouldNotifySubscribers) {
+  if (shouldNotifySubscribers && (!notifiedLocalRemoval || cachePatched)) {
     runtime.notifyCurrentChannelSubscribers(channel);
   }
 
@@ -318,6 +342,7 @@ export async function addChannelSettingSubscribers(params: {
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   await runtime.addSubscribers(params.channel, params.uids);
+  runtime.clearRemovedChannelSubscribers(params.channel, params.uids);
   await refreshChannelStateAfterMemberMutation(
     runtime,
     params.channel,
@@ -350,6 +375,7 @@ export async function removeChannelSettingSubscribers(params: {
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   await runtime.removeSubscribers(params.channel, params.uids);
+  runtime.markRemovedChannelSubscribers(params.channel, params.uids);
   await refreshChannelStateAfterMemberMutation(
     runtime,
     params.channel,

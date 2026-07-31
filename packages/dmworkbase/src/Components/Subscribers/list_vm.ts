@@ -1,6 +1,7 @@
 import { Channel, Subscriber } from "wukongimjssdk";
 import WKApp from "../../App";
 import { ProviderListener } from "../../Service/Provider";
+import { getCurrentImChannelLocallyRemovedSubscriberUids } from "../../im-runtime/currentChannelRuntime";
 
 export class SubscriberListVM extends ProviderListener {
   channel: Channel;
@@ -56,6 +57,7 @@ export class SubscriberListVM extends ProviderListener {
         this.requestSubscribers(requestVersion);
         return;
       }
+      localResults = this.filterLocallyRemovedSubscribers(localResults);
       this.subscribers = this.filter
         ? localResults.filter(this.filter)
         : localResults;
@@ -85,9 +87,12 @@ export class SubscriberListVM extends ProviderListener {
     if (!this._isMounted || requestVersion !== this._requestVersion) return;
     this.hasMore = subscribers && subscribers.length >= this.limit;
     if (subscribers) {
+      const visibleSubscribers = this.filterLocallyRemovedSubscribers(
+        subscribers
+      );
       const filtered = this.filter
-        ? subscribers.filter(this.filter)
-        : subscribers;
+        ? visibleSubscribers.filter(this.filter)
+        : visibleSubscribers;
       if (this.currPage === 1) {
         this.subscribers = this.mergeSubscribers(initialSubscribers, filtered);
       } else {
@@ -105,6 +110,17 @@ export class SubscriberListVM extends ProviderListener {
       await this.requestSubscribers(requestVersion);
     }
   };
+
+  private filterLocallyRemovedSubscribers(subscribers: Subscriber[]) {
+    const removedUids = new Set(
+      getCurrentImChannelLocallyRemovedSubscriberUids(this.channel)
+    );
+    if (removedUids.size === 0) return subscribers;
+    const filtered = subscribers.filter(
+      (subscriber) => !removedUids.has(subscriber?.uid || "")
+    );
+    return filtered.length === subscribers.length ? subscribers : filtered;
+  }
 
   private mergeSubscribers(
     current: Subscriber[],
@@ -140,5 +156,19 @@ export class SubscriberListVM extends ProviderListener {
     if (this._isMounted) {
       this.loading = false;
     }
+  };
+
+  removeSubscriber = (uid: string) => {
+    this.subscribers = this.subscribers.filter(
+      (subscriber) => subscriber.uid !== uid
+    );
+    this.notifyListener();
+    this.onSubscribersLoaded?.(this.subscribers);
+  };
+
+  refreshCurrentSearch = () => {
+    this.currPage = 1;
+    this.subscribers = [];
+    this.requestSubscribers();
   };
 }

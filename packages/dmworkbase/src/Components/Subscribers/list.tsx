@@ -1,7 +1,6 @@
-import { Component, ReactNode } from "react";
+import React, { Component, ReactNode } from "react";
 import Provider from "../../Service/Provider";
 import { SubscriberListVM } from "./list_vm";
-import React from "react";
 import { IconSearchStroked } from "@douyinfe/semi-icons";
 import "./list.css";
 import WKApp from "../../App";
@@ -16,7 +15,7 @@ import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import BotDetailModal from "../BotDetailModal";
 import { Checkbox } from "@douyinfe/semi-ui/lib/es/checkbox";
-import { Tag } from "@douyinfe/semi-ui";
+import { Tag, Toast } from "@douyinfe/semi-ui";
 import { GroupRole } from "../../Service/Const";
 import { debounce, throttle } from "../../Utils/rateLimit";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
@@ -26,9 +25,11 @@ import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import { I18nContext } from "../../i18n";
 import {
   addCurrentImChannelInfoListener,
+  addCurrentImSubscriberChangeListener,
   fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
 } from "../../im-runtime/currentChannelRuntime";
+import { wkConfirm } from "../WKModal/confirm";
 
 export interface SubscriberListProps {
   channel: Channel;
@@ -41,12 +42,18 @@ export interface SubscriberListProps {
   humansOnly?: boolean;
   /** 可选的本地搜索实现；未提供时保持原有服务端搜索。 */
   localSearch?: (keyword: string) => Subscriber[];
+  header?: ReactNode;
+  removeAction?: {
+    canRemove: (subscriber: Subscriber) => boolean;
+    onRemove: (subscriber: Subscriber) => Promise<void>;
+  };
 }
 
 export interface SubscriberListState {
   selectedList: Subscriber[];
   botDetailUid: string;
   botDetailVisible: boolean;
+  removingUid?: string;
 }
 
 export class SubscriberList extends Component<
@@ -58,8 +65,10 @@ export class SubscriberList extends Component<
 
   private channelInfoListener!: ChannelInfoListener;
   private unsubscribeChannelInfoListener?: () => void;
+  private unsubscribeSubscriberChangeListener?: () => void;
   // 当前已预取过 channelInfo 的 uid 集合，避免重复发请求
   private prefetchedUids = new Set<string>();
+  private currentVM?: SubscriberListVM;
 
   constructor(props: SubscriberListProps) {
     super(props);
@@ -67,6 +76,7 @@ export class SubscriberList extends Component<
       selectedList: [],
       botDetailUid: "",
       botDetailVisible: false,
+      removingUid: undefined,
     };
   }
 
@@ -82,12 +92,21 @@ export class SubscriberList extends Component<
     this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(
       this.channelInfoListener
     );
+    this.unsubscribeSubscriberChangeListener = addCurrentImSubscriberChangeListener(
+      (channel: Channel) => {
+        if (!channel?.isEqual?.(this.props.channel)) return;
+        this.currentVM?.refreshCurrentSearch();
+      }
+    );
   }
 
   componentWillUnmount() {
     this.unsubscribeChannelInfoListener?.();
     this.unsubscribeChannelInfoListener = undefined;
+    this.unsubscribeSubscriberChangeListener?.();
+    this.unsubscribeSubscriberChangeListener = undefined;
     this.prefetchedUids.clear();
+    this.currentVM = undefined;
   }
 
   needShowOnlineStatus(uid: string): boolean {
@@ -247,6 +266,46 @@ export class SubscriberList extends Component<
     }
   }
 
+  onRemoveClick = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    subscriber: Subscriber,
+    vm: SubscriberListVM
+  ) => {
+    event.stopPropagation();
+    const { removeAction } = this.props;
+    if (!removeAction || !removeAction.canRemove(subscriber)) return;
+    const name = this.getShowName(subscriber);
+
+    wkConfirm({
+      title: this.context.t("base.subscribers.confirmRemoveTitle"),
+      content: this.context.t("base.subscribers.confirmRemoveContent", {
+        values: { name },
+      }),
+      okText: this.context.t("base.subscribers.remove"),
+      okType: "danger",
+      onOk: async () => {
+        this.setState({ removingUid: subscriber.uid });
+        try {
+          await removeAction.onRemove(subscriber);
+          vm.removeSubscriber(subscriber.uid);
+          Toast.success(this.context.t("base.subscribers.removeSuccess"));
+        } catch (error: unknown) {
+          const message =
+            error &&
+            typeof error === "object" &&
+            "msg" in error &&
+            typeof error.msg === "string"
+              ? error.msg
+              : this.context.t("base.subscribers.removeFailed");
+          Toast.error(message);
+          throw error;
+        } finally {
+          this.setState({ removingUid: undefined });
+        }
+      },
+    });
+  };
+
   // 批量预取成员 channelInfo（含在线状态），去重避免重复请求
   prefetchSubscribersChannelInfo = (subscribers: Subscriber[]) => {
     for (const item of subscribers) {
@@ -270,7 +329,7 @@ export class SubscriberList extends Component<
   };
 
   render() {
-    const { canSelect } = this.props;
+    const { canSelect, header, removeAction } = this.props;
     return (
       <>
         <Provider
@@ -286,9 +345,11 @@ export class SubscriberList extends Component<
             vm.onSubscribersLoaded = (subscribers) => {
               this.prefetchSubscribersChannelInfo(subscribers);
             };
+            this.currentVM = vm;
             return vm;
           }}
           render={(vm: SubscriberListVM) => {
+            this.currentVM = vm;
             return (
               <div
                 className="wk-subscrierlist"
@@ -296,6 +357,7 @@ export class SubscriberList extends Component<
                   this.handleScroll(e, vm);
                 }}
               >
+                {header}
                 <div className="wk-indextable-search-box">
                   <div className="wk-indextable-search-icon">
                     <IconSearchStroked className="wk-subscrierlist-search-icon" />
@@ -402,6 +464,49 @@ export class SubscriberList extends Component<
                             {this.getRoleName(item)}
                           </div>
                         </div>
+                        {removeAction && removeAction.canRemove(item) ? (
+                          <button
+                            type="button"
+                            className="wk-subscrierlist-item-remove"
+                            aria-label={this.context.t(
+                              "base.subscribers.remove"
+                            )}
+                            disabled={this.state.removingUid === item.uid}
+                            onClick={(event) =>
+                              this.onRemoveClick(event, item, vm)
+                            }
+                          >
+                            <svg
+                              aria-hidden="true"
+                              className="wk-subscrierlist-item-remove-icon"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                d="M9 9.25a3.25 3.25 0 1 0 0-6.5 3.25 3.25 0 0 0 0 6.5Z"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="1.5"
+                              />
+                              <path
+                                d="M3.5 16.5c.58-2.82 2.63-4.5 5.5-4.5 1.02 0 1.94.22 2.71.64"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="1.5"
+                              />
+                              <path
+                                d="M13.5 15.25h4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeLinecap="round"
+                                strokeWidth="1.5"
+                              />
+                            </svg>
+                          </button>
+                        ) : undefined}
                       </div>
                     );
                   })}

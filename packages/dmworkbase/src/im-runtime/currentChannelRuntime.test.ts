@@ -5,10 +5,13 @@ import {
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
+  getCurrentImChannelLocallyRemovedSubscriberUids,
   getCurrentImChannelSubscriberOfMe,
   getCurrentImChannelSubscribers,
+  clearCurrentImChannelSubscribersLocallyRemoved,
   notifyCurrentImChannelInfoListeners,
   notifyCurrentImSubscriberChangeListeners,
+  markCurrentImChannelSubscribersLocallyRemoved,
   setCurrentImChannelInfoCache,
   setCurrentImChannelSubscribersCache,
   syncCurrentImChannelSubscribers,
@@ -167,6 +170,27 @@ describe("currentChannelRuntime", () => {
     expect(hoisted.sdk.channelManager.subscribeCacheMap.get("2@g1")).toBe(
       subscribers
     );
+  });
+
+  it("filters locally removed subscribers in the current SDK runtime", () => {
+    const channel = {
+      channelID: "g-current-local-remove",
+      channelType: 2,
+      getChannelKey: () => "2@g-current-local-remove",
+    };
+    const subscribers = [{ uid: "owner" }, { uid: "removed" }];
+
+    markCurrentImChannelSubscribersLocallyRemoved(channel, ["removed"]);
+    hoisted.sdk.channelManager.getSubscribes.mockReturnValueOnce(subscribers);
+
+    expect(getCurrentImChannelSubscribers(channel)).toEqual([{ uid: "owner" }]);
+    expect(getCurrentImChannelLocallyRemovedSubscriberUids(channel)).toEqual([
+      "removed",
+    ]);
+
+    clearCurrentImChannelSubscribersLocallyRemoved(channel, ["removed"]);
+    hoisted.sdk.channelManager.getSubscribes.mockReturnValueOnce(subscribers);
+    expect(getCurrentImChannelSubscribers(channel)).toBe(subscribers);
   });
 
   it("syncs subscribers through the current SDK runtime", async () => {

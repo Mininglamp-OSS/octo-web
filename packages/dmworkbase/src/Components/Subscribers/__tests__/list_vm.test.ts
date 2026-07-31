@@ -1,8 +1,9 @@
 import { Channel, Subscriber } from "wukongimjssdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { subscribersRequest } = vi.hoisted(() => ({
+const { subscribersRequest, removedUids } = vi.hoisted(() => ({
   subscribersRequest: vi.fn(),
+  removedUids: [] as string[],
 }));
 
 vi.mock("../../../App", () => ({
@@ -13,6 +14,10 @@ vi.mock("../../../App", () => ({
       },
     },
   },
+}));
+
+vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
+  getCurrentImChannelLocallyRemovedSubscriberUids: vi.fn(() => removedUids),
 }));
 
 import { SubscriberListVM } from "../list_vm";
@@ -31,6 +36,7 @@ describe("SubscriberListVM local search", () => {
 
   beforeEach(() => {
     subscribersRequest.mockReset();
+    removedUids.length = 0;
   });
 
   it("shows local results immediately and preserves server keyword search", async () => {
@@ -65,6 +71,25 @@ describe("SubscriberListVM local search", () => {
     vm.search("weijiao");
 
     expect(vm.subscribers).toEqual(localResult);
+  });
+
+  it("filters locally removed members from local search results", () => {
+    removedUids.push("removed");
+    const localSearch = vi.fn(
+      () =>
+        [
+          { uid: "removed", name: "Removed" },
+          { uid: "kept", name: "Kept" },
+        ] as Subscriber[]
+    );
+    const vm = new SubscriberListVM(channel, undefined, localSearch);
+    (vm as any)._isMounted = true;
+
+    vm.search("member");
+
+    expect(vm.subscribers.map((subscriber) => subscriber.uid)).toEqual([
+      "kept",
+    ]);
   });
 
   it("falls back to the existing server request for an empty keyword", async () => {
@@ -111,6 +136,23 @@ describe("SubscriberListVM local search", () => {
       limit: vm.limit,
       keyword: "weijiao",
     });
+  });
+
+  it("filters locally removed members from server results", async () => {
+    removedUids.push("removed");
+    subscribersRequest.mockResolvedValue([
+      { uid: "removed", name: "Removed" },
+      { uid: "kept", name: "Kept" },
+    ] as Subscriber[]);
+    const vm = new SubscriberListVM(channel);
+    (vm as any)._isMounted = true;
+
+    vm.search("");
+    await vi.waitFor(() =>
+      expect(vm.subscribers.map((subscriber) => subscriber.uid)).toEqual([
+        "kept",
+      ])
+    );
   });
 
   it("deduplicates matching members returned by local and server search", async () => {
@@ -206,5 +248,39 @@ describe("SubscriberListVM local search", () => {
       limit: vm.limit,
       keyword: "weijiao",
     });
+  });
+
+  it("removes a subscriber from the rendered VM list after a successful mutation", () => {
+    const vm = new SubscriberListVM(channel);
+    const listener = vi.fn();
+    vm.subscribers = [
+      { uid: "alice", name: "Alice" },
+      { uid: "bob", name: "Bob" },
+    ] as Subscriber[];
+    vm.addListener(listener);
+
+    vm.removeSubscriber("alice");
+
+    expect(vm.subscribers).toEqual([{ uid: "bob", name: "Bob" }]);
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it("refreshes the current keyword from page one when subscribers change", async () => {
+    subscribersRequest.mockResolvedValue(localResult);
+    const vm = new SubscriberListVM(channel);
+    (vm as any)._isMounted = true;
+    vm.keyword = "wei";
+    vm.currPage = 3;
+    vm.subscribers = [{ uid: "stale", name: "Stale" }] as Subscriber[];
+
+    vm.refreshCurrentSearch();
+
+    await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledOnce());
+    expect(subscribersRequest).toHaveBeenCalledWith(channel, {
+      page: 1,
+      limit: vm.limit,
+      keyword: "wei",
+    });
+    expect(vm.subscribers).toEqual(localResult);
   });
 });

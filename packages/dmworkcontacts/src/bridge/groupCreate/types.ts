@@ -69,6 +69,8 @@ export interface GroupCreateRuntime {
     channel: Channel,
     options?: { fromSidebarList?: boolean }
   ): void;
+  clearRemovedChannelSubscribers(channel: Channel, uids: string[]): void;
+  getRemovedChannelSubscriberUids(channel: Channel): string[];
   notifyCurrentChannelSubscribers(channel: Channel): void;
   setCurrentChannelSubscribers(
     channel: Channel,

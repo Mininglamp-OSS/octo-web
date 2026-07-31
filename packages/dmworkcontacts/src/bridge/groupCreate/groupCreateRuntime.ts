@@ -1,8 +1,10 @@
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 
 import {
+  clearCurrentImChannelSubscribersLocallyRemoved,
   fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
+  getCurrentImChannelLocallyRemovedSubscriberUids,
   getCurrentImChannelSubscribers,
   notifyCurrentImSubscriberChangeListeners,
   setCurrentImChannelSubscribersCache,
@@ -73,6 +75,12 @@ function createDefaultGroupCreateRuntime(): GroupCreateRuntime {
     },
     showConversation(channel, options) {
       WKApp.endpoints.showConversation(channel, options);
+    },
+    clearRemovedChannelSubscribers(channel, uids) {
+      clearCurrentImChannelSubscribersLocallyRemoved(channel, uids);
+    },
+    getRemovedChannelSubscriberUids(channel) {
+      return getCurrentImChannelLocallyRemovedSubscriberUids(channel);
     },
     notifyCurrentChannelSubscribers(channel) {
       notifyCurrentImSubscriberChangeListeners(channel);
@@ -162,9 +170,16 @@ async function loadExcludedSubscriberUids(
       : await runtime
           .syncCurrentChannelSubscribers(channel)
           .then(() => runtime.getCurrentChannelSubscribers(channel));
+  const locallyRemovedUids = new Set(
+    runtime.getRemovedChannelSubscriberUids(channel)
+  );
 
   return Array.from(
-    new Set((subscribers || []).map((subscriber) => subscriber.uid))
+    new Set(
+      (subscribers || [])
+        .map((subscriber) => subscriber.uid)
+        .filter((uid) => !locallyRemovedUids.has(uid))
+    )
   );
 }
 
@@ -364,6 +379,7 @@ export async function submitGroupCreateAction(params: {
   }
 
   await runtime.addSubscribers(channel, params.selectedUids);
+  runtime.clearRemovedChannelSubscribers(channel, params.selectedUids);
   await refreshGroupMemberStateAfterMutation(
     runtime,
     channel,

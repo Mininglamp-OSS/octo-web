@@ -13,7 +13,10 @@ import {
   buildChannelPreferenceSection,
   buildMyGroupNicknameSection,
 } from "../channelSettingSections";
-import { buildChannelMembersSection } from "../channelSettingMemberSection";
+import {
+  buildChannelMembersSection,
+  canRemoveChannelSettingSubscriber,
+} from "../channelSettingMemberSection";
 import {
   buildThreadActionsSection,
   buildThreadInfoSection,
@@ -53,6 +56,7 @@ vi.mock("../../../App", () => ({
     },
     endpoints: {
       showConversation: vi.fn(),
+      organizationalTool: vi.fn((channel, render) => render),
     },
   },
 }));
@@ -69,11 +73,14 @@ vi.mock("../../../Service/threadPermission", () => ({
 }));
 
 vi.mock("../../../bridge/channelSetting/channelSettingActions", () => ({
+  addChannelSettingSubscribers: vi.fn(),
   clearChannelSettingMessages: vi.fn(),
+  createGroupFromChannelSettingPrivateChat: vi.fn(),
   exitChannelSettingGroup: vi.fn(),
   leaveChannelSettingThread: vi.fn(),
   muteChannelSetting: vi.fn(),
   remarkChannelSetting: vi.fn(),
+  removeChannelSettingSubscribers: vi.fn(() => Promise.resolve()),
   saveChannelSetting: vi.fn(),
   topChannelSetting: vi.fn(),
   transferChannelSettingOwner: vi.fn(),
@@ -147,6 +154,85 @@ describe("channel setting section builders", () => {
     expect(normal?.rows).toHaveLength(1);
     expect(thread).toBeUndefined();
     expect(disbanded).toBeUndefined();
+  });
+
+  it("opens v2-style member management instead of the old multi-select finish flow", () => {
+    const context = createContext({
+      channelInfo: {
+        orgData: {
+          member_count: 3,
+        },
+      },
+      subscriberOfMe: {
+        uid: "alice",
+        role: 1,
+      },
+      subscribers: [
+        { uid: "alice", role: 1 },
+        { uid: "bob", role: 0 },
+        { uid: "carol", role: 0 },
+      ],
+    });
+    const section = buildChannelMembersSection(context);
+
+    section?.rows?.[0].properties.onRemove();
+
+    expect(context.push).toHaveBeenCalledTimes(1);
+    const [view, config] = context.push.mock.calls[0];
+    expect(view.props.canSelect).toBeUndefined();
+    expect(view.props.header).toBeUndefined();
+    expect(view.props.removeAction).toBeTruthy();
+    expect(config.title).toBeTruthy();
+    expect(config.showFinishButton).toBeUndefined();
+  });
+
+  it("keeps member removal permissions scoped to the current manager role", () => {
+    const owner = { uid: "owner", role: 1 } as any;
+    const manager = { uid: "manager", role: 2 } as any;
+    const normal = { uid: "normal", role: 0 } as any;
+
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "owner",
+        viewerRole: 1,
+        subscriber: normal,
+      })
+    ).toBe(true);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "owner",
+        viewerRole: 1,
+        subscriber: manager,
+      })
+    ).toBe(true);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "owner",
+        viewerRole: 1,
+        subscriber: owner,
+      })
+    ).toBe(false);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "manager",
+        viewerRole: 2,
+        subscriber: normal,
+      })
+    ).toBe(true);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "manager",
+        viewerRole: 2,
+        subscriber: owner,
+      })
+    ).toBe(false);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "manager",
+        viewerRole: 2,
+        subscriber: manager,
+      })
+    ).toBe(false);
   });
 
   it("hides preference rows for thread channels", () => {
