@@ -56,6 +56,9 @@ interface RunCtl {
   fileId?: number;
   /** User asked to cancel; the run bails at the next checkpoint. */
   cancelled: boolean;
+  /** Guards `refreshOnce`: a single run refreshes the file list at most once,
+   *  even when confirm-success and a cancel-409 both fire for the same run. */
+  refreshed: boolean;
 }
 
 /**
@@ -100,21 +103,37 @@ export function useUpload(onUploaded: () => void): UseUpload {
     setItems((list) => list.map((it) => (it.id === id ? { ...it, ...next } : it)));
   }, []);
 
+  // Refresh the file list at most once per run. confirm-success and a
+  // cancel-409 can both signal "the file is really confirmed" for the same run,
+  // in either order; without this guard they would each fire onUploaded and
+  // refresh twice. Per-run (not global) so independent uploads still each
+  // refresh exactly once.
+  const refreshOnce = useCallback((ctl: RunCtl) => {
+    if (ctl.refreshed) return;
+    ctl.refreshed = true;
+    onUploadedRef.current();
+  }, []);
+
   // Best-effort cancel of a known pending file_id. Idempotent on the backend
   // (204 even if already gone). A 409 means confirm-upload won the race, so the
-  // file is genuinely confirmed — refresh the list to reflect it rather than
+  // file is genuinely confirmed — refresh (once) to reflect it rather than
   // leaving a phantom-removed row. Every other failure is swallowed: the
   // backend confirmed-only filter keeps any orphan pending invisible, so we
-  // never alarm the user with a misleading "cancel failed".
-  const bestEffortCancel = useCallback(async (fileId: number) => {
-    try {
-      await api.cancelUpload(fileId);
-    } catch (err) {
-      if (err instanceof DriveApiError && err.status === 409) {
-        onUploadedRef.current();
+  // never alarm the user with a misleading "cancel failed". No-op if we don't
+  // yet have a file_id (prepare still in flight).
+  const bestEffortCancel = useCallback(
+    async (ctl: RunCtl) => {
+      if (ctl.fileId === undefined) return;
+      try {
+        await api.cancelUpload(ctl.fileId);
+      } catch (err) {
+        if (err instanceof DriveApiError && err.status === 409) {
+          refreshOnce(ctl);
+        }
       }
-    }
-  }, []);
+    },
+    [refreshOnce],
+  );
 
   const dismiss = useCallback(
     (id: string) => {
@@ -133,7 +152,7 @@ export function useUpload(onUploaded: () => void): UseUpload {
         // handled as "confirm won"). While prepare is still in flight there is
         // no id yet — the run itself cancels once prepare returns.
         if (ctl.fileId !== undefined) {
-          void bestEffortCancel(ctl.fileId);
+          void bestEffortCancel(ctl);
         }
       }
       jobs.current.delete(id);
@@ -183,7 +202,7 @@ export function useUpload(onUploaded: () => void): UseUpload {
       if (!job) return;
       const { file, spaceId, parentId } = job;
       // Fresh control record per run (retry re-prepares, so it gets a new one).
-      const ctl: RunCtl = { controller: new AbortController(), phase: 'preparing', cancelled: false };
+      const ctl: RunCtl = { controller: new AbortController(), phase: 'preparing', cancelled: false, refreshed: false };
       runs.current.set(id, ctl);
       try {
         patch(id, { status: 'preparing', progress: 0, error: undefined });
@@ -198,7 +217,7 @@ export function useUpload(onUploaded: () => void): UseUpload {
         // Cancel arrived while preparing: we now have a file_id, so best-effort
         // clean up the pending record and never start the PUT.
         if (ctl.cancelled) {
-          void bestEffortCancel(prep.file_id);
+          void bestEffortCancel(ctl);
           return;
         }
 
@@ -213,7 +232,7 @@ export function useUpload(onUploaded: () => void): UseUpload {
         // Guards the narrow window where cancel lands just as the PUT resolves
         // (an abort mid-PUT throws instead and is handled in catch).
         if (ctl.cancelled) {
-          void bestEffortCancel(prep.file_id);
+          void bestEffortCancel(ctl);
           return;
         }
 
@@ -222,15 +241,16 @@ export function useUpload(onUploaded: () => void): UseUpload {
         await api.confirmUpload(prep.file_id, { actual_size: file.size });
         // Cancel raced confirm and confirm won: the file is really uploaded.
         // Surface the confirmed result (the row was already removed by dismiss)
-        // instead of claiming a cancellation.
+        // instead of claiming a cancellation. refreshOnce dedupes against the
+        // cancel-409 path, which signals the same "confirm won" outcome.
         if (ctl.cancelled) {
-          onUploadedRef.current();
+          refreshOnce(ctl);
           return;
         }
 
         ctl.phase = 'settled';
         patch(id, { status: 'done', progress: 100 });
-        onUploadedRef.current();
+        refreshOnce(ctl);
         scheduleAutoDismiss(id);
       } catch (err: unknown) {
         // Cancel/unmount teardown: the PUT abort (or a confirm that failed
@@ -245,7 +265,7 @@ export function useUpload(onUploaded: () => void): UseUpload {
         runs.current.delete(id);
       }
     },
-    [patch, scheduleAutoDismiss, bestEffortCancel],
+    [patch, scheduleAutoDismiss, bestEffortCancel, refreshOnce],
   );
 
   const addFiles = useCallback(

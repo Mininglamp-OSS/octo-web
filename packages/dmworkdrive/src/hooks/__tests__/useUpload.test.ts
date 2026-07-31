@@ -299,14 +299,17 @@ describe('useUpload', () => {
     await waitFor(() => expect(api.cancelUpload).toHaveBeenCalledWith(42));
   });
 
-  it('cancelling while confirming: a 409 (confirm won) refreshes to the confirmed file', async () => {
+  it('confirm-wins race refreshes exactly once — confirm completes, then cancel 409', async () => {
     let resolveConfirm: (b: unknown) => void = () => {};
+    let rejectCancel: (e: unknown) => void = () => {};
     vi.mocked(api.prepareUpload).mockResolvedValue(prepResp());
     vi.mocked(api.putToPresignedUrl).mockResolvedValue(undefined);
     vi.mocked(api.confirmUpload).mockImplementation(
       () => new Promise((res) => { resolveConfirm = res; }) as never,
     );
-    vi.mocked(api.cancelUpload).mockRejectedValue(new DriveApiError('conflict', 'conflict', 409));
+    vi.mocked(api.cancelUpload).mockImplementation(
+      () => new Promise((_res, rej) => { rejectCancel = rej; }),
+    );
     const onUploaded = vi.fn();
 
     const { result } = renderHook(() => useUpload(onUploaded));
@@ -318,18 +321,66 @@ describe('useUpload', () => {
       result.current.dismiss(id);
       await Promise.resolve();
     });
-
-    // Row removed immediately; cancel raced confirm on the known file_id.
     await waitFor(() => expect(result.current.items).toHaveLength(0));
     expect(api.cancelUpload).toHaveBeenCalledWith(42);
 
-    // Confirm then wins → the file is really confirmed; the list refreshes to
-    // reflect it (never re-adding a phantom row or claiming a cancellation).
+    // Confirm resolves FIRST → runItem's cancelled branch refreshes.
     await act(async () => {
       resolveConfirm({});
       await Promise.resolve();
+      await Promise.resolve();
     });
-    await waitFor(() => expect(onUploaded).toHaveBeenCalled());
+    // Then the cancel 409 lands — its refresh must be deduped by the run.
+    await act(async () => {
+      rejectCancel(new DriveApiError('conflict', 'conflict', 409));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onUploaded).toHaveBeenCalledTimes(1);
+    expect(result.current.items).toHaveLength(0);
+    expect(Toast.error).not.toHaveBeenCalled();
+  });
+
+  it('confirm-wins race refreshes exactly once — cancel 409 first, then confirm completes', async () => {
+    let resolveConfirm: (b: unknown) => void = () => {};
+    let rejectCancel: (e: unknown) => void = () => {};
+    vi.mocked(api.prepareUpload).mockResolvedValue(prepResp());
+    vi.mocked(api.putToPresignedUrl).mockResolvedValue(undefined);
+    vi.mocked(api.confirmUpload).mockImplementation(
+      () => new Promise((res) => { resolveConfirm = res; }) as never,
+    );
+    vi.mocked(api.cancelUpload).mockImplementation(
+      () => new Promise((_res, rej) => { rejectCancel = rej; }),
+    );
+    const onUploaded = vi.fn();
+
+    const { result } = renderHook(() => useUpload(onUploaded));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('confirming'));
+
+    const { id } = result.current.items[0];
+    await act(async () => {
+      result.current.dismiss(id);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(0));
+    expect(api.cancelUpload).toHaveBeenCalledWith(42);
+
+    // Cancel 409 lands FIRST → bestEffortCancel refreshes.
+    await act(async () => {
+      rejectCancel(new DriveApiError('conflict', 'conflict', 409));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // Then confirm resolves — runItem's cancelled branch must not refresh again.
+    await act(async () => {
+      resolveConfirm({});
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onUploaded).toHaveBeenCalledTimes(1);
     expect(result.current.items).toHaveLength(0);
     expect(Toast.error).not.toHaveBeenCalled();
   });
