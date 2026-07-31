@@ -22,7 +22,7 @@ import { getDoc, getUserName } from '../pages/docsApi.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
 import { avatarUrlForUid } from './htmlAvatar.ts'
-import { canComment, canEdit, canManage, isRole, type Role } from '../auth/roles.ts'
+import { canEdit, canManage, isRole, type Role } from '../auth/roles.ts'
 import { useAccessRequests } from '../access-request/useAccessRequests.ts'
 import { buildDocLink } from '../forward/link.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
@@ -108,8 +108,6 @@ export interface HtmlDocViewProps {
   docId: string
   /** Owning space — carried for parity with SheetView and for the 2b comment scope. */
   space: string
-  /** Caller role. Reserved for future comment gating; the 2b panel currently reads for anyone with octo-doc access. */
-  role?: string
   /**
    * octo-doc slug, when it differs from docId. Defaults to docId. octo-doc addresses a
    * published doc by `/d/{slug}/v/{version}`.
@@ -204,6 +202,7 @@ export function HtmlDocView({
   const [pendingAnchor, setPendingAnchor] = useState<Anchor | null>(null)
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const selectionDocRef = useRef<Document | null>(null)
+  const mayCommentRef = useRef(false)
   const [frameReadyTick, setFrameReadyTick] = useState(0)
   // Header UI state.
   const [membersOpen, setMembersOpen] = useState(false)
@@ -310,7 +309,8 @@ export function HtmlDocView({
   const creatorUid = ownerId
   // Centralised capability derivation from the backend-resolved role (fail closed while null).
   // These are the single seam every write affordance gates on — never viewer-uid vs __ODOC__.
-  const mayComment = resolvedRole != null && canComment(resolvedRole)
+  const mayComment = resolvedRole != null && resolvedRole !== 'reader'
+  mayCommentRef.current = mayComment && mode === 'page'
   const mayEdit = resolvedRole != null && canEdit(resolvedRole)
   const mayManage = resolvedRole != null && canManage(resolvedRole)
   const canManageBackend = mayManage
@@ -429,7 +429,7 @@ export function HtmlDocView({
 
   const onFrameSelectionChange = useCallback(() => {
     // Only a commenter+ may lift a selection anchor; a reader's selection is never actionable.
-    if (!mayComment) return
+    if (!mayCommentRef.current) return
     const doc = frameRef.current?.contentDocument
     const body = doc?.body
     const sel = doc?.getSelection?.() ?? doc?.defaultView?.getSelection?.() ?? null
@@ -437,12 +437,25 @@ export function HtmlDocView({
     if (!body.contains(sel.getRangeAt(0).commonAncestorContainer)) return
     const anchor = buildAnchorFromSelection(sel)
     if (anchor) setPendingAnchor(anchor)
-  }, [mayComment])
+  }, [])
 
   const cleanupFrameSelectionWatcher = useCallback(() => {
     selectionDocRef.current?.removeEventListener('selectionchange', onFrameSelectionChange)
     selectionDocRef.current = null
   }, [onFrameSelectionChange])
+
+  const syncFrameSelectionWatcher = useCallback(() => {
+    cleanupFrameSelectionWatcher()
+    if (!mayCommentRef.current) return
+    const doc = frameRef.current?.contentDocument
+    if (!doc) return
+    try {
+      doc.addEventListener('selectionchange', onFrameSelectionChange)
+      selectionDocRef.current = doc
+    } catch (err) {
+      console.warn('[HtmlDocView] unable to initialize iframe document hooks', err)
+    }
+  }, [cleanupFrameSelectionWatcher, onFrameSelectionChange])
 
   const handleFrameLoad = useCallback(
     (doc: Document | null, frame: HTMLIFrameElement) => {
@@ -451,8 +464,10 @@ export function HtmlDocView({
       cleanupFrameSelectionWatcher()
       try {
         if (!doc) throw new Error('missing iframe document')
-        doc.addEventListener('selectionchange', onFrameSelectionChange)
-        selectionDocRef.current = doc
+        if (mayCommentRef.current) {
+          doc.addEventListener('selectionchange', onFrameSelectionChange)
+          selectionDocRef.current = doc
+        }
       } catch (err) {
         console.warn('[HtmlDocView] unable to initialize iframe document hooks', err)
       }
@@ -477,15 +492,15 @@ export function HtmlDocView({
     }
   }, [cleanupFrameSelectionWatcher, state.status])
 
-  // A runtime downgrade to reader (mayComment=false) or a switch to code mode must drop any
-  // pending selection anchor and stop watching selections — code mode has no submittable anchor
-  // and a reader must never carry one into a (now hidden) composer.
+  // Keep the watcher reconciled with runtime permission/mode changes. This handles both removal
+  // and re-attachment without requiring another iframe load, while the sync's remove-first rule
+  // guarantees at most one listener on the current document.
   useEffect(() => {
     if (!mayComment || mode === 'code') {
       setPendingAnchor(null)
-      cleanupFrameSelectionWatcher()
     }
-  }, [mayComment, mode, cleanupFrameSelectionWatcher])
+    syncFrameSelectionWatcher()
+  }, [mayComment, mode, syncFrameSelectionWatcher])
 
   useEffect(() => {
     return () => {
@@ -734,7 +749,6 @@ export function HtmlDocView({
             <HtmlDocCommentPanel
               docId={docId}
               space={space}
-              role={resolvedRole}
               mayComment={mayComment}
               mayEdit={mayEdit}
               slug={effectiveSlug}

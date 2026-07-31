@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { canComment, canEdit, canManage, canSnapshot, canRestoreVersion, isRole, type Role } from './roles.ts'
 
-// Four-role capability matrix (reader < commenter < writer < admin). The redesign made
-// commenting commenter+ (a reader is strictly read-only) while edit/manage stay writer/admin.
+// Shared capabilities keep baseline comments open to every valid role; HTML applies
+// its stricter reader/commenter boundary locally. Edit/manage remain writer/admin.
 describe('four-role capability matrix', () => {
   const ALL: Role[] = ['reader', 'commenter', 'writer', 'admin']
 
@@ -16,8 +16,8 @@ describe('four-role capability matrix', () => {
     expect(isRole(3)).toBe(false)
   })
 
-  it('canComment = commenter | writer | admin (reader is read-only)', () => {
-    expect(canComment('reader')).toBe(false)
+  it('keeps the shared comments baseline open to every valid role', () => {
+    expect(canComment('reader')).toBe(true)
     expect(canComment('commenter')).toBe(true)
     expect(canComment('writer')).toBe(true)
     expect(canComment('admin')).toBe(true)

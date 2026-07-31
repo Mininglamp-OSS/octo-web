@@ -440,6 +440,70 @@ describe('HtmlDocView — read-only rendering', () => {
     expect(screen.getByTestId('pending-anchor').textContent).toContain('#a1')
   })
 
+  it('binds selection before async role resolution and uses the latest permission without reloading the iframe', async () => {
+    let resolveDoc!: (value: { data: unknown; status: number }) => void
+    const docResult = new Promise<{ data: unknown; status: number }>((resolve) => { resolveDoc = resolve })
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1' ? docResult : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => url.includes('/comments') ? jsonResponse({ data: [] }) : htmlResponse('<p data-odoc-aid="late">late role</p>'))
+
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="late">late role</p>')
+
+    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('p')!.firstChild!)
+    expect(screen.queryByTestId('pending-anchor')).toBeNull()
+
+    resolveDoc({ data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 })
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('p')!.firstChild!)
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#late'))
+    expect(container.querySelector('iframe.octo-html-doc-frame')).toBe(frame)
+  })
+
+  it('reconciles one selection listener across permission and mode transitions', async () => {
+    let currentRole: 'commenter' | 'reader' = 'commenter'
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: currentRole }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => url.includes('/comments') ? jsonResponse({ data: [] }) : htmlResponse('<p data-odoc-aid="a1">one</p>'))
+
+    const { container, rerender } = render(<HtmlDocView docId="d1" space="sp1" />)
+    const frame = await waitForFrame(container)
+    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a1">one</p><p data-odoc-aid="a2">two</p>')
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    const addSpy = vi.spyOn(frameDoc, 'addEventListener')
+    const removeSpy = vi.spyOn(frameDoc, 'removeEventListener')
+
+    currentRole = 'reader'
+    rerender(<HtmlDocView docId="d1" space="sp2" />)
+    await waitFor(() => expect(screen.queryByPlaceholderText('docs.comment.placeholder')).toBeNull())
+    expect(removeSpy.mock.calls.filter(([type]) => type === 'selectionchange')).toHaveLength(1)
+    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('[data-odoc-aid="a1"]')!.firstChild!)
+    expect(screen.queryByTestId('pending-anchor')).toBeNull()
+
+    currentRole = 'commenter'
+    rerender(<HtmlDocView docId="d1" space="sp3" />)
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    expect(container.querySelector('iframe.octo-html-doc-frame')).toBe(frame)
+    expect(addSpy.mock.calls.filter(([type]) => type === 'selectionchange')).toHaveLength(1)
+    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('[data-odoc-aid="a2"]')!.firstChild!)
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a2'))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'docs.mode.code' }))
+    expect(screen.queryByTestId('pending-anchor')).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: 'docs.mode.page' }))
+    const nextFrame = await waitForFrame(container)
+    const nextDoc = writeIframeBody(nextFrame, '<p data-odoc-aid="a3">three</p>')
+    selectNodeTextInDocument(nextDoc, nextDoc.querySelector('p')!.firstChild!)
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a3'))
+  })
+
   it('clears the locked anchor only through the explicit target cancel action', async () => {
     const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
     wk.apiClient.responder = (method, url) =>

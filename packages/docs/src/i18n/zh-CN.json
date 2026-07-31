@@ -510,15 +510,6 @@
     "writer": "可编辑",
     "admin": "管理员"
   },
-  "ai": {
-    "undo": "撤销本次修改",
-    "undoConfirm": "确定撤销本次 AI 修改？将发布一个恢复到修改前内容的新版本。",
-    "undoConflict": "已有后续修改，不能直接撤销；请查看版本差异。",
-    "undoSuccess": "已在新版本中撤销本次 AI 修改。"
-  },
-  "permission": {
-    "changed": "你对该文档的权限已变化，视图已刷新。"
-  },
   "share": {
     "title": "链接分享范围",
     "restricted": "仅协作者",

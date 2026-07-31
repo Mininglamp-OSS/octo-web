@@ -9,9 +9,8 @@
 // TRIGGER MODE C (explicit): posting a comment does NOT invoke the AI. Only a deliberate
 // "让 AI 处理" click forwards an instruction to chat (openDocForward). The two are decoupled.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { canForwardToChat, openDocForward, t } from '../octoweb/index.ts'
-import type { Role } from '../auth/roles.ts'
 import { avatarUrlForUid } from './htmlAvatar.ts'
 import {
   createComment,
@@ -27,8 +26,6 @@ import { buildAgentInstruction, truncateAnchorText, type AgentInstructionDoc } f
 export interface HtmlDocCommentPanelProps {
   docId: string
   space: string
-  /** Backend-resolved role (may be null while resolving). Kept for context / future gating. */
-  role?: Role | null
   /** commenter+ may compose root comments, 划词评论 and replies. reader is strictly read-only:
    *  the list still renders, but textarea / send / reply / selection-target controls are hidden. */
   mayComment?: boolean
@@ -134,18 +131,24 @@ export function HtmlDocCommentPanel({
   const [replyingToId, setReplyingToId] = useState<string | null>(null)
   const [replyDraft, setReplyDraft] = useState('')
   const [replyBusy, setReplyBusy] = useState(false)
+  const reloadSeq = useRef(0)
 
   const reload = useCallback(async () => {
+    const seq = ++reloadSeq.current
     try {
-      setThreads(await listComments(slug, listVersion))
+      const next = await listComments(slug, listVersion)
+      if (seq !== reloadSeq.current) return
+      setThreads(next)
       setError(null)
     } catch {
+      if (seq !== reloadSeq.current) return
       setError(t('docs.state.error'))
     }
   }, [slug, listVersion])
 
   useEffect(() => {
     void reload()
+    return () => { reloadSeq.current += 1 }
   }, [reload])
 
   // A concrete positive integer version is required for every mutation (PR #1096 contract:

@@ -41,13 +41,9 @@ export function canRestoreVersion(role: Role): boolean {
 }
 
 /**
- * Commenting / replying requires commenter+ (four-role redesign). reader is read-only:
- * it may view the page, comments, history, source and diff, but never composes, replies or
- * reacts. Resolve/reopen is writer+ (canEdit); editing a body is author-only and hard-deleting
- * another's comment is admin-only (canManage) — those reuse the helpers above. Shared by rich
- * docs / sheets / boards, so a runtime writer→commenter downgrade closes editing while keeping
- * commenting, and writer→reader closes both.
+ * Shared document commenting remains open to anyone with access (the baseline “can see → can
+ * comment” contract). HTML applies its stricter reader/commenter boundary locally.
  */
 export function canComment(role: Role): boolean {
-  return role === 'commenter' || role === 'writer' || role === 'admin'
+  return isRole(role)
 }

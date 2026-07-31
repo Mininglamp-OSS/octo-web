@@ -30,6 +30,22 @@ afterEach(() => {
 })
 
 describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
+  it('ignores an older comment response after the viewed version changes', async () => {
+    let resolveOld!: (value: Response) => void
+    let resolveNew!: (value: Response) => void
+    const oldResponse = new Promise<Response>((resolve) => { resolveOld = resolve })
+    const newResponse = new Promise<Response>((resolve) => { resolveNew = resolve })
+    stubFetch((url) => String(url).includes('version=v1') ? oldResponse : newResponse)
+    const { rerender } = render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" />)
+    rerender(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v2" />)
+    resolveNew(jsonResponse({ data: [{ id: 'new', text: 'new version', replies: [] }] }))
+    await waitFor(() => expect(screen.getByText('new version')).toBeTruthy())
+    resolveOld(jsonResponse({ data: [{ id: 'old', text: 'stale version', replies: [] }] }))
+    await Promise.resolve()
+    expect(screen.queryByText('stale version')).toBeNull()
+    expect(screen.getByText('new version')).toBeTruthy()
+  })
+
   it('renders the fetched comment threads with anchor labels', async () => {
     stubFetch(() =>
       jsonResponse({

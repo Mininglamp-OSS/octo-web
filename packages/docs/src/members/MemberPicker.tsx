@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
 import { fetchAllSpaceMembers, fetchMyBots, t, type SpaceMemberLite } from '../octoweb/index.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { sortPickerMembers } from './sort.ts'
 
-const DEFAULT_ROLES: Role[] = ['reader', 'commenter', 'writer', 'admin']
+const DEFAULT_ROLES: Role[] = ['reader', 'writer', 'admin']
 
 /** First glyph of a name for the fallback avatar (uppercased; '?' when empty). */
 function initial(name: string): string {
@@ -44,6 +44,7 @@ export function MemberPicker({
   existingUids,
   hideUids,
   roles = DEFAULT_ROLES,
+  defaultRole,
   onAdd,
   busy,
 }: {
@@ -57,6 +58,8 @@ export function MemberPicker({
   /** Grantable roles for the dropdown. Default = all three (rich-doc unchanged). HTML docs pass
    *  ['reader'] so only the single "只读" option shows — backend grants only accept reader there. */
   roles?: Role[]
+  /** Initial role for a scoped caller. Omit to preserve the rich-doc writer default. */
+  defaultRole?: Role
   /** Add the chosen members (one or many) with the chosen role. */
   onAdd: (uids: string[], role: Role) => Promise<void> | void
   /** True while a parent add/refresh is in flight (disables the Add button). */
@@ -71,8 +74,24 @@ export function MemberPicker({
   // Default to 'writer' when offered (keeps rich-doc's prior initial), else the sole/first role
   // so a single-role dropdown ('reader' for HTML) is selected without an empty state.
   const [role, setRole] = useState<Role>(
-    effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0],
+    defaultRole && effectiveRoles.includes(defaultRole)
+      ? defaultRole
+      : effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0],
   )
+  const previousDefaultRole = useRef(defaultRole)
+
+  useEffect(() => {
+    const defaultRoleChanged = previousDefaultRole.current !== defaultRole
+    previousDefaultRole.current = defaultRole
+    setRole((current) => {
+      if (defaultRoleChanged && defaultRole && effectiveRoles.includes(defaultRole)) {
+        return defaultRole
+      }
+      if (effectiveRoles.includes(current)) return current
+      if (defaultRole && effectiveRoles.includes(defaultRole)) return defaultRole
+      return effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0]
+    })
+  }, [roles, defaultRole])
 
   useEffect(() => {
     let active = true
@@ -122,7 +141,12 @@ export function MemberPicker({
 
   async function add() {
     if (selected.size === 0) return
-    await onAdd([...selected], role)
+    const submittedRole = effectiveRoles.includes(role)
+      ? role
+      : defaultRole && effectiveRoles.includes(defaultRole)
+        ? defaultRole
+        : effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0]
+    await onAdd([...selected], submittedRole)
     setSelected(new Set())
     setQuery('')
   }

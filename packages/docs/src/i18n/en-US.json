@@ -510,15 +510,6 @@
     "writer": "Writer",
     "admin": "Admin"
   },
-  "ai": {
-    "undo": "Undo this change",
-    "undoConfirm": "Undo this AI change? A new version will be published that restores the previous content.",
-    "undoConflict": "A later change already exists, so this can't be undone directly. Open the version diff to review.",
-    "undoSuccess": "The AI change was undone in a new version."
-  },
-  "permission": {
-    "changed": "Your access to this document changed. The view has been refreshed."
-  },
   "share": {
     "title": "Link sharing",
     "restricted": "Restricted",

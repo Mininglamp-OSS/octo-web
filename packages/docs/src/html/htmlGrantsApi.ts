@@ -17,6 +17,8 @@ import { resolveOctoDocBase } from './htmlDocFrameHelpers.ts'
 import { getWKApp } from '../octoweb/index.ts'
 import { isRole, type Role } from '../auth/roles.ts'
 
+export type HtmlGrantRole = 'reader' | 'commenter' | 'writer'
+
 // octo-doc verifies identity via the `token` header (octo convention, not
 // Authorization) — same scheme as the render/comment fetches.
 function grantHeaders(base: Record<string, string>): Record<string, string> {
@@ -78,7 +80,7 @@ export async function listGrants(slug: string): Promise<HtmlGrant[]> {
 
 /** Grant uid a role (upsert). The HTML backend accepts reader|commenter|writer and refuses admin
  *  (admin identity is owned by creator_uid). Author/admin-only. */
-export async function addGrant(slug: string, uid: string, role: Role): Promise<void> {
+export async function addGrant(slug: string, uid: string, role: HtmlGrantRole): Promise<void> {
   const res = await fetch(grantsUrl(slug), {
     method: 'PUT',
     credentials: 'include',

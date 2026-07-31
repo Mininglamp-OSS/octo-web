@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
 import { canManage } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
@@ -13,7 +13,7 @@ import {
   type Invite,
 } from './api.ts'
 
-const DEFAULT_ROLES: Role[] = ['reader', 'commenter', 'writer', 'admin']
+const DEFAULT_ROLES: Role[] = ['reader', 'writer', 'admin']
 
 /** Selectable expiry window (#A6): 1–7 days. */
 const EXPIRY_DAYS = Array.from(
@@ -35,6 +35,7 @@ export function InvitePanel({
   docId,
   role,
   allowedRoles,
+  defaultRole,
 }: {
   docId: string
   role: Role
@@ -44,12 +45,31 @@ export function InvitePanel({
    * Empty array is treated the same as omitted so a caller cannot render an unusable UI.
    */
   allowedRoles?: Role[]
+  /** Initial role for a scoped caller. Omit to preserve the rich-doc writer default. */
+  defaultRole?: Role
 }) {
   const roles = allowedRoles && allowedRoles.length > 0 ? allowedRoles : DEFAULT_ROLES
   // Default the selection to the first allowed role so the initial POST body is always valid
   // (a `writer` default would 400 on html where allowedRoles=['reader']).
   const [invites, setInvites] = useState<Invite[]>([])
-  const [newRole, setNewRole] = useState<Role>(roles.includes('writer') ? 'writer' : roles[0])
+  const [newRole, setNewRole] = useState<Role>(
+    defaultRole && roles.includes(defaultRole)
+      ? defaultRole
+      : roles.includes('writer') ? 'writer' : roles[0],
+  )
+  const previousDefaultRole = useRef(defaultRole)
+  useEffect(() => {
+    const defaultRoleChanged = previousDefaultRole.current !== defaultRole
+    previousDefaultRole.current = defaultRole
+    setNewRole((current) => {
+      if (defaultRoleChanged && defaultRole && roles.includes(defaultRole)) {
+        return defaultRole
+      }
+      if (roles.includes(current)) return current
+      if (defaultRole && roles.includes(defaultRole)) return defaultRole
+      return roles.includes('writer') ? 'writer' : roles[0]
+    })
+  }, [allowedRoles, defaultRole])
   const [days, setDays] = useState<number>(INVITE_EXPIRY_DEFAULT_DAYS)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
   // Distinguish "load failed" from "empty list" so a network error never masquerades as
@@ -75,7 +95,12 @@ export function InvitePanel({
   if (!canManage(role)) return null
 
   async function onGenerate() {
-    await createInvite(docId, { role: newRole, expiresInDays: days })
+    const submittedRole = roles.includes(newRole)
+      ? newRole
+      : defaultRole && roles.includes(defaultRole)
+        ? defaultRole
+        : roles.includes('writer') ? 'writer' : roles[0]
+    await createInvite(docId, { role: submittedRole, expiresInDays: days })
     await refresh()
   }
 
