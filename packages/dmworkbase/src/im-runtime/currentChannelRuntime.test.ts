@@ -205,7 +205,7 @@ describe("currentChannelRuntime", () => {
     );
   });
 
-  it("reconciles locally removed subscribers after a successful current sync", async () => {
+  it("clears locally removed subscribers after a successful current sync without reading raw cache presence", async () => {
     const channel = {
       channelID: "g-current-sync-local-remove",
       channelType: 2,
@@ -219,9 +219,7 @@ describe("currentChannelRuntime", () => {
 
     await syncCurrentImChannelSubscribers(channel);
 
-    expect(getCurrentImChannelLocallyRemovedSubscriberUids(channel)).toEqual(
-      []
-    );
+    expect(getCurrentImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
   });
 
   it("adds and removes channel info listeners through the current SDK runtime", () => {

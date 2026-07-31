@@ -50,7 +50,6 @@ function createRuntime(
     fetchChannelSubscriber: vi.fn((channel, uid) =>
       Promise.resolve({ uid, name: `member:${uid}` })
     ),
-    getCurrentChannelSubscribersRaw: vi.fn(() => undefined),
     getCurrentChannelSubscribers: vi.fn(() => []),
     findConversation: vi.fn(),
     getLoginUid: vi.fn(() => "self"),
@@ -307,13 +306,12 @@ describe("channel setting actions", () => {
     expect(runtime.fetchCurrentChannelInfo).toHaveBeenCalledWith(channel);
   });
 
-  it("clears local removal tombstones after a successful sync confirms the uid is absent", async () => {
+  it("clears local removal tombstones after the first successful sync even when the raw SDK cache keeps an isDeleted record", async () => {
     const runtime = createRuntime({
       getCurrentChannelSubscribers: vi
         .fn()
         .mockReturnValueOnce([{ uid: "owner" }, { uid: "hermes" }])
         .mockReturnValueOnce([{ uid: "owner" }]),
-      getCurrentChannelSubscribersRaw: vi.fn(() => [{ uid: "owner" }]),
     });
     const channel = new Channel("group-1", ChannelTypeGroup);
 
@@ -371,16 +369,12 @@ describe("channel setting actions", () => {
     );
   });
 
-  it("reapplies local removal if a successful sync still returns a stale member", async () => {
+  it("reapplies cache removal when a successful sync still returns a stale active member", async () => {
     const runtime = createRuntime({
       getCurrentChannelSubscribers: vi
         .fn()
         .mockReturnValueOnce([{ uid: "owner" }, { uid: "hermes" }])
         .mockReturnValueOnce([{ uid: "owner" }, { uid: "hermes" }]),
-      getCurrentChannelSubscribersRaw: vi.fn(() => [
-        { uid: "owner" },
-        { uid: "hermes" },
-      ]),
     });
     const channel = new Channel("group-1", ChannelTypeGroup);
 
@@ -402,7 +396,9 @@ describe("channel setting actions", () => {
       [{ uid: "owner" }]
     );
     expect(runtime.notifyCurrentChannelSubscribers).toHaveBeenCalledTimes(2);
-    expect(runtime.clearRemovedChannelSubscribers).not.toHaveBeenCalled();
+    expect(runtime.clearRemovedChannelSubscribers).toHaveBeenCalledWith(channel, [
+      "hermes",
+    ]);
   });
 
   it("updates group fields and current user's group nickname", async () => {

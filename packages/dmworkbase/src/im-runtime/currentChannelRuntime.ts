@@ -13,7 +13,6 @@ import {
   notifyImChannelInfoListeners,
   notifyImSubscriberChangeListeners,
   markImChannelSubscribersLocallyRemoved,
-  reconcileImChannelSubscribersLocallyRemoved,
   setImChannelInfoCache,
   setImChannelSubscribersCache,
   syncImChannelSubscribers,
@@ -177,14 +176,9 @@ export function syncCurrentImChannelSubscribers<
     currentImChannelSubscribersRuntime<TChannel, TSubscriber>(),
     channel
   ).then((result) => {
-    const maybeCacheKey = channel as TChannel & Partial<ImChannelCacheKeyLike>;
-    if (maybeCacheKey.getChannelKey) {
-      reconcileImChannelSubscribersLocallyRemoved(
-        channel,
-        getCurrentImChannelSubscribersCacheRaw(
-          maybeCacheKey as TChannel & ImChannelCacheKeyLike
-        )
-      );
+    const removedUids = getImChannelLocallyRemovedSubscriberUids(channel);
+    if (removedUids.length > 0) {
+      clearImChannelSubscribersLocallyRemoved(channel, removedUids);
     }
     return result;
   });

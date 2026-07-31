@@ -116,25 +116,6 @@ function filterLocallyRemovedSubscribers<
   return filtered.length === subscribers.length ? subscribers : filtered;
 }
 
-export function reconcileImChannelSubscribersLocallyRemoved<
-  TChannel extends ImChannelLike,
-  TSubscriber extends ImSubscriberLike
->(channel: TChannel, subscribers: TSubscriber[] | undefined) {
-  const removed = removedUidSet(channel);
-  if (!removed || !subscribers) return;
-
-  const visibleUids = new Set(validUids(subscribers.map((item) => item?.uid)));
-  removed.forEach((uid) => {
-    if (!visibleUids.has(uid)) {
-      removed.delete(uid);
-    }
-  });
-
-  if (removed.size === 0) {
-    locallyRemovedSubscriberUids.delete(channelKey(channel));
-  }
-}
-
 export function getImChannelInfo<
   TChannel extends ImChannelLike,
   TChannelInfo extends ImChannelInfoLike
@@ -245,7 +226,6 @@ export function setImChannelSubscribersCache<
     channel.getChannelKey(),
     subscribers
   );
-  reconcileImChannelSubscribersLocallyRemoved(channel, subscribers);
 }
 
 export function markImChannelSubscribersLocallyRemoved<

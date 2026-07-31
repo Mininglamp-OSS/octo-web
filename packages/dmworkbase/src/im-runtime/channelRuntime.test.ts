@@ -189,7 +189,7 @@ describe("channelRuntime", () => {
     expect(sdk.channelManager.subscribeCacheMap.get("2@g1")).toBe(subscribers);
   });
 
-  it("filters locally removed subscribers from reads while keeping raw cache authoritative", () => {
+  it("filters locally removed subscribers from reads while keeping raw cache writes authoritative", () => {
     const sdk = createSdk();
     const channel = {
       channelID: "g-local-remove",
@@ -213,7 +213,9 @@ describe("channelRuntime", () => {
     expect(getImChannelSubscribersCacheRaw(sdk, channel)).toBe(subscribers);
 
     setImChannelSubscribersCache(sdk, channel, [{ uid: "owner" }]);
-    expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
+    expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([
+      "removed",
+    ]);
     clearImChannelSubscribersLocallyRemoved(channel, ["removed"]);
     expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
   });
