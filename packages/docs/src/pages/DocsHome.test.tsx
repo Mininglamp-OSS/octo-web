@@ -2482,8 +2482,12 @@ describe('DocsHome — "?" agent CLI onboarding help (Mininglamp-OSS/octo-docs-b
       // Cover every downloader and every shell, plus an interposed `sudo`: the previous
       // /curl[^\n]*\|\s*sh/ matched none of `| bash`, `| zsh`, `| sudo sh`, or `wget -qO- ... | sh`.
       expect(prompt).not.toMatch(/(curl|wget|fetch)[^\n]*\|[^\n]*\b(sh|bash|zsh|dash|ksh|fish|python3?|node|perl|ruby)\b/)
-      // And the install step stays a pinned package-manager install.
-      expect(prompt).toMatch(/npm install -g @mininglamp-oss\/octo-cli@\d/)
+      // And the install step stays an explicit-tag package-manager install. `@latest` (not a pinned
+      // minor) is the deliberate product decision: this guide's whole contract is "don't duplicate
+      // version-sensitive detail — read the CLI's own bundled skill doc" (step 5), and a pinned
+      // minor would freeze agents on an old CLI whose bundled docs then drift from the backend.
+      // The security intent of this guard is unchanged: an explicit registry tag, never `curl | sh`.
+      expect(prompt).toMatch(/npm install -g @mininglamp-oss\/octo-cli@(latest|\d)/)
 
       // ── The real, executable octo-cli steps ARE present (grounded in octo-cli/README + skills) ─
       expect(prompt).toContain('npm install -g @mininglamp-oss/octo-cli')
@@ -2498,6 +2502,16 @@ describe('DocsHome — "?" agent CLI onboarding help (Mininglamp-OSS/octo-docs-b
       expect(prompt).toContain('octo-cli docs comments add')
       // Points bots at the version-accurate bundled skill doc rather than only a README URL.
       expect(prompt).toContain('octo-cli skills octo-docs')
+
+      // ── Step 2 must be self-driving (product decision, owner 2026-07-28) ──────────────────────
+      // The audience pasting this prompt is non-technical, so the agent resolves the auth outcome
+      // ITSELF (pick an identity, correct a bad selector) and interrupts the human in exactly ONE
+      // case: no credential exists at all. Guard the shape, so a later round of edge-case warnings
+      // cannot quietly turn step 2 back into a decision table the human has to arbitrate.
+      const stopMarkers = prompt.match(/(唯一需要问我的情况|The only case that needs me)/g) || []
+      expect(stopMarkers).toHaveLength(1)
+      // ...and that one case is the genuinely-blocked one: no profile AND no env token.
+      expect(prompt).toMatch(/(profile_count 为 0 且 env_token_set 为 false|profile_count is 0 AND\s*\n?\s*env_token_set is false)/)
     }
   })
 
