@@ -558,8 +558,11 @@ describe('useUpload', () => {
       expect(warn).toHaveBeenCalled();
       const line = String(warn.mock.calls[0][0]);
       expect(line).toContain('cancel-upload failed');
+      expect(line).toContain('kind=');
       expect(line).not.toContain('42');
       expect(line).not.toContain('a.pdf');
+      expect(line.toLowerCase()).not.toContain('http');
+      expect(line.toLowerCase()).not.toContain('token');
     } finally {
       warn.mockRestore();
     }
@@ -618,6 +621,196 @@ describe('useUpload', () => {
       await Promise.resolve();
     });
     // A 409 landing after unmount (confirm won) must not refresh a dead component.
+    await act(async () => {
+      rejectCancel(new DriveApiError('conflict', 'conflict', 409));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onUploaded).not.toHaveBeenCalled();
+  });
+
+  it('terminal-error row unmount reclaims the retained pending id (P1-1)', async () => {
+    vi.mocked(api.prepareUpload).mockResolvedValue(prepResp({ file_id: 42 }));
+    vi.mocked(api.putToPresignedUrl).mockRejectedValue(new Error('put boom'));
+    vi.mocked(api.cancelUpload).mockResolvedValue(undefined);
+
+    const { result, unmount } = renderHook(() => useUpload(vi.fn()));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
+    // Held, not cancelled yet — the id lives on the Job for a later reclaim.
+    expect(api.cancelUpload).not.toHaveBeenCalled();
+
+    await act(async () => {
+      unmount();
+      await Promise.resolve();
+    });
+
+    // Leaving the page directly must reclaim the retained pending id even though
+    // no live RunCtl exists for the error row.
+    expect(api.cancelUpload).toHaveBeenCalledWith(42);
+    expect(api.cancelUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it('retry awaiting cancel then unmount: bails with no re-prepare, stale id cancelled once (P1-2/3)', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      let resolveCancel: () => void = () => {};
+      vi.mocked(api.prepareUpload).mockResolvedValue(prepResp({ file_id: 42 }));
+      vi.mocked(api.putToPresignedUrl).mockRejectedValue(new Error('put boom'));
+      vi.mocked(api.confirmUpload).mockResolvedValue({} as never);
+      vi.mocked(api.cancelUpload).mockImplementation(
+        () => new Promise<void>((res) => { resolveCancel = res; }),
+      );
+
+      const { result, unmount } = renderHook(() => useUpload(vi.fn()));
+      act(() => result.current.addFiles([makeFile()], 'sp', 0));
+      await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
+
+      const { id } = result.current.items[0];
+      // retry reclaims stale id 42 and suspends at the cancel await.
+      act(() => result.current.retry(id));
+      await waitFor(() => expect(api.cancelUpload).toHaveBeenCalledWith(42));
+
+      // Unmount while the retry is still awaiting the cancel.
+      await act(async () => {
+        unmount();
+        await Promise.resolve();
+      });
+      // Cancel resolves AFTER unmount — retryRun must bail before re-preparing.
+      await act(async () => {
+        resolveCancel();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // No second run, no confirm, and the stale id was cancelled exactly once
+      // (retryRun cleared it up-front so unmount cleanup didn't re-cancel it).
+      expect(api.prepareUpload).toHaveBeenCalledTimes(1);
+      expect(api.putToPresignedUrl).toHaveBeenCalledTimes(1);
+      expect(api.confirmUpload).not.toHaveBeenCalled();
+      expect(api.cancelUpload).toHaveBeenCalledTimes(1);
+      // No setState-after-unmount warning slipped through.
+      const warned = err.mock.calls.some((c) => String(c[0]).includes('unmount'));
+      expect(warned).toBe(false);
+    } finally {
+      err.mockRestore();
+    }
+  });
+
+  it('retry awaiting cancel, unmount, then cancel-409: no setItems/refresh after unmount (P1-2)', async () => {
+    let rejectCancel: (e: unknown) => void = () => {};
+    vi.mocked(api.prepareUpload).mockResolvedValue(prepResp({ file_id: 42 }));
+    vi.mocked(api.putToPresignedUrl).mockRejectedValue(new Error('put boom'));
+    vi.mocked(api.cancelUpload).mockImplementation(
+      () => new Promise((_res, rej) => { rejectCancel = rej; }),
+    );
+    const onUploaded = vi.fn();
+
+    const { result, unmount } = renderHook(() => useUpload(onUploaded));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
+
+    const { id } = result.current.items[0];
+    act(() => result.current.retry(id));
+    await waitFor(() => expect(api.cancelUpload).toHaveBeenCalledWith(42));
+
+    await act(async () => {
+      unmount();
+      await Promise.resolve();
+    });
+    // 409 = the old run actually confirmed. retryRun's confirmWon branch would
+    // otherwise delete the row + refresh — but after unmount the post-await
+    // guard must bail before any setItems / onUploaded on a dead component.
+    await act(async () => {
+      rejectCancel(new DriveApiError('conflict', 'conflict', 409));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onUploaded).not.toHaveBeenCalled();
+  });
+
+  it('concurrent (double-click) retry starts only one new run (P1-4)', async () => {
+    let resolveCancel: () => void = () => {};
+    let resolveConfirm: (b: unknown) => void = () => {};
+    vi.mocked(api.prepareUpload)
+      .mockResolvedValueOnce(prepResp({ file_id: 42 }))
+      .mockResolvedValue(prepResp({ file_id: 99 }));
+    vi.mocked(api.putToPresignedUrl)
+      .mockRejectedValueOnce(new Error('put boom'))
+      .mockResolvedValue(undefined);
+    vi.mocked(api.confirmUpload).mockImplementation(
+      () => new Promise((res) => { resolveConfirm = res; }) as never,
+    );
+    // Deferred so the reclaim of the first click stays in flight while the
+    // second click's fresh run reaches confirming.
+    vi.mocked(api.cancelUpload).mockImplementation(
+      () => new Promise<void>((res) => { resolveCancel = res; }),
+    );
+
+    const { result } = renderHook(() => useUpload(vi.fn()));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
+
+    const { id } = result.current.items[0];
+    // Two synchronous clicks: the first reclaims id 42 (suspends at cancel),
+    // the second sees the stale id already cleared and starts the fresh run.
+    act(() => {
+      result.current.retry(id);
+      result.current.retry(id);
+    });
+    // The fresh run prepares 99 and reaches confirming (still in flight).
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('confirming'));
+    expect(api.prepareUpload).toHaveBeenCalledTimes(2);
+
+    // Now the first click's cancel resolves; its runItem must hit the re-entry
+    // guard (a run is already live) and NOT start a competing third prepare.
+    await act(async () => {
+      resolveCancel();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      resolveConfirm({});
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.items[0].status).toBe('done'));
+
+    // Exactly one new run: prepare called twice total (42 + 99), never a third,
+    // and confirm targets only the single fresh id.
+    expect(api.prepareUpload).toHaveBeenCalledTimes(2);
+    expect(api.confirmUpload).toHaveBeenCalledTimes(1);
+    expect(api.confirmUpload).toHaveBeenCalledWith(99, { actual_size: 5 });
+  });
+
+  it('terminal-error dismiss, then unmount, then cancel-409: no refresh (mounted guard)', async () => {
+    let rejectCancel: (e: unknown) => void = () => {};
+    vi.mocked(api.prepareUpload).mockResolvedValue(prepResp({ file_id: 42 }));
+    vi.mocked(api.putToPresignedUrl).mockRejectedValue(new Error('put boom'));
+    vi.mocked(api.cancelUpload).mockImplementation(
+      () => new Promise((_res, rej) => { rejectCancel = rej; }),
+    );
+    const onUploaded = vi.fn();
+
+    const { result, unmount } = renderHook(() => useUpload(onUploaded));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
+
+    const { id } = result.current.items[0];
+    // Dismiss the error row: reclaims id 42 (cancel in flight), row removed.
+    await act(async () => {
+      result.current.dismiss(id);
+      await Promise.resolve();
+    });
+    expect(api.cancelUpload).toHaveBeenCalledWith(42);
+
+    await act(async () => {
+      unmount();
+      await Promise.resolve();
+    });
+    // The 409 (confirm won) lands after unmount — its refresh must be suppressed
+    // by the mounted guard rather than refreshing a dead component.
     await act(async () => {
       rejectCancel(new DriveApiError('conflict', 'conflict', 409));
       await Promise.resolve();

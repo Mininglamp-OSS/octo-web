@@ -146,8 +146,12 @@ export function useUpload(onUploaded: () => void): UseUpload {
         }
         const status = err instanceof DriveApiError ? err.status : undefined;
         const code = err instanceof DriveApiError ? err.code : undefined;
+        // Non-DriveApiError (network/unknown): log only the error's structural
+        // name (e.g. "TypeError"), never its message — a message could echo a
+        // URL / token / file name back into the console.
+        const kind = err instanceof Error ? err.name : 'unknown';
         console.warn(
-          `[drive] cancel-upload failed (best-effort); status=${status ?? 'n/a'} code=${code ?? 'n/a'}`,
+          `[drive] cancel-upload failed (best-effort); kind=${kind} status=${status ?? 'n/a'} code=${code ?? 'n/a'}`,
         );
       }
     },
@@ -221,7 +225,18 @@ export function useUpload(onUploaded: () => void): UseUpload {
           void bestEffortCancel(ctl.fileId);
         }
       });
+      // Terminal-error rows have no live RunCtl (deleted in `finally`) but may
+      // still retain a pending id on the Job. Reclaim those too so leaving the
+      // page directly doesn't strand them. Skip ids already handled by a live
+      // run above — a live run's ctl.fileId equals its job.pendingFileId, and
+      // cancelling twice would fire a redundant request.
+      jobs.current.forEach((job, id) => {
+        if (!runs.current.has(id) && job.pendingFileId !== undefined) {
+          void bestEffortCancel(job.pendingFileId);
+        }
+      });
       runs.current.clear();
+      jobs.current.clear();
     },
     [bestEffortCancel],
   );
@@ -230,6 +245,10 @@ export function useUpload(onUploaded: () => void): UseUpload {
     async (id: string) => {
       const job = jobs.current.get(id);
       if (!job) return;
+      // Re-entry guard: a run is already in flight for this id (e.g. a fast
+      // double-click on retry). Starting another would overwrite its RunCtl in
+      // the map and leak a duplicate upload — bail instead.
+      if (runs.current.has(id)) return;
       const { file, spaceId, parentId } = job;
       // Fresh control record per run (retry re-prepares, so it gets a new one).
       const ctl: RunCtl = { controller: new AbortController(), phase: 'preparing', cancelled: false, refreshed: false };
@@ -327,9 +346,16 @@ export function useUpload(onUploaded: () => void): UseUpload {
   // reused. runItem then re-prepares from scratch.
   const retryRun = useCallback(
     async (id: string) => {
+      // A run is already in flight for this id — don't start a competing one.
+      if (runs.current.has(id)) return;
       const job = jobs.current.get(id);
       if (!job) return;
+      // Take the stale id out and clear it BEFORE awaiting, so an interleaving
+      // unmount cleanup won't also try to cancel it. Cancel is idempotent, but
+      // one request is enough — this keeps a given stale id cancelled at most
+      // once across the retry-await + unmount paths.
       const stalePending = job.pendingFileId;
+      job.pendingFileId = undefined;
       if (stalePending !== undefined) {
         // Reflect the cleanup immediately: hide the error/retry affordance.
         patch(id, { status: 'preparing', progress: 0, error: undefined });
@@ -337,11 +363,14 @@ export function useUpload(onUploaded: () => void): UseUpload {
         await bestEffortCancel(stalePending, () => {
           confirmWon = true;
         });
-        job.pendingFileId = undefined;
+        // The await yielded: the component may have unmounted or the row may
+        // have been dismissed. Bail before any new prepare/PUT/confirm or
+        // setState so nothing runs against a dead component / removed item.
+        if (!mounted.current || !jobs.current.has(id)) return;
         if (confirmWon) {
           jobs.current.delete(id);
           setItems((list) => list.filter((it) => it.id !== id));
-          if (mounted.current) onUploadedRef.current();
+          onUploadedRef.current();
           return;
         }
       }
