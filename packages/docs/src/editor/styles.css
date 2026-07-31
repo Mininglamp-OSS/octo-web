@@ -2751,6 +2751,18 @@ body.octo-row-resizing {
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 6px;
 }
+/* The comment composer is a NESTED tiptap instance (mentions/MentionComposer.tsx) that renders
+   inside the document editor, so its content element also carries `.ProseMirror` and was matched by
+   `.octo-prose .ProseMirror` above — a rule whose `min-height: 320px` exists to reserve clickable
+   empty space for the MAIN document body. That stretched the little comment box to 320px once #909
+   replaced the plain <textarea> with this editor (the sheet's copy of the same component looked
+   right only because it sits outside `.octo-prose`).
+   Specificity is 0,2,0 on both selectors, so this reset MUST stay after that rule to win. The
+   wrapper's own `min-height: 56px` above still sets the box's floor — the same floor the textarea
+   had — so the composer keeps its original size instead of collapsing to one line. */
+.octo-comment-input .ProseMirror {
+  min-height: 0;
+}
 .octo-comment-panel {
   margin-top: 24px;
   border: 1px solid var(--octo-border, #e5e6eb);
