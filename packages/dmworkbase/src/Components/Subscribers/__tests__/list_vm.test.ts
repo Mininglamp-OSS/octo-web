@@ -265,8 +265,11 @@ describe("SubscriberListVM local search", () => {
     expect(listener).toHaveBeenCalledOnce();
   });
 
-  it("refreshes the current keyword without clearing loaded rows or resetting pagination", async () => {
-    subscribersRequest.mockResolvedValue(localResult);
+  it("refreshes loaded pages without clearing rows or resetting pagination", async () => {
+    subscribersRequest
+      .mockResolvedValueOnce([{ uid: "page-1", name: "Page 1" }])
+      .mockResolvedValueOnce([{ uid: "page-2", name: "Page 2" }])
+      .mockResolvedValueOnce([{ uid: "page-3", name: "Page 3" }]);
     const vm = new SubscriberListVM(channel);
     const listener = vi.fn();
     vm.addListener(listener);
@@ -280,15 +283,51 @@ describe("SubscriberListVM local search", () => {
     expect(vm.currPage).toBe(3);
     expect(vm.subscribers).toEqual([{ uid: "stale", name: "Stale" }]);
     expect(listener).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledOnce());
-    expect(subscribersRequest).toHaveBeenCalledWith(channel, {
+    await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledTimes(3));
+    expect(subscribersRequest).toHaveBeenNthCalledWith(1, channel, {
+      page: 1,
+      limit: vm.limit,
+      keyword: "wei",
+    });
+    expect(subscribersRequest).toHaveBeenNthCalledWith(2, channel, {
+      page: 2,
+      limit: vm.limit,
+      keyword: "wei",
+    });
+    expect(subscribersRequest).toHaveBeenNthCalledWith(3, channel, {
       page: 3,
       limit: vm.limit,
       keyword: "wei",
     });
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce());
     expect(vm.subscribers).toEqual([
-      { uid: "stale", name: "Stale" },
-      ...localResult,
+      { uid: "page-1", name: "Page 1" },
+      { uid: "page-2", name: "Page 2" },
+      { uid: "page-3", name: "Page 3" },
     ]);
+    expect(vm.currPage).toBe(3);
+  });
+
+  it("drops an already-rendered row that is absent from the refreshed loaded pages", async () => {
+    subscribersRequest.mockResolvedValue([
+      { uid: "kept", name: "Kept" },
+      { uid: "weijiaoying", name: "魏娇莹" },
+    ]);
+    const vm = new SubscriberListVM(channel);
+    (vm as any)._isMounted = true;
+    vm.subscribers = [
+      { uid: "removed", name: "Removed Elsewhere" },
+      { uid: "kept", name: "Kept" },
+    ] as Subscriber[];
+
+    vm.refreshCurrentSearch();
+
+    await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(vm.subscribers.map((subscriber) => subscriber.uid)).toEqual([
+        "kept",
+        "weijiaoying",
+      ])
+    );
   });
 });

@@ -307,7 +307,7 @@ async function patchSubscriberCacheAfterMemberMutation(
 
   if (action === "removeSubscribers") {
     const nextSubscribers = currentSubscribers.filter(
-      (subscriber) => !targetUids.has(subscriber?.uid)
+      (subscriber) => !targetUids.has(subscriber?.uid ?? "")
     );
     if (nextSubscribers.length !== currentSubscribers.length) {
       runtime.setCurrentChannelSubscribers(channel, nextSubscribers);

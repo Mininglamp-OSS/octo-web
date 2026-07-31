@@ -87,11 +87,7 @@ export class SubscriberListVM extends ProviderListener {
     if (!this._isMounted || requestVersion !== this._requestVersion) return;
     this.hasMore = subscribers && subscribers.length >= this.limit;
     if (subscribers) {
-      const visibleSubscribers =
-        this.filterLocallyRemovedSubscribers(subscribers);
-      const filtered = this.filter
-        ? visibleSubscribers.filter(this.filter)
-        : visibleSubscribers;
+      const filtered = this.applySubscriberFilters(subscribers);
       if (this.currPage === 1) {
         this.subscribers = this.mergeSubscribers(initialSubscribers, filtered);
       } else {
@@ -110,6 +106,44 @@ export class SubscriberListVM extends ProviderListener {
     }
   };
 
+  private async requestLoadedSubscriberPages(requestVersion: number) {
+    const pageCount = Math.max(1, this.currPage);
+    const pages = await Promise.all(
+      Array.from({ length: pageCount }, (_, index) =>
+        WKApp.dataSource.channelDataSource.subscribers(this.channel, {
+          page: index + 1,
+          limit: this.limit,
+          keyword: this.keyword,
+        })
+      )
+    );
+    if (!this._isMounted || requestVersion !== this._requestVersion) return;
+
+    let nextSubscribers: Subscriber[] = [];
+    if (this.localSearch && this.keyword.trim()) {
+      try {
+        nextSubscribers = this.applySubscriberFilters(
+          this.localSearch(this.keyword)
+        );
+      } catch {
+        nextSubscribers = [];
+      }
+    }
+
+    for (const pageSubscribers of pages) {
+      nextSubscribers = this.mergeSubscribers(
+        nextSubscribers,
+        this.applySubscriberFilters(pageSubscribers || [])
+      );
+    }
+
+    const lastPage = pages[pages.length - 1] || [];
+    this.hasMore = lastPage.length >= this.limit;
+    this.subscribers = nextSubscribers;
+    this.notifyListener();
+    this.onSubscribersLoaded?.(this.subscribers);
+  }
+
   private filterLocallyRemovedSubscribers(subscribers: Subscriber[]) {
     const removedUids = new Set(
       getCurrentImChannelLocallyRemovedSubscriberUids(this.channel)
@@ -119,6 +153,14 @@ export class SubscriberListVM extends ProviderListener {
       (subscriber) => !removedUids.has(subscriber?.uid || "")
     );
     return filtered.length === subscribers.length ? subscribers : filtered;
+  }
+
+  private applySubscriberFilters(subscribers: Subscriber[]) {
+    const visibleSubscribers =
+      this.filterLocallyRemovedSubscribers(subscribers);
+    return this.filter
+      ? visibleSubscribers.filter(this.filter)
+      : visibleSubscribers;
   }
 
   private mergeSubscribers(
@@ -166,6 +208,6 @@ export class SubscriberListVM extends ProviderListener {
   };
 
   refreshCurrentSearch = () => {
-    this.requestSubscribers(++this._requestVersion, this.subscribers);
+    this.requestLoadedSubscriberPages(++this._requestVersion);
   };
 }
