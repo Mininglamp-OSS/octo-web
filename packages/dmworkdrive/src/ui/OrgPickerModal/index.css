@@ -60,8 +60,9 @@
   font-size: 14px;
 }
 
-.drive-org__sub {
-  color: var(--semi-color-text-2);
+.drive-org__notice {
+  margin-top: 8px;
+  color: var(--semi-color-warning);
   font-size: 12px;
 }
 

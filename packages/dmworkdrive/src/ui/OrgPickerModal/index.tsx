@@ -29,7 +29,7 @@ export interface OrgPickerModalProps {
  */
 export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }: OrgPickerModalProps) {
   const { t } = useI18n();
-  const { candidates, loading, query, search, error, retry } = useOrgSearch();
+  const { candidates, loading, query, search, error, incomplete, retry } = useOrgSearch();
   const { members } = useMembers(spaceId ?? null, visible);
   const [selected, setSelected] = useState<Record<string, OrgCandidate>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -96,8 +96,7 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
     onClose();
   };
 
-  const label = (c: OrgCandidate) => c.name || c.username || c.uid;
-  const sub = (c: OrgCandidate) => c.username || c.email || c.phone || '';
+  const label = (c: OrgCandidate) => c.name || c.uid;
   const roleLabel = (r: DriveRole) => t(ROLE_LABEL_KEY[r] ?? ROLE_LABEL_KEY.custom);
 
   return (
@@ -121,6 +120,9 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
         placeholder={t('drive.org.searchPlaceholder')}
         autoFocus
       />
+      {incomplete && !loading && !error && (
+        <div className="drive-org__notice">{t('drive.org.incomplete')}</div>
+      )}
       <div className="drive-org__list">
         {loading ? (
           <div className="drive-org__center">
@@ -155,7 +157,6 @@ export default function OrgPickerModal({ visible, spaceId, onClose, onConfirm }:
               >
                 <span className="drive-org__check">{on && <Check size={16} />}</span>
                 <span className="drive-org__name">{label(c)}</span>
-                {sub(c) && <span className="drive-org__sub">{sub(c)}</span>}
                 {joined && (
                   <span className="drive-org__joined">
                     <Tag size="small" color="grey">

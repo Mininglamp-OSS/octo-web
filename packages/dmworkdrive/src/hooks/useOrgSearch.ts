@@ -11,12 +11,21 @@ export interface UseOrgSearchResult {
   query: string;
   search: (q: string) => void;
   /**
-   * True when the last roster load failed (network/abort-independent error, or
-   * a truncated response — see F2). Distinct from an empty-but-successful
-   * roster (`error: false`, `candidates: []`), so the UI can show a retry
-   * affordance instead of the ordinary "no members" hint.
+   * True when the last roster load failed (network/abort-independent error).
+   * Distinct from an empty-but-successful roster (`error: false`,
+   * `candidates: []`), so the UI can show a retry affordance instead of the
+   * ordinary "no members" hint.
    */
   error: boolean;
+  /**
+   * True when the delivered roster may be partial: the server returned a
+   * non-authoritative `total` (missing/non-numeric) or one that disagrees with
+   * the delivered count (a server-side page cap). The roster is still cached and
+   * usable — this only drives a non-blocking "list may be incomplete" notice, so
+   * a capped/unversioned server response degrades gracefully instead of bricking
+   * the picker.
+   */
+  incomplete: boolean;
   /** Re-run the roster load (used by the failure-state retry affordance). */
   retry: () => void;
 }
@@ -28,19 +37,15 @@ interface IndexedCandidate {
 }
 
 /**
- * Build the local match text: name + its (simplified) pinyin, plus the account
- * fields (username/email/phone), all lowercased. Mirrors the picker's "search by
- * name / account" placeholder and the row subtitle, so a keyword matching any of
- * those hits locally.
+ * Build the local match text: name + its (simplified) pinyin, both lowercased.
+ * The `/org/members` roster carries uid + name only (see driveApi), so — like
+ * the contacts module — matching is name/pinyin only; no account fields are
+ * indexed.
  */
 function buildSearchText(c: OrgCandidate): string {
   const name = (c.name || '').toLowerCase();
   const pinyin = getPinyin(toSimplized(name)).toLowerCase();
-  const account = [c.username, c.email, c.phone]
-    .filter((v): v is string => !!v)
-    .map((v) => v.toLowerCase())
-    .join('\n');
-  return `${name}\n${pinyin}\n${account}`;
+  return `${name}\n${pinyin}`;
 }
 
 function filterLocal(index: IndexedCandidate[], q: string): OrgCandidate[] {
@@ -72,6 +77,7 @@ export function useOrgSearch(): UseOrgSearchResult {
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [error, setError] = useState(false);
+  const [incomplete, setIncomplete] = useState(false);
   const indexRef = useRef<IndexedCandidate[]>([]);
   // Latest query, read when a fetch resolves so a keystroke made *during* the
   // load isn't clobbered by the full roster (F2). setQuery drives render; this
@@ -90,37 +96,31 @@ export function useOrgSearch(): UseOrgSearchResult {
     setQuery('');
     setCandidates([]);
     setError(false);
+    setIncomplete(false);
     setLoading(true);
     void (async () => {
       try {
         const res = await api.listOrgMembers(ctrl.signal);
         if (ctrl.signal.aborted) return;
         const list = res.candidates ?? [];
-        // F2: server contract — /org/members returns an exhaustive roster plus an
-        // authoritative count, so `total` must be a finite, non-negative integer
-        // that exactly equals the delivered candidate count. Anything else
-        // (missing/NaN/string/negative total, or a count mismatch from a
-        // server-side page cap) means the roster is incomplete or malformed:
-        // reject it as a load error rather than silently caching a partial list —
-        // a partial roster is exactly the "search finds nobody" symptom. This
-        // guard is a contract tripwire, not client-side paging.
-        const complete =
-          typeof res.total === 'number' &&
-          Number.isInteger(res.total) &&
-          res.total >= 0 &&
-          res.total === list.length;
-        if (!complete) {
-          indexRef.current = [];
-          setCandidates([]);
-          setError(true);
-          return;
-        }
         const index = list.map((item) => ({
           item,
           searchText: buildSearchText(item),
         }));
         indexRef.current = index;
         setError(false);
+        // `/org/members` is meant to deliver an exhaustive roster plus an
+        // authoritative `total`. If `total` is a valid count that matches the
+        // delivered list, the roster is known-complete. If it is missing /
+        // non-numeric, or disagrees with the delivered count (a server-side page
+        // cap), the roster may be partial — but we still cache and show what
+        // arrived and only flag it "possibly incomplete", rather than discarding
+        // it and bricking the picker. `total` semantics are unversioned across
+        // services, so the client must not fail closed on it.
+        const total = res.total;
+        const authoritative =
+          typeof total === 'number' && Number.isInteger(total) && total >= 0;
+        setIncomplete(authoritative ? total !== list.length : list.length > 0);
         // Honour a query typed while the roster was loading (F2), not the full list.
         setCandidates(filterLocal(index, queryRef.current));
       } catch (err: unknown) {
@@ -150,5 +150,5 @@ export function useOrgSearch(): UseOrgSearchResult {
     setCandidates(filterLocal(indexRef.current, q));
   }, []);
 
-  return { candidates, loading, query, search, error, retry: load };
+  return { candidates, loading, query, search, error, incomplete, retry: load };
 }

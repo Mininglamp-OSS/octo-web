@@ -243,10 +243,6 @@ export interface AcceptInviteResult {
 export interface OrgCandidate {
   uid: string;
   name?: string;
-  username?: string;
-  email?: string;
-  /** masked upstream: front3 + **** + last4 */
-  phone?: string;
 }
 
 // ─── Request bodies ─────────────────────────────────────────────────────────

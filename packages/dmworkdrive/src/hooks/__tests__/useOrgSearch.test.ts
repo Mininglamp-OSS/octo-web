@@ -214,81 +214,83 @@ describe('useOrgSearch', () => {
     unmount();
   });
 
-  // ── F2: truncation hard check (total must equal delivered count) ────────────
+  // ── F2: partial-roster degrade (never brick the picker on a `total` mismatch) ──
 
-  it('treats a truncated roster (total > candidates.length) as a load error and caches nothing', async () => {
-    // Server-side page cap: claims 5 members but only delivered 2.
+  it('a complete roster (total === candidates.length) is not flagged incomplete', async () => {
+    vi.mocked(api.listOrgMembers).mockResolvedValue(resp([cand('u1', 'Alice'), cand('u2', 'Bob')]));
+    const { result, unmount } = renderHook(() => useOrgSearch());
+    await waitFor(() => expect(result.current.candidates.length).toBe(2));
+    expect(result.current.incomplete).toBe(false);
+    expect(result.current.error).toBe(false);
+    unmount();
+  });
+
+  it('caches a truncated roster (total > delivered) and flags it incomplete, not an error', async () => {
+    // Server-side page cap: claims 5 members but only delivered 2. The picker
+    // must stay usable with what arrived, not fail closed.
     vi.mocked(api.listOrgMembers).mockResolvedValueOnce({
       candidates: [cand('u1', 'Alice'), cand('u2', 'Bob')],
       total: 5,
     });
     const { result, unmount } = renderHook(() => useOrgSearch());
 
-    await waitFor(() => expect(result.current.error).toBe(true));
-    expect(result.current.candidates).toEqual([]);
-    // Nothing cached: a keystroke still surfaces nothing (no partial roster).
+    await waitFor(() => expect(result.current.candidates.length).toBe(2));
+    expect(result.current.incomplete).toBe(true);
+    expect(result.current.error).toBe(false);
+    // The delivered roster is cached and still locally filterable.
     act(() => result.current.search('ali'));
-    expect(result.current.candidates).toEqual([]);
+    expect(result.current.candidates).toEqual([cand('u1', 'Alice')]);
     unmount();
   });
 
-  it('recovers from a truncated response on retry when the full roster arrives', async () => {
+  it('clears the incomplete flag once a complete roster arrives on reload', async () => {
     vi.mocked(api.listOrgMembers).mockResolvedValueOnce({
       candidates: [cand('u1', 'Alice')],
       total: 3,
     });
     const { result, unmount } = renderHook(() => useOrgSearch());
-    await waitFor(() => expect(result.current.error).toBe(true));
+    await waitFor(() => expect(result.current.incomplete).toBe(true));
 
     vi.mocked(api.listOrgMembers).mockResolvedValueOnce(
       resp([cand('u1', 'Alice'), cand('u2', 'Bob'), cand('u3', 'Carol')]),
     );
     act(() => result.current.retry());
     await waitFor(() => expect(result.current.candidates.length).toBe(3));
+    expect(result.current.incomplete).toBe(false);
     expect(result.current.error).toBe(false);
     unmount();
   });
 
-  it('rejects a malformed/missing total as a load error (total must be a valid count)', async () => {
-    // The server contract requires an authoritative numeric total; a
-    // missing/string/NaN/negative total is a broken response, not a partial-ok.
-    const bad: Array<Record<string, unknown>> = [
+  it('degrades a missing/non-numeric total to incomplete but keeps the roster usable', async () => {
+    // A non-authoritative `total` (missing/string/NaN/negative) means the client
+    // cannot confirm completeness — surface a notice, but do NOT discard the
+    // delivered roster (the `total` contract is unversioned across services).
+    const nonAuthoritative: Array<Record<string, unknown>> = [
       { candidates: [cand('u1', 'Alice')] }, // total missing
       { candidates: [cand('u1', 'Alice')], total: '1' }, // string
       { candidates: [cand('u1', 'Alice')], total: NaN }, // NaN
       { candidates: [cand('u1', 'Alice')], total: -1 }, // negative
-      { candidates: [cand('u1', 'Alice'), cand('u2', 'Bob')], total: 1 }, // mismatch
     ];
-    for (const res of bad) {
+    for (const res of nonAuthoritative) {
       vi.mocked(api.listOrgMembers).mockReset();
       vi.mocked(api.listOrgMembers).mockResolvedValueOnce(res as unknown as OrgSearchResponse);
       const { result, unmount } = renderHook(() => useOrgSearch());
-      await waitFor(() => expect(result.current.error).toBe(true));
-      expect(result.current.candidates).toEqual([]);
+      await waitFor(() => expect(result.current.candidates).toEqual([cand('u1', 'Alice')]));
+      expect(result.current.incomplete).toBe(true);
+      expect(result.current.error).toBe(false);
       unmount();
     }
   });
 
-  // ── F2: account fields (username/email/phone) are locally searchable ────────
-
-  it('filters locally by username / email / phone — no extra backend call', async () => {
-    const roster: OrgCandidate[] = [
-      { uid: 'u1', name: 'Alice', username: 'alice.w', email: 'alice@corp.com', phone: '13800001111' },
-      { uid: 'u2', name: 'Bob', username: 'bob.k', email: 'bob@corp.com', phone: '13900002222' },
-    ];
-    vi.mocked(api.listOrgMembers).mockResolvedValue({ candidates: roster, total: roster.length });
+  it('an empty roster with no authoritative total is neither incomplete nor an error', async () => {
+    vi.mocked(api.listOrgMembers).mockResolvedValueOnce(
+      { candidates: [] } as unknown as OrgSearchResponse,
+    );
     const { result, unmount } = renderHook(() => useOrgSearch());
-    await waitFor(() => expect(result.current.candidates.length).toBe(2));
-
-    act(() => result.current.search('alice.w')); // username
-    expect(result.current.candidates).toEqual([roster[0]]);
-    act(() => result.current.search('bob@corp')); // email
-    expect(result.current.candidates).toEqual([roster[1]]);
-    act(() => result.current.search('13800001111')); // phone
-    expect(result.current.candidates).toEqual([roster[0]]);
-
-    // All local: the roster was fetched exactly once.
-    expect(api.listOrgMembers).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.candidates).toEqual([]);
+    expect(result.current.incomplete).toBe(false);
+    expect(result.current.error).toBe(false);
     unmount();
   });
 });

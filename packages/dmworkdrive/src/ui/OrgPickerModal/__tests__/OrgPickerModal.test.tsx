@@ -47,6 +47,7 @@ function stub(candidates: OrgCandidate[], over: Partial<ReturnType<typeof useOrg
     query: '',
     search: vi.fn(),
     error: false,
+    incomplete: false,
     retry: vi.fn(),
     ...over,
   });
@@ -249,6 +250,33 @@ describe('OrgPickerModal', () => {
     click(getByRole('button', { name: '__show__' }));
     expect(retry).not.toHaveBeenCalled();
     expect(search).toHaveBeenLastCalledWith('');
+  });
+
+  it('shows a non-blocking incomplete notice but still lists candidates and allows confirm', async () => {
+    const onConfirm = vi.fn();
+    stub([{ uid: 'u1', name: 'Alice' }], { incomplete: true });
+    const { getByText, getByRole, click } = render(
+      <OrgPickerModal visible onClose={() => {}} onConfirm={onConfirm} />,
+    );
+    // Notice is shown, and the roster is still usable (not the error/empty state).
+    expect(getByText('drive.org.incomplete')).toBeInTheDocument();
+    expect(getByText('Alice')).toBeInTheDocument();
+    // Non-blocking: a selection can still be confirmed.
+    click(getByRole('button', { name: 'Alice' }));
+    click(getByRole('button', { name: '__ok__' }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(['u1']));
+  });
+
+  it('does not show the incomplete notice while loading or on a load failure', () => {
+    stub([], { incomplete: true, loading: true });
+    const loadingView = render(<OrgPickerModal visible onClose={() => {}} onConfirm={() => {}} />);
+    expect(loadingView.queryByText('drive.org.incomplete')).toBeNull();
+    loadingView.unmount();
+
+    stub([], { incomplete: true, error: true });
+    const errorView = render(<OrgPickerModal visible onClose={() => {}} onConfirm={() => {}} />);
+    expect(errorView.queryByText('drive.org.incomplete')).toBeNull();
+    expect(errorView.getByText('drive.org.loadFailed')).toBeInTheDocument();
   });
 
   it('clears the selection on a host space-changed so stale uids cannot be confirmed', () => {
