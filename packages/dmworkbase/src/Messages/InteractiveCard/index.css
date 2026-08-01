@@ -303,6 +303,32 @@
   color: var(--wk-color-danger, var(--wk-text-secondary));
 }
 
+/* ── 客户端兜底：收到 final text 后把同 assistant 未终态 progress 卡降级显示 ──
+ * 只在渲染层叠加提示 + tag（不改消息内容）；运行中步骤的沙漏由 DOM 层换成 ⚠️。 */
+.wk-interactive-card-fallback {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2, 8px);
+  margin-bottom: var(--wk-sp-1, 4px);
+  font-size: 12px;
+  color: var(--wk-color-warning, var(--wk-text-secondary));
+}
+
+.wk-interactive-card-fallback__tag {
+  padding: 0 var(--wk-sp-1, 4px);
+  border-radius: var(--wk-r-sm, 4px);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--wk-text-secondary);
+  background: var(--wk-fill-secondary, transparent);
+  border: 1px solid var(--wk-border-subtle, transparent);
+}
+
+/* 兜底后弱化进行中视觉（spinner/glow 收敛，与「已完成」语义一致）。 */
+.wk-interactive-card-sdk--fallback-finalized {
+  opacity: 0.92;
+}
+
 /* ── SDK(AdaptiveCards) 输出基线样式 ──
  * SDK 未引入默认样式表，按钮/输入本无样式；此处用 --wk-* token 补基线，待真机微调。
  * 颜色/间距/字体等由 HostConfig 就地注入（inline），此处只补 SDK 未覆盖的控件外观。 */

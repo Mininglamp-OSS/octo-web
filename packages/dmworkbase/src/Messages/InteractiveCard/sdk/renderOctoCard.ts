@@ -5,6 +5,7 @@ import { browserCssVarResolver, buildOctoHostConfig } from "./octoHostConfig";
 import { createOctoSerializationContext } from "./octoSerialization";
 import { sanitizeCardTree } from "./sanitizeCardTree";
 import { enhanceAgentProgressLayout } from "./agentProgressLayout";
+import { applyAgentProgressFallbackVisual } from "./agentProgressFallback";
 import { attachTableCopyButtons } from "./tableCopy";
 import {
   FORGE_RENDER_PROFILE,
@@ -43,6 +44,11 @@ export interface RenderOctoCardOptions {
   tableCopyLabel?: string;
   onTableCopy?: (text: string) => void;
   renderProfile?: ResolvedCardRenderProfile;
+  /**
+   * 客户端兜底：该 progress 卡已被判定为「已完成（未收到显式终态）」。置 true 时把运行中步骤的
+   * 沙漏 ⏳ 就地换成 ⚠️ 并给 timeline 打标记类（见 applyAgentProgressFallbackVisual）。
+   */
+  fallbackFinalized?: boolean;
 }
 
 export function createCardHostConfig(
@@ -55,8 +61,10 @@ export function createCardHostConfig(
 }
 
 export function enhanceRenderedOctoCard(options: RenderOctoCardOptions): void {
-  const { card, target, tableCopyLabel, onTableCopy } = options;
+  const { card, target, tableCopyLabel, onTableCopy, fallbackFinalized } =
+    options;
   enhanceAgentProgressLayout(card, target);
+  if (fallbackFinalized) applyAgentProgressFallbackVisual(target);
   if (tableCopyLabel && onTableCopy) {
     attachTableCopyButtons({
       card,
@@ -75,6 +83,7 @@ export function renderOctoCard(options: RenderOctoCardOptions): void {
     tableCopyLabel,
     onTableCopy,
     renderProfile = "legacy",
+    fallbackFinalized,
   } = options;
   ensureMarkdownHook();
   const ac = new AdaptiveCard();
@@ -92,6 +101,7 @@ export function renderOctoCard(options: RenderOctoCardOptions): void {
       onAction,
       tableCopyLabel,
       onTableCopy,
+      fallbackFinalized,
     });
 }
 
