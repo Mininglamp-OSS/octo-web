@@ -776,6 +776,12 @@
       "menu": "Mention",
       "search": "Search members or docs…",
       "empty": "No matches"
+    },
+    "protect": {
+      "editPermission": "Edit permission",
+      "onlyMe": "Only I can edit",
+      "designatedUsers": "Designated users can edit",
+      "noMembers": "No members available"
     }
   },
   "error": {

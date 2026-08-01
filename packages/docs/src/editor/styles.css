@@ -308,6 +308,9 @@
   --univer-gray-700: #374151;
   --univer-gray-800: #1f2937;
   --univer-gray-900: #111827;
+  /* Univer's default primary ramp (blue). Rebranding this to octo black #1C1C23 per UI-SPEC §2.1
+     is a separate, product-wide change — tracked outside this PR, which is scoped to sheet
+     protection. */
   --univer-primary-50: #eef2ff;
   --univer-primary-100: #e0e7ff;
   --univer-primary-200: #c7d2fe;
@@ -4975,3 +4978,57 @@ div:has(> .octo-link-bubble) {
   color: var(--wk-text-primary);
 }
 .octo-docs-empty-cta:hover { background: var(--wk-bg-hover); }
+
+/* ── Sheet protection people-picker (ProtectionUserPart) ──────────────────────
+   Our replacement for Univer's empty stock "user part". Styled with the octo black ramp rather
+   than Univer's utility classes, so it does not depend on their internal class names surviving a
+   version bump. Lives in the 保护行列 side panel, which is narrow — hence the compact rows. */
+.octo-prot-user {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #1c1c23;
+}
+.octo-prot-label {
+  margin-top: 6px;
+  font-weight: 600;
+  color: #1c1c23;
+}
+.octo-prot-radio,
+.octo-prot-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  line-height: 22px;
+}
+.octo-prot-radio input,
+.octo-prot-member input {
+  /* Black controls, not the browser/Univer blue — see the primary-ramp note above. */
+  accent-color: #1c1c23;
+  cursor: pointer;
+}
+.octo-prot-radio input:disabled,
+.octo-prot-member input:disabled {
+  cursor: not-allowed;
+}
+/* Bounded so a large doc roster scrolls inside the panel instead of pushing the
+   查看权限 radios out of reach. */
+.octo-prot-members {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px 0 4px 4px;
+  border: 1px solid rgba(28, 28, 35, 0.08);
+  border-radius: 4px;
+}
+.octo-prot-member-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.octo-prot-empty {
+  padding: 8px 4px;
+  color: rgba(28, 28, 35, 0.5);
+}
+

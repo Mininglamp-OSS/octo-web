@@ -776,6 +776,12 @@
       "menu": "提及",
       "search": "搜索成员或文档…",
       "empty": "无匹配"
+    },
+    "protect": {
+      "editPermission": "编辑权限",
+      "onlyMe": "仅我可以编辑",
+      "designatedUsers": "指定用户可以编辑",
+      "noMembers": "暂无可指定的成员"
     }
   },
   "error": {

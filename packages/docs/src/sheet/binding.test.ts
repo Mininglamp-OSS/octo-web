@@ -15,6 +15,7 @@ import {
   SHEET_DIMS_FIELD,
   SHEET_MERGES_FIELD,
   SHEET_LIST_FIELD,
+  SHEET_PROTECTION_FIELD,
 } from './binding.ts'
 
 type Cell = { v?: unknown; f?: string; s?: Record<string, unknown> | string } | null
@@ -1076,5 +1077,723 @@ describe('UniverYjsBinding — remote-created sheet replays dims & merges (not j
     expect(s2!.colWidths.get(1)).toBe(130)
     expect(s2!.rowHeights.get(2)).toBe(44)
     expect(s2!.merges.has('0:0:1:1')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Protection (range + worksheet) sync — WS-PROT.
+//
+// Regression cover for the three reported symptoms of 保护行列:
+//   1. a rule vanished on reload        -> nothing was ever written to the Y.Doc
+//   2. peers saw an unprotected sheet   -> no rule mutation was replicated
+//   3. rules leaked per-client ids      -> subUnitId differs per client, so a naive
+//                                          round-trip lands the rule on the wrong sheet
+// ---------------------------------------------------------------------------
+
+const ADD_RANGE_PROT = 'sheet.mutation.add-range-protection'
+const ADD_WS_PROT = 'sheet.mutation.add-worksheet-protection'
+
+/** Minimal rxjs-ish subject: just enough for the binding's `.subscribe(next)`. */
+function subject() {
+  const subs = new Set<() => void>()
+  return {
+    stream: { subscribe: (n: () => void) => { subs.add(n); return { unsubscribe: () => subs.delete(n) } } },
+    fire: () => { for (const n of [...subs]) n() },
+  }
+}
+
+type Rule = Record<string, unknown>
+
+/** In-memory RangeProtectionRuleModel: Map<`${unitId}/${subUnitId}`, Map<ruleId, rule>>. */
+class FakeRangeProtModel {
+  readonly store = new Map<string, Map<string, Rule>>()
+  private readonly s = subject()
+  ruleChange$ = this.s.stream
+  private bucket(u: string, sub: string): Map<string, Rule> {
+    const k = `${u}/${sub}`
+    let m = this.store.get(k)
+    if (!m) { m = new Map(); this.store.set(k, m) }
+    return m
+  }
+  getSubunitRuleList(u: string, sub: string): unknown[] {
+    if (this.throwOnRead) throw new Error('model read failed (simulated transient glitch)')
+    return [...this.bucket(u, sub).values()]
+  }
+  /** When true, reads throw — the transient failure production's try/catch already anticipates. */
+  throwOnRead = false
+  getRule(u: string, sub: string, id: string): unknown | undefined { return this.bucket(u, sub).get(id) }
+  addRule(u: string, sub: string, rule: unknown): void { const r = rule as Rule; this.bucket(u, sub).set(r.id as string, r) }
+  setRule(u: string, sub: string, id: string, rule: unknown): void { this.bucket(u, sub).set(id, rule as Rule) }
+  deleteRule(u: string, sub: string, id: string): void { this.bucket(u, sub).delete(id) }
+  /** Fire the stream WITHOUT mutating the model — for read-failure / null-workbook scenarios. */
+  fireStream(): void { this.s.fire() }
+  /** Simulate a local UI edit: mutate the model, then fire the stream the binding listens on. */
+  localAdd(u: string, sub: string, rule: Rule): void { this.addRule(u, sub, rule); this.s.fire() }
+  localDelete(u: string, sub: string, id: string): void { this.deleteRule(u, sub, id); this.s.fire() }
+}
+
+/** In-memory WorksheetProtectionRuleModel — at most ONE rule per sheet, hence no rule id. */
+class FakeWsProtModel {
+  readonly store = new Map<string, Rule>() // `${unitId}/${subUnitId}` -> rule
+  private readonly s = subject()
+  ruleChange$ = this.s.stream
+  getRule(u: string, sub: string): unknown | undefined { return this.store.get(`${u}/${sub}`) }
+  addRule(u: string, rule: unknown): void {
+    const r = rule as Rule
+    this.store.set(`${u}/${r.subUnitId as string}`, r)
+  }
+  setRule(u: string, sub: string, rule: unknown): void { this.store.set(`${u}/${sub}`, rule as Rule) }
+  deleteRule(u: string, sub: string): void { this.store.delete(`${u}/${sub}`) }
+  localAdd(u: string, rule: Rule): void { this.addRule(u, rule); this.s.fire() }
+}
+
+function setupProt(canWrite = true) {
+  const univer = new FakeUniver()
+  // Protection sync keys off the workbook's unit id, so unlike setup() (which deliberately leaves
+  // it null to cover the "no unit id yet" path) these tests need a concrete one.
+  univer.unitId = 'unit-1'
+  const doc = new Y.Doc()
+  const range = new FakeRangeProtModel()
+  const ws = new FakeWsProtModel()
+  const binding = new UniverYjsBinding(
+    univer as never, doc, () => canWrite, {}, null, null,
+    range as never, ws as never,
+  )
+  return { univer, doc, binding, range, ws, protMap: doc.getMap(SHEET_PROTECTION_FIELD) }
+}
+
+/**
+ * Same as setupProt but sets canWrite and canManageProtection INDEPENDENTLY — the shape of a plain
+ * writer, who may edit cells but must not create, delete or replicate protection rules.
+ */
+function setupProtSplit(canWrite: boolean, canManageProtection: boolean, sharedDoc?: Y.Doc) {
+  const univer = new FakeUniver()
+  univer.unitId = 'unit-1'
+  // Pass sharedDoc to put two bindings (e.g. an admin and a writer) on ONE Y.Doc. Without it each
+  // binding gets its own doc and cross-client assertions become true by construction — see WS-PROT-9a.
+  const doc = sharedDoc ?? new Y.Doc()
+  const range = new FakeRangeProtModel()
+  const ws = new FakeWsProtModel()
+  const binding = new UniverYjsBinding(
+    univer as never, doc, () => canWrite, {}, null, null,
+    range as never, ws as never,
+    () => canManageProtection,
+  )
+  return { univer, doc, binding, range, ws, protMap: doc.getMap(SHEET_PROTECTION_FIELD) }
+}
+
+/** A range rule as Univer's model holds it — note the per-client unitId/subUnitId. */
+function rangeRule(id: string, over: Partial<Rule> = {}): Rule {
+  return {
+    id,
+    permissionId: `perm-${id}`,
+    unitId: 'unit-1',
+    subUnitId: 'local-1',
+    unitType: 3,
+    viewState: 'othersCanView',
+    editState: 'onlyMe',
+    ranges: [{ startRow: 4, startColumn: 2, endRow: 4, endColumn: 2 }], // C5
+    ...over,
+  }
+}
+
+describe('UniverYjsBinding — protection: local -> Y.Map (bug 1: rule was never persisted)', () => {
+  it('writes an added range rule under the LOGICAL sheet id, stripping per-client ids', () => {
+    const { range, protMap } = setupProt()
+    range.localAdd('unit-1', 'local-1', rangeRule('r1'))
+
+    // Logical key, not the local univer sheet id.
+    expect([...protMap.keys()]).toEqual(['default!r:r1'])
+    const stored = protMap.get('default!r:r1') as Record<string, unknown>
+    expect(stored.kind).toBe('r')
+    expect(stored.id).toBe('r1')
+    expect(stored.permissionId).toBe('perm-r1')
+    expect(stored.editState).toBe('onlyMe')
+    expect(stored.ranges).toEqual([{ startRow: 4, startColumn: 2, endRow: 4, endColumn: 2 }])
+    // Runtime ids must NEVER enter shared state — a peer's sheet id differs.
+    expect(stored.unitId).toBeUndefined()
+    expect(stored.subUnitId).toBeUndefined()
+  })
+
+  it('removes the key when the rule is deleted locally', () => {
+    const { range, protMap } = setupProt()
+    range.localAdd('unit-1', 'local-1', rangeRule('r1'))
+    expect(protMap.has('default!r:r1')).toBe(true)
+    range.localDelete('unit-1', 'local-1', 'r1')
+    expect(protMap.has('default!r:r1')).toBe(false)
+  })
+
+  it('writes a worksheet rule under the `w:` key with no ranges', () => {
+    const { ws, protMap } = setupProt()
+    ws.localAdd('unit-1', {
+      permissionId: 'perm-ws', unitId: 'unit-1', subUnitId: 'local-1',
+      unitType: 2, viewState: 'othersCanView', editState: 'onlyMe',
+    })
+    expect([...protMap.keys()]).toEqual(['default!w:'])
+    const stored = protMap.get('default!w:') as Record<string, unknown>
+    expect(stored.kind).toBe('w')
+    expect(stored.permissionId).toBe('perm-ws')
+    expect(stored.ranges).toBeUndefined()
+  })
+
+  it('a plain WRITER cannot replicate a protection rule via the model stream (admin-only)', () => {
+    // Regression guard for a fail-open found in review. The command path was gated on
+    // canManageProtection but the two ruleChange$ subscriptions were still on canWrite, so a plain
+    // writer (canWrite true / canManageProtection false) could push protection changes to peers.
+    const { range, ws, protMap } = setupProtSplit(true, false)
+    range.localAdd('unit-1', 'local-1', rangeRule('r1'))
+    ws.localAdd('unit-1', {
+      permissionId: 'perm-ws', unitId: 'unit-1', subUnitId: 'local-1',
+      unitType: 2, viewState: 'othersCanView', editState: 'onlyMe',
+    })
+    expect(protMap.size).toBe(0)
+  })
+
+  it('a plain WRITER cannot replicate a protection DELETE to peers', () => {
+    // The dangerous direction: syncProtectionToYmap() diffs against lastSeenProtection and deletes
+    // keys that vanished locally. An admin seeds the rule; a writer-scoped binding must not remove it.
+    //
+    // WS-PROT-9a — this assertion used to be TRUE BY CONSTRUCTION: setupProtSplit() built a fresh
+    // Y.Doc per call, so the writer's binding could not reach the admin's map even with every gate
+    // removed. Verified empirically: dropping all three `canManageProtection()` guards
+    // (binding.ts :513/:619/:625) left this test GREEN while its two siblings correctly went RED.
+    // Both bindings must therefore share ONE doc, and the writer must have lastSeenProtection
+    // populated (it is the diff against lastSeen — not the live read — that emits the delete).
+    const doc = new Y.Doc()
+    const admin = setupProtSplit(true, true, doc)
+    admin.range.localAdd('unit-1', 'local-1', rangeRule('r1'))
+    expect(admin.protMap.has('default!r:r1')).toBe(true)
+
+    // Same doc: the writer observes the admin's rule, so its own lastSeenProtection now tracks
+    // 'default!r:r1' — the precondition for a diff-driven delete to be emitted at all.
+    const writer = setupProtSplit(true, false, doc)
+    expect(writer.protMap.has('default!r:r1')).toBe(true)
+    writer.range.addRule('unit-1', 'local-1', rangeRule('r1'))
+    writer.range.localDelete('unit-1', 'local-1', 'r1')
+    // The shared-state rule survives: the writer's stream was refused by the admin gate.
+    expect(admin.protMap.has('default!r:r1')).toBe(true)
+    expect(doc.getMap(SHEET_PROTECTION_FIELD).has('default!r:r1')).toBe(true)
+  })
+
+  it('WS-PROT-9b: a model read that THROWS must not delete peers\' protection rules', () => {
+    // P1-2. scanAllProtection() caught a throwing getSubunitRuleList and returned an EMPTY map,
+    // which syncProtectionToYmap() cannot distinguish from "the user deleted every rule" — so it
+    // pushed a Yjs delete for every tracked key. A transient local read glitch became permanent,
+    // global loss of the very security state this feature exists to add. There is no undo.
+    const { range, protMap } = setupProtSplit(true, true)
+    range.localAdd('unit-1', 'local-1', rangeRule('r1'))
+    range.localAdd('unit-1', 'local-1', rangeRule('r2'))
+    expect(protMap.has('default!r:r1')).toBe(true)
+    expect(protMap.has('default!r:r2')).toBe(true)
+
+    // The model throws once — exactly the case the production try/catch already anticipates.
+    range.throwOnRead = true
+    range.fireStream()
+
+    // Read failure => no information => write nothing. Rules must still be there.
+    expect(protMap.has('default!r:r1')).toBe(true)
+    expect(protMap.has('default!r:r2')).toBe(true)
+  })
+
+  it('WS-PROT-9c: a null workbook for one tick must not delete peers\' protection rules', () => {
+    // Same fail-open, second source: `if (!wb) return out` / `if (!unitId) return out`. A route
+    // change can null the active workbook for a tick while a ruleChange$ event lands.
+    const { univer, range, protMap } = setupProtSplit(true, true)
+    range.localAdd('unit-1', 'local-1', rangeRule('r1'))
+    expect(protMap.has('default!r:r1')).toBe(true)
+
+    univer.unitId = null
+    range.fireStream()
+
+    expect(protMap.has('default!r:r1')).toBe(true)
+  })
+
+  it('WS-PROT-9d: a genuine local delete still replicates (the guard must not freeze sync)', () => {
+    // Positive control for 9b/9c: fail-closed on read failure must not also suppress real deletes,
+    // otherwise "protection can never be removed" ships as the new bug.
+    const { range, protMap } = setupProtSplit(true, true)
+    range.localAdd('unit-1', 'local-1', rangeRule('r1'))
+    expect(protMap.has('default!r:r1')).toBe(true)
+
+    range.localDelete('unit-1', 'local-1', 'r1')
+    expect(protMap.has('default!r:r1')).toBe(false)
+  })
+
+  it('an ADMIN (canManageProtection=true) still replicates normally', () => {
+    const { range, protMap } = setupProtSplit(true, true)
+    range.localAdd('unit-1', 'local-1', rangeRule('r1'))
+    expect(protMap.has('default!r:r1')).toBe(true)
+  })
+
+  it('a reader (canWrite=false) never writes protection into shared state', () => {
+    const { range, protMap } = setupProt(false)
+    range.localAdd('unit-1', 'local-1', rangeRule('r1'))
+    expect(protMap.size).toBe(0)
+  })
+
+  it('is driven by the mutation trigger too, not only the model stream', () => {
+    const { univer, range, protMap } = setupProt()
+    // Model changed without firing ruleChange$ (a command-only path).
+    range.addRule('unit-1', 'local-1', rangeRule('r9'))
+    expect(protMap.size).toBe(0)
+    univer.fire({ id: ADD_RANGE_PROT })
+    expect(protMap.has('default!r:r9')).toBe(true)
+  })
+})
+
+describe('UniverYjsBinding — protection: remote -> Univer (bug 2: peers saw no protection)', () => {
+  it('applies a remote range rule, re-attaching THIS client\'s unitId/subUnitId', () => {
+    const { doc, range } = setupProt()
+    applyRemote(doc, (peer) => {
+      peer.getMap(SHEET_PROTECTION_FIELD).set('default!r:r1', {
+        kind: 'r', id: 'r1', permissionId: 'perm-r1', unitType: 3,
+        viewState: 'othersCanView', editState: 'onlyMe',
+        ranges: [{ startRow: 4, startColumn: 2, endRow: 4, endColumn: 2 }],
+      })
+    })
+    const applied = range.getRule('unit-1', 'local-1', 'r1') as Record<string, unknown>
+    expect(applied).toBeTruthy()
+    expect(applied.unitId).toBe('unit-1')
+    expect(applied.subUnitId).toBe('local-1') // local id, NOT whatever the peer had
+    expect(applied.permissionId).toBe('perm-r1')
+    expect(applied.ranges).toEqual([{ startRow: 4, startColumn: 2, endRow: 4, endColumn: 2 }])
+    // The discriminator is ours, not Univer's — it must not leak into the model.
+    expect(applied.kind).toBeUndefined()
+  })
+
+  it('does not echo a remote apply back into the Y.Map', () => {
+    const { doc, protMap } = setupProt()
+    applyRemote(doc, (peer) => {
+      peer.getMap(SHEET_PROTECTION_FIELD).set('default!r:r1', {
+        kind: 'r', id: 'r1', permissionId: 'perm-r1', ranges: [],
+      })
+    })
+    // Exactly the remote key, no duplicate/rewritten entry.
+    expect([...protMap.keys()]).toEqual(['default!r:r1'])
+  })
+
+  it('deletes the local rule when the remote key is removed', () => {
+    const { doc, range } = setupProt()
+    applyRemote(doc, (peer) => {
+      peer.getMap(SHEET_PROTECTION_FIELD).set('default!r:r1', {
+        kind: 'r', id: 'r1', permissionId: 'perm-r1', ranges: [],
+      })
+    })
+    expect(range.getRule('unit-1', 'local-1', 'r1')).toBeTruthy()
+    applyRemote(doc, (peer) => { peer.getMap(SHEET_PROTECTION_FIELD).delete('default!r:r1') })
+    expect(range.getRule('unit-1', 'local-1', 'r1')).toBeUndefined()
+  })
+
+  it('applies a remote worksheet rule onto the local sheet', () => {
+    const { doc, ws } = setupProt()
+    applyRemote(doc, (peer) => {
+      peer.getMap(SHEET_PROTECTION_FIELD).set('default!w:', {
+        kind: 'w', permissionId: 'perm-ws', editState: 'onlyMe',
+      })
+    })
+    const applied = ws.getRule('unit-1', 'local-1') as Record<string, unknown>
+    expect(applied).toBeTruthy()
+    expect(applied.permissionId).toBe('perm-ws')
+    expect(applied.subUnitId).toBe('local-1')
+  })
+
+  it('rejects out-of-grid ranges from a hostile/corrupt peer', () => {
+    const { doc, range } = setupProt()
+    applyRemote(doc, (peer) => {
+      peer.getMap(SHEET_PROTECTION_FIELD).set('default!r:bad', {
+        kind: 'r', id: 'bad', permissionId: 'p',
+        ranges: [
+          { startRow: 0, startColumn: 0, endRow: 99999, endColumn: 2 }, // past MAX_ROWS
+          { startRow: -1, startColumn: 0, endRow: 1, endColumn: 1 },    // negative
+          { startRow: 5, startColumn: 5, endRow: 1, endColumn: 9 },     // inverted
+          { startRow: 1, startColumn: 1, endRow: 2, endColumn: 2 },     // the only good one
+        ],
+      })
+    })
+    const applied = range.getRule('unit-1', 'local-1', 'bad') as Record<string, unknown>
+    expect(applied.ranges).toEqual([{ startRow: 1, startColumn: 1, endRow: 2, endColumn: 2 }])
+  })
+})
+
+describe('UniverYjsBinding — protection: reload (bug 1, the user-visible half)', () => {
+  it('a fresh binding over a populated doc restores rules into Univer', () => {
+    // First session writes a rule...
+    const first = setupProt()
+    first.range.localAdd('unit-1', 'local-1', rangeRule('r1'))
+    const snapshot = Y.encodeStateAsUpdate(first.doc)
+    first.binding.dispose()
+
+    // ...second session (a reload) starts from the persisted state with an empty model.
+    const univer = new FakeUniver()
+    univer.unitId = 'unit-1'
+    const doc = new Y.Doc()
+    Y.applyUpdate(doc, snapshot)
+    const range = new FakeRangeProtModel()
+    const ws = new FakeWsProtModel()
+    new UniverYjsBinding(univer as never, doc, () => true, {}, null, null, range as never, ws as never)
+
+    const restored = range.getRule('unit-1', 'local-1', 'r1') as Record<string, unknown>
+    expect(restored).toBeTruthy()
+    expect(restored.permissionId).toBe('perm-r1')
+    expect(restored.subUnitId).toBe('local-1')
+  })
+
+  // [REVIEW] `runInitialSync`'s legacy-V1 branch gates on "does this doc hold any content?" and
+  // that predicate listed cells/dims/merges only. A doc whose ONLY populated map is
+  // `sheetProtection` (a V1 doc with no sheetList where an admin protected a still-empty range)
+  // therefore fell through to the brand-new-doc branch and the locks silently vanished on reload
+  // — the exact "the lock looks like it's there but isn't" failure mode this PR exists to kill.
+  // Narrow but real, and cheap to lock down.
+  it('restores protection on a legacy doc whose ONLY populated map is sheetProtection', () => {
+    const doc = new Y.Doc()
+    // No sheetList, no cells, no dims, no merges. Just a rule.
+    doc.getMap(SHEET_PROTECTION_FIELD).set('default!r:r1', {
+      kind: 'r', id: 'r1', permissionId: 'perm-r1', unitType: 3,
+      viewState: 'othersCanView', editState: 'onlyMe',
+      ranges: [{ startRow: 4, startColumn: 2, endRow: 4, endColumn: 2 }],
+    })
+
+    const univer = new FakeUniver()
+    univer.unitId = 'unit-1'
+    const range = new FakeRangeProtModel()
+    const ws = new FakeWsProtModel()
+    new UniverYjsBinding(univer as never, doc, () => true, {}, null, null, range as never, ws as never)
+
+    const restored = range.getRule('unit-1', 'local-1', 'r1') as Record<string, unknown>
+    expect(restored).toBeTruthy()
+    expect(restored.permissionId).toBe('perm-r1')
+    expect(restored.ranges).toEqual([{ startRow: 4, startColumn: 2, endRow: 4, endColumn: 2 }])
+  })
+
+  it('restores a whole-sheet rule on a doc whose ONLY populated map is sheetProtection', () => {
+    const doc = new Y.Doc()
+    doc.getMap(SHEET_PROTECTION_FIELD).set('default!w:', {
+      kind: 'w', permissionId: 'perm-ws', unitType: 2,
+      viewState: 'othersCanView', editState: 'onlyMe',
+    })
+
+    const univer = new FakeUniver()
+    univer.unitId = 'unit-1'
+    const range = new FakeRangeProtModel()
+    const ws = new FakeWsProtModel()
+    new UniverYjsBinding(univer as never, doc, () => true, {}, null, null, range as never, ws as never)
+
+    const restored = ws.getRule('unit-1', 'local-1') as Record<string, unknown>
+    expect(restored).toBeTruthy()
+    expect(restored.permissionId).toBe('perm-ws')
+  })
+})
+
+/**
+ * WS-PROT-2b — the GRANTS map needs an observer of its own.
+ *
+ * binding.ts observes six Y.Maps plus the protection RULES map. It never observed
+ * `sheetProtectionGrants`, and grants are where "who may edit this range" actually lives. A rule
+ * change re-renders because the rule models drive the UI; a grant change has no model behind it — the
+ * only thing that consumes it is `IAuthzIoService.allowed()`, and Univer caches those answers per
+ * permission point until something tells it to re-query.
+ *
+ * So revoking someone remotely did nothing on their screen: the admin removed them from the roster,
+ * the grant replicated correctly, and the victim's client kept answering from the cached "allowed"
+ * until a reload. Same class as the role-downgrade cache bug fixed the round before — the state
+ * changed and nothing re-asked — one map over.
+ */
+describe('UniverYjsBinding — a remote GRANT change triggers a permission re-query (WS-PROT-2b)', () => {
+  const GRANTS = 'sheetProtectionGrants'
+
+  function setupGrants() {
+    const univer = new FakeUniver()
+    univer.unitId = 'unit-1'
+    const doc = new Y.Doc()
+    const range = new FakeRangeProtModel()
+    const ws = new FakeWsProtModel()
+    const onGrantsChanged = vi.fn()
+    const binding = new UniverYjsBinding(
+      univer as never, doc, () => true, {}, null, null,
+      range as never, ws as never, () => true, onGrantsChanged,
+    )
+    return { doc, binding, onGrantsChanged }
+  }
+
+  it('calls the refresh hook when a peer rewrites a grant', () => {
+    const { doc, onGrantsChanged } = setupGrants()
+    applyRemote(doc, (peer) => {
+      peer.getMap(GRANTS).set('perm-1', { allow: ['u-carol'] })
+    })
+    expect(onGrantsChanged).toHaveBeenCalled()
+  })
+
+  it('calls it when a peer DELETES a grant (revocation is the dangerous direction)', () => {
+    const { doc, onGrantsChanged } = setupGrants()
+    applyRemote(doc, (peer) => { peer.getMap(GRANTS).set('perm-1', { allow: ['u-bob'] }) })
+    onGrantsChanged.mockClear()
+    applyRemote(doc, (peer) => { peer.getMap(GRANTS).delete('perm-1') })
+    expect(onGrantsChanged).toHaveBeenCalled()
+  })
+
+  it('does NOT fire for our own local writes (no self-inflicted refresh loop)', () => {
+    const { doc, onGrantsChanged } = setupGrants()
+    doc.getMap(GRANTS).set('perm-1', { allow: ['u-bob'] })
+    expect(onGrantsChanged).not.toHaveBeenCalled()
+  })
+
+  it('stops firing after dispose', () => {
+    const { doc, binding, onGrantsChanged } = setupGrants()
+    binding.dispose()
+    applyRemote(doc, (peer) => { peer.getMap(GRANTS).set('perm-1', { allow: ['u-x'] }) })
+    expect(onGrantsChanged).not.toHaveBeenCalled()
+  })
+
+  it('is inert when no hook is supplied (existing call sites keep working)', () => {
+    const univer = new FakeUniver()
+    univer.unitId = 'unit-1'
+    const doc = new Y.Doc()
+    new UniverYjsBinding(univer as never, doc, () => true, {}, null, null, null, null)
+    expect(() =>
+      applyRemote(doc, (peer) => { peer.getMap(GRANTS).set('perm-1', { allow: ['u-x'] }) }),
+    ).not.toThrow()
+  })
+})
+
+/**
+ * WS-PROT-12 — permission POINTS replicate, in their own map.
+ *
+ * Without this the toggles were local-and-ephemeral in the worst way: `create()` stored the operation
+ * matrix in `sheetProtectionGrants`, but the sheet→permissionId association lived only in Univer's
+ * `WorksheetProtectionPointModel` — a model this binding never read, and which Univer persists only
+ * through an IResourceManagerService snapshot that this app never saves. So no peer ever asked about
+ * that permissionId, and a reload orphaned the grant and minted a new one.
+ *
+ * The map is deliberately NOT `sheetProtection`: octo-docs-backend reads that one, dispatches on
+ * `kind: 'w'`, and treats anything else as a range rule — `readRects(undefined)` then reports
+ * `malformed` and fail-closes the WHOLE sheet. Probed against the real `assertSheetWriteAllowed`:
+ * a lone point rule there 403s every non-admin bot write on that sheet, unfixably.
+ */
+describe('UniverYjsBinding — worksheet permission points replicate (WS-PROT-12)', () => {
+  const POINTS = 'sheetPermissionPoints'
+
+  class FakePointModel {
+    rules = new Map<string, { unitId: string; subUnitId: string; permissionId: string }>()
+    private readonly subs: Array<() => void> = []
+    pointChange$ = { subscribe: (next: () => void) => { this.subs.push(next); return { unsubscribe: () => {} } } }
+    /**
+     * Mutations emit, as the REAL model does — `WorksheetProtectionPointModel.addRule` calls
+     * `_pointChange.next(rule)` SYNCHRONOUSLY. A silent fake pins the exact interaction the
+     * `applyingRemote` echo guard exists to handle, so the guard's own test could not fail:
+     * deleting the guard left the suite green. Emitting here is what makes it a real guard test.
+     */
+    addRule(rule: { unitId: string; subUnitId: string; permissionId: string }) {
+      this.rules.set(`${rule.unitId}/${rule.subUnitId}`, rule)
+      this.emit()
+    }
+    deleteRule(unitId: string, subUnitId: string) {
+      this.rules.delete(`${unitId}/${subUnitId}`)
+      this.emit()
+    }
+    getRule(unitId: string, subUnitId: string) { return this.rules.get(`${unitId}/${subUnitId}`) }
+    /** Drive the local->Yjs path the way Univer's mutation would. */
+    emit() { for (const f of this.subs) f() }
+  }
+
+  function setupPoints(canManageProtection = true) {
+    const univer = new FakeUniver()
+    univer.unitId = 'unit-1'
+    const doc = new Y.Doc()
+    const pm = new FakePointModel()
+    const binding = new UniverYjsBinding(
+      univer as never, doc, () => true, {}, null, null, null, null,
+      () => canManageProtection, null, pm as never,
+    )
+    return { univer, doc, binding, pm, points: doc.getMap(POINTS) }
+  }
+
+  it('pushes a locally-set association into the points map', () => {
+    const { pm, points } = setupPoints()
+    pm.addRule({ unitId: 'unit-1', subUnitId: 'local-1', permissionId: 'perm-p' })
+    pm.emit()
+    expect(points.get('default')).toEqual({ permissionId: 'perm-p' })
+  })
+
+  it('keys by the LOGICAL sheet id, not this client\'s runtime subUnitId', () => {
+    // The whole reason the map exists: `local-1` differs per client and per reopen.
+    const { pm, points } = setupPoints()
+    pm.addRule({ unitId: 'unit-1', subUnitId: 'local-1', permissionId: 'perm-p' })
+    pm.emit()
+    expect([...points.keys()]).toEqual(['default'])
+  })
+
+  it('applies a REMOTE association, re-attaching this client\'s runtime ids', () => {
+    const { doc, pm } = setupPoints()
+    applyRemote(doc, (peer) => { peer.getMap(POINTS).set('default', { permissionId: 'perm-p' }) })
+    expect(pm.getRule('unit-1', 'local-1')).toEqual({
+      unitId: 'unit-1', subUnitId: 'local-1', permissionId: 'perm-p',
+    })
+  })
+
+  it('applies a REMOTE deletion by removing the local rule', () => {
+    const { doc, pm } = setupPoints()
+    applyRemote(doc, (peer) => { peer.getMap(POINTS).set('default', { permissionId: 'perm-p' }) })
+    expect(pm.getRule('unit-1', 'local-1')).toBeTruthy()
+    applyRemote(doc, (peer) => { peer.getMap(POINTS).delete('default') })
+    expect(pm.getRule('unit-1', 'local-1')).toBeUndefined()
+  })
+
+  it('writes NOTHING into sheetProtection — the backend would lock the whole sheet', () => {
+    // The cross-repo assertion. A point association in `sheetProtection` makes every non-admin
+    // bot/REST write on that sheet 403 (probe-verified), so this separation is load-bearing, not tidy.
+    const { doc, pm } = setupPoints()
+    pm.addRule({ unitId: 'unit-1', subUnitId: 'local-1', permissionId: 'perm-p' })
+    pm.emit()
+    expect(doc.getMap(SHEET_PROTECTION_FIELD).size).toBe(0)
+  })
+
+  it('a plain writer cannot push a point change (admin-only, same gate as rules)', () => {
+    const { pm, points } = setupPoints(false)
+    pm.addRule({ unitId: 'unit-1', subUnitId: 'local-1', permissionId: 'perm-p' })
+    pm.emit()
+    expect(points.size).toBe(0)
+  })
+
+  it('does not echo a remote apply back into the map', () => {
+    const { doc, points } = setupPoints()
+    // The real WorksheetProtectionPointModel.addRule() calls `_pointChange.next(rule)`
+    // SYNCHRONOUSLY, so applying a remote association re-enters our own pointChange$ handler while
+    // we are still inside applyRemotePoints — FakePointModel emits for that reason.
+    //
+    // Assert on LOCAL TRANSACTIONS, not on the map's contents. Once the ledger is recorded
+    // (WS-PROT-13) the echo is value-idempotent: it re-writes the identical permissionId, so any
+    // size/value assertion holds with the guard deleted and cannot fail. What the guard actually
+    // prevents is this client emitting a local update at all — a write it has no business making,
+    // which on the real socket is a broadcast to every peer on every open of the document.
+    let localWrites = 0
+    doc.on('afterTransaction', (tr: Y.Transaction) => { if (tr.local && tr.changed.size > 0) localWrites += 1 })
+    applyRemote(doc, (peer) => { peer.getMap(POINTS).set('default', { permissionId: 'perm-p' }) })
+    expect(points.get('default')).toEqual({ permissionId: 'perm-p' })
+    expect(points.size).toBe(1)
+    expect(localWrites).toBe(0)
+  })
+
+  it('a local REMOVAL replicates as a delete', () => {
+    const { pm, points } = setupPoints()
+    pm.addRule({ unitId: 'unit-1', subUnitId: 'local-1', permissionId: 'perm-p' })
+    pm.emit()
+    expect(points.size).toBe(1)
+    pm.deleteRule('unit-1', 'local-1')
+    pm.emit()
+    expect(points.size).toBe(0)
+  })
+
+  it('stops applying after dispose', () => {
+    const { doc, binding, pm } = setupPoints()
+    binding.dispose()
+    applyRemote(doc, (peer) => { peer.getMap(POINTS).set('default', { permissionId: 'perm-p' }) })
+    expect(pm.getRule('unit-1', 'local-1')).toBeUndefined()
+  })
+
+  it('is inert when no point model is supplied (existing call sites keep working)', () => {
+    const univer = new FakeUniver()
+    univer.unitId = 'unit-1'
+    const doc = new Y.Doc()
+    new UniverYjsBinding(univer as never, doc, () => true, {}, null, null, null, null)
+    expect(() =>
+      applyRemote(doc, (peer) => { peer.getMap(POINTS).set('default', { permissionId: 'p' }) }),
+    ).not.toThrow()
+  })
+
+  // [REVIEW] The nine tests above all drive the RUNTIME paths — a local mutation, or a remote
+  // observer firing on a doc this binding was already attached to. Not one of them opens a doc that
+  // ALREADY holds an association, because `setupPoints()` mints a fresh `new Y.Doc()` every time.
+  // That isolation hides `runInitialSync`, which is the path a page load / reload takes: it applies
+  // cells, dims, merges, drawings, hyperlinks and protection rules explicitly, and a seventh
+  // `applyRemotePoints` has to be listed there or the association is never read at open time.
+  // Consequence: the toggles replicate live, then come back OFF on the next reload — "the switch
+  // looks set but isn't", the same class of failure the whole PR exists to kill.
+  it('a fresh binding over a populated doc restores the association into Univer', () => {
+    // First session stores an association...
+    const first = setupPoints()
+    first.pm.addRule({ unitId: 'unit-1', subUnitId: 'local-1', permissionId: 'perm-p' })
+    first.pm.emit()
+    const snapshot = Y.encodeStateAsUpdate(first.doc)
+    first.binding.dispose()
+
+    // ...second session (a reload) starts from the persisted state with an empty model.
+    const univer = new FakeUniver()
+    univer.unitId = 'unit-1'
+    const doc = new Y.Doc()
+    Y.applyUpdate(doc, snapshot)
+    const pm = new FakePointModel()
+    new UniverYjsBinding(
+      univer as never, doc, () => true, {}, null, null, null, null,
+      () => true, null, pm as never,
+    )
+
+    expect(pm.getRule('unit-1', 'local-1')).toEqual({
+      unitId: 'unit-1', subUnitId: 'local-1', permissionId: 'perm-p',
+    })
+  })
+
+  it('restores the association on a legacy doc whose ONLY populated map is sheetPermissionPoints', () => {
+    // Mirrors the sheetProtection legacy-V1 case: no sheetList, no cells, just the association.
+    const doc = new Y.Doc()
+    doc.getMap(POINTS).set('default', { permissionId: 'perm-p' })
+
+    const univer = new FakeUniver()
+    univer.unitId = 'unit-1'
+    const pm = new FakePointModel()
+    new UniverYjsBinding(
+      univer as never, doc, () => true, {}, null, null, null, null,
+      () => true, null, pm as never,
+    )
+
+    expect(pm.getRule('unit-1', 'local-1')).toEqual({
+      unitId: 'unit-1', subUnitId: 'local-1', permissionId: 'perm-p',
+    })
+  })
+})
+
+/**
+ * WS-PROT-13 — a REMOTE association must be recorded in `lastSeenPoints`, or it can never be removed.
+ *
+ * `syncPointsToYmap` emits deletes by walking `lastSeenPoints` — that map is the ONLY record of what
+ * this client has replicated. `applyRemotePoints` updated Univer but not the ledger, so an association
+ * that arrived from a peer was invisible to the delete pass: the admin removed the restriction
+ * locally, the live scan correctly found nothing, and the loop had no key to delete. The stale
+ * permissionId stayed in the shared map and the restriction stuck for everyone, unremovably.
+ *
+ * Fixture note: this needs the association to ARRIVE REMOTELY and then be removed LOCALLY. Two
+ * directions in one test — a same-direction fixture cannot reach it, which is why the WS-PROT-12
+ * suite (all runtime-local, or all remote) missed it.
+ */
+describe('UniverYjsBinding — a remotely-arrived point association can be removed locally (WS-PROT-13)', () => {
+  const POINTS = 'sheetPermissionPoints'
+
+  it('emits the delete after the association arrived from a peer', () => {
+    const univer = new FakeUniver()
+    univer.unitId = 'unit-1'
+    const doc = new Y.Doc()
+    const pm = new (class {
+      rules = new Map<string, unknown>()
+      private readonly subs: Array<() => void> = []
+      pointChange$ = { subscribe: (n: () => void) => { this.subs.push(n); return { unsubscribe: () => {} } } }
+      addRule(r: { unitId: string; subUnitId: string }) { this.rules.set(`${r.unitId}/${r.subUnitId}`, r) }
+      deleteRule(u: string, s: string) { this.rules.delete(`${u}/${s}`) }
+      getRule(u: string, s: string) { return this.rules.get(`${u}/${s}`) }
+      emit() { for (const f of this.subs) f() }
+    })()
+    new UniverYjsBinding(
+      univer as never, doc, () => true, {}, null, null, null, null,
+      () => true, null, pm as never,
+    )
+
+    // 1) a PEER sets the association
+    applyRemote(doc, (peer) => { peer.getMap(POINTS).set('default', { permissionId: 'perm-p' }) })
+    expect(pm.getRule('unit-1', 'local-1')).toBeTruthy()
+
+    // 2) the admin removes it LOCALLY
+    pm.deleteRule('unit-1', 'local-1')
+    pm.emit()
+
+    // 3) it must be gone from the shared map — otherwise every peer stays restricted forever
+    expect(doc.getMap(POINTS).size).toBe(0)
   })
 })

@@ -93,6 +93,31 @@ const SHEET_LIFECYCLE_IDS = new Set<string>([
  */
 const DRAWING_TRIGGER_IDS = new Set<string>(['sheet.mutation.set-drawing-apply'])
 
+/**
+ * Range / worksheet PROTECTION rule mutations. Like hyperlinks, protection rules live in a plugin
+ * resource (SHEET_RANGE_PROTECTION_PLUGIN / SHEET_WORKSHEET_PROTECTION_PLUGIN) rather than in cell
+ * data, so without their own Yjs sync a rule is local-and-ephemeral: it disappears on reload and is
+ * invisible to every peer. We observe these mutations AND each model's `ruleChange$` — the UI drives
+ * the models through these commands, but the models are directly pokeable too.
+ */
+const PROTECTION_TRIGGER_IDS = new Set<string>([
+  'sheet.mutation.add-range-protection',
+  'sheet.mutation.delete-range-protection',
+  'sheet.mutation.set-range-protection',
+  'sheet.mutation.add-worksheet-protection',
+  'sheet.mutation.delete-worksheet-protection',
+  'sheet.mutation.set-worksheet-protection',
+])
+
+/**
+ * Worksheet PERMISSION POINT mutation. Kept in its OWN set rather than added to
+ * PROTECTION_TRIGGER_IDS, because that set drives `syncProtectionToYmap()`, which diffs the
+ * `sheetProtection` map — a different map with a different key shape and a cross-repo reader.
+ */
+const POINT_TRIGGER_IDS = new Set<string>([
+  'sheet.mutation.set-worksheet-permission-points',
+])
+
 export const SHEET_YMAP_FIELD = 'sheet'
 export const SHEET_DIMS_FIELD = 'sheetDims'
 export const SHEET_MERGES_FIELD = 'sheetMerges'
@@ -102,6 +127,53 @@ export const SHEET_LIST_FIELD = 'sheetList'
 export const SHEET_DRAWINGS_FIELD = 'sheetDrawings'
 /** Hyperlinks: `${logicalId}!${linkId}` -> { id, row, column, payload, display }. */
 export const SHEET_HYPERLINKS_FIELD = 'sheetHyperLinks'
+/**
+ * Protection rules: `${logicalId}!r:${ruleId}` for a range rule, `${logicalId}!w:` for the
+ * one-per-sheet worksheet rule. Runtime unitId/subUnitId are stripped before storage and
+ * re-attached on apply — same per-client-id reasoning as drawings above.
+ *
+ * NOTE the split of concerns. This map carries the RULES (which ranges are protected, in which
+ * sheet). WHO may edit them is permissionId-scoped rather than sheet-scoped and lives in a separate
+ * map owned by protectionAuthz.ts. Both halves are required: Univer's stock AuthzIoService answers
+ * "allowed" for any permissionId it has never seen, so a replicated rule without its grant is
+ * decorative — the peer sees the lock icon and edits straight through it.
+ */
+export const SHEET_PROTECTION_FIELD = 'sheetProtection'
+
+/**
+ * Allow-lists for those rules — written and read by protectionAuthz.ts, which owns the shape.
+ *
+ * Declared here only so the binding can OBSERVE it: unlike every other field, nothing applies this
+ * map into a Univer model, so a remote change produces no re-render and no re-query on its own.
+ * See the `onProtectionGrantsChanged` constructor parameter.
+ */
+export const SHEET_PROTECTION_GRANTS_FIELD = 'sheetProtectionGrants'
+
+/**
+ * Worksheet PERMISSION POINTS: `${logicalId}` -> `{ permissionId }`, one per sheet.
+ *
+ * A SEPARATE map from `sheetProtection`, deliberately — and the reason is a cross-repo contract, not
+ * tidiness. `sheetProtection` is read by BOTH repos: octo-docs-backend walks it to decide whether a
+ * bot/REST write touches a protected cell. Its dispatch recognises `kind: 'w'` and treats everything
+ * else as a RANGE rule, reading `rule.ranges` — and a point rule has no `ranges`, so
+ * `readRects(undefined)` returns `malformed: true`, which fail-closes to a WHOLE-SHEET lock. Verified
+ * by probe against the real `assertSheetWriteAllowed`: a lone point rule in `sheetProtection` makes
+ * every non-admin `PATCH /:docId/sheet` on that sheet 403, unfixably — the points dialog produces no
+ * grant record (it seeds from the WORKBOOK id), so no allow-list can ever let anyone back in.
+ *
+ * Keeping them apart means the backend never sees this map and needs no change at all. That is also
+ * the honest modelling: `sheetProtection` answers "who may edit this region", which the server can
+ * enforce per cell; this map answers "which operations are disabled on this sheet", for which the
+ * server has no corresponding object — a bot write carries no Sort or Filter action.
+ *
+ * NOT reconciled by the backend's versionRestore — see octo-docs-backend#139 known limitations.
+ * `reconcileSheetMap()` enumerates SIX map names explicitly (cells, dims, drawings, hyperlinks,
+ * merges, sheetList); every protection field is absent, so a version restore leaves them at their
+ * CURRENT state rather than the restored version's. Verified by probe, and deliberately not fixed
+ * here: it fails safe (restoring a pre-lock version keeps the lock) and `versionRestore.ts` is
+ * outside this change. Anyone adding a seventh shared field should know that whitelist exists.
+ */
+export const SHEET_PERMISSION_POINTS_FIELD = 'sheetPermissionPoints'
 
 /**
  * The logical id used for the first/only sheet of a freshly-seeded book. Kept as
@@ -193,6 +265,110 @@ export interface HyperLinkModelLike {
   ): boolean
   getHyperLink(unitId: string, subUnitId: string, id: string): StoredHyperLink | null | undefined
   linkUpdate$: { subscribe(next: () => void): { unsubscribe(): void } }
+}
+
+/** A protected range, stored as the four bounds only (Univer's IRange carries extra runtime hints). */
+export interface StoredRange {
+  startRow: number
+  startColumn: number
+  endRow: number
+  endColumn: number
+}
+
+/**
+ * A serialized protection rule. `kind` discriminates the two Univer models:
+ *   'r' — a RANGE rule (RangeProtectionRuleModel): many per sheet, each with its own `id` + ranges.
+ *   'w' — the WORKSHEET rule (WorksheetProtectionRuleModel): at most one per sheet, no ranges.
+ *
+ * `unitId` / `subUnitId` are deliberately absent: they are per-client runtime ids, re-attached on
+ * apply from the logical id in the key. `permissionId` IS portable — it's the handle the grant map
+ * in protectionAuthz.ts keys on, so it must survive the round trip for the rule to mean anything.
+ */
+export interface StoredProtection {
+  kind: 'r' | 'w'
+  /** Univer rule id. Range rules only; the worksheet rule is identified by its sheet alone. */
+  id?: string
+  permissionId: string
+  description?: string
+  /** Univer's UnitObject enum (numeric on the wire). Carried through opaquely. */
+  unitType?: number
+  /** Univer's ViewStateEnum / EditStateEnum string values, carried through opaquely. */
+  viewState?: string
+  editState?: string
+  ranges?: StoredRange[]
+}
+
+/**
+ * Minimal RangeProtectionRuleModel surface. Shaped like HyperLinkModelLike: read per-sheet, write
+ * via add/set/delete, react through `ruleChange$`.
+ */
+export interface RangeProtectionModelLike {
+  getSubunitRuleList(unitId: string, subUnitId: string): unknown[]
+  getRule(unitId: string, subUnitId: string, id: string): unknown | undefined
+  addRule(unitId: string, subUnitId: string, rule: unknown): void
+  setRule(unitId: string, subUnitId: string, id: string, rule: unknown): void
+  deleteRule(unitId: string, subUnitId: string, id: string): void
+  ruleChange$: { subscribe(next: () => void): { unsubscribe(): void } }
+}
+
+/**
+ * Minimal WorksheetProtectionRuleModel surface. Note the asymmetric signatures — `addRule` takes no
+ * subUnitId (it reads it off the rule) while `setRule`/`deleteRule`/`getRule` do. That is Univer's
+ * actual shape, not a transcription slip.
+ */
+export interface WorksheetProtectionModelLike {
+  getRule(unitId: string, subUnitId: string): unknown | undefined
+  addRule(unitId: string, rule: unknown): void
+  setRule(unitId: string, subUnitId: string, rule: unknown): void
+  deleteRule(unitId: string, subUnitId: string): void
+  ruleChange$: { subscribe(next: () => void): { unsubscribe(): void } }
+}
+
+/**
+ * Univer's WorksheetProtectionPointModel, structurally.
+ *
+ * NOTE `addRule` takes the WHOLE rule (it reads unitId/subUnitId off it) — unlike
+ * WorksheetProtectionRuleModel.addRule(unitId, rule) — and the change stream is `pointChange$`,
+ * NOT `ruleChange$`. Verified against @univerjs/sheets@0.25.1; assuming the sibling model's shape
+ * here would silently never fire.
+ */
+export interface WorksheetPointModelLike {
+  getRule(unitId: string, subUnitId: string): unknown | undefined
+  addRule(rule: unknown): void
+  deleteRule(unitId: string, subUnitId: string): void
+  pointChange$: { subscribe(next: () => void): { unsubscribe(): void } }
+}
+
+/** One permission-point association: which permissionId governs this sheet's operation matrix. */
+interface StoredPoint {
+  permissionId: string
+}
+
+/** Protection key: `${logicalId}!r:${ruleId}` (range) or `${logicalId}!w:` (worksheet). */
+function protectionKey(logicalId: string, kind: 'r' | 'w', id = ''): string {
+  return `${logicalId}!${kind}:${id}`
+}
+
+/** Keep only the four bounds, and only when all are in-grid integers. */
+function pickRanges(raw: unknown): StoredRange[] {
+  if (!Array.isArray(raw)) return []
+  const out: StoredRange[] = []
+  for (const r of raw) {
+    if (r == null || typeof r !== 'object') continue
+    const { startRow, startColumn, endRow, endColumn } = r as Record<string, unknown>
+    if (
+      !Number.isInteger(startRow) || !Number.isInteger(startColumn) ||
+      !Number.isInteger(endRow) || !Number.isInteger(endColumn)
+    ) continue
+    const sr = startRow as number, sc = startColumn as number
+    const er = endRow as number, ec = endColumn as number
+    // Same clamp-reject contract as remote cell keys: a hostile/corrupt peer must not drive
+    // protection over an out-of-grid region (which Univer would render or intersect oddly).
+    if (sr < 0 || sc < 0 || er >= SHEET_MAX_ROWS || ec >= SHEET_MAX_COLS) continue
+    if (er < sr || ec < sc) continue
+    out.push({ startRow: sr, startColumn: sc, endRow: er, endColumn: ec })
+  }
+  return out
 }
 
 function cellKey(logicalId: string, row: number, col: number): string {
@@ -294,6 +470,11 @@ export class UniverYjsBinding {
   private readonly sheetListMap: Y.Map<SheetMeta>
   private readonly drawingMap: Y.Map<StoredDrawing>
   private readonly hyperLinkMap: Y.Map<StoredHyperLink>
+  private readonly protectionMap: Y.Map<StoredProtection>
+  /** Allow-lists. Not applied into any model — see onProtectionGrantsChanged. */
+  private readonly protectionGrantsMap: Y.Map<unknown>
+  /** Permission-point associations: logicalId -> { permissionId }. */
+  private readonly pointsMap: Y.Map<StoredPoint>
   private readonly commandDisposable: { dispose(): void }
   private readonly observer: (events: Y.YMapEvent<SyncCell>) => void
   private readonly dimObserver: (event: Y.YMapEvent<number>) => void
@@ -301,13 +482,22 @@ export class UniverYjsBinding {
   private readonly sheetListObserver: (event: Y.YMapEvent<SheetMeta>) => void
   private readonly drawingObserver: (event: Y.YMapEvent<StoredDrawing>) => void
   private readonly hyperLinkObserver: (event: Y.YMapEvent<StoredHyperLink>) => void
+  private readonly protectionObserver: (event: Y.YMapEvent<StoredProtection>) => void
+  private readonly protectionGrantsObserver: (event: Y.YMapEvent<unknown>) => void
+  private readonly pointsObserver: (event: Y.YMapEvent<StoredPoint>) => void
   private hyperLinkSub: { unsubscribe(): void } | null = null
+  private rangeProtSub: { unsubscribe(): void } | null = null
+  private worksheetProtSub: { unsubscribe(): void } | null = null
+  private pointSub: { unsubscribe(): void } | null = null
+  /** logicalId -> last replicated permissionId, for the same diff discipline as protection. */
+  private readonly lastSeenPoints = new Map<string, string>()
   private applyingRemote = false
   private readonly lastSeen = new Map<string, SyncCell | null>()
   private readonly lastSeenDims = new Map<string, number>()
   private readonly lastSeenMerges = new Set<string>()
   private readonly lastSeenDrawings = new Map<string, StoredDrawing>()
   private readonly lastSeenLinks = new Map<string, StoredHyperLink>()
+  private readonly lastSeenProtection = new Map<string, StoredProtection>()
   /** logical id -> local (univer) sheet id, and the reverse. */
   private readonly logicalToLocal = new Map<string, string>()
   private readonly localToLogical = new Map<string, string>()
@@ -324,6 +514,35 @@ export class UniverYjsBinding {
     private readonly drawingReader: DrawingReaderLike | null = null,
     /** Hyperlink model. When null (tests) hyperlink sync is inert (observer attaches, nothing read). */
     private readonly hyperLinkModel: HyperLinkModelLike | null = null,
+    /** Range-protection rule model. When null (tests) protection sync is inert. */
+    private readonly rangeProtectionModel: RangeProtectionModelLike | null = null,
+    /** Worksheet-protection rule model. When null (tests) worksheet protection sync is inert. */
+    private readonly worksheetProtectionModel: WorksheetProtectionModelLike | null = null,
+    /**
+     * Admin gate for the protection-replication path. Protection is an admin-only decision, so a
+     * plain writer must not be able to push protection changes — including a DELETE — into the
+     * shared doc. Defaults to `canWrite` so existing call sites keep working; `CollabSheet` passes
+     * the real `canManage(role)`.
+     */
+    private readonly canManageProtection: () => boolean = () => this.canWrite(),
+    /**
+     * Called when a PEER changes the grant map (`sheetProtectionGrants`).
+     *
+     * Grants have no Univer model behind them — their only consumer is `IAuthzIoService.allowed()`,
+     * and Univer caches those answers per permission point until something invalidates them. Without
+     * this hook a remote revocation was invisible on the victim's own screen until a reload: the grant
+     * replicated correctly and the cached "allowed" stayed. Same shape as the role-downgrade cache bug
+     * fixed the round before — the state changed and nothing re-asked — one map over.
+     *
+     * `CollabSheet` passes its permission-refresh call. When null (tests, older call sites) the
+     * observer still attaches and simply has nothing to notify.
+     */
+    private readonly onProtectionGrantsChanged: (() => void) | null = null,
+    /**
+     * Worksheet PERMISSION POINT model. When null (tests, older call sites) point sync is inert: the
+     * observer still attaches so a remote association could apply, but nothing is read or pushed.
+     */
+    private readonly worksheetPointModel: WorksheetPointModelLike | null = null,
   ) {
     this.ymap = ydoc.getMap<SyncCell>(SHEET_YMAP_FIELD)
     this.dimMap = ydoc.getMap<number>(SHEET_DIMS_FIELD)
@@ -331,6 +550,9 @@ export class UniverYjsBinding {
     this.sheetListMap = ydoc.getMap<SheetMeta>(SHEET_LIST_FIELD)
     this.drawingMap = ydoc.getMap<StoredDrawing>(SHEET_DRAWINGS_FIELD)
     this.hyperLinkMap = ydoc.getMap<StoredHyperLink>(SHEET_HYPERLINKS_FIELD)
+    this.protectionMap = ydoc.getMap<StoredProtection>(SHEET_PROTECTION_FIELD)
+    this.protectionGrantsMap = ydoc.getMap<unknown>(SHEET_PROTECTION_GRANTS_FIELD)
+    this.pointsMap = ydoc.getMap<StoredPoint>(SHEET_PERMISSION_POINTS_FIELD)
 
     // 1) Establish the sheet set + identity map, then seed or apply content.
     //    Runs synchronously by default. When the host (CollabSheet) sets `deferInitialSync`,
@@ -351,6 +573,16 @@ export class UniverYjsBinding {
         else if (AUTO_ROW_HEIGHT_TRIGGER_IDS.has(command.id)) this.syncAutoRowHeightFromCommand(command)
         else if (MERGE_TRIGGER_IDS.has(command.id)) this.syncMergesToYmap()
         else if (DRAWING_TRIGGER_IDS.has(command.id)) this.syncDrawingsToYmap()
+        // Protection is admin-only, so its replication path takes the admin gate, not canWrite.
+        // A plain writer reaching `sheet.mutation.delete-range-protection` would otherwise erase
+        // the rule for every peer — bypassing the feature by removing the lock.
+        else if (PROTECTION_TRIGGER_IDS.has(command.id)) {
+          if (this.canManageProtection()) this.syncProtectionToYmap()
+        }
+        // Same admin gate: the operation matrix is an admin-only decision too.
+        else if (POINT_TRIGGER_IDS.has(command.id)) {
+          if (this.canManageProtection()) this.syncPointsToYmap()
+        }
         else if (SHEET_LIFECYCLE_IDS.has(command.id)) {
           this.syncSheetListFromUniver()
           // A rename/insert may also expose new content on the (now-)active sheet.
@@ -403,6 +635,11 @@ export class UniverYjsBinding {
         this.applyRemoteDrawings(Array.from(this.drawingMap.keys()).filter((k) => prefixes.some((p) => k.startsWith(p))))
         // Hyperlinks keyed `${logicalId}!${linkId}` share the `${id}!` prefix too.
         this.applyRemoteHyperLinks(Array.from(this.hyperLinkMap.keys()).filter((k) => prefixes.some((p) => k.startsWith(p))))
+        // Protection keys are `${logicalId}!r:...` / `${logicalId}!w:` — same `${id}!` prefix.
+        this.applyRemoteProtection(Array.from(this.protectionMap.keys()).filter((k) => prefixes.some((p) => k.startsWith(p))))
+        // The points map is keyed by the BARE logical id (one association per sheet, no `!suffix`),
+        // so select by exact membership in `created` rather than by prefix.
+        this.applyRemotePoints(created.filter((id) => this.pointsMap.has(id)))
       }
     }
     this.sheetListMap.observe(this.sheetListObserver)
@@ -427,6 +664,53 @@ export class UniverYjsBinding {
       this.hyperLinkSub = this.hyperLinkModel.linkUpdate$.subscribe(() => {
         if (this.disposed || this.applyingRemote || !this.canWrite()) return
         this.syncHyperLinksToYmap()
+      })
+    }
+
+    // 9) protection rules. Remote add/set/delete -> apply into the sheet the key names.
+    this.protectionObserver = (event: Y.YMapEvent<StoredProtection>) => {
+      if (this.disposed || event.transaction.local) return
+      this.applyRemoteProtection(Array.from(event.keys.keys()))
+    }
+    this.protectionMap.observe(this.protectionObserver)
+    // 9b) protection GRANTS. Nothing to apply into a model — the grant map only feeds
+    // IAuthzIoService.allowed(), whose answers Univer caches per permission point. So the whole job
+    // here is to tell Univer to re-ask. Without it a remote revocation stayed invisible on the
+    // victim's screen until a reload: state changed, nobody re-queried.
+    this.protectionGrantsObserver = (event: Y.YMapEvent<unknown>) => {
+      if (this.disposed || event.transaction.local) return
+      this.onProtectionGrantsChanged?.()
+    }
+    this.protectionGrantsMap.observe(this.protectionGrantsObserver)
+    // 9c) permission POINTS. Their own map (see SHEET_PERMISSION_POINTS_FIELD) and their own model,
+    // whose change stream is `pointChange$` — not `ruleChange$` like the two rule models.
+    this.pointsObserver = (event: Y.YMapEvent<StoredPoint>) => {
+      if (this.disposed || event.transaction.local) return
+      this.applyRemotePoints(Array.from(event.keys.keys()))
+    }
+    this.pointsMap.observe(this.pointsObserver)
+    if (this.worksheetPointModel) {
+      this.pointSub = this.worksheetPointModel.pointChange$.subscribe(() => {
+        if (this.disposed || this.applyingRemote || !this.canManageProtection()) return
+        this.syncPointsToYmap()
+      })
+    }
+    // Local -> Yjs for protection. The mutation triggers above cover the UI path; these streams are
+    // the belt-and-braces half (a direct model poke fires ruleChange$ but no command).
+    // Gated on canManageProtection, NOT canWrite: syncProtectionToYmap() diffs against
+    // lastSeenProtection and DELETES keys that vanished locally, so a plain writer (canWrite true,
+    // canManageProtection false) reaching this path would replicate a protection removal to every
+    // peer — the same authorization hole the command path at :487 closes.
+    if (this.rangeProtectionModel) {
+      this.rangeProtSub = this.rangeProtectionModel.ruleChange$.subscribe(() => {
+        if (this.disposed || this.applyingRemote || !this.canManageProtection()) return
+        this.syncProtectionToYmap()
+      })
+    }
+    if (this.worksheetProtectionModel) {
+      this.worksheetProtSub = this.worksheetProtectionModel.ruleChange$.subscribe(() => {
+        if (this.disposed || this.applyingRemote || !this.canManageProtection()) return
+        this.syncProtectionToYmap()
       })
     }
   }
@@ -455,10 +739,24 @@ export class UniverYjsBinding {
       this.applyRemoteMerges(Array.from(this.mergeMap.keys()))
       this.applyRemoteDrawings(Array.from(this.drawingMap.keys()))
       this.applyRemoteHyperLinks(Array.from(this.hyperLinkMap.keys()))
-    } else if (this.ymap.size > 0 || this.dimMap.size > 0 || this.mergeMap.size > 0) {
-      // Legacy V1 single-sheet doc: has populated `default!r:c` cells (and/or dims/merges)
-      // but NO sheetList registry. Map the first local sheet to the 'default' logical id,
-      // register it for writers (so it joins the multi-sheet lifecycle going forward),
+      this.applyRemoteProtection(Array.from(this.protectionMap.keys()))
+      // Permission POINTS are the SEVENTH shared field and need listing here like the rest: the
+      // observer only fires on a CHANGE, so an association already in the doc at open time would
+      // otherwise never reach Univer and the toggles would come back off on every reload.
+      this.applyRemotePoints(Array.from(this.pointsMap.keys()))
+    } else if (
+      this.ymap.size > 0 ||
+      this.dimMap.size > 0 ||
+      this.mergeMap.size > 0 ||
+      this.protectionMap.size > 0 ||
+      // A V1 doc whose only populated map is the points map: an admin configured the operation
+      // matrix on a still-empty sheet. Omitting it here drops through to the brand-new-doc branch
+      // and the toggles vanish — same narrow-but-real hole as sheetProtection had.
+      this.pointsMap.size > 0
+    ) {
+      // Legacy V1 single-sheet doc: has populated `default!r:c` cells (and/or dims / merges /
+      // protection rules) but NO sheetList registry. Map the first local sheet to the 'default'
+      // logical id, register it for writers (so it joins the multi-sheet lifecycle going forward),
       // then apply the pre-existing content into the fresh Univer workbook. Without this
       // the doc would fall into the brand-new path below and render blank.
       this.initialSynced = true
@@ -468,6 +766,8 @@ export class UniverYjsBinding {
       this.applyRemoteMerges(Array.from(this.mergeMap.keys()))
       this.applyRemoteDrawings(Array.from(this.drawingMap.keys()))
       this.applyRemoteHyperLinks(Array.from(this.hyperLinkMap.keys()))
+      this.applyRemoteProtection(Array.from(this.protectionMap.keys()))
+      this.applyRemotePoints(Array.from(this.pointsMap.keys()))
     } else if (this.canWrite()) {
       // Doc LOOKS empty. This is either a genuinely brand-new doc we may author, OR a COLD
       // cache whose persisted (possibly renamed) registry hasn't arrived over the network yet.
@@ -491,6 +791,25 @@ export class UniverYjsBinding {
       // an import path that dropped images in) so they aren't lost. No-op when there are none.
       this.syncDrawingsToYmap()
       this.syncHyperLinksToYmap()
+      // Protection takes the ADMIN gate, not canWrite — every other call site of these two already
+      // does (see the observer wiring above: `if (this.canManageProtection()) …`). This branch was
+      // the one that did not, and it is the branch that runs on a brand-new doc.
+      //
+      // The asymmetry was exploitable in the ordinary case, not a corner one: a plain writer who is
+      // FIRST into a fresh book seeds from whatever the local Univer instance holds. Univer's default
+      // workbook carries no rules, so `scanAllProtection()` returns an empty map — and because
+      // syncProtectionToYmap() diffs live-vs-lastSeenProtection and emits `null` (delete) for keys
+      // that vanished locally, a writer racing a cold cache could replicate protection REMOVAL for
+      // rules an admin had set. Gating matches the observers and closes it.
+      //
+      // syncPointsToYmap() is added for SYMMETRY, and it is not cosmetic: the permission POINTS map
+      // is a separate Y.Map (SHEET_PERMISSION_POINTS_FIELD) with its own seed path. Seeding
+      // `sheetProtection` but not `sheetPermissionPoints` left a brand-new book's operation matrix
+      // unreplicated until some later command happened to touch it.
+      if (this.canManageProtection()) {
+        this.syncProtectionToYmap()
+        this.syncPointsToYmap()
+      }
     } else {
       // Reader on an empty doc: never authors, so it's safe regardless of network state. Map
       // local sheets so later remote content applies.
@@ -1378,12 +1697,269 @@ export class UniverYjsBinding {
     }
   }
 
+  /**
+   * Read every sheet's protection rules, keyed by logical id. Runtime `unitId`/`subUnitId` are
+   * dropped (they differ per client — see StoredProtection) and re-derived on apply.
+   *
+   * Returns NULL — never an empty map — when the live state could not be READ (no workbook, no
+   * unit id, or a model that threw). The caller diffs this against lastSeenProtection and treats
+   * "absent from live" as "the user deleted it", so an empty map on read failure means a transient
+   * local glitch is replicated to every peer as a permanent, un-undoable deletion of all protection
+   * (WS-PROT-9b/9c). No information must therefore be distinguishable from "nothing is protected".
+   * This mirrors applyRemoteProtection's own policy: on failure, leave lastSeenProtection untouched
+   * so a later pass retries.
+   */
+  private scanAllProtection(): Map<string, StoredProtection> | null {
+    const out = new Map<string, StoredProtection>()
+    const wb = this.workbook()
+    if (!wb) return null
+    const unitId = wb.getId?.()
+    if (!unitId) return null
+    for (const [localId, logicalId] of this.localToLogical) {
+      if (this.rangeProtectionModel) {
+        let rules: unknown[] = []
+        try {
+          rules = this.rangeProtectionModel.getSubunitRuleList(unitId, localId) ?? []
+        } catch {
+          return null
+        }
+        for (const raw of rules) {
+          if (raw == null || typeof raw !== 'object') continue
+          const r = raw as Record<string, unknown>
+          if (typeof r.id !== 'string' || typeof r.permissionId !== 'string') continue
+          out.set(protectionKey(logicalId, 'r', r.id), {
+            kind: 'r',
+            id: r.id,
+            permissionId: r.permissionId,
+            ...(typeof r.description === 'string' ? { description: r.description } : {}),
+            ...(typeof r.unitType === 'number' ? { unitType: r.unitType } : {}),
+            ...(typeof r.viewState === 'string' ? { viewState: r.viewState } : {}),
+            ...(typeof r.editState === 'string' ? { editState: r.editState } : {}),
+            ranges: pickRanges(r.ranges),
+          })
+        }
+      }
+      if (this.worksheetProtectionModel) {
+        let raw: unknown
+        try {
+          raw = this.worksheetProtectionModel.getRule(unitId, localId)
+        } catch {
+          // Same policy as the range half: a read that threw is NOT "no rule here" (WS-PROT-9b).
+          return null
+        }
+        if (raw != null && typeof raw === 'object') {
+          const r = raw as Record<string, unknown>
+          if (typeof r.permissionId === 'string') {
+            out.set(protectionKey(logicalId, 'w'), {
+              kind: 'w',
+              permissionId: r.permissionId,
+              ...(typeof r.description === 'string' ? { description: r.description } : {}),
+              ...(typeof r.unitType === 'number' ? { unitType: r.unitType } : {}),
+              ...(typeof r.viewState === 'string' ? { viewState: r.viewState } : {}),
+              ...(typeof r.editState === 'string' ? { editState: r.editState } : {}),
+            })
+          }
+        }
+      }
+    }
+    return out
+  }
+
+  /** Diff live protection rules of all sheets vs lastSeenProtection; write only changed/removed. */
+  /**
+   * Read the local permission-point association for every mapped sheet.
+   *
+   * Returns null when the live state could not be READ — never an empty map. Diffing an empty map
+   * against `lastSeenPoints` would emit a delete for every tracked key and wipe the operation matrix
+   * for every collaborator, permanently. Same policy (and same reason) as scanAllProtection.
+   */
+  private scanAllPoints(): Map<string, StoredPoint> | null {
+    const out = new Map<string, StoredPoint>()
+    if (!this.worksheetPointModel) return out
+    const wb = this.workbook()
+    if (!wb) return null
+    const unitId = wb.getId?.()
+    if (!unitId) return null
+    for (const [localId, logicalId] of this.localToLogical) {
+      let raw: unknown
+      try {
+        raw = this.worksheetPointModel.getRule(unitId, localId)
+      } catch {
+        return null
+      }
+      if (raw != null && typeof raw === 'object') {
+        const pid = (raw as { permissionId?: unknown }).permissionId
+        if (typeof pid === 'string' && pid) out.set(logicalId, { permissionId: pid })
+      }
+    }
+    return out
+  }
+
+  /** Local -> Yjs for permission points. Diff, like every other field; never a blind overwrite. */
+  private syncPointsToYmap(): void {
+    if (!this.worksheetPointModel) return
+    const live = this.scanAllPoints()
+    if (live === null) return
+    const doc = this.pointsMap.doc
+    if (!doc) return
+    doc.transact(() => {
+      for (const [logicalId, point] of live) {
+        if (this.lastSeenPoints.get(logicalId) !== point.permissionId) {
+          this.pointsMap.set(logicalId, point)
+        }
+      }
+      for (const logicalId of this.lastSeenPoints.keys()) {
+        if (!live.has(logicalId)) this.pointsMap.delete(logicalId)
+      }
+    })
+    this.lastSeenPoints.clear()
+    for (const [logicalId, point] of live) this.lastSeenPoints.set(logicalId, point.permissionId)
+  }
+
+  /**
+   * Yjs -> local for permission points. `addRule` takes the whole rule and reads unitId/subUnitId off
+   * it, so THIS client's runtime ids are attached here — the shared map carries only the logical id
+   * and the permissionId, for the same per-client-id reason as drawings and protection rules.
+   */
+  private applyRemotePoints(keys: string[]): void {
+    if (!this.worksheetPointModel) return
+    const wb = this.workbook()
+    if (!wb) return
+    const unitId = wb.getId?.()
+    if (!unitId) return
+    this.applyingRemote = true
+    try {
+      for (const logicalId of keys) {
+        const localId = this.logicalToLocal.get(logicalId)
+        if (!localId) continue // sheet not created locally yet (registry reconcile pending)
+        const stored = this.pointsMap.get(logicalId) ?? null
+        const pid = stored && typeof stored === 'object' ? stored.permissionId : null
+        if (typeof pid === 'string' && pid) {
+          this.worksheetPointModel.addRule({ unitId, subUnitId: localId, permissionId: pid })
+          // RECORD IT. `lastSeenPoints` is the only ledger `syncPointsToYmap` walks to emit deletes,
+          // so an association that arrived from a peer and was never written here could not be
+          // removed: the admin dropped the restriction locally, the live scan correctly found
+          // nothing, and the delete pass had no key to act on. The stale permissionId stayed in the
+          // shared map and the restriction stuck for everyone. WS-PROT-13.
+          this.lastSeenPoints.set(logicalId, pid)
+        } else {
+          this.worksheetPointModel.deleteRule(unitId, localId)
+          this.lastSeenPoints.delete(logicalId)
+        }
+      }
+    } finally {
+      this.applyingRemote = false
+    }
+  }
+
+  private syncProtectionToYmap(): void {
+    if (!this.rangeProtectionModel && !this.worksheetProtectionModel) return
+    const live = this.scanAllProtection()
+    // null = the live state could not be READ. Diffing against lastSeenProtection here would emit a
+    // delete for every tracked key and wipe protection for every peer, permanently (WS-PROT-9b/9c).
+    // Abort and let the next command / model emission retry.
+    if (live === null) return
+    const changed: Array<[string, StoredProtection | null]> = []
+    for (const [key, p] of live) {
+      const prev = this.lastSeenProtection.get(key)
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(p)) changed.push([key, p])
+    }
+    for (const key of this.lastSeenProtection.keys()) {
+      if (!live.has(key)) changed.push([key, null])
+    }
+    if (changed.length === 0) return
+    this.protectionMap.doc?.transact(() => {
+      for (const [key, p] of changed) {
+        if (p) {
+          this.lastSeenProtection.set(key, p)
+          this.protectionMap.set(key, p)
+        } else {
+          this.lastSeenProtection.delete(key)
+          this.protectionMap.delete(key)
+        }
+      }
+    })
+  }
+
+  /**
+   * Apply remote-changed protection keys into the sheet each names (by logical id). The
+   * `applyingRemote` guard stops each model's ruleChange$ from echoing straight back into the
+   * Y.Map. Per-item isolation mirrors the cell / drawing / hyperlink paths: one bad rule must not
+   * abort the batch, and lastSeenProtection is recorded ONLY on success so a failure retries.
+   */
+  private applyRemoteProtection(keys: string[]): void {
+    const wb = this.workbook()
+    if (!wb) return
+    const unitId = wb.getId?.()
+    if (!unitId) return
+    this.applyingRemote = true
+    try {
+      for (const key of keys) {
+        const bang = key.indexOf('!')
+        if (bang < 0) continue
+        const logicalId = key.slice(0, bang)
+        const rest = key.slice(bang + 1)
+        const colon = rest.indexOf(':')
+        if (colon < 0) continue
+        const kind = rest.slice(0, colon)
+        const ruleId = rest.slice(colon + 1)
+        if (kind !== 'r' && kind !== 'w') continue
+        const localId = this.logicalToLocal.get(logicalId)
+        if (!localId) continue // sheet not created locally yet (registry reconcile pending)
+        const stored = this.protectionMap.get(key) ?? null
+        try {
+          if (kind === 'r') {
+            const model = this.rangeProtectionModel
+            if (!model || !ruleId) continue
+            if (stored) {
+              // Re-attach THIS client's runtime ids; everything else rides from the peer.
+              const rule = {
+                ...stored,
+                id: ruleId,
+                unitId,
+                subUnitId: localId,
+                ranges: pickRanges(stored.ranges),
+              }
+              delete (rule as Record<string, unknown>).kind
+              if (model.getRule(unitId, localId, ruleId)) model.setRule(unitId, localId, ruleId, rule)
+              else model.addRule(unitId, localId, rule)
+              this.lastSeenProtection.set(key, stored)
+            } else {
+              if (model.getRule(unitId, localId, ruleId)) model.deleteRule(unitId, localId, ruleId)
+              this.lastSeenProtection.delete(key)
+            }
+          } else {
+            const model = this.worksheetProtectionModel
+            if (!model) continue
+            if (stored) {
+              const rule = { ...stored, unitId, subUnitId: localId }
+              delete (rule as Record<string, unknown>).kind
+              delete (rule as Record<string, unknown>).ranges
+              if (model.getRule(unitId, localId)) model.setRule(unitId, localId, rule)
+              else model.addRule(unitId, rule)
+              this.lastSeenProtection.set(key, stored)
+            } else {
+              if (model.getRule(unitId, localId)) model.deleteRule(unitId, localId)
+              this.lastSeenProtection.delete(key)
+            }
+          }
+        } catch {
+          // leave lastSeenProtection untouched so a later pass retries this rule
+        }
+      }
+    } finally {
+      this.applyingRemote = false
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
     this.commandDisposable.dispose()
     try {
       this.hyperLinkSub?.unsubscribe()
+      this.rangeProtSub?.unsubscribe()
+      this.worksheetProtSub?.unsubscribe()
     } catch {
       // ignore
     }
@@ -1393,11 +1969,21 @@ export class UniverYjsBinding {
     this.sheetListMap.unobserve(this.sheetListObserver)
     this.drawingMap.unobserve(this.drawingObserver)
     this.hyperLinkMap.unobserve(this.hyperLinkObserver)
+    this.protectionMap.unobserve(this.protectionObserver)
+    this.protectionGrantsMap.unobserve(this.protectionGrantsObserver)
+    this.pointsMap.unobserve(this.pointsObserver)
+    this.pointSub?.unsubscribe()
+    this.pointSub = null
     this.lastSeen.clear()
     this.lastSeenDims.clear()
     this.lastSeenMerges.clear()
     this.lastSeenDrawings.clear()
     this.lastSeenLinks.clear()
+    this.lastSeenProtection.clear()
+    // Same ledger discipline as its siblings. Left populated, a re-created binding over the same
+    // maps would start with a stale points ledger and could emit a delete for an association it
+    // never actually observed this session.
+    this.lastSeenPoints.clear()
     this.logicalToLocal.clear()
     this.localToLogical.clear()
   }

@@ -15,7 +15,18 @@
 import * as Y from 'yjs'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { IndexeddbPersistence } from 'y-indexeddb'
-import { LocaleType, mergeLocales, ICommandService, CommandType, IContextService, FOCUSING_COMMON_DRAWINGS, IImageIoService } from '@univerjs/core'
+import {
+  LocaleType,
+  mergeLocales,
+  ICommandService,
+  CommandType,
+  IContextService,
+  FOCUSING_COMMON_DRAWINGS,
+  IImageIoService,
+  IAuthzIoService,
+  IPermissionService,
+  UserManagerService,
+} from '@univerjs/core'
 import { IMenuManagerService, RibbonInsertGroup, MenuItemType, IFontService, ILocalFileService } from '@univerjs/ui'
 import { createUniver } from './createUniver.ts'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
@@ -39,6 +50,14 @@ const OCTO_MENTION_CMD = 'octo.command.mention.open'
 const OCTO_MENTION_ROW_HEADER_W = 40
 const OCTO_MENTION_COL_HEADER_H = 20
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core'
+import {
+  SheetPermissionInitController,
+  RangeProtectionRuleModel,
+  WorksheetProtectionPointModel,
+  WorksheetProtectionRuleModel,
+  WorkbookCreateProtectPermission,
+  WorkbookManageCollaboratorPermission,
+} from '@univerjs/preset-sheets-core'
 import sheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN'
 import '@univerjs/preset-sheets-core/lib/index.css'
 // Drawing (insert image / float shapes) + Table (native table objects) presets. These are
@@ -64,13 +83,23 @@ import '@univerjs/preset-sheets-hyper-link/lib/index.css'
 import { buildDocumentName } from '../documentName/index.ts'
 import { resolveCollabWsUrl } from '../config.ts'
 import { t } from '../octoweb/index.ts'
-import { canEdit, type Role } from '../auth/roles.ts'
+import { canEdit, canManage, type Role } from '../auth/roles.ts'
 import { getCollabToken, getCollabTokenEntry, disposeToken } from '../auth/collabToken.ts'
 import { cacheKey, deleteDatabaseAwait, type DocScope } from '../offline/cache.ts'
 import { RoleController } from '../collab/statelessRole.ts'
 import { CloseCodeMachine, type CloseEvent } from '../collab/closeCode.ts'
 import type { ConnState, TerminalState } from '../collab/createCollabEditor.ts'
-import { UniverYjsBinding, type DrawingReaderLike, type HyperLinkModelLike } from './binding.ts'
+import {
+  UniverYjsBinding,
+  type DrawingReaderLike,
+  type HyperLinkModelLike,
+  type RangeProtectionModelLike,
+  type WorksheetPointModelLike,
+  type WorksheetProtectionModelLike,
+} from './binding.ts'
+import { OctoAuthzIoService, setProtectionAuthzContext, clearProtectionAuthzContext } from './protectionAuthz.ts'
+import { makeProtectionUserPart } from './ProtectionUserPart.tsx'
+import { listMembers } from '../members/api.ts'
 import { SheetCursorOverlay } from './sheetCursors.ts'
 import { SheetCommentMarkers, type MarkedCell } from './sheetCommentMarkers.ts'
 import { SheetCellMention, stripTrailingQuery } from './sheetMention.ts'
@@ -178,6 +207,27 @@ export class CollabSheet {
   private sealTimer: ReturnType<typeof setTimeout> | null = null
 
   private currentRole: Role
+  /** Set once Univer's DI is reachable; re-applied whenever the role changes. */
+  private applyProtectionAdminGate: ((role: Role) => void) | null = null
+  /**
+   * Univer's SheetPermissionInitController — the only thing that re-queries IAuthzIoService and
+   * rewrites the permission points enforcement actually reads. `undefined` when DI could not
+   * produce it (see the resolve site: `injector.get()` throws, it does not return undefined).
+   */
+  private permissionInit:
+    | { refreshRangeProtectPermission?: () => void; refreshPermission?: (unitId: string, permissionId: string) => void }
+    | undefined
+  /** Worksheet-level ('w') protection rules — read on refresh to recover each sheet's permissionId. */
+  private worksheetProtectionModel: WorksheetProtectionModelLike | null = null
+  /**
+   * Worksheet permission-POINT rules (the 「更改工作表权限」 operation matrix) — a THIRD model, with its
+   * own permissionId per sheet. Retained for the same reason as the rule model above: Univer's
+   * `refreshPermission(unitId, permissionId)` looks the id up in BOTH models and only runs the half
+   * whose model owns it, so refreshing with a worksheet RULE id never refreshes the point matrix.
+   */
+  private worksheetPointModel: WorksheetPointModelLike | null = null
+  /** The exact context object we installed — passed back on teardown to prove ownership. */
+  private protectionAuthzCtx: Parameters<typeof setProtectionAuthzContext>[0] | undefined
   private destroyed = false
 
   private constructor(opts: CollabSheetOptions, initialRole: Role, initialEpoch: number, wsUrl: string) {
@@ -259,6 +309,23 @@ export class CollabSheet {
         },
       },
     }
+    // Protection authorization must be reachable before Univer constructs its services: the
+    // OctoAuthzIoService below is registered by value and reads this module-level context (the same
+    // bridge idiom as floatDom/formulaBridge.ts). `role` is a live getter so a runtime downgrade
+    // takes effect without rebuilding the sheet.
+    // Keep the exact object we install so teardown can prove ownership (see clearProtectionAuthzContext).
+    this.protectionAuthzCtx = {
+      ydoc: this.ydoc,
+      uid: opts.user.id,
+      role: () => this.currentRole,
+      // The panel is admin-only, and GET /docs/:id/members is itself admin-gated, so this call is
+      // only ever made by a client entitled to make it — no extra backend endpoint needed.
+      listMembers: async () => (await listMembers(opts.docId)).map((m) => ({ uid: m.uid })),
+      // uid → display name resolves against the space member source, same as the 管理成员 panel.
+      spaceId: opts.space,
+    }
+    setProtectionAuthzContext(this.protectionAuthzCtx)
+
     const { univer, univerAPI } = createUniver({
       locale: LocaleType.ZH_CN,
       locales: { [LocaleType.ZH_CN]: mergedZhCN },
@@ -269,10 +336,37 @@ export class CollabSheet {
       override: [
         [IImageIoService, { useValue: new SanitizedSheetImageIoService(opts.docId) }],
         [ILocalFileService, { useClass: SheetLocalFileService }],
+        // Replace Univer's stock in-memory authz. The default answers "allowed" for any
+        // permissionId it has not seen AND invents a random `Owner_xxxxxxxx` user, so a replicated
+        // protection rule is unenforced on every peer. Ours answers from the Y.Doc-backed grant.
+        //
+        // The context is passed EXPLICITLY rather than read off the module global: two CollabSheet
+        // instances can be mounted at once (StrictMode double-mount, route change before the previous
+        // destroy), and the global belongs to whichever installed last. An outgoing instance reading it
+        // resolved the incoming sheet's document, found none of its own permissionIds there, and
+        // unlocked every protected range still on screen. See WS-PROT-6f.
+        [IAuthzIoService, { useValue: new OctoAuthzIoService(this.protectionAuthzCtx) }],
       ],
       presets: [
         UniverSheetsCorePreset({
           container: opts.container,
+          // Supply the people-picker for the 保护行列 panel. Univer's stock "user part" carries NO
+          // roster of its own — unfilled, 「添加人员」 opens a permanently empty dialog. Ours lists the
+          // doc's members from the same endpoint the 管理成员 panel's 「当前成员」 uses, and writes the
+          // grant that both the browser check and the server-side bot check read.
+          // `framework: 'react'` is required and must match the host framework.
+          //
+          // Spread-cast because of an UPSTREAM TYPE GAP: preset-sheets-core forwards this option to
+          // sheets-ui at runtime (`protectedRangeUserSelector: r?.protectedRangeUserSelector` in its
+          // bundle) but IUniverSheetsCorePresetConfig's Pick<IUniverSheetsUIConfig, …> omits the key,
+          // so a plain property trips excess-property checking. Spreading keeps every OTHER field in
+          // this literal type-checked; only this one is asserted.
+          ...({
+            protectedRangeUserSelector: {
+              component: makeProtectionUserPart(this.protectionAuthzCtx),
+              framework: 'react',
+            },
+          } as Record<string, unknown>),
           // Hide the built-in "数据" (Data) ribbon tab. Its only entry is
           // "文本转数字" (text-to-number), which we don't want. Hiding the toolbar
           // menu item empties the DATA ribbon group, so the whole 数据 tab disappears;
@@ -280,6 +374,29 @@ export class CollabSheet {
           menu: {
             'sheet.toolbar.text-to-number': { hidden: true },
             'sheet.contextMenu.text-to-number': { hidden: true },
+            // Protection is ADMIN-ONLY (boss decision). Withdraw every entry point for anyone
+            // else — the 保护行列 toolbar button, the right-click item, and the sheet-bar entries —
+            // rather than let a writer open a panel whose every action will be refused.
+            //
+            // Belt AND braces, deliberately: this hides the UI, `applyProtectionAdminGate` below
+            // turns off Univer's own protection permission points, and OctoAuthzIoService.create()
+            // refuses outright. The last one is what actually holds; these two stop a non-admin
+            // ever reaching a dead end. Univer keys menu config by menu-item id, which for these
+            // BUTTON items is the command id.
+            ...(canManage(initialRole)
+              ? {}
+              : {
+                  'sheet.command.add-range-protection-from-toolbar': { hidden: true },
+                  'sheet.command.add-range-protection-from-context-menu': { hidden: true },
+                  'sheet.command.add-range-protection-from-sheet-bar': { hidden: true },
+                  'sheet.command.set-range-protection-from-context-menu': { hidden: true },
+                  'sheet.command.delete-range-protection-from-context-menu': { hidden: true },
+                  'sheet.command.change-sheet-protection-from-sheet-bar': { hidden: true },
+                  'sheet.command.delete-worksheet-protection-from-sheet-bar': { hidden: true },
+                  'sheet.command.view-sheet-permission-from-context-menu': { hidden: true },
+                  'sheet.command.view-sheet-permission-from-sheet-bar': { hidden: true },
+                  'sheet.contextMenu.permission': { hidden: true },
+                }),
           },
         }),
         // Insert image / drawing objects. collaboration:false keeps the OSS base64 image
@@ -317,6 +434,9 @@ export class CollabSheet {
     // (FUniver.newAPI uses it); wrapped defensively so a Univer API change can't break sheet load.
     let drawingReader: DrawingReaderLike | null = null
     let hyperLinkModel: HyperLinkModelLike | null = null
+    let rangeProtectionModel: RangeProtectionModelLike | null = null
+    let worksheetProtectionModel: WorksheetProtectionModelLike | null = null
+    let worksheetPointModel: WorksheetPointModelLike | null = null
     try {
       const injector = (univer as unknown as { __getInjector?: () => { get(id: unknown): unknown } }).__getInjector?.()
       // Drop 微软雅黑 (Microsoft YaHei) from the font picker. It's a Windows-only font with no
@@ -375,6 +495,122 @@ export class CollabSheet {
       // Same DI route for the hyperlink model, so the binding can read/write links for sync.
       const hl = injector?.get(HyperLinkModel) as { getSubUnit?: unknown; linkUpdate$?: unknown } | undefined
       if (hl && typeof hl.getSubUnit === 'function' && hl.linkUpdate$) hyperLinkModel = hl as unknown as HyperLinkModelLike
+
+      // Register our people-picker under the key sheets-ui looks the override up by. Its panel does
+      //   `componentManager.get(UNIVER_SHEET_PERMISSION_USER_PART) ?? PermissionDetailUserPart`
+      // so registering the key REPLACES the stock (roster-less) section; missing it silently falls
+      // back to the stock one, which is the empty 「添加人员」 dialog.
+      //
+      // Registered HERE, directly, rather than relying only on the preset's
+      // `protectedRangeUserSelector` option: that option is consumed after a deep
+      // `merge({}, defaultPluginConfig, config)` inside the sheets-ui plugin, and the component
+      // (a function) did not survive it — the key was never registered and the panel kept rendering
+      // the stock section. This is the same registerComponent idiom the π / @ ribbon icons use, and
+      // it is the path proven to work in this codebase. The preset option is left in place too: it
+      // is the documented seam and costs nothing if a future version fixes the merge.
+      try {
+        ;(univerAPI as unknown as { registerComponent?: (k: string, c: unknown) => void }).registerComponent?.(
+          'UNIVER_SHEET_PERMISSION_USER_PART',
+          makeProtectionUserPart(this.protectionAuthzCtx),
+        )
+      } catch {
+        /* the stock section still renders; protection itself is unaffected */
+      }
+
+      // IDENTITY. Univer's UserManagerService is what its permission checks resolve "me" against.
+      // Left unset, the stock authz service fabricates a fresh `Owner_<8 hex>` on every page load —
+      // so a persisted protection rule could never match anyone, on this client or any other. Seed
+      // the REAL octo user before any rule is read.
+      const users = injector?.get(UserManagerService) as {
+        setCurrentUser?: (u: { userID: string; name: string; avatar?: string }) => void
+        addUser?: (u: { userID: string; name: string; avatar?: string }) => void
+      } | undefined
+      if (typeof users?.setCurrentUser === 'function') {
+        const me = {
+          userID: opts.user.id,
+          name: opts.user.name,
+          ...(opts.user.avatar ? { avatar: opts.user.avatar } : {}),
+        }
+        try {
+          users.addUser?.(me)
+          users.setCurrentUser(me)
+        } catch {
+          /* identity is best-effort; authz falls back to the octo uid in its own context */
+        }
+      }
+
+      // ADMIN-ONLY PROTECTION (boss decision). Turning off these permission points is how Univer
+      // itself withdraws the protection affordances — the 保护 toolbar button, the sheet-bar entry
+      // and the context-menu item all gate on them — so we do not have to chase menu ids.
+      // Enforcement still lives in OctoAuthzIoService; this is the "don't even show it" half.
+      const perms = injector?.get(IPermissionService) as {
+        updatePermissionPoint?: (id: string, value: boolean) => void
+      } | undefined
+      const applyProtectionAdminGate = (role: Role): void => {
+        if (typeof perms?.updatePermissionPoint !== 'function') return
+        const allowed = canManage(role)
+        for (const Point of [WorkbookCreateProtectPermission, WorkbookManageCollaboratorPermission]) {
+          try {
+            perms.updatePermissionPoint(new Point('octo-sheet').id, allowed)
+          } catch {
+            /* a Univer version without this point must not break sheet load */
+          }
+        }
+        // Flip the permission CACHE too, or the UI keeps rendering the pre-change answer.
+        // Resolved lazily (see refreshUniverProtectionPermissions) so a DI miss cannot take out
+        // the rule-model wiring below.
+        this.refreshUniverProtectionPermissions()
+      }
+      this.applyProtectionAdminGate = applyProtectionAdminGate
+
+      // Protection rule models — the binding syncs these through the sheetProtection Y.Map.
+      const rp = injector?.get(RangeProtectionRuleModel) as { getSubunitRuleList?: unknown; ruleChange$?: unknown } | undefined
+      if (rp && typeof rp.getSubunitRuleList === 'function' && rp.ruleChange$) {
+        rangeProtectionModel = rp as unknown as RangeProtectionModelLike
+      }
+      const wp = injector?.get(WorksheetProtectionRuleModel) as { getRule?: unknown; ruleChange$?: unknown } | undefined
+      if (wp && typeof wp.getRule === 'function' && wp.ruleChange$) {
+        worksheetProtectionModel = wp as unknown as WorksheetProtectionModelLike
+        // Kept on the instance as well: refreshUniverProtectionPermissions() needs to read each
+        // sheet's rule to get the permissionId it must refresh, long after the constructor is gone.
+        // MUST stay in THIS block: a scripted edit once relocated it into the point-model block
+        // below, so a Univer build without the point model left it null and the worksheet half of
+        // the refresh silently stopped working. Valid TypeScript, invisible to tsc.
+        this.worksheetProtectionModel = worksheetProtectionModel
+      }
+      // Permission POINTS live in a THIRD model. Resolved separately (and tolerantly) because
+      // `injector.get()` THROWS on a missing provider — a version without it must degrade to
+      // "operation matrix not replicated", not take out the rule wiring resolved above.
+      // The try/catch is the "tolerantly" above, and it is load-bearing rather than defensive: this
+      // resolve sits inside the ONE broad try opened at the top of this block, so an older Univer
+      // without the provider would otherwise skip SheetPermissionInitController, the initial
+      // applyProtectionAdminGate(initialRole) call, and the ribbon registration below.
+      let pm: { getRule?: unknown; pointChange$?: unknown } | undefined
+      try {
+        pm = injector?.get(WorksheetProtectionPointModel) as { getRule?: unknown; pointChange$?: unknown } | undefined
+      } catch {
+        pm = undefined
+      }
+      if (pm && typeof pm.getRule === 'function' && pm.pointChange$) {
+        worksheetPointModel = pm as unknown as WorksheetPointModelLike
+        // Kept on the instance for refreshUniverProtectionPermissions(): the point matrix has its
+        // OWN permissionId, invisible to the worksheet rule model.
+        this.worksheetPointModel = worksheetPointModel
+      }
+      // Univer's SheetPermissionInitController is what re-queries IAuthzIoService and rewrites the
+      // permission points. Resolve it AFTER the rule models above: `injector.get()` THROWS
+      // (redi QuantityCheckError) when a provider is missing — it does not return undefined, so `?.`
+      // is no guard — and everything in this block shares one outer try/catch. Resolved here, a DI
+      // miss costs us a stale cache (a display bug); resolved earlier it would skip the rule-model
+      // wiring and silently disable protection replication altogether.
+      try {
+        this.permissionInit = injector?.get(SheetPermissionInitController) as
+          { refreshRangeProtectPermission?: () => void; refreshPermission?: (u: string, p: string) => void } | undefined
+      } catch {
+        this.permissionInit = undefined
+      }
+      // Now that the refresh path exists, apply the gate for the role we mounted with.
+      applyProtectionAdminGate(initialRole)
       // Register ONE formula entry in the INSERT ribbon tab: a π button that opens the React formula
       // picker (preset previews + the two builders). Univer can't render formula previews inside its
       // native dropdown, so the rich dropdown is our own component (see FormulaPicker).
@@ -489,7 +725,14 @@ export class CollabSheet {
     // initialSync() is idempotent and only runs the seed decision once, against the settled doc.
     this.binding = new UniverYjsBinding(univerAPI, this.ydoc, () => canEdit(this.currentRole), {
       deferInitialSync: true,
-    }, drawingReader, hyperLinkModel)
+    }, drawingReader, hyperLinkModel, rangeProtectionModel, worksheetProtectionModel,
+    // Protection replication is admin-only. Read live off currentRole (not a snapshot) so a
+    // runtime demotion withdraws the ability to push protection changes immediately.
+    () => canManage(this.currentRole),
+    // A peer changing the allow-list must invalidate Univer's cached permission answers, or the
+    // person just revoked keeps editing off a stale "allowed" until they reload.
+    () => this.refreshUniverProtectionPermissions(),
+    worksheetPointModel)
     // Drive it after the local cache has replayed (whenSynced), or immediately if offline cache
     // is disabled (no persistence layer to wait on). A one-shot guard + the binding's own
     // idempotency make a later provider 'synced' or the timeout fallback harmless.
@@ -588,6 +831,8 @@ export class CollabSheet {
       initialEpoch,
       onRole: (role) => {
         this.currentRole = role
+        // A downgrade must also withdraw the protection UI, not just the write gate.
+        this.applyProtectionAdminGate?.(role)
         // Toggle the Univer UI read-only lock to match the new role (backend also enforces).
         this.setUniverEditable(canEdit(role))
         opts.onRole?.(role)
@@ -1183,6 +1428,64 @@ export class CollabSheet {
   }
 
   /**
+   * Re-ask Univer for every protection permission point, both classes of rule.
+   *
+   * WHY THIS EXISTS: enforcement never calls `IAuthzIoService.allowed()` per keystroke — it reads a
+   * cached permission point. `RangeProtectionCache` drops its cell cache on exactly two signals:
+   * `permissionPointUpdate$` filtered to `type === UnitObject.SelectRange`, or `ruleModel.ruleChange$`.
+   * `applyProtectionAdminGate` flips two WORKBOOK-class points, which that filter discards, so a
+   * runtime role change invalidated nothing and a demoted admin kept writing into protected ranges.
+   *
+   * Both halves are needed because `binding.ts` replicates BOTH rule kinds ('r' range, 'w' worksheet):
+   *   - `refreshRangeProtectPermission()` is `_initRangePermissionFromSnapshot()`, which walks
+   *     `RangeProtectionRuleModel` only and hard-codes `objectType: UnitObject.SelectRange`.
+   *   - worksheet rules live in `WorksheetProtectionRuleModel` and carry their own point set, so they
+   *     need `refreshPermission(unitId, permissionId)` per sheet — that call re-queries `allowed()`
+   *     with `objectType: Worksheet` and then emits `ruleRefresh`.
+   * Refreshing only the first half leaves whole-sheet protection answering from the pre-change role.
+   *
+   * Best-effort throughout: a stale permission cache is a display bug, and this runs from `onRole`,
+   * where throwing would take out the write gate and `opts.onRole` behind it.
+   */
+  private refreshUniverProtectionPermissions(): void {
+    const init = this.permissionInit
+    if (!init) return
+    try {
+      init.refreshRangeProtectPermission?.()
+    } catch {
+      /* range half is best-effort; still try the worksheet half below */
+    }
+    if (typeof init.refreshPermission !== 'function') return
+    if (!this.worksheetProtectionModel && !this.worksheetPointModel) return
+    try {
+      const wb = this.univerAPI.getActiveWorkbook() as unknown as {
+        getId?: () => string
+        getSheets?: () => Array<{ getSheetId?: () => string }>
+      } | null
+      const unitId = wb?.getId?.()
+      if (!unitId) return
+      for (const ws of wb?.getSheets?.() ?? []) {
+        const subUnitId = ws?.getSheetId?.()
+        if (!subUnitId) continue
+        // Both ids, because refreshPermission() dispatches on WHICH model owns the id:
+        // `_worksheetProtectionRuleModel.getTargetByPermissionId()` gates the baseProtectionActions
+        // half, `_worksheetProtectionPointRuleModel.getTargetByPermissionId()` gates the
+        // getAllWorksheetPermissionPointByPointPanel() half. A worksheet rule's id is never a point
+        // rule's id, so passing only the former leaves the operation matrix answering from the
+        // pre-change role — and a sheet carrying ONLY a point rule got no refresh at all.
+        for (const model of [this.worksheetProtectionModel, this.worksheetPointModel]) {
+          const rule = model?.getRule(unitId, subUnitId) as { permissionId?: unknown } | undefined
+          if (typeof rule?.permissionId === 'string' && rule.permissionId) {
+            init.refreshPermission(unitId, rule.permissionId)
+          }
+        }
+      }
+    } catch {
+      /* best-effort: a stale worksheet-permission cache must not break the role handler */
+    }
+  }
+
+  /**
    * Auto-fit: resize a formula's drawing box to hug its rendered content. Patches the drawing's
    * transform width/height via SetSheetDrawingCommand (the same mutation the Yjs sync observes), so
    * the new size persists + replicates. Best-effort.
@@ -1261,6 +1564,8 @@ export class CollabSheet {
     setFormulaDeleteHandler(null)
     setDrawingBlurHandler(null)
     this.binding.dispose()
+    // Release the module-level authz context so a stale Y.Doc / uid cannot outlive this sheet.
+    clearProtectionAuthzContext(this.protectionAuthzCtx)
     this.univer.dispose()
     // Clear our presence BEFORE tearing down the provider so peers don't keep seeing a
     // stale avatar / cursor for a disconnected client (otherwise the last-advertised cell
