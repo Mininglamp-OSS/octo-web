@@ -4,7 +4,7 @@ import '@octo/base/src/theme/tokens.css';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import  { BaseModule, I18nProvider, i18n, WKApp } from '@octo/base';
+import  { BaseModule, I18nProvider, i18n, WKApp, Tracker } from '@octo/base';
 import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
@@ -146,6 +146,10 @@ async function main(): Promise<void> {
   await enableMocksIfE2E();
   await enableMockImIfE2E();
   WKApp.shared.startup(); // app启动
+  // 埋点蒙版底座(octo-dap 采集方案):启动时初始化一次,装事件委托 / MutationObserver /
+  // fetch-XHR 包裹 / 卸载兜底。kill switch 由 remoteConfig 的 tracking_disabled 反向注入
+  // (见 App.tsx requestConfig)。全程自吞异常,失败不影响业务。
+  Tracker.shared.init();
 
   const container = document.getElementById("root")!;
   const root = createRoot(container);

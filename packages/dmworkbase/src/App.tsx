@@ -98,6 +98,7 @@ export type MittEvents = {
 };
 import { EndpointCommon } from "./EndpointCommon";
 import APIClient from "./Service/APIClient";
+import { Tracker } from "./Service/Tracker";
 import MenusManager from "./Service/Menus";
 import { EndpointManager, IModule, ModuleManager } from "./Service/Module";
 import { ProviderListener } from "./Service/Provider";
@@ -263,6 +264,12 @@ export class WKRemoteConfig {
   messagesSearchOn: boolean = false; // 会话内聊天记录搜索开关，默认关闭
   docsSearchOn: boolean = false; // 云文档全文搜索开关，默认关闭；与 docsOn(模块入口)解耦，独立灰度
   disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
+  /**
+   * 埋点蒙版远程 kill switch(octo-dap 采集方案 §2.6)。后端字段 tracking_disabled 为 true 时,
+   * 前端 Tracker 立即停采、清空队列,业务 UI 零影响。字段缺失 fail-open(默认 false,即采集开启)。
+   * 一期只做全量开/关,按 event 粒度放二期。
+   */
+  trackingDisabled: boolean = false;
   /**
    * 自定义贴纸管理入口开关。后端字段 sticker_custom_enabled 为 true 时，前端展示
    * 「我的贴纸」tab 及上传/删除入口；false 或字段缺失时隐藏。
@@ -451,6 +458,9 @@ export class WKRemoteConfig {
       this.disableUserCreateSpace = parseRemoteBool(
         result["disable_user_create_space"]
       );
+      // 埋点 kill switch(§2.6):字段缺失 fail-open(采集开启)
+      this.trackingDisabled = parseRemoteBool(result["tracking_disabled"]);
+      Tracker.shared.setEnabled(!this.trackingDisabled);
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
       );
