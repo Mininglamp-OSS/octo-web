@@ -707,6 +707,8 @@ export default class ChatSummaryNewModal extends Component<
                             size="default"
                             loading={anySubmitting}
                             disabled={!canSubmit}
+                            data-track="smart_summary_started"
+                            data-object-id={this.props.channel?.channelID}
                             onClick={this.handlePrimaryClick}
                         >
                             {primaryLabel}

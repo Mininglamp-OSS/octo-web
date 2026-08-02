@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig } from "axios";
-import { WKApp, buildAcceptLanguage, t, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
+import { WKApp, buildAcceptLanguage, t, DEFAULT_REQUEST_TIMEOUT_MS, Tracker } from "@octo/base";
 import type {
   CreateMcpParams,
   ListMcpParams,
@@ -388,6 +388,9 @@ mcpAxios.interceptors.request.use((config) => {
   if (spaceId) {
     config.headers["X-Space-Id"] = spaceId;
   }
+  // 埋点关联头(方案 A,octo-dap §6):session/device 供离线 join,非 flow、非业务。
+  config.headers["X-Octo-Session-Id"] = Tracker.shared.sessionId;
+  config.headers["X-Octo-Device-Id"] = Tracker.shared.deviceId;
   return config;
 });
 
