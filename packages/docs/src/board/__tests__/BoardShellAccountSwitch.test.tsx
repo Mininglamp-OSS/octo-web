@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { WhiteboardSession } from '../collab/connect.ts'
 
@@ -107,6 +107,11 @@ describe('BoardShell — fail-closed editability across an account-switch re-pri
     boardStore.loads = []
   })
 
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
   it('mounts an imported scene only after access and forwards its first change into Yjs', async () => {
     const importedElement = { id: 'imported-1', type: 'rectangle', version: 1 }
     const importedFile = { id: 'file-1', dataURL: 'data:image/png;base64,AA==' }
@@ -209,4 +214,58 @@ describe('BoardShell — fail-closed editability across an account-switch re-pri
     expect(bindingB).not.toHaveBeenCalledWith(expect.arrayContaining([aElement]), expect.anything())
     expect(bindingA).not.toHaveBeenCalled()
   })
+
+  it('reserves drawer space when Excalidraw loads before collaboration access resolves', async () => {
+    const rect = (width: number, height: number): DOMRect => ({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: width,
+      bottom: height,
+      width,
+      height,
+      toJSON: () => ({}),
+    })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('octo-board-canvas') || this.classList.contains('octo-board-live-canvas')
+        ? rect(1400, 800)
+        : rect(0, 0)
+    })
+    const observedTargets: Element[] = []
+    class ImmediateResizeObserver {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        observedTargets.push(target)
+        this.callback([{ target, contentRect: target.getBoundingClientRect() } as ResizeObserverEntry], this as unknown as ResizeObserver)
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', ImmediateResizeObserver)
+
+    const props = {
+      docId: 'drawer-order',
+      title: 'Shared board',
+      space: 's1',
+      collab: true,
+      user: { id: 'u_writer', name: 'Writer' },
+    }
+    const { rerender } = render(<BoardShell {...props} collabSession={undefined} />)
+
+    // The Excalidraw module is already mocked/loaded, while access is deliberately held pending.
+    await waitFor(() => expect(screen.getByText('docs.state.loading')).toBeTruthy())
+    expect(screen.queryByTestId('excalidraw-canvas')).toBeNull()
+    expect(observedTargets.some((target) => target.classList.contains('octo-board-canvas'))).toBe(true)
+    expect(observedTargets.some((target) => target.classList.contains('octo-board-live-canvas'))).toBe(false)
+
+    rerender(<BoardShell {...props} collabSession={makeSession('writer')} />)
+    await screen.findByTestId('excalidraw-canvas')
+    fireEvent.click(screen.getByRole('button', { name: 'docs.toolbar.comments' }))
+
+    await waitFor(() => {
+      expect(document.querySelector('.octo-board-canvas')?.classList.contains('octo-board-canvas--drawer-reserved')).toBe(true)
+    })
+  })
+
 })

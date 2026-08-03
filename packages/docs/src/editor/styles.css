@@ -1937,12 +1937,15 @@ body.octo-row-resizing {
 /* ── Right-side drawer (#4/#5): history / comments / members open here, one at a time ──
    Anchored to the right of the editor pane, above content, scrollable, with a width
    transition. The panels it hosts drop their own card chrome so they fill the drawer. */
+.octo-doc {
+  --octo-doc-drawer-width: 360px;
+}
 .octo-doc-drawer {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  width: 360px;
+  width: var(--octo-doc-drawer-width);
   max-width: 92vw;
   background: var(--octo-bg, #fff);
   border-left: 1px solid var(--octo-border, #e5e6eb);

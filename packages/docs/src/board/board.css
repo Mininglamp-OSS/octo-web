@@ -52,12 +52,24 @@
   display: flex;
 }
 .octo-board-live-canvas {
+  position: relative;
+  display: flex;
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
 }
+
+/* The shared drawer is absolutely positioned, so without reserving its width Excalidraw still
+   measures the full canvas and centres the toolbar underneath the opaque drawer. BoardShell applies
+   this class only after measuring that the remaining canvas can preserve Excalidraw's desktop UI;
+   compact or short canvases keep the drawer as an overlay. */
+.octo-board-canvas--drawer-reserved .octo-board-live-canvas {
+  flex: 0 1 auto;
+  width: calc(100% - var(--octo-doc-drawer-width, 360px));
+}
+
 .octo-board-canvas .excalidraw {
   width: 100%;
   height: 100%;
@@ -427,14 +439,6 @@ body[theme-mode='dark'] .octo-board-context-menu,
   background: var(--octo-bg-1, #202124);
   box-shadow: 0 8px 28px rgb(0 0 0 / 40%);
 }
-.octo-board-live-canvas {
-  position: relative;
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-}
-
 /* Selection comment affordance mirrors the document bubble: a compact pill near the target, while
    composing reuses the sheet comment popover dimensions and actions. */
 .octo-board-selection-comment-button {

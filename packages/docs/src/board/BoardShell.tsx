@@ -18,6 +18,7 @@ import { BoardCommentPanel, type BoardAnchorTarget } from './BoardCommentPanel.t
 import { BoardInlineCommentComposer } from './BoardInlineCommentComposer.tsx'
 import { BoardCommentMarkers } from './BoardCommentMarkers.tsx'
 import { BoardContextMenu, type BoardContextMenuItem } from './BoardContextMenu.tsx'
+import { canReserveBoardDrawer } from './boardDrawerLayout.ts'
 import { useBoardCommentMarkers } from './useBoardCommentMarkers.ts'
 import { boardElementTypeLabelKey, decodeBoardCommentAnchor } from './boardCommentAnchor.ts'
 import {
@@ -416,12 +417,14 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const [boardContextMenu, setBoardContextMenu] = useState<{
     clientX: number
     clientY: number
+    bounds: BoardCommentOverlayBounds
     target: BoardAnchorTarget
     type: 'canvas' | 'element'
     commentOnly: boolean
   } | null>(null)
   const [boardViewRevision, setBoardViewRevision] = useState(0)
   const [commentOverlayBounds, setCommentOverlayBounds] = useState<BoardCommentOverlayBounds | null>(null)
+  const [boardCanvasSize, setBoardCanvasSize] = useState<{ width: number; height: number } | null>(null)
   const boardViewFrameRef = useRef<number | null>(null)
   const boardViewSignatureRef = useRef('')
   // Creator + creation date for the ≡ "more" menu head, fetched from the per-doc GET like EditorShell.
@@ -487,6 +490,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // queries/subscriptions to this element instead of a document-wide `.excalidraw` lookup, so it can
   // never latch onto a SECOND Excalidraw in the page — most importantly the read-only version-history
   // preview (BoardScenePreview), which also renders `.excalidraw` inside `.octo-board-canvas`.
+  const boardCanvasRef = useRef<HTMLDivElement>(null)
   const liveCanvasRef = useRef<HTMLDivElement>(null)
 
   // Fail-closed editability (P1-2). On the collab (permissioned) path the canvas is read-only until
@@ -1349,6 +1353,27 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const inlineCommentPoint = inlineCommentTarget ? boardCommentLocalPoint(inlineCommentTarget) : null
   const selectedCommentPoint = selectedCommentTarget ? boardCommentLocalPoint(selectedCommentTarget) : null
 
+  // The outer canvas exists even while the Excalidraw chunk or collaboration role is loading.
+  // Observe it independently so drawer reservation cannot depend on which async gate resolves first.
+  useEffect(() => {
+    const canvas = boardCanvasRef.current
+    if (!canvas) return
+    const measure = () => {
+      const { width, height } = canvas.getBoundingClientRect()
+      setBoardCanvasSize((current) => current && current.width === width && current.height === height
+        ? current
+        : { width, height })
+    }
+    measure()
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    resizeObserver?.observe(canvas)
+    window.addEventListener('resize', measure)
+    return () => {
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
+
   useEffect(() => {
     const host = liveCanvasRef.current
     if (!host) return
@@ -1375,7 +1400,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       mutationObserver.disconnect()
       window.removeEventListener('resize', measure)
     }
-  }, [Excalidraw])
+  }, [Excalidraw, accessConfirmed])
 
   const placeCommentOverlay = useCallback((
     left: number,
@@ -1398,9 +1423,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           label: `${t('docs.board.comment.point')} · ${Math.round(payload.sceneX)}, ${Math.round(payload.sceneY)}`,
         }
     const hostRect = host.getBoundingClientRect()
+    const panelColumn = host.querySelector<HTMLElement>('.panelColumn')
+    const propertyPanel = panelColumn?.closest<HTMLElement>('.App-menu__left')
     setBoardContextMenu({
       clientX: payload.event.clientX - hostRect.left,
       clientY: payload.event.clientY - hostRect.top,
+      bounds: deriveBoardCommentOverlayBounds(hostRect, propertyPanel?.getBoundingClientRect()),
       target,
       type: payload.type,
       commentOnly: payload.event.altKey,
@@ -1907,6 +1935,10 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const creatorDisplay =
     creatorName || (ownerId ? ownerId.slice(0, 8) : t('docs.moreMenu.unknownCreator'))
 
+  const drawerOpen = (commentsOpen && role) || versionOpen
+  const reserveDrawer = !!drawerOpen && !!boardCanvasSize &&
+    canReserveBoardDrawer(boardCanvasSize.width, boardCanvasSize.height)
+
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-board">
       <header className="octo-doc-header">
@@ -2018,7 +2050,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         </p>
       )}
 
-      <div className="octo-board-canvas">
+      <div
+        ref={boardCanvasRef}
+        className={reserveDrawer
+          ? 'octo-board-canvas octo-board-canvas--drawer-reserved'
+          : 'octo-board-canvas'}
+      >
         {failed ? (
           <div className="octo-board-state octo-error">{t('docs.state.error')}</div>
         ) : !Excalidraw || !accessConfirmed ? (
@@ -2122,7 +2159,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
             left={boardContextMenu.clientX}
             top={boardContextMenu.clientY}
             items={boardContextMenuItems}
-            bounds={commentOverlayBounds ?? undefined}
+            bounds={commentOverlayBounds ?? boardContextMenu.bounds}
             onClose={() => setBoardContextMenu(null)}
           />
         )}
