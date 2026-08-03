@@ -86,7 +86,8 @@ export interface ImSubscribeCacheRuntimeSdk<
   };
 }
 
-const locallyRemovedSubscriberUids = new Map<string, Set<string>>();
+const LOCALLY_REMOVED_SUBSCRIBER_TTL_MS = 30 * 1000;
+const locallyRemovedSubscriberUids = new Map<string, Map<string, number>>();
 
 function channelKey(channel: ImChannelLike) {
   const maybeCacheKey = channel as Partial<ImChannelCacheKeyLike>;
@@ -100,7 +101,21 @@ function validUids(uids: Array<string | undefined>) {
 }
 
 function removedUidSet(channel: ImChannelLike) {
-  return locallyRemovedSubscriberUids.get(channelKey(channel));
+  const key = channelKey(channel);
+  const removed = locallyRemovedSubscriberUids.get(key);
+  if (!removed || removed.size === 0) return undefined;
+
+  const now = Date.now();
+  removed.forEach((expiresAt, uid) => {
+    if (expiresAt <= now) {
+      removed.delete(uid);
+    }
+  });
+  if (removed.size === 0) {
+    locallyRemovedSubscriberUids.delete(key);
+    return undefined;
+  }
+  return new Set(removed.keys());
 }
 
 function filterLocallyRemovedSubscribers<
@@ -234,15 +249,17 @@ export function markImChannelSubscribersLocallyRemoved<
   const nextUids = validUids(uids);
   if (nextUids.length === 0) return;
   const key = channelKey(channel);
-  const removed = locallyRemovedSubscriberUids.get(key) || new Set<string>();
-  nextUids.forEach((uid) => removed.add(uid));
+  const expiresAt = Date.now() + LOCALLY_REMOVED_SUBSCRIBER_TTL_MS;
+  const removed =
+    locallyRemovedSubscriberUids.get(key) || new Map<string, number>();
+  nextUids.forEach((uid) => removed.set(uid, expiresAt));
   locallyRemovedSubscriberUids.set(key, removed);
 }
 
 export function clearImChannelSubscribersLocallyRemoved<
   TChannel extends ImChannelLike
 >(channel: TChannel, uids: string[]) {
-  const removed = removedUidSet(channel);
+  const removed = locallyRemovedSubscriberUids.get(channelKey(channel));
   if (!removed) return;
   validUids(uids).forEach((uid) => removed.delete(uid));
   if (removed.size === 0) {

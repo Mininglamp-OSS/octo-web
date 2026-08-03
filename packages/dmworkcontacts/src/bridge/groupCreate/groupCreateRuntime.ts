@@ -178,7 +178,7 @@ async function loadExcludedSubscriberUids(
     new Set(
       (subscribers || [])
         .map((subscriber) => subscriber.uid)
-        .filter((uid) => !locallyRemovedUids.has(uid))
+        .filter((uid): uid is string => !!uid && !locallyRemovedUids.has(uid))
     )
   );
 }

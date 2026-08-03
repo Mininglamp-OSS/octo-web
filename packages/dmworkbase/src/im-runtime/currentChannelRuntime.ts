@@ -175,13 +175,7 @@ export function syncCurrentImChannelSubscribers<
   return syncImChannelSubscribers<TChannel, TSubscriber>(
     currentImChannelSubscribersRuntime<TChannel, TSubscriber>(),
     channel
-  ).then((result) => {
-    const removedUids = getImChannelLocallyRemovedSubscriberUids(channel);
-    if (removedUids.length > 0) {
-      clearImChannelSubscribersLocallyRemoved(channel, removedUids);
-    }
-    return result;
-  });
+  );
 }
 
 export function addCurrentImChannelInfoListener<

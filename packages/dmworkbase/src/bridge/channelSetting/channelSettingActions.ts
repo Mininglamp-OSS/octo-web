@@ -19,6 +19,7 @@ import {
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
   getCurrentImChannelSubscribers,
+  getCurrentImChannelSubscribersCacheRaw,
   markCurrentImChannelSubscribersLocallyRemoved,
   notifyCurrentImSubscriberChangeListeners,
   setCurrentImChannelSubscribersCache,
@@ -42,6 +43,9 @@ export interface ChannelSettingActionRuntime {
     uid: string
   ): Promise<ChannelSettingSubscriber | undefined>;
   getCurrentChannelSubscribers(channel: Channel): ChannelSettingSubscriber[];
+  getCurrentChannelSubscribersRaw(
+    channel: Channel
+  ): ChannelSettingSubscriber[] | undefined;
   findConversation(channel: Channel): any | undefined;
   getLoginUid(): string | undefined;
   invokeClearChannelMessages(channel: Channel): void;
@@ -117,6 +121,9 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     },
     getCurrentChannelSubscribers(channel) {
       return getCurrentImChannelSubscribers(channel);
+    },
+    getCurrentChannelSubscribersRaw(channel) {
+      return getCurrentImChannelSubscribersCacheRaw(channel);
     },
     findConversation(channel) {
       return findCurrentImConversation(channel);
@@ -195,7 +202,6 @@ async function refreshChannelStateAfterMemberMutation(
 ) {
   let shouldNotifySubscribers = false;
   let notifiedLocalRemoval = false;
-  let syncSucceeded = false;
 
   if (action === "removeSubscribers") {
     const cachePatchedBeforeSync =
@@ -214,14 +220,9 @@ async function refreshChannelStateAfterMemberMutation(
 
   try {
     await runtime.syncCurrentChannelSubscribers(channel);
-    syncSucceeded = true;
     shouldNotifySubscribers = true;
   } catch (err) {
     console.warn(`[${action}] syncSubscribes failed`, err);
-  }
-
-  if (action === "removeSubscribers" && syncSucceeded) {
-    runtime.clearRemovedChannelSubscribers(channel, uids);
   }
 
   const cachePatched = await patchSubscriberCacheAfterMemberMutation(
@@ -281,7 +282,9 @@ async function patchSubscriberCacheAfterMemberMutation(
   }
 
   const currentSubscribers =
-    runtime.getCurrentChannelSubscribers(channel) || [];
+    runtime.getCurrentChannelSubscribersRaw(channel) ||
+    runtime.getCurrentChannelSubscribers(channel) ||
+    [];
 
   if (action === "removeSubscribers") {
     const nextSubscribers = currentSubscribers.filter(
@@ -315,7 +318,10 @@ async function patchSubscriberCacheAfterMemberMutation(
     return false;
   }
 
-  const latestSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
+  const latestSubscribers =
+    runtime.getCurrentChannelSubscribersRaw(channel) ||
+    runtime.getCurrentChannelSubscribers(channel) ||
+    [];
   const nextSubscribers = [...latestSubscribers];
   let changed = false;
 

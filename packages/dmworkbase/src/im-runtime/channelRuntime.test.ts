@@ -220,6 +220,30 @@ describe("channelRuntime", () => {
     expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
   });
 
+  it("expires local removal filters after the stale-response window", () => {
+    vi.useFakeTimers();
+    try {
+      const sdk = createSdk();
+      const channel = {
+        channelID: "g-local-remove-ttl",
+        channelType: 2,
+        getChannelKey: () => "2@g-local-remove-ttl",
+      };
+      const subscribers = [{ uid: "owner" }, { uid: "removed" }];
+      sdk.channelManager.getSubscribes.mockReturnValue(subscribers);
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      markImChannelSubscribersLocallyRemoved(channel, ["removed"]);
+      expect(getImChannelSubscribers(sdk, channel)).toEqual([{ uid: "owner" }]);
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:30.001Z"));
+      expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
+      expect(getImChannelSubscribers(sdk, channel)).toBe(subscribers);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns an unsubscribe when adding a subscriber change listener", () => {
     const sdk = createSdk();
     const listener = vi.fn();
