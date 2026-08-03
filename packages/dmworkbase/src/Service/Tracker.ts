@@ -11,8 +11,9 @@
  *
  * 硬约束(务必守住,见 §2.1 / §8):
  *   - 全程 try/catch 自吞异常:埋点崩溃**绝不**波及业务渲染,不弹 toast、不 console.error。
- *   - 上报走**独立裸 fetch / sendBeacon**,不复用任何业务 axios 拦截器(避免 token 401 重定向等副作用)。
- *   - 信封**不含** `flow_id`(一期放弃 FlowRegistry)、**不含** `actor_type` / `actor_id`(后端按凭证归一)。
+ *   - 上报走**独立裸 fetch / sendBeacon**,不复用业务 axios 拦截器(避免其 401 重定向等副作用),
+ *     但**携带业务 `token` 头**(sendBeacon 设不了头时放进 body),后端据 token 鉴权并归一 actor。
+ *   - 信封**不含** `flow_id`(一期放弃 FlowRegistry)、**不含** `actor_type` / `actor_id`(后端按 token 凭证归一)。
  *   - **不采任何内容正文**:不读 input/textarea value、不读消息正文/搜索词/文件名;属性名黑名单剔除(§8)。
  *   - 远程 kill switch:`enabled=false` 时 track/pageView 立即 return,清空队列,业务零影响。
  */
@@ -136,6 +137,8 @@ class TrackerImpl {
     // ship dark:默认不采,等 remoteConfig 显式启用(后端采集端就绪前一个请求都不发)
     private enabled = false
     private started = false
+    /** 业务 token 取值回调(index.tsx 注入,避免 import WKApp 造成循环依赖)。上报带 token 头供后端鉴权。 */
+    private tokenProvider: (() => string | undefined) | null = null
     private queue: TrackEnvelope[] = []
     private flushTimer: ReturnType<typeof setInterval> | null = null
     private lastPage: { pageId: string; enteredAt: number } | null = null
@@ -165,6 +168,20 @@ class TrackerImpl {
         if (!v) {
             this.queue = []
             this.lastPage = null
+        }
+    }
+
+    /** 注入业务 token 取值回调(见 index.tsx)。上报请求据此带 `token` 头供后端鉴权归一 actor。 */
+    setTokenProvider(fn: () => string | undefined): void {
+        this.tokenProvider = fn
+    }
+
+    /** 取当前业务 token;取不到 / 抛错都返回 undefined(不阻断上报)。 */
+    private currentToken(): string | undefined {
+        try {
+            return this.tokenProvider ? this.tokenProvider() : undefined
+        } catch {
+            return undefined
         }
     }
 
@@ -267,17 +284,20 @@ class TrackerImpl {
         }
     }
 
-    /** 独立通道上报:指数退避重试,最多 3 次;仍失败丢弃 + 计数,绝不外抛。 */
+    /** 独立通道上报:带业务 token 头供后端鉴权;指数退避重试,最多 3 次;仍失败丢弃 + 计数,绝不外抛。 */
     private sendBatch(batch: TrackEnvelope[], attempt: number): void {
         if (batch.length === 0) return
         this.safe(() => {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+            const token = this.currentToken()
+            if (token) headers['token'] = token // 与业务同名头,后端按 token 鉴权并归一 actor
             const body = JSON.stringify({ events: batch })
             void fetch(BATCH_PATH, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body,
                 keepalive: true,
-                // 不带 cookie/凭据,埋点通道与业务鉴权解耦
+                // 鉴权走 token 头,不依赖 cookie;仍用裸 fetch 不走业务拦截器,401 不触发登出重定向
                 credentials: 'omit',
             })
                 .then((resp) => {
@@ -301,16 +321,20 @@ class TrackerImpl {
             const batch = this.queue
             this.queue = []
             const nav = (globalThis as { navigator?: Navigator }).navigator
-            const body = JSON.stringify({ events: batch })
+            const token = this.currentToken()
             if (nav && typeof nav.sendBeacon === 'function') {
-                const blob = new Blob([body], { type: 'application/json' })
+                // sendBeacon 设不了请求头 → token 放进 body,后端 header 缺失时从 body 兜底取
+                const beaconBody = JSON.stringify(token ? { token, events: batch } : { events: batch })
+                const blob = new Blob([beaconBody], { type: 'application/json' })
                 nav.sendBeacon(BATCH_PATH, blob)
             } else {
-                // 退化:keepalive fetch,不重试
+                // 退化:keepalive fetch(可带头),不重试
+                const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+                if (token) headers['token'] = token
                 void fetch(BATCH_PATH, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body,
+                    headers,
+                    body: JSON.stringify({ events: batch }),
                     keepalive: true,
                     credentials: 'omit',
                 }).catch(() => undefined)
