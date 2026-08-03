@@ -11,8 +11,8 @@
  *
  * 硬约束(务必守住,见 §2.1 / §8):
  *   - 全程 try/catch 自吞异常:埋点崩溃**绝不**波及业务渲染,不弹 toast、不 console.error。
- *   - 上报走**独立裸 fetch / sendBeacon**,不复用业务 axios 拦截器(避免其 401 重定向等副作用),
- *     但**携带业务 `token` 头**(sendBeacon 设不了头时放进 body),后端据 token 鉴权并归一 actor。
+ *   - 上报走**独立裸 fetch(卸载期用 keepalive fetch)**,不复用业务 axios 拦截器(避免其 401 重定向等副作用),
+ *     但**携带业务 `token` 头**,后端据 token 鉴权并归一 actor。(不用 sendBeacon:它设不了 token 头、过不了鉴权。)
  *   - 信封**不含** `flow_id`(一期放弃 FlowRegistry)、**不含** `actor_type` / `actor_id`(后端按 token 凭证归一)。
  *   - **不采任何内容正文**:不读 input/textarea value、不读消息正文/搜索词/文件名;属性名黑名单剔除(§8)。
  *   - 远程 kill switch:`enabled=false` 时 track/pageView 立即 return,清空队列,业务零影响。
@@ -314,31 +314,32 @@ class TrackerImpl {
         })
     }
 
-    /** 卸载兜底:visibilitychange(hidden) + pagehide 用 sendBeacon 一次性发残留(§2.1)。 */
-    private beaconFlush(): void {
+    /**
+     * 卸载兜底(§2.1):visibilitychange(hidden)+ pagehide 一次性发残留。
+     * 用 **keepalive fetch** 而非 sendBeacon —— sendBeacon 设不了 `token` 头、过不了后端 header 鉴权;
+     * keepalive fetch 是其现代替代,能带头,鉴权与常规上报统一。不重试。
+     */
+    private unloadFlush(): void {
         this.safe(() => {
             if (this.queue.length === 0) return
             const batch = this.queue
             this.queue = []
-            const nav = (globalThis as { navigator?: Navigator }).navigator
-            const token = this.currentToken()
-            if (nav && typeof nav.sendBeacon === 'function') {
-                // sendBeacon 设不了请求头 → token 放进 body,后端 header 缺失时从 body 兜底取
-                const beaconBody = JSON.stringify(token ? { token, events: batch } : { events: batch })
-                const blob = new Blob([beaconBody], { type: 'application/json' })
-                nav.sendBeacon(BATCH_PATH, blob)
-            } else {
-                // 退化:keepalive fetch(可带头),不重试
-                const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-                if (token) headers['token'] = token
-                void fetch(BATCH_PATH, {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({ events: batch }),
-                    keepalive: true,
-                    credentials: 'omit',
-                }).catch(() => undefined)
+            const g = globalThis as { fetch?: typeof fetch }
+            if (typeof g.fetch !== 'function') {
+                // 无 fetch 的老运行时:无法带 token 鉴权,直接丢弃计数,不做无鉴权上报
+                this.droppedCount += batch.length
+                return
             }
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+            const token = this.currentToken()
+            if (token) headers['token'] = token
+            void fetch(BATCH_PATH, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ events: batch }),
+                keepalive: true, // unload 期后台发送,sendBeacon 的现代替代
+                credentials: 'omit',
+            }).catch(() => undefined)
         })
     }
 
@@ -499,7 +500,7 @@ class TrackerImpl {
     // ----------------------------------------------- 卸载兜底
 
     private installUnloadFlush(): void {
-        const onHide = () => this.beaconFlush()
+        const onHide = () => this.unloadFlush()
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') onHide()
         })
