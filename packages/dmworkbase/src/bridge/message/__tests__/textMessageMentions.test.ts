@@ -71,4 +71,50 @@ describe("buildTextMessageMentions", () => {
 
         expect(mentions).toEqual([{ name: "@所有AI", uid: "all" }])
     })
+
+    it("restores member mentions from mention.entities when decoded parts are unavailable", () => {
+        const mentions = buildTextMessageMentions({
+            parts: [],
+            content: {
+                text: "请 @张三 和 @李四 跟进",
+                // SDK MessageText.decode() creates a Mention instance on
+                // content.mention, but unsupported entity fields remain only on
+                // contentObj.mention.
+                mention: { all: false },
+                contentObj: {
+                    mention: {
+                        entities: [
+                            { uid: "uid_zhang", offset: 2, length: 3 },
+                            { uid: "uid_li", offset: 8, length: 3 },
+                        ],
+                    },
+                },
+            },
+            partMentionType: PART_TYPE_MENTION,
+        })
+
+        expect(mentions).toEqual([
+            { name: "@张三", uid: "uid_zhang" },
+            { name: "@李四", uid: "uid_li" },
+        ])
+    })
+
+    it("restores legacy member mentions from mention.uids when entities are absent", () => {
+        const mentions = buildTextMessageMentions({
+            parts: [],
+            content: {
+                contentObj: {
+                    content: "@张三 @所有人 @李四",
+                    mention: { uids: ["uid_zhang", "uid_li"], humans: 1 },
+                },
+            },
+            partMentionType: PART_TYPE_MENTION,
+        })
+
+        expect(mentions).toEqual([
+            { name: "@张三", uid: "uid_zhang" },
+            { name: "@李四", uid: "uid_li" },
+            { name: "@所有人", uid: "all" },
+        ])
+    })
 })
