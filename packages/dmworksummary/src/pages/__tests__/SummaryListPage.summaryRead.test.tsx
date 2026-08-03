@@ -66,6 +66,24 @@ describe('SummaryListPage summary-read synchronization', () => {
         expect((page.state as any).items[1]).toMatchObject({ is_unread: true, needs_attention: true });
     });
 
+    it('re-derives needs_attention from has_pending_invitation when the event omits needsAttention', () => {
+        const page = makePage([
+            { task_id: 1, is_unread: true, has_pending_invitation: true, needs_attention: true },
+            { task_id: 2, is_unread: true, has_pending_invitation: false, needs_attention: true },
+        ]);
+
+        // Event without needsAttention: flag falls back to the item's pending invitation state.
+        (page as any).handleSummaryRead_(new CustomEvent('summary-read', {
+            detail: { taskId: 1, isUnread: false },
+        }));
+        (page as any).handleSummaryRead_(new CustomEvent('summary-read', {
+            detail: { taskId: 2, isUnread: false },
+        }));
+
+        expect((page.state as any).items[0]).toMatchObject({ is_unread: false, needs_attention: true });
+        expect((page.state as any).items[1]).toMatchObject({ is_unread: false, needs_attention: false });
+    });
+
     it('ignores events without a taskId', () => {
         const page = makePage([{ task_id: 1, is_unread: true, needs_attention: true }]);
 
