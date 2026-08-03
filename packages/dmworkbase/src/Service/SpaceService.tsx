@@ -278,7 +278,7 @@ export class SpaceService {
     }
 
     // 拉取一个 space 的全部成员（分页循环到取空/达上限）。收敛此前散落在
-    // dmloop directory / SettingsPage / dmworktodo useMemberList 各自复制的分页逻辑，
+    // dmloop directory / SettingsPage 各自复制的分页逻辑，
     // 避免翻页上限相互漂移。
     async getAllMembers(spaceId: string, pageLimit: number = 100, maxPages: number = 50): Promise<SpaceMember[]> {
         if (!spaceId) return []

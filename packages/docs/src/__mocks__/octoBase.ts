@@ -1,3 +1,5 @@
+import { createElement } from 'react'
+
 // Test stub for `@octo/base`, wired via the vitest alias in vitest.config.ts.
 //
 // Importing the real `@octo/base` would pull the whole app (WKSDK, semi-ui, the full
@@ -49,6 +51,28 @@ export function t(key: string) {
 // useI18n stub: mirrors the I18nProvider context shape the real hook returns.
 export function useI18n() {
   return { t: (key: string) => key, locale: 'en-US' as const }
+}
+
+export const OctoToast = {
+  success: () => undefined,
+  error: () => undefined,
+  warning: () => undefined,
+}
+
+export function AiBadge({
+  size = 'default',
+  className,
+  children = 'AI',
+}: {
+  size?: 'default' | 'small'
+  className?: string
+  children?: React.ReactNode
+}) {
+  return createElement(
+    'span',
+    { className: `ai-badge ai-badge-${size}${className ? ` ${className}` : ''}` },
+    children,
+  )
 }
 
 // NavRail menu entry stub mirroring packages/dmworkbase/src/Service/Menus.ts. DocsModule
@@ -104,3 +128,32 @@ export function VoiceInputButton() {
 }
 export type ReplaceMode = 'all' | 'selection' | 'insert'
 export type SelectionRange = { from: number; to: number }
+
+// WuKongIM Channel primitives (plan Task 5). The docs embedded-bot-DM shell constructs
+// `new Channel(botUid, ChannelTypePerson)` and reads getChannelKey() for the React key. The real
+// primitives live in wukongimjssdk (re-exported from @octo/base); this lightweight stub mirrors the
+// surface docs touches so tests resolve them through the @octo/base alias without the SDK.
+export const ChannelTypePerson = 1
+export class Channel {
+  channelID: string
+  channelType: number
+  constructor(channelID: string, channelType: number) {
+    this.channelID = channelID
+    this.channelType = channelType
+  }
+  getChannelKey(): string {
+    return `${this.channelID}-${this.channelType}`
+  }
+  isEqual(other: Channel): boolean {
+    return !!other && other.channelID === this.channelID && other.channelType === this.channelType
+  }
+}
+
+// Conversation stub (plan Task 5): the real component pulls WKSDK + the whole chat runtime into
+// jsdom. DocsBotConversation.test.tsx replaces this with its own marker via vi.mock on the seam;
+// this fallback renders nothing so a test that forgot to mock still mounts cleanly.
+export function Conversation() {
+  return null
+}
+
+export const MAX_MESSAGE_LENGTH = 5000

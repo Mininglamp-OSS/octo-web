@@ -1,9 +1,10 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
-import { Bot, Download, Eye, Pencil, Trash2 } from "lucide-react";
+import { Bot, Download, Eye, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { t, useI18n } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { formatCount } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
+import { isPlatformPublishedSkill } from "../utils/publisher";
 
 interface SkillCardProps {
   skill: Skill;
@@ -87,14 +88,27 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
   const isOwnerCard = Boolean(onEdit || onDelete);
   const descriptionTooltipId = `skill-card-desc-${skill.id}`;
   const displayName = skill.displayName || skill.name;
-  const hasSeparateCreator = Boolean(skill.creatorId && skill.ownerId && skill.creatorId !== skill.ownerId);
-  const creatorId = skill.creatorId || skill.ownerId;
+  const isPlatformPublished = isPlatformPublishedSkill(skill);
+  const platformPublisherName = t("skillMarket.card.platformPublisher");
   const creatorName = skill.creatorName || skill.ownerName;
-  const isBotCreator = hasSeparateCreator && creatorId.endsWith("_bot");
-  const ownerLabel = hasSeparateCreator
-    ? (isBotCreator ? creatorName : `@${creatorName} · @${skill.ownerName}`)
-    : `@${skill.ownerName}`;
-  const showOwner = skill.visibility !== "public";
+  // Catalog responses intentionally omit owner_id. Compare the stable names as
+  // a fallback only when both stable IDs are not available. Equal IDs must win
+  // over stale or independently formatted display names.
+  const hasComparableIds = Boolean(skill.creatorId && skill.ownerId);
+  const hasSeparateCreator = Boolean(
+    creatorName && skill.ownerName && (
+      hasComparableIds
+        ? skill.creatorId !== skill.ownerId
+        : creatorName !== skill.ownerName
+    ),
+  );
+  const singlePublisherName = creatorName || skill.ownerName;
+  const ownerLabel = isPlatformPublished
+    ? platformPublisherName
+    : hasSeparateCreator
+    ? `${creatorName} · ${skill.ownerName}`
+    : singlePublisherName;
+  const showOwner = isPlatformPublished || Boolean(singlePublisherName);
   const ariaLabel = showOwner ? `${skill.name} ${ownerLabel}` : skill.name;
   const rawViewCount = skill.viewCount ?? 0;
   const rawDownloadCount = skill.downloadCount ?? 0;
@@ -191,13 +205,27 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
               {skill.name}
             </span>
             {showOwner && (
-              <>
-                {!isBotCreator && <span className="skill-market-card__meta-separator">·</span>}
-                <span className="skill-market-card__owner" title={ownerLabel}>
-                  {isBotCreator && <Bot className="skill-market-card__owner-bot-icon" size={13} aria-hidden="true" />}
-                  {ownerLabel}
-                </span>
-              </>
+              <span className="skill-market-card__owner" title={ownerLabel}>
+                {isPlatformPublished ? (
+                  <>
+                    <ShieldCheck className="skill-market-card__owner-platform-icon" size={13} aria-hidden="true" />
+                    <span className="skill-market-card__owner-name">{platformPublisherName}</span>
+                  </>
+                ) : hasSeparateCreator ? (
+                  <>
+                    <Bot className="skill-market-card__owner-bot-icon" size={13} aria-hidden="true" />
+                    <span className="skill-market-card__owner-name">{creatorName}</span>
+                    <span className="skill-market-card__meta-separator">·</span>
+                    <UserRound className="skill-market-card__owner-user-icon" size={13} aria-hidden="true" />
+                    <span className="skill-market-card__owner-name">{skill.ownerName}</span>
+                  </>
+                ) : (
+                  <>
+                    <UserRound className="skill-market-card__owner-user-icon" size={13} aria-hidden="true" />
+                    <span className="skill-market-card__owner-name">{singlePublisherName}</span>
+                  </>
+                )}
+              </span>
             )}
           </div>
         </div>

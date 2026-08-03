@@ -408,7 +408,11 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
       if (ws.state && ws.state !== 'visible') return
       const rawRows = ws.rowCount
       const rawCols = ws.columnCount
-      if (rawRows <= 0 || rawCols <= 0) return
+      // Do not discard an image-only worksheet here. ExcelJS derives rowCount/columnCount from
+      // sheetData, not from drawing anchors, so a perfectly valid worksheet containing only
+      // floating images reports columnCount=0 (the exported file that exposed this had rowCount=5,
+      // columnCount=0). We still need to inspect getImages() below and let CollabSheet import the
+      // drawings. A 0×0 cell matrix is intentional for that case.
       const rows = Math.min(rawRows, MAX_IMPORT_ROWS)
       const cols = Math.min(rawCols, MAX_IMPORT_COLS)
       if (rawRows > MAX_IMPORT_ROWS || rawCols > MAX_IMPORT_COLS) truncated = true
@@ -474,6 +478,12 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
       } catch {
         // image layer unreadable — import cells/merges without images
       }
+      // Keep the existing "empty workbook" behavior, but define importable content broadly: a
+      // standard drawing is content even when ExcelJS reports no used columns/cells. Conversely a
+      // genuinely blank worksheet must not create an empty Octo doc merely because we no longer
+      // return early on a zero cell dimension.
+      const hasCells = matrix.some((row) => row.some((cell) => cell !== null))
+      if (!hasCells && drawings.length === 0 && cellImages.length === 0 && hyperlinks.length === 0) return
       sheets.push({ name: ws.name ?? `Sheet${i + 1}`, matrix, merges, drawings, cellImages, hyperlinks })
     })
     if (sheets.length === 0) return { ok: false, reason: 'empty' }

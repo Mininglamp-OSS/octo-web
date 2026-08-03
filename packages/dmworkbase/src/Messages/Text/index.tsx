@@ -11,11 +11,12 @@ import MarkdownContent, { type MentionInfo, type EmojiInfo } from "./MarkdownCon
 import MessageRow from "../../ui/message/MessageRow"
 import ReplyBlock from "../../ui/message/ReplyBlock";
 import TextContent from "../../ui/message/TextContent";
-import ReactionSlot from "../../ui/message/MessageReactionSummary/ReactionSlot";
-import { isMessageReactionEnabled } from "../../Service/featureFlags";
+import ReactionSlot from "../../features/messageReaction/ReactionSlot";
+import { isMessageReactionChannelSupported } from "../../features/messageReaction/controller";
 import { getTextMessageUI } from "../../bridge/message/useTextMessageUI";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
+import { webhookPreviewClickHandler } from "../../bridge/message/webhookPreview";
 import "./index.css"
 
 /**
@@ -200,6 +201,10 @@ export class TextCell extends MessageCell {
                     isActive={context.isContextMenuOpen(message.message)}
                     onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
                     onSenderNameClick={() => context.showUser(message.fromUID)}
+                    onBodyClick={webhookPreviewClickHandler(
+                        message,
+                        context.openWebhookPreview?.bind(context)
+                    )}
                 >
                     <div>
                         {message?.content?.reply && (
@@ -214,12 +219,11 @@ export class TextCell extends MessageCell {
                             {...uiProps.content}
                             onMentionClick={(uid) => context.showUser(uid)}
                         />
-                        {/* 消息 reaction 汇总条（feature flag gate，默认关；
-                            demo 数据走本地 mock store，详见 featureFlags.ts）。
-                            生产化时数据源换成 message.reactions + 写接口。*/}
-                        {isMessageReactionEnabled() && (
+                        {isMessageReactionChannelSupported(message.channel.channelType) &&
+                            message.messageID && (
                             <ReactionSlot
-                                messageId={message.messageID || message.clientMsgNo}
+                                message={message.message}
+                                channel={context.channel()}
                             />
                         )}
                     </div>

@@ -2,6 +2,7 @@ import React, { useState, useCallback } from "react";
 import { Tag, Button, Input } from "@douyinfe/semi-ui";
 import { IconPlus } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
+import "./SummarySelectors.css";
 
 interface ParticipantItem {
     user_id: number;
@@ -53,7 +54,8 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
                         closable
                         onClose={() => handleRemove(index)}
                         size="large"
-                        style={{ marginBottom: 4, marginRight: 4 }}
+                        color="violet"
+                        className="summary-participant-tag"
                     >
                         {p.user_name || t("summary.common.userFallback", { values: { id: p.user_id } })}
                     </Tag>
@@ -67,7 +69,7 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
                         onChange={setUserId}
                         placeholder={t("summary.participant.userIdPlaceholder")}
                         size="small"
-                        style={{ width: 120 }}
+                        className="summary-participant-input"
                         type="number"
                     />
                     <Input
@@ -75,12 +77,12 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
                         onChange={setUserName}
                         placeholder={t("summary.participant.userNamePlaceholder")}
                         size="small"
-                        style={{ width: 120, marginLeft: 8 }}
+                        className="summary-participant-input"
                     />
-                    <Button size="small" theme="solid" onClick={handleAdd} style={{ marginLeft: 8 }}>
+                    <Button size="small" theme="solid" onClick={handleAdd}>
                         {t("summary.common.add")}
                     </Button>
-                    <Button size="small" theme="borderless" onClick={() => setAdding(false)} style={{ marginLeft: 4 }}>
+                    <Button size="small" theme="borderless" onClick={() => setAdding(false)}>
                         {t("summary.common.cancel")}
                     </Button>
                 </div>
@@ -91,7 +93,7 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
                         size="small"
                         theme="borderless"
                         onClick={() => setAdding(true)}
-                        style={{ marginTop: 4 }}
+                        className="summary-participant-add-trigger"
                     >
                         {t("summary.participant.addParticipant")}
                     </Button>

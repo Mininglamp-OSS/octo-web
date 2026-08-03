@@ -3,6 +3,20 @@ import { ProviderListener } from "../../Service/Provider"
 import { Toast } from "@douyinfe/semi-ui"
 import { extractErrorMsg } from "../../Service/APIClient"
 import { t } from "../../i18n"
+import {
+    createOboGrant,
+    createOboScope,
+    deleteOboGrant as deleteOboGrantApi,
+    deleteOboScope,
+    listOboGrantScopes,
+    listOboGrants,
+    updateOboGrant,
+    type CreateOboGrantRequest,
+    type OboGrant,
+    type OboScope,
+} from "../../Service/OboService"
+
+export type { OboGrant, OboScope } from "../../Service/OboService"
 
 /**
  * PersonaSettings — AI 分身（On-Behalf-Of / OBO）页面 ViewModel
@@ -37,35 +51,6 @@ import { t } from "../../i18n"
  *     点开关 → 后端 mutex 自动把其他 grant 的 active 置为 false（同一用户最多 1 个
  *     active grant 接管会话）。前端只需 PUT `{active: true|false}`，不必关心互斥逻辑。
  */
-export interface OboGrant {
-    id: number
-    grantor_uid: string
-    grantee_bot_uid: string
-    grantee_bot_name?: string
-    mode: "auto" | "draft"
-    global_enabled: boolean
-    active: boolean
-    /**
-     * v2：自定义回复风格 prompt。可空（旧 grant 未填写时为 undefined / 空串）。
-     * 前端表单为可选填写，提交时若空则不放进 POST/PUT body（让后端保持 NULL/未改）。
-     */
-    persona_prompt?: string
-    created_at?: number
-    updated_at?: number
-}
-
-/**
- * Scope 实体 — per-channel 白名单。
- * channel_type 与 wukongimjssdk Channel 类型保持一致 (1=Person/DM, 2=Group)。
- */
-export interface OboScope {
-    id: number
-    grant_id: number
-    channel_id: string
-    channel_type: number
-    enabled: boolean
-}
-
 /**
  * MyBot — 用于「新建分身」时选择关联 bot 的下拉数据源。
  *
@@ -149,10 +134,7 @@ export class PersonaSettingsVM extends ProviderListener {
             this.isBackendMissing = false
             this.notifyListener()
             try {
-                const res = await WKApp.apiClient.get<any>(`obo/grants`)
-                // API returns {items: [...]} envelope; unwrap it.
-                const arr = Array.isArray(res) ? res : (res && Array.isArray(res.items) ? res.items : [])
-                this.grants = arr as OboGrant[]
+                this.grants = await listOboGrants()
             } catch (e: any) {
                 this.grants = []
                 if (e && typeof e === "object" && "status" in e && (e as any).status === 404) {
@@ -289,7 +271,7 @@ export class PersonaSettingsVM extends ProviderListener {
         try {
             // v2 (octo-web#73)：persona_prompt 可选；只有用户实际填写了非空内容时才放进 body，
             // 否则空串会让后端把 NULL 覆盖成 ''，影响 fan-out 的 system prompt 拼装逻辑。
-            const body: Record<string, any> = {
+            const body: CreateOboGrantRequest = {
                 grantee_bot_uid: granteeBotUid,
                 mode: "auto",
                 global_enabled: false,
@@ -298,7 +280,7 @@ export class PersonaSettingsVM extends ProviderListener {
             if (trimmed) {
                 body.persona_prompt = trimmed
             }
-            const res = await WKApp.apiClient.post(`obo/grants`, body)
+            const res = await createOboGrant(body)
             await this.loadGrants()
             // 已绑定的 bot 必须从下一次 PersonaCreate 的 picker 中消失：
             // 清缓存让 useEffect 的 length===0 守卫重新触发 loadMyBots()。
@@ -315,7 +297,7 @@ export class PersonaSettingsVM extends ProviderListener {
     /** 撤销（软删除）一个 grant。删除成功后 UI 应自行 pop / reload。 */
     async deleteGrant(id: number): Promise<boolean> {
         try {
-            await WKApp.apiClient.delete(`obo/grants/${id}`)
+            await deleteOboGrantApi(id)
             await this.loadGrants()
             return true
         } catch (e) {
@@ -339,7 +321,7 @@ export class PersonaSettingsVM extends ProviderListener {
         patch: Partial<Pick<OboGrant, "global_enabled" | "mode" | "active" | "persona_prompt">>,
     ): Promise<boolean> {
         try {
-            await WKApp.apiClient.put(`obo/grants/${id}`, patch)
+            await updateOboGrant(id, patch)
             await this.loadGrants()
             return true
         } catch (e) {
@@ -353,7 +335,7 @@ export class PersonaSettingsVM extends ProviderListener {
  * PersonaEdit 子页面 VM —— 单 grant 的 scope 编辑。
  *
  * 单独抽出一个 VM 避免顶层 PersonaSettingsVM 持有 per-grant 状态（避免 deep state，
- * 离开 edit 子页时自然 GC）。scopes 的写操作通过 WKApp.apiClient 直接调，
+ * 离开 edit 子页时自然 GC）。scopes 的写操作通过 OboService 统一收口，
  * 不做本地乐观更新（v0 接口慢但请求量小，简单可靠 > 体感丝滑）。
  */
 export class PersonaEditVM extends ProviderListener {
@@ -378,10 +360,7 @@ export class PersonaEditVM extends ProviderListener {
         this.isBackendMissing = false
         this.notifyListener()
         try {
-            const res = await WKApp.apiClient.get<any>(`obo/grants/${this.grant.id}/scopes`)
-            // API returns {items: [...]} envelope; unwrap it.
-            const arr = Array.isArray(res) ? res : (res && Array.isArray(res.items) ? res.items : [])
-            this.scopes = arr as OboScope[]
+            this.scopes = await listOboGrantScopes(this.grant.id)
         } catch (e: any) {
             this.scopes = []
             if (e && typeof e === "object" && "status" in e && (e as any).status === 404) {
@@ -397,7 +376,7 @@ export class PersonaEditVM extends ProviderListener {
 
     async addScope(channelId: string, channelType: number): Promise<boolean> {
         try {
-            await WKApp.apiClient.post(`obo/scopes`, {
+            await createOboScope({
                 grant_id: this.grant.id,
                 channel_id: channelId,
                 channel_type: channelType,
@@ -413,7 +392,7 @@ export class PersonaEditVM extends ProviderListener {
 
     async removeScope(id: number): Promise<boolean> {
         try {
-            await WKApp.apiClient.delete(`obo/scopes/${id}`)
+            await deleteOboScope(id)
             await this.loadScopes()
             return true
         } catch (e) {
@@ -424,7 +403,7 @@ export class PersonaEditVM extends ProviderListener {
 
     async toggleGlobal(enabled: boolean): Promise<boolean> {
         try {
-            await WKApp.apiClient.put(`obo/grants/${this.grant.id}`, { global_enabled: enabled ? 1 : 0 })
+            await updateOboGrant(this.grant.id, { global_enabled: enabled ? 1 : 0 })
             this.grant = { ...this.grant, global_enabled: enabled }
             this.notifyListener()
             return true
@@ -452,7 +431,7 @@ export class PersonaEditVM extends ProviderListener {
             if (typeof active === "boolean") {
                 body.active = active
             }
-            await WKApp.apiClient.put(`obo/grants/${this.grant.id}`, body)
+            await updateOboGrant(this.grant.id, body)
             this.grant = {
                 ...this.grant,
                 persona_prompt: personaPrompt,
@@ -468,7 +447,7 @@ export class PersonaEditVM extends ProviderListener {
 
     async deleteGrant(): Promise<boolean> {
         try {
-            await WKApp.apiClient.delete(`obo/grants/${this.grant.id}`)
+            await deleteOboGrantApi(this.grant.id)
             return true
         } catch (e) {
             Toast.error(extractErrorMsg(e) || t("base.persona.delete.failed"))
@@ -531,10 +510,7 @@ export function refreshActiveGrantCache(): Promise<boolean> {
     if (inFlight) return inFlight
     const p: Promise<boolean> = (async () => {
         try {
-            const res = await WKApp.apiClient.get<any>(`obo/grants`)
-            // API returns {items: [...]} envelope; unwrap it.
-            const raw = Array.isArray(res) ? res : (res && Array.isArray(res.items) ? res.items : [])
-            const list: OboGrant[] = raw
+            const list = await listOboGrants()
             // P1-2: 仅看 active，不再耦合 global_enabled，否则纯 per-channel scope
             // 模式下 toggle 永远不显示。
             const v = list.some((g) => g.active)

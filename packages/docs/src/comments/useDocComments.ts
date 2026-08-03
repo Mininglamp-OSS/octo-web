@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   listComments,
+  getCommentThread,
   createRootComment,
   createReply,
   editCommentBody,
@@ -19,20 +20,27 @@ import {
 
 const PAGE_SIZE = 25
 
+export interface CommentMutationResult {
+  ok: boolean
+  error: string | null
+}
+
 export interface UseDocComments {
   threads: CommentThread[]
   loading: boolean
+  loadingThreadIds: ReadonlySet<number>
   error: string | null
   nextCursor: number | null
   includeResolved: boolean
   setIncludeResolved: (v: boolean) => void
   refresh: () => Promise<void>
   loadMore: () => Promise<void>
-  createRoot: (input: CreateRootInput) => Promise<void>
-  reply: (parentId: number, body: string) => Promise<void>
-  editBody: (id: number, body: string) => Promise<void>
-  resolve: (id: number, resolved: boolean) => Promise<void>
-  remove: (id: number, hard: boolean) => Promise<void>
+  loadThread: (id: number) => Promise<boolean | null>
+  createRoot: (input: CreateRootInput) => Promise<CommentMutationResult>
+  reply: (parentId: number, body: string) => Promise<CommentMutationResult>
+  editBody: (id: number, body: string) => Promise<CommentMutationResult>
+  resolve: (id: number, resolved: boolean) => Promise<CommentMutationResult>
+  remove: (id: number, hard: boolean) => Promise<CommentMutationResult>
 }
 
 export function useDocComments(docId: string): UseDocComments {
@@ -57,6 +65,9 @@ export function useDocComments(docId: string): UseDocComments {
   // a best-effort fallback re-read, not a loading-bearing load, so it owns this
   // token only to guard against a newer reconcile overwriting it.
   const reconcileRef = useRef(0)
+  const nextThreadReqRef = useRef(0)
+  const activeThreadReqRef = useRef(new Map<number, number>())
+  const [loadingThreadIds, setLoadingThreadIds] = useState<ReadonlySet<number>>(() => new Set())
 
   // Data-freshness epoch, deliberately independent of both tokens above and of the
   // loading lifecycle. reconcile() bumps it after it installs the server's
@@ -83,6 +94,7 @@ export function useDocComments(docId: string): UseDocComments {
       if (reqRef.current !== token || dataEpoch.current !== startEpoch) return
       setThreads(res.items)
       setNextCursor(res.nextCursor)
+      dataEpoch.current++
     } catch {
       if (reqRef.current !== token) return
       setError('Failed to load comments.')
@@ -94,6 +106,39 @@ export function useDocComments(docId: string): UseDocComments {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  const loadThread = useCallback(async (id: number): Promise<boolean | null> => {
+    const token = ++nextThreadReqRef.current
+    activeThreadReqRef.current.set(id, token)
+    const startEpoch = dataEpoch.current
+    setLoadingThreadIds((current) => new Set(current).add(id))
+    try {
+      const thread = await getCommentThread(docId, id)
+      if (activeThreadReqRef.current.get(id) !== token || dataEpoch.current !== startEpoch) return null
+      if (!includeResolved && thread.resolvedAt) return false
+      setThreads((prev) => {
+        const index = prev.findIndex((item) => item.id === thread.id)
+        if (index < 0) return [...prev, thread].sort((a, b) => a.id - b.id)
+        const next = [...prev]
+        next[index] = thread
+        return next
+      })
+      return true
+    } catch {
+      if (activeThreadReqRef.current.get(id) !== token || dataEpoch.current !== startEpoch) return null
+      setError('Failed to load comment thread.')
+      return false
+    } finally {
+      if (activeThreadReqRef.current.get(id) === token) {
+        activeThreadReqRef.current.delete(id)
+        setLoadingThreadIds((current) => {
+          const next = new Set(current)
+          next.delete(id)
+          return next
+        })
+      }
+    }
+  }, [docId, includeResolved])
 
   const loadMore = useCallback(async () => {
     if (nextCursor == null || loading) return
@@ -157,20 +202,23 @@ export function useDocComments(docId: string): UseDocComments {
     }
   }, [docId, includeResolved])
 
-  // Wrap a mutating action so a failed API call surfaces as a panel error instead of
-  // an unhandled rejection (the handlers only had `finally`, not `catch`). On success
+  // Wrap a mutating action so callers can distinguish success from failure. On success
   // we re-read from the authoritative backend. On failure we ALSO re-read: the backend
   // is authoritative, so reconcile the list to server truth before showing the error
-  // (otherwise a delete the server already applied leaves the row on screen).
+  // (otherwise a delete the server already applied leaves the row on screen). Returning
+  // an explicit result is load-bearing: composers must retain their draft/editing state
+  // when a 403 or network failure rejects the mutation.
   const runMutation = useCallback(
-    async (fn: () => Promise<unknown>, failMsg: string): Promise<void> => {
+    async (fn: () => Promise<unknown>, failMsg: string): Promise<CommentMutationResult> => {
       setError(null)
       try {
         await fn()
         await refresh()
+        return { ok: true, error: null }
       } catch {
         await reconcile()
         setError(failMsg)
+        return { ok: false, error: failMsg }
       }
     },
     [refresh, reconcile],
@@ -212,12 +260,14 @@ export function useDocComments(docId: string): UseDocComments {
   return {
     threads,
     loading,
+    loadingThreadIds,
     error,
     nextCursor,
     includeResolved,
     setIncludeResolved,
     refresh,
     loadMore,
+    loadThread,
     createRoot,
     reply,
     editBody,
@@ -233,17 +283,24 @@ export function useDocComments(docId: string): UseDocComments {
 // single useDocComments instance, so wiring this one hook into each shell covers both from one place.
 //
 // We refresh only on the false → true edge (not on every render, not when the panel is already open),
-// so opening once triggers exactly one fetch and no duplicate concurrent loads. `refresh` is read
-// through a ref so its identity changing (docId / includeResolved) never re-fires this effect —
+// so opening once triggers at most one fetch. A direct marker hydration suppresses this full-list
+// refresh to avoid a guaranteed stale request/retry pair. `refresh` is read through a ref so its
+// identity changing (docId / includeResolved) never re-fires this effect —
 // those already have their own refresh in useDocComments — and we avoid a stale-closure over it.
-export function useRefreshCommentsOnOpen(comments: UseDocComments, open: boolean): void {
+export function useRefreshCommentsOnOpen(
+  comments: UseDocComments,
+  open: boolean,
+  directThreadHydrationPending = false,
+): void {
   const refreshRef = useRef(comments.refresh)
+  const skipRefreshRef = useRef(directThreadHydrationPending)
   refreshRef.current = comments.refresh
+  skipRefreshRef.current = directThreadHydrationPending
   // Seed with the initial `open` so a panel that starts open doesn't double-fetch on top of the
   // hook's own mount-time load; only a genuine closed → open transition triggers a refresh.
   const prevOpen = useRef(open)
   useEffect(() => {
-    if (open && !prevOpen.current) void refreshRef.current()
+    if (open && !prevOpen.current && !skipRefreshRef.current) void refreshRef.current()
     prevOpen.current = open
   }, [open])
 }

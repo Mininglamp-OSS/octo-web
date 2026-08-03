@@ -1,5 +1,7 @@
 import { Channel, Message, MessageContent } from "wukongimjssdk";
+import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
 import { MessageInputContext } from "../MessageInput";
+import { MessageWrap } from "../../Service/Model";
 
 export default interface ConversationContext {
   /**
@@ -40,6 +42,9 @@ export default interface ConversationContext {
    * @param message
    */
   revokeMessage(message: Message): Promise<void>;
+
+  /** Put a self-revoked message back into the composer for another send. */
+  reeditRevokedMessage(message: MessageWrap): Promise<void>;
 
   /**
    * 编辑消息
@@ -107,7 +112,10 @@ export default interface ConversationContext {
   getPendingAttachments(): File[];
 
   /** 追加文件到待发送队列（超限时返回错误描述，成功返回 null） */
-  addPendingAttachments(files: File[]): string | null;
+  addPendingAttachments(
+    files: File[],
+    source?: "paste" | "upload"
+  ): Promise<string | null>;
 
   /** 移除指定索引的待发送附件 */
   removePendingAttachment(index: number): void;
@@ -142,6 +150,9 @@ export default interface ConversationContext {
    * @param threadName 子区名称
    */
   openThreadPanel?(threadChannelId: string, threadName: string): void;
+
+  /** 在右侧打开 Webhook 消息中实际点击的 Fleet 任务。 */
+  openWebhookPreview?(target: WebhookIssuePreviewTarget): void;
 
   /**
    * 获取当前正在预览的文件消息 ID

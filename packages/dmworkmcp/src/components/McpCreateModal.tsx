@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { WKModal, WKInput, WKButton, t } from "@octo/base";
-import { Input, Select, TextArea, Toast } from "@douyinfe/semi-ui";
+import { Select, Switch, TextArea, Toast } from "@douyinfe/semi-ui";
 import {
   createMcp,
   probeMcpTools,
@@ -10,18 +10,22 @@ import {
 } from "../api/mcpService";
 import { MCP_CATEGORY_LABELS, MCP_CATEGORY_ORDER } from "../mock/mcpMock";
 import {
-  applySecretSentinel,
   SECRET_PLACEHOLDER_SENTINEL,
   isSecretKey,
   slugifyServerName,
 } from "../utils/constants";
+import { parseImportJSON } from "../utils/importJson";
+import {
+  MAX_MCP_TAGS,
+  validateMcpTag,
+  validateMcpTags,
+} from "../utils/mcpTagValidation";
 import type {
   CreateMcpParams,
   McpDetail,
   McpFaq,
   McpProbeRequest,
   McpTransport,
-  McpVisibility,
 } from "../types/mcp";
 import { isImageIcon } from "../utils/icon";
 
@@ -59,6 +63,22 @@ const MAXLEN = {
   text: 500, // tool description / FAQ question+answer / note
 } as const;
 
+// Probe returns tool metadata from a live MCP server; some servers ship
+// multi-paragraph descriptions that exceed the backend's 500-char cap and
+// would make submit fail with `tools.description must be at most 500
+// characters`. Clamp on ingest so the form value already satisfies the
+// contract; the trailing `…` cues the user that the text was cut so they can
+// rewrite it in the tool list before saving. `description` is typed string
+// per McpTool but the MCP spec makes it optional — a live probe may return
+// `{name: "x"}` with no description; guard against undefined so the probe
+// doesn't degrade to a misleading "probe failed" toast on tools that
+// legitimately ship without one.
+function clampToolDescription(desc: string | undefined | null): string {
+  if (!desc) return "";
+  if (desc.length <= MAXLEN.text) return desc;
+  return desc.slice(0, MAXLEN.text - 1) + "…";
+}
+
 const EMPTY: CreateMcpParams = {
   name: "",
   slug: "",
@@ -72,56 +92,85 @@ const EMPTY: CreateMcpParams = {
   args: [],
   env: {},
   headers: {},
-  authType: "none",
   tools: [],
   usageExamples: [],
   faqs: [],
   notes: [],
-  visibility: "public",
 };
 
 const TRANSPORT_OPTIONS: McpTransport[] = ["stdio", "streamable-http", "sse"];
+
+/** One row in the structured Headers / Env editor. Replaces the earlier free-
+ *  text `KEY: value` textarea buffer so each row can carry a per-key toggle
+ *  for the wire's `headers_user_supplied` / `env_user_supplied` arrays.
+ *  `userSupplied=true` flags the key as "consumer supplies their own value";
+ *  the value itself IS persisted (§5.1 relaxation) so the owner sees it on
+ *  their own edit, but non-owner reads are blanked server-side (§5.3) and
+ *  the market snippet substitutes the placeholder client-side. */
+interface KvEntry {
+  key: string;
+  value: string;
+  userSupplied: boolean;
+}
+
+/** Rebuild the structured entries list from a wire map + user-supplied array.
+ *  Legacy records (pre-§5.1 relaxation) may still carry the sentinel literal
+ *  under user-supplied keys; we drop it to "" so the input renders blank
+ *  rather than showing "__OCTO_SECRET_..." Preserves insertion order so an
+ *  edit reload shows keys in the same order they were saved. */
+function entriesFromWire(
+  values: Record<string, string> | undefined,
+  userSupplied: string[] | undefined
+): KvEntry[] {
+  if (!values) return [];
+  const supplied = new Set(userSupplied ?? []);
+  return Object.entries(values).map(([key, raw]) => {
+    const isSupplied = supplied.has(key);
+    const value = raw === SECRET_PLACEHOLDER_SENTINEL ? "" : raw;
+    return { key, value, userSupplied: isSupplied };
+  });
+}
+
+/** Collapse the structured editor into wire shape:
+ *  - values map keeps `key → value` verbatim; the value is preserved even for
+ *    user-supplied keys so the owner sees it again on their own edit (§5.1
+ *    rule 1 relaxation). Non-owner reads are blanked server-side (§5.3).
+ *  - userSupplied[] is the list of keys whose value is a "consumer supplies
+ *    their own" placeholder in the marketplace snippet — the mask happens
+ *    client-side via applyUserSuppliedPlaceholder, not by nulling the value
+ *    here.
+ *  Rows with an empty key are dropped so a stray "add" click doesn't emit
+ *  `{"": ""}` and confuse validation. */
+function entriesToWire(entries: KvEntry[]): {
+  values: Record<string, string>;
+  userSupplied: string[];
+} {
+  const values: Record<string, string> = {};
+  // Track user-supplied membership in a Set — two rows carrying the same
+  // key (both toggled ON) would otherwise emit `["Authorization",
+  // "Authorization"]` on the wire. `values[k]` already collapses to last
+  // write; the array needs an explicit dedup so a backend uniqueItems
+  // check (or any downstream consumer expecting a set) doesn't blow up
+  // on the second entry.
+  const suppliedSet = new Set<string>();
+  for (const e of entries) {
+    const k = e.key.trim();
+    if (!k) continue;
+    values[k] = e.value;
+    if (e.userSupplied) suppliedSet.add(k);
+  }
+  return { values, userSupplied: [...suppliedSet] };
+}
 
 function isRemote(transport: McpTransport): boolean {
   return transport === "streamable-http" || transport === "sse";
 }
 
-function parseKV(raw: string, separator: "=" | ":"): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const idx = trimmed.indexOf(separator);
-    if (idx === -1) continue;
-    const key = trimmed.slice(0, idx).trim();
-    const val = trimmed.slice(idx + 1).trim();
-    if (key) out[key] = val;
-  }
-  return out;
-}
-
-/** Inject the ephemeral probe bearer as `Authorization: Bearer <token>` for
- *  the test-connect call only. The persisted `headers` map still submits the
- *  sentinel placeholder that mcp-v1.md §5.1 requires; this override lets the
- *  probe reach a real MCP server without persisting the real token. Any
- *  `Authorization` already in `headers` (e.g. the sentinel) is intentionally
- *  overwritten because the user's just-typed token is the more explicit
- *  signal.
- */
-function mergeProbeBearer(
-  headers: Record<string, string>,
-  authType: "bearer" | "none" | undefined,
-  probeBearer: string
-): Record<string, string> {
-  const token = probeBearer.trim();
-  if (authType !== "bearer" || !token) return headers;
-  return { ...headers, Authorization: `Bearer ${token}` };
-}
-
 /** Convert a detail record to the flat create/update form shape. Preserves
- *  everything the wire carries; drops the redacted secret sentinel so the
- *  user sees empty inputs (submit re-applies the sentinel via
- *  applySecretSentinel, so a not-touched secret round-trips cleanly). */
+ *  everything the wire carries; the KV entries (env / headers) are rebuilt
+ *  from the wire pair (values map + user_supplied array) via entriesFromWire.
+ *  The entries themselves are kept in a separate state slice — this function
+ *  just fills the flat `form` shape (values + userSupplied arrays). */
 function detailToForm(detail: McpDetail): CreateMcpParams {
   const qs = detail.quickStart;
   return {
@@ -135,41 +184,15 @@ function detailToForm(detail: McpDetail): CreateMcpParams {
     url: qs.url ?? "",
     command: qs.command ?? "",
     args: qs.args ?? [],
-    env: stripSecretSentinel(qs.env),
-    headers: stripSecretSentinel(qs.headers),
-    authType: qs.authType ?? "none",
+    env: qs.env,
+    envUserSupplied: qs.envUserSupplied,
+    headers: qs.headers,
+    headersUserSupplied: qs.headersUserSupplied,
     tools: detail.tools,
     usageExamples: detail.usageExamples,
     faqs: detail.faqs,
     notes: detail.notes,
-    visibility: detail.visibility ?? "public",
   };
-}
-
-/** Replace the redacted sentinel with an empty string on secret-typed keys,
- *  so the user sees a blank input instead of the wire literal. Non-secret
- *  keys pass through untouched. */
-function stripSecretSentinel(
-  m: Record<string, string> | undefined
-): Record<string, string> {
-  if (!m) return {};
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(m)) {
-    out[k] = isSecretKey(k) && v === SECRET_PLACEHOLDER_SENTINEL ? "" : v;
-  }
-  return out;
-}
-
-/** Serialize a KV map back to the "KEY=VALUE" or "Header: value" text buffer
- *  used by the env/headers <TextArea>. */
-function serializeKV(
-  m: Record<string, string> | undefined,
-  separator: "=" | ": "
-): string {
-  if (!m) return "";
-  return Object.entries(m)
-    .map(([k, v]) => `${k}${separator}${v}`)
-    .join("\n");
 }
 
 // ─── Small presentational helpers kept inline (single-use, tiny) ────────────
@@ -237,6 +260,106 @@ function Field({
   );
 }
 
+/** Structured Headers / Env editor. One row per key with a per-key toggle
+ *  that flags "the value must be filled locally by each consumer" — the
+ *  form's submit path converts that flag into the wire's
+ *  `headers_user_supplied` / `env_user_supplied` arrays. */
+function KvEditor({
+  entries,
+  onChange,
+  keyPlaceholder,
+  valuePlaceholder,
+  addLabel,
+  toggleLabel,
+  removeLabel,
+}: {
+  entries: KvEntry[];
+  onChange: (next: KvEntry[]) => void;
+  keyPlaceholder: string;
+  valuePlaceholder: string;
+  addLabel: string;
+  toggleLabel: string;
+  removeLabel: string;
+}) {
+  const update = (idx: number, patch: Partial<KvEntry>) => {
+    onChange(
+      entries.map((e, i) => (i === idx ? { ...e, ...patch } : e))
+    );
+  };
+  // Smart-default the "consumer fills locally" toggle to ON when the
+  // operator types a secret-shape key (Authorization / *_token /
+  // *_secret / ...). Only fires while the row is still fresh — the
+  // toggle is untouched (false) AND the value is empty. Once the
+  // operator flips the toggle or types a value we treat the row as
+  // "explicit" and never auto-adjust again. Guards against pasting a
+  // Bearer token under an Authorization key and publishing it verbatim.
+  const setKey = (idx: number, k: string) => {
+    const row = entries[idx];
+    const shouldAutoToggle =
+      !row.userSupplied && !row.value && isSecretKey(k);
+    update(idx, {
+      key: k,
+      ...(shouldAutoToggle ? { userSupplied: true } : {}),
+    });
+  };
+  const remove = (idx: number) =>
+    onChange(entries.filter((_, i) => i !== idx));
+  const add = () =>
+    onChange([...entries, { key: "", value: "", userSupplied: false }]);
+
+  return (
+    <div className="wk-mcp-kv">
+      {entries.length > 0 && (
+        <div className="wk-mcp-kv__rows">
+          {entries.map((e, idx) => (
+            <div className="wk-mcp-kv__row" key={idx}>
+              <WKInput
+                className="wk-mcp-kv__key"
+                value={e.key}
+                onChange={(v) => setKey(idx, v)}
+                placeholder={keyPlaceholder}
+                maxLength={128}
+              />
+              <WKInput
+                className="wk-mcp-kv__value"
+                value={e.value}
+                onChange={(v) => update(idx, { value: v })}
+                placeholder={valuePlaceholder}
+                maxLength={1024}
+              />
+              <label className="wk-mcp-kv__toggle">
+                <Switch
+                  checked={e.userSupplied}
+                  onChange={(checked) =>
+                    update(idx, { userSupplied: checked })
+                  }
+                />
+                <span className="wk-mcp-kv__toggle-label">{toggleLabel}</span>
+              </label>
+              <WKButton
+                size="sm"
+                variant="ghost"
+                onClick={() => remove(idx)}
+                aria-label={removeLabel}
+              >
+                −
+              </WKButton>
+            </div>
+          ))}
+        </div>
+      )}
+      <WKButton
+        size="sm"
+        variant="secondary"
+        className="wk-mcp-kv__add"
+        onClick={add}
+      >
+        + {addLabel}
+      </WKButton>
+    </div>
+  );
+}
+
 function Segments<T extends string>({
   value,
   options,
@@ -272,7 +395,11 @@ function Segments<T extends string>({
   );
 }
 
-/** Chip-based tag input — Enter/comma add, Backspace on empty removes last. */
+/** Chip-based tag input — Enter/comma add, Backspace on empty removes last.
+ *  Also enforces MAX_MCP_TAGS + per-tag length/charset (mirrors dmworkskillmarket
+ *  after PR #1026). Invalid tags are rejected inline with a Toast so the user
+ *  gets immediate feedback; the outer submit path re-validates as a defense
+ *  against legacy oversized rows loaded into the edit form. */
 function TagsInput({
   value,
   onChange,
@@ -285,14 +412,43 @@ function TagsInput({
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const commit = (raw: string) => {
+  const commitOne = (raw: string, existing: string[]): string[] | null => {
     const trimmed = raw.trim().replace(/,+$/, "");
-    if (!trimmed) return;
-    if (value.includes(trimmed)) {
+    if (!trimmed) return null;
+    if (existing.includes(trimmed)) return null;
+    if (existing.length >= MAX_MCP_TAGS) {
+      Toast.warning(t("mcp.form.tagLimit", { values: { count: MAX_MCP_TAGS } }));
+      return null;
+    }
+    const tagError = validateMcpTag(trimmed);
+    if (tagError) {
+      Toast.warning(tagError);
+      return null;
+    }
+    return [...existing, trimmed];
+  };
+
+  /** Accepts either a single tag or a comma-separated batch (from paste).
+   *  Splits on commas, validates each segment, and drops the whole batch's
+   *  draft only after processing so a mid-batch validation error still
+   *  clears the input (matches the keyboard-comma UX). */
+  const commit = (raw: string) => {
+    const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length === 0) {
       setDraft("");
       return;
     }
-    onChange([...value, trimmed]);
+    let next = value;
+    for (const part of parts) {
+      const result = commitOne(part, next);
+      if (result === null) {
+        // Batch aborted on the first invalid segment; keep whatever we already
+        // appended (parity with per-keystroke behavior).
+        break;
+      }
+      next = result;
+    }
+    if (next !== value) onChange(next);
     setDraft("");
   };
 
@@ -302,7 +458,7 @@ function TagsInput({
     <div className="wk-mcp-tags" onClick={() => inputRef.current?.focus()}>
       {value.map((tag, i) => (
         <span className="wk-mcp-tags__chip" key={`${tag}-${i}`}>
-          {tag}
+          <span className="wk-mcp-tags__chip-text" title={tag}>{tag}</span>
           <button
             type="button"
             className="wk-mcp-tags__chip-remove"
@@ -356,16 +512,15 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [step, setStep] = useState(0);
 
-  // Text buffers for structured connection fields — parsed on submit / probe.
+  // Text buffer for the free-text args field; env / headers use structured
+  // rows below.
   const [argsRaw, setArgsRaw] = useState("");
-  const [envRaw, setEnvRaw] = useState("");
-  const [headersRaw, setHeadersRaw] = useState("");
-  // Ephemeral bearer token used ONLY by the probe call; never included in the
-  // create/update payload. Lets the user paste a real token to fetch the tool
-  // list while the persisted headers keep the sentinel placeholder that
-  // mcp-v1.md §5.1 requires. Not seeded from `editing` — real values never
-  // round-trip to the client.
-  const [probeBearer, setProbeBearer] = useState("");
+  // Structured Headers / Env editors — one row per key, with a per-key
+  // "needs user config" toggle. The submit path converts these back into the
+  // wire pair (values map + user_supplied array) via entriesToWire; the edit
+  // path rehydrates via entriesFromWire.
+  const [envEntries, setEnvEntries] = useState<KvEntry[]>([]);
+  const [headersEntries, setHeadersEntries] = useState<KvEntry[]>([]);
 
   // Icon: the selected File is held locally for an object-URL preview and only
   // uploaded to object storage on submit (POST /mcps/{id}/icon, needs the id).
@@ -376,6 +531,12 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
 
   // Once the user hand-edits the slug we stop auto-deriving it from the name.
   const [slugTouched, setSlugTouched] = useState(false);
+
+  // Create-mode toggle (issue #867): manual = existing wizard, json = paste an
+  // mcpServers / server.json snippet to seed the form. Edit mode always stays
+  // in manual — JSON import is a create-time seeding aid, not an edit affordance.
+  const [createMode, setCreateMode] = useState<"manual" | "json">("manual");
+  const [jsonRaw, setJsonRaw] = useState("");
 
   const iconInputRef = useRef<HTMLInputElement>(null);
 
@@ -390,9 +551,11 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     if (editing) {
       const seed = detailToForm(editing);
       setForm(seed);
-      setArgsRaw((seed.args ?? []).join(" "));
-      setEnvRaw(serializeKV(seed.env, "="));
-      setHeadersRaw(serializeKV(seed.headers, ": "));
+      setArgsRaw((seed.args ?? []).join("\n"));
+      setEnvEntries(entriesFromWire(seed.env, seed.envUserSupplied));
+      setHeadersEntries(
+        entriesFromWire(seed.headers, seed.headersUserSupplied)
+      );
       const hasAdvanced =
         Object.keys(seed.env ?? {}).length > 0 ||
         Object.keys(seed.headers ?? {}).length > 0;
@@ -402,16 +565,17 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     } else {
       setForm(EMPTY);
       setArgsRaw("");
-      setEnvRaw("");
-      setHeadersRaw("");
+      setEnvEntries([]);
+      setHeadersEntries([]);
       setAdvancedOpen(false);
       setSlugTouched(false);
     }
-    // Probe bearer is per-session and never re-used across opens.
-    setProbeBearer("");
     setIconFile(null);
     setIconPreview("");
     setStep(0);
+    // JSON import mode + textarea reset. Edit sessions never enter JSON mode.
+    setCreateMode("manual");
+    setJsonRaw("");
   }, [visible, editing]);
 
   // Object-URL preview lifecycle: create on file pick, revoke on replace/unmount
@@ -436,14 +600,15 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   const resetAll = () => {
     setForm(EMPTY);
     setArgsRaw("");
-    setEnvRaw("");
-    setHeadersRaw("");
-    setProbeBearer("");
+    setEnvEntries([]);
+    setHeadersEntries([]);
     setAdvancedOpen(false);
     setIconFile(null);
     setIconPreview("");
     setSlugTouched(false);
     setStep(0);
+    setCreateMode("manual");
+    setJsonRaw("");
   };
 
   /** Name edit also seeds the slug while the user hasn't hand-edited it, so the
@@ -518,21 +683,32 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
 
   // ── Probe ──────────────────────────────────────────────────────────────
   const handleProbe = async () => {
+    // Probe sends the REAL values from the editor — user-supplied included —
+    // so the handshake actually reaches the remote server. This is a
+    // separate transient request; the persisted body is built by
+    // entriesToWire in handleSubmit (which also preserves the value now,
+    // §5.1 rule 1 relaxation).
+    const probeHeaders: Record<string, string> = {};
+    for (const e of headersEntries) {
+      const k = e.key.trim();
+      if (k) probeHeaders[k] = e.value;
+    }
+    const probeEnv: Record<string, string> = {};
+    for (const e of envEntries) {
+      const k = e.key.trim();
+      if (k) probeEnv[k] = e.value;
+    }
     const req: McpProbeRequest = isRemote(form.transport)
       ? {
           transport: form.transport,
           url: form.url,
-          headers: mergeProbeBearer(
-            parseKV(headersRaw, ":"),
-            form.authType,
-            probeBearer
-          ),
+          headers: probeHeaders,
         }
       : {
           transport: form.transport,
           command: form.command,
-          args: argsRaw.trim() ? argsRaw.trim().split(/\s+/) : [],
-          env: parseKV(envRaw, "="),
+          args: argsRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
+          env: probeEnv,
         };
     setProbing(true);
     try {
@@ -546,10 +722,23 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         );
         return;
       }
-      update("tools", result.tools);
+      let truncated = 0;
+      const tools = result.tools.map((tool) => {
+        const clamped = clampToolDescription(tool.description);
+        if (clamped !== tool.description) truncated += 1;
+        return { ...tool, description: clamped };
+      });
+      update("tools", tools);
       Toast.success(
-        t("mcp.create.probeSuccess", { values: { count: result.tools.length } })
+        t("mcp.create.probeSuccess", { values: { count: tools.length } })
       );
+      if (truncated > 0) {
+        Toast.info(
+          t("mcp.create.probeTruncated", {
+            values: { count: truncated, max: MAXLEN.text },
+          })
+        );
+      }
     } catch (err: unknown) {
       Toast.error(
         err instanceof Error ? err.message : t("mcp.create.probeFailed")
@@ -573,15 +762,19 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     if (!form.name.trim()) return { key: "mcp.create.nameRequired" };
     if (isRemote(form.transport)) {
       if (!(form.url ?? "").trim()) return { key: "mcp.create.urlRequired" };
-      // Per-header key / value length (parsed from the raw `key: value` lines).
-      const headers = parseKV(headersRaw, ":");
-      for (const [k, v] of Object.entries(headers)) {
+      // Per-row key / value length. The KV editor caps typed input via
+      // `maxLength`, but a paste or a JSON-import seed can exceed the cap;
+      // the explicit check turns that into a friendly toast instead of a
+      // backend `too_long` reject later.
+      for (const e of headersEntries) {
+        const k = e.key.trim();
+        if (!k) continue;
         if (k.length > MAXLEN.headerKey)
           return {
             key: "mcp.create.headerKeyTooLong",
             values: { max: MAXLEN.headerKey },
           };
-        if (v.length > MAXLEN.headerValue)
+        if (e.value.length > MAXLEN.headerValue)
           return {
             key: "mcp.create.headerValueTooLong",
             values: { max: MAXLEN.headerValue },
@@ -591,15 +784,35 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       // stdio → command required (args optional, per user confirmation).
       if (!(form.command ?? "").trim())
         return { key: "mcp.create.commandRequired" };
-      // Per-arg length (args are whitespace-split tokens).
-      const args = argsRaw.trim() ? argsRaw.trim().split(/\s+/) : [];
+      // Per-arg length (args are one-per-line tokens).
+      const args = argsRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
       if (args.some((a) => a.length > MAXLEN.arg))
         return { key: "mcp.create.argTooLong", values: { max: MAXLEN.arg } };
+      for (const e of envEntries) {
+        const k = e.key.trim();
+        if (!k) continue;
+        if (k.length > MAXLEN.headerKey)
+          return {
+            key: "mcp.create.headerKeyTooLong",
+            values: { max: MAXLEN.headerKey },
+          };
+        if (e.value.length > MAXLEN.headerValue)
+          return {
+            key: "mcp.create.headerValueTooLong",
+            values: { max: MAXLEN.headerValue },
+          };
+      }
     }
     return null;
   };
 
   const handleSubmit = async () => {
+    const tagError = validateMcpTags(form.tags);
+    if (tagError) {
+      Toast.warning(tagError);
+      setStep(0);
+      return;
+    }
     const err = firstValidationError();
     if (err) {
       Toast.warning(
@@ -610,6 +823,17 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       else setStep(0);
       return;
     }
+
+    // Collapse the structured editors down to the wire pair. Backend no
+    // longer rejects secret-shaped shared values (rule 2 was removed);
+    // non-owner blanking (§5.3) is the sole guard keeping author tokens
+    // out of consumer-facing responses. The inline warning next to the
+    // Submit button (see sharedSecretLeaks below) is the frontend's
+    // advisory signal for the edge case where the operator explicitly
+    // published a secret-shape shared value; non-blocking on purpose.
+    const envWire = entriesToWire(envEntries);
+    const headersWire = entriesToWire(headersEntries);
+
     setSubmitting(true);
     // Upload icon FIRST so the URL can ride in the create/update body. The
     // marketplace endpoint no longer accepts multipart icon uploads; uploads
@@ -638,13 +862,17 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       slug: slugifyServerName(
         (form.slug ?? "").trim() ? form.slug! : form.name
       ),
-      args: argsRaw.trim() ? argsRaw.trim().split(/\s+/) : [],
-      // Substitute the shared sentinel for any blank token-like env / header so
-      // an empty secret is accepted instead of tripping `secret_leaked` on the
-      // backend (mcp-v1.md §5). A user-typed real token is left as-is and the
-      // backend surfaces the mistake.
-      env: applySecretSentinel(parseKV(envRaw, "=")) ?? {},
-      headers: applySecretSentinel(parseKV(headersRaw, ":")) ?? {},
+      args: argsRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
+      // The structured editor already decides per-row whether the value is
+      // "shared" (persist as-is) or "user-supplied" (persist empty). We do
+      // NOT gate env/headers on transport — validate() enforces coherent
+      // state (stdio requires command, remote requires url), and gating at
+      // submit was found to silently wipe legacy records whose wire data
+      // doesn't match the current transport strictly.
+      env: envWire.values,
+      envUserSupplied: envWire.userSupplied,
+      headers: headersWire.values,
+      headersUserSupplied: headersWire.userSupplied,
       tools: form.tools.filter((t) => t.name.trim()),
       usageExamples: (form.usageExamples ?? []).filter((s) => s.trim()),
       faqs: (form.faqs ?? []).filter((f) => f.question.trim()),
@@ -726,6 +954,25 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       form.tools.map((tool, i) => (i === idx ? { ...tool, ...patch } : tool))
     );
 
+  // Derived warning list: secret-shape keys the operator kept toggled OFF
+  // (i.e. published as shared values) with a non-empty value. Rendered
+  // inline next to the Submit button so the operator sees the exposure
+  // before clicking, without a blocking modal. Non-blocking on purpose —
+  // the KvEditor auto-toggles ON when a secret-shape key is typed into a
+  // fresh row, so hitting this state requires an explicit override; the
+  // warning is here for the operator's own audit, not to gate publish.
+  const sharedSecretLeaks = useMemo(() => {
+    const leaks: string[] = [];
+    for (const e of [...headersEntries, ...envEntries]) {
+      const k = e.key.trim();
+      if (!k) continue;
+      if (e.userSupplied) continue;
+      if (!e.value) continue;
+      if (isSecretKey(k)) leaks.push(k);
+    }
+    return leaks;
+  }, [headersEntries, envEntries]);
+
   // ── Static options ─────────────────────────────────────────────────────
   const categoryOptions = useMemo(
     () =>
@@ -740,16 +987,6 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     value: tr,
     label: t(`mcp.create.transport.${tr}`),
   }));
-
-  const visibilitySegments = [
-    { value: "public" as McpVisibility, label: t("mcp.create.visPublic") },
-    { value: "private" as McpVisibility, label: t("mcp.create.visPrivate") },
-  ];
-
-  const authSegments = [
-    { value: "none" as const, label: t("mcp.create.authTypeNone") },
-    { value: "bearer" as const, label: t("mcp.create.authTypeBearer") },
-  ];
 
   // Preview src: the freshly-picked file's object URL wins; otherwise the
   // stored icon (a persisted storage URL, or a legacy base64 icon on edit).
@@ -768,6 +1005,128 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     { key: "docs", label: t("mcp.create.stepDocs") },
   ];
 
+  // ── JSON import (issue #867) ──────────────────────────────────────────
+  // Live-parse the textarea on every keystroke so error / preview /
+  // warnings update inline. Empty input keeps the panel clean (no
+  // "please paste" error shown until the user actually tries to apply).
+  const jsonParseResult = useMemo(
+    () => (jsonRaw.trim() ? parseImportJSON(jsonRaw) : null),
+    [jsonRaw]
+  );
+
+  /** Which parsed fields will actually be written to the form when the user
+   *  clicks "Parse and fill". We only fill EMPTY fields so toggling modes
+   *  never clobbers work the user has already done in the wizard. Transport is
+   *  always applied — it's a small enum and switching it is the point of a
+   *  JSON seed. */
+  const importPreviewFlags = useMemo(() => {
+    if (!jsonParseResult || jsonParseResult.error) return null;
+    const f = jsonParseResult.fields;
+    return {
+      name: !!(f.name && !form.name.trim()),
+      // slug: skip when the user has hand-edited (slugTouched) OR when a
+      // non-empty auto-derived slug already exists — otherwise a JSON import
+      // silently clobbers the slug the user was content with.
+      slug: !!(
+        f.slug &&
+        !slugTouched &&
+        !(form.slug ?? "").trim()
+      ),
+      // Transport only counts when it actually differs from the current form
+      // value — otherwise every valid JSON would keep the Apply button enabled
+      // and the "Filled N field(s)" toast would overstate no-op re-applies.
+      transport: !!(f.transport && f.transport !== form.transport),
+      command: !!(f.command && !(form.command ?? "").trim()),
+      args: !!(f.args && f.args.length > 0 && !argsRaw.trim()),
+      envKeys: !!(f.envKeys && f.envKeys.length > 0 && envEntries.length === 0),
+      url: !!(f.url && !(form.url ?? "").trim()),
+      headerKeys: !!(
+        f.headerKeys &&
+        f.headerKeys.length > 0 &&
+        headersEntries.length === 0
+      ),
+    };
+  }, [jsonParseResult, form, argsRaw, envEntries, headersEntries, slugTouched]);
+
+  const importPreviewCount = importPreviewFlags
+    ? Object.values(importPreviewFlags).filter(Boolean).length
+    : 0;
+
+  const handleApplyImport = () => {
+    if (!jsonParseResult || jsonParseResult.error || !importPreviewFlags) {
+      return;
+    }
+    const f = jsonParseResult.fields;
+    // Clamp against the per-field MAXLENs so a wrapper key / command / url
+    // longer than the input's cap can't sneak past the character-by-character
+    // maxLength enforcement (which only limits KEYING, not initial values).
+    // Args are validated per-item at submit; JSON has no MAXLEN, so those
+    // don't need clamping here.
+    const clamp = (s: string | undefined, max: number) =>
+      s == null ? s : s.length > max ? s.slice(0, max) : s;
+    setForm((prev) => ({
+      ...prev,
+      name: importPreviewFlags.name ? clamp(f.name!, MAXLEN.name)! : prev.name,
+      slug: importPreviewFlags.slug ? clamp(f.slug!, MAXLEN.name)! : prev.slug,
+      transport: importPreviewFlags.transport ? f.transport! : prev.transport,
+      command: importPreviewFlags.command
+        ? clamp(f.command!, MAXLEN.command)!
+        : prev.command,
+      url: importPreviewFlags.url ? clamp(f.url!, MAXLEN.url)! : prev.url,
+    }));
+    // Writing slug counts as an explicit user decision — pin slugTouched so a
+    // subsequent name edit in handleNameChange doesn't silently re-derive slug
+    // from the display name and clobber the imported one.
+    if (importPreviewFlags.slug) setSlugTouched(true);
+    // args: one-per-line so args that legitimately contain spaces (e.g.
+    // `--config "a b"`) round-trip through the argsRaw buffer without being
+    // re-tokenized on the whitespace-split at submit.
+    if (importPreviewFlags.args) setArgsRaw(f.args!.join("\n"));
+    // env / headers: only populate the buffer that matches the imported
+    // transport. Filling both would leave stale content in the buffer the
+    // active transport doesn't render.
+    //
+    // Emit one row per key with an empty value; smart-default the
+    // "needs user config" toggle ON for keys whose name matches the
+    // secret-key pattern (Authorization / apikey / *_token / ...) so
+    // paste-and-save doesn't accidentally publish shared blanks.
+    const importedTransport = f.transport ?? form.transport;
+    const importedIsRemote =
+      importedTransport === "streamable-http" || importedTransport === "sse";
+    const seedEntries = (keys: string[]): KvEntry[] =>
+      keys.map((k) => ({ key: k, value: "", userSupplied: isSecretKey(k) }));
+    if (importPreviewFlags.envKeys && !importedIsRemote) {
+      setEnvEntries(seedEntries(f.envKeys!));
+      setAdvancedOpen(true);
+    }
+    if (importPreviewFlags.headerKeys && importedIsRemote) {
+      setHeadersEntries(seedEntries(f.headerKeys!));
+      setAdvancedOpen(true);
+    }
+    Toast.success(
+      t("mcp.create.import.applied", { values: { count: importPreviewCount } })
+    );
+    setCreateMode("manual");
+    setStep(0);
+  };
+
+  // Format the pasted JSON in place. Best-effort — parse fails silently
+  // surface as a toast; keeps the raw text untouched so the user can fix
+  // and retry. Uses 2-space indent to match the placeholder sample.
+  const handleFormatJson = () => {
+    try {
+      const parsed = JSON.parse(jsonRaw);
+      setJsonRaw(JSON.stringify(parsed, null, 2));
+    } catch {
+      Toast.error(t("mcp.create.import.formatFailed"));
+    }
+  };
+
+  const modeSegments = [
+    { value: "manual" as const, label: t("mcp.create.modeManual") },
+    { value: "json" as const, label: t("mcp.create.modeJson") },
+  ];
+
   return (
     <WKModal
       visible={visible}
@@ -777,6 +1136,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       bodyStyle={{ maxHeight: "78vh", overflowY: "auto" }}
       title={isEdit ? t("mcp.edit.title") : t("mcp.create.title")}
       footer={
+        createMode === "json" ? null : (
         <div className="wk-mcp-form-footer">
           <div>
             {step > 0 && (
@@ -791,19 +1151,97 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                 {t("mcp.create.next")} →
               </WKButton>
             ) : (
-              <WKButton
-                variant="primary"
-                loading={submitting}
-                onClick={handleSubmit}
-              >
-                {isEdit ? t("mcp.edit.submit") : t("mcp.create.submit")}
-              </WKButton>
+              <>
+                {sharedSecretLeaks.length > 0 && (
+                  <span
+                    className="wk-mcp-form-footer__warning"
+                    title={t("mcp.create.sharedSecretWarning", {
+                      values: { keys: sharedSecretLeaks.join(", ") },
+                    })}
+                  >
+                    ⚠️{" "}
+                    {t("mcp.create.sharedSecretWarning", {
+                      values: { keys: sharedSecretLeaks.join(", ") },
+                    })}
+                  </span>
+                )}
+                <WKButton
+                  variant="primary"
+                  loading={submitting}
+                  onClick={handleSubmit}
+                >
+                  {isEdit ? t("mcp.edit.submit") : t("mcp.create.submit")}
+                </WKButton>
+              </>
             )}
           </div>
         </div>
+        )
       }
     >
       <div className="wk-mcp-form">
+        {!isEdit && (
+          <div className="wk-mcp-form-mode">
+            <Segments
+              full
+              value={createMode}
+              options={modeSegments}
+              onChange={(v) => setCreateMode(v)}
+            />
+          </div>
+        )}
+
+        {createMode === "json" && (
+          <div className="wk-mcp-import-panel">
+            <div className="wk-mcp-import-panel__desc">
+              {t("mcp.create.import.desc")}
+            </div>
+            <TextArea
+              value={jsonRaw}
+              onChange={setJsonRaw}
+              rows={10}
+              spellCheck={false}
+              placeholder={t("mcp.create.import.placeholder")}
+              style={{ fontFamily: "var(--wk-font-mono, monospace)" }}
+            />
+            {jsonParseResult?.error && (
+              <div className="wk-mcp-import-panel__error">
+                {t(jsonParseResult.error)}
+              </div>
+            )}
+            {jsonParseResult && !jsonParseResult.error &&
+              jsonParseResult.warnings.length > 0 && (
+                <ul className="wk-mcp-import-panel__warnings">
+                  {jsonParseResult.warnings.map((w) => (
+                    <li key={w}>{t(w)}</li>
+                  ))}
+                </ul>
+              )}
+            <div className="wk-mcp-import-panel__actions">
+              <WKButton
+                variant="secondary"
+                disabled={!jsonRaw.trim()}
+                onClick={handleFormatJson}
+              >
+                {t("mcp.create.import.format")}
+              </WKButton>
+              <WKButton
+                variant="primary"
+                disabled={
+                  !jsonParseResult ||
+                  !!jsonParseResult.error ||
+                  importPreviewCount === 0
+                }
+                onClick={handleApplyImport}
+              >
+                {t("mcp.create.import.apply")}
+              </WKButton>
+            </div>
+          </div>
+        )}
+
+        {createMode === "manual" && (
+          <>
         <div className="wk-mcp-form-steps">
           {stepDefs.map((s, i) => (
             <React.Fragment key={s.key}>
@@ -960,27 +1398,6 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                       maxLength={MAXLEN.url}
                     />
                   </Field>
-                  <Field label={t("mcp.create.authType")}>
-                    <Segments
-                      value={form.authType ?? "none"}
-                      options={authSegments}
-                      onChange={(v) => update("authType", v)}
-                    />
-                  </Field>
-                  {form.authType === "bearer" && (
-                    <Field
-                      label={t("mcp.create.probeBearerLabel")}
-                      hint={t("mcp.create.probeBearerHint")}
-                    >
-                      <Input
-                        mode="password"
-                        value={probeBearer}
-                        onChange={setProbeBearer}
-                        placeholder={t("mcp.create.probeBearerPlaceholder")}
-                        autoComplete="off"
-                      />
-                    </Field>
-                  )}
                 </>
               ) : (
                 <>
@@ -996,9 +1413,11 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                     label={t("mcp.create.args")}
                     hint={t("mcp.create.argsHint")}
                   >
-                    <WKInput
+                    <TextArea
                       value={argsRaw}
                       onChange={setArgsRaw}
+                      rows={3}
+                      autosize={{ minRows: 2, maxRows: 6 }}
                       placeholder={t("mcp.create.argsPlaceholder")}
                     />
                   </Field>
@@ -1031,11 +1450,16 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                         label={t("mcp.create.headers")}
                         hint={t("mcp.create.headersHint")}
                       >
-                        <TextArea
-                          value={headersRaw}
-                          onChange={setHeadersRaw}
-                          rows={3}
-                          placeholder={t("mcp.create.headersPlaceholder")}
+                        <KvEditor
+                          entries={headersEntries}
+                          onChange={setHeadersEntries}
+                          keyPlaceholder={t("mcp.create.headerKeyPlaceholder")}
+                          valuePlaceholder={t(
+                            "mcp.create.headerValuePlaceholder"
+                          )}
+                          addLabel={t("mcp.create.headerAdd")}
+                          toggleLabel={t("mcp.create.kvUserSuppliedToggle")}
+                          removeLabel={t("mcp.create.headerRemove")}
                         />
                       </Field>
                     ) : (
@@ -1043,11 +1467,14 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                         label={t("mcp.create.env")}
                         hint={t("mcp.create.envHint")}
                       >
-                        <TextArea
-                          value={envRaw}
-                          onChange={setEnvRaw}
-                          rows={3}
-                          placeholder={t("mcp.create.envPlaceholder")}
+                        <KvEditor
+                          entries={envEntries}
+                          onChange={setEnvEntries}
+                          keyPlaceholder={t("mcp.create.envKeyPlaceholder")}
+                          valuePlaceholder={t("mcp.create.envValuePlaceholder")}
+                          addLabel={t("mcp.create.envAdd")}
+                          toggleLabel={t("mcp.create.kvUserSuppliedToggle")}
+                          removeLabel={t("mcp.create.envRemove")}
                         />
                       </Field>
                     )}
@@ -1249,16 +1676,9 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
               )}
             </Section>
 
-            {/* 7. 可见范围 */}
-            <Section full title={t("mcp.create.sectionVisibility")}>
-              <Segments
-                full
-                value={form.visibility}
-                options={visibilitySegments}
-                onChange={(v) => update("visibility", v)}
-              />
-            </Section>
           </>
+        )}
+        </>
         )}
       </div>
     </WKModal>

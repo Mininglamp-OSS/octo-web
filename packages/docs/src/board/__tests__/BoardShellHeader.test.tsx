@@ -15,24 +15,55 @@ vi.mock('@excalidraw/excalidraw', async () => {
   const Excalidraw = ({
     children,
     excalidrawAPI,
+    UIOptions,
+    renderDefaultMainMenu = true,
   }: {
     children?: ReactNode
     excalidrawAPI?: (api: unknown) => void
+    UIOptions?: { tools?: Record<string, boolean> }
+    renderDefaultMainMenu?: boolean
   }) => {
     useEffect(() => {
       excalidrawAPI?.(api)
     }, [excalidrawAPI])
-    return <div data-testid="excalidraw-canvas">{children}</div>
+    return (
+      <div data-testid="excalidraw-canvas" data-ui-tools={JSON.stringify(UIOptions?.tools ?? {})}>
+        {renderDefaultMainMenu && <button data-testid="main-menu-trigger" type="button">Menu</button>}
+        {children}
+      </div>
+    )
   }
-  const MainMenu = (() => null) as unknown as { DefaultItems: Record<string, unknown> }
-  MainMenu.DefaultItems = {}
+  const menuItem = (name: string) => () => <span data-item={name} />
+  const MainMenu = (({ children }: { children?: ReactNode }) => (
+    <div data-menu="root">{children}</div>
+  )) as unknown as {
+    DefaultItems: Record<string, () => ReactNode>
+    Separator: () => ReactNode
+  }
+  MainMenu.DefaultItems = {
+    LoadScene: menuItem('LoadScene'),
+    SaveToActiveFile: menuItem('SaveToActiveFile'),
+    Export: menuItem('Export'),
+    SaveAsImage: menuItem('SaveAsImage'),
+    SearchMenu: menuItem('SearchMenu'),
+    Help: menuItem('Help'),
+    ClearCanvas: menuItem('ClearCanvas'),
+    ToggleTheme: menuItem('ToggleTheme'),
+    ChangeCanvasBackground: menuItem('ChangeCanvasBackground'),
+  }
+  MainMenu.Separator = menuItem('Separator')
   return {
+    FONT_FAMILY: {},
     Excalidraw,
     MainMenu,
     restoreElements: (els: readonly unknown[] | null | undefined) => (els ? [...els] : []),
     reconcileElements: (local: readonly unknown[]) => [...local],
+    redrawTextBoundingBox: () => {},
+    mutateElement: (element: Record<string, unknown>, updates: Record<string, unknown>) => Object.assign(element, updates),
     loadLibraryFromBlob: async () => [],
     serializeLibraryAsJSON: () => '[]',
+    serializeAsJSON: () => '{}',
+    exportToBlob: async () => new Blob(),
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
@@ -96,6 +127,16 @@ describe('BoardShell header alignment with the doc header (XIN-601 item 2)', () 
     expect(moreBtn).not.toBeNull()
     // …so the old always-visible standalone delete button is gone from the header.
     expect(document.querySelector('.octo-doc-delete-btn')).toBeNull()
+  })
+
+  it('does not render the Excalidraw upper-left MainMenu entry', async () => {
+    render(
+      <BoardShell docId="doc-1" title="Shared board" space="s1" collabSession={makeSession('admin')} collab />,
+    )
+
+    const canvas = await screen.findByTestId('excalidraw-canvas')
+    expect(canvas.querySelector('[data-menu="root"]')).toBeNull()
+    expect(canvas.querySelector('[data-testid="main-menu-trigger"]')).toBeNull()
   })
 
   it('collapses delete into the ≡ menu as the destructive row for a manage role', async () => {

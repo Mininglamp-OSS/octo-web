@@ -460,4 +460,20 @@ describe("MessageRow — webhook sender is non-interactive (isWebhook gate)", ()
         dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "click")
         expect(onSenderNameClick).toHaveBeenCalledTimes(1)
     })
+
+    it("limits body preview clicks to the rendered content hit area", () => {
+        const onBodyClick = vi.fn()
+        const root = renderRow(
+            <MessageRow {...baseProps} isWebhook={true} onBodyClick={onBodyClick}>
+                <div className="msg-body">deploy succeeded</div>
+            </MessageRow>
+        )
+
+        dispatchMouseEvent(root.querySelector(".msg-body")!, "click")
+        expect(onBodyClick).toHaveBeenCalledTimes(1)
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-body")!, "click")
+        expect(onBodyClick).toHaveBeenCalledTimes(1)
+        expect(root.querySelector(".wk-msg-row-body-hitarea")).not.toBeNull()
+    })
 })

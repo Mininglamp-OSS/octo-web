@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import { Button, Spin } from "@douyinfe/semi-ui";
 import { Toast } from "@douyinfe/semi-ui";
-import { Channel, WKSDK } from "wukongimjssdk";
+import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { parseThreadChannelId } from "../../Service/Thread";
@@ -10,11 +10,13 @@ import { wkConfirm } from "../WKModal";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
 import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton";
 import {
-  fetchImChannelInfo,
-  getImChannelInfo,
-  notifyImChannelInfoListeners,
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+  notifyCurrentImChannelInfoListeners,
+  setCurrentImChannelInfoCache,
+} from "../../im-runtime/currentChannelRuntime";
+import {
   patchImChannelInfoOrgData,
-  setImChannelInfoCache,
 } from "../../im-runtime/channelRuntime";
 import { withMdFlags } from "./mdFlagCache";
 import "./index.css";
@@ -120,12 +122,11 @@ export class GroupMdEditor extends Component<
   private applyMdFlagToCache = (configured: boolean, version: number) => {
     const { channel } = this.props;
     try {
-      const sdk = WKSDK.shared();
-      const channelInfo = getImChannelInfo(sdk, channel);
+      const channelInfo = getCurrentImChannelInfo(channel);
       // 缓存未命中（罕见：设置面板通常已 fetch 过）：无本地权威可原地写回，
       // 退回 SDK 拉取兜底，仍以后端为准。
       if (!channelInfo) {
-        void fetchImChannelInfo(sdk, channel);
+        void fetchCurrentImChannelInfo(channel);
         return;
       }
       patchImChannelInfoOrgData(channelInfo, withMdFlags(
@@ -134,8 +135,8 @@ export class GroupMdEditor extends Component<
         configured,
         version
       ));
-      setImChannelInfoCache(sdk, channelInfo);
-      notifyImChannelInfoListeners(sdk, channelInfo);
+      setCurrentImChannelInfoCache(channelInfo);
+      notifyCurrentImChannelInfoListeners(channelInfo);
     } catch {
       // 缓存写回失败不影响本次保存/删除结果：面板下次进入会重新拉取。
     }

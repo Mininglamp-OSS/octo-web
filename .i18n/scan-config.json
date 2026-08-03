@@ -37,6 +37,14 @@
       "reason": "Toolbar font-family presets. The only CJK literals are the localized family-name aliases inside the CSS font-family values (e.g. \"微软雅黑\", \"宋体\") that must byte-match the native font name so browsers matching a font by its Chinese name still render it; they are font resource identifiers, not translatable UI copy (mirrors export/docx/styles.ts). The user-facing display name is localized separately via the labelKey i18n keys resolved with t()."
     },
     {
+      "path": "packages/docs/src/board/boardFontFamilies.ts",
+      "reason": "Board (Excalidraw) font-family catalogue. Its CJK literals are the localized family-name aliases inside the CSS font-family values (e.g. \"宋体\", \"黑体\") that must byte-match the native font name so browsers matching a font by its Chinese name still render it on the canvas; they are font resource identifiers, not translatable UI copy (same category as editor/fontFamilies.ts). The user-facing display name is localized separately via the labelKey i18n keys resolved with t()."
+    },
+    {
+      "path": "packages/docs/src/html-create/createHtmlTask.ts",
+      "reason": "Generated agent-facing publish prompt protocol. Its Chinese directives are copied or forwarded byte-for-byte to a Bot and are covered by protocol tests; modal UI labels and copy status remain localized in the docs namespace."
+    },
+    {
       "path": "packages/dmworkmcp/src/mock/mcpMock.ts",
       "reason": "MCP Market demo fixtures (server names, slogans, descriptions, FAQ, notes). This is sample content data returned by the mock service layer, replaced wholesale by the real backend response later; it is not translatable UI chrome and has no i18n namespace key to bind to."
     },
@@ -61,20 +69,20 @@
       "reason": "Agent prompt template for the Bot publish flow. Same rationale as installPrompt.ts above — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
     },
     {
+      "path": "packages/dmworkskillmarket/src/utils/publisher.ts",
+      "reason": "Publisher classification helper. The Chinese literal is a backend identity value used to recognize administrator-created records, not user-facing UI copy; the displayed label is localized separately."
+    },
+    {
+      "path": "packages/dmworkmcp/src/utils/mcpBotPublishPrompt.ts",
+      "reason": "Agent prompt template for the MCP marketplace publish flow. Same rationale as dmworkskillmarket/src/utils/botPublishPrompt.ts — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
+    },
+    {
       "path": "packages/dmworksummary/src/__mocks__/handlers.ts",
       "reason": "MSW test fixture data with sample user names, titles, and message bodies; not UI copy."
     },
     {
       "path": "packages/dmworksummary/src/utils/channelType.ts",
       "reason": "Error message template with interpolation placeholder; already covered by runtime error handling with proper i18n."
-    },
-    {
-      "path": "packages/dmworkbase/src/ui/message/MessageReactionPicker/data.ts",
-      "reason": "DEMO placeholder emoji dataset behind the message-reaction feature flag (default OFF, DEV-only). key/char are message-protocol tokens; the branded custom-emoji names ([使命必达] etc.) are fixed product token names. In production this file is replaced by Service/EmojiService, which supplies localized names/tooltips via the common/emojis manifest, so the labels here are not shipped UI copy."
-    },
-    {
-      "path": "packages/dmworkbase/src/ui/message/MessageReactionSummary/mockStore.ts",
-      "reason": "DEMO-ONLY mock reaction data (sample user names) behind the message-reaction feature flag; deleted once the server reaction contract lands. Not shipped UI copy."
     }
   ]
 }

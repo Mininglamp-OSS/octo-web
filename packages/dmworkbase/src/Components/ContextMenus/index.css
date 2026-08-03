@@ -55,6 +55,16 @@ body[theme-mode=dark] .wk-contextmenus {
     background: #F2F3F5;
 }
 
+.wk-contextmenus ul > li:first-of-type {
+    border-top-left-radius: var(--wk-r-md);
+    border-top-right-radius: var(--wk-r-md);
+}
+
+.wk-contextmenus ul > li:last-of-type {
+    border-bottom-right-radius: var(--wk-r-md);
+    border-bottom-left-radius: var(--wk-r-md);
+}
+
 body[theme-mode=dark] .wk-contextmenus li {
     color: var(--wk-text-primary);
 }

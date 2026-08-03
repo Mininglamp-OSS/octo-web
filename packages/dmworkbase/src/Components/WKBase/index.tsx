@@ -1,11 +1,12 @@
 import { Modal, Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
-import WKSDK, { Channel, ChannelTypePerson, MessageText } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, MessageText } from "wukongimjssdk";
 import React, { Component, HTMLProps, ReactNode } from "react";
 import ConversationSelect from "../ConversationSelect";
 import type { ConversationSelectGrant } from "../ConversationSelect";
 import type { DocForwardOpen, ForwardGrant } from "../ForwardModal/grant";
 import { buildForwardMessageText } from "../ForwardModal/forwardMessageText";
+import { DocumentShareCardContent } from "../../Messages/DocumentShareCard/DocumentShareCardContent";
 import { isConversationDisbanded } from "../../Utils/groupDisband";
 import { ForwardService } from "../../Service/ForwardService";
 import { interpretForwardResult } from "../../Service/forwardResultToast";
@@ -22,7 +23,10 @@ import {
 } from "./userInfoRouter";
 import { I18nContext } from "../../i18n";
 import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
-import { getImChannelSubscribers, syncImChannelSubscribers } from "../../im-runtime/channelRuntime";
+import {
+  getCurrentImChannelSubscribers,
+  syncCurrentImChannelSubscribers,
+} from "../../im-runtime/currentChannelRuntime";
 import "./index.css";
 
 /**
@@ -51,7 +55,7 @@ export function createDefaultExternalViewerGate(): ExternalViewerGate {
     isExternal: (uid, fromChannel, channelInfo) => {
       // 1) Group subscriber orgData (primary source, matches UserInfoVM step 1).
       if (fromChannel && fromChannel.channelType !== ChannelTypePerson) {
-        const subscribers = getImChannelSubscribers(WKSDK.shared(), fromChannel) as
+        const subscribers = getCurrentImChannelSubscribers(fromChannel) as
           { uid?: string; orgData?: ChannelInfoOrgDataLike }[];
         const sub = subscribers.find((s) => s && s.uid === uid);
         const org = sub?.orgData;
@@ -278,11 +282,11 @@ export default class WKBase
         continue;
       }
       try {
-        await syncImChannelSubscribers(WKSDK.shared(), ch);
+        await syncCurrentImChannelSubscribers(ch);
       } catch {
         // best-effort: fall back to whatever is already cached
       }
-      const subs = getImChannelSubscribers(WKSDK.shared(), ch) as { uid?: string }[];
+      const subs = getCurrentImChannelSubscribers(ch) as { uid?: string }[];
       for (const s of subs) {
         if (s?.uid) uids.add(s.uid);
       }
@@ -326,10 +330,30 @@ export default class WKBase
     // 2) send the message to each target via ForwardService (统一 disband 守卫、
     // space_id / mention 注入、错误隔离)。原先手写的 encodeJSON monkey-patch
     // 由 wrapSendContentForInjection + opts.spaceId 代替。
-    const text = buildForwardMessageText(forward.messageTitle, forward.link);
+    //
+    // 只有**文档分享转发**（startDocForward，显式 shareAsCard=true）才发文档卡片
+    // （DocumentShareCardContent=18）。其它复用同一转发通道但语义不同的流程——尤其
+    // html-doc「让 AI 处理」的**指令转发**（带 docId + 专属锚点链接）——绝不能因带 docId
+    // 被误转成卡片而丢失指令链接/锚点，一律回退纯文本 markdown（Jerry-Xin blocker）。
+    const contentFactory = forward.shareAsCard
+      ? () => {
+          const card = new DocumentShareCardContent();
+          card.docId = forward.docId ?? "";
+          // 严格用文档自身 space：绝不回退到发送者当前 space（文档可能不在该 space），
+          // 否则接收端预览会带错 X-Space-Id 触发 ACL/403。缺失时留空，让后端按 docId 解析。
+          card.spaceId = forward.spaceId ?? "";
+          card.kind = forward.kind ?? "doc";
+          card.title = forward.messageTitle;
+          card.ownerName = forward.ownerName ?? "";
+          card.updatedAt = forward.updatedAt ?? "";
+          card.url = forward.link;
+          card.permission = (grant?.role ?? forward.defaultRole ?? "reader") === "writer" ? "writer" : "reader";
+          return card;
+        }
+      : () => new MessageText(buildForwardMessageText(forward.messageTitle, forward.link));
     const result = await ForwardService.send(
       channels,
-      () => new MessageText(text),
+      contentFactory,
       { spaceId: WKApp.shared.currentSpaceId },
     );
 

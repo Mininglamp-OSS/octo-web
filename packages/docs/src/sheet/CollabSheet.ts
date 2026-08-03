@@ -15,10 +15,11 @@
 import * as Y from 'yjs'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { IndexeddbPersistence } from 'y-indexeddb'
-import { LocaleType, mergeLocales, ICommandService, CommandType, IContextService, FOCUSING_COMMON_DRAWINGS } from '@univerjs/core'
-import { IMenuManagerService, RibbonInsertGroup, MenuItemType, IFontService } from '@univerjs/ui'
+import { LocaleType, mergeLocales, ICommandService, CommandType, IContextService, FOCUSING_COMMON_DRAWINGS, IImageIoService } from '@univerjs/core'
+import { IMenuManagerService, RibbonInsertGroup, MenuItemType, IFontService, ILocalFileService } from '@univerjs/ui'
 import { createUniver } from './createUniver.ts'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
+import { SHEET_FONT_ADDITIONS } from '../editor/fontFamilies.ts'
 import { MathFormula, OCTO_MATH_FORMULA_KEY } from './floatDom/MathFormula.tsx'
 import { MentionChip, OCTO_MENTION_CHIP_KEY } from './floatDom/MentionChip.tsx'
 import { setFormulaSaveHandler, setDrawingBlurHandler, setFormulaResizeHandler, setFormulaStyleHandler, setFormulaDeleteHandler, requestFormulaPicker } from './floatDom/formulaBridge.ts'
@@ -46,9 +47,12 @@ import '@univerjs/preset-sheets-core/lib/index.css'
 // IImageIoService (base64-inline image storage), so no upload backend is required to insert.
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing'
 import { ISheetDrawingService } from '@univerjs/preset-sheets-drawing'
-import { IDrawingManagerService } from '@univerjs/drawing'
+import { DRAWING_IMAGE_ALLOW_IMAGE_LIST, IDrawingManagerService } from '@univerjs/drawing'
 import sheetsDrawingZhCN from '@univerjs/preset-sheets-drawing/locales/zh-CN'
 import '@univerjs/preset-sheets-drawing/lib/index.css'
+import { enableSheetSvgImages } from './sheetImageTypes.ts'
+import { SanitizedSheetImageIoService } from './sheetImageIoService.ts'
+import { SheetLocalFileService } from './sheetLocalFileService.ts'
 // Hyperlink (insert link) preset — OSS, same pattern as drawing. Hyperlinks live in the
 // SHEET_HYPER_LINK_PLUGIN resource (not cell data), so persistence/replication rides a dedicated
 // Yjs sync in binding.ts (fed the HyperLinkModel resolved from the injector below).
@@ -72,6 +76,9 @@ import { SheetCommentMarkers, type MarkedCell } from './sheetCommentMarkers.ts'
 import { SheetCellMention, stripTrailingQuery } from './sheetMention.ts'
 import type { MentionItem } from '../mentions/source.ts'
 import { colorFromId } from '../awareness/presence.ts'
+
+// This is the actual Univer picker/runtime gate (not a parallel app-owned picker).
+enableSheetSvgImages(DRAWING_IMAGE_ALLOW_IMAGE_LIST)
 
 /** 0-based column index → spreadsheet letters (0→A, 26→AA). */
 function colToA1(col: number): string {
@@ -256,6 +263,13 @@ export class CollabSheet {
       locale: LocaleType.ZH_CN,
       locales: { [LocaleType.ZH_CN]: mergedZhCN },
       darkMode: isDarkTheme(),
+      // Override Univer's base64 image service only for this sheet instance. Raster images retain
+      // the existing local path; SVG is uploaded, backend-sanitized, then downloaded from the
+      // returned trusted attachment URL before it can enter shared Yjs state.
+      override: [
+        [IImageIoService, { useValue: new SanitizedSheetImageIoService(opts.docId) }],
+        [ILocalFileService, { useClass: SheetLocalFileService }],
+      ],
       presets: [
         UniverSheetsCorePreset({
           container: opts.container,
@@ -318,25 +332,17 @@ export class CollabSheet {
       } | undefined
       if (typeof fontSvc?.removeFont === 'function') fontSvc.removeFont('Microsoft YaHei')
       // Extend the picker with common macOS-available CJK + Latin fonts (Univer's built-in list is
-      // only ~12). `label` is shown verbatim (localeService.t falls through unknown keys); `value` is
-      // the CSS font-family the cell stores/exports. These use native font names that render directly
-      // on macOS — cross-platform @font-face aliasing (for the ones we keep) is a follow-up.
+      // only ~12). These come from the ONE authoritative font catalogue shared with the Doc toolbar
+      // and the Board text controls (editor/fontFamilies.ts) so all three surfaces offer the same
+      // faces under the same localized names — no separate sheet-only list to drift. `label` is shown
+      // verbatim (localeService.t falls through unknown keys) and resolves via the SHARED
+      // `docs.toolbar.font.*` keys; `value` is the bare CSS font-family the cell stores/exports.
       if (typeof fontSvc?.addFont === 'function') {
-        const EXTRA_FONTS = [
-          { value: 'PingFang SC', label: t('docs.sheet.fontLabels.pingfang'), category: 'sans-serif' },
-          { value: 'Hiragino Sans GB', label: t('docs.sheet.fontLabels.hiraginoSansGB'), category: 'sans-serif' },
-          { value: 'STXihei', label: t('docs.sheet.fontLabels.stxihei'), category: 'sans-serif' },
-          { value: 'Yuanti SC', label: t('docs.sheet.fontLabels.yuanti'), category: 'sans-serif' },
-          { value: 'Hannotate SC', label: t('docs.sheet.fontLabels.hannotate'), category: 'handwriting' },
-          { value: 'HanziPen SC', label: t('docs.sheet.fontLabels.hanzipen'), category: 'handwriting' },
-          { value: 'Wawati SC', label: t('docs.sheet.fontLabels.wawati'), category: 'handwriting' },
-          { value: 'Georgia', label: 'Georgia', category: 'serif' },
-          { value: 'Palatino', label: 'Palatino', category: 'serif' },
-          { value: 'Courier New', label: 'Courier New', category: 'monospace' },
-          { value: 'Trebuchet MS', label: 'Trebuchet MS', category: 'sans-serif' },
-          { value: 'Comic Sans MS', label: 'Comic Sans MS', category: 'handwriting' },
-          { value: 'Impact', label: 'Impact', category: 'display' },
-        ]
+        const EXTRA_FONTS = SHEET_FONT_ADDITIONS.map((f) => ({
+          value: f.value,
+          label: t(f.labelKey),
+          category: f.category,
+        }))
         for (const f of EXTRA_FONTS) {
           try { if (!fontSvc.getFontByValue?.(f.value)) fontSvc.addFont(f) } catch { /* already present */ }
         }

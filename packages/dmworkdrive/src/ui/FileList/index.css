@@ -1,0 +1,92 @@
+.drive-file-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.drive-file-list__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.drive-file-list__empty {
+  color: var(--semi-color-text-2, #86909c);
+  font-size: 14px;
+}
+
+.drive-file-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 180px 48px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--semi-color-border, #f2f3f5);
+  font-size: 14px;
+}
+
+.drive-file-row:not(.drive-file-row--head):hover {
+  background: var(--semi-color-fill-0, #f7f8fa);
+}
+
+.drive-file-row--head {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-2, #86909c);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.drive-file__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drive-file__icon {
+  flex-shrink: 0;
+}
+
+.drive-file__icon--folder {
+  color: var(--wk-brand-primary, #7c5cfc);
+}
+
+.drive-file__icon--doc {
+  color: #2f7de1;
+}
+
+.drive-file__icon--blob {
+  color: #86909c;
+}
+
+.drive-file__name-link,
+.drive-file__name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-file__name-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--semi-color-text-0, #1d2129);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.drive-file__name-link:hover {
+  color: var(--wk-brand-primary, #7c5cfc);
+  text-decoration: underline;
+}
+
+.drive-file__size,
+.drive-file__time {
+  color: var(--semi-color-text-1, #4e5969);
+}
+
+.drive-file__ops {
+  display: flex;
+  justify-content: flex-end;
+}

@@ -10,7 +10,7 @@ import {
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { parseThreadChannelId } from "../../Service/Thread";
 import React, { Component } from "react";
-import { Tag } from "@douyinfe/semi-ui";
+import { Tag, Toast } from "@douyinfe/semi-ui";
 import { ConversationWrap, MessageWrap } from "../../Service/Model";
 import { getTimeStringAutoShort2 } from "../../Utils/time";
 import classNames from "classnames";
@@ -27,7 +27,6 @@ import ContextMenus, {
   ContextMenusContext,
   ContextMenusData,
 } from "../ContextMenus";
-import { ChannelSettingManager } from "../../Service/ChannelSetting";
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { BeatLoader } from "react-spinners";
 import { RevokeCell } from "../../Messages/Revoke";
@@ -44,6 +43,10 @@ import {
   fetchImChannelInfo,
   getImChannelInfo,
 } from "../../im-runtime/channelRuntime";
+import {
+  muteChannelSetting,
+  topChannelSetting,
+} from "../../bridge/channelSetting/channelSettingActions";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
 // ── 在线态判定/渲染 helper ──────────────────────────────────────────────
@@ -898,7 +901,13 @@ export default class ConversationList extends Component<
   }
 
   onTop(channelInfo: ChannelInfo) {
-    ChannelSettingManager.shared.top(!channelInfo.top, channelInfo.channel);
+    topChannelSetting({
+      channel: channelInfo.channel,
+      top: !channelInfo.top,
+    })
+      .catch((err) => {
+        Toast.error(err?.msg);
+      });
   }
 
   onMute(channelInfo: ChannelInfo) {
@@ -906,12 +915,18 @@ export default class ConversationList extends Component<
   }
 
   onMuteWithValue(value: boolean, channelInfo: ChannelInfo) {
-    ChannelSettingManager.shared.mute(value, channelInfo.channel)
+    muteChannelSetting({
+      channel: channelInfo.channel,
+      mute: value,
+    })
       .then(() => {
         // 直接重拉（不删缓存），新数据覆盖旧缓存，避免删除期间出现 loading 骨架
         fetchImChannelInfo(WKSDK.shared(), channelInfo.channel)
           .then(() => this.setState({}))
       })
+      .catch((err) => {
+        Toast.error(err?.msg);
+      });
   }
 
   onCloseChat(channel: Channel) {

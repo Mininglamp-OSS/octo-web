@@ -8,14 +8,13 @@ import  { BaseModule, I18nProvider, i18n, WKApp } from '@octo/base';
 import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
-import { MatterModule } from '@octo/todo';
 import { SummaryModule } from '@dmwork/summary';
 import { McpMarketModule } from '@dmwork/mcp';
 import { SkillMarketModule } from '@dmwork/skillmarket';
 import { AppBotModule } from '@dmwork/appbot';
 import { DocsModule } from '@octo/docs';
-import { LoopModule } from '@octo/loop';
-import { PersonalModule } from '@octo/personal';
+import { registerEnterpriseModules } from 'virtual:octo-enterprise-modules';
+import { DriveModule } from '@octo/drive';
 import { version as pkgVersion } from '../package.json';
 import appEnUS from './i18n/en-US.json';
 import appZhCN from './i18n/zh-CN.json';
@@ -73,14 +72,17 @@ WKApp.shared.registerModule(new DataSourceModule()) // 数据源模块
 WKApp.shared.registerModule(new LoginModule()); // 登录模块
 WKApp.shared.registerModule(new BindModule()); // OIDC 自助绑定页 (/oidc/bind)
 WKApp.shared.registerModule(new ContactsModule()); // 联系模块
-WKApp.shared.registerModule(new MatterModule()); // Matter module
 WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
 WKApp.shared.registerModule(new McpMarketModule()); // MCP 市场模块
 WKApp.shared.registerModule(new SkillMarketModule()); // Skill 市场模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
-WKApp.shared.registerModule(new DocsModule()); // Docs module
-WKApp.shared.registerModule(new LoopModule()); // Loop 面板（Issue/Skill/Project/Agent/Squad/Runtime）
-WKApp.shared.registerModule(new PersonalModule()); // 我的（Runtimes/Skills）
+if (import.meta.env.VITE_DISABLE_BUILTIN_DOCS !== "1") {
+  WKApp.shared.registerModule(new DocsModule()); // Docs module
+}
+registerEnterpriseModules({
+  registerModule: (module) => WKApp.shared.registerModule(module),
+});
+WKApp.shared.registerModule(new DriveModule()); // 网盘模块
 
 // e2e mock: 仅在 VITE_E2E_MOCK=1 时启动 MSW Service Worker.
 // dev / prod 完全走 tree-shake 分支, 无副作用. 必须在 startup() 之前 await,
@@ -106,8 +108,29 @@ async function enableMocksIfE2E(): Promise<void> {
   }
 }
 
+// e2e mock: 仅在 VITE_E2E_MOCK_IM=1 时挂 fake IM provider 钩子, 让 spec 里
+// installMockImRuntime(page, seed) 能生效. DataSourceModule.init() 和
+// App.connectIM 已用同一 flag 跳过真实 IM callback / connect.
+// dev / prod 完全走 tree-shake 分支, 无副作用.
+async function enableMockImIfE2E(): Promise<void> {
+  if (import.meta.env.VITE_E2E_MOCK_IM !== "1") return;
+  try {
+    const mod = await import("../e2e-kit/_kit/mock-im-runtime/fake-provider");
+    const wksdk = await import("wukongimjssdk");
+    (window as unknown as {
+      __installMockImRuntime__: (s: unknown) => void;
+      WKSDK: typeof wksdk.WKSDK;
+    }).__installMockImRuntime__ = mod.installFakeProvider as unknown as (s: unknown) => void;
+    // 暴露 WKSDK 让 spec / fixture 直接调 shared().connectManager.notifyConnectStatusListeners 等
+    (window as unknown as { WKSDK: typeof wksdk.WKSDK }).WKSDK = wksdk.WKSDK;
+  } catch (e) {
+    console.warn("[e2e] mock-im-runtime disabled:", e);
+  }
+}
+
 async function main(): Promise<void> {
   await enableMocksIfE2E();
+  await enableMockImIfE2E();
   WKApp.shared.startup(); // app启动
 
   const container = document.getElementById("root")!;

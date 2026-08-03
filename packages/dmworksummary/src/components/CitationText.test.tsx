@@ -72,6 +72,96 @@ function badgeByText(text: string) {
 }
 
 describe('CitationText — [n] vs [Pn] parsing', () => {
+    it('keeps same-sequence citations from different channels as distinct messages', () => {
+        render(
+            <CitationText
+                content="跨频道引用 [1][2]"
+                citations={[
+                    makeCitation({ index: 1, channel_id: 'channel-a', message_seq: 3, content: '频道 A 的消息' }),
+                    makeCitation({ index: 2, channel_id: 'channel-b', message_seq: 3, content: '频道 B 的消息' }),
+                ]}
+            />,
+        );
+
+        const groupBadge = badgeByText('[1,2]')!;
+        fireEvent.click(groupBadge);
+
+        const popover = screen.getByTestId('popover-content');
+        expect(popover.textContent).toContain('频道 A 的消息');
+        expect(popover.textContent).toContain('频道 B 的消息');
+        expect(popover.textContent).toContain('引用 [1]');
+        expect(popover.textContent).toContain('引用 [2]');
+    });
+
+    it('labels each source in the pinned popover when a group spans channels (P1-2)', () => {
+        render(
+            <CitationText
+                content="跨来源引用 [1][2]"
+                citations={[
+                    makeCitation({ index: 1, channel_id: 'chan-a', message_seq: 3, source: '产品群 A', content: '频道 A 的消息' }),
+                    makeCitation({ index: 2, channel_id: 'chan-b', message_seq: 3, source: '研发群 B', content: '频道 B 的消息' }),
+                ]}
+            />,
+        );
+
+        const groupBadge = badgeByText('[1,2]')!;
+        fireEvent.click(groupBadge);
+
+        const popover = screen.getByTestId('popover-content');
+        // Both channel sources must be surfaced, not just the first citation's.
+        expect(popover.textContent).toContain('产品群 A');
+        expect(popover.textContent).toContain('研发群 B');
+    });
+
+    it('preserves both cited messages when a group spans sources without channel_id', () => {
+        // Regression for the round-9 dedup collision: `channel_id` is
+        // optional on CitationItem but `source` is required, so two
+        // citations from different sources that both omit channel_id and
+        // share message_seq previously collapsed to the same key
+        // `seq::N` and one message was silently dropped from the popover
+        // while the header still claimed "multiple sources".
+        render(
+            <CitationText
+                content="缺 channel_id 的跨来源引用 [1][2]"
+                citations={[
+                    makeCitation({ index: 1, channel_id: undefined, message_seq: 3, source: '产品群 A', content: 'MSG-SOURCE-A' }),
+                    makeCitation({ index: 2, channel_id: undefined, message_seq: 3, source: '研发群 B', content: 'MSG-SOURCE-B' }),
+                ]}
+            />,
+        );
+
+        const groupBadge = badgeByText('[1,2]')!;
+        fireEvent.click(groupBadge);
+
+        const popover = screen.getByTestId('popover-content');
+        expect(popover.textContent).toContain('MSG-SOURCE-A');
+        expect(popover.textContent).toContain('MSG-SOURCE-B');
+        expect(popover.textContent).toContain('产品群 A');
+        expect(popover.textContent).toContain('研发群 B');
+    });
+
+    it('labels each directly cited message with its reading-order number in the pinned popover', () => {
+        render(
+            <CitationText
+                content="组合引用 [8][9]"
+                citations={[
+                    makeCitation({ index: 8, message_seq: 108, content: '第一条被引用消息' }),
+                    makeCitation({ index: 9, message_seq: 109, content: '第二条被引用消息' }),
+                ]}
+            />,
+        );
+
+        const groupBadge = badgeByText('[1,2]')!;
+        expect(groupBadge).toBeTruthy();
+        fireEvent.click(groupBadge);
+
+        const popover = screen.getByTestId('popover-content');
+        expect(popover.textContent).toContain('引用 [1]');
+        expect(popover.textContent).toContain('引用 [2]');
+        expect(popover.textContent).not.toContain('引用 [8]');
+        expect(popover.textContent).not.toContain('引用 [9]');
+    });
+
     it('1) renders normal [n] and team [P1] side by side without crosstalk', () => {
         render(
             <CitationText

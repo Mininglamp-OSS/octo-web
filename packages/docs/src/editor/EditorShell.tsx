@@ -1,6 +1,6 @@
 import { EditorContent } from '@tiptap/react'
 import { useCollabEditor } from '../collab/useCollabEditor.ts'
-import type { CollabEditorOptions } from '../collab/createCollabEditor.ts'
+import type { CollabEditorOptions, ConnState } from '../collab/createCollabEditor.ts'
 import { canManage } from '../auth/roles.ts'
 import { Toolbar, EditorBubbleMenu, LinkBubbleMenu, MathBubbleMenu } from './Toolbar.tsx'
 import { TableContextMenu } from './TableControls.tsx'
@@ -15,8 +15,7 @@ import { useDocComments, useRefreshCommentsOnOpen } from '../comments/useDocComm
 import { useCommentHighlights } from '../comments/useCommentHighlights.ts'
 import { useDocDelete } from './useDocDelete.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
-import { exportDocToMarkdown, type MdNode } from '../export/markdown.ts'
-import { exportDocPdf } from '../pages/docsApi.ts'
+import { exportDocFile, type DocExportFormat } from '../pages/docsApi.ts'
 import { emojiGlyph } from './emoji.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
@@ -99,6 +98,50 @@ export interface EditorShellProps extends CollabEditorOptions {
  */
 export function exportDownloadName(title: string | null | undefined): string {
   return (title || t('docs.state.untitled')).trim() || 'document'
+}
+
+interface ExportSyncProvider {
+  hasUnsyncedChanges: boolean
+  on(event: string, fn: (...args: unknown[]) => void): void
+  off(event: string, fn: (...args: unknown[]) => void): void
+}
+
+const EXPORT_SYNC_TIMEOUT_MS = 10_000
+
+/** Wait until the server has acknowledged local Yjs updates before backend export. */
+export function waitForExportSync(
+  provider: ExportSyncProvider,
+  connState: ConnState | null,
+  timeoutMs = EXPORT_SYNC_TIMEOUT_MS,
+): Promise<void> {
+  if (connState !== 'connected') return Promise.reject(new Error('document_not_connected'))
+  if (!provider.hasUnsyncedChanges) return Promise.resolve()
+
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (error?: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      provider.off('unsyncedChanges', onUnsynced)
+      provider.off('status', onStatus)
+      if (error) reject(error)
+      else resolve()
+    }
+    const onUnsynced = (count: unknown) => {
+      if (count === 0 || !provider.hasUnsyncedChanges) finish()
+    }
+    const onStatus = (event: unknown) => {
+      const status = (event as { status?: unknown } | null)?.status
+      if (status === 'disconnected') finish(new Error('document_disconnected'))
+    }
+    const timer = setTimeout(() => finish(new Error('document_sync_timeout')), timeoutMs)
+    provider.on('unsyncedChanges', onUnsynced)
+    provider.on('status', onStatus)
+    // Close the race where the acknowledgement lands between the initial check
+    // and listener registration.
+    if (!provider.hasUnsyncedChanges) finish()
+  })
 }
 
 /**
@@ -346,16 +389,16 @@ export function EditorShell(props: EditorShellProps) {
       }
       return
     }
+    // Atomic backend imports carry no PM stash; surface their small warning payload independently.
+    const warnings = consumeImportWarnings(docId)
+    if (warnings.length) setImportNotice(warnings.join(' '))
     if (!pmDoc) return
     try {
       ed.commands.setContent(pmDoc as never)
     } catch (err) {
       console.error('[docs] Import content injection failed:', err)
       setImportNotice(t('docs.toolbar.importCorrupt'))
-      return
     }
-    const warnings = consumeImportWarnings(docId)
-    if (warnings.length) setImportNotice(warnings.join(' '))
   }, [instance, ready, docId, t])
 
   // uid → display name for this space (#8): once resolved, push the real name into awareness so
@@ -469,93 +512,42 @@ export function EditorShell(props: EditorShellProps) {
   )
   const del = useDocDelete(docId, handleDeleted)
 
-  // Export-as-Markdown (batch 8, area C): serialize the live PM JSON to Markdown with freshly
-  // resolved signed asset URLs and trigger a browser download. Display-only — never mutates
-  // the doc; failures surface a small banner instead of crashing the editor.
+  // All downloadable document formats come from one authenticated backend
+  // endpoint. The backend reads the authoritative live Y.Doc; the browser does
+  // not serialize its potentially stale local editor snapshot.
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
-  const onExportMarkdown = useCallback(async () => {
-    const ed = instance?.editor
-    if (!ed || exporting) return
+  const downloadExport = useCallback(async (format: DocExportFormat) => {
+    if (exporting) return
     setExporting(true)
     setExportError(null)
     try {
-      const md = await exportDocToMarkdown(docId, ed.getJSON() as unknown as MdNode, { emojiGlyph })
-      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
+      if (!instance) throw new Error('document_not_ready')
+      await waitForExportSync(instance.provider, connState)
+      const bytes = await exportDocFile(docId, format)
+      const mime = format === 'md'
+        ? 'text/markdown;charset=utf-8'
+        : format === 'docx'
+          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : 'application/pdf'
+      const url = URL.createObjectURL(new Blob([bytes], { type: mime }))
       const a = document.createElement('a')
       a.href = url
-      a.download = `${exportDownloadName(currentTitle)}.md`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      // Defer revoke so Safari/iOS can start the download for larger blobs
-      // (matches the PDF branch).
-      setTimeout(() => URL.revokeObjectURL(url), 5000)
-    } catch (err) {
-      console.error('[docs] Markdown export failed:', err)
-      setExportError(t('docs.toolbar.exportError'))
-    } finally {
-      setExporting(false)
-    }
-  }, [instance, docId, currentTitle, exporting])
-
-  const onExportDocx = useCallback(async () => {
-    const ed = instance?.editor
-    if (!ed || exporting) return
-    setExporting(true)
-    setExportError(null)
-    try {
-      // Lazy-load the DOCX exporter so `docx` + `mathjax-full` (multi-MB, DOCX-only)
-      // stay out of the eager editor bundle that loads on every document open.
-      const { exportDocToDocx } = await import('../export/docx/index.ts')
-      const blob = await exportDocToDocx(docId, ed.getJSON() as unknown as MdNode, { emojiGlyph })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${exportDownloadName(currentTitle)}.docx`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      // Defer revoke so Safari/iOS can start the download for larger blobs
-      // (matches the PDF branch).
-      setTimeout(() => URL.revokeObjectURL(url), 5000)
-    } catch (err) {
-      console.error('[docs] DOCX export failed:', err)
-      setExportError(t('docs.toolbar.exportError'))
-    } finally {
-      setExporting(false)
-    }
-  }, [instance, docId, currentTitle, exporting])
-
-  const onExportPdf = useCallback(async () => {
-    const ed = instance?.editor
-    if (!ed || exporting) return
-    setExporting(true)
-    setExportError(null)
-    try {
-      // Server-side PDF render via Typst (小吴's decision to go backend). The
-      // backend renders its own persisted copy of the doc with Typst, so the
-      // output has real CJK, rendered math, emoji, selectable text and smart
-      // pagination — one-click download with no print dialog. Returns the PDF
-      // bytes directly.
-      const bytes = await exportDocPdf(docId)
-      const blob = new Blob([bytes], { type: 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${exportDownloadName(currentTitle)}.pdf`
+      a.download = `${exportDownloadName(currentTitle)}.${format}`
       document.body.appendChild(a)
       a.click()
       a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 5000)
     } catch (err) {
-      console.error('[docs] PDF export failed:', err)
+      console.error(`[docs] ${format.toUpperCase()} export failed:`, err)
       setExportError(t('docs.toolbar.exportError'))
     } finally {
       setExporting(false)
     }
-  }, [instance, docId, currentTitle, exporting])
+  }, [docId, currentTitle, exporting, instance, connState])
+  const onExportMarkdown = useCallback(() => void downloadExport('md'), [downloadExport])
+  const onExportDocx = useCallback(() => void downloadExport('docx'), [downloadExport])
+  const onExportPdf = useCallback(() => void downloadExport('pdf'), [downloadExport])
 
   const togglePanel = useCallback(
     (panel: Exclude<DrawerPanel, null>) => setActivePanel((cur) => (cur === panel ? null : panel)),

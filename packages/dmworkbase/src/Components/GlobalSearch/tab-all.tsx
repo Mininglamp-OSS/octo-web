@@ -4,13 +4,13 @@ import Section from "./section";
 import ItemMessage from "./item-message";
 import WKApp from "../../App";
 import "./tab-all.css"
-import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson, MessageContentType } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson, MessageContentType } from "wukongimjssdk";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { debounce, throttle } from "../../Utils/rateLimit";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import VisibilityTrigger from "../VisibilityTrigger";
 import { I18nContext } from "../../i18n";
-import { addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
+import { addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
 
 interface TabAllProps {
@@ -47,7 +47,7 @@ export default class TabAll extends Component<TabAllProps> {
                 this._forceUpdateDebounced()
             }
         }
-        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this._channelInfoListener)
+        this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(this._channelInfoListener)
     }
 
     componentWillUnmount() {
@@ -59,9 +59,9 @@ export default class TabAll extends Component<TabAllProps> {
     private requestSenderChannelInfoIfNeeded = (fromUid: string) => {
         if (!fromUid || this.fetchedUids.has(fromUid)) return
         const senderChannel = new Channel(fromUid, ChannelTypePerson)
-        if (getImChannelInfo(WKSDK.shared(), senderChannel)) return
+        if (getCurrentImChannelInfo(senderChannel)) return
         this.fetchedUids.add(fromUid)
-        void fetchImChannelInfo(WKSDK.shared(), senderChannel)
+        void fetchCurrentImChannelInfo(senderChannel)
     }
 
     /**
@@ -85,7 +85,7 @@ export default class TabAll extends Component<TabAllProps> {
         // 兜底：从发送者 channelInfo.orgData 取（tab-all 已经 fetch/获取过）
         if (!homeId && (isExternalLegacy === undefined || isExternalLegacy === null) && item.from_uid) {
             const senderChannel = new Channel(item.from_uid, ChannelTypePerson)
-            const ci = getImChannelInfo(WKSDK.shared(), senderChannel)
+            const ci = getCurrentImChannelInfo(senderChannel)
             const org = ci?.orgData
             if (org) {
                 // homeId / isExternalLegacy 已经过 !homeId / undefined|null 判据，
@@ -142,7 +142,7 @@ export default class TabAll extends Component<TabAllProps> {
                                 let sender;
                                 if (item.channel?.channel_type !== ChannelTypePerson && item.from_uid && item.from_uid !== "") {
                                     const senderChannel = new Channel(item.from_uid, ChannelTypePerson)
-                                    const channelInfo = getImChannelInfo(WKSDK.shared(), senderChannel)
+                                    const channelInfo = getCurrentImChannelInfo(senderChannel)
                                     if (channelInfo) {
                                         sender = channelInfo.title
                                     }

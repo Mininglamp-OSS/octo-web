@@ -297,10 +297,15 @@ export function getExtension(extension: string, name?: string): string {
   return "";
 }
 
-// 解析 FileContent 的可用下载 URL: 拼接 baseURL + 相对路径绝对化 + 安全校验。
+interface FileUrlSource {
+  url?: string;
+  remoteUrl?: string;
+}
+
+// 解析文件内容块的可用下载 URL: 拼接 baseURL + 相对路径绝对化 + 安全校验。
 // 任一环节失败返回 ""，方便调用方一次性判断。生产环境 apiURL 是 /api/v1/，
 // 直接喂给 isSafeUrl 会被 new URL() 拒掉，必须先绝对化。
-export function resolveSafeFileUrl(content: FileContent): string {
+export function resolveSafeFileUrl(content: FileUrlSource): string {
   const rawUrl = content.url || content.remoteUrl || "";
   if (!rawUrl) return "";
   let fileUrl = WKApp.dataSource.commonDataSource.getFileURL(rawUrl);

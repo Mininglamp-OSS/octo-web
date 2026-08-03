@@ -49,11 +49,18 @@ const EMOJI_MANIFEST_CACHE_KEY = "emoji_manifest_v1"
 //   key  = 消息正文 token
 //   name = 人类可读标签（选择器 title / 无障碍）
 //   base = public/emoji 下的文件名（不含扩展名）
+export const BUILTIN_CUSTOM_EMOJI_KEYS = {
+    mission: "[使命必达]",
+    action: "[崇尚行动]",
+    taste: "[有品位]",
+    shangfang: "[尚方宝剑]",
+} as const
+
 const BUILTIN_CUSTOM_EMOJIS: Array<{ key: string; name: string; base: string }> = [
-    { key: "[使命必达]", name: "使命必达", base: "custom_mission" },
-    { key: "[崇尚行动]", name: "崇尚行动", base: "custom_action" },
-    { key: "[有品位]", name: "有品位", base: "custom_taste" },
-    { key: "[尚方宝剑]", name: "尚方宝剑", base: "custom_shangfang" },
+    { key: BUILTIN_CUSTOM_EMOJI_KEYS.mission, name: BUILTIN_CUSTOM_EMOJI_KEYS.mission.slice(1, -1), base: "custom_mission" },
+    { key: BUILTIN_CUSTOM_EMOJI_KEYS.action, name: BUILTIN_CUSTOM_EMOJI_KEYS.action.slice(1, -1), base: "custom_action" },
+    { key: BUILTIN_CUSTOM_EMOJI_KEYS.taste, name: BUILTIN_CUSTOM_EMOJI_KEYS.taste.slice(1, -1), base: "custom_taste" },
+    { key: BUILTIN_CUSTOM_EMOJI_KEYS.shangfang, name: BUILTIN_CUSTOM_EMOJI_KEYS.shangfang.slice(1, -1), base: "custom_shangfang" },
 ]
 const BUILTIN_BASE_BY_KEY = new Map(BUILTIN_CUSTOM_EMOJIS.map((e) => [e.key, e.base]))
 
@@ -274,6 +281,9 @@ export class DefaultEmojiService implements EmojiService {
     // 启动时拉取 manifest（fire-and-forget）。成功则刷新清单并落地缓存；失败保持兜底，
     // 保证首屏与降级。token 仍是 [xxx]，不变。
     async load(): Promise<void> {
+        if (import.meta.env.VITE_E2E_MOCK === "1") {
+            return
+        }
         try {
             const manifest = (await APIClient.shared.get("common/emojis")) as EmojiManifest
             // 只要 list 是数组就应用(允许服务端下发空列表 = 清空自定义表情);非数组/缺失则保留兜底。

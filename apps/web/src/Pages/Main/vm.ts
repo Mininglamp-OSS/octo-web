@@ -331,6 +331,13 @@ export default class MainVM extends ProviderListener {
         this._historyRoutePaths.push(menus.routePath);
       }
     }
+    // Mirror the active id onto the app-global slot. onMenuClick / switchToMenuById /
+    // syncMenuFromBrowserPath already set it explicitly, but didMount (cold-load / refresh /
+    // bookmark open) goes through this setter without any such explicit write — leaving the
+    // global stuck at undefined during boot. MarketSidebar reads WKApp.currentMenuId in its own
+    // componentDidMount to decide whether to mount the right-pane page (see MarketSidebar.tsx:66),
+    // so a missing id here is exactly why refreshing /mcp-market/mcp lands on an empty right pane.
+    WKApp.currentMenuId = menus?.id;
     // An explicit menu selection (user click via onMenuClick, or switchToMenuById) cancels any
     // pending boot-route activation: the user has chosen a view, so a config-gated menu that
     // resolves later must not yank them off it. didMount sets _pendingRouteActivation only AFTER

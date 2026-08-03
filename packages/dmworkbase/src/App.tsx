@@ -13,8 +13,8 @@ export type MittEvents = {
   /** App 回前台(visibilitychange/focus):打开中的会话据此重同步成员列表,
    * 修复合盖/息屏久后 WS 断连期间成员变更 CMD 丢失导致 @ 搜不到新成员(octo-web#567) */
   "wk:app-foreground": undefined;
-  /** DEMO-ONLY 消息 reaction 本地 mock store 变更（携带 messageId），随 feature flag 一并移除 */
-  "message-reaction-mock-updated": string;
+  /** 消息 reaction 乐观更新或服务端对账完成，携带 messageId 做局部刷新 */
+  "message-reaction-updated": string;
   "wk:pending-thread": {
     groupNo: string;
     thread: import("./Service/Thread").Thread | null;
@@ -31,15 +31,10 @@ export type MittEvents = {
     shortId?: string;
   };
   "wk:close-thread-panel": undefined;
-  "wk:toggle-matter-panel": { channelId: string; channelType: number };
-  /** v0.7 Matter 详情面板切换（跟子区/文件预览/任务列表可并存） */
-  "wk:toggle-matter-detail-panel": { channelId: string; channelType: number };
   "wk:toggle-summary-panel": { channelId: string; channelType: number; summaryPanelView: 'history' | 'new'; forceOpen?: boolean };
   "wk:open-summary-modal": { channelId: string; channelType: number };
   /** 主聊天框头部搜索入口点击：请求打开该频道的会话内搜索面板（与信息栏「查找聊天内容」同一效果）。 */
   "wk:open-channel-search": { channelId: string; channelType: number };
-  /** 打开多选→添加到事项的弹出菜单（由 dmworktodo 模块接管渲染） */
-  "wk:open-matter-link-menu": { anchor: HTMLElement; channelId: string; channelType: number; messages?: Array<{ messageSeq?: number; messageID?: string; fromUID?: string; fromUName?: string; content?: string; timestamp?: number; attachments?: any[] }> };
   "wk:switch-sidebar-tab": string;
   "wk:file-preview": {
     url: string;
@@ -58,16 +53,7 @@ export type MittEvents = {
     fromUID?: string;
     /** 消息摘要（用于回复时显示） */
     conversationDigest?: string;
-    /**
-     * 来源事项 ID。从事项详情面板 (产出文件 tab / 时间线附件) 触发预览时传入。
-     * Chat 页面据此把事项面板暂时隐藏 (而不是卸掉), 关闭预览后 unhide 让用户
-     * 回到原样, 且不在文件预览头部显示 ← 返回箭头 (因为 X 已经能"回到事项")。
-     */
-    originMatterId?: string;
   } | null;
-  'wk:open-create-matter-modal': { channelId: string; channelType: number; channelName?: string; prefillTitle?: string; prefillAssigneeUids?: string[]; clearOnConfirm?: boolean };
-  /** After matter created from toolbar/Alt+Enter, send editor content then clear */
-  'wk:matter-created-from-input': { channelId: string; channelType: number };
   /**
    * NavRail 菜单按钮被点击 (不论是切换到该菜单还是重复点击当前菜单)。
    * 接收方可以据此刷新数据 — 同一路由长期挂载时用户重进菜单的场景下, 组件
@@ -91,15 +77,6 @@ export type MittEvents = {
     name?: string;
     value?: string;
   } | undefined;
-  /**
-   * Matter 任一字段被编辑后广播 (标题 / 主要目标 / DDL / 状态 / 负责人 /
-   * 关联群聊等)。接收方 (通常是左侧事项列表) 据此 reload, 避免跨 React
-   * 子树数据不同步 — 详情面板和列表分别挂在 routeRight / routeLeft, 不共
-   * 享 state, 列表接口返回的字段也不会被详情页的 setMatter 影响。
-   */
-  'wk:matter-updated': { matterId: string };
-  /** Matter 被删除后广播, 接收方据此从列表移除 */
-  'wk:matter-deleted': { matterId: string };
   "summary-space-changed": undefined;
   /**
    * Chat VM 完成 requestConversationList()（切 Space / 重连后会触发）后广播。
@@ -226,6 +203,24 @@ export {
 } from "./Service/OidcConfig";
 export type { OidcProviderConfig } from "./Service/OidcConfig";
 
+function oidcProvidersEqual(
+  a: OidcProviderConfig[],
+  b: OidcProviderConfig[]
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    if (!other) return false;
+    return (
+      item.id === other.id &&
+      item.name === other.name &&
+      item.authorizePath === other.authorizePath &&
+      item.accountUrl === other.accountUrl &&
+      item.resetPasswordUrl === other.resetPasswordUrl
+    );
+  });
+}
+
 // StickerUploadLimits 解析同理抽到 ./Service/StickerUploadConfig：独立 leaf 文件,
 // 不拖 App.tsx 的重依赖链路, EmojiToolbar 的 vitest 可以直接测 parse 的边界情况。
 import {
@@ -241,10 +236,26 @@ export {
 } from "./Service/StickerUploadConfig";
 export type { StickerUploadLimits } from "./Service/StickerUploadConfig";
 
+import {
+  DEFAULT_MESSAGE_REACTION_CAPABILITY,
+  messageReactionCapabilityEqual,
+  parseMessageReactionCapability,
+  type MessageReactionCapability,
+} from "./Service/MessageReactionConfig";
+export {
+  DEFAULT_MESSAGE_REACTION_CAPABILITY,
+  messageReactionCapabilityEqual,
+  parseMessageReactionCapability,
+} from "./Service/MessageReactionConfig";
+export type {
+  MessageReactionCapability,
+} from "./Service/MessageReactionConfig";
+
 export class WKRemoteConfig {
   revokeSecond: number = 2 * 60; // 撤回时间
   threadOn: boolean = false; // 子区功能开关，默认关闭
   messagesSearchOn: boolean = false; // 会话内聊天记录搜索开关，默认关闭
+  docsSearchOn: boolean = false; // 云文档全文搜索开关，默认关闭；与 docsOn(模块入口)解耦，独立灰度
   disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
   /**
    * 自定义贴纸管理入口开关。后端字段 sticker_custom_enabled 为 true 时，前端展示
@@ -254,6 +265,13 @@ export class WKRemoteConfig {
    * 校验仍由后端负责，前端不能据此推断用户是否具备上传能力。
    */
   stickerCustomEnabled: boolean = false;
+  /**
+   * 消息 Reaction 的展示/写入能力。字段缺失时按服务端契约降级为只读；write
+   * 仅控制客户端入口和请求前守卫，不替代服务端写接口的权限校验。
+   */
+  messageReaction: MessageReactionCapability = {
+    ...DEFAULT_MESSAGE_REACTION_CAPABILITY,
+  };
   /**
    * 自定义贴纸上传的操作端可调上限（最大体积 KB / 最长边 px / 允许的扩展名），后端
    * 字段 sticker_upload_limits，与 SystemSettings.StickerUpload{MaxSizeKB,
@@ -282,7 +300,7 @@ export class WKRemoteConfig {
   docsOn: boolean = false;
   /**
    * Loop(回路)模块展示开关。后端字段 dmloop_on 为 true 时，前端在侧边栏 NavRail
-   * 展示「回路」(LoopModule) 入口；false 或字段缺失时隐藏。
+   * 展示企业「回路」入口；false 或字段缺失时隐藏。
    *
    * 默认 false(fail-safe): loop 依赖后端服务 + fleet 代理 + daemon 运行时一整套未就绪前保持隐藏——
    * feature 分支合入 main 也不对用户暴露；运维在依赖部署就绪后再下发 dmloop_on=true 放量。
@@ -291,11 +309,22 @@ export class WKRemoteConfig {
    */
   dmloopOn: boolean = false;
   /**
-   * 「我的 / 运行时」(PersonalModule) 模块展示开关。后端字段 dmpersonal_on 为 true 时展示入口。
+   * 企业「我的 / 运行时」入口展示开关。后端字段 dmpersonal_on 为 true 时展示入口。
    * 与 dmloop_on 分开:「我的」后续会重新设计、脱离 loop 独立演进,故独立门控(可分阶段放量)。
    * 默认 false(fail-safe),运维就绪后下发 dmpersonal_on=true。纯 UI 展示门,不承担鉴权。
    */
   dmpersonalOn: boolean = false;
+  /**
+   * 网盘(DriveModule)模块展示开关。后端字段 drive_on 为 true 时，前端在侧边栏 NavRail
+   * 展示网盘入口；false 或字段缺失时隐藏。
+   *
+   * 默认 false(fail-safe): drive 是独立部署的服务，其反向代理路由(/v1/drive)、对象存储 /
+   * docs-backend 只读依赖未就绪前保持隐藏——feature 分支合入 main 也不对用户暴露(后端
+   * DRIVE_API_URL 为空时 fail-closed 返 503)；运维在 drive 部署就绪后再下发 drive_on=true。
+   * 镜像 docs_on / dmloop_on,纯 UI 展示门,不承担鉴权:/v1/drive 相关接口的权限校验仍由
+   * drive 服务负责。
+   */
+  driveOn: boolean = false;
   /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
@@ -303,27 +332,28 @@ export class WKRemoteConfig {
    */
   oidcProviders: OidcProviderConfig[] = [];
   requestSuccess: boolean = false;
+  requestFailed: boolean = false;
   private retryCount: number = 0;
   private maxRetries: number = 5; // 最大重试次数
-  // listeners 仅在 appconfig 首次成功时触发, 用来通知像登录页这种在首屏前就渲染、
-  // 而其内容(SSO 按钮文案/可见性)依赖 appconfig 字段的组件去 re-render。
+  // listeners 在 appconfig 首次完成(成功或重试耗尽失败)时触发, 用来通知像登录页这种
+  // 在首屏前就渲染、而其内容(SSO 按钮文案/可见性)依赖 appconfig 字段的组件去 re-render。
   // 不在每次失败重试上 fire, 避免重复刷新。
   private listeners: Array<() => void> = [];
   private configChangeListeners: Array<() => void> = [];
 
   /**
-   * addListener 订阅 appconfig **首次** 加载完成事件——只 fire 一次 (后续重连/手动 refetch 不再触发)。
+   * addListener 订阅 appconfig **首次** 完成事件——只 fire 一次 (后续重连/手动 refetch 不再触发)。
    * 返回 unsubscribe 函数, 调用方在卸载时务必调用。
    *
-   * 调用方契约: 订阅前应先检查 requestSuccess——已 true 时跳过订阅, 自行处理初始状态。
-   * 这里在 requestSuccess 已为 true 时返回 noop 是防御性兜底, 不构成「at-least-once 必通知」的语义。
+   * 调用方契约: 订阅前应先检查 requestSuccess / requestFailed——已完成时跳过订阅, 自行处理初始状态。
+   * 这里在已完成时返回 noop 是防御性兜底, 不构成「at-least-once 必通知」的语义。
    *
    * 为什么不在已加载时同步调一次 cb 来给「at-least-once」: cb 通常是 forceUpdate / setState,
    * 在调用方的 componentDidMount 同步栈里触发是 React 反模式; 用 microtask 又得给 cb 加
    * unmount 防护。当前唯一调用方 (Login) 已自检 requestSuccess, 不值得为此引入复杂度。
    */
   addListener(cb: () => void): () => void {
-    if (this.requestSuccess) {
+    if (this.requestSuccess || this.requestFailed) {
       return () => {
         /* noop */
       };
@@ -385,6 +415,10 @@ export class WKRemoteConfig {
       setTimeout(() => {
         this.startRequestConfig();
       }, delay);
+    } else if (!this.requestSuccess && !this.requestFailed) {
+      this.requestFailed = true;
+      console.warn("[WKRemoteConfig] requestConfig failed after max retries");
+      this.notifyListeners();
     }
   }
 
@@ -394,11 +428,17 @@ export class WKRemoteConfig {
       const previousDisableUserCreateSpace = this.disableUserCreateSpace;
       const previousMessagesSearchOn = this.messagesSearchOn;
       const previousStickerCustomEnabled = this.stickerCustomEnabled;
+      const previousMessageReaction = this.messageReaction;
       const previousStickerUploadLimits = this.stickerUploadLimits;
       const previousDocsOn = this.docsOn;
+      const previousDocsSearchOn = this.docsSearchOn;
       const previousDmloopOn = this.dmloopOn;
       const previousDmpersonalOn = this.dmpersonalOn;
+      const previousDriveOn = this.driveOn;
+      const previousRequestFailed = this.requestFailed;
+      const previousOidcProviders = this.oidcProviders;
       this.requestSuccess = true;
+      this.requestFailed = false;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
       this.messagesSearchOn = parseRemoteBool(result["messages_search_on"]);
@@ -408,12 +448,17 @@ export class WKRemoteConfig {
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
       );
+      this.messageReaction = parseMessageReactionCapability(
+        result["message_reaction"]
+      );
       this.stickerUploadLimits = parseStickerUploadLimits(
         result["sticker_upload_limits"]
       );
       this.docsOn = parseRemoteBool(result["docs_on"]);
+      this.docsSearchOn = parseRemoteBool(result["docs_search_on"]);
       this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
       this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
+      this.driveOn = parseRemoteBool(result["drive_on"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -421,13 +466,21 @@ export class WKRemoteConfig {
         previousDisableUserCreateSpace !== this.disableUserCreateSpace ||
         previousMessagesSearchOn !== this.messagesSearchOn ||
         previousStickerCustomEnabled !== this.stickerCustomEnabled ||
+        !messageReactionCapabilityEqual(
+          previousMessageReaction,
+          this.messageReaction
+        ) ||
         !stickerUploadLimitsEqual(
           previousStickerUploadLimits,
           this.stickerUploadLimits
         ) ||
         previousDocsOn !== this.docsOn ||
+        previousDocsSearchOn !== this.docsSearchOn ||
         previousDmloopOn !== this.dmloopOn ||
-        previousDmpersonalOn !== this.dmpersonalOn
+        previousDmpersonalOn !== this.dmpersonalOn ||
+        previousDriveOn !== this.driveOn ||
+        previousRequestFailed !== this.requestFailed ||
+        !oidcProvidersEqual(previousOidcProviders, this.oidcProviders)
       ) {
         this.notifyConfigChangeListeners();
       }
@@ -691,7 +744,21 @@ export default class WKApp extends ProviderListener {
   static menus = MenusManager.shared; // 菜单
   // Callback to switch the active sidebar menu by id (set by Main page)
   static switchToMenuById?: (menuId: string) => void;
-  static openSummaryDetail?: (taskId: number | string, spaceId?: string) => void;
+  static openSummaryDetail?: (
+    taskId: number | string,
+    spaceId?: string,
+    originChannel?: { channelId: string; channelType: number },
+  ) => void;
+  static openSummarySharePreview?: (
+    shareId: string,
+    spaceId?: string,
+    originChannel?: { channelId: string; channelType: number },
+  ) => void;
+  static openSummaryShareDetail?: (
+    shareId: string,
+    spaceId?: string,
+    originChannel?: { channelId: string; channelType: number },
+  ) => void;
   static searchChatCandidates?: (params: { keyword?: string; chat_type?: string; space_id?: string }) => Promise<any[]>;
   // Id of the currently active sidebar menu (kept in sync by Main page)
   static currentMenuId?: string;
@@ -968,6 +1035,12 @@ export default class WKApp extends ProviderListener {
   }
 
   connectIM() {
+    // e2e: mock-im-runtime 已 short-circuit connect → Connected (fake-provider install 时做),
+    // 这里跳过真实 sdk.connect() 免真去建 WebSocket / 覆盖 mock 的 connect status.
+    // dev / prod 完全走 tree-shake 分支, 无副作用.
+    if (import.meta.env.VITE_E2E_MOCK_IM === "1") {
+      return;
+    }
     connectImClient({
       sdk: WKSDK.shared(),
       loginInfo: WKApp.loginInfo,

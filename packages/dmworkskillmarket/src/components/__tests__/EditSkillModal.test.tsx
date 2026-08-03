@@ -20,6 +20,7 @@ const dirtyEditMessage = /确定离开？尚未完成编辑，已上传的文件
 const keepEditing = /继续编辑|skillMarket\.confirm\.keepEditing/;
 const leaveButton = /确认离开|skillMarket\.confirm\.leave/;
 const tagPlaceholder = /输入或选择标签|skillMarket\.form\.tagPlaceholder/;
+const tagDuplicate = /标签已存在|skillMarket\.form\.tagDuplicate/;
 
 const skill: Skill = {
   id: "meeting-note-cleaner",
@@ -164,6 +165,45 @@ describe("EditSkillModal", () => {
     expect(api.updateSkill).not.toHaveBeenCalled();
   });
 
+  it("safely renders legacy overflow tags and blocks saving until they are valid", () => {
+    const overflowTag = "overflow-testing-with-extremely-long-english-tag-content-for-ui-card";
+    render(
+      <EditSkillModal
+        skill={{ ...skill, tags: ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", overflowTag] }}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTitle(overflowTag)).toHaveClass("skill-market-tag-input__text");
+    expect(screen.getByText(/最多添加 10 个标签|skillMarket\.form\.tagLimit/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
+  });
+
+  it("allows unrelated edits while preserving an unchanged legacy long tag", async () => {
+    const overflowTag = "overflow-testing-with-extremely-long-english-tag-content-for-ui-card";
+    render(
+      <EditSkillModal
+        skill={{ ...skill, tags: [overflowTag] }}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTitle(overflowTag)).toHaveClass("skill-market-tag-input__text");
+    expect(screen.queryByText(/单个标签最多 10 个字符|skillMarket\.form\.tagLengthLimit/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), { target: { value: "更新展示名" } });
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
+
+    await waitFor(() => expect(api.updateSkill).toHaveBeenCalledWith("meeting-note-cleaner", expect.objectContaining({
+      displayName: "更新展示名",
+      tags: [overflowTag],
+    })));
+  });
+
   it("suggests current-space tags while editing and saves the selected tag", async () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 
@@ -182,6 +222,17 @@ describe("EditSkillModal", () => {
         tags: ["纪要", "协作", "效率"],
       }));
     });
+  });
+
+  it("trims suggested tags before checking duplicates", async () => {
+    vi.mocked(api.getSkillTags).mockResolvedValue([{ name: " 协作 " }]);
+    render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+
+    fireEvent.change(screen.getByPlaceholderText(tagPlaceholder), { target: { value: "协" } });
+    fireEvent.mouseDown(await screen.findByRole("option", { name: "协作" }));
+
+    expect(screen.getByText(tagDuplicate)).toBeInTheDocument();
+    expect(screen.getAllByTitle("协作")).toHaveLength(1);
   });
 
   it("guards closing after the form is changed and closes the confirm dialog after leaving", async () => {

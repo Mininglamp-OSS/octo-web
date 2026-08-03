@@ -1,4 +1,16 @@
+// @vitest-environment jsdom
+
 import { describe, it, expect, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import React from 'react'
+
+const mocks = vi.hoisted(() => ({
+  copyImageToClipboard: vi.fn(),
+  toastSuccess: vi.fn(),
+  toastWarning: vi.fn(),
+  currentSlide: { src: 'https://cdn.example.com/photo.png' },
+  lightboxProps: undefined as any,
+}))
 
 vi.mock('wukongimjssdk', () => ({
   MediaMessageContent: class {
@@ -16,19 +28,109 @@ vi.mock('wukongimjssdk', () => ({
 }))
 
 vi.mock('react', async () => await vi.importActual('react'))
-vi.mock('yet-another-react-lightbox', () => ({ default: () => null }))
-vi.mock('yet-another-react-lightbox/plugins/download', () => ({ default: {} }))
+vi.mock('yet-another-react-lightbox', () => ({
+  default: (props: any) => {
+    mocks.lightboxProps = props
+    return null
+  },
+  isImageSlide: (slide: unknown) => !!slide,
+  useLightboxState: () => ({ currentSlide: mocks.currentSlide }),
+}))
+vi.mock('yet-another-react-lightbox/plugins/zoom', () => ({ default: {} }))
 vi.mock('yet-another-react-lightbox/styles.css', () => ({}))
-vi.mock('@douyinfe/semi-ui', () => ({ Toast: { warning: vi.fn() } }))
+vi.mock('@douyinfe/semi-ui', () => ({ Toast: { success: mocks.toastSuccess, warning: mocks.toastWarning } }))
 vi.mock('../../../App', () => ({ default: {} }))
+vi.mock('../../../i18n', () => ({
+  t: (key: string) => ({
+    'base.filePreview.pdf.zoomOut': 'Zoom out',
+    'base.filePreview.pdf.actualSize': 'Actual size',
+    'base.filePreview.pdf.zoomIn': 'Zoom in',
+    'base.message.imagePreview.rotate': 'Rotate',
+    'base.module.contextMenus.copyImage': 'Copy image',
+    'base.module.contextMenus.copyImageSuccess': 'Image copied',
+  } as Record<string, string>)[key] || key,
+}))
 vi.mock('../../../Service/Const', () => ({ MessageContentTypeConst: { image: 3 } }))
+vi.mock('../../../Utils/clipboard', () => ({ copyImageToClipboard: mocks.copyImageToClipboard }))
 vi.mock('../../Base', () => ({ default: () => null }))
 vi.mock('../../MessageCell', () => ({
   MessageCell: class {},
 }))
 
-import { ImageContent, getImageTransferState } from '../index'
+import { ImageContent, ImagePreviewLightbox, ImagePreviewToolbar, getImageTransferState } from '../index'
 import { MessageStatus, TaskStatus } from 'wukongimjssdk'
+
+describe('ImagePreviewToolbar', () => {
+  it('provides the v2 preview actions and copies the visible image', async () => {
+    const zoomOut = vi.fn()
+    const zoomIn = vi.fn()
+    const changeZoom = vi.fn()
+    const onReset = vi.fn()
+    const onRotate = vi.fn()
+    mocks.copyImageToClipboard.mockResolvedValueOnce(undefined)
+    render(React.createElement(ImagePreviewToolbar, {
+      zoom: {
+        zoom: 1,
+        minZoom: 0.25,
+        maxZoom: 4,
+        offsetX: 0,
+        offsetY: 0,
+        disabled: false,
+        zoomIn,
+        zoomOut,
+        changeZoom,
+      },
+      onReset,
+      onRotate,
+    }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Actual size' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy image' }))
+
+    await waitFor(() => {
+      expect(zoomOut).toHaveBeenCalled()
+      expect(zoomIn).toHaveBeenCalled()
+      expect(changeZoom).toHaveBeenCalledWith(1)
+      expect(onReset).toHaveBeenCalled()
+      expect(onRotate).toHaveBeenCalled()
+      expect(mocks.copyImageToClipboard).toHaveBeenCalledWith(mocks.currentSlide.src)
+      expect(mocks.toastSuccess).toHaveBeenCalled()
+    })
+  })
+})
+
+describe('ImagePreviewLightbox', () => {
+  it('swaps image fit bounds for quarter-turn rotations', () => {
+    render(React.createElement(ImagePreviewLightbox, {
+      open: true,
+      close: vi.fn(),
+      slides: [{ src: 'https://cdn.example.com/landscape.png' }],
+    }))
+
+    expect(mocks.lightboxProps.carousel.imageProps.style).toEqual({
+      maxWidth: '100%',
+      maxHeight: '100%',
+    })
+
+    act(() => mocks.lightboxProps.render.buttonZoom({}).props.onRotate())
+
+    expect(mocks.lightboxProps.carousel.imageProps.style).toEqual({
+      maxWidth: '100cqh',
+      maxHeight: '100cqw',
+    })
+
+    act(() => mocks.lightboxProps.render.buttonZoom({}).props.onRotate())
+
+    expect(mocks.lightboxProps.carousel.imageProps.style).toEqual({
+      maxWidth: '100%',
+      maxHeight: '100%',
+    })
+  })
+})
 
 describe('ImageContent name field', () => {
   it('sets name from file.name in constructor', () => {

@@ -15,10 +15,25 @@ const fakeEditor = {
   getJSON: () => ({ type: 'doc', content: [] }),
   storage: { octoCommentHighlight: {} as { onActivate?: ((id: number) => void) | null } },
 }
+const fakeProvider = {
+  hasUnsyncedChanges: false,
+  listeners: new Map<string, Set<(...args: unknown[]) => void>>(),
+  on(event: string, fn: (...args: unknown[]) => void) {
+    const listeners = this.listeners.get(event) ?? new Set()
+    listeners.add(fn)
+    this.listeners.set(event, listeners)
+  },
+  off(event: string, fn: (...args: unknown[]) => void) {
+    this.listeners.get(event)?.delete(fn)
+  },
+  emit(event: string, ...args: unknown[]) {
+    for (const fn of this.listeners.get(event) ?? []) fn(...args)
+  },
+}
 
 vi.mock('../collab/useCollabEditor.ts', () => ({
   useCollabEditor: () => ({
-    instance: { editor: fakeEditor, provider: {} },
+    instance: { editor: fakeEditor, provider: fakeProvider },
     ready: true,
     role: 'admin',
     connState: 'connected',
@@ -26,11 +41,12 @@ vi.mock('../collab/useCollabEditor.ts', () => ({
   }),
 }))
 
-// Capture the markdown the handler serializes; the body content is irrelevant here.
-const exportSpy = vi.fn(async (..._args: unknown[]) => '# exported\n')
-vi.mock('../export/markdown.ts', () => ({
-  exportDocToMarkdown: (...args: unknown[]) => exportSpy(...args),
-}))
+// Capture calls to the single authoritative backend export endpoint.
+const exportSpy = vi.fn(async (..._args: unknown[]) => new ArrayBuffer(8))
+vi.mock('../pages/docsApi.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../pages/docsApi.ts')>()
+  return { ...actual, exportDocFile: (...args: unknown[]) => exportSpy(...args) }
+})
 
 // Stub the presentational children that take the live editor/provider — they are not under test.
 vi.mock('@tiptap/react', () => ({ EditorContent: () => null }))
@@ -79,6 +95,8 @@ beforeEach(() => {
   useMemberNamesMock.mockReset()
   useMemberNamesMock.mockReturnValue(new Map<string, string>())
   fakeEditor.storage.octoCommentHighlight = {}
+  fakeProvider.hasUnsyncedChanges = false
+  fakeProvider.listeners.clear()
   // jsdom has no object-URL impl; the export handler creates + revokes one.
   ;(URL as unknown as { createObjectURL: () => string }).createObjectURL = () => 'blob:mock'
   ;(URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = () => {}
@@ -135,13 +153,39 @@ describe('EditorShell — export filename uses the live title, not the stale pro
 
     // Export moved into the header ≡ "more" menu: open it, then trigger the export row.
     fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    fireEvent.click(screen.getByText('docs.toolbar.export'))
     fireEvent.click(screen.getByText('docs.toolbar.exportMarkdown'))
 
-    await waitFor(() => expect(exportSpy).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md'))
     await waitFor(() => expect(createdAnchors.length).toBeGreaterThan(0))
     const a = createdAnchors[createdAnchors.length - 1]
     expect(a.download).toBe('Live Title.md')
     expect(a.download).not.toBe('Stale Prop Title.md')
+  })
+
+  it('waits for pending collaboration updates before requesting a backend export', async () => {
+    fakeProvider.hasUnsyncedChanges = true
+    render(
+      <EditorShell
+        docId="d_1"
+        title="Pending Doc"
+        space="s_1"
+        folder="f_1"
+        doc="d_1"
+        uid="u_self"
+        user={{ id: 'u_self', name: 'Self' }}
+      />,
+    )
+
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    fireEvent.click(screen.getByText('docs.toolbar.export'))
+    fireEvent.click(screen.getByText('docs.toolbar.exportMarkdown'))
+    await Promise.resolve()
+    expect(exportSpy).not.toHaveBeenCalled()
+
+    fakeProvider.hasUnsyncedChanges = false
+    fakeProvider.emit('unsyncedChanges', 0)
+    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md'))
   })
 })
 
@@ -166,6 +210,7 @@ describe('EditorShell — header injection props (#512 AC-8)', () => {
     // The low-frequency controls now live behind the ≡ "more" menu, not as resident buttons.
     expect(screen.getByTitle('docs.toolbar.more')).toBeTruthy()
     fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    fireEvent.click(screen.getByText('docs.toolbar.export'))
     expect(screen.getByText('docs.toolbar.exportMarkdown')).toBeTruthy()
     expect(screen.getByText('docs.toolbar.history')).toBeTruthy()
   })
@@ -184,6 +229,7 @@ describe('EditorShell — header injection props (#512 AC-8)', () => {
     expect(screen.getByTitle('docs.list.back')).toBeTruthy()
     // ...and the built-in controls are still reachable via the ≡ menu (parity preserved).
     fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    fireEvent.click(screen.getByText('docs.toolbar.export'))
     expect(screen.getByText('docs.toolbar.exportMarkdown')).toBeTruthy()
   })
 })
@@ -207,6 +253,7 @@ describe('EditorShell — header "more" (≡) menu', () => {
     // Closed by default: no rows visible.
     expect(screen.queryByText('docs.toolbar.exportMarkdown')).toBeNull()
     fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    fireEvent.click(screen.getByText('docs.toolbar.export'))
 
     const historyRow = screen.getByText('docs.toolbar.history').closest('button')!
     const exportRow = screen.getByText('docs.toolbar.exportMarkdown').closest('button')!

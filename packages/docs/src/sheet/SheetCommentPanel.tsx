@@ -86,6 +86,7 @@ function CommentBody({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(comment.body)
   const [busy, setBusy] = useState(false)
+  const [mutationError, setMutationError] = useState<string | null>(null)
 
   const isAuthor = comment.authorUid === currentUid
   const canHardDelete = !isAuthor && canManage(role)
@@ -94,9 +95,11 @@ function CommentBody({
     if (busy) return
     if (draft.trim() === '') return
     setBusy(true)
+    setMutationError(null)
     try {
-      await comments.editBody(comment.id, draft.trim())
-      setEditing(false)
+      const result = await comments.editBody(comment.id, draft.trim())
+      if (result.ok) setEditing(false)
+      else setMutationError(result.error)
     } finally {
       setBusy(false)
     }
@@ -105,8 +108,10 @@ function CommentBody({
   async function onDelete() {
     if (!window.confirm(t('docs.comment.deleteConfirm'))) return
     setBusy(true)
+    setMutationError(null)
     try {
-      await comments.remove(comment.id, canHardDelete)
+      const result = await comments.remove(comment.id, canHardDelete)
+      if (!result.ok) setMutationError(result.error)
     } finally {
       setBusy(false)
     }
@@ -133,6 +138,7 @@ function CommentBody({
               setDraft(comment.body)
             }}
           />
+          {mutationError && <p className="octo-member-error" role="alert">{mutationError}</p>}
           <div className="octo-comment-compose-actions">
             <button type="button" className="octo-tb-btn" disabled={busy || draft.trim() === ''} onClick={saveEdit}>
               {t('docs.comment.save')}
@@ -155,6 +161,7 @@ function CommentBody({
           <MentionText body={comment.body} names={names} />
         </p>
       )}
+      {!editing && mutationError && <p className="octo-member-error" role="alert">{mutationError}</p>}
       {!editing && (isAuthor || canHardDelete) && (
         <div className="octo-comment-actions">
           {isAuthor && (
@@ -195,6 +202,8 @@ function Thread({
   const [replyOpen, setReplyOpen] = useState(false)
   const [replyBody, setReplyBody] = useState('')
   const [busy, setBusy] = useState(false)
+  const [threadActionError, setThreadActionError] = useState<string | null>(null)
+  const [replyError, setReplyError] = useState<string | null>(null)
   const ref = useRef<HTMLLIElement>(null)
 
   useEffect(() => {
@@ -205,10 +214,25 @@ function Thread({
     if (busy) return
     if (replyBody.trim() === '') return
     setBusy(true)
+    setReplyError(null)
     try {
-      await comments.reply(thread.id, replyBody.trim())
-      setReplyBody('')
-      setReplyOpen(false)
+      const result = await comments.reply(thread.id, replyBody.trim())
+      if (result.ok) {
+        setReplyBody('')
+        setReplyOpen(false)
+      } else setReplyError(result.error)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggleResolved() {
+    if (busy) return
+    setBusy(true)
+    setThreadActionError(null)
+    try {
+      const result = await comments.resolve(thread.id, !thread.resolved)
+      if (!result.ok) setThreadActionError(result.error)
     } finally {
       setBusy(false)
     }
@@ -246,7 +270,7 @@ function Thread({
             type="button"
             className="octo-tb-btn"
             disabled={busy}
-            onClick={() => void comments.resolve(thread.id, !thread.resolved)}
+            onClick={() => void toggleResolved()}
           >
             {thread.resolved ? t('docs.comment.reopen') : t('docs.comment.resolve')}
           </button>
@@ -257,6 +281,7 @@ function Thread({
           </button>
         )}
       </div>
+      {threadActionError && <p className="octo-member-error" role="alert">{threadActionError}</p>}
 
       {replyOpen && (
         <div className="octo-comment-compose">
@@ -271,6 +296,7 @@ function Thread({
               setReplyBody('')
             }}
           />
+          {replyError && <p className="octo-member-error" role="alert">{replyError}</p>}
           <div className="octo-comment-compose-actions">
             <button type="button" className="octo-tb-btn" disabled={busy || replyBody.trim() === ''} onClick={submitReply}>
               {t('docs.comment.reply')}
@@ -387,7 +413,11 @@ export function SheetCommentPanel({
       // RelativePosition for docs). We base64-encode the cell key so it passes that check;
       // the human-readable A1 label rides in anchorText and is shown as the thread chip.
       const encoded = btoa(ref.key)
-      await createRoot({ body: body.trim(), anchorStart: encoded, anchorEnd: encoded, anchorText: ref.a1 })
+      const result = await createRoot({ body: body.trim(), anchorStart: encoded, anchorEnd: encoded, anchorText: ref.a1 })
+      if (!result.ok) {
+        setComposeError(result.error)
+        return
+      }
       setBody('')
       setComposeSeq((n) => n + 1)
       setComposeError(null)

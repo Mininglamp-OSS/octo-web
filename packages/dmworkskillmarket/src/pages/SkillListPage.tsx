@@ -147,7 +147,6 @@ export default function SkillListPage() {
   }
 
   function openDetail(item: Skill) {
-    list.markSkillViewed(item.id);
     setDetailId(item.id);
   }
 

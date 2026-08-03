@@ -30,7 +30,7 @@
   },
   "list": {
     "mine": "Mine",
-    "tabSkills": "Skills",
+    "tabSkills": "All",
     "publish": "Publish",
     "publishSkill": "Publish Skill",
     "search": "Search",
@@ -63,6 +63,7 @@
     "downloads": "Downloads"
   },
   "card": {
+    "platformPublisher": "Official",
     "editAriaLabel": "Edit {{name}}",
     "deleteAriaLabel": "Delete {{name}}",
     "statsAriaLabel": "Skill stats",

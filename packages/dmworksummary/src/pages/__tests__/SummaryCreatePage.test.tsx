@@ -691,3 +691,60 @@ describe('SummaryCreatePage derivedFromTask cross-session isolation (#907 P1 Jer
         ).toEqual({ task_id: 7, title: 'Reference C' });
     });
 });
+
+describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.spyOn(summaryHelpers, 'writeAgentChatSession').mockImplementation(() => {});
+    });
+
+    async function mountInstance() {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+        return ref.current as any;
+    }
+
+    it('passes group selectedChat[0] as origin_channel_id + type=1', async () => {
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({
+                sessionId: 'sess-1',
+                mode: 'agent',
+                selectedChats: [{ chat_id: 'grp-1', chat_type: 'group', name: 'G', member_count: 3 }],
+            });
+        });
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+        expect(api.createAgentSummary).toHaveBeenCalledWith(
+            expect.objectContaining({ origin_channel_id: 'grp-1', origin_channel_type: 1 }),
+        );
+    });
+
+    it('maps a thread selectedChat[0] to origin_channel_type=2', async () => {
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({
+                sessionId: 'sess-2',
+                mode: 'agent',
+                selectedChats: [{ chat_id: 'grp____thr', chat_type: 'thread', name: 'T', member_count: 2 }],
+            });
+        });
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+        expect(api.createAgentSummary).toHaveBeenCalledWith(
+            expect.objectContaining({ origin_channel_id: 'grp____thr', origin_channel_type: 2 }),
+        );
+    });
+
+    it('omits origin when no chat is selected (refine → backend infers)', async () => {
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({ sessionId: 'sess-3', mode: 'agent', selectedChats: [] });
+        });
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+        const arg = (api.createAgentSummary as any).mock.calls[0][0];
+        expect(arg.origin_channel_id).toBeUndefined();
+        expect(arg.origin_channel_type).toBeUndefined();
+    });
+});

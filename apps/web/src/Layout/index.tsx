@@ -13,11 +13,20 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
-import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
-import { SummaryDetailPage } from "@dmwork/summary";
+import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath } from "@octo/docs";
+import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules";
+import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
-import { isLoopCliAuthorizePath, LOOP_CLI_AUTHORIZE_PATH } from "@octo/loop";
+import { consumeStandaloneReturn, persistStandaloneReturn, prepareDriveLandingReturn, clearStandaloneReturn } from "./standaloneReturn";
+import {
+  ShareLandingPage,
+  InviteLandingPage,
+  shareTokenFromPath,
+  inviteTokenFromPath,
+  isDriveSharePath,
+  isDriveInvitePath,
+} from "@octo/drive";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -53,6 +62,15 @@ function recoverOctoSessionFromStorage(persist: boolean): void {
 }
 
 /**
+ * Leave a drive share/invite landing page for the main drive view. The landing pages render
+ * standalone (outside the app shell), so a full navigation to `/drive` is the clean handoff:
+ * it boots the shell, and if the viewer is anonymous the login gate takes over.
+ */
+function enterDriveHome(): void {
+    if (typeof window !== "undefined") window.location.assign("/drive");
+}
+
+/**
  * The standalone `/d/:docId` page reached a 401 while a token WAS loaded — the current session is
  * expired (XIN-408). Clear that dead session and reload so the standalone branch below re-evaluates,
  * finds no token, and falls through to the real login screen. The deep-link target was already
@@ -79,6 +97,7 @@ function clearExpiredStandaloneSessionAndReload(): void {
 
 /** `/s/:taskNo` — summary taskNo is a single URL path segment, optional trailing slash. */
 const STANDALONE_SUMMARY_PATH = /^\/s\/([A-Za-z0-9_-]+)\/?$/;
+const STANDALONE_SUMMARY_SHARE_PATH = /^\/s\/share\/([A-Za-z0-9_-]+)\/?$/;
 
 export function parseStandaloneSummaryTaskNo(pathname: string): string | null {
     if (typeof pathname !== "string") return null;
@@ -91,6 +110,12 @@ export function parseStandaloneSummaryTaskNo(pathname: string): string | null {
 // SummaryDetailPage with an undefined taskId).
 export function isStandaloneSummaryPath(pathname: string): boolean {
     return parseStandaloneSummaryTaskNo(pathname) !== null;
+}
+
+export function parseStandaloneSummaryShareId(pathname: string): string | null {
+    if (typeof pathname !== "string") return null;
+    const match = STANDALONE_SUMMARY_SHARE_PATH.exec(pathname);
+    return match ? match[1] : null;
 }
 
 function applyStandaloneSummarySpaceFromQuery(): void {
@@ -172,7 +197,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 // the URL clean: store the known bucket sid in SessionScope, then navigate to the
                 // sid-less return path. The reloaded page still hits the right sid-keyed session
                 // bucket, without exposing `?sid=` in the address bar.
-                const standaloneReturn = consumeStandaloneReturn();
+                const standaloneReturn = consumeStandaloneReturn(getEnterpriseStandaloneHandlers());
                 if (standaloneReturn) {
                     const sessionSid = findSidForToken(localStorage, WKApp.loginInfo.token || "");
                     if (sessionSid) setSessionSid(sessionSid);
@@ -381,22 +406,30 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
         }
 
-        // The CLI authorization deep-link is a full-page flow outside the normal app shell.
-        // Reuse a single stored Octo session when the clean URL carries no sid-specific token.
-        if (isLoopCliAuthorizePath(window.location.pathname)) {
-            if (!WKApp.loginInfo.token) {
-                WKApp.loginInfo.load();
-            }
-            if (!WKApp.loginInfo.token) {
-                recoverOctoSessionFromStorage(true);
-            }
+        // Enterprise full-page deep-links live outside the normal app shell. The host only owns
+        // the generic lifecycle (recover a clean sid-less session, hand over the expired-session
+        // callback, and optionally stash an anonymous return target). Concrete routes are owned by
+        // private modules, so adding a new enterprise module does not require another host branch.
+        const enterpriseStandaloneHandlers = getEnterpriseStandaloneHandlers();
+        const enterpriseStandaloneHandler = enterpriseStandaloneHandlers.find((handler) =>
+            handler.match(window.location.pathname)
+        );
+        if (enterpriseStandaloneHandler) {
+            if (!WKApp.loginInfo.token) WKApp.loginInfo.load();
+            if (!WKApp.loginInfo.token) recoverOctoSessionFromStorage(true);
             if (WKApp.loginInfo.token) {
                 if (!WKApp.shared.currentSpaceId) {
                     const cachedSpaceId = localStorage.getItem("currentSpaceId") || "";
                     if (cachedSpaceId) WKApp.shared.currentSpaceId = cachedSpaceId;
                 }
-                const cliAuthorizeComponent = WKApp.route.get(LOOP_CLI_AUTHORIZE_PATH);
-                if (cliAuthorizeComponent) return cliAuthorizeComponent;
+                const enterpriseStandalonePage = enterpriseStandaloneHandler.render({
+                    pathname: window.location.pathname,
+                    search: window.location.search,
+                    onSessionExpired: clearExpiredStandaloneSessionAndReload,
+                });
+                if (enterpriseStandalonePage) return enterpriseStandalonePage;
+            } else if (enterpriseStandaloneHandler.persistReturnOnAnonymous) {
+                persistStandaloneReturn();
             }
         }
 
@@ -434,6 +467,62 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             // written for a first-time visitor — onLogin consumes it via consumeStandaloneReturn.
             persistStandaloneReturn();
             // Anonymous: fall through to the login screen (below) without navigating away.
+        }
+
+        // Drive share landing (`/drive/s/:token`, PR#1146 N2). Access requires a
+        // valid Octo session — any signed-in Octo user may open a share (they need
+        // not belong to the file's Space), but external/anonymous visitors may not.
+        // Mirror the `/d/:docId` flow: recover the session, render when signed in,
+        // else stash the exact return target and fall through to login so the user
+        // bounces back to the share after sign-in (isSafeReturnPath whitelists the
+        // drive landing shapes). The drive module no longer rewrites the URL at
+        // boot, so the pathname survives for this interception.
+        //
+        // R8 P1: stash the return target BEFORE the token gate (prepareDriveLandingReturn),
+        // not only in the anonymous fall-through. An expired stored token passes the token
+        // check and renders the landing, whose API 401s → global logout → hard redirect to
+        // login; stashing only when anonymous lost the deep-link for that expired-session
+        // chain. resolveDriveLandingSession runs the same load→recover the doc branch uses.
+        const resolveDriveLandingSession = (): boolean => {
+            if (!WKApp.loginInfo.token) {
+                WKApp.loginInfo.load();
+            }
+            if (!WKApp.loginInfo.token) {
+                recoverOctoSessionFromStorage(true);
+            }
+            return !!WKApp.loginInfo.token;
+        };
+        if (isDriveSharePath(window.location.pathname)) {
+            if (prepareDriveLandingReturn(resolveDriveLandingSession)) {
+                return <ShareLandingPage token={shareTokenFromPath()} onExit={enterDriveHome} onClearReturn={clearStandaloneReturn} />;
+            }
+            // Anonymous/expired: return target already stashed; fall through to the login screen.
+        }
+
+        // Space-invite landing (`/drive/invite/:token`, PR#1146 N2). acceptInvite IS
+        // authenticated, so mirror the `/d/:docId` flow: recover the octo session, render
+        // the accept page when signed in, else stash the exact return target and fall
+        // through to the login screen so the user bounces back to the invite after
+        // sign-in (isSafeReturnPath whitelists the drive landing shapes). Same R8 P1
+        // up-front stash as the share branch above.
+        if (isDriveInvitePath(window.location.pathname)) {
+            if (prepareDriveLandingReturn(resolveDriveLandingSession)) {
+                return <InviteLandingPage token={inviteTokenFromPath()} onExit={enterDriveHome} onClearReturn={clearStandaloneReturn} />;
+            }
+            // Anonymous/expired: return target already stashed; fall through to the login screen.
+        }
+
+        // Read-only shared summary deep-link (`/s/share/:shareId`). It uses the same
+        // clean cold-load session recovery as task summary deep-links.
+        const standaloneShareId = parseStandaloneSummaryShareId(window.location.pathname);
+        if (standaloneShareId) {
+            if (!WKApp.loginInfo.token) WKApp.loginInfo.load();
+            if (!WKApp.loginInfo.token) recoverOctoSessionFromStorage(true);
+            if (WKApp.loginInfo.token) {
+                applyStandaloneSummarySpaceFromQuery();
+                return <SummaryShareDetailPage shareId={standaloneShareId} />;
+            }
+            persistStandaloneReturn();
         }
 
         // Standalone summary deep-link (`/s/:taskNo`): notification cards use task_no (not numeric

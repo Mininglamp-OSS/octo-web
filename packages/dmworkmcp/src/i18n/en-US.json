@@ -1,11 +1,11 @@
 {
   "menu": {
-    "title": "Markets"
+    "title": "Tools"
   },
   "sidebar": {
     "header": "Markets",
-    "mcp": "MCP Market",
-    "skills": "Skills Market"
+    "mcp": "MCP",
+    "skills": "Skills"
   },
   "common": {
     "loadFailed": "Failed to load"
@@ -14,7 +14,6 @@
     "nameTaken": "This name is already taken",
     "slugTaken": "This service slug is already taken in the current Space",
     "slugInvalid": "Slug must match ^[a-z0-9-]{1,64}$",
-    "secretLeaked": "Please remove the real token and use the placeholder before submitting",
     "forbidden": "You are not allowed to modify this MCP",
     "notFound": "MCP not found or has been removed",
     "invalidVisibility": "Visibility must be Public or Only me",
@@ -34,15 +33,13 @@
     "ai": "AI"
   },
   "source": {
-    "human": "Human",
-    "bot": "Bot",
-    "import": "Imported",
-    "botTooltip": "Created by {{owner}}'s bot"
+    "bot": "Bot"
   },
   "list": {
     "desc": "Browse and connect MCP servers to extend your agent's tools.",
-    "create": "New MCP",
-    "searchPlaceholder": "Search MCPs, tools, tags, or capabilities",
+    "create": "Publish MCP",
+    "searchPlaceholder": "Search name or description...",
+    "searchClear": "Clear",
     "errorTitle": "Failed to load MCPs",
     "retry": "Retry",
     "error": {
@@ -55,25 +52,61 @@
     "empty": "No matching MCP servers",
     "loadMore": "Scroll down to load more",
     "reachedEnd": "You've reached the end",
-    "mineTotal": "{{count}} MCPs created by me",
+    "total": "Total {{count}} MCPs",
     "navLabel": "MCP marketplace navigation",
     "mode": {
       "all": "All",
       "mine": "Mine"
-    },
-    "source": {
-      "filterLabel": "Filter by source",
-      "all": "All sources"
     }
   },
+  "publishMenu": {
+    "botTitle": "Publish via Bot",
+    "botHint": "Copy the prompt for an Agent",
+    "manualTitle": "Manual",
+    "manualHint": "Fill in the form to create an MCP"
+  },
+  "botPublish": {
+    "title": "Publish via Bot",
+    "hint": "Copy the prompt to an Agent and let it publish for you",
+    "copyBtn": "Copy prompt",
+    "copied": "Copied",
+    "copyFailed": "Copy failed. Select the text manually.",
+    "copyUnavailable": "Automatic copy is not available here. Select the text manually."
+  },
+  "form": {
+    "tagLimit": "At most {{count}} tags",
+    "tagLengthLimit": "A tag can have at most {{count}} characters",
+    "tagInvalidChars": "Tags can only contain letters, digits, spaces, and - _ . / # +"
+  },
+  "filter": {
+    "tags": "Tags",
+    "searchTags": "Search tags",
+    "noTags": "No tags available yet",
+    "noTagsSelected": "No tags selected",
+    "tagsSelected": "{{count}} tag(s) selected",
+    "clear": "Clear"
+  },
   "card": {
-    "hitTool": "Matched tool",
-    "hitTag": "Matched tag",
-    "matchReason": { "name": "Matched name", "description": "Matched summary", "tool": "Matched tool", "tag": "Matched tag", "category": "Matched category", "usage": "Matched usage example", "creator": "Matched publisher", "other": "Matched content" },
-    "toolCount": "Tools: {{count}}"
+    "officialPublisher": "Official publisher",
+    "matchReason": {
+      "name": "Matched name",
+      "description": "Matched summary",
+      "tool": "Matched tool",
+      "tag": "Matched tag",
+      "category": "Matched category",
+      "usage": "Matched usage example",
+      "creator": "Matched publisher",
+      "other": "Matched content"
+    },
+    "toolCount": "Tools: {{count}}",
+    "editAriaLabel": "Edit {{name}}",
+    "deleteAriaLabel": "Delete {{name}}",
+    "edit": "Edit",
+    "delete": "Delete"
   },
   "detail": {
     "title": "MCP Details",
+    "updatedAt": "Updated {{time}}",
     "quickAccess": "Quick access",
     "qsTab": {
       "prompt": "Prompt",
@@ -86,7 +119,7 @@
       "headersLabel": "\nHeaders: ",
       "envLabel": "\nEnv: "
     },
-    "tokenHint": "Replace the <把这里换成你的 Token> placeholder in the config with your own token before use.",
+    "tokenHint": "Replace each <把这里换成你的 …> placeholder in the config with your own value before use.",
     "copy": "Copy",
     "copied": "Copied to clipboard",
     "copyFailed": "Copy failed",
@@ -112,7 +145,7 @@
     "failed": "Delete failed"
   },
   "create": {
-    "title": "New MCP",
+    "title": "Publish MCP",
     "sectionBasics": "Basics",
     "sectionBasicsDesc": "Shown on the market card and detail header",
     "sectionConnect": "Connection",
@@ -128,10 +161,9 @@
     "sectionNotes": "Notes",
     "sectionNotesDesc": "Reminders before use (optional)",
     "emptyNotes": "No notes yet. Click \"+ Add\" in the top right to add one.",
-    "sectionVisibility": "Visibility",
     "stepBasic": "Basics",
     "stepConnect": "Connection",
-    "stepDocs": "Docs & visibility",
+    "stepDocs": "Docs",
     "prev": "Previous",
     "next": "Next",
     "advancedShow": "Show advanced",
@@ -156,9 +188,6 @@
       "streamable-http": "Remote HTTP (streamable-http)",
       "sse": "Remote SSE (sse)"
     },
-    "visibility": "Visibility",
-    "visPublic": "Public",
-    "visPrivate": "Only me",
     "slogan": "Summary",
     "sloganPlaceholder": "One line describing what this MCP does",
     "url": "Server URL",
@@ -166,20 +195,22 @@
     "command": "Launch command",
     "commandPlaceholder": "e.g. npx",
     "args": "Command args",
-    "argsPlaceholder": "Space-separated, e.g. -y @modelcontextprotocol/server-xxx",
-    "argsHint": "Separate args with spaces",
+    "argsPlaceholder": "One argument per line\n-y\n@modelcontextprotocol/server-xxx",
+    "argsHint": "One argument per line; leading/trailing whitespace is trimmed and blank lines are ignored",
     "env": "Environment variables",
-    "envPlaceholder": "One KEY=VALUE per line",
-    "envHint": "Format: KEY=VALUE, one per line",
+    "envHint": "Add a row for each variable; toggle on to require each user to fill locally.",
+    "envKeyPlaceholder": "KEY",
+    "envValuePlaceholder": "VALUE",
+    "envAdd": "Add",
+    "envRemove": "Remove",
     "headers": "Headers",
-    "headersPlaceholder": "One Header: Value per line",
-    "headersHint": "Format: Header-Name: value, one per line",
-    "authType": "Auth type",
-    "authTypeBearer": "Bearer Token",
-    "authTypeNone": "None",
-    "probeBearerLabel": "Test-only bearer token (not saved)",
-    "probeBearerPlaceholder": "Paste a real bearer token to fetch the tool list",
-    "probeBearerHint": "Used only for this probe; never sent on submit — the saved config keeps the placeholder.",
+    "headersHint": "Add a row for each header; toggle on to require each user to fill locally.",
+    "headerKeyPlaceholder": "Header name",
+    "headerValuePlaceholder": "Value",
+    "headerAdd": "Add",
+    "headerRemove": "Remove",
+    "kvUserSuppliedToggle": "User fills locally",
+    "sharedSecretWarning": "{{keys}} will be published in cleartext",
     "icon": "Icon",
     "iconEmpty": "Upload",
     "iconUpload": "Upload image",
@@ -212,6 +243,7 @@
     "probe": "Test / fetch tools",
     "probeSuccess": "Fetched {{count}} tools",
     "probeFailed": "Probe failed",
+    "probeTruncated": "Truncated description of {{count}} tool(s) to {{max}} characters — please review before saving",
     "probeError": {
       "command_not_found": "Launch command not found. Please check the command.",
       "timeout": "Probe timed out. Please try again later.",
@@ -220,8 +252,39 @@
     },
     "toolsEmpty": "No tools yet. Click \"Test / fetch tools\" to probe automatically, or add them manually.",
     "toolsHint": "Click \"Test / fetch tools\" to probe the remote server and sync its tool list.",
+    "modeManual": "Fill manually",
+    "modeJson": "Import from JSON",
+    "import": {
+      "desc": "Paste an mcpServers config from Claude Desktop / Cursor or a server.json snippet. Env and header VALUES are not imported — you'll fill them in the next step.",
+      "placeholder": "{\n  \"mcpServers\": {\n    \"github\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@modelcontextprotocol/server-github\"],\n      \"env\": { \"GITHUB_PERSONAL_ACCESS_TOKEN\": \"<YOUR_TOKEN>\" }\n    }\n  }\n}",
+      "apply": "Parse and fill",
+      "applied": "Filled {{count}} field(s)",
+      "format": "Format",
+      "formatFailed": "Cannot format: invalid JSON",
+      "warning": {
+        "multipleServers": "Multiple MCP configs detected; only the first was imported.",
+        "envValuesDropped": "Env values were ignored — please fill them in the next step.",
+        "headerValuesDropped": "Header values were ignored — please fill them in the next step."
+      },
+      "error": {
+        "empty": "Please paste some JSON",
+        "invalidJson": "Invalid JSON syntax",
+        "notObject": "Top-level JSON must be an object",
+        "mcpServersInvalid": "`mcpServers` must be an object",
+        "mcpServersEmpty": "`mcpServers` is empty",
+        "serverConfigInvalid": "Server config shape is invalid",
+        "noRecognizedFields": "None of name / command / url found",
+        "unknownFormat": "Unrecognized JSON structure — expected mcpServers or server.json"
+      }
+    },
     "submit": "Submit",
     "success": "Created",
     "failed": "Create failed"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}} hours ago",
+    "daysAgo": "{{count}} days ago"
   }
 }

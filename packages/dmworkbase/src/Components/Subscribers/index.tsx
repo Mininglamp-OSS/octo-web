@@ -1,4 +1,4 @@
-import { Channel, Subscriber } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import React from "react";
 import { Component } from "react";
 import Provider from "../../Service/Provider";
@@ -14,6 +14,8 @@ import { isRealnameVerified } from "../../Utils/displayName";
 import { GroupRole } from "../../Service/Const";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import { I18nContext } from "../../i18n";
+import { createChannelSettingMemberSearch } from "../../features/channelSetting/channelSettingMemberSearch";
+import WKAvatar from "../WKAvatar";
 
 export interface SubscribersProps {
   context: RouteContext<any>;
@@ -51,12 +53,18 @@ export class Subscribers extends Component<SubscribersProps> {
         }}
       >
         <div className="wk-subscribers-item-avatar-wrap">
-          <img src={WKApp.shared.avatarUser(subscriber.uid)} alt=""></img>
+          <WKAvatar
+            channel={new Channel(subscriber.uid, ChannelTypePerson)}
+          />
           {subscriber.role === GroupRole.owner && (
-            <span className="wk-subscribers-item-role-badge">{this.context.t("base.subscribers.role.owner")}</span>
+            <span className="wk-subscribers-item-role-badge wk-subscribers-item-role-badge-owner">
+              {this.context.t("base.subscribers.role.owner")}
+            </span>
           )}
           {subscriber.role === GroupRole.manager && (
-            <span className="wk-subscribers-item-role-badge">{this.context.t("base.subscribers.role.manager")}</span>
+            <span className="wk-subscribers-item-role-badge wk-subscribers-item-role-badge-manager">
+              {this.context.t("base.subscribers.role.manager")}
+            </span>
           )}
         </div>
         <div className="wk-subscribers-item-name">
@@ -115,14 +123,14 @@ export class Subscribers extends Component<SubscribersProps> {
                   ) : undefined} */}
                   {vm.showAdd()
                     ? WKApp.endpoints.organizationalTool(
-                      channel,
-                      <div className="wk-subscribers-item">
-                        <img
-                          src={require("./assets/icon_add_more_gray.png")}
-                          alt=""
-                        />
-                      </div>
-                    )
+                        channel,
+                        <div className="wk-subscribers-item">
+                          <img
+                            src={require("./assets/icon_add_more_gray.png")}
+                            alt=""
+                          />
+                        </div>
+                      )
                     : undefined}
                   {vm.showRemove() ? (
                     <div
@@ -145,14 +153,24 @@ export class Subscribers extends Component<SubscribersProps> {
                     className="wk-subscribers-more"
                     onClick={() => {
                       context.push(
-                       <SubscriberList channel={channel} />,
+                        <SubscriberList
+                          channel={channel}
+                          localSearch={createChannelSettingMemberSearch(
+                            vm.subscribers
+                          )}
+                        />,
                         new RouteContextConfig({
-                          title: this.context.t("base.subscribers.memberList"),
+                          title: this.context.t(
+                            "base.subscribers.memberListWithCount",
+                            { values: { count: vm.memberCount() } }
+                          ),
                         })
                       );
                     }}
                   >
-                    {this.context.t("base.subscribers.viewMore")}
+                    {this.context.t("base.subscribers.viewAll", {
+                      values: { count: vm.memberCount() },
+                    })}
                   </div>
                 ) : undefined}
               </div>

@@ -1,9 +1,9 @@
-import WKSDK, { Channel, ChannelTypePerson, ChannelTypeGroup } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, ChannelTypeGroup } from "wukongimjssdk";
 import React from "react";
 import { Component, CSSProperties } from "react";
 import classNames from "classnames";
 import WKApp from "../../App";
-import { getImChannelInfo } from "../../im-runtime/channelRuntime";
+import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import "./index.css"
 
 /**
@@ -11,7 +11,7 @@ import "./index.css"
  * Centralizes the repeated channelInfo lookup pattern.
  */
 export function isBot(uid: string): boolean {
-    const info = getImChannelInfo(WKSDK.shared(), new Channel(uid, ChannelTypePerson))
+    const info = getCurrentImChannelInfo(new Channel(uid, ChannelTypePerson))
     return info?.orgData?.robot === 1
 }
 
@@ -181,7 +181,7 @@ export default class WKAvatar extends Component<WKAvatarProps, WKAvatarState> {
         if (!channel) return ""
         if (channel.channelType === ChannelTypeGroup) return "wk-avatar-group"
         if (channel.channelType === ChannelTypePerson) {
-            const info = getImChannelInfo(WKSDK.shared(), channel)
+            const info = getCurrentImChannelInfo(channel)
             if (info?.orgData?.robot === 1) return "wk-avatar-ai"
         }
         return ""

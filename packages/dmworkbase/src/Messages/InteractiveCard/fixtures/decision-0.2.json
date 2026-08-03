@@ -1,0 +1,150 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "Container",
+      "id": "octo-surface-accent-header",
+      "style": "accent",
+      "bleed": true,
+      "spacing": "None",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "spacing": "None",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "需要你选择",
+                  "size": "Small",
+                  "isSubtle": true,
+                  "spacing": "None",
+                  "wrap": true
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "回复 @Octo 智能助手",
+                  "size": "Small",
+                  "weight": "Bolder",
+                  "isSubtle": true,
+                  "spacing": "None",
+                  "wrap": true,
+                  "horizontalAlignment": "Right"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "TextBlock",
+          "text": "下一步从哪个方向继续？",
+          "size": "Large",
+          "weight": "Bolder",
+          "spacing": "Small",
+          "wrap": true
+        },
+        {
+          "type": "TextBlock",
+          "text": "选择只会生成一条新的用户消息，不会在这张卡内直接执行。",
+          "size": "Small",
+          "isSubtle": true,
+          "spacing": "Small",
+          "wrap": true
+        }
+      ]
+    },
+    {
+      "type": "Input.ChoiceSet",
+      "id": "decision_choice",
+      "style": "expanded",
+      "isRequired": true,
+      "errorMessage": "请选择一个方向",
+      "value": "interaction",
+      "spacing": "Large",
+      "wrap": true,
+      "choices": [
+        {
+          "title": "补全消息交互（推荐）\n明确卡片、独立用户消息与后续 AI 回复的边界。",
+          "value": "interaction"
+        },
+        {
+          "title": "完善移动端布局\n检查窄屏卡片、长按钮与建议输入区的排列。",
+          "value": "mobile"
+        },
+        {
+          "title": "输出开发规格\n整理组件结构、提交字段与消息关联契约。",
+          "value": "handoff"
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "style": "emphasis",
+      "spacing": "Medium",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "将作为新消息发送给 @Octo 智能助手",
+          "size": "Small",
+          "isSubtle": true,
+          "spacing": "None",
+          "wrap": true
+        },
+        {
+          "type": "TextBlock",
+          "text": "我选择「补全消息交互」，请按这个方向继续。",
+          "spacing": "Small",
+          "wrap": true
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "id": "octo-surface-default-footer",
+      "style": "emphasis",
+      "bleed": true,
+      "separator": true,
+      "spacing": "Large",
+      "items": [
+        {
+          "type": "ActionSet",
+          "horizontalAlignment": "Right",
+          "actions": [
+            {
+              "type": "Action.Submit",
+              "id": "decision_send",
+              "title": "发送选择",
+              "style": "positive",
+              "data": {
+                "action": "decision_send",
+                "effect": "append_user_message",
+                "decision_id": "decision-next-step-001",
+                "reply_target_uid": "octo-assistant"
+              }
+            }
+          ]
+        },
+        {
+          "type": "TextBlock",
+          "text": "发送后将新增一条独立用户消息 · @Octo 智能助手",
+          "size": "Small",
+          "isSubtle": true,
+          "horizontalAlignment": "Right",
+          "spacing": "Small",
+          "wrap": true
+        }
+      ]
+    }
+  ]
+}

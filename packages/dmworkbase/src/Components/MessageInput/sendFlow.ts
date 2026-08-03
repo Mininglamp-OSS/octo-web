@@ -55,6 +55,27 @@ export interface SendResultDetail {
 
 export type SendResult = void | boolean | SendResultDetail;
 
+/**
+ * Publish a composer context only after its imperative send callback is wired.
+ * React runs effects in declaration order; keeping these two operations atomic
+ * prevents a consumer from synchronously calling context.send() in the gap.
+ */
+export function announceContextAfterSendReady<T extends () => Promise<boolean>>(
+  sendRef: { current: T | null },
+  send: T,
+  announce: () => void,
+): void {
+  sendRef.current = send;
+  announce();
+}
+
+/** A context send invoked before its callback is wired is explicitly rejected. */
+export async function invokeReadySend(
+  send: (() => Promise<boolean>) | null,
+): Promise<boolean> {
+  return send ? send() : false;
+}
+
 /** Snapshot-aware cleanup steps, run after the send settles. */
 export interface SendCleanup {
   /**

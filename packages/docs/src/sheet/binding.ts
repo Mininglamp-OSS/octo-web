@@ -39,9 +39,15 @@ import '@univerjs/preset-sheets-core'
 import type { FUniver } from '@univerjs/core/lib/facade'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
 
+/**
+ * Univer's low-level "write these cells" mutation. We DISPATCH this directly (rather than calling
+ * the `FRange.setValue` facade per cell) when applying a remote batch — see applyCellsBatched.
+ */
+const SET_RANGE_VALUES_MUTATION = 'sheet.mutation.set-range-values'
+
 /** Cell value/style commands we sync (see V1 note — diff is the source of truth). */
 const TRIGGER_IDS = new Set<string>([
-  'sheet.mutation.set-range-values',
+  SET_RANGE_VALUES_MUTATION,
   'sheet.command.set-style',
   'sheet.command.set-border-style',
 ])
@@ -134,6 +140,17 @@ interface SheetMeta {
 }
 
 /**
+ * One validated remote cell write, queued for a batched apply. `key` is kept alongside the parsed
+ * coordinates so `lastSeen` can be recorded without re-deriving it.
+ */
+interface RemoteCellWrite {
+  key: string
+  row: number
+  col: number
+  cell: SyncCell | null
+}
+
+/**
  * A serialized Univer sheet image/drawing. Kept STRUCTURAL (like WSLike below) to avoid a hard
  * type dependency on @univerjs internals — we only ever read a whole drawing object and write it
  * back verbatim. `unitId`/`subUnitId` are per-client / per-doc runtime ids: they are stripped
@@ -182,14 +199,20 @@ function cellKey(logicalId: string, row: number, col: number): string {
   return `${logicalId}!${row}:${col}`
 }
 
-function pickCell(cell: unknown, resolveStyle: () => Record<string, unknown> | null): SyncCell | null {
+function pickCell(
+  cell: unknown,
+  resolveStyle: (styleId: string) => Record<string, unknown> | null,
+): SyncCell | null {
   if (cell == null || typeof cell !== 'object') return null
   const c = cell as { v?: SyncCell['v']; f?: string; s?: Record<string, unknown> | string; p?: Record<string, unknown>; t?: number }
   const out: SyncCell = {}
   if (c.v !== undefined) out.v = c.v
   if (c.f !== undefined) out.f = c.f
   if (c.s != null) {
-    const resolved = typeof c.s === 'string' ? resolveStyle() : c.s
+    // Univer stores a cell's style BY REFERENCE: `s` is an id into the workbook style pool.
+    // Resolving is expensive (see readSheetGrid), so the id is handed to the resolver rather than
+    // pre-bound — that lets the caller memoize per id instead of paying per cell.
+    const resolved = typeof c.s === 'string' ? resolveStyle(c.s) : c.s
     if (resolved && Object.keys(resolved).length > 0) out.s = resolved
   }
   // Inline cell image (and any other rich text) lives in `p`; keep `t` so Univer re-reads it
@@ -230,7 +253,8 @@ interface WSLike {
   getLastColumn(): number
   getRange(row: number, col: number, rows?: number, cols?: number): {
     getCellDataGrid(): unknown[][]
-    getCellStyleData(): unknown
+    /** `'cell'` = the cell's own style; omitted/`'row'` = composed with default/row/column/theme. */
+    getCellStyleData(type?: 'cell' | 'row' | 'column'): unknown
     setValue(v: unknown): void
     merge?(): void
     breakApart?(): void
@@ -701,12 +725,47 @@ export class UniverYjsBinding {
     const cols = lastCol + 1
     if (rows <= 0 || cols <= 0) return cells
     const grid = sheet.getRange(0, 0, rows, cols).getCellDataGrid()
+    // Univer stores a cell's style BY REFERENCE: `cell.s` is a short id into the workbook's shared
+    // style pool, and every cell that looks the same shares ONE id. Resolving an id costs a
+    // `getRange(r, c)` (which `injector.createInstance`s a whole FRange + resolves 3 DI deps) plus a
+    // `getCellStyleData()` — whose own Univer source carries the comment "WARNING: All sheet
+    // CELL_CONTENT interceptors will be called in this method, cause performance issue".
+    //
+    // Paying that PER CELL is what made "select all -> set background / align" hang the tab: one
+    // such command writes a style into every DECLARED cell (1000×100 = 100k, see
+    // CollabSheet.createWorkbook), and Univer's `getLastRow()`/`getLastColumn()` count a style-only
+    // cell as content (they only test whether the cell matrix has a key), so the very next scan
+    // resolved 100k styles one at a time.
+    //
+    // Memoizing by style id collapses that to one resolution per DISTINCT look — a full-sheet style
+    // change has exactly one. This is exact, not approximate: with `'cell'` the resolved value is a
+    // pure function of the id (see below), so a hit is indistinguishable from a miss.
+    const styleCache = new Map<string, Record<string, unknown> | null>()
+    const resolveStyle = (row: number, col: number, styleId: string): Record<string, unknown> | null => {
+      // A style that resolves to null is cached AS null, so `has` — not a truthiness test — is what
+      // distinguishes "already resolved, it was empty" from "never resolved".
+      if (styleCache.has(styleId)) return styleCache.get(styleId) ?? null
+      let resolved: Record<string, unknown> | null = null
+      try {
+        // `'cell'` (not the default `'row'`) is deliberate, and is what makes the cache sound. The
+        // default composes default + row + column + theme + cell styles, so its result depends on
+        // WHERE the cell is, not just on the id. We want the cell's OWN style anyway: composing
+        // would bake this client's default look (font, size, …) into every replicated cell, both
+        // inflating the doc and overriding the peer's own defaults. This project sets no row,
+        // column or theme styles, so nothing is lost by not composing.
+        resolved = sheet.getRange(row, col).getCellStyleData('cell') as Record<string, unknown> | null
+      } catch {
+        resolved = null
+      }
+      styleCache.set(styleId, resolved)
+      return resolved
+    }
     for (let r = 0; r < grid.length; r++) {
       const rowArr = grid[r] ?? []
       for (let c = 0; c < rowArr.length; c++) {
         cells.set(
           cellKey(logicalId, r, c),
-          pickCell(rowArr[c], () => sheet.getRange(r, c).getCellStyleData() as Record<string, unknown> | null),
+          pickCell(rowArr[c], (styleId) => resolveStyle(r, c, styleId)),
         )
       }
     }
@@ -763,6 +822,15 @@ export class UniverYjsBinding {
     if (!wb) return
     this.applyingRemote = true
     try {
+      // Parse + validate ONCE, grouped by target sheet, so each sheet's whole batch can go in as a
+      // single mutation (applyCellsBatched). Applying cell-by-cell through the facade is what made a
+      // full-sheet style change unrecoverable: `FRange.setValue` is a complete
+      // `SetRangeValuesCommand` every time (deep-clones undo data, pushes an undo entry, dispatches a
+      // mutation, re-renders, recomputes auto-height), and a select-all style change produces one key
+      // per DECLARED cell — 100k of them (1000×100, see CollabSheet.createWorkbook). Worse, those
+      // keys persist in the Y.Doc, so `runInitialSync` replayed all 100k commands on EVERY subsequent
+      // open: the document stayed unusable long after the edit that caused it.
+      const bySheet = new Map<string, RemoteCellWrite[]>()
       for (const key of keys) {
         const bang = key.indexOf('!')
         if (bang < 0) continue
@@ -770,27 +838,82 @@ export class UniverYjsBinding {
         const rc = key.slice(bang + 1)
         const localId = this.logicalToLocal.get(logicalId)
         if (!localId) continue // sheet not created locally yet (registry reconcile pending)
-        const sheet = wb.getSheetBySheetId?.(localId) ?? null
-        if (!sheet) continue
         const [rowStr, colStr] = rc.split(':')
         const row = Number(rowStr)
         const col = Number(colStr)
         if (!Number.isInteger(row) || !Number.isInteger(col)) continue
         if (row < 0 || row >= SHEET_MAX_ROWS || col < 0 || col >= SHEET_MAX_COLS) continue
-        const cell = this.ymap.get(key) ?? null
-        // Per-cell isolation: one bad setValue must not abort the batch, and record
-        // lastSeen ONLY after setValue succeeds — if it threw, the local diff must not
-        // treat the cell as synced forever (divergence).
-        try {
-          sheet.getRange(row, col).setValue(cell ?? { v: null })
-          this.lastSeen.set(key, cell)
-        } catch {
-          // leave lastSeen untouched so a later pass retries this cell
+        const entry: RemoteCellWrite = { key, row, col, cell: this.ymap.get(key) ?? null }
+        const list = bySheet.get(localId)
+        if (list) list.push(entry)
+        else bySheet.set(localId, [entry])
+      }
+      for (const [localId, pending] of bySheet) {
+        const sheet = wb.getSheetBySheetId?.(localId) ?? null
+        if (!sheet) continue
+        if (this.applyCellsBatched(wb, localId, pending)) continue
+        // Fall back to the per-cell facade path when batching isn't possible (no workbook id, or a
+        // Univer without `syncExecuteCommand` — including the structural fake in binding.test.ts).
+        for (const { key, row, col, cell } of pending) {
+          // Per-cell isolation: one bad setValue must not abort the batch, and record
+          // lastSeen ONLY after setValue succeeds — if it threw, the local diff must not
+          // treat the cell as synced forever (divergence).
+          try {
+            sheet.getRange(row, col).setValue(cell ?? { v: null })
+            this.lastSeen.set(key, cell)
+          } catch {
+            // leave lastSeen untouched so a later pass retries this cell
+          }
         }
       }
     } finally {
       this.applyingRemote = false
     }
+  }
+
+  /**
+   * Write one sheet's whole remote batch with a SINGLE `set-range-values` mutation.
+   *
+   * `cellValue` is a SPARSE `{ [row]: { [col]: cell } }` matrix — Univer walks it with
+   * `ObjectMatrix.forValue`, touching only the keys present — so scattered cells cost one dispatch
+   * instead of one command each. Dispatching the mutation rather than `SetRangeValuesCommand` also
+   * skips the undo-stack push, which is what we WANT here: a peer's edit must not land in this
+   * user's undo history. The mutation is in Univer's `COMMAND_LISTENER_VALUE_CHANGE` list, so render
+   * + formula invalidation still happen.
+   *
+   * Trade-off: the command path also runs `generateMutationsOfAutoHeight`, which this skips. Row
+   * heights replicate through their own dimMap sync, so a remote wrap/font change no longer grows
+   * the row locally until that sync lands.
+   *
+   * Returns false when batching isn't possible, so the caller can fall back per cell.
+   */
+  private applyCellsBatched(wb: WBLike, localId: string, pending: RemoteCellWrite[]): boolean {
+    const unitId = wb.getId?.()
+    if (!unitId) return false
+    const exec = (
+      this.univerAPI as unknown as { syncExecuteCommand?: (id: string, params: unknown) => unknown }
+    ).syncExecuteCommand
+    if (typeof exec !== 'function') return false
+    const cellValue: Record<number, Record<number, unknown>> = {}
+    for (const { row, col, cell } of pending) {
+      // `{ v: null }` for a delete matches the previous per-cell behaviour exactly: both paths end in
+      // this same mutation, which clears the cell through mergeCellData.
+      const value = cell ?? { v: null }
+      const rowMap = cellValue[row]
+      if (rowMap) rowMap[col] = value
+      else cellValue[row] = { [col]: value }
+    }
+    try {
+      // A mutation handler returns false when it can't resolve the unit/sheet. Treat that as "not
+      // applied" and let the caller retry per cell rather than marking the batch synced.
+      if (exec.call(this.univerAPI, SET_RANGE_VALUES_MUTATION, { unitId, subUnitId: localId, cellValue }) === false) {
+        return false
+      }
+    } catch {
+      return false
+    }
+    for (const { key, cell } of pending) this.lastSeen.set(key, cell)
+    return true
   }
 
   /** Persist a column-width / row-height change (keyed by the ACTIVE sheet's logical id). */

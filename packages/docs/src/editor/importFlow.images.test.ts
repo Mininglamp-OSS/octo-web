@@ -9,6 +9,8 @@ vi.mock('../attachments/api.ts', () => ({
 }))
 
 import { migrateImportedImages } from './importFlow.ts'
+import { exportDocToMarkdown, type MdNode } from '../export/markdown.ts'
+import { parseMarkdownToPmDoc } from '../import/markdown.ts'
 
 // A signed export URL for a foreign doc: path carries the source doc + att_ id, query is a
 // short-lived signature. The editor would resolve this under the NEW doc's id and fail, so the
@@ -39,6 +41,7 @@ describe('migrateImportedImages', () => {
     copyAttachments.mockReset()
     ingestAttachments.mockReset()
     ingestAttachments.mockResolvedValue({ mappings: [], notIngested: [] })
+    vi.unstubAllGlobals()
   })
 
   it('server-copies a foreign service image and rewrites its attachId + src to the new doc values', async () => {
@@ -109,6 +112,71 @@ describe('migrateImportedImages', () => {
     expect(warnings).toEqual([])
     expect(firstImageNode(doc).attrs.attachId).toBe('att_ext')
     expect(firstImageNode(doc).attrs.src).toBe('https://cdn/ext.png')
+  })
+
+  it('round-trips an exported stored SVG through the backend copy path without browser fetch', async () => {
+    const source: MdNode = {
+      type: 'doc',
+      content: [
+        { type: 'image', attrs: { attachId: 'att_svgold', alt: 'vector one' } },
+        { type: 'image', attrs: { attachId: 'att_svgold', alt: 'vector two' } },
+      ],
+    }
+    const markdown = await exportDocToMarkdown('d_old', source, {
+      resolve: async () => ({
+        items: [{
+          attachId: 'att_svgold',
+          url: 'https://signed.test/file/d_old/att_svgold/vector.svg?sig=x',
+          expiresInSec: 300,
+          mime: 'image/svg+xml',
+          sizeBytes: 80,
+          fileName: 'vector.svg',
+        }],
+        notFound: [],
+      }),
+    })
+    const parsed = parseMarkdownToPmDoc(markdown).doc
+    const browserFetch = vi.fn()
+    vi.stubGlobal('fetch', browserFetch)
+    copyAttachments.mockResolvedValue({
+      mappings: [{
+        sourceDocId: 'd_old', sourceAttachId: 'att_svgold', attachId: 'att_svg_new',
+        url: 'https://cdn/new.svg', mime: 'image/svg+xml', sizeBytes: 70, fileName: 'vector.svg',
+      }],
+      notCopied: [],
+    })
+
+    const warnings = await migrateImportedImages('d_new', parsed, echoT)
+
+    expect(warnings).toEqual([])
+    expect(browserFetch).not.toHaveBeenCalled()
+    expect(copyAttachments).toHaveBeenCalledWith('d_new', [{ docId: 'd_old', attachId: 'att_svgold' }])
+    expect(ingestAttachments).not.toHaveBeenCalled()
+    const images = (parsed.content as Array<Record<string, any>>).filter((node) => node.type === 'image')
+    expect(images).toHaveLength(2)
+    for (const image of images) {
+      expect(image.attrs).toMatchObject({ attachId: 'att_svg_new', src: 'https://cdn/new.svg' })
+    }
+  })
+
+  it('migrates an external SVG only through the SSRF-guarded backend ingest path', async () => {
+    const browserFetch = vi.fn()
+    vi.stubGlobal('fetch', browserFetch)
+    ingestAttachments.mockResolvedValue({
+      mappings: [{
+        sourceUrl: 'https://example.com/vector.svg', attachId: 'att_svg_new',
+        url: 'https://cdn/new.svg', mime: 'image/svg+xml', sizeBytes: 70,
+      }],
+      notIngested: [],
+    })
+    const doc = imageDoc('https://example.com/vector.svg')
+
+    const warnings = await migrateImportedImages('d_new', doc)
+
+    expect(warnings).toEqual([])
+    expect(browserFetch).not.toHaveBeenCalled()
+    expect(ingestAttachments).toHaveBeenCalledWith('d_new', ['https://example.com/vector.svg'])
+    expect(firstImageNode(doc).attrs).toMatchObject({ attachId: 'att_svg_new', src: 'https://cdn/new.svg' })
   })
 
   it('replaces a failed external image with a clickable link (no broken-image box) + one warning', async () => {

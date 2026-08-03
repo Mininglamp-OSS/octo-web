@@ -3,11 +3,14 @@ import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
 import {
   listComments,
+  getCommentThread,
+  listAllCommentMarkers,
   createRootComment,
   createReply,
   editCommentBody,
   setCommentResolved,
   deleteComment,
+  isUnavailableMarkerEndpoint,
 } from './api.ts'
 
 let api: MockApiClient
@@ -41,6 +44,42 @@ describe('comment API — frozen contract (feature #3 §, backend PR #5)', () =>
     const res = await listComments('d_1')
     expect(api.calls[0].url).toBe('/docs/d_1/comments')
     expect(res.nextCursor).toBeNull()
+  })
+
+  it('fetches one grouped thread directly for marker navigation', async () => {
+    api.responder = () => ({ data: { id: 9, replies: [] }, status: 200 })
+    const thread = await getCommentThread('d_1', 9)
+    expect(thread.id).toBe(9)
+    expect(api.calls[0].url).toBe('/docs/d_1/comments/9/thread')
+  })
+
+
+  it('degrades only missing/conflicting marker endpoints, not auth or network errors', () => {
+    expect(isUnavailableMarkerEndpoint({ response: { status: 404 } })).toBe(true)
+    expect(isUnavailableMarkerEndpoint({ response: { status: 409 } })).toBe(true)
+    expect(isUnavailableMarkerEndpoint({ response: { status: 401 } })).toBe(false)
+    expect(isUnavailableMarkerEndpoint(new TypeError('offline'))).toBe(false)
+  })
+
+  it('walks every lightweight marker page', async () => {
+    api.responder = (_method, url) => {
+      const cursor = new URL(url, 'http://local').searchParams.get('cursor')
+      return cursor
+        ? { data: { items: [{ id: 2, anchorStart: 'Qg==', anchorText: 'b', updatedAt: 'now' }], nextCursor: null }, status: 200 }
+        : { data: { items: [{ id: 1, anchorStart: 'QQ==', anchorText: 'a', updatedAt: 'now' }], nextCursor: 1 }, status: 200 }
+    }
+    const markers = await listAllCommentMarkers('d_1')
+    expect(markers.map((item) => item.id)).toEqual([1, 2])
+    expect(api.calls.map((call) => call.url)).toEqual([
+      '/docs/d_1/comments/markers?limit=100',
+      '/docs/d_1/comments/markers?limit=100&cursor=1',
+    ])
+  })
+
+  it('rejects a repeated or non-advancing marker cursor', async () => {
+    api.responder = () => ({ data: { items: [], nextCursor: 1 }, status: 200 })
+    await expect(listAllCommentMarkers('d_1')).rejects.toThrow('Invalid comment marker cursor')
+    expect(api.calls).toHaveLength(2)
   })
 
   it('creates a ROOT comment carrying anchors and returns the new id', async () => {

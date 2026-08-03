@@ -1,0 +1,14 @@
+.wk-card-profile-story-item {
+  display: grid;
+  gap: var(--wk-sp-2);
+  max-width: 100%;
+}
+
+.wk-card-profile-story-label {
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-secondary);
+}
+
+.wk-card-profile-story-preview {
+  max-width: 100%;
+}

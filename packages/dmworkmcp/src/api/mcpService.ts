@@ -12,6 +12,7 @@ import type {
   McpQuickStart,
   UpdateMcpParams,
 } from "../types/mcp";
+import { toWireParams } from "./mcpWireParams";
 import {
   MCP_CATEGORY_LABELS,
   MCP_CATEGORY_ORDER,
@@ -134,6 +135,7 @@ async function fetchMcpListMockFiltered(
   const keyword = (params.keyword ?? "").trim().toLowerCase();
   const category = params.category ?? "all";
   const createdBy = params.createdByType;
+  const tags = params.tags ?? [];
   const filtered = source.filter((item) => {
     const matchCategory = category === "all" || item.category === category;
     const matchKeyword =
@@ -144,7 +146,11 @@ async function fetchMcpListMockFiltered(
     // read-side default the wire mapper applies for pre-#894 records.
     const rowType = item.createdByType ?? "human";
     const matchCreatedBy = !createdBy || rowType === createdBy;
-    return matchCategory && matchKeyword && matchCreatedBy;
+    // Multi-tag filter is AND: a row must carry every selected tag. Mirrors
+    // the backend semantics in octo-marketplace (mcp-v1.md §4.2).
+    const matchTags =
+      tags.length === 0 || tags.every((tag) => item.tags.includes(tag));
+    return matchCategory && matchKeyword && matchCreatedBy && matchTags;
   });
   const offset = params.offset && params.offset > 0 ? params.offset : 0;
   const limit =
@@ -232,6 +238,7 @@ async function updateMcpMock(
   next.createdByType = prev.createdByType;
   next.createdByBotUid = prev.createdByBotUid;
   next.createdByBotName = prev.createdByBotName;
+  next.visibility = prev.visibility;
   MOCK_MCP_DETAILS[idx] = next;
   const listIdx = MOCK_MCP_LIST.findIndex((it) => it.id === id);
   if (listIdx !== -1) MOCK_MCP_LIST[listIdx] = projectListItem(next);
@@ -255,14 +262,21 @@ function buildDetailFromCreate(id: string, params: CreateMcpParams): McpDetail {
     serverName: params.name.trim(),
     slug: slugifyServerName(params.slug?.trim() ? params.slug : params.name),
     url: params.url || undefined,
-    authType: params.authType,
     headers:
       params.headers && Object.keys(params.headers).length
         ? params.headers
         : undefined,
+    headersUserSupplied:
+      params.headersUserSupplied && params.headersUserSupplied.length
+        ? params.headersUserSupplied
+        : undefined,
     command: params.command || undefined,
     args: params.args && params.args.length ? params.args : undefined,
     env: params.env && Object.keys(params.env).length ? params.env : undefined,
+    envUserSupplied:
+      params.envUserSupplied && params.envUserSupplied.length
+        ? params.envUserSupplied
+        : undefined,
   };
   return {
     id,
@@ -312,7 +326,32 @@ function slugify(s: string): string {
 // ─── Real implementations (octo-marketplace MCP catalog v1) ─────────────────
 // Wire contract: octo-marketplace/docs/api/mcp-v1.md. The catalog is mounted at
 // <origin>/market/api/v1 (nginx / vite proxy strips the /market prefix to the
-// service's own /api/v1), mirroring the summary + matter service convention.
+// service's own /api/v1), mirroring the summary service convention.
+
+/** Serialise axios request params as repeated keys (`?a=1&a=2`) instead of
+ *  axios 0.25's default `?a[]=1&a[]=2`. gin's QueryArray on the marketplace
+ *  backend only recognises the plain-repeat form; a bracketed key would
+ *  silently become a single-string param that never matches. Also drops
+ *  undefined/null keys so callers can just pass an optional value without
+ *  pre-filtering. Exported so the wire contract can be pinned in unit
+ *  tests without spinning up an axios instance. */
+export function serializeMcpParams(
+  params: Record<string, unknown> | undefined
+): string {
+  const usp = new URLSearchParams();
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item === undefined || item === null) continue;
+        usp.append(key, String(item));
+      }
+    } else {
+      usp.append(key, String(value));
+    }
+  }
+  return usp.toString();
+}
 
 const mcpAxios = axios.create({
   baseURL: "",
@@ -321,27 +360,7 @@ const mcpAxios = axios.create({
   // the same ceiling explicitly to avoid the UI-hang class of bug that
   // DEFAULT_REQUEST_TIMEOUT_MS was introduced to close.
   timeout: DEFAULT_REQUEST_TIMEOUT_MS,
-  // Serialise array params as repeated keys (`?a=1&a=2`) instead of axios
-  // 0.25's default `?a[]=1&a[]=2`. gin's QueryArray on the marketplace
-  // backend only recognises the plain-repeat form; a bracketed key would
-  // silently become a single-string param that never matches. Also drops
-  // undefined/null keys so callers can just pass an optional value without
-  // pre-filtering.
-  paramsSerializer: (params) => {
-    const usp = new URLSearchParams();
-    for (const [key, value] of Object.entries(params ?? {})) {
-      if (value === undefined || value === null) continue;
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          if (item === undefined || item === null) continue;
-          usp.append(key, String(item));
-        }
-      } else {
-        usp.append(key, String(value));
-      }
-    }
-    return usp.toString();
-  },
+  paramsSerializer: serializeMcpParams,
 });
 
 const BASE = "/market/api/v1";
@@ -511,7 +530,15 @@ interface McpDetailWire extends McpListItemWire {
     command?: string;
     args?: string[];
     env?: Record<string, string>;
+    env_user_supplied?: string[];
     headers?: Record<string, string>;
+    headers_user_supplied?: string[];
+    // Legacy marker (mcp-v1.md §5.2). No longer sent on new records —
+    // Bearer auth is expressed as an `Authorization` row + toggle ON —
+    // but pre-toggle records still carry `auth_type: "bearer"` without a
+    // matching `Authorization` header entry. mapDetail synthesizes the
+    // missing user-supplied entry so the copy-paste snippet keeps
+    // rendering an Authorization line for those records.
     auth_type?: "bearer" | "none";
   };
   tools: McpDetail["tools"];
@@ -560,6 +587,30 @@ function mapDetail(raw: McpDetailWire): McpDetail {
   // an empty stdio-shaped block so the modal renders with an empty
   // quick-access tab instead of blowing up.
   const q = raw.quick_start ?? ({} as McpDetailWire["quick_start"]);
+  // Legacy-bearer migration shim: records created before the
+  // user_supplied toggle model expressed Bearer auth via
+  // `auth_type: "bearer"` alone, without a matching Authorization row.
+  // The snippet renderer no longer looks at auth_type, so without
+  // synthesizing an entry here those old snippets ship WITHOUT an
+  // Authorization line at all. Rebuild a user-supplied Authorization
+  // slot so consumers still see a placeholder to fill in. Only fires
+  // when the wire had no Authorization key already (any explicit row
+  // wins over the marker).
+  let headers = q.headers;
+  let headersUserSupplied = q.headers_user_supplied;
+  if (q.auth_type === "bearer") {
+    const hasAuthKey = !!(
+      headers &&
+      Object.keys(headers).some((k) => k.toLowerCase() === "authorization")
+    );
+    if (!hasAuthKey) {
+      headers = { ...(headers ?? {}), Authorization: "" };
+      headersUserSupplied = [
+        ...(headersUserSupplied ?? []),
+        "Authorization",
+      ];
+    }
+  }
   return {
     ...item,
     quickStart: {
@@ -570,8 +621,9 @@ function mapDetail(raw: McpDetailWire): McpDetail {
       command: q.command,
       args: q.args,
       env: q.env,
-      headers: q.headers,
-      authType: q.auth_type,
+      envUserSupplied: q.env_user_supplied,
+      headers,
+      headersUserSupplied,
     },
     tools: raw.tools ?? [],
     usageExamples: raw.usage_examples ?? [],
@@ -579,29 +631,6 @@ function mapDetail(raw: McpDetailWire): McpDetail {
     notes: raw.notes ?? [],
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
-  };
-}
-
-function toWireParams(params: CreateMcpParams | UpdateMcpParams) {
-  return {
-    name: params.name,
-    slug: params.slug,
-    slogan: params.slogan,
-    category: params.category,
-    icon: params.icon,
-    tags: params.tags,
-    transport: params.transport,
-    url: params.url,
-    command: params.command,
-    args: params.args,
-    env: params.env,
-    headers: params.headers,
-    auth_type: params.authType,
-    tools: params.tools,
-    usage_examples: params.usageExamples,
-    faqs: params.faqs,
-    notes: params.notes,
-    visibility: params.visibility,
   };
 }
 
@@ -634,18 +663,22 @@ async function fetchMcpListPath(
   // Relevance is only meaningful with a keyword — every row scores 0 otherwise,
   // making the sort order arbitrary. When browsing, surface freshest first.
   query.sort = keyword ? "relevance" : "updated";
+  // Multi-tag filter — mcp-v1.md §4.2 accepts `tag` as repeatable OR
+  // comma-separated. We use REPEATED params (`tag=a&tag=b&tag=c`) so a
+  // tag value that happens to contain a comma still round-trips intact;
+  // comma-joining would let the backend re-split "v1.0,beta" into two
+  // wrong tags and produce silent empty results.
+  if (params.tags?.length) {
+    query.tag = params.tags;
+  }
   const pageSize = params.limit && params.limit > 0 ? params.limit : 20;
   query.page_size = pageSize;
   query.page = Math.floor((params.offset ?? 0) / pageSize) + 1;
-  // Category counts must honour the SAME `created_by_type` filter as the
-  // item list, otherwise the pill numbers become misleading when a source
-  // filter is active (issue #894 follow-up). `/mcps/mine` scopes to the
-  // caller via mode=mine; the source filter piggy-backs on top. Both are
-  // passed through the shared axios params serializer, so there's a single
-  // wire-shape truth for repeated-array values.
-  const categoryParams: Record<string, unknown> = {};
-  if (path === "/mcps/mine") categoryParams.mode = "mine";
-  if (params.createdByType) categoryParams.created_by_type = params.createdByType;
+  const categoryParams = buildMcpCategoryParams(
+    path === "/mcps/mine" ? "mine" : "all",
+    params,
+    keyword
+  );
   const [resp, categoryWire] = await executeMcpListRequest(() => Promise.all([
       mcpAxios.get<McpListResponseWire>(`${BASE}${path}`, { params: query }),
       mcpAxios
@@ -664,6 +697,22 @@ async function fetchMcpListPath(
     count: categoryCounts.get(key) ?? 0,
   }));
   return { items, total: resp.data.pagination.total, categories };
+}
+
+export function buildMcpCategoryParams(
+  mode: "all" | "mine",
+  params: Pick<ListMcpParams, "createdByType" | "tags">,
+  keyword = ""
+): Record<string, unknown> {
+  // Category counts must honour the same keyword/tag/provenance scope as the
+  // item list. The active category filter is intentionally excluded so category
+  // pills remain useful for switching within the current search/tag result set.
+  const categoryParams: Record<string, unknown> = {};
+  if (mode === "mine") categoryParams.mode = "mine";
+  if (keyword) categoryParams.keyword = keyword;
+  if (params.createdByType) categoryParams.created_by_type = params.createdByType;
+  if (params.tags?.length) categoryParams.tag = params.tags;
+  return categoryParams;
 }
 
 async function fetchMcpDetailReal(id: string): Promise<McpDetail> {
@@ -835,6 +884,87 @@ export function fetchMcpMine(
 
 export function fetchMcpDetail(id: string): Promise<McpDetail> {
   return USE_MOCK ? fetchMcpDetailMock(id) : fetchMcpDetailReal(id);
+}
+
+/** One tag suggestion in the tag-filter popover (mcp-v1.md §4.8). */
+export interface McpTagSuggestion {
+  name: string;
+  count: number;
+}
+
+/** GET /market/api/v1/mcp_tags — tag suggestions for the search-bar
+ *  popover. Backend aggregates across the caller's visible set (system +
+ *  space rows), sorted by descending count. Empty `query` returns every
+ *  visible tag; the backend clamps `limit` to [1, 100] with default 50.
+ *  Pass `mode: "mine"` when the popover opens from the "我的" tab so
+ *  suggestions match `GET /mcps/mine`. */
+export function fetchMcpTags(
+  query = "",
+  opts: { signal?: AbortSignal; limit?: number; mode?: "all" | "mine" } = {}
+): Promise<McpTagSuggestion[]> {
+  return USE_MOCK
+    ? fetchMcpTagsMock(query, opts)
+    : fetchMcpTagsReal(query, opts);
+}
+
+async function fetchMcpTagsMock(
+  query: string,
+  opts: { signal?: AbortSignal; limit?: number; mode?: "all" | "mine" }
+): Promise<McpTagSuggestion[]> {
+  // Aggregate from the in-memory mock list. `mode: "mine"` mirrors
+  // fetchMcpMineMock's owner filter (creatorName === caller). Signal +
+  // limit honored for parity with the real backend so the mock behaves
+  // the same in dev harnesses; the mock body is otherwise unreachable in
+  // production (USE_MOCK is a `const false` at :59).
+  if (opts.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  const source =
+    opts.mode === "mine"
+      ? MOCK_MCP_LIST.filter((it) => it.creatorName === (WKApp.loginInfo?.name || ""))
+      : MOCK_MCP_LIST;
+  const counts = new Map<string, number>();
+  for (const item of source) {
+    for (const tag of item.tags) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  const kw = query.trim().toLowerCase();
+  const items: McpTagSuggestion[] = [];
+  counts.forEach((count, name) => {
+    if (kw && !name.toLowerCase().includes(kw)) return;
+    items.push({ name, count });
+  });
+  items.sort((a, b) => (b.count - a.count) || a.name.localeCompare(b.name));
+  // Backend clamps `limit` to [1, 100] with default 50.
+  const limit = Math.min(100, Math.max(1, opts.limit ?? 50));
+  const trimmed = items.slice(0, limit);
+  return new Promise<McpTagSuggestion[]>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(trimmed), MOCK_DELAY_MS);
+    opts.signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    });
+  });
+}
+
+async function fetchMcpTagsReal(
+  query: string,
+  opts: { signal?: AbortSignal; limit?: number; mode?: "all" | "mine" }
+): Promise<McpTagSuggestion[]> {
+  const params: Record<string, unknown> = {};
+  if (query.trim()) params.q = query.trim();
+  if (opts.limit && opts.limit > 0) params.limit = opts.limit;
+  if (opts.mode === "mine") params.mode = "mine";
+  // Route through the shared get<T>() helper so 4xx/5xx/network failures
+  // are classified into McpListError like every other read endpoint. The
+  // helper re-throws axios cancels unchanged, so the caller's abort branch
+  // still fires. Array.isArray guard covers a non-list envelope (`{}` or
+  // `{data:null}`) surfacing as an empty suggestions list.
+  const data = await get<McpTagSuggestion[] | null>(`/mcp_tags`, params, {
+    signal: opts.signal,
+  });
+  return Array.isArray(data) ? data : [];
 }
 
 /**

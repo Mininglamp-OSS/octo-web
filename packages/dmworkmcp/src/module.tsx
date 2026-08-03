@@ -9,7 +9,7 @@ import zhCN from "./i18n/zh-CN.json";
 import "./index.css";
 
 /**
- * NavRail 顶层菜单图标（MCP 市场）。与 dmworksummary / dmworktodo 的菜单图标同构：
+ * NavRail 顶层菜单图标（MCP 市场）。与 dmworksummary 的菜单图标同构：
  * 纯 SVG、随 active 变色，不引入额外依赖。图标语义：插件 / 拼装块（MCP = 可插拔工具）。
  */
 function McpMarketIcon({ active }: { active?: boolean }) {
@@ -93,7 +93,7 @@ export class McpMarketModule implements IModule {
           <McpMarketIcon />,
           <McpMarketIcon active />
         );
-        // Point the right pane at the MCP market on click. Mirrors summary's
+        // Point the right pane at the MCP market on click.
         // onPress (apps/web/src/App/index.tsx:154) — Main/index.tsx's default
         // click handler is bypassed when onPress is defined, so we own both
         // the left popToRoot and the right replaceToRoot here.
@@ -106,7 +106,7 @@ export class McpMarketModule implements IModule {
           // Sync URL so refresh/copy-link/back button land on the same tab.
           // Main/index.tsx#onMenuClick already syncPath's to the menu's
           // `/mcp-market` before firing onPress, but the mounted pane is the
-          // more specific `/mcp-market/mcp` first tab — reflect that.
+          // more specific MCP landing route — reflect that.
           WKApp.route.syncPath("/mcp-market/mcp");
         };
         return m;

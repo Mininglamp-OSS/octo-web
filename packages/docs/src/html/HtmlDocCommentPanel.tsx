@@ -10,7 +10,8 @@
 // "让 AI 处理" click forwards an instruction to chat (openDocForward). The two are decoupled.
 
 import { useCallback, useEffect, useState } from 'react'
-import { canForwardToChat, openDocForward, t, getWKApp } from '../octoweb/index.ts'
+import { canForwardToChat, openDocForward, t } from '../octoweb/index.ts'
+import { avatarUrlForUid } from './htmlAvatar.ts'
 import {
   createComment,
   formatCommentTime,
@@ -30,7 +31,10 @@ export interface HtmlDocCommentPanelProps {
    *  see the "让 AI 处理" entry at all — it is an author-only forward to chat, not a viewer action. */
   isAuthor?: boolean
   slug: string
-  version: string
+  /** Route selector used for listing comments (`latest` or `vN`). */
+  listVersion: string
+  /** Concrete version injected by the rendered document; required for mutations. */
+  mutationVersion?: number | null
   /**
    * A pending selection anchor lifted from HtmlDocView's selection watcher. When set, the
    * composer pre-targets it (划词评论); cleared once the comment posts. null = doc-level note.
@@ -47,8 +51,18 @@ export interface HtmlDocCommentPanelProps {
 /** Short human label for how a comment is anchored (element aid / selected text / doc-level). */
 function anchorLabel(anchor: Anchor | null | undefined): string {
   if (!anchor) return t('docs.comment.anchorDoc')
-  if (anchor.kind === 'element') return `<${anchor.label ?? 'el'}> #${anchor.aid}`
-  return `“${anchor.text}”`
+  switch (anchor.kind) {
+    case 'element':
+      return `<${anchor.label ?? 'el'}> #${anchor.aid}`
+    case 'text':
+      return `“${anchor.text}”`
+    case 'lost':
+      return anchor.label
+        ? t('docs.comment.anchorLostWithLabel', { values: { label: anchor.label } })
+        : t('docs.comment.anchorLost')
+    default:
+      return t('docs.comment.anchorUnknown')
+  }
 }
 
 function fallbackAnchorText(anchor: Anchor | null | undefined): string | null {
@@ -61,24 +75,14 @@ function authorName(author: OctoDocAuthor | null | undefined): string {
 }
 
 /**
- * Resolve a comment author's avatar URL. Prefer the backend-supplied avatar_url when present;
- * otherwise derive it from the author uid (author.login) the same way collaborator avatars do:
- * the octo-server `/v1/users/<uid>/avatar` image endpoint, reached via the same-origin `/api/v1/`
- * proxy. This makes comment avatars work for ALL comments (incl. history) without the verify API
- * having to return an avatar. Returns null when no uid is available (→ initial-letter fallback).
+ * Resolve a comment author's avatar URL. Backend-supplied `avatar_url` wins; otherwise fall back
+ * to the shared `/api/v1/users/<uid>/avatar` endpoint via avatarUrlForUid (same helper the header
+ * ≡ menu uses for the doc creator). Order matters: never invert — an incoming avatar_url is the
+ * only path that carries a non-avatar-endpoint image the panel must respect.
  */
 function avatarUrlFor(author: OctoDocAuthor | null | undefined): string | null {
   if (author?.avatar_url) return author.avatar_url
-  let uid = author?.login?.trim()
-  if (!uid) return null
-  // Strip the Space-scoped prefix (s<spaceId>_) so we address the raw uid, mirroring
-  // WKApp.avatarUser()'s handling of person channel ids.
-  const spaceId = getWKApp().shared?.currentSpaceId
-  if (spaceId && uid.startsWith(`s${spaceId}_`)) {
-    uid = uid.substring(spaceId.length + 2)
-  }
-  if (!uid) return null
-  return `/api/v1/users/${encodeURIComponent(uid)}/avatar`
+  return avatarUrlForUid(author?.login)
 }
 
 /** Author + time line shown under each root comment and reply. */
@@ -110,7 +114,8 @@ export function HtmlDocCommentPanel({
   space,
   isAuthor,
   slug,
-  version,
+  listVersion,
+  mutationVersion,
   pendingAnchor,
   resolveAnchorText,
   onClearPendingAnchor,
@@ -123,12 +128,12 @@ export function HtmlDocCommentPanel({
 
   const reload = useCallback(async () => {
     try {
-      setThreads(await listComments(slug, version))
+      setThreads(await listComments(slug, listVersion))
       setError(null)
     } catch {
       setError(t('docs.state.error'))
     }
-  }, [slug, version])
+  }, [slug, listVersion])
 
   useEffect(() => {
     void reload()
@@ -136,6 +141,11 @@ export function HtmlDocCommentPanel({
 
   async function submit() {
     if (draft.trim() === '') return
+    const version = mutationVersion
+    if (typeof version !== 'number' || !Number.isInteger(version) || version <= 0) {
+      setError(t('docs.comment.errorVersion'))
+      return
+    }
     setBusy(true)
     try {
       await createComment(slug, {
@@ -156,7 +166,7 @@ export function HtmlDocCommentPanel({
   // "让 AI 处理" bridge availability (feature #511 seam). Gated: the standalone /d/ page has no
   // host IM surface, so we disable the control there instead of rendering a dead button.
   const canForward = canForwardToChat()
-  const instructionDoc: AgentInstructionDoc = { docId, slug, space, version }
+  const instructionDoc: AgentInstructionDoc = { docId, slug, space, version: listVersion }
 
   function handleWithAI(thread: OctoDocCommentThread) {
     if (!canForward) return
@@ -180,7 +190,8 @@ export function HtmlDocCommentPanel({
 
       <ul className="octo-html-doc-comments-list">
         {threads.map((thread) => {
-          const quoteText = resolveAnchorText?.(thread.anchor) ?? fallbackAnchorText(thread.anchor)
+          const canResolveAnchor = thread.anchor?.kind === 'element' || thread.anchor?.kind === 'text'
+          const quoteText = (canResolveAnchor ? resolveAnchorText?.(thread.anchor) : null) ?? fallbackAnchorText(thread.anchor)
           const label = anchorLabel(thread.anchor)
 
           return (

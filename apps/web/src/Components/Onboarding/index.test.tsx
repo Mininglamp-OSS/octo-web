@@ -92,7 +92,7 @@ describe("Onboarding", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps the intro mounted behind the skip target until the transition finishes", () => {
+  it("hides but keeps the intro mounted during the skip transition until it finishes", () => {
     const onDismiss = vi.fn();
 
     render(<Onboarding forceVisible onDismiss={onDismiss} />);
@@ -106,17 +106,12 @@ describe("Onboarding", () => {
     expect(onDismiss).not.toHaveBeenCalled();
     expect(introDialog).toBeInTheDocument();
     expect(introDialog).toHaveAttribute("aria-hidden", "true");
-    expect(
-      document.querySelector(".wk-onboarding-skip-transition-target")
-    ).toBeInTheDocument();
+    expect(introDialog).toHaveClass("is-skip-transition-target");
 
     act(() => viewTransitionState.onFinished?.());
 
     expect(onDismiss).toHaveBeenCalledOnce();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(
-      document.querySelector(".wk-onboarding-skip-transition-target")
-    ).not.toBeInTheDocument();
   });
 
   it("keeps the timed intro skip fallback when view transitions are unavailable", () => {

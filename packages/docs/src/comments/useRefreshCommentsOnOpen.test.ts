@@ -7,17 +7,19 @@ function makeComments(refresh: () => Promise<void>): UseDocComments {
   return {
     threads: [],
     loading: false,
+    loadingThreadIds: new Set(),
     error: null,
     nextCursor: null,
     includeResolved: false,
     setIncludeResolved: () => {},
     refresh,
     loadMore: async () => {},
-    createRoot: async () => {},
-    reply: async () => {},
-    editBody: async () => {},
-    resolve: async () => {},
-    remove: async () => {},
+    loadThread: async () => true,
+    createRoot: async () => ({ ok: true, error: null }),
+    reply: async () => ({ ok: true, error: null }),
+    editBody: async () => ({ ok: true, error: null }),
+    resolve: async () => ({ ok: true, error: null }),
+    remove: async () => ({ ok: true, error: null }),
   }
 }
 
@@ -45,6 +47,16 @@ describe('useRefreshCommentsOnOpen — refetch on panel open (XIN-1323)', () => 
 
     rerender({ open: true })
     expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips the open-edge refresh while a directly selected thread needs hydration', () => {
+    const comments = makeComments(refresh)
+    const { rerender } = renderHook(
+      ({ open, direct }) => useRefreshCommentsOnOpen(comments, open, direct),
+      { initialProps: { open: false, direct: false } },
+    )
+    rerender({ open: true, direct: true })
+    expect(refresh).not.toHaveBeenCalled()
   })
 
   it('does not re-refresh on re-renders while the panel stays open', () => {

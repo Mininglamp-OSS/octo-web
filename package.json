@@ -22,13 +22,16 @@
     "i18n:scan": "node scripts/i18n-scan.mjs scan",
     "i18n:check": "node scripts/i18n-scan.mjs check",
     "i18n:baseline": "node scripts/i18n-scan.mjs baseline",
+    "verify:excalidraw-patch": "node scripts/verify-excalidraw-patch.mjs",
+    "verify:excalidraw-build": "node scripts/verify-excalidraw-build.mjs",
+    "verify:web-build-cache-key": "node scripts/verify-web-build-cache-key.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "gen:component": "node scripts/gen-component.mjs",
     "new:worktree": "bash scripts/new-worktree.sh",
     "cleanup:worktree": "bash scripts/cleanup-worktree.sh"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.61.1",
     "@storybook/addon-vitest": "^10.3.3",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -70,6 +73,9 @@
       "lodash-es": "^4.18.1",
       "nanoid": "^3.3.11",
       "react-error-overlay": "6.0.9"
+    },
+    "patchedDependencies": {
+      "@excalidraw/excalidraw@0.18.1": "patches/@excalidraw__excalidraw@0.18.1.patch"
     }
   }
 }

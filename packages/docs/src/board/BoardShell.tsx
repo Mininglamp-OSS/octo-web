@@ -6,19 +6,32 @@ import {
   useState,
   type ComponentType,
   type ReactElement,
-  type ReactNode,
 } from 'react'
+import { OctoToast } from '@octo/base'
 import { DocTitle } from '../editor/EditorShell.tsx'
 import { DocTerminal } from '../editor/DocTerminal.tsx'
 import { PresenceBar } from '../editor/PresenceBar.tsx'
-import { DocMoreMenu, DeleteIcon, OpenNewPageIcon, HistoryIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
+import { DocMoreMenu, DeleteIcon, ExportIcon, OpenNewPageIcon, HistoryIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { BoardVersionPanel } from './BoardVersionPanel.tsx'
+import { BoardCommentPanel, type BoardAnchorTarget } from './BoardCommentPanel.tsx'
+import { BoardInlineCommentComposer } from './BoardInlineCommentComposer.tsx'
+import { BoardCommentMarkers } from './BoardCommentMarkers.tsx'
+import { BoardContextMenu, type BoardContextMenuItem } from './BoardContextMenu.tsx'
+import { useBoardCommentMarkers } from './useBoardCommentMarkers.ts'
+import { boardElementTypeLabelKey, decodeBoardCommentAnchor } from './boardCommentAnchor.ts'
+import {
+  clampBoardCommentOverlay,
+  deriveBoardCommentOverlayBounds,
+  type BoardCommentOverlayBounds,
+} from './boardCommentOverlay.ts'
+import { useDocComments, useRefreshCommentsOnOpen } from '../comments/useDocComments.ts'
+import type { CommentThread } from '../comments/api.ts'
 import { BoardErrorBoundary } from './BoardErrorBoundary.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { useAccessRequests } from '../access-request/useAccessRequests.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
-import { canManage, canEdit } from '../auth/roles.ts'
+import { canManage, canEdit, canComment } from '../auth/roles.ts'
 import { useDocDelete } from '../editor/useDocDelete.ts'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { getDoc, getUserName } from '../pages/docsApi.ts'
@@ -26,14 +39,26 @@ import type { Role } from '../auth/roles.ts'
 import type { ConnState } from '../collab/createCollabEditor.ts'
 import { i18n, t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
 import { loadBoardScene, persistBoardScene, clearBoardScene, forgetBoard, type BoardScene } from './boardStore.ts'
-import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
 import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
+import { installBoardNativeRelabel } from './boardNativeRelabel.ts'
 import { installLibraryControlButtons } from './libraryControlButtons.ts'
+import { installNativePanelExtensions } from './nativePanelInject.tsx'
+import { installBoardTextInputEvidence } from './boardTextInputEvidence.ts'
+import type { NativePanelTextRuntime } from './NativePanelTextControls.tsx'
+import { BoardCanvasColorControl } from './BoardCanvasColorControl.tsx'
+import {
+  applyPendingTextMarksToNewElements,
+  resetPendingTextDefaults,
+} from './boardTextDefaults.ts'
+import { DEFAULT_BOARD_FONT_FAMILY, BOARD_FONT_FAMILIES } from './boardFontFamilies.ts'
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData, FileFetchRef } from './collab/index.ts'
 import { makeGenerateIdForFile, dataURLToBlob, sanitizeFractionalIndices } from './collab/index.ts'
-import { presignUpload, uploadBinary } from '../attachments/api.ts'
+import { presignUpload, uploadBinary, uploadImage } from '../attachments/api.ts'
 import { fetchBoardFileBinaries } from './boardFiles.ts'
+import { installSvgFileInputPreprocessor } from './svgFilePreprocessor.ts'
+import { classifyBoardImage } from './boardImageMime.ts'
 import {
   setLocalPresenceUser,
   publishLocalPointer,
@@ -57,6 +82,7 @@ type ExcalidrawChange = (
   appState: Record<string, unknown>,
   files: Record<string, unknown>,
 ) => void
+type GetSceneVersion = (elements: readonly unknown[]) => number
 /** Excalidraw's live-pointer callback (scene coords) — drives the local→awareness presence write. */
 type ExcalidrawPointerUpdate = (payload: {
   pointer: { x: number; y: number; tool?: string }
@@ -71,6 +97,9 @@ interface ExcalidrawProps {
   collaborators?: Map<string, BoardCollaborator>
   /** Local pointer stream we publish into provider.awareness so peers see this cursor (XIN-111). */
   onPointerUpdate?: ExcalidrawPointerUpdate
+  onScrollChange?: (scrollX: number, scrollY: number, zoom: { value: number }) => void
+  renderDefaultMainMenu?: boolean
+  onContextMenu?: (payload: BoardExcalidrawContextMenuPayload) => void
   viewModeEnabled?: boolean
   theme?: 'light' | 'dark'
   langCode?: string
@@ -82,10 +111,82 @@ interface ExcalidrawProps {
    */
   generateIdForFile?: (file: File) => string | Promise<string>
   UIOptions?: Record<string, unknown>
-  /** Custom menu / dialog composition rendered inside the canvas (we supply a de-branded MainMenu). */
-  children?: ReactNode
+}
+interface BoardExcalidrawContextMenuPayload {
+  event: MouseEvent
+  type: 'canvas' | 'element'
+  sceneX: number
+  sceneY: number
+  selectedElementIds: Readonly<Record<string, boolean>>
 }
 type ExcalidrawComponent = ComponentType<ExcalidrawProps>
+
+interface BoardElementRevision {
+  readonly version: number
+  readonly versionNonce: number
+}
+
+/** Only the immutable element fields inspected while calculating a safe cut closure. */
+interface BoardCutClosureElement extends BoardElementRevision {
+  readonly id: string
+  readonly type: string
+  readonly isDeleted?: boolean
+  readonly frameId?: string | null
+  readonly containerId?: string | null
+  readonly boundElements?: readonly { readonly id: string }[] | null
+  readonly startBinding?: { readonly elementId: string } | null
+  readonly endBinding?: { readonly elementId: string } | null
+}
+
+/**
+ * Returns the complete live element closure that Excalidraw copy/delete may read or mutate.
+ * Frame containment is directional (deleting a frame releases descendants, deleting a child does
+ * not touch sibling frame contents); bindings are traversed both ways because deletion repair can
+ * rewrite either endpoint's metadata.
+ */
+function getBoardCutRevisionClosure(
+  elements: readonly BoardCutClosureElement[],
+  selectedIds: readonly string[],
+): Map<string, BoardElementRevision> {
+  const liveElements = elements.filter((element) => !element.isDeleted)
+  const byId = new Map(liveElements.map((element) => [element.id, element]))
+  const affected = new Set(selectedIds)
+  let changed = true
+
+  while (changed) {
+    changed = false
+    const add = (id: string | null | undefined) => {
+      if (id && byId.has(id) && !affected.has(id)) {
+        affected.add(id)
+        changed = true
+      }
+    }
+
+    for (const element of liveElements) {
+      if (affected.has(element.id)) {
+        element.boundElements?.forEach((binding) => add(binding.id))
+        add(element.containerId)
+        add(element.startBinding?.elementId)
+        add(element.endBinding?.elementId)
+        if (element.type === 'frame' || element.type === 'magicframe') {
+          liveElements.forEach((candidate) => {
+            if (candidate.frameId === element.id) add(candidate.id)
+          })
+        }
+      }
+
+      if (element.containerId && affected.has(element.containerId)) add(element.id)
+      if (element.boundElements?.some((binding) => affected.has(binding.id))) add(element.id)
+      if (element.startBinding?.elementId && affected.has(element.startBinding.elementId)) add(element.id)
+      if (element.endBinding?.elementId && affected.has(element.endBinding.elementId)) add(element.id)
+    }
+  }
+
+  return new Map([...affected].flatMap((id) => {
+    const element = byId.get(id)
+    return element ? [[id, { version: element.version, versionNonce: element.versionNonce }]] : []
+  }))
+}
 
 /**
  * Structural view of the two Excalidraw collaboration helpers BoardShell injects into the binding
@@ -123,6 +224,13 @@ type LoadLibraryFromBlobFn = (blob: Blob) => Promise<unknown[]>
  * being statically imported.
  */
 type SerializeLibraryFn = (items: unknown[]) => string
+type BoardGetCommonBounds = (elements: readonly any[]) => [number, number, number, number]
+type SerializeSceneFn = (
+  elements: readonly ExcalidrawElement[],
+  appState: Record<string, unknown>,
+  files: Record<string, BinaryFileData>,
+  type: 'local' | 'database',
+) => string
 
 /** The slice of the imperative Excalidraw API the library control buttons drive. */
 interface ExcalidrawLibraryApi {
@@ -207,19 +315,20 @@ function toExcalidrawLang(locale: string): string {
 const boardGenerateIdForFile = makeGenerateIdForFile()
 
 /**
- * Board image upload limits mirroring the backend attachments contract (XIN-701): the image tier is
- * 10 MB and `image/svg+xml` is denied (SVG can carry script → stored-XSS). The backend is the final
- * authority (it 400s on violation); these client-side guards just avoid a doomed round-trip and keep
- * an oversize/SVG paste from ever leaving the browser.
+ * Board image upload limit mirroring the backend attachments contract (XIN-701): the image tier is
+ * 10 MB. SVG is sent through the backend's dedicated sanitizer endpoint; raster images keep the
+ * presigned object-store path. The backend remains the final authority.
  */
 const MAX_BOARD_IMAGE_BYTES = 10 * 1024 * 1024
-const DENIED_IMAGE_MIME = new Set(['image/svg+xml'])
 
-/** Best-effort theme: follow the OS preference, matching the docs `.octo-theme` media query. */
-function prefersDark(): boolean {
-  if (typeof window === 'undefined' || !window.matchMedia) return false
+/** Follow the app's explicit theme first, then the OS preference when the host has no override. */
+function isBoardDarkTheme(): boolean {
   try {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
+    if (typeof document !== 'undefined') {
+      const mode = document.body.getAttribute('theme-mode')
+      if (mode) return mode === 'dark'
+    }
+    return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches
   } catch {
     return false
   }
@@ -273,10 +382,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const [currentTitle, setCurrentTitle] = useState(title)
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
-  // Excalidraw's `MainMenu` compound component, captured off the same dynamic import. Rendered as a
-  // child of the canvas so our de-branded menu (no "Excalidraw links" group) replaces the built-in
-  // fallback menu (XIN-531 item 1).
-  const [MainMenu, setMainMenu] = useState<ExcalidrawMainMenu | null>(null)
+  const getSceneVersionRef = useRef<GetSceneVersion | null>(null)
   const [failed, setFailed] = useState(false)
   const [role, setRole] = useState<Role | undefined>(undefined)
   // Whether the role lookup / collab-token has resolved (success OR failure). Distinguishes
@@ -288,7 +394,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // P2 #6: the standalone path has no other store, so a failed local save is silent data loss.
   // Flip this when persistBoardScene reports a failed write so the header can surface it.
   const [saveFailed, setSaveFailed] = useState(false)
-  const [dark, setDark] = useState(prefersDark)
+  const [dark, setDark] = useState(isBoardDarkTheme)
 
   // --- Header parity with the doc editor (XIN-601 item 2) ---
   // The board header now mirrors the doc editor's right-hand cluster (presence → forward → members
@@ -302,6 +408,22 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // Version-history modal toggle (any role — reader+ can browse/preview; restore/delete gate to
   // admin inside the panel). Opened from the ≡ "more" menu, like the doc/sheet history entry.
   const [versionOpen, setVersionOpen] = useState(false)
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [activeCommentId, setActiveCommentId] = useState<number | null>(null)
+  const loadingCommentIdRef = useRef<number | null>(null)
+  const [pendingPointTarget, setPendingPointTarget] = useState<BoardAnchorTarget | null>(null)
+  const [inlineCommentTarget, setInlineCommentTarget] = useState<BoardAnchorTarget | null>(null)
+  const [boardContextMenu, setBoardContextMenu] = useState<{
+    clientX: number
+    clientY: number
+    target: BoardAnchorTarget
+    type: 'canvas' | 'element'
+    commentOnly: boolean
+  } | null>(null)
+  const [boardViewRevision, setBoardViewRevision] = useState(0)
+  const [commentOverlayBounds, setCommentOverlayBounds] = useState<BoardCommentOverlayBounds | null>(null)
+  const boardViewFrameRef = useRef<number | null>(null)
+  const boardViewSignatureRef = useRef('')
   // Creator + creation date for the ≡ "more" menu head, fetched from the per-doc GET like EditorShell.
   const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
   const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
@@ -312,6 +434,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // Authenticated identity for cache scoping (P1-1). The local mirror + IndexedDB cache are keyed
   // by this uid so a shared browser never exposes one user's board to the next.
   const uid = user?.id
+  const textDefaultsKey = `${uid ?? 'anonymous'}::${docId}`
   // Remote peers' presence (XIN-111): cursors + online list, rebuilt from provider.awareness on
   // every awareness `change`. Held in a REF, not React state (XIN-634 P1-b): awareness 'change'
   // fires on every remote pointer coordinate delta, and routing that through setState re-rendered
@@ -336,9 +459,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // a ref) because the listener effect depends on it, so a canvas that mounts AFTER peers arrive
   // re-subscribes and replays the current map — covering either arrival order (peers resolved
   // before the heavy canvas chunk, or after).
-  const [excalidrawApi, setExcalidrawApi] = useState<{
-    updateScene: (scene: { collaborators: Map<string, BoardCollaborator> }) => void
-  } | null>(null)
+  const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null)
 
   // Excalidraw's restore/reconcile helpers, captured off the same dynamic import as the component
   // (XIN-87). Held in refs because they are pure module functions, not render state — they are read
@@ -351,10 +472,22 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // Excalidraw's `serializeLibraryAsJSON`, captured off the same import. Read by the save-to-file
   // button (XIN-621 ①) to serialize the current library for download.
   const serializeLibraryRef = useRef<SerializeLibraryFn | null>(null)
+  const serializeSceneRef = useRef<SerializeSceneFn | null>(null)
+  const getCommonBoundsRef = useRef<BoardGetCommonBounds | null>(null)
+  // Excalidraw's live element-mutation primitives (`mutateElement` / `redrawTextBoundingBox`),
+  // captured off the same dynamic import and handed to the native-panel text controls so THEY never
+  // statically import the client-only vendor bundle (which would defeat the lazy chunk split and
+  // break SSR — see NativePanelTextRuntime). Populated in the import `.then` before the injector runs.
+  const textRuntimeRef = useRef<NativePanelTextRuntime | null>(null)
   // Raw imperative Excalidraw API handle, stashed by `handleApi` on canvas mount. Held in a ref (not
   // read during render) so the access-gated effect below can wire it into the binding once — and
   // only once — access is confirmed (P1a).
   const boardApiRef = useRef<unknown>(null)
+  // Wrapper around the LIVE Excalidraw canvas. The native-panel injector scopes all of its DOM
+  // queries/subscriptions to this element instead of a document-wide `.excalidraw` lookup, so it can
+  // never latch onto a SECOND Excalidraw in the page — most importantly the read-only version-history
+  // preview (BoardScenePreview), which also renders `.excalidraw` inside `.octo-board-canvas`.
+  const liveCanvasRef = useRef<HTMLDivElement>(null)
 
   // Fail-closed editability (P1-2). On the collab (permissioned) path the canvas is read-only until
   // an authoritative editable role (writer/admin) is confirmed — an unresolved role, an unknown
@@ -381,13 +514,25 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // authoritative role and no terminal transition. The standalone path (own-browser localStorage,
   // no cross-user concern beyond the uid scoping) is always confirmed. Gating hydration this way
   // means protected cached content is never painted before access is confirmed (P1-1).
-  const accessConfirmed = collabMode ? roleResolved && role !== undefined && !terminalActive : true
+  const accessConfirmed = collabMode
+    ? collabSession != null && roleResolved && role !== undefined && !terminalActive
+    : true
 
   // Initial scene is read from the uid-scoped local mirror the first time access is confirmed, so a
   // reopened / refreshed board paints its own content — but never a previous user's, and never
-  // before access is confirmed.
+  // before access is confirmed. BoardShell survives an in-place account switch, therefore these
+  // one-shot refs must be keyed to the cache identity rather than the component lifetime. Reset
+  // synchronously when (uid, docId) changes so the next authorized Excalidraw mount cannot consume
+  // the previous account's imported scene and echo it into the new session's Y.Doc.
   const initialSceneRef = useRef<BoardScene | null>(null)
   const initialSceneLoadedRef = useRef(false)
+  const initialSceneIdentityRef = useRef<string | null>(null)
+  const initialSceneIdentity = `${uid ?? 'anonymous'}::${docId}`
+  if (initialSceneIdentityRef.current !== initialSceneIdentity) {
+    initialSceneIdentityRef.current = initialSceneIdentity
+    initialSceneLoadedRef.current = false
+    initialSceneRef.current = null
+  }
   if (accessConfirmed && !initialSceneLoadedRef.current) {
     initialSceneLoadedRef.current = true
     initialSceneRef.current = loadBoardScene(docId, uid)
@@ -400,6 +545,38 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // uid -> display name for this space: resolves the creator name for the ≡ menu head, and is the
   // same seam the member panel + presence caret use.
   const names = useMemberNames(space)
+  const comments = useDocComments(docId)
+  const commentMarkers = useBoardCommentMarkers(docId, comments.threads)
+  const activeThreadMissing = activeCommentId != null &&
+    !comments.threads.some((thread) => thread.id === activeCommentId)
+  useRefreshCommentsOnOpen(comments, commentsOpen, activeThreadMissing)
+  useEffect(() => {
+    // Marker IDs come from the complete lightweight feed while the drawer is paginated. Resolve a
+    // selected marker directly instead of walking every detailed thread page before it.
+    if (
+      commentsOpen &&
+      activeCommentId != null &&
+      !comments.threads.some((thread) => thread.id === activeCommentId) &&
+      !comments.loading
+    ) {
+      if (loadingCommentIdRef.current === activeCommentId) return
+      loadingCommentIdRef.current = activeCommentId
+      void comments.loadThread(activeCommentId).then((loaded) => {
+        loadingCommentIdRef.current = null
+        if (loaded === false) setActiveCommentId((current) => current === activeCommentId ? null : current)
+      })
+    }
+  }, [commentsOpen, activeCommentId, comments.threads, comments.loading, comments.loadThread])
+  useEffect(() => {
+    // Detailed thread changes are the local/remote mutation signal for the independent marker feed.
+    void commentMarkers.refresh()
+  }, [comments.threads, commentMarkers.refresh])
+  useEffect(() => {
+    if (!collabSession?.subscribeCommentChanges) return
+    return collabSession.subscribeCommentChanges(() => {
+      void comments.refresh()
+    })
+  }, [collabSession, comments.refresh, commentMarkers.refresh])
   // Pending access-request count for the Members-button badge (admin only). Called unconditionally
   // (hooks rules); the hook stays inert when not manage.
   const pendingAccess = useAccessRequests(docId, manage)
@@ -425,12 +602,34 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           reconcileElements?: ReconcileElementsFn
           loadLibraryFromBlob?: LoadLibraryFromBlobFn
           serializeLibraryAsJSON?: SerializeLibraryFn
+          serializeAsJSON?: SerializeSceneFn
+          getCommonBounds?: BoardGetCommonBounds
+          mutateElement?: NativePanelTextRuntime['mutateElement']
+          redrawTextBoundingBox?: NativePanelTextRuntime['redrawTextBoundingBox']
+          FONT_FAMILY?: Record<string, number>
+          getSceneVersion?: GetSceneVersion
         }
         restoreElementsRef.current = m.restoreElements ?? null
         reconcileElementsRef.current = m.reconcileElements ?? null
         loadLibraryFromBlobRef.current = m.loadLibraryFromBlob ?? null
         serializeLibraryRef.current = m.serializeLibraryAsJSON ?? null
-        setMainMenu(() => mod.MainMenu as unknown as ExcalidrawMainMenu)
+        serializeSceneRef.current = m.serializeAsJSON ?? null
+        getCommonBoundsRef.current = 'getCommonBounds' in m ? m.getCommonBounds ?? null : null
+        getSceneVersionRef.current = 'getSceneVersion' in m ? m.getSceneVersion ?? null : null
+        // Hand the native-panel text controls Excalidraw's own mutation primitives (kept off a static
+        // vendor import there). Both are exported from the patched runtime bundle + declaration barrel.
+        if (m.mutateElement && m.redrawTextBoundingBox) {
+          textRuntimeRef.current = {
+            mutateElement: m.mutateElement,
+            redrawTextBoundingBox: m.redrawTextBoundingBox,
+          }
+        }
+        // Register the Board font faces into Excalidraw's FONT_FAMILY id map at load time (was a
+        // module-load side effect of the now-removed static import in NativePanelTextControls), so
+        // text created with a Board face resolves to its numeric id before the canvas first paints.
+        if (m.FONT_FAMILY) {
+          for (const font of BOARD_FONT_FAMILIES) m.FONT_FAMILY[font.value] = font.id
+        }
         setExcalidraw(() => mod.Excalidraw as unknown as ExcalidrawComponent)
       })
       .catch((err) => {
@@ -442,16 +641,25 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     }
   }, [])
 
-  // Follow OS theme changes live so the canvas re-themes with the rest of the app.
+  // Excalidraw 0.18.1 normalizes SVGs before creating its data URL. Materialize safe inline
+  // presentation styles as attributes first so native SVG color survives import and collaboration.
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => setDark(mq.matches)
-    try {
-      mq.addEventListener('change', onChange)
-      return () => mq.removeEventListener('change', onChange)
-    } catch {
-      return undefined
+    if (typeof document === 'undefined') return
+    return installSvgFileInputPreprocessor(document)
+  }, [])
+
+  // Follow the host theme attribute live; use OS preference only while the host has no override.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const mq = typeof window !== 'undefined' ? window.matchMedia?.('(prefers-color-scheme: dark)') : undefined
+    const sync = () => setDark(isBoardDarkTheme())
+    const observer = new MutationObserver(sync)
+    observer.observe(document.body, { attributes: true, attributeFilter: ['theme-mode'] })
+    mq?.addEventListener?.('change', sync)
+    sync()
+    return () => {
+      observer.disconnect()
+      mq?.removeEventListener?.('change', sync)
     }
   }, [])
 
@@ -465,6 +673,17 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     if (!Excalidraw || typeof document === 'undefined') return
     return installExcalidrawDebrand(document)
   }, [Excalidraw])
+
+  // Locale relabel for the native Excalidraw labels its bundled zh-CN locale leaves untranslated
+  // ("Arrow type" / "More options"), which otherwise render in English under a Chinese app locale.
+  // Sourced from the product's own i18n via t(); a visible no-op under en-US. Re-runs on locale
+  // change so switching language repaints the labels. See boardNativeRelabel.ts.
+  useEffect(() => {
+    if (!Excalidraw || typeof document === 'undefined') return
+    const rootEl = liveCanvasRef.current
+    if (!rootEl) return
+    return installBoardNativeRelabel(rootEl)
+  }, [Excalidraw, langCode])
 
   // XIN-621 ① (was XIN-601): read a picked `.excalidrawlib` and load it through the imperative
   // library API. This is exactly what the library panel's "..." → "Load" item did; the injected
@@ -513,7 +732,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
             document.body.appendChild(a)
             a.click()
             a.remove()
-            URL.revokeObjectURL(url)
+            setTimeout(() => URL.revokeObjectURL(url), 0)
           }
           // Return the items unchanged — this is a read, not a mutation.
           return current
@@ -551,6 +770,43 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     })
   }, [Excalidraw, importLibraryFromFile, saveLibraryToFile, resetLibrary])
 
+  // Native right-side properties panel: replace the S/M/L/XL font-size buttons, the 3-button text-
+  // align row, and the 5-swatch stroke picker (which stands in for text colour on text elements)
+  // with Board's extended size/palette controls and the shared alignment controls, and add
+  // element-level bold / italic / underline / line-height fields. Injection is guarded on the raw
+  // imperative Excalidraw API (from handleApi) — before that lands we have no scene handle to
+  // wire the controls to. Read-only sessions skip injection entirely so viewers see unmodified
+  // Excalidraw. See ./nativePanelInject.tsx for the api.onChange + selector strategy.
+  useEffect(() => {
+    if (!Excalidraw || typeof document === 'undefined') return
+    const api = boardApiRef.current as ExcalidrawImperativeAPI | null
+    if (!excalidrawApi || !api) return
+    // Scope the injector to the LIVE canvas wrapper ref so it never queries or mutates DOM outside
+    // this board's Excalidraw — in particular it must never latch onto the version-history preview's
+    // second `.excalidraw`. The wrapper is present whenever `Excalidraw` is loaded (this effect is
+    // gated on that), so the ref is populated by the time the effect runs; bail if it somehow is not.
+    const rootEl = liveCanvasRef.current
+    if (!rootEl) return
+    return installNativePanelExtensions(rootEl, api, {
+      readOnly,
+      defaultsKey: textDefaultsKey,
+      textRuntime: textRuntimeRef.current ?? undefined,
+    })
+  }, [Excalidraw, excalidrawApi, readOnly, textDefaultsKey])
+
+  // Evidence only: capture the browser's beforeinput/input boundary in development so the reported
+  // trailing space can be attributed without destructive trimEnd() normalization or IME/caret drift.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const rootEl = liveCanvasRef.current
+    if (!rootEl) return
+    return installBoardTextInputEvidence(rootEl)
+  }, [Excalidraw])
+
+  // Pending B/I/U tool defaults are intentionally ephemeral and board-scoped. Clear them when this
+  // board changes or unmounts so a later board cannot inherit another board's creation defaults.
+  useEffect(() => () => resetPendingTextDefaults(textDefaultsKey), [textDefaultsKey])
+
   // Presence status for the header bar (XIN-601 item 2). The board owns its collab session directly
   // (not via useCollabEditor), so mirror that hook's wiring: seed from the provider's current state
   // and subscribe to its status/synced events. Inert on the M1 standalone path (no provider). Guarded
@@ -566,11 +822,15 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         }
       | undefined
     if (!provider) return
-    setSynced(provider.isSynced ?? provider.synced ?? false)
+    const transitionSynced = (nextSynced: boolean) => {
+      collabSession?.binding.setSynced?.(nextSynced)
+      setSynced(nextSynced)
+    }
+    transitionSynced(provider.isSynced ?? provider.synced ?? false)
     if (provider.status) setConnState(provider.status)
     if (typeof provider.on !== 'function' || typeof provider.off !== 'function') return
     const onStatus = (e: { status: ConnState }) => setConnState(e.status)
-    const onSynced = () => setSynced(true)
+    const onSynced = () => transitionSynced(true)
     provider.on('status', onStatus)
     provider.on('synced', onSynced)
     return () => {
@@ -648,6 +908,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       ownerId,
       space,
       folder,
+      kind: 'board',
     })
   }, [docId, currentTitle, role, ownerId, space, folder])
 
@@ -746,24 +1007,116 @@ export function BoardShell(props: BoardShellProps): ReactElement {
 
   const onChange = useCallback<ExcalidrawChange>(
     (elements, appState, files) => {
-      if (readOnly) return // never persist from a read-only session
+      // Marker positions follow both local and remote scene changes, including reader sessions.
+      const sceneVersion = getSceneVersionRef.current?.(elements) ?? 0
+      const markerSignature = `${sceneVersion}|${String(appState.scrollX)}|${String(appState.scrollY)}|${String((appState.zoom as { value?: unknown } | undefined)?.value)}|${Object.keys((appState.selectedElementIds as Record<string, unknown> | undefined) ?? {}).sort().join(',')}`
+      if (boardViewSignatureRef.current !== markerSignature && boardViewFrameRef.current == null) {
+        boardViewSignatureRef.current = markerSignature
+        boardViewFrameRef.current = requestAnimationFrame(() => {
+          boardViewFrameRef.current = null
+          setBoardViewRevision((value) => value + 1)
+        })
+      }
+      if (readOnly) {
+        // Observation is not a write: record text arriving during a read-only account/role re-prime
+        // so selecting it after permissions recover cannot be mistaken for local creation.
+        applyPendingTextMarksToNewElements(
+          textDefaultsKey,
+          elements as readonly ExcalidrawElement[],
+          new Set<string>(),
+        )
+        return
+      }
+      const activeAppState = appState as typeof appState & {
+        selectedElementIds?: Record<string, boolean>
+        editingTextElement?: { id?: string } | null
+        newElement?: { id?: string } | null
+      }
+      // Selection alone is not creation: pasted/duplicated text is selected on first observation
+      // but must retain its copied formatting. Only Excalidraw's explicit new/editing signals can
+      // make a first-observed text eligible for pending tool defaults.
+      const localActiveTextIds = new Set<string>([
+        ...(activeAppState.editingTextElement?.id ? [activeAppState.editingTextElement.id] : []),
+        ...(activeAppState.newElement?.id ? [activeAppState.newElement.id] : []),
+      ])
+      const markedElements = applyPendingTextMarksToNewElements(
+        textDefaultsKey,
+        elements as readonly ExcalidrawElement[],
+        localActiveTextIds,
+      ) as readonly ExcalidrawElement[]
+      if (markedElements !== elements) {
+        // Excalidraw has no currentItemCustomData. Stamp the pending B/I/U defaults onto a newly
+        // created text element through the imperative scene path, then persist/sync that stamped
+        // scene below. The helper returns the original array after first observation, preventing an
+        // onChange → updateScene loop.
+        ;(boardApiRef.current as ExcalidrawImperativeAPI | null)?.updateScene({
+          elements: markedElements as never,
+          // Pending marks complete the element's creation; advance the store snapshot without
+          // creating a separate "remove formatting" undo step.
+          captureUpdate: 'NEVER',
+        })
+      }
       // M2: when bound to a collab session, route the edit through the binding (diff → CAS →
       // Y.Doc under LOCAL_ORIGIN; the binding's guards stop a remote apply from echoing back).
       if (collabSession) {
         collabSession.binding.handleLocalChange(
-          elements as readonly ExcalidrawElement[],
+          markedElements,
           files as Record<string, BinaryFileData>,
         )
+        const provider = collabSession.provider as
+          | { isSynced?: boolean; synced?: boolean }
+          | undefined
+        if (provider && (provider.isSynced ?? provider.synced ?? false)) {
+          collabSession.binding.handleLocalAppState?.(
+            appState as { viewBackgroundColor?: unknown },
+          )
+        }
       }
       // Local mirror stays as the offline-first fallback (boardStore §M1↔M2 seam).
-      latestScene.current = { elements: [...elements], appState, files }
+      latestScene.current = { elements: [...markedElements], appState, files }
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => {
         saveTimer.current = null
         if (latestScene.current) persistLocal(latestScene.current)
       }, SAVE_DEBOUNCE_MS)
     },
-    [readOnly, collabSession, persistLocal],
+    [readOnly, collabSession, persistLocal, textDefaultsKey],
+  )
+
+  const onScrollChange = useCallback(() => {
+    liveCanvasRef.current?.dispatchEvent(new CustomEvent('octo-board-view-changed'))
+  }, [])
+
+  useEffect(() => () => {
+    if (boardViewFrameRef.current != null) cancelAnimationFrame(boardViewFrameRef.current)
+    boardViewFrameRef.current = null
+  }, [])
+
+  const blockNativeSceneDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    // The vendor sniffs file contents and can restore a whole scene even when the filename and
+    // declared MIME type look like an ordinary image. Block every OS file drop fail-closed; users
+    // can still insert images through the toolbar, while in-app library/text drags carry no files
+    // and continue to the vendor unchanged.
+    if (event.dataTransfer.files.length === 0) return
+    event.preventDefault()
+    event.stopPropagation()
+  }, [])
+
+  // Explicit picks and every Excalidraw appState writer share the same provider sync gate.
+  // Reading the live provider flag here prevents a stale React `synced` render from opening a write
+  // window while sessions change; the binding keeps its own fail-closed gate as a second defence.
+  const commitCanvasColor = useCallback(
+    (color: string) => {
+      if (readOnly) return
+      const session = collabSession
+      if (!session) return
+      const provider = session.provider as
+        | { isSynced?: boolean; synced?: boolean }
+        | undefined
+      if (!provider || !(provider.isSynced ?? provider.synced ?? false)) return
+      session.binding.handleLocalAppState?.({ viewBackgroundColor: color })
+    },
+    [collabSession, readOnly],
   )
 
   // M2: capture the imperative Excalidraw API on canvas mount. It feeds two consumers: presence
@@ -773,7 +1126,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // below does that wiring; here we only stash the raw handle and flag the canvas as mounted.
   const handleApi = useCallback((api: unknown) => {
     boardApiRef.current = api
-    setExcalidrawApi(api as { updateScene: (scene: { collaborators: Map<string, BoardCollaborator> }) => void })
+    setExcalidrawApi(api as ExcalidrawImperativeAPI)
   }, [])
 
   // XIN-702 image binary bridge. Upload a freshly inserted image to the doc object store and return
@@ -787,17 +1140,19 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       if (!file.dataURL) return null
       const blob = dataURLToBlob(file.dataURL)
       if (!blob) return null // already a remote URL, or not decodable — nothing to upload
-      const mime = file.mimeType ?? blob.type ?? 'application/octet-stream'
-      // Contract limits (XIN-701): SVG is denied (XSS), image tier caps at 10 MB. Skip the upload
-      // rather than fire a request the backend will 400; the image still renders locally for the
-      // author, it just does not sync — surfaced in the console for diagnosis.
-      if (DENIED_IMAGE_MIME.has(mime)) {
-        console.warn('[board] image type not allowed for upload:', mime)
-        return null
-      }
+      // File metadata is caller-controlled and may be empty or oddly cased. Prefer the decoded
+      // data-URL Blob MIME when Excalidraw omitted it, normalize before routing, and content-sniff
+      // SVG so a mislabeled file can never reach the generic uninspected presign path.
+      const { mime, isSvg } = await classifyBoardImage(blob, file.mimeType)
+      // Contract limits (XIN-701): image tier caps at 10 MB. SVG uses the dedicated
+      // sanitized endpoint below; raster images retain the presign path.
       if (blob.size > MAX_BOARD_IMAGE_BYTES) {
         console.warn('[board] image exceeds the 10MB limit, not uploaded:', blob.size)
         return null
+      }
+      if (isSvg) {
+        const svgFile = new File([blob], `${file.id}.svg`, { type: mime })
+        return (await uploadImage(docId, svgFile)).attachId
       }
       const presign = await presignUpload(docId, {
         fileName: file.id,
@@ -887,7 +1242,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       // when `names` resolves (dep below), so a late-loading directory relabels peers in place.
       const map = resolveCollaboratorNames(readBoardCollaborators(awareness), names)
       collaboratorsRef.current = map
-      excalidrawApi?.updateScene({ collaborators: map })
+      excalidrawApi?.updateScene({ collaborators: map as never })
     }
     update()
     awareness.on('change', update)
@@ -900,6 +1255,373 @@ export function BoardShell(props: BoardShellProps): ReactElement {
 
   // Excalidraw's live pointer (scene coords) → provider.awareness, so remote peers render this
   // cursor. No Y.Doc write; inert when there is no session.
+  const getBoardCommentTarget = useCallback((): BoardAnchorTarget => {
+    if (pendingPointTarget) {
+      setPendingPointTarget(null)
+      return pendingPointTarget
+    }
+    const api = boardApiRef.current as ExcalidrawImperativeAPI | null
+    const appState = api?.getAppState()
+    const elements = api?.getSceneElements() ?? []
+    const selectedIds = appState?.selectedElementIds ?? {}
+    const selected = elements.filter((element) => selectedIds[element.id] && !element.isDeleted)
+    if (selected.length > 0) {
+      // Bound text belongs to its container for comment identity, so moving the container keeps the
+      // comment attached. Multi-selection/group comments retain every normalized member id.
+      const normalized = selected.map((element) => {
+        const containerId = 'containerId' in element ? element.containerId : null
+        return (containerId && elements.find((item) => item.id === containerId && !item.isDeleted)) || element
+      })
+      const unique = [...new Map(normalized.map((element) => [element.id, element])).values()]
+      const [minX, minY, maxX, maxY] = getCommonBoundsRef.current
+        ? getCommonBoundsRef.current(unique)
+        : [
+            Math.min(...unique.map((element) => element.x)),
+            Math.min(...unique.map((element) => element.y)),
+            Math.max(...unique.map((element) => element.x + element.width)),
+            Math.max(...unique.map((element) => element.y + element.height)),
+          ]
+      const primary = unique[0]
+      const elementIds = unique.map((element) => element.id)
+      // Single targets use the top-right corner; multi-selection/group targets use the bbox centre.
+      const anchorX = elementIds.length === 1 ? maxX : (minX + maxX) / 2
+      const anchorY = elementIds.length === 1 ? minY : (minY + maxY) / 2
+      return {
+        anchor: {
+          version: 1,
+          kind: 'element',
+          elementId: primary.id,
+          ...(elementIds.length > 1 ? { elementIds } : {}),
+          x: anchorX,
+          y: anchorY,
+        },
+        label: elementIds.length > 1
+          ? `${t('docs.board.comment.selection')} · ${elementIds.length}`
+          : `${t('docs.board.comment.element')} · ${t(boardElementTypeLabelKey(primary.type))}`,
+      }
+    }
+    const zoom = appState?.zoom?.value ?? 1
+    const x = ((appState?.width ?? 0) / 2) / zoom - (appState?.scrollX ?? 0)
+    const y = ((appState?.height ?? 0) / 2) / zoom - (appState?.scrollY ?? 0)
+    return {
+      anchor: { version: 1, kind: 'point', x, y },
+      label: `${t('docs.board.comment.point')} · ${Math.round(x)}, ${Math.round(y)}`,
+    }
+  }, [pendingPointTarget])
+
+  const selectedCommentTarget = useMemo(() => {
+    if (!role || pendingPointTarget || boardViewRevision < 0) return null
+    const api = boardApiRef.current as ExcalidrawImperativeAPI | null
+    const state = api?.getAppState()
+    if (!api || !Object.values(state?.selectedElementIds ?? {}).some(Boolean)) return null
+    return getBoardCommentTarget()
+  }, [role, pendingPointTarget, boardViewRevision, getBoardCommentTarget])
+
+  const boardCommentLocalPoint = useCallback((target: BoardAnchorTarget): { left: number; top: number } => {
+    const api = boardApiRef.current as ExcalidrawImperativeAPI | null
+    const state = api?.getAppState()
+    if (!api || !state) return { left: 0, top: 0 }
+    let sceneX = target.anchor.x
+    let sceneY = target.anchor.y
+    if (target.anchor.kind === 'element') {
+      const ids = target.anchor.elementIds ?? [target.anchor.elementId]
+      const elements = api.getSceneElements().filter((item) => ids.includes(item.id) && !item.isDeleted)
+      if (elements.length > 0) {
+        const [minX, minY, maxX, maxY] = getCommonBoundsRef.current
+          ? getCommonBoundsRef.current(elements)
+          : [
+              Math.min(...elements.map((element) => element.x)),
+              Math.min(...elements.map((element) => element.y)),
+              Math.max(...elements.map((element) => element.x + element.width)),
+              Math.max(...elements.map((element) => element.y + element.height)),
+            ]
+        sceneX = ids.length === 1 ? maxX : (minX + maxX) / 2
+        sceneY = ids.length === 1 ? minY : (minY + maxY) / 2
+      }
+    }
+    const zoom = state.zoom?.value ?? 1
+    return {
+      left: (sceneX + (state.scrollX ?? 0)) * zoom,
+      top: (sceneY + (state.scrollY ?? 0)) * zoom,
+    }
+  }, [boardViewRevision])
+
+  const inlineCommentPoint = inlineCommentTarget ? boardCommentLocalPoint(inlineCommentTarget) : null
+  const selectedCommentPoint = selectedCommentTarget ? boardCommentLocalPoint(selectedCommentTarget) : null
+
+  useEffect(() => {
+    const host = liveCanvasRef.current
+    if (!host) return
+    const measure = () => {
+      const hostRect = host.getBoundingClientRect()
+      const panelColumn = host.querySelector<HTMLElement>('.panelColumn')
+      const propertyPanel = panelColumn?.closest<HTMLElement>('.App-menu__left')
+      const panelRect = propertyPanel?.getBoundingClientRect()
+      const next = deriveBoardCommentOverlayBounds(hostRect, panelRect)
+      setCommentOverlayBounds((current) => current &&
+        current.left === next.left && current.top === next.top &&
+        current.right === next.right && current.bottom === next.bottom
+        ? current
+        : next)
+    }
+    measure()
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    resizeObserver?.observe(host)
+    const mutationObserver = new MutationObserver(measure)
+    mutationObserver.observe(host, { childList: true, subtree: true })
+    window.addEventListener('resize', measure)
+    return () => {
+      resizeObserver?.disconnect()
+      mutationObserver.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [Excalidraw])
+
+  const placeCommentOverlay = useCallback((
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ) => commentOverlayBounds
+    ? clampBoardCommentOverlay(left, top, width, height, commentOverlayBounds)
+    : { left, top }, [commentOverlayBounds])
+
+  const onBoardContextMenu = useCallback((payload: BoardExcalidrawContextMenuPayload) => {
+    const host = liveCanvasRef.current
+    if (!host) return
+    // This callback runs after Excalidraw has hit-tested and normalized selection. Its presence is
+    // also the opt-in that prevents the vendor menu from opening, so no native/Octo stack exists.
+    const target: BoardAnchorTarget = payload.type === 'element'
+      ? getBoardCommentTarget()
+      : {
+          anchor: { version: 1, kind: 'point', x: payload.sceneX, y: payload.sceneY },
+          label: `${t('docs.board.comment.point')} · ${Math.round(payload.sceneX)}, ${Math.round(payload.sceneY)}`,
+        }
+    const hostRect = host.getBoundingClientRect()
+    setBoardContextMenu({
+      clientX: payload.event.clientX - hostRect.left,
+      clientY: payload.event.clientY - hostRect.top,
+      target,
+      type: payload.type,
+      commentOnly: payload.event.altKey,
+    })
+  }, [getBoardCommentTarget])
+
+  const boardContextMenuItems = useMemo((): BoardContextMenuItem[] => {
+    if (!boardContextMenu) return []
+    const api = boardApiRef.current as (ExcalidrawImperativeAPI & {
+      executeAction(name: string, value?: unknown): boolean
+      executeActionWithHostFeedback(name: string, value?: unknown): Promise<boolean>
+      isActionAvailable(name: string): boolean
+    }) | null
+    const items: BoardContextMenuItem[] = []
+    const run = (name: string, feedback?: { success: string; error: string }) => () => {
+      if (!feedback) {
+        api?.executeAction(name)
+        return
+      }
+      void api?.executeActionWithHostFeedback(name).then((executed) => {
+        if (executed) OctoToast.success(feedback.success)
+      }).catch(() => {
+        OctoToast.error(feedback.error)
+      })
+    }
+    const runCut = () => {
+      if (!api) return
+      const initialAppState = api.getAppState()
+      const selectedIds = Object.keys(initialAppState.selectedElementIds)
+        .filter((id) => initialAppState.selectedElementIds[id])
+      const selectedRevisions = getBoardCutRevisionClosure(api.getSceneElements(), selectedIds)
+      if (initialAppState.editingLinearElement
+        || !selectedIds.length
+        || selectedIds.some((id) => !selectedRevisions.has(id))) {
+        OctoToast.error(t('docs.board.contextMenu.cutFailed'))
+        return
+      }
+      void (async () => {
+        try {
+          const copied = await api.executeActionWithHostFeedback('copy')
+          if (!copied) {
+            OctoToast.error(t('docs.board.contextMenu.cutFailed'))
+            return
+          }
+        } catch {
+          OctoToast.error(t('docs.board.contextMenu.cutFailed'))
+          return
+        }
+
+        const currentAppState = api.getAppState()
+        const currentSelection = currentAppState.selectedElementIds
+        const currentSelectedIds = Object.keys(currentSelection).filter((id) => currentSelection[id])
+        const selectionUnchanged = selectedIds.length === currentSelectedIds.length
+          && selectedIds.every((id) => currentSelection[id])
+        const currentRevisions = getBoardCutRevisionClosure(api.getSceneElements(), selectedIds)
+        const elementsUnchanged = selectedRevisions.size === currentRevisions.size
+          && [...selectedRevisions].every(([id, before]) => {
+            const current = currentRevisions.get(id)
+            return !!current
+              && current.version === before.version
+              && current.versionNonce === before.versionNonce
+          })
+        if (currentAppState.editingLinearElement || !selectionUnchanged || !elementsUnchanged) {
+          OctoToast.error(t('docs.board.contextMenu.cutSelectionChanged'))
+          return
+        }
+
+        try {
+          const deleted = await api.executeActionWithHostFeedback('deleteSelectedElements')
+          if (!deleted) {
+            OctoToast.error(t('docs.board.contextMenu.cutDeleteFailed'))
+            return
+          }
+          OctoToast.success(t('docs.board.contextMenu.cutSuccess'))
+        } catch {
+          OctoToast.error(t('docs.board.contextMenu.cutDeleteFailed'))
+        }
+      })()
+    }
+    if (role && canComment(role)) {
+      items.push({
+        id: 'comment',
+        label: t('docs.board.comment.contextMenu'),
+        shortcut: '⌘⇧M',
+        onSelect: () => {
+          setInlineCommentTarget(boardContextMenu.target)
+          setCommentsOpen(false)
+          setVersionOpen(false)
+        },
+      })
+    }
+    if (boardContextMenu.commentOnly) return items
+    const available = (name: string) => !!api?.isActionAvailable(name)
+    const add = (id: string, name: string, shortcut?: string, options?: { destructive?: boolean; separatorBefore?: boolean; feedback?: { success: string; error: string } }) => {
+      if (available(name)) items.push({ id, label: t(`docs.board.contextMenu.${id}`), shortcut, onSelect: run(name, options?.feedback), ...options })
+    }
+    const copyFeedback = (format?: 'PNG' | 'SVG') => ({
+      success: format
+        ? t('docs.board.contextMenu.copySuccessFormat', { values: { format } })
+        : t('docs.board.contextMenu.copySuccess'),
+      error: format
+        ? t('docs.board.contextMenu.copyFailedFormat', { values: { format } })
+        : t('docs.board.contextMenu.copyFailed'),
+    })
+    if (boardContextMenu.type === 'canvas') {
+      if (!readOnly) add('paste', 'paste', '⌘V', { separatorBefore: items.length > 0 })
+      add('copyAsPng', 'copyAsPng', undefined, { separatorBefore: items.length > 0, feedback: copyFeedback('PNG') })
+      add('copyAsSvg', 'copyAsSvg', undefined, { feedback: copyFeedback('SVG') })
+      add('copyText', 'copyText', undefined, { feedback: copyFeedback() })
+      if (!readOnly) {
+        add('selectAll', 'selectAll', '⌘A', { separatorBefore: true })
+        add('unlockAll', 'unlockAllElements')
+      }
+      return items
+    }
+    add('copy', 'copy', '⌘C', { separatorBefore: items.length > 0, feedback: copyFeedback() })
+    add('copyAsPng', 'copyAsPng', undefined, { feedback: copyFeedback('PNG') })
+    add('copyAsSvg', 'copyAsSvg', undefined, { feedback: copyFeedback('SVG') })
+    add('copyText', 'copyText', undefined, { feedback: copyFeedback() })
+    add('copyElementLink', 'copyElementLink', undefined, { feedback: copyFeedback() })
+    if (readOnly) return items
+    // The native programmatic cut does not await clipboard writes. Compose a safe host-owned cut:
+    // copy first, and delete only after Excalidraw confirms that the clipboard write succeeded.
+    if (!api?.getAppState().editingLinearElement
+      && available('copy')
+      && available('deleteSelectedElements')) {
+      items.push({
+        id: 'cut',
+        label: t('docs.board.contextMenu.cut'),
+        shortcut: '⌘X',
+        onSelect: runCut,
+      })
+    }
+    add('paste', 'paste', '⌘V')
+    add('duplicate', 'duplicateSelection', '⌘D')
+    add('copyStyles', 'copyStyles', '⌘⌥C', {
+      separatorBefore: true,
+      feedback: {
+        success: t('docs.board.contextMenu.copyStylesSuccess'),
+        error: t('docs.board.contextMenu.copyStylesFailed'),
+      },
+    })
+    add('pasteStyles', 'pasteStyles', '⌘⌥V')
+    if (available('ungroup')) add('ungroup', 'ungroup', '⌘⇧G', { separatorBefore: true })
+    else add('group', 'group', '⌘G', { separatorBefore: true })
+    add('selectFrameContents', 'selectAllElementsInFrame')
+    add('removeFromFrame', 'removeAllElementsFromFrame')
+    add('wrapInFrame', 'wrapSelectionInFrame')
+    add('crop', 'cropEditor', undefined, { separatorBefore: true })
+    add('autoResize', 'autoResize')
+    add('unbindText', 'unbindText')
+    add('bindText', 'bindText')
+    add('wrapText', 'wrapTextInContainer')
+    add('editLine', 'toggleLinearEditor')
+    add('link', 'hyperlink', '⌘K')
+    add('addToLibrary', 'addToLibrary', undefined, {
+      feedback: {
+        success: t('docs.board.contextMenu.addToLibrarySuccess'),
+        error: t('docs.board.contextMenu.addToLibraryFailed'),
+      },
+    })
+    add('bringToFront', 'bringToFront', '⌘⇧]', { separatorBefore: true })
+    add('bringForward', 'bringForward', '⌘]')
+    add('sendBackward', 'sendBackward', '⌘[')
+    add('sendToBack', 'sendToBack', '⌘⇧[')
+    add('flipHorizontal', 'flipHorizontal', '⇧H', { separatorBefore: true })
+    add('flipVertical', 'flipVertical', '⇧V')
+    add('lock', 'toggleElementLock', undefined, { separatorBefore: true })
+    add('delete', 'deleteSelectedElements', '⌫', { destructive: true, separatorBefore: true })
+    return items
+  }, [boardContextMenu, readOnly, role])
+
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key.toLowerCase() !== 'm') return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return
+      event.preventDefault()
+      if (selectedCommentTarget && role && canComment(role)) {
+        setInlineCommentTarget(selectedCommentTarget)
+        setCommentsOpen(false)
+      } else {
+        setCommentsOpen((open) => !open)
+      }
+      setVersionOpen(false)
+    }
+    window.addEventListener('keydown', onShortcut)
+    return () => window.removeEventListener('keydown', onShortcut)
+  }, [selectedCommentTarget, role])
+
+  const getBoardElementType = useCallback((elementId: string): string | undefined => {
+    const api = boardApiRef.current as ExcalidrawImperativeAPI | null
+    return api?.getSceneElements().find((element) => element.id === elementId && !element.isDeleted)?.type
+  }, [boardViewRevision])
+
+  const activateBoardComment = useCallback((thread: Pick<CommentThread, 'id' | 'anchorStart'>) => {
+    setActiveCommentId(thread.id)
+    setCommentsOpen(true)
+    setVersionOpen(false)
+    const api = boardApiRef.current as ExcalidrawImperativeAPI | null
+    const anchor = decodeBoardCommentAnchor(thread.anchorStart)
+    if (!api || !anchor) return
+    if (anchor.kind === 'element') {
+      const ids = anchor.elementIds ?? [anchor.elementId]
+      const elements = api.getSceneElements().filter((item) => ids.includes(item.id) && !item.isDeleted)
+      if (elements.length > 0) {
+        api.updateScene({ appState: { selectedElementIds: Object.fromEntries(elements.map((element) => [element.id, true])) } })
+        api.scrollToContent(elements, { fitToContent: false, animate: true })
+        return
+      }
+    }
+    const appState = api.getAppState()
+    const zoom = appState.zoom.value
+    api.updateScene({
+      appState: {
+        scrollX: appState.width / (2 * zoom) - anchor.x,
+        scrollY: appState.height / (2 * zoom) - anchor.y,
+      },
+    })
+  }, [])
+
   const onPointerUpdate = useCallback<ExcalidrawPointerUpdate>(
     (payload) => {
       const awareness = collabSession?.provider?.awareness
@@ -1048,6 +1770,32 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Excalidraw, collabSession, accessConfirmed])
 
+  // The authoritative canvas background colour from the Y.Doc seeds initialData on
+  // a cold reopen so the canvas mounts with the synced colour rather than Excalidraw's white default.
+  // Fail closed like initialElements (no hydration before access is confirmed); undefined on the
+  // standalone path or before the doc has synced — the later setApi->applyRemoteAppState paints it.
+  const initialViewBackgroundColor: string | undefined = accessConfirmed
+    ? collabSession?.binding.snapshotViewBackgroundColor?.() || undefined
+    : undefined
+
+  // Excalidraw initialData appState, built here (not inline in JSX) so the conditional
+  // viewBackgroundColor seed is plain JS. The doc-authoritative colour is applied AFTER the local
+  // mirror spread so a synced value wins on a cold reopen; when absent the mirror's own persisted
+  // colour (standalone path) or Excalidraw's default stands.
+  const initialBoardAppState: Record<string, unknown> = {
+    ...initialSceneRef.current?.appState,
+    // Doc/Sheet and Board share Arial as the default face. Excalidraw otherwise initializes new text
+    // with Excalifont before the replacement panel is touched.
+    currentItemFontFamily:
+      initialSceneRef.current?.appState?.currentItemFontFamily ?? DEFAULT_BOARD_FONT_FAMILY,
+    // A new text element always starts from the product text default, not a stale Excalidraw/session
+    // swatch. Existing elements keep their authored strokeColor.
+    currentItemStrokeColor: '#000000',
+  }
+  if (initialViewBackgroundColor) {
+    initialBoardAppState.viewBackgroundColor = initialViewBackgroundColor
+  }
+
   // P1 (revoke teardown, standalone share page): a runtime terminal transition — 4403 access
   // revoked / board deleted (→ 'deleted'), 'not-found', 'locked', or session-lost 'login' — must
   // TEAR DOWN the canvas, not merely flip it read-only. The `readOnly` gate above only disables
@@ -1077,11 +1825,75 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       onClick: onOpenInNewPage,
     })
   }
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+  const sceneSnapshot = () => {
+    const api = boardApiRef.current as ExcalidrawImperativeAPI | null
+    return api
+      ? {
+          elements: api.getSceneElements() as unknown as readonly ExcalidrawElement[],
+          appState: api.getAppState() as unknown as Record<string, unknown>,
+          files: api.getFiles() as unknown as Record<string, BinaryFileData>,
+        }
+      : null
+  }
+  moreItems.push({
+    key: 'save-board-file',
+    label: t('docs.board.saveFile'),
+    icon: ExportIcon,
+    onClick: () => {
+      const scene = sceneSnapshot()
+      const serialize = serializeSceneRef.current
+      if (!scene || !serialize) return
+      downloadBlob(new Blob([serialize(scene.elements, scene.appState, scene.files, 'local')], { type: 'application/json' }), `${currentTitle || 'board'}.excalidraw`)
+    },
+  })
+  moreItems.push({
+    key: 'export-image',
+    label: t('docs.board.exportImage'),
+    icon: ExportIcon,
+    onClick: () => {
+      ;(boardApiRef.current as { updateScene?: (scene: Record<string, unknown>) => void } | null)
+        ?.updateScene?.({ appState: { openDialog: { name: 'imageExport' } } })
+    },
+  })
   moreItems.push({
     key: 'history',
     label: t('docs.toolbar.history'),
     icon: HistoryIcon,
-    onClick: () => setVersionOpen((v) => !v),
+    onClick: () => {
+      setVersionOpen((v) => !v)
+      setCommentsOpen(false)
+    },
+  })
+  moreItems.push({
+    key: 'help',
+    label: t('docs.board.help'),
+    icon: (
+      <svg
+        className="octo-doc-more-rowicon octo-board-help-icon"
+        width="20"
+        height="20"
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+      >
+        <circle cx="10" cy="10" r="6.5" />
+        <path d="M8.1 8a2 2 0 0 1 2-1.7c1.2 0 2.1.75 2.1 1.85 0 .95-.55 1.45-1.4 1.95-.7.42-.8.85-.8 1.55" />
+        <circle cx="10" cy="14" r=".6" fill="currentColor" stroke="none" />
+      </svg>
+    ),
+    onClick: () => {
+      ;(boardApiRef.current as { updateScene?: (scene: Record<string, unknown>) => void } | null)
+        ?.updateScene?.({ appState: { openDialog: { name: 'help' } } })
+    },
   })
   const deleteItem: DocMoreMenuItem | undefined = manage
     ? {
@@ -1113,7 +1925,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           }}
           onTitleLoaded={setCurrentTitle}
         />
-        <div className="octo-doc-header-right">
+        <div className="octo-doc-header-right octo-board-header-actions">
           {/* Board-specific status badges (no doc counterpart) lead the cluster. */}
           {readOnly && <span className="octo-board-readonly">{t('docs.board.readOnly')}</span>}
           {saveFailed && (
@@ -1121,10 +1933,24 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               ⚠ {t('docs.board.saveFailed')}
             </span>
           )}
-          {/* From here the cluster mirrors the doc header: presence → forward → members → ≡ more.
-              Comments are dropped (doc-specific: they anchor to text ranges the board has none of). */}
+          {/* From here the cluster mirrors the doc header: presence → comments → forward → members → ≡ more. */}
           {collabSession?.provider && (
             <PresenceBar provider={collabSession.provider} connState={connState} synced={synced} names={names} />
+          )}
+          {role && (
+            <button
+              type="button"
+              className={commentsOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
+              title={t('docs.toolbar.comments')}
+              aria-pressed={commentsOpen}
+              onClick={() => {
+                setCommentsOpen((open) => !open)
+                setVersionOpen(false)
+              }}
+            >
+              <span className="octo-board-comment-entry-icon" aria-hidden="true">💬</span>
+              {t('docs.toolbar.comments')}
+            </button>
           )}
           {role && canForward && (
             <button
@@ -1168,7 +1994,8 @@ export function BoardShell(props: BoardShellProps): ReactElement {
 
       {/* Delete confirm — the shared centered modal, identical to the document's and sheet's
           delete dialog. Board-specific wording (title/message) with the generic delete/cancel
-          button labels. */}
+          button labels. The canvas "reset" affordance is Excalidraw's own native More-tools action;
+          the board adds no separate reset dialog of its own. */}
       <ConfirmModal
         open={del.confirming}
         title={t('docs.board.deleteConfirmTitle')}
@@ -1185,18 +2012,29 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           {del.error}
         </p>
       )}
+      {commentMarkers.error && (
+        <p className="octo-member-error" role="alert">
+          {t('docs.board.comment.markerLoadFailed')}
+        </p>
+      )}
 
       <div className="octo-board-canvas">
         {failed ? (
           <div className="octo-board-state octo-error">{t('docs.state.error')}</div>
-        ) : !Excalidraw ? (
+        ) : !Excalidraw || !accessConfirmed ? (
+          // A collab canvas must not mount before its authoritative role resolves. Besides keeping
+          // cached content fail-closed, this makes Excalidraw consume imported local initialData on
+          // its FIRST mount. Mounting an empty read-only canvas earlier is lossy because initialData
+          // is one-shot: when access later resolves, the imported scene cannot replace that empty
+          // initial state and therefore never reaches onChange → binding.handleLocalChange → Yjs.
           <div className="octo-board-state">{t('docs.state.loading')}</div>
         ) : (
-          <BoardErrorBoundary>
-            <Excalidraw
+          <div ref={liveCanvasRef} className="octo-board-live-canvas" onDropCapture={blockNativeSceneDrop}>
+            <BoardErrorBoundary>
+              <Excalidraw
               initialData={{
                 elements: initialElements,
-                appState: initialSceneRef.current?.appState,
+                appState: initialBoardAppState,
                 files: initialSceneRef.current?.files,
                 scrollToContent: true,
               }}
@@ -1208,19 +2046,92 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               // reflects the current map for anything that later honors it.
               collaborators={collaboratorsRef.current}
               onPointerUpdate={onPointerUpdate}
+              onScrollChange={onScrollChange}
+              renderDefaultMainMenu={false}
+              onContextMenu={onBoardContextMenu}
+              UIOptions={{ canvasActions: { loadScene: false } }}
               viewModeEnabled={readOnly}
               theme={dark ? 'dark' : 'light'}
               langCode={langCode}
               // XIN-702 / P1: content-address inserted images without crypto.subtle so an insert on a
               // plain-http LAN does not throw the digest error and yields a peer-stable file id.
               generateIdForFile={boardGenerateIdForFile}
-            >
-              {/* De-branded hamburger menu: Excalidraw's default items minus the "Excalidraw
-                  links" (Socials) group (XIN-531 item 1). */}
-              {MainMenu && <BoardMainMenu MainMenu={MainMenu} />}
-            </Excalidraw>
+            />
           </BoardErrorBoundary>
+          </div>
         )}
+
+        <BoardCommentMarkers
+          api={boardApiRef.current as ExcalidrawImperativeAPI | null}
+          items={commentMarkers.items}
+          activeId={activeCommentId}
+          revision={boardViewRevision}
+          bounds={commentOverlayBounds ?? undefined}
+          rootRef={liveCanvasRef}
+          getCommonBounds={getCommonBoundsRef.current}
+          onActivate={(id) => {
+            const marker = commentMarkers.items.find((item) => item.id === id)
+            if (marker) activateBoardComment({ id: marker.id, anchorStart: marker.anchorStart })
+          }}
+        />
+
+        {selectedCommentTarget && selectedCommentPoint && canComment(role ?? 'reader') && !inlineCommentTarget && (
+          <button
+            type="button"
+            className="octo-board-selection-comment-button"
+            style={placeCommentOverlay(selectedCommentPoint.left + 8, selectedCommentPoint.top + 8, 150, 38)}
+            title={t('docs.board.comment.add')}
+            aria-label={t('docs.board.comment.add')}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              setInlineCommentTarget(selectedCommentTarget)
+              setCommentsOpen(false)
+              setVersionOpen(false)
+            }}
+          >
+            <span className="octo-board-comment-entry-icon" aria-hidden="true">💬</span>
+            {t('docs.comment.commentButton')}
+          </button>
+        )}
+
+        {inlineCommentTarget && inlineCommentPoint && (
+          <BoardInlineCommentComposer
+            target={inlineCommentTarget}
+            {...placeCommentOverlay(
+              inlineCommentTarget.anchor.kind === 'element' && (inlineCommentTarget.anchor.elementIds?.length ?? 1) > 1
+                ? inlineCommentPoint.left - 115
+                : inlineCommentPoint.left + 8,
+              inlineCommentPoint.top + 8,
+              230,
+              190,
+            )}
+            dark={dark}
+            spaceId={space}
+            comments={comments}
+            onClose={() => setInlineCommentTarget(null)}
+          />
+        )}
+
+        {/* App-owned canvas-colour picker for toolbar slot 9. Renders nothing visible (its trigger
+            is the native toolbar button); it opens on the `octo-board-canvas-color-request` document
+            event the patched Excalidraw button + digit-9 shortcut dispatch, writes viewBackgroundColor
+            back through the live imperative API, and commits an explicit pick into the shared doc via
+            the shared onColorCommit authority gate. */}
+        {boardContextMenu && boardContextMenuItems.length > 0 && (
+          <BoardContextMenu
+            left={boardContextMenu.clientX}
+            top={boardContextMenu.clientY}
+            items={boardContextMenuItems}
+            bounds={commentOverlayBounds ?? undefined}
+            onClose={() => setBoardContextMenu(null)}
+          />
+        )}
+        <BoardCanvasColorControl
+          excalidrawAPI={excalidrawApi}
+          readOnly={readOnly}
+          rootRef={liveCanvasRef}
+          onColorCommit={commitCanvasColor}
+        />
 
         {/* Version history opens in a right-side DRAWER (decision #1), aligned with the doc / sheet
             version panels (aside.octo-doc-drawer): the list + save / restore / rename / delete live
@@ -1228,6 +2139,23 @@ export function BoardShell(props: BoardShellProps): ReactElement {
             #2). Anchored inside the relative canvas so it overlays only the canvas area, below the
             header. Available to any role — reader+ can browse / preview; restore / delete gate to
             admin inside the panel. */}
+        {commentsOpen && role && (
+          <aside className="octo-doc-drawer octo-board-comment-drawer" role="complementary">
+            <BoardCommentPanel
+              role={role}
+              comments={comments}
+              names={names}
+              spaceId={space}
+              activeCommentId={activeCommentId}
+              onActivate={activateBoardComment}
+              getTarget={getBoardCommentTarget}
+              initialTarget={pendingPointTarget}
+              onInitialTargetConsumed={() => setPendingPointTarget(null)}
+              getElementType={getBoardElementType}
+              onClose={() => setCommentsOpen(false)}
+            />
+          </aside>
+        )}
         {versionOpen && (
           <aside className="octo-doc-drawer octo-board-version-drawer" role="complementary">
             <BoardVersionPanel

@@ -13,7 +13,7 @@ import {
   type Invite,
 } from './api.ts'
 
-const ROLES: Role[] = ['reader', 'writer', 'admin']
+const DEFAULT_ROLES: Role[] = ['reader', 'writer', 'admin']
 
 /** Selectable expiry window (#A6): 1–7 days. */
 const EXPIRY_DAYS = Array.from(
@@ -31,14 +31,40 @@ function expiryText(inv: Invite): string {
 }
 
 /** Admin-only invite link management (frontend-design §12.2; redesigned visuals #A5 + expiry #A6). */
-export function InvitePanel({ docId, role }: { docId: string; role: Role }) {
+export function InvitePanel({
+  docId,
+  role,
+  allowedRoles,
+}: {
+  docId: string
+  role: Role
+  /**
+   * Restrict the grantable-role options (OCT-195: html surface must not grant writer/admin).
+   * Omit → full DEFAULT_ROLES; rich-doc callers therefore see zero behavior change.
+   * Empty array is treated the same as omitted so a caller cannot render an unusable UI.
+   */
+  allowedRoles?: Role[]
+}) {
+  const roles = allowedRoles && allowedRoles.length > 0 ? allowedRoles : DEFAULT_ROLES
+  // Default the selection to the first allowed role so the initial POST body is always valid
+  // (a `writer` default would 400 on html where allowedRoles=['reader']).
   const [invites, setInvites] = useState<Invite[]>([])
-  const [newRole, setNewRole] = useState<Role>('writer')
+  const [newRole, setNewRole] = useState<Role>(roles.includes('writer') ? 'writer' : roles[0])
   const [days, setDays] = useState<number>(INVITE_EXPIRY_DEFAULT_DAYS)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
+  // Distinguish "load failed" from "empty list" so a network error never masquerades as
+  // "no invites yet" — that misread would hide real state from the admin.
+  const [loadError, setLoadError] = useState(false)
 
   async function refresh() {
-    setInvites(await listInvites(docId))
+    try {
+      const items = await listInvites(docId)
+      setInvites(items)
+      setLoadError(false)
+    } catch {
+      setInvites([])
+      setLoadError(true)
+    }
   }
 
   useEffect(() => {
@@ -74,7 +100,7 @@ export function InvitePanel({ docId, role }: { docId: string; role: Role }) {
       <div className="octo-invite-create">
         <label className="octo-invite-field">
           <select value={newRole} onChange={(e) => setNewRole(e.target.value as Role)}>
-            {ROLES.map((r) => (
+            {roles.map((r) => (
               <option key={r} value={r}>
                 {t(`docs.role.${r}`)}
               </option>
@@ -96,7 +122,11 @@ export function InvitePanel({ docId, role }: { docId: string; role: Role }) {
         </button>
       </div>
 
-      {invites.length === 0 ? (
+      {loadError ? (
+        <p className="octo-member-error" role="alert">
+          {t('docs.member.errorLoad')}
+        </p>
+      ) : invites.length === 0 ? (
         <p className="octo-invite-empty">{t('docs.member.inviteEmpty')}</p>
       ) : (
         <ul className="octo-invite-list">

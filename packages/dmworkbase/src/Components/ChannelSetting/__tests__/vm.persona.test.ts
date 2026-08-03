@@ -53,6 +53,18 @@ vi.mock("../../../App", () => ({
     __esModule: true,
 }))
 
+vi.mock("../../../Service/APIClient", () => ({
+    default: {
+        shared: {
+            get: hoisted.get,
+            post: hoisted.post,
+            delete: hoisted.del,
+            put: hoisted.put,
+        },
+    },
+    __esModule: true,
+}))
+
 vi.mock("@douyinfe/semi-ui", () => ({
     Toast: {
         error: hoisted.toastError,

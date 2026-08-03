@@ -38,6 +38,18 @@ export interface ListCommentsResult {
   nextCursor: number | null
 }
 
+export interface CommentMarker {
+  id: number
+  anchorStart: string
+  anchorText: string
+  updatedAt: string
+}
+
+export interface ListCommentMarkersResult {
+  items: CommentMarker[]
+  nextCursor: number | null
+}
+
 export interface ListCommentsOptions {
   /** Include resolved roots (default: server omits them). */
   includeResolved?: boolean
@@ -47,6 +59,11 @@ export interface ListCommentsOptions {
 }
 
 /** GET /docs/:docId/comments — roots only at top level, each carrying its `replies`. */
+export async function getCommentThread(docId: string, id: number): Promise<CommentThread> {
+  const { data } = await apiClient().get<CommentThread>(`/docs/${docId}/comments/${id}/thread`)
+  return data
+}
+
 export async function listComments(
   docId: string,
   opts: ListCommentsOptions = {},
@@ -68,6 +85,48 @@ export interface CreateRootInput {
   anchorStart: string
   anchorEnd: string
   anchorText?: string
+}
+
+/** Lightweight unresolved-root listing used by board markers. */
+export async function listCommentMarkers(
+  docId: string,
+  cursor?: number,
+  limit = 100,
+): Promise<ListCommentMarkersResult> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (cursor != null) params.set('cursor', String(cursor))
+  const { data } = await apiClient().get<ListCommentMarkersResult>(
+    `/docs/${docId}/comments/markers?${params.toString()}`,
+  )
+  return { items: data.items ?? [], nextCursor: data.nextCursor ?? null }
+}
+
+
+/** Marker endpoint is optional during rolling frontend/backend deploys. Only endpoint-contract
+ * absence/conflict degrades to the detailed thread feed; auth and transport failures stay visible. */
+export function isUnavailableMarkerEndpoint(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status
+  return status === 404 || status === 409
+}
+
+/** Walk every cursor page so marker rendering covers all unresolved roots, not only the drawer page. */
+export async function listAllCommentMarkers(docId: string): Promise<CommentMarker[]> {
+  const MAX_MARKER_PAGES = 100
+  const result: CommentMarker[] = []
+  let cursor: number | undefined
+  const seen = new Set<number>()
+  for (let pageNumber = 0; pageNumber < MAX_MARKER_PAGES; pageNumber++) {
+    const page = await listCommentMarkers(docId, cursor)
+    result.push(...page.items)
+    const next = page.nextCursor ?? undefined
+    if (next === undefined) return result
+    if (!Number.isSafeInteger(next) || next < 0 || seen.has(next) || (cursor !== undefined && next <= cursor)) {
+      throw new Error('Invalid comment marker cursor')
+    }
+    seen.add(next)
+    cursor = next
+  }
+  throw new Error('Comment marker pagination limit exceeded')
 }
 
 /** POST /docs/:docId/comments — ROOT (carries anchors). Returns the new comment id. */

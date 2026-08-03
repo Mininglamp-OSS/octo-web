@@ -41,15 +41,19 @@ export interface McpQuickStart {
   slug?: string;
   /** Remote endpoint (streamable-http / sse). */
   url?: string;
-  /** Whether the remote endpoint needs a bearer token. */
-  authType?: "bearer" | "none";
-  /** Extra request headers for the remote transport (merged into the JSON
-   *  snippet; the Bearer header from authType is appended on top). */
+  /** Extra request headers for the remote transport. */
   headers?: Record<string, string>;
+  /** Subset of `headers` keys whose value must be filled locally by each
+   *  consumer (not by the MCP author). The wire keeps the value as sentinel /
+   *  empty for these; the UI renders a "needs user config" toggle ON. Keys
+   *  NOT in this array are shared values persisted as-is. */
+  headersUserSupplied?: string[];
   /** stdio command + args + env (stdio transport only). */
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Same semantics as `headersUserSupplied` but for the stdio env map. */
+  envUserSupplied?: string[];
 }
 
 /** Card + list representation of an MCP server. */
@@ -86,7 +90,7 @@ export interface McpListItem {
    *  stays intact after a bot rename / delete. */
   createdByBotName?: string;
   transport?: McpTransport;
-  source?: "system" | "space" | "mine";
+  source?: McpSource;
   verificationStatus?: "verified" | "unverified" | "error";
   matchReasons?: string[];
   relevance?: number;
@@ -124,6 +128,8 @@ export interface McpDetail extends McpListItem {
  *  "import" is reserved for the Git-import path (#867). */
 export type McpCreatedByType = "human" | "bot" | "import";
 
+export type McpSource = "system" | "space" | "mine";
+
 /** A category filter option with its live count. */
 export interface McpCategory {
   key: string;
@@ -138,7 +144,7 @@ export interface ListMcpParams {
   categories?: string[];
   transports?: McpTransport[];
   visibilities?: McpVisibility[];
-  sources?: Array<"system" | "space" | "mine">;
+  sources?: McpSource[];
   verificationStatuses?: Array<"verified" | "unverified" | "error">;
   /** Provenance filter (mcp-v1.md §4.2; issue #894). Single-select today —
    *  the toolbar segmented control is one-of-three. Kept as a single value
@@ -221,8 +227,12 @@ export interface CreateMcpParams {
   env?: Record<string, string>;
   /** Remote request headers (streamable-http / sse). */
   headers?: Record<string, string>;
-  /** Auth style for the remote transport ("bearer" enables token snippet). */
-  authType?: "bearer" | "none";
+  /** Header keys whose value each consumer must fill locally (never persisted
+   *  as a shared value). See McpQuickStart.headersUserSupplied for the wire
+   *  contract. */
+  headersUserSupplied?: string[];
+  /** Env keys whose value each consumer must fill locally. */
+  envUserSupplied?: string[];
   /** The tool list — probed or hand-filled. */
   tools: McpTool[];
   /** Usage examples — each one rendered as its own quote block. */
@@ -231,18 +241,17 @@ export interface CreateMcpParams {
   faqs?: McpFaq[];
   /** Cautions / notes rendered under ⚠️ on the detail page. */
   notes?: string[];
-  /** Visibility scope. */
-  visibility: McpVisibility;
 }
 
-export type McpVisibility = "public" | "private";
+export type McpVisibility = "public" | "private" | "system";
 
 /**
  * Payload for updating an existing MCP server entry (PATCH /mcps/{id}).
  * Wire-wise the backend accepts partial updates (fields are pointer types,
  * omitted fields stay unchanged — mcp-v1.md §4.5). The UI always sends the
- * full form, so the shape is identical to CreateMcpParams and every field
- * gets rewritten. Kept as a distinct type alias so callers self-document
+ * full editable form, so the shape is identical to CreateMcpParams and every
+ * editable field gets rewritten. Visibility is intentionally absent and
+ * therefore preserved by the backend. Kept as a distinct type alias so callers self-document
  * "I'm editing" vs "I'm creating" — and so a future partial-update UI can
  * narrow to `Partial<CreateMcpParams>` without a signature churn.
  */

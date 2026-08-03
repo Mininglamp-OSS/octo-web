@@ -582,3 +582,239 @@ describe('merge-time repair pass renders a self-consistent scene (M-2/M-3/M-8)',
   })
 })
 
+describe('ExcalidrawYjsBinding — canvas background colour (canvas background sync contract)', () => {
+  const KEY = 'viewBackgroundColor'
+  const bgOf = (doc: Y.Doc): unknown => doc.getMap('appState').get(KEY)
+
+  /** A synced + wired binding — the state in which a background write is allowed (authority gate). */
+  function syncedBinding(doc: Y.Doc, api = new FakeExcalidrawApi()): ExcalidrawYjsBinding {
+    const binding = new ExcalidrawYjsBinding(doc, { api })
+    binding.setSynced(true)
+    return binding
+  }
+
+  it('a local viewBackgroundColor change lands in Y.Map(appState) once synced', () => {
+    const doc = new Y.Doc()
+    const binding = syncedBinding(doc)
+    binding.handleLocalAppState({ viewBackgroundColor: '#ffcc00' })
+    expect(bgOf(doc)).toBe('#ffcc00')
+    expect(binding.snapshotViewBackgroundColor()).toBe('#ffcc00')
+  })
+
+  // Authority gate (yujiawei P1-1): NO background reaches the doc until the provider has synced, so a
+  // client that mounts on Excalidraw's #ffffff default before sync can never push that default over an
+  // authoritative colour.
+  it('a background write before sync is dropped; once synced the appState path is live', () => {
+    const doc = new Y.Doc()
+    const binding = new ExcalidrawYjsBinding(doc, { api: new FakeExcalidrawApi() }) // not synced
+    binding.handleLocalAppState({ viewBackgroundColor: '#ffcc00' })
+    expect(bgOf(doc)).toBeUndefined() // nothing written while unsynced
+    binding.setSynced(true)
+    binding.handleLocalAppState({ viewBackgroundColor: '#222222' })
+    expect(bgOf(doc)).toBe('#222222')
+  })
+
+  it('reset-canvas: a background reset back to the default is mirrored so peers converge', () => {
+    const doc = new Y.Doc()
+    const binding = syncedBinding(doc)
+    binding.handleLocalAppState({ viewBackgroundColor: '#ffcc00' })
+    expect(bgOf(doc)).toBe('#ffcc00')
+    // The user hits "reset the canvas": Excalidraw resets viewBackgroundColor to the #ffffff default
+    // and fires onChange. That reset FROM a non-default colour must write, so peers stop painting the
+    // stale colour rather than the doc diverging permanently.
+    binding.handleLocalAppState({ viewBackgroundColor: '#ffffff' })
+    expect(bgOf(doc)).toBe('#ffffff')
+  })
+
+  it('a fresh board’s #ffffff default against an unset doc writes nothing (no spurious default)', () => {
+    const doc = new Y.Doc()
+    const binding = syncedBinding(doc)
+    binding.handleLocalAppState({ viewBackgroundColor: '#ffffff' })
+    expect(bgOf(doc)).toBeUndefined() // unset stays unset — #ffffff is the effective default, no change
+  })
+
+  it('a local colour write never bounces back into updateScene (own-origin guard)', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    const binding = new ExcalidrawYjsBinding(doc, { api })
+    binding.setSynced(true)
+    api.updateSceneCalls = 0 // ignore the false→true authority repaint
+    binding.handleLocalAppState({ viewBackgroundColor: '#123456' })
+    expect(api.updateSceneCalls).toBe(0)
+  })
+
+  it('force-repaints the authoritative colour on sync after an unsynced local preview', () => {
+    const doc = new Y.Doc()
+    doc.getMap('appState').set('viewBackgroundColor', '#ff0000')
+    const api = new FakeExcalidrawApi()
+    const binding = new ExcalidrawYjsBinding(doc, { api })
+    // Seed tracker/canvas, then simulate the control repainting locally while the provider is down.
+    binding.refreshFromDoc()
+    api.viewBackgroundColor = '#0000ff'
+    api.updateSceneCalls = 0
+    binding.setSynced(true)
+    expect(api.viewBackgroundColor).toBe('#ff0000')
+    expect(api.updateSceneCalls).toBe(1)
+    expect(bgOf(doc)).toBe('#ff0000')
+  })
+
+  it('an unchanged / empty / non-string colour writes nothing (guard 2 + validation)', () => {
+    const doc = new Y.Doc()
+    const binding = syncedBinding(doc)
+    binding.handleLocalAppState({ viewBackgroundColor: '#abcdef' })
+    binding.handleLocalAppState({ viewBackgroundColor: '#abcdef' }) // same value → no-op
+    binding.handleLocalAppState({ viewBackgroundColor: '' }) // empty → ignored
+    binding.handleLocalAppState({ viewBackgroundColor: 42 as unknown as string }) // non-string → ignored
+    binding.handleLocalAppState(null)
+    binding.handleLocalAppState({}) // no key → ignored
+    expect(bgOf(doc)).toBe('#abcdef')
+  })
+
+  it('a remote colour write renders via updateScene({ appState })', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    const binding = new ExcalidrawYjsBinding(doc, { api })
+    const peer = new Y.Doc()
+    const peerBinding = new ExcalidrawYjsBinding(peer, { api: new FakeExcalidrawApi() })
+    peerBinding.setSynced(true)
+    peerBinding.handleLocalAppState({ viewBackgroundColor: '#00ff88' })
+    syncDocs(peer, doc, 'remote')
+    expect(api.viewBackgroundColor).toBe('#00ff88')
+    // guard 4 twin: the applied colour was recorded so a follow-up synced onChange diffs empty.
+    binding.setSynced(true)
+    binding.handleLocalAppState({ viewBackgroundColor: '#00ff88' })
+    expect(bgOf(doc)).toBe('#00ff88') // unchanged — the remote value was not re-written locally
+  })
+
+
+  it('rolls back the appState tracker when updateScene throws so setApi can retry', () => {
+    const doc = new Y.Doc()
+    const peer = new Y.Doc()
+    const pb = new ExcalidrawYjsBinding(peer, { api: new FakeExcalidrawApi() })
+    pb.setSynced(true)
+    pb.handleLocalAppState({ viewBackgroundColor: '#445566' })
+    const throwingApi = new FakeExcalidrawApi()
+    throwingApi.onUpdate = () => { throw new Error('canvas unavailable') }
+    const binding = new ExcalidrawYjsBinding(doc, { api: throwingApi })
+    syncDocs(peer, doc, 'remote')
+    expect(binding.__telemetry.remoteApplyErrors).toBe(1)
+    expect(binding.__telemetry.remoteAppStateApplies).toBe(0)
+    const replacement = new FakeExcalidrawApi()
+    binding.setApi(replacement)
+    expect(replacement.viewBackgroundColor).toBe('#445566')
+    expect(binding.__telemetry.remoteAppStateApplies).toBe(1)
+  })
+
+  it('setApi replays a colour the doc already held before the canvas mounted', () => {
+    const doc = new Y.Doc()
+    // Seed the doc under a non-local origin (as a synced provider would) before any api is attached.
+    const peer = new Y.Doc()
+    const pb = new ExcalidrawYjsBinding(peer, { api: new FakeExcalidrawApi() })
+    pb.setSynced(true)
+    pb.handleLocalAppState({ viewBackgroundColor: '#334455' })
+    syncDocs(peer, doc, 'remote')
+    const binding = new ExcalidrawYjsBinding(doc) // no api yet
+    const api = new FakeExcalidrawApi()
+    binding.setApi(api) // remote-direction replay — independent of the sync gate
+    expect(api.viewBackgroundColor).toBe('#334455')
+  })
+
+  it('the two peers converge on the same authoritative colour', () => {
+    const a = new Y.Doc()
+    const b = new Y.Doc()
+    const ba = new ExcalidrawYjsBinding(a, { api: new FakeExcalidrawApi() })
+    const bb = new ExcalidrawYjsBinding(b, { api: new FakeExcalidrawApi() })
+    ba.setSynced(true)
+    bb.setSynced(true)
+    ba.handleLocalAppState({ viewBackgroundColor: '#eeeeee' })
+    syncDocs(a, b, 'remote')
+    expect(bb.snapshotViewBackgroundColor()).toBe('#eeeeee')
+  })
+
+  // yujiawei P1-1 pre-sync/remote convergence regression. A fresh client mounts BEFORE sync, fires an
+  // onChange on the #ffffff default, then the provider syncs a seeded authoritative colour. The client
+  // must ADOPT the authoritative colour and its pre-sync default must never have reached the doc.
+  it('pre-sync convergence: a client adopts the seeded colour and its pre-sync default never reaches the doc', () => {
+    const server = new Y.Doc()
+    const sb = new ExcalidrawYjsBinding(server, { api: new FakeExcalidrawApi() })
+    sb.setSynced(true)
+    sb.handleLocalAppState({ viewBackgroundColor: '#ffcc00' })
+
+    const client = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    const binding = new ExcalidrawYjsBinding(client, { api })
+    // The canvas mounts on the #ffffff default and fires onChange before the provider has synced.
+    binding.handleLocalAppState({ viewBackgroundColor: '#ffffff' })
+
+    // The provider syncs the seeded colour into the client's doc (repaints the canvas via the observer).
+    syncDocs(server, client, 'remote')
+    expect(api.viewBackgroundColor).toBe('#ffcc00')
+    binding.setSynced(true)
+
+    // The client adopts the authoritative colour; its pre-sync #ffffff never overwrote it.
+    expect(binding.snapshotViewBackgroundColor()).toBe('#ffcc00')
+    expect(api.viewBackgroundColor).toBe('#ffcc00')
+
+    // A genuine post-sync pick now converges to peers.
+    binding.handleLocalAppState({ viewBackgroundColor: '#00aa00' })
+    expect(binding.snapshotViewBackgroundColor()).toBe('#00aa00')
+  })
+
+  // P2-1: a remote transaction that CLEARS the key (a peer resetting the canvas to the default) must
+  // repaint the Excalidraw default, not leave the stale colour painting.
+  it('a remote clear of the background repaints the default and resets the tracked colour (P2-1)', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    new ExcalidrawYjsBinding(doc, { api })
+    const peer = new Y.Doc()
+    const pb = new ExcalidrawYjsBinding(peer, { api: new FakeExcalidrawApi() })
+    pb.setSynced(true)
+    pb.handleLocalAppState({ viewBackgroundColor: '#ffcc00' })
+    syncDocs(peer, doc, 'remote')
+    expect(api.viewBackgroundColor).toBe('#ffcc00')
+
+    // A remote peer resets the canvas → the key is deleted authoritatively.
+    peer.transact(() => peer.getMap('appState').delete(KEY), 'remote')
+    syncDocs(peer, doc, 'remote')
+    expect(api.viewBackgroundColor).toBe('#ffffff') // repainted to default, not left on #ffcc00
+  })
+
+  // P2-3: a clear that arrives while the api is DETACHED (access not yet confirmed / torn down) is not
+  // lost — the deletion lands in the doc regardless, and setApi replays it on reattach.
+  it('a background clear that arrives while the api is detached is applied on reattach (P2-3)', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    const binding = new ExcalidrawYjsBinding(doc, { api })
+    const peer = new Y.Doc()
+    const pb = new ExcalidrawYjsBinding(peer, { api: new FakeExcalidrawApi() })
+    pb.setSynced(true)
+    pb.handleLocalAppState({ viewBackgroundColor: '#ffcc00' })
+    syncDocs(peer, doc, 'remote')
+    expect(api.viewBackgroundColor).toBe('#ffcc00')
+
+    // The api detaches (BoardShell's setApi(null) on access loss / canvas swap).
+    binding.setApi(null)
+    // A remote clear arrives WHILE detached: the observer no-ops on the null api, but the deletion
+    // still lands in the doc.
+    peer.transact(() => peer.getMap('appState').delete(KEY), 'remote')
+    syncDocs(peer, doc, 'remote')
+    expect(bgOf(doc)).toBeUndefined()
+
+    // Reattach: setApi replays applyRemoteAppState, which observes the unset key against the tracked
+    // non-default colour and repaints the default — the clear is not lost across the detached window.
+    const api2 = new FakeExcalidrawApi()
+    binding.setApi(api2)
+    expect(api2.viewBackgroundColor).toBe('#ffffff')
+  })
+
+  it('a doc that never carried a background does not paint a spurious default on setApi', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    const binding = new ExcalidrawYjsBinding(doc) // no api yet, empty doc
+    binding.setApi(api)
+    // Empty appState + empty elements → nothing to replay. A fresh mount is left on whatever
+    // initialData seeded, not forced to #ffffff (that would clobber the standalone mirror's colour).
+    expect(api.updateSceneCalls).toBe(0)
+    expect(api.viewBackgroundColor).toBeUndefined()
+  })
+})

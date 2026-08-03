@@ -169,7 +169,14 @@ export function useWhiteboardSession(opts: UseWhiteboardSessionOptions): Whitebo
   const documentName = buildWhiteboardName(space, folder, board)
   const key = `${uid}::${documentName}`
 
-  const [session, setSession] = useState<WhiteboardSession | null>(null)
+  // Keep the session tagged with the key it belongs to. Effects clean up only after render, so a
+  // plain `WhiteboardSession | null` state leaks the previous account's session for one render when
+  // uid/documentName changes. Returning only a key-matching session closes that synchronous frame:
+  // BoardSession can never combine user B with account A's provider/binding/cached scene.
+  const [sessionState, setSessionState] = useState<{
+    key: string
+    session: WhiteboardSession
+  } | null>(null)
 
   useEffect(() => {
     let active = true
@@ -177,19 +184,19 @@ export function useWhiteboardSession(opts: UseWhiteboardSessionOptions): Whitebo
       buildSession({ uid, space, folder, board, disableOfflineCache }, documentName),
     )
     if (entry.instance) {
-      setSession(entry.instance)
+      setSessionState({ key, session: entry.instance })
     } else {
-      entry.promise.then((s) => {
-        if (active) setSession(s)
+      entry.promise.then((session) => {
+        if (active) setSessionState({ key, session })
       })
     }
     return () => {
       active = false
-      setSession(null)
+      setSessionState((current) => current?.key === key ? null : current)
       release(key)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]) // ⚠️ keyed by uid + whiteboard documentName — switching either rebuilds.
 
-  return session
+  return sessionState?.key === key ? sessionState.session : null
 }

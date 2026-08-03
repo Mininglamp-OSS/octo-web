@@ -49,6 +49,11 @@ body[theme-mode="dark"] .wk-conversation-content {
   padding: var(--wk-sp-2) var(--wk-sp-4);
 }
 
+.wk-message-item-system > .wk-message-system,
+.wk-message-item:has(.wk-message-system) > .wk-message-system {
+  max-width: 100%;
+}
+
 .wk-message-item-fold-session {
   justify-content: flex-start;
   padding: 24px 0 0;
@@ -765,24 +770,6 @@ body[theme-mode="dark"] .wk-conversation-disband-bar {
 
 .wk-multiplepanel-btn--danger:hover {
   background: rgba(255, 86, 59, 0.08);
-}
-
-/* 添加到事项按钮 */
-.wk-multiplepanel-btn--matter {
-  color: var(--wk-text-primary, #1c1c23);
-}
-
-.wk-multiplepanel-btn--matter.is-active {
-  background: var(--wk-bg-hover, rgba(28, 28, 35, 0.08));
-}
-
-.wk-multiplepanel-btn--matter:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.wk-multiplepanel-btn--matter:disabled:hover {
-  background: transparent;
 }
 
 /* 竖线分隔符 */

@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vitest"
 vi.mock("@octo/base", () => ({
   Conversation: ({ channel }: { channel: { channelID: string } }) =>
     React.createElement("div", { "data-channel": channel.channelID }),
+  createCurrentEmptyImConversation: vi.fn(),
+  findCurrentImConversation: vi.fn(),
+  setCurrentImChannelInfoCache: vi.fn(),
   WKApp: {
     routeRight: {
       popToRoot: vi.fn(),

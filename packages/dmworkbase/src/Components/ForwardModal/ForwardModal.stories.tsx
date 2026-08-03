@@ -256,7 +256,7 @@ export const Loading: Story = {
 
 /** 树状展示：父群下子区缩进显示，群聊和子区独立勾选 */
 export const TreeView: Story = {
-  render: () => <Interactive initialItems={mockTreeItems} />,
+  render: () => <Interactive initialItems={mockTreeItems} activeTab="group" />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement)
 
@@ -283,7 +283,7 @@ export const TreeView: Story = {
 
 /** 树状连接线可见：父群下子区有 └─ 折角线 */
 export const TreeViewWithLines: Story = {
-  render: () => <Interactive initialItems={mockTreeItems} />,
+  render: () => <Interactive initialItems={mockTreeItems} activeTab="group" />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement)
     // 子区在列表里（连接线由 CSS 渲染，play function 验证结构正确即可）
@@ -293,11 +293,29 @@ export const TreeViewWithLines: Story = {
   },
 }
 
+/** 最近列表：平铺展示，子区不缩进，并显示目标类型 */
+export const RecentFlatView: Story = {
+  render: () => <Interactive initialItems={mockTreeItems} activeTab="recent" />,
+  play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    const canvas = within(canvasElement)
+
+    const threadName = await canvas.findByText("需求讨论")
+    const threadRow = threadName.closest(".wk-fm-item")
+    if (!threadRow) throw new Error("Thread row not found")
+    await expect(threadRow).toHaveClass("wk-fm-item--flat")
+    await expect(threadRow).not.toHaveClass("wk-fm-item--child")
+
+    expect(canvas.getAllByText("群聊").length).toBeGreaterThan(0)
+    expect(canvas.getAllByText("子区").length).toBeGreaterThan(0)
+    expect(canvas.getAllByText("私聊").length).toBeGreaterThan(0)
+  },
+}
+
 // SelectedAreaBadges story removed — badge 角标已按设计稿去掉，不再区分群聊/子区
 
 /** 搜索方案 A：命中子区时带出父群 */
 export const SearchTreeViewA: Story = {
-  render: () => <Interactive initialItems={mockTreeItems} />,
+  render: () => <Interactive initialItems={mockTreeItems} activeTab="group" />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement)
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import WKApp from "../../App";
 import SecretsSettingsPanel from "../SecretsSettings/SecretsSettingsPanel";
 import { useI18n } from "../../i18n";
+import { NavFlyoutMenuItem } from "./NavFlyout";
 
 /**
  * 设置面板里的「密钥 / Secrets」一级入口（YUJ-3539），与语音设置平级。
@@ -52,14 +53,9 @@ export default function NavSecretsSettingsItem() {
 
   return (
     <>
-      <li
-        onClick={(e) => {
-          e.stopPropagation();
-          open();
-        }}
-      >
+      <NavFlyoutMenuItem onSelect={() => open()}>
         {t("base.navRail.settingsPanel.secrets")}
-      </li>
+      </NavFlyoutMenuItem>
       {visible && (
         <SecretsSettingsPanel
           key={openSeq}

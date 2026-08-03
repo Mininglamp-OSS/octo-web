@@ -128,7 +128,7 @@ describe("SkillListPage", () => {
     const { container } = render(<SkillListPage />);
 
     expect(
-      await screen.findByRole("button", { name: "meeting-note-cleaner @我" })
+      await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
     ).toBeInTheDocument();
     expect(container.querySelector(".skill-market-card__action-button")).not.toBeInTheDocument();
 
@@ -136,7 +136,7 @@ describe("SkillListPage", () => {
 
     expect(screen.queryByLabelText(categoryAriaLabel)).not.toBeInTheDocument();
     expect(
-      await screen.findByRole("button", { name: "meeting-note-cleaner @我" })
+      await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^安装$/ })).not.toBeInTheDocument();
     expect(
@@ -155,6 +155,7 @@ describe("SkillListPage", () => {
       await vi.runOnlyPendingTimersAsync();
     });
 
+    vi.mocked(api.getCategories).mockClear();
     vi.mocked(api.getSkills).mockClear();
     fireEvent.change(screen.getByPlaceholderText(searchPlaceholder), {
       target: { value: "ci" },
@@ -166,6 +167,13 @@ describe("SkillListPage", () => {
       await vi.runOnlyPendingTimersAsync();
     });
 
+    expect(api.getCategories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: "ci",
+        tags: [],
+        signal: expect.any(AbortSignal),
+      })
+    );
     expect(api.getSkills).toHaveBeenCalledWith(
       {
         q: "ci",
@@ -184,6 +192,8 @@ describe("SkillListPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: tagFilterName }));
     const tagOption = await screen.findByRole("option", { name: "纪要" });
+    vi.mocked(api.getCategories).mockClear();
+    vi.mocked(api.getSkills).mockClear();
     fireEvent.click(tagOption);
 
     expect(
@@ -194,13 +204,34 @@ describe("SkillListPage", () => {
       "true"
     );
     expect(screen.getByText(selectedTagsText)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(api.getCategories).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: "",
+          tags: ["纪要"],
+          signal: expect.any(AbortSignal),
+        })
+      );
+      expect(api.getSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: ["纪要"] }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
+    });
 
+    vi.mocked(api.getCategories).mockClear();
     fireEvent.click(screen.getByRole("button", { name: clearFilterName }));
 
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "纪要" })).toHaveAttribute(
         "aria-selected",
         "false"
+      );
+      expect(api.getCategories).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: "",
+          tags: [],
+          signal: expect.any(AbortSignal),
+        })
       );
     });
     expect(screen.getByText(noSelectedTagsText)).toBeInTheDocument();
@@ -209,7 +240,7 @@ describe("SkillListPage", () => {
   it("reloads skills with the selected sort option", async () => {
     render(<SkillListPage />);
     expect(
-      await screen.findByRole("button", { name: "meeting-note-cleaner @我" })
+      await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
     ).toBeInTheDocument();
     vi.mocked(api.getSkills).mockClear();
 
@@ -226,7 +257,7 @@ describe("SkillListPage", () => {
   it("refreshes the list when the active Space changes", async () => {
     render(<SkillListPage />);
     expect(
-      await screen.findByRole("button", { name: "meeting-note-cleaner @我" })
+      await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
     ).toBeInTheDocument();
     expect(spaceChangedHandler).toBeTypeOf("function");
 
@@ -297,7 +328,7 @@ describe("SkillListPage", () => {
         expect.stringContaining("Space ID：`space-123`")
       );
       expect(writeText).toHaveBeenCalledWith(
-        expect.stringContaining("API 地址：`http://localhost:3000/api`")
+        expect.stringContaining("API 地址：`http://localhost:3000`")
       );
       expect(writeText).toHaveBeenCalledWith(
         expect.not.stringContaining("<space-id>")
@@ -308,11 +339,11 @@ describe("SkillListPage", () => {
     });
   });
 
-  it("shows stats on cards and increments the visible view count when opening detail", async () => {
+  it("shows persisted stats without an optimistic view-count increment", async () => {
     render(<SkillListPage />);
 
     const card = await screen.findByRole("button", {
-      name: "meeting-note-cleaner @我",
+      name: "meeting-note-cleaner 我",
     });
     expect(screen.getByText(totalCountText)).toBeInTheDocument();
     expect(screen.getByLabelText(/浏览次数：2|Views: 2/)).toHaveTextContent(
@@ -325,8 +356,8 @@ describe("SkillListPage", () => {
     fireEvent.click(card);
 
     await screen.findByText(skill.description);
-    expect(screen.getByLabelText(/浏览次数：3|Views: 3/)).toHaveTextContent(
-      "3"
+    expect(screen.getByLabelText(/浏览次数：2|Views: 2/)).toHaveTextContent(
+      "2"
     );
   });
 
@@ -350,7 +381,7 @@ describe("SkillListPage", () => {
     await switchToMineTab();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "meeting-note-cleaner @我" })
+      await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
     );
     expect(await screen.findByText(skill.description)).toBeInTheDocument();
 
@@ -398,7 +429,7 @@ describe("SkillListPage", () => {
     await switchToMineTab();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "meeting-note-cleaner @我" })
+      await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
     );
     expect(await screen.findByText(skill.description)).toBeInTheDocument();
 

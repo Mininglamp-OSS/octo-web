@@ -45,7 +45,8 @@ function remoteQuickStart(name: string): McpQuickStart {
     serverName: name,
     slug: name,
     url: `https://mcp.deepminer.com.cn/${name}/mcp`,
-    authType: "bearer",
+    headers: { Authorization: "" },
+    headersUserSupplied: ["Authorization"],
   };
 }
 

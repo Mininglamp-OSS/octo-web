@@ -113,7 +113,14 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
 
   private handleNavMenuActivated = ({ menuId }: { menuId: string }) => {
     if (menuId !== "mcp-market") return;
-    const item = this.currentItem();
+    // Main first activates the top-level `/mcp-market` route, then the menu's
+    // onPress redirects the right pane to MCP. Do not reuse a stale Skills
+    // state during that short interval: the top-level entry always defaults
+    // to MCP, while explicit deep links keep their matching item.
+    const item =
+      findMarketItemByRoutePath(WKApp.route.currentPath) ??
+      findMarketItemByRoutePath(window.location.pathname) ??
+      MARKET_ITEMS[0];
     if (item.id !== this.state.activeId) {
       this.setState({ activeId: item.id });
     }

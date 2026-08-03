@@ -604,6 +604,7 @@ export function StandaloneDocPage({
           docId={editorDocId}
           slug={meta.octoDocSlug}
           space={addressing.space}
+          creatorNicknameOnly
         />
       </div>
     )

@@ -1,7 +1,7 @@
 import React, { Component, createRef } from 'react';
 import { Button, Modal, Input, Toast } from '@douyinfe/semi-ui';
 import { I18nContext } from '@octo/base';
-import type { ChatMessage, AgentProgressEvent, AgentDoneEvent, AgentErrorEvent } from '../types/summary';
+import type { ChatMessage, ChatCandidate, AgentProgressEvent, AgentDoneEvent, AgentErrorEvent } from '../types/summary';
 import { agentChatStream, agentChat } from '../api/summaryApi';
 import { genSessionId } from '../utils/summaryHelpers';
 import './AgentChatPanel.css';
@@ -24,6 +24,8 @@ interface AgentChatPanelProps {
      * 第一个 chat 请求发给后端;后续轮次此字段被忽略(引用一次锁定)。
      */
     referencedTaskIds?: number[];
+    /** 用户在选择器中明确指定的默认工作对象；每轮都传给后端。 */
+    selectedChannels?: ChatCandidate[];
     /**
      * 引用锁定后由 header/入口渲染的可视化元素(如"已引用总结 A"卡片)。
      * 传入即渲染在顶部标题栏(newSession 按钮同排);为 null 或不传时不渲染。
@@ -152,12 +154,14 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
             const refIds = this.props.referencedTaskIds && this.props.referencedTaskIds.length > 0
                 ? this.props.referencedTaskIds
                 : undefined;
+            const selectedChannels = this.requestSelectedChannels();
 
             const { close } = agentChatStream({
                 session_id: sessionId,
                 message: text,
                 profile,
                 referenced_task_ids: refIds,
+                selected_channels: selectedChannels,
             }, {
                 onProgress: (evt: AgentProgressEvent) => {
                     this.setState(prev => {
@@ -235,6 +239,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 message: text,
                 profile,
                 referenced_task_ids: refIds,
+                selected_channels: this.requestSelectedChannels(),
             });
             const reply = result.reply || t('summary.common.agentPanel.noReply');
             // 上抛 sessionId 让父组件持久化(和 SSE onDone 一致)
@@ -245,6 +250,17 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         } finally {
             this.setState({ isStreaming: false });
         }
+    };
+
+    private requestSelectedChannels = () => {
+        const channels = this.props.selectedChannels;
+        if (!channels || channels.length === 0) return undefined;
+        return channels.map(({ chat_id, chat_type, name, is_archived }) => ({
+            chat_id,
+            chat_type,
+            name,
+            ...(is_archived ? { is_archived: true } : {}),
+        }));
     };
 
     private handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

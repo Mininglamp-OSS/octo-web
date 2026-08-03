@@ -3,10 +3,10 @@ import { ReactNode } from "react";
 import ItemFile from "./item-file";
 import WKApp from "../../App";
 import "./tab-file.css"
-import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from "wukongimjssdk";
 import { debounce } from "../../Utils/rateLimit";
 import VisibilityTrigger from "../VisibilityTrigger";
-import { addImChannelInfoListener, fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
+import { addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
 interface TabFileProps {
     keyword?: string;
@@ -30,7 +30,7 @@ export default class TabFile extends Component<TabFileProps> {
                 this._forceUpdateDebounced()
             }
         }
-        this.unsubscribeChannelInfoListener = addImChannelInfoListener(WKSDK.shared(), this._channelInfoListener)
+        this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(this._channelInfoListener)
     }
 
     componentWillUnmount() {
@@ -42,9 +42,9 @@ export default class TabFile extends Component<TabFileProps> {
     private requestSenderChannelInfoIfNeeded = (fromUid: string) => {
         if (!fromUid || this.fetchedUids.has(fromUid)) return
         const senderChannel = new Channel(fromUid, ChannelTypePerson)
-        if (getImChannelInfo(WKSDK.shared(), senderChannel)) return
+        if (getCurrentImChannelInfo(senderChannel)) return
         this.fetchedUids.add(fromUid)
-        void fetchImChannelInfo(WKSDK.shared(), senderChannel)
+        void fetchCurrentImChannelInfo(senderChannel)
     }
 
     // Sticky files：父层 tab 切换中途会把 files 置为 undefined，保留上次非空
@@ -70,7 +70,7 @@ export default class TabFile extends Component<TabFileProps> {
                 files?.map((item: any) => {
                     let sender;
                     const senderChannel = new Channel(item.from_uid, ChannelTypePerson)
-                    const channelInfo = getImChannelInfo(WKSDK.shared(), senderChannel)
+                    const channelInfo = getCurrentImChannelInfo(senderChannel)
                     if (channelInfo) {
                         sender = channelInfo.title
                     }

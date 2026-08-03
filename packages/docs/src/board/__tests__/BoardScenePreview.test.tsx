@@ -12,6 +12,7 @@ import type { BoardVersionScene } from '../boardVersions.ts'
 // assert the binary was resolved in — the regression the metadata-only fixtures could not catch.
 
 let lastInitialData: { elements?: unknown[]; files?: Record<string, unknown> } | null = null
+let lastPreviewChildren: ReactNode = undefined
 
 vi.mock('@excalidraw/excalidraw', () => {
   const Excalidraw = ({
@@ -22,6 +23,7 @@ vi.mock('@excalidraw/excalidraw', () => {
     initialData?: { elements?: unknown[]; files?: Record<string, unknown> } | null
   }) => {
     lastInitialData = initialData ?? null
+    lastPreviewChildren = children
     return <div data-testid="excalidraw-canvas">{children}</div>
   }
   const MainMenu = (() => null) as unknown as { DefaultItems: Record<string, unknown> }
@@ -52,6 +54,7 @@ vi.mock('@excalidraw/excalidraw', () => {
       }
       return out
     },
+    redrawTextBoundingBox: () => {},
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
@@ -78,6 +81,7 @@ const PNG_BYTES = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1
 
 beforeEach(() => {
   lastInitialData = null
+  lastPreviewChildren = undefined
   vi.clearAllMocks()
   vi.stubGlobal(
     'fetch',
@@ -121,6 +125,8 @@ describe('BoardScenePreview image hydration', () => {
     render(<BoardScenePreview scene={{ elements: [{ id: 'r1', type: 'rectangle' }], files: {} }} docId="bd_1" />)
     await waitFor(() => expect(screen.getByTestId('excalidraw-canvas')).toBeTruthy())
     expect(resolveAttachments).not.toHaveBeenCalled()
+    // A historical read-only preview must not expose the live board's save/export/clear menu.
+    expect(lastPreviewChildren).toBeUndefined()
   })
 
   it('degrades to a placeholder-only mount when the attachment fetch fails', async () => {

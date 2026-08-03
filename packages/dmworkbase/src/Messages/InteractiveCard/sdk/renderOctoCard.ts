@@ -1,10 +1,15 @@
-import { AdaptiveCard, type Action } from "adaptivecards";
+import { AdaptiveCard, HostConfig, type Action } from "adaptivecards";
+import forgeHostConfig from "@mlt-org/octo-card-profile-octo-chat/host-config.json";
 import { cardMarkdownToSafeHtml } from "../renderer/cardMarkdownHtml";
 import { browserCssVarResolver, buildOctoHostConfig } from "./octoHostConfig";
 import { createOctoSerializationContext } from "./octoSerialization";
 import { sanitizeCardTree } from "./sanitizeCardTree";
 import { enhanceAgentProgressLayout } from "./agentProgressLayout";
 import { attachTableCopyButtons } from "./tableCopy";
+import {
+  FORGE_RENDER_PROFILE,
+  type ResolvedCardRenderProfile,
+} from "../renderProfile";
 
 /**
  * 用官方 AdaptiveCards SDK 渲染一张**已通过 octo 预校验**的卡片进目标元素。
@@ -37,6 +42,16 @@ export interface RenderOctoCardOptions {
   onAction: (action: Action, card: AdaptiveCard) => void;
   tableCopyLabel?: string;
   onTableCopy?: (text: string) => void;
+  renderProfile?: ResolvedCardRenderProfile;
+}
+
+export function createCardHostConfig(
+  target: HTMLElement,
+  renderProfile: ResolvedCardRenderProfile = "legacy"
+): HostConfig {
+  return renderProfile === FORGE_RENDER_PROFILE
+    ? new HostConfig(forgeHostConfig)
+    : buildOctoHostConfig(browserCssVarResolver(target));
 }
 
 export function enhanceRenderedOctoCard(options: RenderOctoCardOptions): void {
@@ -53,10 +68,17 @@ export function enhanceRenderedOctoCard(options: RenderOctoCardOptions): void {
 }
 
 export function renderOctoCard(options: RenderOctoCardOptions): void {
-  const { card, target, onAction, tableCopyLabel, onTableCopy } = options;
+  const {
+    card,
+    target,
+    onAction,
+    tableCopyLabel,
+    onTableCopy,
+    renderProfile = "legacy",
+  } = options;
   ensureMarkdownHook();
   const ac = new AdaptiveCard();
-  ac.hostConfig = buildOctoHostConfig(browserCssVarResolver(target));
+  ac.hostConfig = createCardHostConfig(target, renderProfile);
   ac.onExecuteAction = (action) => onAction(action, ac);
   // 图片类 URL 消毒（https-only），在 parse 前——SDK 自身不做 scheme 检查。
   ac.parse(sanitizeCardTree(card), createOctoSerializationContext());

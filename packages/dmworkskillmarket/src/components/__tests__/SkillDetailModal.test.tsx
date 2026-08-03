@@ -76,7 +76,7 @@ describe("SkillDetailModal", () => {
     expect(await screen.findByText("test")).toBeInTheDocument();
     expect(screen.getByTitle("meeting-note-cleaner")).toBeInTheDocument();
     expect(screen.getByTitle("办公协作")).toBeInTheDocument();
-    expect(screen.getByTitle("@我")).toBeInTheDocument();
+    expect(screen.getByTitle("我")).toBeInTheDocument();
     expect(screen.getByTitle("v1.1.3")).toBeInTheDocument();
     expect(screen.getByTitle("浏览次数：12")).toHaveTextContent("12");
     expect(screen.getByTitle("下载次数：3")).toHaveTextContent("3");
@@ -84,14 +84,48 @@ describe("SkillDetailModal", () => {
     expect(screen.queryByText("4 KB")).not.toBeInTheDocument();
   });
 
-  it("hides owner metadata for public skills", async () => {
+  it("shows publisher metadata for public skills", async () => {
     vi.mocked(api.getSkill).mockResolvedValue({ ...skill, visibility: "public" });
 
     render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
 
     expect(await screen.findByText("test")).toBeInTheDocument();
     expect(screen.getByTitle("meeting-note-cleaner")).toBeInTheDocument();
-    expect(screen.queryByTitle("@我")).not.toBeInTheDocument();
+    expect(screen.getByTitle("我")).toBeInTheDocument();
+  });
+
+  it("shows platform attribution for administrator-created global skills", async () => {
+    vi.mocked(api.getSkill).mockResolvedValue({
+      ...skill,
+      visibility: "public",
+      spaceId: undefined as unknown as string,
+      ownerName: "超级管理员",
+      creatorName: "超级管理员",
+    });
+
+    const { container } = render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
+
+    expect(await screen.findByText("官方发布")).toBeInTheDocument();
+    expect(screen.queryByText("超级管理员")).not.toBeInTheDocument();
+    expect(screen.getByTitle("官方发布")).toBeInTheDocument();
+    expect(container.querySelector(".skill-market-detail-header__platform-icon")).toBeInTheDocument();
+  });
+
+  it("shows bot creator and owner with icons when they are different", async () => {
+    vi.mocked(api.getSkill).mockResolvedValue({
+      ...skill,
+      creatorId: "publisher_bot",
+      creatorName: "lm-hermes",
+      ownerId: "developer",
+      ownerName: "李猛",
+    });
+
+    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
+
+    expect(await screen.findByText("lm-hermes")).toBeInTheDocument();
+    expect(screen.getByText("李猛")).toBeInTheDocument();
+    expect(screen.getByTitle("lm-hermes · 李猛")).toBeInTheDocument();
+    expect(screen.queryByText("@lm-hermes")).not.toBeInTheDocument();
   });
 
   it("tracks a view when the detail modal opens", async () => {

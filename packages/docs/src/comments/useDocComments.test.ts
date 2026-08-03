@@ -25,6 +25,103 @@ function withList(items: () => unknown[], onDelete: () => { data: unknown; statu
   }
 }
 
+describe('useDocComments — direct thread hydration', () => {
+  it('adds a marker-selected root without walking detailed pages', async () => {
+    api.responder = (_method, url) => url.endsWith('/9/thread')
+      ? { data: thread(9, 'late'), status: 200 }
+      : { data: { items: [thread(1, 'first')], nextCursor: 1 }, status: 200 }
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(1))
+    await act(async () => {
+      await result.current.loadThread(9)
+    })
+    expect(result.current.threads.map((item) => item.id)).toEqual([1, 9])
+    expect(api.calls.some((call) => call.url === '/docs/d_1/comments/9/thread')).toBe(true)
+  })
+
+  it('tracks concurrent thread loads independently and lets both install', async () => {
+    const releases = new Map<number, (value: any) => void>()
+    api.responder = (_method, url) => {
+      const match = url.match(/comments\/(\d+)\/thread$/)
+      if (!match) return { data: { items: [], nextCursor: null }, status: 200 }
+      const id = Number(match[1])
+      return new Promise((resolve) => releases.set(id, resolve))
+    }
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    let first!: Promise<boolean | null>
+    let second!: Promise<boolean | null>
+    await act(async () => {
+      first = result.current.loadThread(9)
+      second = result.current.loadThread(10)
+      await Promise.resolve()
+    })
+    expect([...result.current.loadingThreadIds].sort((a, b) => a - b)).toEqual([9, 10])
+    await act(async () => {
+      releases.get(10)!({ data: thread(10, 'ten'), status: 200 })
+      releases.get(9)!({ data: thread(9, 'nine'), status: 200 })
+      await expect(Promise.all([first, second])).resolves.toEqual([true, true])
+    })
+    expect(result.current.threads.map((item) => item.id)).toEqual([9, 10])
+    expect(result.current.loadingThreadIds.size).toBe(0)
+  })
+
+  it('keeps the newer same-thread request authoritative when responses finish out of order', async () => {
+    const releases: Array<(value: any) => void> = []
+    api.responder = (_method, url) => url.endsWith('/9/thread')
+      ? new Promise((resolve) => releases.push(resolve))
+      : { data: { items: [], nextCursor: null }, status: 200 }
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    let older!: Promise<boolean | null>
+    let newer!: Promise<boolean | null>
+    await act(async () => {
+      older = result.current.loadThread(9)
+      newer = result.current.loadThread(9)
+      await Promise.resolve()
+    })
+    expect(result.current.loadingThreadIds.has(9)).toBe(true)
+
+    await act(async () => {
+      releases[0]({ data: thread(9, 'old'), status: 200 })
+      await expect(older).resolves.toBeNull()
+    })
+    expect(result.current.loadingThreadIds.has(9)).toBe(true)
+    expect(result.current.threads).toEqual([])
+
+    await act(async () => {
+      releases[1]({ data: thread(9, 'new'), status: 200 })
+      await expect(newer).resolves.toBe(true)
+    })
+    expect(result.current.loadingThreadIds.has(9)).toBe(false)
+    expect(result.current.threads).toEqual([thread(9, 'new')])
+  })
+
+  it('returns null and discards a thread response superseded by a newer refresh', async () => {
+    let releaseThread!: (value: any) => void
+    let listCount = 0
+    api.responder = (_method, url) => {
+      if (url.endsWith('/9/thread')) return new Promise((resolve) => { releaseThread = resolve })
+      listCount += 1
+      return { data: { items: listCount === 1 ? [] : [thread(2, 'fresh')], nextCursor: null }, status: 200 }
+    }
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    let pending!: Promise<boolean | null>
+    await act(async () => {
+      pending = result.current.loadThread(9)
+      await Promise.resolve()
+      await result.current.refresh()
+    })
+    await act(async () => {
+      releaseThread({ data: thread(9, 'stale'), status: 200 })
+      await expect(pending).resolves.toBeNull()
+    })
+    expect(result.current.threads.map((item) => item.id)).toEqual([2])
+  })
+})
+
 describe('useDocComments — delete reconciles UI with authoritative backend', () => {
   it('drops the row on a successful delete', async () => {
     let rows = [thread(1, 'a'), thread(2, 'b')]
@@ -207,7 +304,7 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
 
     // Kick off the rejected delete; its reconcile() GET (getCount 2) is now
     // pending, so remove()'s promise stays unresolved.
-    let removePromise: Promise<void>
+    let removePromise: ReturnType<typeof result.current.remove>
     await act(async () => {
       removePromise = result.current.remove(1, false)
       await Promise.resolve()
@@ -304,6 +401,30 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
     expect(result.current.error).toBe('Failed to delete comment.')
   })
 
+  it('returns an explicit failure result so composers can retain their drafts', async () => {
+    const rows = [thread(1, 'a')]
+    api.responder = (method: string) => {
+      if (method === 'get') return { data: { items: rows, nextCursor: null }, status: 200 }
+      if (method === 'post') throw { response: { status: 403 } }
+      return { data: {}, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(1))
+
+    let mutationResult
+    await act(async () => {
+      mutationResult = await result.current.createRoot({
+        body: 'draft',
+        anchorStart: 'anchor',
+        anchorEnd: 'anchor',
+      })
+    })
+
+    expect(mutationResult).toEqual({ ok: false, error: 'Failed to add comment.' })
+    expect(result.current.error).toBe('Failed to add comment.')
+  })
+
   it('does not regress create/reply/resolve refresh on success', async () => {
     let rows = [thread(1, 'a')]
     api.responder = (method: string, url: string) => {
@@ -318,10 +439,12 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
     const { result } = renderHook(() => useDocComments('d_1'))
     await waitFor(() => expect(result.current.threads).toHaveLength(1))
 
+    let mutationResult
     await act(async () => {
-      await result.current.reply(1, 'b')
+      mutationResult = await result.current.reply(1, 'b')
     })
 
+    expect(mutationResult).toEqual({ ok: true, error: null })
     expect(result.current.threads.map((t) => t.id)).toEqual([1, 2])
     expect(result.current.error).toBeNull()
   })

@@ -54,7 +54,7 @@ describe('createComment (octo-doc backend)', () => {
     const spy = stubFetch(() => jsonResponse({ id: 'new1' }))
     const res = await createComment('my-slug', {
       text: 'please fix',
-      version: 'v3',
+      version: 3,
       anchor: { kind: 'element', aid: 'a42', selector: '[data-odoc-aid="a42"]', label: 'p' },
     })
     expect(res.id).toBe('new1')
@@ -66,7 +66,7 @@ describe('createComment (octo-doc backend)', () => {
     expect(body).toMatchObject({
       slug: 'my-slug',
       text: 'please fix',
-      version: 'v3',
+      version: 3,
       anchor: { kind: 'element', aid: 'a42' },
     })
     // No parent_id when not a reply.
@@ -77,7 +77,7 @@ describe('createComment (octo-doc backend)', () => {
     const spy = stubFetch(() => jsonResponse({ id: 'r2' }))
     await createComment('s', {
       text: 'reply',
-      version: 'latest',
+      version: 4,
       parentId: 'c1',
       anchor: { kind: 'element', aid: 'a1', selector: '[data-odoc-aid="a1"]' },
     })
@@ -88,7 +88,7 @@ describe('createComment (octo-doc backend)', () => {
 
   it('includes parent_id and omits anchor for a reply', async () => {
     const spy = stubFetch(() => jsonResponse({ id: 'r1' }))
-    await createComment('s', { text: 'reply', version: 'latest', parentId: 'c1' })
+    await createComment('s', { text: 'reply', version: 4, parentId: 'c1' })
     const body = JSON.parse(String((spy.mock.calls[0][1] as RequestInit).body))
     expect(body.parent_id).toBe('c1')
     expect(body.anchor).toBeUndefined()
@@ -96,7 +96,7 @@ describe('createComment (octo-doc backend)', () => {
 
   it('throws on a non-ok response', async () => {
     stubFetch(() => jsonResponse(null, false, 500))
-    await expect(createComment('s', { text: 'x', version: 'latest' })).rejects.toThrow()
+    await expect(createComment('s', { text: 'x', version: 4 })).rejects.toThrow()
   })
 })
 

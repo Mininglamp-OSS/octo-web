@@ -86,6 +86,8 @@ export interface WhiteboardSession {
   subscribeRole(cb: (role: Role) => void): () => void
   /** Subscribe to terminal transitions (4403 revoke / delete / lock); returns an unsubscribe. */
   subscribeTerminal(cb: (terminal: BoardTerminal) => void): () => void
+  /** Subscribe to lightweight comment invalidations carried outside Y.Doc. */
+  subscribeCommentChanges(cb: () => void): () => void
   destroy(): void
 }
 
@@ -133,6 +135,7 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
   // ── runtime permission enforcement (P1-3) ────────────────────────────────────────────────────
   const roleListeners = new Set<(role: Role) => void>()
   const terminalListeners = new Set<(t: BoardTerminal) => void>()
+  const commentListeners = new Set<() => void>()
   // Latest terminal transition. Tracked (not just fanned out) so a subscriber that attaches AFTER
   // the transition — BoardShell always subscribes post-construction — still learns a session that
   // was born terminal (auth-denied) or went terminal before it subscribed (P1-3).
@@ -211,6 +214,20 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
   provider.on('authenticated', () => closeMachine.onAuthStable())
   provider.on('stateless', (e: { payload: string }) => {
     roleController.handleStatelessFrame(e.payload)
+    try {
+      const event = JSON.parse(e.payload) as { type?: unknown; docId?: unknown }
+      if (event.type === 'comment.changed' && event.docId === opts.board) {
+        for (const listener of commentListeners) {
+          try {
+            listener()
+          } catch (error) {
+            console.error('[board] comment.changed listener failed', error)
+          }
+        }
+      }
+    } catch {
+      // Stateless frames are untrusted; malformed/foreign payloads are ignored.
+    }
   })
   provider.on('close', (e: { event: CloseEvent }) => {
     closeMachine.handleClose(e.event)
@@ -244,11 +261,16 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
       if (terminalState.kind !== 'none') cb(terminalState)
       return () => terminalListeners.delete(cb)
     },
+    subscribeCommentChanges(cb: () => void): () => void {
+      commentListeners.add(cb)
+      return () => commentListeners.delete(cb)
+    },
     destroy(): void {
       destroyed = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
       roleListeners.clear()
       terminalListeners.clear()
+      commentListeners.clear()
       binding.destroy()
       provider.destroy()
       persistence?.destroy()

@@ -81,6 +81,8 @@ export default defineConfig({
     env: {
       // local 模式启动 MSW; test 模式走真后端不启动
       VITE_E2E_MOCK: TARGET === "local" ? "1" : "0",
+      // local 模式挂 fake IM provider (mock-im-wksdk optional)
+      VITE_E2E_MOCK_IM: TARGET === "local" ? "1" : "0",
     },
   },
 });

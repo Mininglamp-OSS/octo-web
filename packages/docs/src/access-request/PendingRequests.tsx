@@ -6,10 +6,11 @@
 
 import { useState } from 'react'
 import { t } from '../octoweb/index.ts'
-import type { AccessRequestRole } from './api.ts'
+import type { Role } from '../auth/roles.ts'
+import { type AccessRequestRole, isAccessRequestRole } from './api.ts'
 import type { UseAccessRequestsResult } from './useAccessRequests.ts'
 
-const REQUEST_ROLES: AccessRequestRole[] = ['reader', 'writer']
+const DEFAULT_REQUEST_ROLES: AccessRequestRole[] = ['reader', 'writer']
 
 export function PendingRequests({
   requests,
@@ -18,6 +19,7 @@ export function PendingRequests({
   approve,
   deny,
   displayName,
+  allowedRoles,
 }: {
   requests: UseAccessRequestsResult['requests']
   loading: boolean
@@ -26,7 +28,18 @@ export function PendingRequests({
   deny: UseAccessRequestsResult['deny']
   /** uid → display name (space member name), falling back to the raw uid. */
   displayName: (uid: string) => string
+  /**
+   * Restrict which roles the approve select offers (OCT-195: html surface must only grant reader).
+   * Accepts the broader Role union so callers stay in one type; values that are not grantable via
+   * access-request (admin) are dropped. Omit / empty → full DEFAULT_REQUEST_ROLES so rich-doc
+   * callers see no behavior change.
+   */
+  allowedRoles?: Role[]
 }) {
+  // Filter down to grantable roles; if the caller narrowed it to nothing usable we still fall
+  // back to the default so approve is never posted with an undefined role.
+  const filtered = (allowedRoles ?? []).filter(isAccessRequestRole)
+  const requestRoles: AccessRequestRole[] = filtered.length > 0 ? filtered : DEFAULT_REQUEST_ROLES
   // Per-row chosen role (defaults to reader) and in-flight guard so a double click can't double-act.
   const [roleByReq, setRoleByReq] = useState<Record<string, AccessRequestRole>>({})
   const [busy, setBusy] = useState<Record<string, boolean>>({})
@@ -57,7 +70,7 @@ export function PendingRequests({
         <p className="octo-member-empty">{t('docs.forward.pendingEmpty')}</p>
       )}
       {requests.map((req) => {
-        const role = roleByReq[req.requestId] ?? 'reader'
+        const role = roleByReq[req.requestId] ?? requestRoles[0]
         const disabled = !!busy[req.requestId]
         return (
           <div className="octo-member-row" key={req.requestId}>
@@ -69,7 +82,7 @@ export function PendingRequests({
                 setRoleByReq((m) => ({ ...m, [req.requestId]: e.target.value as AccessRequestRole }))
               }
             >
-              {REQUEST_ROLES.map((r) => (
+              {requestRoles.map((r) => (
                 <option key={r} value={r}>
                   {t(`docs.role.${r}`)}
                 </option>

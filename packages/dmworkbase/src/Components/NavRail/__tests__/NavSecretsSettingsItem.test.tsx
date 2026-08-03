@@ -107,10 +107,10 @@ describe('NavSecretsSettingsItem deep link', () => {
     });
     expect(container.querySelector('[data-testid="panel"]')).toBeNull();
 
-    // Re-open manually (li click) — must NOT carry the old pasted value.
+    // Re-open manually — must NOT carry the old pasted value.
     panelProps.length = 0;
     act(() => {
-      (container.querySelector('li') as HTMLLIElement).click();
+      (container.querySelector('button[role="menuitem"]') as HTMLButtonElement).click();
     });
     const last = panelProps[panelProps.length - 1];
     expect(last.prefillValue).toBeUndefined();
