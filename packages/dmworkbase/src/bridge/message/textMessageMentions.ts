@@ -4,6 +4,7 @@ import {
   MENTION_LABEL_AIS,
   MENTION_LABEL_HUMANS,
   readMentionFlags,
+  type MentionRenderFlags,
   type MentionRenderInfo,
   type MentionRenderPart,
 } from "../../Utils/mentionRender";
@@ -70,7 +71,12 @@ function partsFromEntities(
   const result: MentionRenderPart[] = [];
   let lastEnd = 0;
   for (const entity of validEntities) {
-    if (entity.offset < lastEnd || isBroadcastSentinelUid(entity.uid)) {
+    if (entity.offset < lastEnd) {
+      continue;
+    }
+    const entityEnd = entity.offset + entity.length;
+    lastEnd = entityEnd;
+    if (isBroadcastSentinelUid(entity.uid)) {
       continue;
     }
     const name = text.slice(entity.offset, entity.offset + entity.length);
@@ -78,16 +84,29 @@ function partsFromEntities(
       continue;
     }
     result.push({ type: partMentionType, text: name, data: { uid: entity.uid } });
-    lastEnd = entity.offset + entity.length;
   }
   return result;
+}
+
+function hasEmbeddedMentionPrefix(text: string, matchStart: number): boolean {
+  if (matchStart <= 0) return false;
+  const charBefore = text.charCodeAt(matchStart - 1);
+  return (
+    (charBefore >= 97 && charBefore <= 122) ||
+    (charBefore >= 65 && charBefore <= 90) ||
+    (charBefore >= 48 && charBefore <= 57) ||
+    charBefore === 95
+  );
 }
 
 function partsFromLegacyUids(
   text: string,
   uids: unknown[] | undefined,
+  flags: MentionRenderFlags | undefined,
   partMentionType: number,
 ): MentionRenderPart[] {
+  if (flags?.ais) return [];
+
   const uidQueue = (uids ?? []).filter((uid): uid is string => typeof uid === "string");
   if (uidQueue.length === 0) return [];
 
@@ -98,6 +117,9 @@ function partsFromLegacyUids(
   while ((match = mentionRegex.exec(text)) !== null && index < uidQueue.length) {
     const name = match[0];
     const label = name.slice(1);
+    if (hasEmbeddedMentionPrefix(text, match.index)) {
+      continue;
+    }
     if (
       label.toLowerCase() === "all" ||
       label === MENTION_LABEL_HUMANS ||
@@ -119,6 +141,7 @@ function getMentionParts(args: {
   parts: MentionRenderPart[];
   content: unknown;
   editContent?: unknown;
+  flags?: MentionRenderFlags;
   partMentionType: number;
 }): MentionRenderPart[] {
   const mentionParts = args.parts.filter(
@@ -136,7 +159,7 @@ function getMentionParts(args: {
   );
   if (entityParts.length > 0) return entityParts;
 
-  return partsFromLegacyUids(text, mention?.uids, args.partMentionType);
+  return partsFromLegacyUids(text, mention?.uids, args.flags, args.partMentionType);
 }
 
 export function buildTextMessageMentions(args: {
@@ -147,7 +170,7 @@ export function buildTextMessageMentions(args: {
 }): MentionRenderInfo[] {
   const flags =
     readMentionFlags(args.editContent) ?? readMentionFlags(args.content);
-  const parts = getMentionParts(args);
+  const parts = getMentionParts({ ...args, flags });
 
   return buildMessageMentions(parts, flags, args.partMentionType);
 }

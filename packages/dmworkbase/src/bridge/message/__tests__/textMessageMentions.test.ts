@@ -117,4 +117,51 @@ describe("buildTextMessageMentions", () => {
             { name: "@所有人", uid: "all" },
         ])
     })
+
+    it("does not bind all-AI routing uids to raw member mention text", () => {
+        const mentions = buildTextMessageMentions({
+            parts: [],
+            content: {
+                text: "@所有AI 总结一下 @张三 的发言",
+                mention: { ais: 1, uids: ["bot_1", "bot_2"] },
+            },
+            partMentionType: PART_TYPE_MENTION,
+        })
+
+        expect(mentions).toEqual([{ name: "@所有AI", uid: "all" }])
+    })
+
+    it("skips embedded @ tokens before consuming legacy mention uids", () => {
+        const mentions = buildTextMessageMentions({
+            parts: [],
+            content: {
+                contentObj: {
+                    content: "ping eve@example.com 然后 @张三 跟进",
+                    mention: { uids: ["uid_zhang"] },
+                },
+            },
+            partMentionType: PART_TYPE_MENTION,
+        })
+
+        expect(mentions).toEqual([{ name: "@张三", uid: "uid_zhang" }])
+    })
+
+    it("does not recover member entities that overlap a broadcast sentinel entity", () => {
+        const mentions = buildTextMessageMentions({
+            parts: [],
+            content: {
+                text: "@张三 看一下",
+                mention: {
+                    entities: [
+                        { uid: "-2", offset: 0, length: 3 },
+                        { uid: "uid_zhang", offset: 0, length: 3 },
+                    ],
+                    humans: 1,
+                },
+            },
+            partMentionType: PART_TYPE_MENTION,
+        })
+
+        expect(mentions).toEqual([{ name: "@所有人", uid: "all" }])
+    })
 })

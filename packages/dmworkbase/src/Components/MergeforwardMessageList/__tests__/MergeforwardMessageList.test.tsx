@@ -109,4 +109,30 @@ describe("MergeforwardMessageList mention rendering", () => {
     expect(highlight?.textContent).toBe("@所有人");
     expect(container.querySelector("span.mention-entity")).toBeNull();
   });
+
+  it("renders forwarded all-AI mentions as text-only highlights", () => {
+    const { container } = renderList({
+      text: "@所有AI 请总结",
+      mention: { ais: 1 },
+    });
+
+    const highlight = container.querySelector("span.mention-highlight");
+    expect(highlight?.textContent).toBe("@所有AI");
+    expect(container.querySelector("span.mention-entity")).toBeNull();
+  });
+
+  it("restores legacy member mention styling from forwarded mention uids", () => {
+    const { container, onMentionClick } = renderList({
+      contentObj: {
+        content: "@张三 请跟进",
+        mention: { uids: ["uid_zhang"] },
+      },
+    });
+
+    const entity = container.querySelector("span.mention-entity");
+    expect(entity?.textContent).toBe("@张三");
+
+    fireEvent.click(entity!);
+    expect(onMentionClick).toHaveBeenCalledWith("uid_zhang");
+  });
 });

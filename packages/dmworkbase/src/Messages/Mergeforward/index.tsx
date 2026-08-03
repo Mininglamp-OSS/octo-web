@@ -249,17 +249,18 @@ export default class MergeforwardContent extends MessageContent {
   }
 
   messageToMap(message: Message): any {
-    // Use contentObj if available, otherwise fall back to encodeJSON()
-    let payload = message.content.contentObj;
-    if (!payload) {
-      payload = { ...message.content.encodeJSON(), type: message.content.contentType };
-    } else if (payload.type === undefined) {
-      // 防护性检查：确保 contentObj 包含 type 字段
-      // 正常情况下 contentObj 来自服务器 payload，应包含 type
-      // 但某些边缘情况可能导致丢失，这里兼容处理
-      payload = { ...payload, type: message.content.contentType };
-    }
-    payload = mergeMentionIntoPayload(payload, message.content);
+    // Start from encodeJSON() so locally-created messages keep their full
+    // payload even when contentObj only carries injected metadata.
+    const encodedPayload = {
+      ...message.content.encodeJSON(),
+      type: message.content.contentType,
+    };
+    const payload = mergeMentionIntoPayload(
+      isRecord(message.content.contentObj)
+        ? { ...encodedPayload, ...message.content.contentObj }
+        : encodedPayload,
+      message.content,
+    );
     return {
       message_id: message.messageID,
       from_uid: message.fromUID ?? "",

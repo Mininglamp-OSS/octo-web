@@ -526,4 +526,36 @@ describe("MergeforwardContent.encode() full payload (simulates SDK encode path)"
       all: 0,
     });
   });
+
+  it("keeps encoded text when contentObj only carries injected mention metadata", () => {
+    const innerMsg = new (hoisted.StubMessage as any)();
+    innerMsg.messageID = "m1";
+    innerMsg.fromUID = "u1";
+    innerMsg.timestamp = 100;
+    innerMsg.content = {
+      contentObj: {
+        mention: {
+          entities: [{ uid: "uid_zhang", offset: 2, length: 3 }],
+        },
+      },
+      contentType: 1,
+      mention: {
+        all: false,
+      },
+      encodeJSON: () => ({ content: "请 @张三 跟进" }),
+    };
+
+    const content = new MergeforwardContent(2, [{ uid: "u1", name: "User1" }], [innerMsg as any]);
+
+    const contentObj = content.encodeJSON();
+
+    expect(contentObj.msgs[0].payload).toMatchObject({
+      type: 1,
+      content: "请 @张三 跟进",
+      mention: {
+        entities: [{ uid: "uid_zhang", offset: 2, length: 3 }],
+        all: 0,
+      },
+    });
+  });
 });
