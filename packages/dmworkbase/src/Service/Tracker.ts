@@ -133,7 +133,8 @@ class TrackerImpl {
     /** 持久设备标识;方案 A 注入 `X-Octo-Device-Id` 时读它 */
     readonly deviceId: string = loadOrCreateDeviceId()
 
-    private enabled = true
+    // ship dark:默认不采,等 remoteConfig 显式启用(后端采集端就绪前一个请求都不发)
+    private enabled = false
     private started = false
     private queue: TrackEnvelope[] = []
     private flushTimer: ReturnType<typeof setInterval> | null = null

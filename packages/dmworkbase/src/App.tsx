@@ -265,9 +265,15 @@ export class WKRemoteConfig {
   docsSearchOn: boolean = false; // 云文档全文搜索开关，默认关闭；与 docsOn(模块入口)解耦，独立灰度
   disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
   /**
+   * 埋点采集启用位(ship dark)。后端采集端(/track/batch)就绪后,remoteConfig 下发
+   * tracking_enabled=true 才开采;fail-closed:字段缺失=不采,前端一个请求都不发。
+   * 与 tracking_disabled 急停位是「与」关系:采集 iff tracking_enabled && !tracking_disabled。
+   */
+  trackingEnabled: boolean = false;
+  /**
    * 埋点蒙版远程 kill switch(octo-dap 采集方案 §2.6)。后端字段 tracking_disabled 为 true 时,
-   * 前端 Tracker 立即停采、清空队列,业务 UI 零影响。字段缺失 fail-open(默认 false,即采集开启)。
-   * 一期只做全量开/关,按 event 粒度放二期。
+   * 前端 Tracker 立即停采、清空队列,业务 UI 零影响。字段缺失 fail-open(默认 false),
+   * 作紧急急停,覆盖 tracking_enabled。一期只做全量开/关,按 event 粒度放二期。
    */
   trackingDisabled: boolean = false;
   /**
@@ -458,9 +464,10 @@ export class WKRemoteConfig {
       this.disableUserCreateSpace = parseRemoteBool(
         result["disable_user_create_space"]
       );
-      // 埋点 kill switch(§2.6):字段缺失 fail-open(采集开启)
+      // 埋点采集 ship dark(fail-closed)+ kill switch(fail-open 急停):采集 iff 启用 && 未急停
+      this.trackingEnabled = parseRemoteBool(result["tracking_enabled"]);
       this.trackingDisabled = parseRemoteBool(result["tracking_disabled"]);
-      Tracker.shared.setEnabled(!this.trackingDisabled);
+      Tracker.shared.setEnabled(this.trackingEnabled && !this.trackingDisabled);
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
       );
