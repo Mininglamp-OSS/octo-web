@@ -3750,7 +3750,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // 迟到（已切 task）：不回显新 task（confirmingSchedule 由 finally 复位）。
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.scheduleConfirmed"));
-            WKApp.mittBus.emit("summary-attention-refresh-requested" as any);
             // 复用现有加载路径刷新（不新增任何出站推送）：重拉 schedule 让按钮消失。
             this.loadSchedule(scheduleItem.schedule_id);
         } catch (err: any) {

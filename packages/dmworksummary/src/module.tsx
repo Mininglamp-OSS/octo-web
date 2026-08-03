@@ -8,7 +8,7 @@ import SummaryShareDetailPage from "./pages/SummaryShareDetailPage";
 import SummarySharePreviewFeature from "./features/summaryShare/SummarySharePreviewFeature";
 import SummaryConfirmPage from "./pages/SummaryConfirmPage";
 import ScheduleListPage from "./pages/ScheduleListPage";
-import { getChatCandidates, getSummaryShare, listSummaries } from "./api/summaryApi";
+import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
 import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/summaryShare/navigation";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
 import { isSupportedChannelType } from "./utils/channelType";
@@ -21,46 +21,6 @@ import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
 const openingSummaryShares = new Set<string>();
-let _attentionRefreshTimer: ReturnType<typeof setInterval> | null = null;
-let _attentionFocusHandler: (() => void) | null = null;
-let _attentionRefreshRequestHandler: (() => void) | null = null;
-let _attentionBootstrapTimer: ReturnType<typeof setTimeout> | null = null;
-let _attentionRequest: Promise<boolean> | null = null;
-
-async function refreshSummaryAttentionCount(): Promise<boolean> {
-    if (!WKApp.loginInfo.isLogined() || !WKApp.shared.currentSpaceId) return false;
-    if (_attentionRequest) return _attentionRequest;
-    _attentionRequest = (async () => {
-      try {
-        const response = await listSummaries({ page: 1, page_size: 1 });
-        WKApp.mittBus.emit("summary-badge-update" as any, {
-            count: response.attention_count ?? 0,
-        });
-        WKApp.mittBus.emit("summary-attention-count-refreshed" as any, {
-            count: response.attention_count ?? 0,
-        });
-        return true;
-      } catch {
-        // Navigation badge is best-effort and must not block application startup.
-        return false;
-      } finally {
-        _attentionRequest = null;
-      }
-    })();
-    return _attentionRequest;
-}
-
-function bootstrapSummaryAttentionCount(attempt = 0) {
-    void refreshSummaryAttentionCount().then((loaded) => {
-        if (loaded || attempt >= 50) return;
-        // Module initialization can precede login/Space restoration on a cold
-        // page load. Retry quickly until both are ready instead of waiting for
-        // the five-second background poll.
-        _attentionBootstrapTimer = setTimeout(() => {
-            bootstrapSummaryAttentionCount(attempt + 1);
-        }, 100);
-    });
-}
 
 /**
  * NavRail 顶层菜单图标（智能总结）。与 dmworkappbot 的菜单图标同构：
@@ -212,23 +172,8 @@ export class SummaryModule implements IModule {
 
         _spaceChangedHandler = () => {
             WKApp.mittBus.emit('summary-space-changed');
-            void refreshSummaryAttentionCount();
         };
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
-
-        // SummaryListPage is mounted only after the menu is opened. Keep the
-        // global navigation badge fresh independently so invitations are
-        // visible before the invitee enters Smart Summary.
-        bootstrapSummaryAttentionCount();
-        _attentionRefreshTimer = setInterval(() => {
-            if (document.visibilityState === "visible") {
-                void refreshSummaryAttentionCount();
-            }
-        }, 5000);
-        _attentionFocusHandler = () => void refreshSummaryAttentionCount();
-        window.addEventListener("focus", _attentionFocusHandler);
-        _attentionRefreshRequestHandler = () => void refreshSummaryAttentionCount();
-        WKApp.mittBus.on("summary-attention-refresh-requested" as any, _attentionRefreshRequestHandler);
 
         WKApp.searchChatCandidates = async (params) => {
             return getChatCandidates(params);
@@ -264,22 +209,6 @@ if (import.meta.hot) {
         if (_spaceChangedHandler) {
             WKApp.mittBus.off('space-changed', _spaceChangedHandler);
             _spaceChangedHandler = null;
-        }
-        if (_attentionRefreshTimer) {
-            clearInterval(_attentionRefreshTimer);
-            _attentionRefreshTimer = null;
-        }
-        if (_attentionFocusHandler) {
-            window.removeEventListener("focus", _attentionFocusHandler);
-            _attentionFocusHandler = null;
-        }
-        if (_attentionRefreshRequestHandler) {
-            WKApp.mittBus.off("summary-attention-refresh-requested" as any, _attentionRefreshRequestHandler);
-            _attentionRefreshRequestHandler = null;
-        }
-        if (_attentionBootstrapTimer) {
-            clearTimeout(_attentionBootstrapTimer);
-            _attentionBootstrapTimer = null;
         }
     });
 }

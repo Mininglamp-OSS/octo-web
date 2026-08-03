@@ -76,23 +76,12 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     private searchTimer: ReturnType<typeof setTimeout> | null = null;
     private batchPollTimer: ReturnType<typeof setInterval> | null = null;
     private isBatchPolling = false;
-    private attentionCount = 0;
-    private attentionRefreshLoading = false;
 
     private handleSpaceChanged_ = () => this.loadData();
 
     private handleListRefreshRequested_ = () => this.loadData();
 
     private handleTaskRegenerated_ = () => this.loadData();
-
-    private handleAttentionCountRefreshed_ = ({ count }: { count: number }) => {
-        const nextCount = count ?? 0;
-        if (nextCount === this.attentionCount || this.attentionRefreshLoading) return;
-        this.attentionRefreshLoading = true;
-        void this.loadData().finally(() => {
-            this.attentionRefreshLoading = false;
-        });
-    };
 
     private handleSummaryRead_ = (event: Event) => {
         const detail = (event as CustomEvent<{
@@ -102,14 +91,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }>).detail;
         const taskId = detail?.taskId;
         if (!detail || !taskId) return;
-        const current = this.state.items.find(item => item.task_id === taskId);
-        const nextNeedsAttention = detail.needsAttention ?? Boolean(current?.has_pending_invitation);
-        if (current?.needs_attention && !nextNeedsAttention) {
-            // Keep the local count aligned with the successful mark-read
-            // response so the next global poll does not trigger a redundant
-            // full-list reload and lose the user's scroll position.
-            this.attentionCount = Math.max(0, this.attentionCount - 1);
-        }
         this.setState(({ items }) => ({
             items: items.map(item => item.task_id === taskId
                 ? {
@@ -119,7 +100,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 }
                 : item),
         }));
-        this.emitBadgeUpdate();
     };
 
     private handleDetailActive_ = (event: Event) => {
@@ -146,7 +126,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         this.loadData();
         WKApp.mittBus.on("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated_);
-        WKApp.mittBus.on("summary-attention-count-refreshed" as any, this.handleAttentionCountRefreshed_);
         WKApp.mittBus.on("summary-list-refresh-requested" as any, this.handleListRefreshRequested_);
         window.addEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
         window.addEventListener("summary-read", this.handleSummaryRead_);
@@ -166,7 +145,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         this.stopBatchPoll();
         WKApp.mittBus.off("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated_);
-        WKApp.mittBus.off("summary-attention-count-refreshed" as any, this.handleAttentionCountRefreshed_);
         WKApp.mittBus.off("summary-list-refresh-requested" as any, this.handleListRefreshRequested_);
         window.removeEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
         window.removeEventListener("summary-read", this.handleSummaryRead_);
@@ -174,7 +152,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         window.removeEventListener("summary-detail-inactive", this.handleDetailInactive_);
     }
 
-    async fetchData(): Promise<{ items: SummaryListItem[]; total: number; attention_count: number }> {
+    async fetchData(): Promise<{ items: SummaryListItem[]; total: number }> {
         const { page, pageSize, statusFilter, keyword } = this.state;
         const { channelId } = this.props;
         const params: ListSummariesParams = {
@@ -185,9 +163,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             origin_channel_id: channelId || undefined,
         };
         const resp = await api.listSummaries(params);
-        this.attentionCount = resp.attention_count ?? 0;
-        this.emitBadgeUpdate(resp.attention_count);
-        return { items: resp.items, total: resp.total, attention_count: resp.attention_count ?? 0 };
+        return { items: resp.items, total: resp.total };
     }
 
     async loadData() {
@@ -202,7 +178,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 origin_channel_id: this.props.channelId || undefined,
             };
             const resp = await api.listSummaries(params);
-            this.attentionCount = resp.attention_count ?? 0;
             this.setState({
                 items: resp.items,
                 total: resp.total,
@@ -210,7 +185,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 hasMore: resp.items.length < resp.total,
             }, () => {
                 this.maybeStartBatchPoll();
-                this.emitBadgeUpdate(resp.attention_count);
             });
         } catch (err: any) {
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
@@ -302,7 +276,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             if (changed) {
                 this.setState({ items: newItems }, () => {
                     this.maybeStartBatchPoll();
-                    this.emitBadgeUpdate();
                 });
                 window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: changedIds } }));
             }
@@ -318,26 +291,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             clearInterval(this.batchPollTimer);
             this.batchPollTimer = null;
         }
-    }
-
-    /**
-     * Fire badge update event — badge = count of WAITING_CONFIRM tasks
-     * (summary ready, waiting for user to confirm).
-     * Uses a separate unfiltered query so badge is independent of list filter.
-     */
-    private emitBadgeUpdate(count?: number) {
-        // Panel mode (channelId set): attention_count is channel-scoped, must not
-        // overwrite the global nav badge. Only the full-page route owns the badge.
-        if (this.props.channelId) return;
-        if (count != null) {
-            WKApp.mittBus.emit("summary-badge-update" as any, { count });
-            return;
-        }
-        api.listSummaries({ page_size: 1 }).then(resp => {
-            const count = resp.attention_count ?? 0;
-            this.attentionCount = count;
-            WKApp.mittBus.emit("summary-badge-update" as any, { count });
-        }).catch(() => { /* ignore */ });
     }
 
     handleStatusChange = (value: string | number) => {
