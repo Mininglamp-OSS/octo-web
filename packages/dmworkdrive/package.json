@@ -8,8 +8,8 @@
   },
   "dependencies": {
     "@octo/base": "workspace:*",
-    "@douyinfe/semi-icons": "^2.93.0",
-    "@douyinfe/semi-ui": "^2.93.0",
+    "@douyinfe/semi-icons": "^2.102.0",
+    "@douyinfe/semi-ui": "^2.102.0",
     "axios": "^1.18.1",
     "lucide-react": "^0.577.0"
   },
