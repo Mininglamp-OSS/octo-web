@@ -143,7 +143,8 @@ export function clearAgentChatReferenced(channelId?: string | null): void {
 // ─── 群内总结 tip 的「已发送」持久标记（per-task / per-source） ──────────────
 // #289 review：单纯用组件实例内存态去重，会在多 tab / reload / 多实例同时观察到
 // 完成时各自向所有源群重复发 tip。改用 localStorage 持久化「(task_id, source_id) 已发」
-// 标记，跨 tab / reload 共享，且按 source 粒度记录——失败的 source 不落标记，下次可重试。
+// 标记，在顺序发生的跨 tab / reload 场景共享，且按 source 粒度记录——失败的 source
+// 不落标记，下次可重试。它不是跨 tab 原子锁；两个 tab 同时发送时仍可能竞态重复。
 const SUMMARY_NOTIFY_SENT_KEY_PREFIX = 'summary-notify-sent:';
 
 function summaryNotifySentKey(taskId: number): string {
@@ -166,8 +167,9 @@ export function readSummaryNotifySentSources(taskId: number): Set<string> {
 }
 
 /**
- * 记录某 task 的某源群 tip「已成功发送」。读-改-写合并，避免并发 tab 互相覆盖丢标记。
- * 仅在发送成功后调用；异常静默降级（最坏情况是下次重发，不会永久漏发）。
+ * 记录某 task 的某源群 tip「已成功发送」。读-改-写只能合并当前可见的已有标记，
+ * 不保证跨 tab 原子性；并发 tab 仍可能覆盖标记或重复发送。仅在发送成功后调用；
+ * 异常静默降级（最坏情况是下次重发，不会永久漏发）。
  */
 export function markSummaryNotifySent(taskId: number, sourceId: string): void {
     if (!sourceId) return;

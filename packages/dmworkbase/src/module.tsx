@@ -392,7 +392,7 @@ export default class BaseModule implements IModule {
       MessageContentTypeConst.screenshot,
       () => new ScreenshotContent()
     );
-    WKSDK.shared().register(
+    registerCurrentImMessageContent(
       MessageContentTypeConst.summaryNotify,
       () => new SummaryNotifyContent()
     );

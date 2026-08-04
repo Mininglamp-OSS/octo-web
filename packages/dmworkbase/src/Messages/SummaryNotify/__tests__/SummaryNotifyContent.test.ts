@@ -40,6 +40,7 @@ vi.mock("../../../App", () => ({
 vi.mock("../../../i18n", () => ({
   t: (key: string, opts?: any) => {
     if (key === "base.message.summaryNotify.you") return "你";
+    if (key === "base.message.summaryNotify.unknown") return "某用户";
     if (key === "base.message.summaryNotify.text") {
       return `${opts?.values?.name}总结了群聊内容`;
     }
@@ -107,5 +108,13 @@ describe("SummaryNotifyContent", () => {
     content.fromUID = "alice";
     content.fromName = "Alice";
     expect(content.tip).toBe("Alice总结了群聊内容");
+  });
+
+  it("uses a neutral fallback when both cached and embedded names are blank", () => {
+    channelManager.getChannelInfo.mockReturnValue({ orgData: { displayName: "  " } });
+    const content = new SummaryNotifyContent();
+    content.fromUID = "unknown";
+    content.fromName = "";
+    expect(content.tip).toBe("某用户总结了群聊内容");
   });
 });

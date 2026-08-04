@@ -10,6 +10,14 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const sendMock = vi.hoisted(() => vi.fn());
 const disbandedMock = vi.hoisted(() => vi.fn((_ch?: any) => false));
+const getSummaryDetailMock = vi.hoisted(() => vi.fn());
+const batchStatusMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../../api/summaryApi', async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    getSummaryDetail: getSummaryDetailMock,
+    batchStatus: batchStatusMock,
+}));
 
 vi.mock('wukongimjssdk', () => ({
     Channel: class {
@@ -98,6 +106,11 @@ function makeDetail(over: any = {}) {
 
 function newPage() {
     const page: any = new SummaryDetailPage({ taskId: 1 });
+    // React 未挂载实例的 setState 是 no-op；测试私有事件接线时同步合并状态。
+    page.setState = (next: any) => {
+        const patch = typeof next === 'function' ? next(page.state, page.props) : next;
+        page.state = { ...page.state, ...patch };
+    };
     return page;
 }
 
@@ -107,6 +120,8 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
         localStorage.clear();
         sendMock.mockResolvedValue(undefined);
         disbandedMock.mockReturnValue(false);
+        getSummaryDetailMock.mockReset();
+        batchStatusMock.mockReset();
     });
 
     it('sends one tip per group source, skips non-group sources', async () => {
@@ -115,6 +130,18 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
         const channelIds = sendMock.mock.calls.map((c) => c[1].channelID).sort();
         expect(channelIds).toEqual(['group-a', 'group-b']);
         sendMock.mock.calls.forEach((c) => expect(c[1].channelType).toBe(2));
+    });
+
+    it('deduplicates repeated group source ids within one detail response', async () => {
+        const detail = makeDetail({
+            sources: [
+                { source_type: SourceType.GROUP_CHAT, source_id: 'group-a' },
+                { source_type: SourceType.GROUP_CHAT, source_id: 'group-a' },
+            ],
+        });
+        await newPage().sendGroupSummaryNotify(detail);
+        expect(sendMock).toHaveBeenCalledTimes(1);
+        expect(sendMock.mock.calls[0][1].channelID).toBe('group-a');
     });
 
     it('does not send when the current user is not the creator', async () => {
@@ -188,5 +215,43 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
         ]);
         expect(sendMock).toHaveBeenCalledTimes(2);
         expect(sendMock.mock.calls.map((c) => c[1].channelID).sort()).toEqual(['group-a', 'group-b']);
+    });
+
+    it('wires an observed status event transition to the notify path', async () => {
+        const page = newPage();
+        const detail = makeDetail();
+        page.state.lastKnownStatus = TaskStatus.PROCESSING;
+        getSummaryDetailMock.mockResolvedValue(detail);
+        const notify = vi.spyOn(page, 'sendGroupSummaryNotify').mockResolvedValue(undefined);
+
+        await page.handleStatusChangeEvent(new CustomEvent('status', { detail: { taskIds: [1] } }));
+
+        expect(notify).toHaveBeenCalledOnce();
+        expect(notify).toHaveBeenCalledWith(detail);
+    });
+
+    it('does not notify when the first observed status is already COMPLETED', async () => {
+        const page = newPage();
+        page.state.lastKnownStatus = undefined;
+        getSummaryDetailMock.mockResolvedValue(makeDetail());
+        const notify = vi.spyOn(page, 'sendGroupSummaryNotify').mockResolvedValue(undefined);
+
+        await page.handleStatusChangeEvent(new CustomEvent('status', { detail: { taskIds: [1] } }));
+
+        expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('wires an observed fallback-poll transition to the notify path', async () => {
+        const page = newPage();
+        const detail = makeDetail();
+        page.state.lastKnownStatus = TaskStatus.PROCESSING;
+        batchStatusMock.mockResolvedValue([{ id: 1, status: TaskStatus.COMPLETED }]);
+        getSummaryDetailMock.mockResolvedValue(detail);
+        const notify = vi.spyOn(page, 'sendGroupSummaryNotify').mockResolvedValue(undefined);
+
+        await page.doFallbackPollOnce();
+
+        expect(notify).toHaveBeenCalledOnce();
+        expect(notify).toHaveBeenCalledWith(detail);
     });
 });

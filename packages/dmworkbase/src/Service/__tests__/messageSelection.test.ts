@@ -15,6 +15,7 @@ describe("isMessageSelectable", () => {
     expect(isMessageSelectable({ contentType: MessageContentTypeConst.historySplit })).toBe(false)
     expect(isMessageSelectable({ contentType: MessageContentTypeConst.typing })).toBe(false)
     expect(isMessageSelectable({ contentType: MessageContentTypeConst.threadCreated })).toBe(false)
+    expect(isMessageSelectable({ contentType: MessageContentTypeConst.summaryNotify })).toBe(false)
   })
 
   it("rejects recalled messages", () => {

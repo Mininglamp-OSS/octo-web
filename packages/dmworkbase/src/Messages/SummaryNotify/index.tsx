@@ -17,9 +17,11 @@ export class SummaryNotifyContent extends MessageContent {
             name = t("base.message.summaryNotify.you")
         } else {
             let channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(this.fromUID, ChannelTypePerson))
-            // channelInfo 命中但 orgData.displayName 缺失时，回退到消息自带的 fromName，
-            // 避免渲染成「undefined总结了群聊内容」。
-            name = channelInfo?.orgData?.displayName || this.fromName
+            const displayName = channelInfo?.orgData?.displayName
+            const candidate = [displayName, this.fromName]
+                .find((value) => typeof value === "string" && value.trim())
+            // 缓存和消息体都缺少有效名称时使用中性称谓，避免空白或误称为“你”。
+            name = candidate?.trim() || t("base.message.summaryNotify.unknown")
         }
         return t("base.message.summaryNotify.text", { values: { name } })
     }

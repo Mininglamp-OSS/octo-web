@@ -1054,6 +1054,7 @@
   "message.screenshot.you": "You",
   "message.summaryNotify.text": "{{name}} summarized the chat",
   "message.summaryNotify.you": "You",
+  "message.summaryNotify.unknown": "Someone",
   "message.signal.unavailable": "This message uses end-to-end encryption and cannot be decrypted on web. View it on mobile.",
   "message.unknown.unsupportedWithType": "[This message cannot be viewed here. Open it on mobile for details ({{type}})]",
   "message.unsupport.tip": "[Received a message type not supported on web. View it on mobile.]",

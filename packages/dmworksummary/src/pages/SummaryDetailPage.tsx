@@ -2195,8 +2195,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      *「{发起人}总结了群聊内容」（照抄截屏 tip，不可回复）。
      * - 仅发起人（creator）发送，避免每个查看者都发一遍；
      * - 去重按 (task_id, source_id) 粒度，持久化到 localStorage（summary-notify-sent:*）：
-     *   跨 tab / reload / 多实例共享，且**仅在发送成功后**落标记——某源群瞬时失败不落标记,
-     *   下次（再次转 COMPLETED）还能重试，不会永久静默漏发；
+     *   顺序发生的跨 tab / reload / 多实例可共享，且**仅在发送成功后**落标记——某源群
+     *   瞬时失败不落标记，下次（再次转 COMPLETED）还能重试，不会永久静默漏发；
+     *   localStorage 不是原子锁：两个 tab 同时观察到完成时仍可能各自发送；
      * - 同一实例内用 summaryNotifyInFlight 防止两条触发点并发重复发同一 source；
      * - 已解散的群跳过（沿用 isConversationDisbanded 这条既有发送不变量）；
      * - 发送走 chatManager.send，与 handleForwardToChat 一致；群频道无需注入 space_id。
@@ -2210,17 +2211,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const myUid = WKApp.loginInfo.uid;
         // 只有发起人发；非 creator 视角不触发（文案主语是发起人）。
         if (!myUid || detail.creator_id !== myUid) return;
-        const groupSources = (detail.sources || []).filter(
-            (src) => src.source_type === SourceType.GROUP_CHAT && !!src.source_id
-        );
-        if (groupSources.length === 0) return;
+        const groupSourceIds = [...new Set(
+            (detail.sources || [])
+                .filter((src) => src.source_type === SourceType.GROUP_CHAT && !!src.source_id)
+                .map((src) => src.source_id)
+        )];
+        if (groupSourceIds.length === 0) return;
 
         const sentSources = readSummaryNotifySentSources(detail.task_id);
-        for (const src of groupSources) {
-            const inFlightKey = `${detail.task_id}:${src.source_id}`;
-            if (sentSources.has(src.source_id)) continue; // 已成功发过（跨 tab / reload）
+        for (const sourceId of groupSourceIds) {
+            const inFlightKey = `${detail.task_id}:${sourceId}`;
+            if (sentSources.has(sourceId)) continue; // 已成功发过（顺序发生的跨 tab / reload）
             if (this.summaryNotifyInFlight.has(inFlightKey)) continue; // 本实例正在发
-            const ch = new Channel(src.source_id, ChannelTypeGroup);
+            const ch = new Channel(sourceId, ChannelTypeGroup);
             // 已解散群不发（保持与既有发送路径一致的只读不变量）。
             if (isConversationDisbanded(ch)) continue;
 
@@ -2231,7 +2234,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 msg.fromName = WKApp.loginInfo.name || "";
                 await WKSDK.shared().chatManager.send(msg, ch);
                 // 仅成功后落持久标记；失败则不落，下次可重试。
-                markSummaryNotifySent(detail.task_id, src.source_id);
+                markSummaryNotifySent(detail.task_id, sourceId);
+                sentSources.add(sourceId);
             } catch {
                 // 单个群失败不影响其余群，也不落标记（可重试）。
             } finally {
