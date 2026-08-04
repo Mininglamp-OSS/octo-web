@@ -17,7 +17,7 @@ import type {
     TaskStatusType,
 } from "../types/summary";
 import { TaskStatus } from "../types/summary";
-import { getStatusLabel } from "../utils/summaryHelpers";
+import { getStatusLabel, isTerminalStatus } from "../utils/summaryHelpers";
 import SummaryCard from "../components/SummaryCard";
 import SummaryCreatePage from "./SummaryCreatePage";
 import SummaryDetailPage from "./SummaryDetailPage";
@@ -76,6 +76,17 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     private searchTimer: ReturnType<typeof setTimeout> | null = null;
     private batchPollTimer: ReturnType<typeof setInterval> | null = null;
     private isBatchPolling = false;
+    private isRefreshing = false;
+    // Monotonic list-mutation sequence: bumped by every path that mutates
+    // items / page (loadData, loadMore, refreshListSilently). An in-flight
+    // refresh captures the value pre-await and bails on resume if the
+    // sequence advanced — that is what protects the cursor when a
+    // scroll-triggered loadMore races the completion refresh.
+    private listSeq = 0;
+    // Cleared by componentWillUnmount so any in-flight refresh's setState
+    // becomes a no-op instead of restarting maybeStartBatchPoll on a
+    // torn-down component.
+    private isMounted_ = false;
 
     private handleSpaceChanged_ = () => this.loadData();
 
@@ -123,6 +134,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     };
 
     componentDidMount() {
+        this.isMounted_ = true;
         this.loadData();
         WKApp.mittBus.on("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated_);
@@ -140,6 +152,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     }
 
     componentWillUnmount() {
+        this.isMounted_ = false;
         window.dispatchEvent(new CustomEvent("summary-list-unmount"));
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.stopBatchPoll();
@@ -167,6 +180,10 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     }
 
     async loadData() {
+        // Bump the list-mutation sequence so any in-flight silent refresh
+        // captured before this reload bails on resume instead of clobbering
+        // the freshly-loaded items.
+        this.listSeq++;
         this.setState({ loading: true, error: null, page: 1, hasMore: true });
         try {
             const { pageSize, statusFilter, keyword } = this.state;
@@ -201,6 +218,10 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
 
     async loadMore() {
         if (this.state.loadingMore || !this.state.hasMore || this.state.loading) return;
+        // Bump the list-mutation sequence: an in-flight silent refresh
+        // captured before this loadMore appended a page must bail so it
+        // does not overwrite the appended items or reset the cursor.
+        this.listSeq++;
         this.setState({ loadingMore: true });
         try {
             const nextPage = this.state.page + 1;
@@ -274,15 +295,112 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 return item;
             });
             if (changed) {
-                this.setState({ items: newItems }, () => {
-                    this.maybeStartBatchPoll();
+                // #290：进入终态时，仅原地打 status 补丁不够——完成后 backend 才会
+                // 填/改标题、结果预览等字段，且列表加载后新建的任务不在轮询集合里。
+                // 因此终态变化触发一次「静默」全量刷新（不显示加载态、不重置分页深度）。
+                const hasTerminal = changedIds.some(id => {
+                    const u = updateMap.get(id);
+                    return !!u && isTerminalStatus(u.status);
                 });
+                if (hasTerminal) {
+                    // Apply the confirmed status patch immediately, then fire
+                    // the silent refresh to enrich rows with backend-populated
+                    // fields. Skipping the local patch leaves cards showing a
+                    // stale non-terminal status (with Cancel affordance) for
+                    // the round-trip window; if the refresh throws, the poller
+                    // would also rediscover the same transition every 2s and
+                    // dispatch summary-status-change indefinitely.
+                    this.setState({ items: newItems }, () => {
+                        this.maybeStartBatchPoll();
+                        void this.refreshListSilently();
+                    });
+                } else {
+                    // 非终态（如 PENDING→PROCESSING）保留廉价的原地状态补丁即可。
+                    this.setState({ items: newItems }, () => {
+                        this.maybeStartBatchPoll();
+                    });
+                }
                 window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: changedIds } }));
             }
         } catch {
             // ignore
         } finally {
             this.isBatchPolling = false;
+        }
+    }
+
+    /**
+     * 静默全量刷新（#290）：拉取最新列表并替换 items，但不置 `loading`（不闪加载态），
+     * 也不重置分页——用 page_size = pageSize × 已加载页数 一次覆盖所有已加载页，
+     * 保留用户的滚动深度。与 loadData 的区别就是「无加载态、不塌回第 1 页」。
+     * 出错则保留上一份好数据，交给下一次轮询重试。
+     *
+     * Concurrency invariants:
+     * - `isRefreshing` short-circuits overlapping refresh calls.
+     * - `listSeq` (bumped by loadData / loadMore / this method) is captured
+     *   pre-await; a bump during our fetch means another path has already
+     *   mutated items / page, and the refresh response would clobber it.
+     * - Captured `statusFilter` / `keyword` / `channelId`: if any changed
+     *   during the fetch the response is scoped to stale filters.
+     * - `loadingMore` bail on resume: a scroll-triggered loadMore may have
+     *   started after we captured listSeq but before its own bump landed;
+     *   check the flag directly to close that window.
+     * - `isMounted_` guard: don't setState after unmount.
+     */
+    private async refreshListSilently() {
+        if (this.isRefreshing) return;
+        this.isRefreshing = true;
+        // Capture list identity + filter identity pre-await for the
+        // stale-write guard on resume.
+        const seq = ++this.listSeq;
+        const capturedStatus = this.state.statusFilter;
+        const capturedKeyword = this.state.keyword;
+        const capturedChannel = this.props.channelId;
+        try {
+            const { pageSize, page } = this.state;
+            // 覆盖已加载页；防止后端对 page_size 有上限，clamp 到 100。
+            const coverSize = Math.min(pageSize * Math.max(1, page), 100);
+            const params: ListSummariesParams = {
+                page: 1,
+                page_size: coverSize,
+                status: capturedStatus,
+                keyword: capturedKeyword || undefined,
+                origin_channel_id: capturedChannel || undefined,
+            };
+            const resp = await api.listSummaries(params);
+            if (!this.isMounted_) return;
+            // Any of these means the response would clobber newer state:
+            //  - listSeq advanced → loadData / loadMore already mutated items/page
+            //  - filter/keyword/channel changed → response is scoped to stale filters
+            //  - loadingMore in flight → its append is authoritative for the cursor
+            if (
+                seq !== this.listSeq ||
+                capturedStatus !== this.state.statusFilter ||
+                capturedKeyword !== this.state.keyword ||
+                capturedChannel !== this.props.channelId ||
+                this.state.loadingMore
+            ) {
+                return;
+            }
+            // Truncate to a whole-page boundary so state.page stays consistent
+            // with items.length regardless of what the backend actually
+            // returned. Math.floor + slice keeps loadMore's `state.page + 1`
+            // pointing at the row immediately after the tail — no gap, no
+            // duplicate — even if the backend cap ever changes.
+            const coveredPages = Math.max(1, Math.floor(resp.items.length / pageSize));
+            const trimmedItems = resp.items.slice(0, coveredPages * pageSize);
+            this.setState({
+                items: trimmedItems,
+                page: coveredPages,
+                total: resp.total,
+                hasMore: trimmedItems.length < resp.total,
+            }, () => {
+                if (this.isMounted_) this.maybeStartBatchPoll();
+            });
+        } catch {
+            // 保留上一份好数据，下个轮询再试。
+        } finally {
+            this.isRefreshing = false;
         }
     }
 

@@ -266,13 +266,18 @@ export function canCancel(status: TaskStatusType): boolean {
     );
 }
 
-/** 任务是否可以重新生成 */
-export function canRegenerate(status: TaskStatusType): boolean {
+/** 任务是否已进入终态（不再变化 · COMPLETED / FAILED / CANCELLED）。 */
+export function isTerminalStatus(status: TaskStatusType): boolean {
     return (
         status === TaskStatus.COMPLETED ||
         status === TaskStatus.FAILED ||
         status === TaskStatus.CANCELLED
     );
+}
+
+/** 任务是否可以重新生成 */
+export function canRegenerate(status: TaskStatusType): boolean {
+    return isTerminalStatus(status);
 }
 
 /** 删除：自定义 cron 新建/编辑入口已彻底下线，interval(天/周/月) 为唯一对外口径。
