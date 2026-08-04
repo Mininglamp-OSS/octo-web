@@ -841,6 +841,8 @@
   "forwardModal.grant.targetMembers": "将授权给群当前 {{count}} 名成员",
   "forwardModal.grant.botSummary": "共 {{people}} 人 / {{bots}} Bot",
   "forwardModal.grant.botLoading": "正在加载 Bot…",
+  "forwardModal.grant.botError": "Bot 加载失败，请重试后再转发。",
+  "forwardModal.grant.botRetry": "重试",
   "forwardModal.grant.showBots": "{{name}} 的 {{count}} 个 Bot",
   "forwardModal.grant.hideBots": "收起 {{name}} 的 Bot",
   "forwardModal.grant.disabledReason": "仅文档管理员可在转发时授权。",

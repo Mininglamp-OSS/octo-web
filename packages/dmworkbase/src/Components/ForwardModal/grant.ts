@@ -49,8 +49,7 @@ export interface ForwardGrantConfig {
    * Bot expander state (feature: user+Bot grants). Present only when there is at least one Bot
    * created by a selected person; the 授权区 renders a per-person expandable list so the forwarder
    * can cancel individual Bots (default: all selected). Absent → no Bot row is shown (zero-Bot
-   * compatible). Resolution is fail-soft: a Bot lookup failure leaves this undefined and the
-   * forward proceeds human-only.
+   * compatible). Resolution failures remain not-ready, expose retry, and block confirmation.
    */
   bots?: ForwardBotSnapshot
 }
@@ -73,6 +72,10 @@ export interface ForwardBotSnapshot {
    * or in-flight resolve can never confirm old Bots.
    */
   ready: boolean
+  /** Resolve failed. Confirmation stays blocked until retry succeeds. */
+  error?: boolean
+  /** Retry the current target's Bot resolution after a recoverable failure. */
+  retry?: () => void
   /** Distinct human uids in the resolved target snapshot ("N 人"). */
   peopleCount: number
   /** Currently-selected Bot count across all creators ("M Bot"). */

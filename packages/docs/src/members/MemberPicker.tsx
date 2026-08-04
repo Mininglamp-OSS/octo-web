@@ -114,13 +114,16 @@ export function MemberPicker({
 
   const botsByCreator = useMemo(() => {
     const grouped = new Map<string, SpaceMemberLite[]>()
+    const visibleHumanUids = new Set(
+      members
+        .filter((m) => !m.isBot && !hideUids?.has(m.uid) && !existingUids.has(m.uid))
+        .map((m) => m.uid),
+    )
     for (const bot of members) {
-      // A Bot is only offered when its creator is a visible, still-addable candidate: skip bots
-      // already on the doc (existing), bots whose creator is hidden (self / owner), and bots whose
-      // creator is already on the doc (existing) — an existing creator's row is disabled, so nesting
-      // selectable Bots beneath it would let a Bot ride along under a creator that can't be added.
       if (!bot.isBot || !bot.creatorUid || existingUids.has(bot.uid)) continue
-      if (hideUids?.has(bot.creatorUid) || existingUids.has(bot.creatorUid)) continue
+      // Only nest under a visible, addable creator. Otherwise the Bot remains a standalone
+      // candidate so creator visibility/membership never removes the Bot's own grantability.
+      if (!visibleHumanUids.has(bot.creatorUid)) continue
       grouped.set(bot.creatorUid, [...(grouped.get(bot.creatorUid) ?? []), bot])
     }
     return grouped
@@ -129,10 +132,13 @@ export function MemberPicker({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     // Drop hidden uids (self / owner) from the roster entirely before filtering/sorting.
-    // Bots with creator metadata are rendered under their creator. Older roster-only bots lack
-    // that metadata and stay as standalone candidates for backward compatibility.
-    const humans = members.filter((m) => !m.isBot || !m.creatorUid)
-    const roster = hideUids?.size ? humans.filter((m) => !hideUids.has(m.uid)) : humans
+    const nestedBotUids = new Set<string>()
+    for (const bots of botsByCreator.values()) for (const bot of bots) nestedBotUids.add(bot.uid)
+    // Bots that cannot be nested (creator hidden/existing/absent) stay standalone.
+    const topLevel = members.filter(
+      (m) => !nestedBotUids.has(m.uid) && (!m.isBot || !existingUids.has(m.uid)),
+    )
+    const roster = hideUids?.size ? topLevel.filter((m) => !hideUids.has(m.uid)) : topLevel
     if (!q) return sortPickerMembers(roster, existingUids)
     // A query matches a human by name/uid OR a creator whose nested Bot matches by name/uid, so
     // typing a Bot's name surfaces its creator row (the Bot is shown beneath, with its creator).
@@ -148,9 +154,8 @@ export function MemberPicker({
   // Drop selections that are no longer valid after a roster/existing change (e.g. a successful add
   // + refresh, or a row that became existing/hidden). Humans: drop any now-existing OR now-hidden
   // uid so a hidden creator/self/owner can never ride along in the submitted snapshot. Bots: keep
-  // only uids still OFFERED in botsByCreator — that map already excludes bots that became existing
-  // and bots whose creator is hidden/existing/no-longer-a-candidate, so a stale Bot (or a hidden
-  // creator's Bot) can never survive into the submitted snapshot.
+  // only uids still nested and not already present. Bots that become standalone are independently
+  // selectable and must no longer ride along with a previously selected creator.
   useEffect(() => {
     setSelected((prev) => {
       if (prev.size === 0) return prev

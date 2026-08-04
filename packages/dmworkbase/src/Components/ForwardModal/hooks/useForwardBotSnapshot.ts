@@ -42,8 +42,8 @@ function selectedFrom(resolved: ResolvedModel | null, cancelled: Set<string>): s
  * 授权区 Bot 展开器的数据 hook（feature: user+Bot grants）。
  *
  * 把选中目标展开成去重人员 uid，再用 `SpaceBotService.list(spaceId)` 拉 Space Bot 按 creator_uid
- * 归到人员下，形成每人可展开的 Bot 分组（默认全选，逐个可取消）。无 Bot / Bot 拉取失败 → 返回一个
- * `ready:true, groups:[]` 的空快照，授权区不渲染 Bot 行，转发照常走人员授权（zero-Bot 兼容）。
+ * 归到人员下，形成每人可展开的 Bot 分组（默认全选，逐个可取消）。真实无 Bot 返回空快照；
+ * roster/lookup 失败则 fail-closed，显示可重试错误并阻止确认。
  *
  * loading/stale 语义（避免旧 Bot 被误确认）：目标/space/enabled 变化时立即丢弃旧 resolved 并置
  * `ready:false`（loading）；新一轮 async 完成前 snapshot 不含任何 Bot，`readLatestSelectedBotUids()`
@@ -66,6 +66,8 @@ export function useForwardBotSnapshot(
   // Resolved model from the async pass. `null` = still loading (or gated off); it is cleared the
   // instant the target/space/enabled inputs change so a stale model can never leak into confirm.
   const [resolved, setResolved] = useState<ResolvedModel | null>(null)
+  const [loadError, setLoadError] = useState(false)
+  const [retryGeneration, setRetryGeneration] = useState(0)
   // Bot uids the user has CANCELLED (default is "all selected", so we track the negatives).
   const [cancelled, setCancelled] = useState<Set<string>>(() => new Set())
   // Monotonic run id: only the newest run may commit, so an in-flight fetch for a superseded
@@ -83,13 +85,18 @@ export function useForwardBotSnapshot(
     // snapshot below reports no Bots and the confirm getter returns [] until this run's result lands.
     setResolved(null)
     resolvedRef.current = null
+    setLoadError(false)
     if (!enabled || !spaceId || selectedChannels.length !== selectedIDs.length) return
 
     const commit = (model: ResolvedModel) => {
       if (generation.current !== gen) return
       setResolved(model)
       resolvedRef.current = model
-      cancelledRef.current = new Set() // fresh resolution starts from "all selected"
+      const available = new Set<string>()
+      for (const list of model.botsByCreator.values()) for (const bot of list) available.add(bot.uid)
+      const nextCancelled = new Set([...cancelledRef.current].filter((uid) => available.has(uid)))
+      cancelledRef.current = nextCancelled
+      setCancelled(nextCancelled)
     }
 
     void (async () => {
@@ -103,7 +110,8 @@ export function useForwardBotSnapshot(
         try {
           await syncCurrentImChannelSubscribers(ch)
         } catch {
-          // best-effort: fall back to whatever is already cached
+          if (generation.current === gen) setLoadError(true)
+          return
         }
         if (generation.current !== gen) return
         const subs = getCurrentImChannelSubscribers<Channel, ImSubscriberLike>(ch)
@@ -115,7 +123,8 @@ export function useForwardBotSnapshot(
       try {
         bots = await SpaceBotService.list(spaceId)
       } catch {
-        bots = [] // fail-soft: no Bot rows, human-only grant
+        if (generation.current === gen) setLoadError(true)
+        return
       }
       if (generation.current !== gen) return
 
@@ -136,12 +145,7 @@ export function useForwardBotSnapshot(
     }
     // selectedKey/resolvedKey carry the "which targets" semantics; spaceId/enabled gate the fetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, resolvedKey, spaceId, enabled])
-
-  // A fresh resolution clears prior cancellations so re-opening starts from "all selected".
-  useEffect(() => {
-    setCancelled(new Set())
-  }, [resolved])
+  }, [selectedKey, resolvedKey, spaceId, enabled, retryGeneration])
 
   // Toggle keeps the state and the confirm mirror in lockstep, both in the event phase.
   const toggleBot = useCallback((uid: string) => {
@@ -159,13 +163,23 @@ export function useForwardBotSnapshot(
     return selectedFrom(resolvedRef.current, cancelledRef.current)
   }, [enabled, spaceId])
 
+  const retry = useCallback(() => setRetryGeneration((value) => value + 1), [])
+
   const snapshot = useMemo<ForwardBotSnapshot | undefined>(() => {
     // Gated off (switch closed / no space / mismatched selection) → nothing to render at all.
     if (!enabled || !spaceId) return undefined
 
-    // Still resolving: report a loading snapshot with NO Bots so confirm can never carry stale ones.
+    // Loading/error snapshots carry no Bots and keep confirmation blocked.
     if (!resolved) {
-      return { ready: false, peopleCount: 0, botCount: 0, groups: [], toggleBot }
+      return {
+        ready: false,
+        error: loadError,
+        retry,
+        peopleCount: 0,
+        botCount: 0,
+        groups: [],
+        toggleBot,
+      }
     }
 
     const groups: ForwardBotCreatorGroup[] = []
@@ -190,7 +204,7 @@ export function useForwardBotSnapshot(
       groups,
       toggleBot,
     }
-  }, [enabled, spaceId, resolved, cancelled, resolveName, toggleBot])
+  }, [enabled, spaceId, resolved, loadError, cancelled, resolveName, retry, toggleBot])
 
   return { snapshot, readLatestSelectedBotUids }
 }

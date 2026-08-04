@@ -47,8 +47,16 @@ export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
           {t("base.forwardModal.grant.targetMembers", { values: { count: grant.targetMemberCount } })}
         </div>
       )}
-      {grant.enabled && bots && !bots.ready && (
+      {grant.enabled && bots && !bots.ready && !bots.error && (
         <div className="wk-fm-grant-bots-summary">{t("base.forwardModal.grant.botLoading")}</div>
+      )}
+      {grant.enabled && bots?.error && (
+        <div className="wk-fm-grant-bots-summary" role="alert">
+          {t("base.forwardModal.grant.botError")}
+          <button type="button" className="wk-fm-grant-bot-retry" onClick={bots.retry}>
+            {t("base.forwardModal.grant.botRetry")}
+          </button>
+        </div>
       )}
       {grant.enabled && bots?.ready && bots.groups.length > 0 && (
         <div className="wk-fm-grant-bots">

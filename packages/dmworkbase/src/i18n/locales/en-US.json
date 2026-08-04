@@ -841,6 +841,8 @@
   "forwardModal.grant.targetMembers": "Will grant access to the group's current {{count}} member(s)",
   "forwardModal.grant.botSummary": "{{people}} people / {{bots}} Bots",
   "forwardModal.grant.botLoading": "Loading Bots…",
+  "forwardModal.grant.botError": "Could not load Bots. Try again before forwarding.",
+  "forwardModal.grant.botRetry": "Retry",
   "forwardModal.grant.showBots": "{{name}}'s {{count}} Bots",
   "forwardModal.grant.hideBots": "Hide {{name}}'s Bots",
   "forwardModal.grant.disabledReason": "Only the document admin can grant access when forwarding.",

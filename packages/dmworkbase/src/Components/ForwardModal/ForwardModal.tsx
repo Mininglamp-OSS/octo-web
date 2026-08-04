@@ -112,7 +112,12 @@ export function ForwardModal({
       {/* 授权区（opt-in）：仅当调用方传入 grant 时渲染，插在内容区与 Footer 之间。 */}
       {grant && <GrantArea grant={grant} />}
 
-      <Footer selectedCount={selectedIDs.length} onConfirm={onConfirm} onCancel={onCancel} />
+      <Footer
+        selectedCount={selectedIDs.length}
+        confirmDisabled={!!grant?.enabled && !!grant.bots && !grant.bots.ready}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />
     </div>
   )
 }

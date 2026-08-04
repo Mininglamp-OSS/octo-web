@@ -223,7 +223,7 @@ describe("useForwardBotSnapshot", () => {
     expect(latest?.groups.map((g) => g.uid).sort()).toEqual(["u_ada", "u_grace"])
   })
 
-  it("degrades to a ready empty snapshot (human-only) when the Bot lookup throws — never blocks forwarding", async () => {
+  it("fails closed with a recoverable retry when the Bot lookup throws", async () => {
     hoisted.listBots.mockRejectedValue(new Error("boom"))
     await render({
       selectedIDs: ["u_ada"],
@@ -231,9 +231,30 @@ describe("useForwardBotSnapshot", () => {
       spaceId: "s_1",
       enabled: true,
     })
-    expect(latest?.ready).toBe(true)
+    expect(latest?.ready).toBe(false)
+    expect(latest?.error).toBe(true)
     expect(latest?.groups).toEqual([])
     expect(selectedBotUids(latest)).toEqual([])
+    hoisted.listBots.mockResolvedValue([{ uid: "b_1", name: "Bot", creator_uid: "u_ada" }])
+    await act(async () => {
+      latest?.retry?.()
+      await flush()
+    })
+    expect(latest?.ready).toBe(true)
+    expect(selectedBotUids(latest)).toEqual(["b_1"])
+  })
+
+  it("fails closed when group roster sync fails", async () => {
+    hoisted.syncCurrentImChannelSubscribers.mockRejectedValue(new Error("boom"))
+    await render({
+      selectedIDs: ["g_1"],
+      selectedChannels: [new Channel("g_1", 2)],
+      spaceId: "s_1",
+      enabled: true,
+    })
+    expect(latest?.ready).toBe(false)
+    expect(latest?.error).toBe(true)
+    expect(hoisted.listBots).not.toHaveBeenCalled()
   })
 
   it("does not fetch when the Space id is missing", async () => {
@@ -385,6 +406,55 @@ describe("useForwardBotSnapshot", () => {
     expect(readLatest()).toEqual(["b_1"])
     act(() => { latest?.toggleBot("b_2") })
     expect(readLatest()).toEqual(["b_1", "b_2"])
+  })
+
+  it("preserves cancellation across grant toggle re-resolve and prunes vanished Bots", async () => {
+    hoisted.listBots.mockResolvedValue([
+      { uid: "b_1", name: "Writer Bot", creator_uid: "u_ada" },
+      { uid: "b_2", name: "Review Bot", creator_uid: "u_ada" },
+    ])
+    const base = {
+      selectedIDs: ["u_ada"],
+      selectedChannels: [new Channel("u_ada", 1)],
+      spaceId: "s_1",
+    }
+    await render({ ...base, enabled: true })
+    act(() => { latest?.toggleBot("b_2") })
+    expect(readLatest()).toEqual(["b_1"])
+
+    renderSync({ ...base, enabled: false })
+    hoisted.listBots.mockResolvedValue([
+      { uid: "b_1", name: "Writer Bot", creator_uid: "u_ada" },
+      { uid: "b_3", name: "New Bot", creator_uid: "u_ada" },
+    ])
+    await render({ ...base, enabled: true })
+    // b_2 vanished and is pruned; its cancellation does not affect the new b_3.
+    expect(readLatest()).toEqual(["b_1", "b_3"])
+  })
+
+  it("preserves cancellation across a target re-resolve when the Bot still exists", async () => {
+    hoisted.listBots.mockResolvedValue([
+      { uid: "b_shared", name: "Shared Bot", creator_uid: "u_ada" },
+    ])
+    await render({
+      selectedIDs: ["u_ada"],
+      selectedChannels: [new Channel("u_ada", 1)],
+      spaceId: "s_1",
+      enabled: true,
+    })
+    act(() => { latest?.toggleBot("b_shared") })
+
+    hoisted.listBots.mockResolvedValue([
+      { uid: "b_shared", name: "Shared Bot", creator_uid: "u_grace" },
+      { uid: "b_new", name: "New Bot", creator_uid: "u_grace" },
+    ])
+    await render({
+      selectedIDs: ["u_grace"],
+      selectedChannels: [new Channel("u_grace", 1)],
+      spaceId: "s_1",
+      enabled: true,
+    })
+    expect(readLatest()).toEqual(["b_new"])
   })
 
   it("getter discards a stale in-flight response for a superseded target (latest wins)", async () => {

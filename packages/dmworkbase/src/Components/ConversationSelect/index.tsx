@@ -82,9 +82,10 @@ export default function ConversationSelect({
   )
 
   const confirm = React.useCallback(() => {
+    if (grantEnabled && botSnapshot && !botSnapshot.ready) return
     setGrantBotUids(readLatestSelectedBotUids())
     confirmForward()
-  }, [setGrantBotUids, readLatestSelectedBotUids, confirmForward])
+  }, [grantEnabled, botSnapshot, setGrantBotUids, readLatestSelectedBotUids, confirmForward])
 
   const grantConfig: ForwardGrantConfig | undefined = grant
     ? {

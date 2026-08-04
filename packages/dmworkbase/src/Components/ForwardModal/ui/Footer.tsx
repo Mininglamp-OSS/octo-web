@@ -4,11 +4,12 @@ import { useI18n } from "../../../i18n"
 /** 底部按钮区：取消（可选）+ 确认（有选中时显示计数）。 */
 export interface FooterProps {
   selectedCount: number
+  confirmDisabled?: boolean
   onConfirm: () => void
   onCancel?: () => void
 }
 
-export function Footer({ selectedCount, onConfirm, onCancel }: FooterProps) {
+export function Footer({ selectedCount, confirmDisabled = false, onConfirm, onCancel }: FooterProps) {
   const { t } = useI18n()
   return (
     <div className="wk-fm-footer">
@@ -20,7 +21,7 @@ export function Footer({ selectedCount, onConfirm, onCancel }: FooterProps) {
       <button
         className="wk-fm-btn wk-fm-btn--confirm"
         onClick={onConfirm}
-        disabled={selectedCount === 0}
+        disabled={selectedCount === 0 || confirmDisabled}
       >
         {selectedCount > 0
           ? t("base.forwardModal.confirmWithCount", { values: { count: selectedCount } })
