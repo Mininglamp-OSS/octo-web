@@ -12,13 +12,13 @@ const work = await mkdtemp(join(tmpdir(), 'octo-excalidraw-patch-'))
 
 const expected = {
   tarball: 'b280d4b364b65cba264c5aa4e7435cc2ce6421eabbbef9765a56997a0fadf534',
-  patch: '731c0ef5dac77b30f2ff9472c35f5a671edb3e743c16cf7ebba89c5a5caf5b4a',
+  patch: 'a44523a12fd7a4c4453716fed88531c609a6f49243142c7ec8695a36b9eddef7',
   files: {
     'dist/dev/chunk-4FTI6OG3.js': '274cb0731f353e41eef41aa4d9a6680735402a7e0cabd69a8d31396412d1a160',
     'dist/dev/index.js': 'af102575ebd6067bafb1b8ce894a9f2c6a9b6e859395e1cf144d5a915db66706',
     'dist/dev/octo-native-shapes.js': '176ff08f2bbe45c49c407edd8660b77de4e96eaa9edb07a8f92a8119bd151abc',
     'dist/prod/chunk-K2UTITRG.js': '236887e2295d4369484e7797bea5d0acbd7a14c1e1e16bac11dcfccf1e6ad27c',
-    'dist/prod/index.js': '18742cbd236ff9fc6f98f1972e2909ba43ea0324646371e0ac773e08161b3a94',
+    'dist/prod/index.js': '76a5103e0329b90deffad87351742a92a7a0470dd62c53d74b0e4f795d81a2d2',
     'dist/prod/octo-native-shapes.js': 'bd2eb479a5333c3b66289e8231a2c309d0d607076b6ebf8446ce0ef2415a0cbd',
     'dist/prod/data/image-GAAHSSAO.js': 'a855f8d02347910bcebfc136d1fa947d5543f6922233017c80c9a7bb037ed6b9',
     'dist/types/excalidraw/types.d.ts': 'e66dae06e8d7cb7839eb3ba3278aaa142aa7e0017e4f13f260be8ab7337aa65e',
@@ -75,6 +75,13 @@ try {
   }
   if (!prodIndex.includes('__octoResizeObserver') || !prodIndex.includes('addEventListener("resize"')) {
     throw new Error('prod WYSIWYG resize observer/fallback contract missing')
+  }
+  if (!prodIndex.includes('__octoPointerAnchor=null,__octoProxyViewport=null,__octoProxyAngle=0')) {
+    throw new Error('prod WYSIWYG rich-text layout state declarations missing')
+  }
+  if (!prodIndex.includes('__octoResizeObserver&&r?ue.__octoResizeObserver.observe(r):window.addEventListener("resize",i)') ||
+      prodIndex.includes('__octoResizeObserver.observe(s)')) {
+    throw new Error('prod WYSIWYG resize observer must observe the canvas element')
   }
   if (!prodIndex.includes('{TTDDialogTriggerTunnel:G}=pt();') ||
       prodIndex.includes('{TTDDialogTriggerTunnel:G}=_e();')) {
