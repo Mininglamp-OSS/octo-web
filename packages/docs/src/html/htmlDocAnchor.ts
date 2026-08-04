@@ -59,6 +59,12 @@ function closestAidElement(node: Node | null): Element | null {
  *   3. null — nothing meaningfully selected (collapsed / whitespace-only).
  *
  * Pure: reads the Selection/Range but mutates nothing (never makes the doc editable).
+ *
+ * NOTE (kept intentionally, not dead): production selection capture now happens INSIDE the sandboxed
+ * iframe via the bridge script's `anchorFromSelection` (buildBridgeScriptBody) — the parent can't read
+ * the cross-origin doc's Selection. This TS function is the side-effect-free REFERENCE the bridge JS
+ * mirrors 1:1 (element-aid preference, text + bounded context, collapse/whitespace → null); its unit
+ * tests pin that contract so the two implementations cannot silently drift.
  */
 export function buildAnchorFromSelection(sel: Selection | null): Anchor | null {
   if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null

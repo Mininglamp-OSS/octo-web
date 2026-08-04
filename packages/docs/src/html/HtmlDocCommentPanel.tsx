@@ -51,6 +51,13 @@ export interface HtmlDocCommentPanelProps {
   onVisibleAnchors?: (aids: string[]) => void
   /** Explicit activation: scroll the thread's element anchor into view + highlight it in the frame. */
   onActivateAnchor?: (anchor: Anchor | null | undefined) => void
+  /**
+   * Reports whether the root-comment composer is "engaged" (focused OR holds a non-empty draft).
+   * The parent freezes the pending selection anchor while engaged so a hostile document cannot swap
+   * the reviewed target out from under the human right before they submit (anchor-race). Explicit
+   * clear / a fresh selection made before engaging are unaffected.
+   */
+  onComposerEngagedChange?: (engaged: boolean) => void
 }
 
 /** Short human label for how a comment is anchored (element aid / selected text / doc-level). */
@@ -128,6 +135,7 @@ export function HtmlDocCommentPanel({
   onActivateAnchor,
   onClearPendingAnchor,
   onPosted,
+  onComposerEngagedChange,
 }: HtmlDocCommentPanelProps) {
   const [threads, setThreads] = useState<OctoDocCommentThread[]>([])
   const [draft, setDraft] = useState('')
@@ -137,7 +145,19 @@ export function HtmlDocCommentPanel({
   const [replyingToId, setReplyingToId] = useState<string | null>(null)
   const [replyDraft, setReplyDraft] = useState('')
   const [replyBusy, setReplyBusy] = useState(false)
+  // Whether the root composer currently has focus. Combined with a non-empty draft this makes the
+  // composer "engaged", which the parent uses to freeze the pending anchor against a doc-driven swap.
+  const [composerFocused, setComposerFocused] = useState(false)
   const reloadSeq = useRef(0)
+
+  // Report composer engagement (focus OR non-empty draft) so the parent can freeze the reviewed
+  // anchor. Cleanup reports false on unmount / callback change so the parent never holds a stale
+  // engaged=true after this panel goes away.
+  const composerEngaged = composerFocused || draft.trim() !== ''
+  useEffect(() => {
+    onComposerEngagedChange?.(composerEngaged)
+    return () => onComposerEngagedChange?.(false)
+  }, [composerEngaged, onComposerEngagedChange])
 
   const reload = useCallback(async () => {
     const seq = ++reloadSeq.current
@@ -382,6 +402,8 @@ export function HtmlDocCommentPanel({
             className="octo-comment-input"
             value={draft}
             placeholder={t('docs.comment.placeholder')}
+            onFocus={() => setComposerFocused(true)}
+            onBlur={() => setComposerFocused(false)}
             onChange={(e) => setDraft(e.target.value)}
           />
           <button type="button" className="octo-doc-primary-btn" disabled={busy || draft.trim() === ''} onClick={submit}>

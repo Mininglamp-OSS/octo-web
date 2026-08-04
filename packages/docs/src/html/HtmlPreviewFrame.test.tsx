@@ -95,13 +95,12 @@ describe('HtmlPreviewFrame — sandbox isolation (issue #27)', () => {
   })
 
   it('bridge unavailable (no DOMParser): srcdoc is the unbridged normalized HTML and onFrameLoad token is null', async () => {
-    // injectBridgeScript AND absolutizeDocAssetUrls both fail closed to identity without DOMParser
-    // (SSR); only injectBaseHref (regex) still runs. The frame must then mint NO token, embed NO
+    // injectBridgeScript, absolutizeDocAssetUrls AND injectBaseHref all fail closed to identity
+    // without DOMParser (SSR). The frame must then mint NO token, embed NO
     // bridge, and hand onFrameLoad a null token — tokenRef stays in lockstep with the real srcDoc.
     const raw = '<html><head><style>.a{color:red}</style></head><body><p>hi</p></body></html>'
     // Capture the expected normalized srcDoc under the same (DOMParser-absent) conditions.
     const savedDOMParser = globalThis.DOMParser
-    // @ts-expect-error deleting a global for the fail-closed path
     delete (globalThis as { DOMParser?: unknown }).DOMParser
     try {
       expect(typeof DOMParser).toBe('undefined')

@@ -6,13 +6,11 @@
 // the octoweb apiClient.
 //
 // SECURITY (issue #27): the Publish payload is NOT sanitized end-to-end, so it may carry <script>,
-// on* handlers, javascript: URLs, or controls. The frame uses sandbox="allow-scripts" WITHOUT
-// allow-same-origin (combining them defeats the sandbox — NEVER do it): doc JS runs in an opaque
-// origin and cannot reach the parent DOM/credentials/origin; forms/popups/downloads/top-nav stay
-// denied. This does NOT stop outbound network from doc JS — egress is an accepted capability for
-// agent HTML (see htmlDocBridge threat-boundary note). Selection/anchor data crosses the
-// constrained postMessage bridge (htmlDocBridge): the parent gates on event.source === the frame's
-// contentWindow + a bounded schema and accepts only non-privileged UI facts.
+// on* handlers, javascript: URLs, or controls. sandbox="allow-scripts" WITHOUT allow-same-origin
+// (combining them defeats the sandbox): doc JS runs in an opaque origin that cannot read the parent
+// DOM/storage/origin; forms/popups/downloads/top-nav stay denied. Outbound network from doc JS is
+// NOT blocked (accepted egress capability). Selection/anchor data crosses the constrained
+// postMessage bridge (htmlDocBridge), gated on event.source === the frame's contentWindow.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
@@ -193,12 +191,13 @@ export function HtmlDocView({
   const [pendingAnchor, setPendingAnchor] = useState<Anchor | null>(null)
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   const mayCommentRef = useRef(false)
+  // True while the comment composer is engaged (focus or non-empty draft); inbound `selection`
+  // messages are frozen so a hostile doc cannot swap the reviewed anchor just before submit.
+  const composerEngagedRef = useRef(false)
   const [frameReadyTick, setFrameReadyTick] = useState(0)
-  // Element-anchor display text resolved over the bridge (aid → text). The parent cannot read the
-  // cross-origin iframe DOM, so it asks the frame and caches the reply here. resolveAnchorText is a
-  // pure cache read; the comment panel reports which element aids are visible (post-commit) and a
-  // parent effect sends one bridge request per not-yet-requested aid.
-  const [anchorTextCache, setAnchorTextCache] = useState<Record<string, string | null>>({})
+  // aid → resolved text over the bridge. A Map (own-key semantics) so a `__proto__`/`constructor`
+  // aid is an own key, never a prototype-chain hit. resolveAnchorText is a pure cache read.
+  const [anchorTextCache, setAnchorTextCache] = useState<Map<string, string | null>>(() => new Map())
   const requestedAidsRef = useRef<Set<string>>(new Set())
   const pendingResolveRef = useRef<Map<string, string>>(new Map())
   // Element aids the comment panel currently renders (reported post-commit); drives the resolve
@@ -207,6 +206,9 @@ export function HtmlDocView({
   // Current render generation's bridge token (from HtmlPreviewFrame). Requests carry it and replies
   // must echo it; a token mismatch drops stale / cross-document / replayed traffic.
   const bridgeTokenRef = useRef<string | null>(null)
+  // Monotonic frame generation; a coalesced selection captures it and drops on flush if the frame
+  // reloaded meanwhile (stale-generation guard alongside the token check).
+  const bridgeGenRef = useRef(0)
   // Header UI state.
   const [membersOpen, setMembersOpen] = useState(false)
   // 历史版本 panel (≡ → 历史版本) + two-version diff modal state.
@@ -362,6 +364,11 @@ export function HtmlDocView({
     setState({ status: 'loading' })
     setPendingAnchor(null)
     setFrameReadyTick(0)
+    // Drop any queued selection + composer engagement from the outgoing doc/version.
+    if (selectionFlushRef.current != null) clearTimeout(selectionFlushRef.current)
+    selectionFlushRef.current = null
+    pendingSelectionRef.current = null
+    composerEngagedRef.current = false
   }, [effectiveSlug, viewVersion])
 
   const handlePreviewState = useCallback((s: PreviewLoadState) => {
@@ -430,23 +437,54 @@ export function HtmlDocView({
     [selectModeTab],
   )
 
-  // Reset per-generation bridge state on each frame load: the new token gates all subsequent
-  // traffic (prior-document requests/replies drop on mismatch) and the resolved-text cache is
-  // invalidated since aids may now map to different content.
-  const handleFrameLoad = useCallback((_doc: Document | null, frame: HTMLIFrameElement, token: string | null) => {
-    frameRef.current = frame
-    bridgeTokenRef.current = token
-    requestedAidsRef.current = new Set()
-    pendingResolveRef.current = new Map()
-    setAnchorTextCache({})
-    setFrameReadyTick((v) => v + 1)
+  // Coalesce accepted `selection` messages: a drag-select (or hostile loop) can fire dozens/sec.
+  // Stash the latest anchor + the generation it was captured under, flush once on a trailing timer.
+  const SELECTION_COALESCE_MS = 60
+  const pendingSelectionRef = useRef<{ anchor: Anchor; gen: number } | null>(null)
+  const selectionFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Cancel any queued selection flush and drop the stashed anchor (frame reload / commenting off).
+  const cancelPendingSelection = useCallback(() => {
+    if (selectionFlushRef.current != null) {
+      clearTimeout(selectionFlushRef.current)
+      selectionFlushRef.current = null
+    }
+    pendingSelectionRef.current = null
   }, [])
+
+  // Reset per-generation bridge state on each frame load: bump the generation, cancel any queued
+  // selection from the prior frame, adopt the new token (it gates all later traffic), and clear the
+  // resolved-text cache (aids may now map to different content).
+  const handleFrameLoad = useCallback(
+    (_doc: Document | null, frame: HTMLIFrameElement, token: string | null) => {
+      frameRef.current = frame
+      bridgeTokenRef.current = token
+      bridgeGenRef.current += 1
+      cancelPendingSelection()
+      composerEngagedRef.current = false
+      requestedAidsRef.current = new Set()
+      pendingResolveRef.current = new Map()
+      setAnchorTextCache(new Map())
+      setFrameReadyTick((v) => v + 1)
+    },
+    [cancelPendingSelection],
+  )
 
   // Single window-level bridge listener. The iframe is cross-origin (no allow-same-origin) so the
   // parent gates on event.source === contentWindow + current token + a bounded schema before
   // trusting anything. Only non-privileged UI facts are accepted (a selection anchor the human
   // still submits; text we explicitly requested).
   useEffect(() => {
+    const flushSelection = () => {
+      selectionFlushRef.current = null
+      const queued = pendingSelectionRef.current
+      pendingSelectionRef.current = null
+      // Re-check every gate at flush time: the frame may have reloaded (stale generation/token),
+      // commenting may have turned off (mayCommentRef folds in mode), or the composer may have
+      // engaged during the coalesce window.
+      if (!queued || queued.gen !== bridgeGenRef.current) return
+      if (!bridgeTokenRef.current || !mayCommentRef.current || composerEngagedRef.current) return
+      setPendingAnchor(queued.anchor)
+    }
     const onMessage = (ev: MessageEvent) => {
       const frame = frameRef.current
       // srcDoc frames have an opaque origin, so identity is the exact contentWindow, not origin.
@@ -457,20 +495,28 @@ export function HtmlDocView({
       if (!bridgeTokenRef.current || msg.token !== bridgeTokenRef.current) return
       if (msg.type === 'selection') {
         if (!mayCommentRef.current) return
-        // Adopt only a fresh non-null anchor; a null (collapse) report is ignored so a locked
-        // anchor survives the selection collapsing when the human moves to the composer.
-        if (msg.anchor) setPendingAnchor(msg.anchor)
+        // Ignore a null (collapse) report and freeze while the composer is engaged so a hostile doc
+        // cannot swap the reviewed target before submit.
+        if (!msg.anchor || composerEngagedRef.current) return
+        // Coalesce: keep the latest anchor + its generation, flush once on a trailing timer.
+        pendingSelectionRef.current = { anchor: msg.anchor, gen: bridgeGenRef.current }
+        if (selectionFlushRef.current == null) {
+          selectionFlushRef.current = setTimeout(flushSelection, SELECTION_COALESCE_MS)
+        }
       } else if (msg.type === 'anchor-text') {
         // Accept only replies to a nonce WE issued this generation (reject stale/replayed nonces).
         const aid = pendingResolveRef.current.get(msg.nonce)
         if (!aid) return
         pendingResolveRef.current.delete(msg.nonce)
-        setAnchorTextCache((prev) => ({ ...prev, [aid]: msg.text }))
+        setAnchorTextCache((prev) => new Map(prev).set(aid, msg.text))
       }
     }
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [])
+    return () => {
+      window.removeEventListener('message', onMessage)
+      cancelPendingSelection()
+    }
+  }, [cancelPendingSelection])
 
   // RENDER-PURE cache read: no ref writes, no scheduling. Cache misses are filled by the resolve
   // effect, which is driven by the aids the comment panel reports post-commit (onVisibleAnchors).
@@ -481,7 +527,9 @@ export function HtmlDocView({
       if (anchor.kind !== 'element') return null
       const aid = anchor.aid
       if (!isValidAid(aid)) return null
-      return aid in anchorTextCache ? anchorTextCache[aid] : null
+      // Explicit typeof string|null guard: Map.get returns undefined for a miss; normalize to null.
+      const cached = anchorTextCache.get(aid)
+      return typeof cached === 'string' ? cached : null
     },
     [anchorTextCache],
   )
@@ -502,7 +550,7 @@ export function HtmlDocView({
     const token = bridgeTokenRef.current
     if (!win || !token) return
     for (const aid of visibleAnchorAids) {
-      if (!isValidAid(aid) || requestedAidsRef.current.has(aid) || aid in anchorTextCache) continue
+      if (!isValidAid(aid) || requestedAidsRef.current.has(aid) || anchorTextCache.has(aid)) continue
       requestedAidsRef.current.add(aid)
       const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`
       pendingResolveRef.current.set(nonce, aid)
@@ -531,10 +579,19 @@ export function HtmlDocView({
     }
   }, [])
 
-  // A permission/mode change that turns commenting off must drop any pending selection anchor.
+  const handleComposerEngagedChange = useCallback((engaged: boolean) => {
+    composerEngagedRef.current = engaged
+  }, [])
+
+  // Commenting off (permission loss / code mode) cancels any queued selection and resets composer
+  // engagement before dropping the committed anchor, so a mid-coalesce flush can't re-arm it.
   useEffect(() => {
-    if (!mayComment || mode === 'code') setPendingAnchor(null)
-  }, [mayComment, mode])
+    if (!mayComment || mode === 'code') {
+      cancelPendingSelection()
+      composerEngagedRef.current = false
+      setPendingAnchor(null)
+    }
+  }, [mayComment, mode, cancelPendingSelection])
 
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-html-doc" data-testid="html-doc-view">
@@ -789,6 +846,7 @@ export function HtmlDocView({
               onActivateAnchor={activateAnchor}
               onClearPendingAnchor={() => setPendingAnchor(null)}
               onPosted={() => setPendingAnchor(null)}
+              onComposerEngagedChange={handleComposerEngagedChange}
             />
           )}
         </div>

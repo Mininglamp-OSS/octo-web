@@ -588,6 +588,158 @@ describe('HtmlDocView — read-only rendering', () => {
     expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a2')
   })
 
+  it('freezes the pending anchor once the composer is engaged (focus): a hostile doc cannot swap it', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) =>
+      url.includes('/comments')
+        ? jsonResponse({ data: [] })
+        : htmlResponse('<p data-odoc-aid="good">reviewed target</p><p data-odoc-aid="evil">swapped target</p>'),
+    )
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+
+    // Human selects the target they intend to comment on.
+    bridgeSelection(frame, { kind: 'element', aid: 'good', selector: '[data-odoc-aid="good"]', label: 'p' })
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#good'))
+
+    // Human engages the composer (focus). From here the anchor is FROZEN.
+    fireEvent.focus(screen.getByPlaceholderText('docs.comment.placeholder'))
+    // Hostile document fires a selection message trying to swap the reviewed target.
+    bridgeSelection(frame, { kind: 'element', aid: 'evil', selector: '[data-odoc-aid="evil"]', label: 'p' })
+
+    // Give the coalesce timer room to flush; the swap must be ignored (still #good, never #evil).
+    await new Promise((r) => setTimeout(r, 100))
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('#good')
+    expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#evil')
+  })
+
+  it('freezes the pending anchor while a non-empty draft is held (even without focus)', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) =>
+      url.includes('/comments')
+        ? jsonResponse({ data: [] })
+        : htmlResponse('<p data-odoc-aid="good">reviewed</p><p data-odoc-aid="evil">swap</p>'),
+    )
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+
+    bridgeSelection(frame, { kind: 'element', aid: 'good', selector: '[data-odoc-aid="good"]', label: 'p' })
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#good'))
+
+    const input = screen.getByPlaceholderText('docs.comment.placeholder')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'my review note' } })
+    fireEvent.blur(input) // blur, but the non-empty draft keeps the composer engaged
+
+    bridgeSelection(frame, { kind: 'element', aid: 'evil', selector: '[data-odoc-aid="evil"]', label: 'p' })
+    await new Promise((r) => setTimeout(r, 100))
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('#good')
+    expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#evil')
+  })
+
+  it('accepts a fresh selection again after the human explicitly clears (disengaging the composer)', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) =>
+      url.includes('/comments')
+        ? jsonResponse({ data: [] })
+        : htmlResponse('<p data-odoc-aid="good">a</p><p data-odoc-aid="next">b</p>'),
+    )
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+
+    bridgeSelection(frame, { kind: 'element', aid: 'good', selector: '[data-odoc-aid="good"]', label: 'p' })
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#good'))
+
+    // Engage (focus, no draft), then explicitly clear: an empty draft + blur means the composer is
+    // no longer engaged, so a new legitimate selection is honored again.
+    fireEvent.focus(screen.getByPlaceholderText('docs.comment.placeholder'))
+    fireEvent.click(screen.getByText('docs.comment.clearAnchor'))
+    fireEvent.blur(screen.getByPlaceholderText('docs.comment.placeholder'))
+
+    bridgeSelection(frame, { kind: 'element', aid: 'next', selector: '[data-odoc-aid="next"]', label: 'p' })
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#next'))
+  })
+
+  it('coalesces a burst of selection messages into a single adopted anchor (the latest wins)', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) =>
+      url.includes('/comments')
+        ? jsonResponse({ data: [] })
+        : htmlResponse('<p data-odoc-aid="a1">1</p><p data-odoc-aid="a2">2</p><p data-odoc-aid="a3">3</p>'),
+    )
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+
+    // Fire three selection messages synchronously (a drag-select burst) inside one coalesce window.
+    bridgeSelection(frame, { kind: 'element', aid: 'a1', selector: '[data-odoc-aid="a1"]', label: 'p' })
+    bridgeSelection(frame, { kind: 'element', aid: 'a2', selector: '[data-odoc-aid="a2"]', label: 'p' })
+    bridgeSelection(frame, { kind: 'element', aid: 'a3', selector: '[data-odoc-aid="a3"]', label: 'p' })
+
+    // Only the LAST anchor is adopted after the single trailing flush.
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a3'))
+    expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a1')
+    expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a2')
+  })
+
+  it('safely resolves element anchors whose aid is an Object.prototype key name (Map cache, no proto hit)', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    // All three prototype-poisoning names plus Object.prototype member names must round-trip: the
+    // Map cache uses own-key semantics, so none is a prototype-chain hit and each resolves/renders.
+    const aids = ['__proto__', 'constructor', 'prototype', 'toString', 'valueOf', 'hasOwnProperty']
+    stubFetch((url) => {
+      if (url.includes('/comments')) {
+        return jsonResponse({
+          data: aids.map((aid, i) => ({
+            id: `c${i}`,
+            text: `note ${aid}`,
+            anchor: { kind: 'element', aid, selector: `[data-odoc-aid="${aid}"]`, label: 'p' },
+            replies: [],
+          })),
+        })
+      }
+      return htmlResponse(aids.map((aid) => `<p data-odoc-aid="${aid}">text-${aid}</p>`).join(''))
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    autoAnswerAnchorText(frame, Object.fromEntries(aids.map((aid) => [aid, `text-${aid}`])))
+    fireEvent.load(frame)
+
+    // Every thread renders (no crash) and each resolves its own distinct quote from the Map cache.
+    await waitFor(() => expect(screen.getAllByTestId('comment-quote')).toHaveLength(aids.length))
+    const quotes = screen.getAllByTestId('comment-quote').map((n) => n.textContent)
+    for (const aid of aids) expect(quotes).toContain(`text-${aid}`)
+  })
+
   it('ignores bridge messages whose source is not the iframe (forged origin / other window)', async () => {
     const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
     wk.apiClient.responder = (method, url) =>
@@ -990,21 +1142,77 @@ describe('sanitizeDocHtml', () => {
   })
 })
 
-describe('injectBaseHref', () => {
-  it('inserts <base> at the START of an existing <head> with a trailing-slash href', () => {
+describe('injectBaseHref (parser-aware)', () => {
+  it('inserts <base> as the FIRST child of an existing <head> with a trailing-slash href', () => {
     const out = injectBaseHref('<html><head><title>t</title></head><body>x</body></html>', 'https://od.test')
-    expect(out).toContain('<head><base href="https://od.test/">')
+    expect(out).toContain('<base href="https://od.test/">')
     // Only one base, and it precedes the original head content.
+    expect(out.split('<base').length - 1).toBe(1)
     expect(out.indexOf('<base')).toBeLessThan(out.indexOf('<title>'))
   })
 
-  it('preserves an already-trailing slash and prepends <base> when there is no <head>', () => {
+  it('preserves an already-trailing slash and synthesizes a <head> when the doc has only a body', () => {
     const out = injectBaseHref('<p>no head</p>', 'https://od.test/')
-    expect(out).toBe('<base href="https://od.test/"><p>no head</p>')
+    expect(out).toContain('<base href="https://od.test/">')
+    // DOMParser normalizes the fragment: base lands in the synthesized <head>, before <body>.
+    expect(out.indexOf('<base')).toBeLessThan(out.indexOf('<body'))
+    expect(out).toContain('<p>no head</p>')
   })
 
   it('is a no-op when baseUrl is empty', () => {
     expect(injectBaseHref('<p>x</p>', '')).toBe('<p>x</p>')
+  })
+
+  it('does NOT mis-target a FAKE <head> inside an HTML comment (only the real head gets <base>)', () => {
+    const out = injectBaseHref(
+      '<html><head><title>t</title></head><body><!-- <head>fake</head> --></body></html>',
+      'https://od.test',
+    )
+    expect(out.split('<base').length - 1).toBe(1)
+    expect(out.indexOf('<base')).toBeLessThan(out.indexOf('<title>'))
+  })
+
+  it('does NOT mis-target a fake <head> living in an attribute value', () => {
+    const out = injectBaseHref(
+      '<html><head></head><body><div data-x="<head>">z</div></body></html>',
+      'https://od.test',
+    )
+    expect(out.split('<base').length - 1).toBe(1)
+    // The <base> sits in the real head, not inside the div attribute.
+    expect(out.indexOf('<base')).toBeLessThan(out.indexOf('<body'))
+  })
+
+  it('does NOT mis-target a fake <head> inside <script>/<style> raw-text', () => {
+    const script = injectBaseHref(
+      '<html><head><script>var s="<head>";<\/script></head><body>y</body></html>',
+      'https://od.test',
+    )
+    expect(script.split('<base').length - 1).toBe(1)
+    const style = injectBaseHref(
+      '<html><head><style>/* <head> */</style></head><body>y</body></html>',
+      'https://od.test',
+    )
+    expect(style.split('<base').length - 1).toBe(1)
+  })
+
+  it('does NOT treat a <head> inside a <template> as the document head', () => {
+    const out = injectBaseHref(
+      '<html><head><title>t</title></head><body><template><head>nope</head></template></body></html>',
+      'https://od.test',
+    )
+    expect(out.split('<base').length - 1).toBe(1)
+    expect(out.indexOf('<base')).toBeLessThan(out.indexOf('<title>'))
+  })
+
+  it('fails closed without DOMParser (SSR): returns the HTML unchanged, never regex-injects', () => {
+    const raw = '<html><head><title>t</title></head><body>x</body></html>'
+    const saved = globalThis.DOMParser
+    delete (globalThis as { DOMParser?: unknown }).DOMParser
+    try {
+      expect(injectBaseHref(raw, 'https://od.test')).toBe(raw)
+    } finally {
+      ;(globalThis as { DOMParser?: unknown }).DOMParser = saved
+    }
   })
 })
 
@@ -1666,5 +1874,201 @@ describe('HtmlDocView — Members panel gate (author OR admin)', () => {
     await waitForFrame(container)
     expect(screen.queryByTitle('docs.toolbar.members')).toBeNull()
     expect(container.querySelector('.octo-modal-overlay')).toBeNull()
+  })
+})
+
+describe('HtmlDocView — coalesced selection bound to bridge generation (fake timers)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function commenter() {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+  }
+
+  async function mountReadyFrame(html: string) {
+    stubFetch((url) => (url.includes('/comments') ? jsonResponse({ data: [] }) : htmlResponse(html)))
+    const { container, rerender } = render(<HtmlDocView docId="d1" space="sp" />)
+    // Drive the async fetch + role resolution to completion under fake timers.
+    await vi.waitFor(() => {
+      const f = container.querySelector('iframe.octo-html-doc-frame') as HTMLIFrameElement | null
+      expect(f).toBeTruthy()
+      return f as HTMLIFrameElement
+    })
+    const frame = container.querySelector('iframe.octo-html-doc-frame') as HTMLIFrameElement
+    fireEvent.load(frame)
+    await vi.waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    return { container, rerender, frame }
+  }
+
+  it('drops an old-generation queued selection after the frame reloads before the flush', async () => {
+    commenter()
+    const { container, frame } = await mountReadyFrame('<p data-odoc-aid="a1">one</p>')
+
+    // Queue a selection under generation A but do NOT let the 60ms flush fire yet.
+    bridgeSelection(frame, { kind: 'element', aid: 'a1', selector: '[data-odoc-aid="a1"]', label: 'p' })
+    // Frame reloads (a new generation) before the coalesce timer elapses.
+    fireEvent.load(frame)
+    // Advance past the coalesce window: the gen-A anchor is stale and must be dropped.
+    await vi.advanceTimersByTimeAsync(120)
+    expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a1')
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('docs.comment.targetDoc')
+
+    // A fresh selection under the current generation still flushes normally.
+    bridgeSelection(frame, { kind: 'element', aid: 'a1', selector: '[data-odoc-aid="a1"]', label: 'p' })
+    await vi.advanceTimersByTimeAsync(120)
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('#a1')
+    expect(container.querySelector('iframe.octo-html-doc-frame')).toBe(frame)
+  })
+
+  it('drops a queued selection when code mode is entered before the flush', async () => {
+    commenter()
+    const { frame } = await mountReadyFrame('<p data-odoc-aid="a1">one</p>')
+    bridgeSelection(frame, { kind: 'element', aid: 'a1', selector: '[data-odoc-aid="a1"]', label: 'p' })
+    // Switch to code mode within the coalesce window (mayCommentRef → false).
+    fireEvent.click(screen.getByRole('tab', { name: 'docs.mode.code' }))
+    await vi.advanceTimersByTimeAsync(120)
+    // Code mode has no pending-anchor UI; switching back must not show the dropped anchor.
+    fireEvent.click(screen.getByRole('tab', { name: 'docs.mode.page' }))
+    await vi.waitFor(() => expect(screen.queryByTestId('pending-anchor')).toBeTruthy())
+    expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a1')
+  })
+
+  it('drops a queued selection when commenting permission is removed before the flush', async () => {
+    let role: 'commenter' | 'reader' = 'commenter'
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => (url.includes('/comments') ? jsonResponse({ data: [] }) : htmlResponse('<p data-odoc-aid="a1">one</p>')))
+    const { container, rerender } = render(<HtmlDocView docId="d1" space="sp1" />)
+    await vi.waitFor(() => expect(container.querySelector('iframe.octo-html-doc-frame')).toBeTruthy())
+    const frame = container.querySelector('iframe.octo-html-doc-frame') as HTMLIFrameElement
+    fireEvent.load(frame)
+    await vi.waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+
+    // Queue a selection under commenter, then demote to reader within the coalesce window. The
+    // commenting-off effect cancels the queued flush, so the demoted human never gets the anchor.
+    bridgeSelection(frame, { kind: 'element', aid: 'a1', selector: '[data-odoc-aid="a1"]', label: 'p' })
+    role = 'reader'
+    rerender(<HtmlDocView docId="d1" space="sp2" />)
+    await vi.waitFor(() => expect(screen.queryByPlaceholderText('docs.comment.placeholder')).toBeNull())
+    await vi.advanceTimersByTimeAsync(120)
+    // Reader has no pending-anchor UI; the queued anchor was dropped, not committed.
+    expect(screen.queryByTestId('pending-anchor')).toBeNull()
+  })
+
+  it('honors a queued selection that arrives before the composer engages, and freezes one that engages during the delay', async () => {
+    commenter()
+    const { frame } = await mountReadyFrame('<p data-odoc-aid="good">good</p><p data-odoc-aid="evil">evil</p>')
+
+    // First selection queued, composer NOT engaged: it flushes and is adopted.
+    bridgeSelection(frame, { kind: 'element', aid: 'good', selector: '[data-odoc-aid="good"]', label: 'p' })
+    await vi.advanceTimersByTimeAsync(120)
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('#good')
+
+    // Queue a swap, then engage the composer during the coalesce delay: the flush must re-check
+    // engagement and drop the swap (still #good, never #evil).
+    bridgeSelection(frame, { kind: 'element', aid: 'evil', selector: '[data-odoc-aid="evil"]', label: 'p' })
+    fireEvent.focus(screen.getByPlaceholderText('docs.comment.placeholder'))
+    await vi.advanceTimersByTimeAsync(120)
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('#good')
+    expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#evil')
+  })
+})
+
+describe('HtmlDocView — composer engagement reset across transitions', () => {
+  function commenter() {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+  }
+
+  it('accepts a fresh selection after the comment panel is closed and reopened (engagement reset)', async () => {
+    commenter()
+    stubFetch((url) => (url.includes('/comments') ? jsonResponse({ data: [] }) : htmlResponse('<p data-odoc-aid="a1">one</p><p data-odoc-aid="a2">two</p>')))
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+
+    // Engage the composer (focus + draft), then close the panel: the panel's cleanup reports
+    // engaged=false so the parent's freeze is released.
+    const input = screen.getByPlaceholderText('docs.comment.placeholder')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'draft' } })
+    fireEvent.click(screen.getByTitle('docs.toolbar.comments')) // close panel (unmount)
+    await waitFor(() => expect(screen.queryByTestId('html-doc-comment-panel')).toBeNull())
+
+    // Reopen the panel; a fresh selection is honored (not frozen by a stale engaged=true).
+    fireEvent.click(screen.getByTitle('docs.toolbar.comments'))
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    bridgeSelection(frame, { kind: 'element', aid: 'a2', selector: '[data-odoc-aid="a2"]', label: 'p' })
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a2'))
+  })
+
+  it('accepts a fresh selection after a code→page mode round-trip while a draft was held', async () => {
+    commenter()
+    stubFetch((url) => (url.includes('/comments') ? jsonResponse({ data: [] }) : htmlResponse('<p data-odoc-aid="a1">one</p><p data-odoc-aid="a2">two</p>')))
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+
+    const input = screen.getByPlaceholderText('docs.comment.placeholder')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'draft' } })
+    // Code mode drops the composer + resets engagement; page mode reloads the frame.
+    fireEvent.click(screen.getByRole('tab', { name: 'docs.mode.code' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'docs.mode.page' }))
+    const nextFrame = await waitForFrame(container)
+    fireEvent.load(nextFrame)
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    bridgeSelection(nextFrame, { kind: 'element', aid: 'a2', selector: '[data-odoc-aid="a2"]', label: 'p' })
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a2'))
+  })
+
+  it('accepts a fresh selection after a permission demotion→re-promotion (engagement reset)', async () => {
+    let role: 'commenter' | 'reader' = 'commenter'
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => (url.includes('/comments') ? jsonResponse({ data: [] }) : htmlResponse('<p data-odoc-aid="a1">one</p><p data-odoc-aid="a2">two</p>')))
+    const { container, rerender } = render(<HtmlDocView docId="d1" space="sp1" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+
+    // Engage, then demote to reader: commenting-off resets engagement + clears the anchor.
+    const input = screen.getByPlaceholderText('docs.comment.placeholder')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'draft' } })
+    role = 'reader'
+    rerender(<HtmlDocView docId="d1" space="sp2" />)
+    await waitFor(() => expect(screen.queryByPlaceholderText('docs.comment.placeholder')).toBeNull())
+
+    // Re-promote to commenter (same frame); a fresh selection is honored again.
+    role = 'commenter'
+    rerender(<HtmlDocView docId="d1" space="sp3" />)
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    expect(container.querySelector('iframe.octo-html-doc-frame')).toBe(frame)
+    bridgeSelection(frame, { kind: 'element', aid: 'a2', selector: '[data-odoc-aid="a2"]', label: 'p' })
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a2'))
   })
 })

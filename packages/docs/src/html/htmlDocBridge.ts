@@ -4,9 +4,10 @@
 //   Agent-authored HTML is NOT sanitized end-to-end, so it may run arbitrary <script>. The frame
 //   uses sandbox="allow-scripts" WITHOUT allow-same-origin (the two together defeat the sandbox and
 //   must NEVER be combined). With allow-scripts alone the doc runs in an opaque origin: it cannot
-//   touch the parent DOM/credentials/origin, submit forms, open popups, download, or navigate the
-//   top frame, and the parent cannot read the cross-origin contentDocument — selection/anchor data
-//   crosses this narrow postMessage bridge instead.
+//   read the parent DOM/storage/origin, submit forms, open popups, download, or navigate the top
+//   frame, and the parent cannot read the cross-origin contentDocument — selection/anchor data
+//   crosses this narrow postMessage bridge instead. Outbound requests/subresources still work;
+//   cookie attachment on them depends on request + cookie policy (not blocked by the opaque origin).
 //
 //   THREAT BOUNDARY: the sandbox does NOT stop OUTBOUND network from doc JS (fetch/XHR/img/beacon
 //   to author-chosen hosts). Network egress is an ACCEPTED capability for agent-authored HTML — do
@@ -83,11 +84,8 @@ function isBoundedString(v: unknown): v is string {
   return typeof v === 'string' && v.length <= MAX_STR
 }
 
-/**
- * Bound + validate an aid before it is interpolated into any selector. Hostile aids can contain
- * quotes/brackets/backslashes; we cap length and reject control chars so a malformed value can
- * never smuggle selector syntax past CSS.escape on either side of the bridge.
- */
+// Bound + validate an aid before it enters a selector or the parent's Map cache. Map own-key
+// semantics make `__proto__`/`constructor`/`prototype` safe keys, so they are allowed through.
 export function isValidAid(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0 && v.length <= 256 && !/[\u0000-\u001f]/.test(v)
 }

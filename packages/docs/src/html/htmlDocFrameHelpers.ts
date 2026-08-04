@@ -51,6 +51,8 @@ function absolutizeAssetAttr(el: Element, attr: 'src' | 'href', docUrl: string, 
   if (resolved) el.setAttribute(attr, resolved)
 }
 
+// Cosmetic-only in 'scripts' isolation (doc JS can re-enable these post-load); the real read-only
+// guarantee is the sandbox's opaque origin, not this.
 function neutralizeEditableControls(doc: Document) {
   doc.querySelectorAll('[contenteditable]').forEach((el) => el.setAttribute('contenteditable', 'false'))
   doc.querySelectorAll('input, textarea, select, button').forEach((el) => el.setAttribute('disabled', ''))
@@ -69,12 +71,20 @@ export function absolutizeDocAssetUrls(html: string, docUrl = resolveAbsoluteOct
   return `${doctype}${doc.documentElement.outerHTML}`
 }
 
+// Prepend `<base href>` as the real <head>'s first child so relative/root-relative doc URLs resolve
+// against octo-doc. Parser-aware (DOMParser) so a fake <head> in text/comment/raw-text/template is
+// never matched; SSR (no DOMParser) fails closed and returns the HTML unchanged. Mirrors
+// injectBridgeScript.
 export function injectBaseHref(html: string, baseUrl: string): string {
   if (!baseUrl) return html
+  if (typeof DOMParser === 'undefined') return html
   const href = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
-  const baseTag = `<base href="${href.replace(/"/g, '&quot;')}">`
-  const headOpen = /<head[^>]*>/i.exec(html)
-  if (!headOpen) return `${baseTag}${html}`
-  const at = headOpen.index + headOpen[0].length
-  return `${html.slice(0, at)}${baseTag}${html.slice(at)}`
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const head = doc.head
+  if (!head) return html
+  const base = doc.createElement('base')
+  base.setAttribute('href', href)
+  head.insertBefore(base, head.firstChild)
+  const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>` : ''
+  return `${doctype}${doc.documentElement.outerHTML}`
 }

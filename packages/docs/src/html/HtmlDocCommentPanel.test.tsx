@@ -264,6 +264,87 @@ describe('HtmlDocCommentPanel — list + compose (octo-doc data layer)', () => {
     expect(onClearPendingAnchor).toHaveBeenCalledTimes(1)
   })
 
+  it('reports composer engagement on focus/blur and while a non-empty draft is held', async () => {
+    const onComposerEngagedChange = vi.fn()
+    stubFetch(() => jsonResponse({ data: [] }))
+    render(
+      <HtmlDocCommentPanel
+        docId="d1"
+        space="sp"
+        slug="s"
+        listVersion="v1"
+        mayComment
+        onComposerEngagedChange={onComposerEngagedChange}
+      />,
+    )
+    const input = await screen.findByPlaceholderText('docs.comment.placeholder')
+
+    // Initial: not engaged.
+    expect(onComposerEngagedChange).toHaveBeenLastCalledWith(false)
+
+    // Focus → engaged.
+    fireEvent.focus(input)
+    await waitFor(() => expect(onComposerEngagedChange).toHaveBeenLastCalledWith(true))
+
+    // Blur with empty draft → disengaged.
+    fireEvent.blur(input)
+    await waitFor(() => expect(onComposerEngagedChange).toHaveBeenLastCalledWith(false))
+
+    // A non-empty draft keeps it engaged even after blur.
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'note' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(onComposerEngagedChange).toHaveBeenLastCalledWith(true))
+
+    // Clearing the draft disengages again.
+    fireEvent.change(input, { target: { value: '' } })
+    await waitFor(() => expect(onComposerEngagedChange).toHaveBeenLastCalledWith(false))
+  })
+
+  it('reports engaged=false on unmount so a stale engaged=true never outlives the panel', async () => {
+    const onComposerEngagedChange = vi.fn()
+    stubFetch(() => jsonResponse({ data: [] }))
+    const { unmount } = render(
+      <HtmlDocCommentPanel
+        docId="d1"
+        space="sp"
+        slug="s"
+        listVersion="v1"
+        mayComment
+        onComposerEngagedChange={onComposerEngagedChange}
+      />,
+    )
+    const input = await screen.findByPlaceholderText('docs.comment.placeholder')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'note' } })
+    await waitFor(() => expect(onComposerEngagedChange).toHaveBeenLastCalledWith(true))
+
+    unmount()
+    // The effect cleanup fires a final false.
+    expect(onComposerEngagedChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('reports engaged=false to a replaced callback (callback identity change resets the prior parent)', async () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    stubFetch(() => jsonResponse({ data: [] }))
+    const { rerender } = render(
+      <HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" mayComment onComposerEngagedChange={first} />,
+    )
+    const input = await screen.findByPlaceholderText('docs.comment.placeholder')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'note' } })
+    await waitFor(() => expect(first).toHaveBeenLastCalledWith(true))
+
+    // Swapping the callback re-runs the effect: the OLD callback gets a cleanup false, the new one
+    // is re-notified with the current engagement.
+    rerender(
+      <HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" mayComment onComposerEngagedChange={second} />,
+    )
+    expect(first).toHaveBeenLastCalledWith(false)
+    await waitFor(() => expect(second).toHaveBeenLastCalledWith(true))
+  })
+
   it('shows doc-level target state when there is no pending anchor', async () => {
     stubFetch(() => jsonResponse({ data: [] }))
     render(<HtmlDocCommentPanel docId="d1" space="sp" slug="s" listVersion="v1" mayComment />)

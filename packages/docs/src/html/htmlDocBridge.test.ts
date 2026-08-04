@@ -91,6 +91,14 @@ describe('isValidAid — bounded aid guard', () => {
     // selector (see buildBridgeScript / resolveHtmlDocAnchorText), which the frame does.
     expect(isValidAid('"] , script')).toBe(true)
   })
+
+  it('accepts Object.prototype key names as aids (Map own-key semantics make them safe)', () => {
+    // aids double as parent Map cache keys; a Map never walks the prototype chain, so these names
+    // are safe own keys. Rejecting them would wrongly drop legitimate ids that happen to collide.
+    for (const aid of ['__proto__', 'constructor', 'prototype', 'toString', 'valueOf', 'hasOwnProperty']) {
+      expect(isValidAid(aid)).toBe(true)
+    }
+  })
 })
 
 describe('parseBridgeAnchor', () => {
@@ -109,6 +117,16 @@ describe('parseBridgeAnchor', () => {
   it('rejects an element anchor with a control-char / oversized aid', () => {
     expect(parseBridgeAnchor({ kind: 'element', aid: 'a\u0000', selector: 's' })).toBeNull()
     expect(parseBridgeAnchor({ kind: 'element', aid: 'x'.repeat(300), selector: 's' })).toBeNull()
+  })
+
+  it('accepts an element anchor whose aid is an Object.prototype key name (Map-safe)', () => {
+    for (const aid of ['__proto__', 'constructor', 'prototype', 'toString', 'valueOf', 'hasOwnProperty']) {
+      expect(parseBridgeAnchor({ kind: 'element', aid, selector: 's' })).toEqual({
+        kind: 'element',
+        aid,
+        selector: 's',
+      })
+    }
   })
 })
 

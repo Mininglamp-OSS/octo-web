@@ -1,8 +1,8 @@
 // Shared sandboxed preview. Scripts run in an isolated (allow-scripts, NO allow-same-origin)
 // sandbox; the parent talks to the frame only through the constrained postMessage bridge
-// (htmlDocBridge). The sandbox blocks parent DOM/origin/credential access but NOT outbound network
-// from doc JS — network egress is an accepted capability for agent-authored HTML. Editable controls
-// are still neutralized in the markup; referrerPolicy="no-referrer" strips the Referer leak channel.
+// (htmlDocBridge). The sandbox blocks parent DOM/storage/origin access but NOT outbound network
+// from doc JS (an accepted egress capability). Editable controls are still neutralized in the
+// markup; referrerPolicy="no-referrer" strips the Referer leak channel.
 
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -161,14 +161,10 @@ export function HtmlPreviewFrame({
       ref={iframeRef}
       className={className ?? 'octo-html-doc-frame'}
       // Two mutually-exclusive, both-safe sandboxes. NEVER combine allow-scripts with
-      // allow-same-origin (that pairing fully defeats the sandbox). No allow-forms/allow-popups/
-      // allow-top-navigation/allow-downloads in either mode.
-      //   scripts:      doc JS runs in an opaque origin, walled off from the PARENT (issue #27).
-      //   readonly-dom: no scripts execute, so same-origin DOM reads by the parent are safe.
-      // THREAT BOUNDARY: the sandbox stops parent DOM/origin/credential access, NOT arbitrary
-      // OUTBOUND network from doc JS (fetch/img/beacon to author-chosen hosts still work — network
-      // egress is an accepted capability for agent-authored HTML, see htmlDocBridge). referrerPolicy
-      // caps one leak channel by never sending our URL as a Referer on those requests.
+      // allow-same-origin. scripts: doc JS runs in an opaque origin, walled off from the PARENT
+      // DOM/storage/origin (issue #27). readonly-dom: no scripts, so parent DOM reads are safe.
+      // Outbound network from doc JS is NOT blocked (accepted egress); referrerPolicy caps the
+      // Referer leak channel.
       sandbox={scriptsMode ? 'allow-scripts' : 'allow-same-origin'}
       referrerPolicy="no-referrer"
       title={title}
