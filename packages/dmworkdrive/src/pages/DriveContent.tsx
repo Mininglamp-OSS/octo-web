@@ -152,6 +152,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           )}
           {canEdit && (
             <Button
+              className="drive-btn"
               icon={<FolderPlus size={16} />}
               disabled={!hasSpace}
               onClick={() => setFolderModalOpen(true)}
@@ -163,6 +164,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
               unmount/remove is editor+ and lives in the file row menu. */}
           {canUpload && (
             <Button
+              className="drive-btn"
               icon={<FilePlus2 size={16} />}
               disabled={!hasSpace}
               onClick={() => setMountModalOpen(true)}
@@ -172,6 +174,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           )}
           {canManage && (
             <Button
+              className="drive-btn"
               icon={<UserPlus size={16} />}
               onClick={() => setInviteModalOpen(true)}
             >
@@ -180,6 +183,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           )}
           {canManage && (
             <Button
+              className="drive-btn"
               icon={<Users size={16} />}
               onClick={() => setMemberModalOpen(true)}
             >

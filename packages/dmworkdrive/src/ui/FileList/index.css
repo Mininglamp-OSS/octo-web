@@ -1,3 +1,8 @@
+/* File rows follow docs' row-list language: borderless rounded rows with a
+   hover tint instead of a ruled table, a 14px title over 12px muted meta, and
+   row actions that only appear on hover. Drive keeps its own columns (size /
+   updated time) and its folder/doc/blob glyphs. */
+
 .drive-file-list {
   display: flex;
   flex-direction: column;
@@ -11,82 +16,114 @@
 }
 
 .drive-file-list__empty {
-  color: var(--semi-color-text-2, #86909c);
+  padding: 32px 12px;
+  text-align: center;
   font-size: 14px;
+  line-height: 1.3;
+  color: var(--wk-text-secondary, #555b61);
 }
 
 .drive-file-row {
   display: grid;
   grid-template-columns: 1fr 120px 180px 48px;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--semi-color-border, #f2f3f5);
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--wk-r-sm, 6px);
   font-size: 14px;
+  line-height: 1.3;
+  color: var(--wk-text-primary, #1f2329);
+  transition: background 0.12s ease;
 }
 
 .drive-file-row:not(.drive-file-row--head):hover {
-  background: var(--semi-color-fill-0, #f7f8fa);
+  background: var(--wk-bg-hover, #dfe0e2);
 }
 
-.drive-file-row--head {
-  font-size: 12px;
+/* Drive rows are navigational rather than selectable, so the active treatment
+   binds to keyboard focus — same tokens docs uses for its selected row. */
+.drive-file-row:not(.drive-file-row--head):focus-within {
+  background: var(--wk-bg-selected, rgba(127, 59, 245, 0.06));
+}
+
+.drive-file-row:not(.drive-file-row--head):focus-within .drive-file__name-link {
   font-weight: 600;
-  color: var(--semi-color-text-2, #86909c);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+}
+
+/* Column labels: docs has no table head, so this stays a quiet caption row —
+   the one hairline in the list, matching the rule under docs' list header. */
+.drive-file-row--head {
+  padding: 4px 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.05));
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--wk-text-tertiary, #6b7075);
 }
 
 .drive-file__name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 
+/* One muted tone for every kind, as in docs; the glyph carries the type. */
 .drive-file__icon {
-  flex-shrink: 0;
-}
-
-.drive-file__icon--folder {
-  color: var(--wk-brand-primary, #7c5cfc);
-}
-
-.drive-file__icon--doc {
-  color: #2f7de1;
-}
-
-.drive-file__icon--blob {
-  color: #86909c;
+  flex: 0 0 auto;
+  color: var(--wk-text-tertiary, #6b7075);
 }
 
 .drive-file__name-link,
 .drive-file__name-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--wk-text-primary, #1f2329);
 }
 
+/* No underline or colour shift on hover: the row tint is the affordance, which
+   is how a docs row reads. */
 .drive-file__name-link {
   border: none;
   background: transparent;
   padding: 0;
-  color: var(--semi-color-text-0, #1d2129);
-  font-size: 14px;
+  text-align: left;
+  font-family: inherit;
   cursor: pointer;
-}
-
-.drive-file__name-link:hover {
-  color: var(--wk-brand-primary, #7c5cfc);
-  text-decoration: underline;
 }
 
 .drive-file__size,
 .drive-file__time {
-  color: var(--semi-color-text-1, #4e5969);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--wk-text-tertiary, #6b7075);
 }
 
 .drive-file__ops {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 2px;
+}
+
+/* Hidden until the row is hovered or holds focus (docs' row-menu behaviour),
+   and kept visible while its dropdown is open. */
+.drive-file-row:not(.drive-file-row--head) .drive-file__ops .semi-button {
+  opacity: 0;
+  color: var(--wk-text-tertiary, #6b7075);
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.drive-file-row:hover .drive-file__ops .semi-button,
+.drive-file-row:focus-within .drive-file__ops .semi-button,
+.drive-file__ops .semi-button[aria-expanded='true'] {
+  opacity: 1;
 }

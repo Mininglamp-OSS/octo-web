@@ -1,15 +1,25 @@
+/* Drive chrome, visually aligned with octo-doc.
+   Drive keeps its own information architecture (space rail, breadcrumb, folder
+   hierarchy); only the visual layer follows docs. Colours come from the SAME
+   host `--wk-*` semantic tokens docs resolves to (docs aliases them as
+   `--octo-*` on `.octo-theme`), so both modules track light/dark together.
+   Hex fallbacks equal the light-mode token values so a Storybook harness
+   without the theme entry still renders. */
+
 .drive-page {
   display: flex;
   height: 100%;
   width: 100%;
-  background: var(--semi-color-bg-0, #fff);
-  color: var(--semi-color-text-0, #1d2129);
+  background: var(--wk-bg-base, #f5f6f7);
+  color: var(--wk-text-primary, #1f2329);
+  font-family: var(--wk-font-sans);
 }
 
 /* Left pane wrapper (WKLayout.contentLeft): fills the host's fixed-width rail. */
 .drive-sidebar-pane {
   height: 100%;
   width: 100%;
+  font-family: var(--wk-font-sans);
 }
 
 .drive-main {
@@ -19,28 +29,88 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--semi-color-bg-0, #fff);
-  color: var(--semi-color-text-0, #1d2129);
+  box-sizing: border-box;
+  /* Docs' resident list pads its whole container by 12px and lets rows carry
+     their own inset; mirror that instead of the old per-region 20px gutters. */
+  padding: 12px;
+  background: var(--wk-bg-base, #f5f6f7);
+  color: var(--wk-text-primary, #1f2329);
+  font-family: var(--wk-font-sans);
 }
 
+/* Mirrors docs' list header: hairline rule under the title row, 8px breathing
+   space before the list body. Wraps because Drive can show up to five actions. */
 .drive-main__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--semi-color-border, #e5e6eb);
+  flex-wrap: wrap;
+  padding: 4px 4px 12px;
+  border-bottom: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.05));
+  margin-bottom: 8px;
 }
 
 .drive-main__actions {
-  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Toolbar buttons: docs' pill primary / outlined secondary specs mapped onto the
+   Semi buttons Drive already renders, so behaviour (disabled, focus ring, icon
+   slot) is untouched and only the skin changes. Secondary mirrors docs'
+   `filter-btn`; primary mirrors docs' `list-new` pill. */
+.drive-main__actions .drive-btn.semi-button {
+  height: auto;
+  min-height: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
+  border-radius: var(--wk-r-sm, 6px);
+  background: var(--wk-bg-surface, #fff);
+  color: var(--wk-text-primary, #1f2329);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.drive-main__actions .drive-btn.semi-button .semi-button-content {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.drive-main__actions .drive-btn.semi-button:not(:disabled):hover {
+  background: var(--wk-bg-hover, #dfe0e2);
+  border-color: var(--wk-border-strong, rgba(0, 0, 0, 0.14));
+  color: var(--wk-text-primary, #1f2329);
+}
+
+.drive-main__actions .drive-btn--primary.semi-button {
+  min-height: 32px;
+  padding: 4px 14px;
+  border-color: transparent;
+  border-radius: var(--wk-r-full, 9999px);
+  background: var(--wk-brand-primary, #1c1c23);
+  color: var(--wk-text-inverse, #fff);
+  box-shadow: var(--wk-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.06));
+}
+
+.drive-main__actions .drive-btn--primary.semi-button:not(:disabled):hover {
+  border-color: transparent;
+  background: var(--wk-brand-primary-hover, #2a2a33);
+  color: var(--wk-text-inverse, #fff);
+}
+
+.drive-main__actions .drive-btn.semi-button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .drive-main__body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 20px 20px;
 }
 
 .drive-main__center {
@@ -50,9 +120,12 @@
   min-height: 240px;
 }
 
+/* Same treatment as docs' infinite-scroll footer line. */
 .drive-main__truncated {
-  margin: 8px 16px 0;
+  margin: 0;
+  padding: 12px 10px;
   font-size: 12px;
-  color: var(--semi-color-text-2);
+  line-height: 1.3;
+  color: var(--wk-text-tertiary, #6b7075);
   text-align: center;
 }

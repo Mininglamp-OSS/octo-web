@@ -28,10 +28,11 @@ export interface FileListProps {
   canShare: boolean;
 }
 
+/** Per-kind glyph at docs' 16px row-icon size; colour is uniform (see index.css). */
 function EntryIcon({ entry }: { entry: DriveEntry }) {
-  if (entry.type === 'folder') return <Folder size={18} className="drive-file__icon drive-file__icon--folder" />;
-  if (entry.type === 'doc') return <FileText size={18} className="drive-file__icon drive-file__icon--doc" />;
-  return <File size={18} className="drive-file__icon drive-file__icon--blob" />;
+  if (entry.type === 'folder') return <Folder size={16} className="drive-file__icon" />;
+  if (entry.type === 'doc') return <FileText size={16} className="drive-file__icon" />;
+  return <File size={16} className="drive-file__icon" />;
 }
 
 /** Mixed listing of folders, Type-1 docs and Type-2 blobs for one folder. */
@@ -61,7 +62,7 @@ export default function FileList({
   }
 
   if (entries.length === 0) {
-    return <div className="drive-file-list__center drive-file-list__empty">{t('drive.file.empty')}</div>;
+    return <div className="drive-file-list__empty">{t('drive.file.empty')}</div>;
   }
 
   return (

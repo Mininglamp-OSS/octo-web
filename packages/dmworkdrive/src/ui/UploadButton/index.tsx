@@ -23,6 +23,7 @@ export default function UploadButton({ disabled, onFiles }: UploadButtonProps) {
   return (
     <>
       <Button
+        className="drive-btn drive-btn--primary"
         icon={<Upload size={16} />}
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
