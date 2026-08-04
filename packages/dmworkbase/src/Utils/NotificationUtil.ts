@@ -3,6 +3,8 @@ import WKApp from "../App";
 import WKSDK from "wukongimjssdk";
 import { t } from "../i18n";
 import { getImChannelInfo } from "../im-runtime/channelRuntime";
+import { ChannelTypeCommunityTopic } from "../Service/Const";
+import { isEffectivelyMuted, parseThreadChannelId } from "../Service/Thread";
 
 // Extend window interface for Electron APIs
 declare global {
@@ -189,21 +191,21 @@ export class NotificationUtil {
    * Send a message notification
    */
   public async sendMessageNotification(message: Message, description?: string): Promise<void> {
-    let channelInfo = getImChannelInfo(WKSDK.shared(), message.channel);
+    const channelInfo = getImChannelInfo(WKSDK.shared(), message.channel);
 
-    // Check if channel is muted
-    if (channelInfo && channelInfo.mute) {
+    const isThread = message.channel.channelType === ChannelTypeCommunityTopic;
+    const parentGroupNo = isThread
+      ? (channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+        parseThreadChannelId(message.channel.channelID)?.groupNo
+      : undefined;
+    const parentChannelInfo = parentGroupNo
+      ? getImChannelInfo(
+          WKSDK.shared(),
+          new Channel(parentGroupNo, ChannelTypeGroup)
+        )
+      : undefined;
+    if (isEffectivelyMuted({ isThread, channelInfo, parentChannelInfo })) {
       return;
-    }
-
-    // 子区消息：额外检查父群聊 mute（只读 orgData.parentGroupNo，不依赖 Service 层解析）
-    const parentGroupNo = channelInfo?.orgData?.parentGroupNo as string | undefined
-    if (parentGroupNo) {
-      const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup)
-      const parentChannelInfo = getImChannelInfo(WKSDK.shared(), parentChannel)
-      if (parentChannelInfo?.mute) {
-        return
-      }
     }
 
     // Check if message should show red dot
