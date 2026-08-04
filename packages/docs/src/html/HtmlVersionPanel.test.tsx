@@ -37,6 +37,14 @@ describe('HtmlVersionPanel', () => {
     expect(within(v2).getByText('docs.version.compareCurrent')).toBeTruthy()
   })
 
+  it('hides compare actions but keeps 查看 when compare is disabled', () => {
+    renderPanel({ compareEnabled: false })
+    const rows = screen.getAllByRole('listitem')
+    expect(within(rows[1]).getByText('docs.version.view')).toBeTruthy()
+    expect(screen.queryByText('docs.version.comparePrev')).toBeNull()
+    expect(screen.queryByText('docs.version.compareCurrent')).toBeNull()
+  })
+
   it('查看 fires onView with the numeric version and is disabled on the current row', () => {
     const { onView } = renderPanel()
     const rows = screen.getAllByRole('listitem')

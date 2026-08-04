@@ -34,12 +34,14 @@ function stubFetch(handlers: {
 let wk: ReturnType<typeof createMockWKApp>
 beforeEach(() => {
   ;(window as unknown as { __OCTO_DOC_BASE__?: string }).__OCTO_DOC_BASE__ = 'https://od.test'
+  ;(window as unknown as { __OCTO_HTML_SOURCE_DIFF_ENABLED__?: boolean }).__OCTO_HTML_SOURCE_DIFF_ENABLED__ = true
   wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
   setWKApp(wk)
 })
 afterEach(() => {
   cleanup()
   delete (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
+  delete (window as unknown as { __OCTO_HTML_SOURCE_DIFF_ENABLED__?: unknown }).__OCTO_HTML_SOURCE_DIFF_ENABLED__
   setWKApp(undefined as never)
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
@@ -54,6 +56,22 @@ async function waitForFrame(container: HTMLElement) {
 }
 
 describe('HtmlDocView — page/code mode', () => {
+  it('fails closed and never requests source or diff when the runtime flag is absent', async () => {
+    delete (window as unknown as { __OCTO_HTML_SOURCE_DIFF_ENABLED__?: unknown }).__OCTO_HTML_SOURCE_DIFF_ENABLED__
+    const fetchSpy = stubFetch({ versions: [{ n: 2 }, { n: 1 }] })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="s" version="2" />)
+    await waitForFrame(container)
+    expect(screen.queryByRole('tab', { name: 'docs.mode.code' })).toBeNull()
+
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    fireEvent.click(screen.getByText('docs.toolbar.history'))
+    await waitFor(() => screen.getByTestId('html-doc-version-panel'))
+    expect(screen.getAllByText('docs.version.view').length).toBeGreaterThan(0)
+    expect(screen.queryByText('docs.version.comparePrev')).toBeNull()
+    expect(screen.queryByText('docs.version.compareCurrent')).toBeNull()
+    expect(fetchSpy.mock.calls.some(([input]) => /\/source(?:\?|$)|\/diff\?/.test(String(input)))).toBe(false)
+  })
+
   it('links mode tabs to panels and supports roving keyboard navigation', async () => {
     stubFetch({ source: () => '<p>source</p>' })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="s" version="2" />)

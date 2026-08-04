@@ -33,6 +33,7 @@ import { HtmlSourceView } from './HtmlSourceView.tsx'
 import { HtmlVersionPanel } from './HtmlVersionPanel.tsx'
 import { listVersions, type HtmlDocVersion } from './htmlDocVersions.ts'
 import { HtmlDiffModal } from './HtmlDiffModal.tsx'
+import { isHtmlSourceDiffEnabled } from './htmlSourceDiffFeature.ts'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { useDocDelete } from '../editor/useDocDelete.ts'
 import { DocMoreMenu, OpenNewPageIcon, LinkIcon, DeleteIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
@@ -189,6 +190,7 @@ export function HtmlDocView({
   onDeleted,
   creatorNicknameOnly,
 }: HtmlDocViewProps) {
+  const sourceDiffEnabled = isHtmlSourceDiffEnabled()
   // Mode toggle: page (rendered iframe) vs code (raw source). Sticky across version switches.
   const [mode, setMode] = useState<'page' | 'code'>('page')
   const modeTabRefs = useRef<Record<'page' | 'code', HTMLButtonElement | null>>({ page: null, code: null })
@@ -212,6 +214,12 @@ export function HtmlDocView({
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [versionsError, setVersionsError] = useState<string | null>(null)
   const [diff, setDiff] = useState<{ from: number; to: number } | null>(null)
+  useEffect(() => {
+    if (!sourceDiffEnabled) {
+      setMode('page')
+      setDiff(null)
+    }
+  }, [sourceDiffEnabled])
   // Comments default open to preserve the existing reader behavior.
   const [commentsOpen, setCommentsOpen] = useState(true)
   const meta = state.status === 'ready' ? state.meta : null
@@ -520,7 +528,7 @@ export function HtmlDocView({
         </div>
         <div className="octo-doc-header-right">
           {/* [页面][代码] mode switch. Semantic tablist; the mode is sticky across version switches. */}
-          <div className="octo-html-doc-modes" role="tablist" aria-label={t('docs.mode.label')}>
+          {sourceDiffEnabled && <div className="octo-html-doc-modes" role="tablist" aria-label={t('docs.mode.label')}>
             <button
               ref={(node) => { modeTabRefs.current.page = node }}
               type="button"
@@ -549,7 +557,7 @@ export function HtmlDocView({
             >
               {t('docs.mode.code')}
             </button>
-          </div>
+          </div>}
           <HtmlPresenceBar displayName={viewerName} />
           {/* Comments belong to the rendered page; code mode has no selection anchors, so the toggle
               is hidden there (a switch-back hint sits in the code body instead). */}
@@ -700,6 +708,7 @@ export function HtmlDocView({
               currentVersion={Number.isNaN(Number(viewVersion)) ? null : Number(viewVersion)}
               loading={versionsLoading}
               error={versionsError}
+              compareEnabled={sourceDiffEnabled}
               onView={handleViewVersion}
               onCompare={handleCompare}
               onClose={() => setHistoryOpen(false)}
@@ -708,7 +717,7 @@ export function HtmlDocView({
         </div>
       )}
       {/* Two-version diff modal (code + page tabs), shared DiffResult. */}
-      {diff && (
+      {sourceDiffEnabled && diff && (
         <HtmlDiffModal
           slug={effectiveSlug}
           from={String(diff.from)}
@@ -718,7 +727,7 @@ export function HtmlDocView({
         />
       )}
       {/* CODE mode: raw read-only source. No iframe, no comment anchors. */}
-      {mode === 'code' && (
+      {sourceDiffEnabled && mode === 'code' && (
         <div id="html-doc-mode-panel-code" role="tabpanel" aria-labelledby="html-doc-mode-tab-code" className="octo-html-doc-main octo-html-doc-main--code" data-testid="html-doc-main">
           <div className="octo-html-doc-source-wrap">
             <p className="octo-html-doc-source-hint" role="note">

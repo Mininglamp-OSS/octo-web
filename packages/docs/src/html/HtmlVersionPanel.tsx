@@ -15,6 +15,7 @@ export function HtmlVersionPanel({
   currentVersion,
   loading,
   error,
+  compareEnabled = true,
   onView,
   onCompare,
   onClose,
@@ -24,6 +25,8 @@ export function HtmlVersionPanel({
   currentVersion?: number | null
   loading?: boolean
   error?: string | null
+  /** Hide compare actions while the source/diff backend is unavailable. */
+  compareEnabled?: boolean
   /** Switch the in-page view to this published version (page/code mode is preserved by the parent). */
   onView: (version: number) => void
   /** Open the diff modal for (from → to). */
@@ -71,12 +74,12 @@ export function HtmlVersionPanel({
                 >
                   {t('docs.version.view')}
                 </button>
-                {prev != null && (
+                {compareEnabled && prev != null && (
                   <button type="button" className="octo-tb-btn" onClick={() => onCompare(prev, v.n)}>
                     {t('docs.version.comparePrev')}
                   </button>
                 )}
-                {current != null && v.n !== current && (
+                {compareEnabled && current != null && v.n !== current && (
                   <button
                     type="button"
                     className="octo-tb-btn"

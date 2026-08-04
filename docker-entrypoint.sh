@@ -29,6 +29,16 @@ export DOC_APP_URL
 DOCS_BACKEND_URL="${DOCS_BACKEND_URL%/}"
 export DOCS_BACKEND_URL
 
+# Runtime HTML source/diff switch. Only the literal "true" enables it.
+: "${OCTO_HTML_SOURCE_DIFF_ENABLED:=false}"
+if [ "$OCTO_HTML_SOURCE_DIFF_ENABLED" = "true" ]; then
+  HTML_SOURCE_DIFF_JS=true
+else
+  HTML_SOURCE_DIFF_JS=false
+fi
+printf 'window.__OCTO_HTML_SOURCE_DIFF_ENABLED__ = %s;\n' "$HTML_SOURCE_DIFF_JS" \
+  > /usr/share/nginx/html/runtime-config.js
+
 # octo-marketplace backend — dmworkmcp / dmworkskillmarket proxy through the
 # /market/api/v1/ location. Same blank-default + 503-fallback shape as
 # SUMMARY above so a deployment without marketplace still boots.
