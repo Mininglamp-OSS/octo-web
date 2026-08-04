@@ -10,6 +10,7 @@
 // status 200 / 404 / 403. If the backend finalizes a different path, only this file changes.
 
 import { apiClient, type ApiError } from '../octoweb/index.ts'
+import { settleWithConcurrency, DEFAULT_GRANT_CONCURRENCY } from '../members/batchGrant.ts'
 
 /** Roles a forwarder may grant — reader/commenter/writer only (no admin). */
 export type ForwardGrantRole = 'reader' | 'commenter' | 'writer'
@@ -56,7 +57,9 @@ export interface GrantForwardResult {
  * Grant a whole uid snapshot, one call per uid (contract 2: no batch endpoint — the frontend
  * loops). Part failures do NOT roll back the successes; each `ok` is GREATEST-idempotent.
  * HTTP 400 failures are reported separately as permanent rejections; other failures may be
- * retried. De-dupes the uid list defensively so each member is granted once.
+ * retried. De-dupes the uid list defensively so each member is granted once. Fan-out is bounded
+ * (≤ DEFAULT_GRANT_CONCURRENCY in flight) via the shared helper so a large snapshot can't open N
+ * connections at once.
  */
 export async function grantForwardMany(
   docId: string,
@@ -67,14 +70,20 @@ export async function grantForwardMany(
   let granted = 0
   const failures: string[] = []
   const rejected: string[] = []
-  for (const uid of unique) {
-    const outcome = await grantForward(docId, uid, role)
+  const outcomes = await settleWithConcurrency(
+    unique,
+    (uid) => grantForward(docId, uid, role),
+    DEFAULT_GRANT_CONCURRENCY,
+  )
+  outcomes.forEach((settled, index) => {
+    const uid = unique[index]
+    const outcome = settled.status === 'fulfilled' ? settled.value : 'error'
     if (outcome === 'ok') granted++
     else {
       failures.push(uid)
       if (outcome === 'rejected') rejected.push(uid)
     }
-  }
+  })
   return failures.length > 0
     ? { granted, failed: failures.length, failures, ...(rejected.length > 0 ? { rejected } : {}) }
     : { granted, failed: 0 }

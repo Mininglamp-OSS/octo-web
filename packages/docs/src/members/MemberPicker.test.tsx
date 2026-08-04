@@ -64,6 +64,30 @@ describe('MemberPicker (Problem 1)', () => {
     expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'writer')
   })
 
+  it('selects a user\'s current Space Bots by default and allows cancelling one', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/robot/space_bots')) {
+        return { data: [
+          { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+          { uid: 'b_2', name: 'Review Bot', creator_uid: 'u_ada' },
+        ], status: 200 }
+      }
+      return { data: [], status: 200 }
+    }
+    const onAdd = vi.fn()
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    fireEvent.click(screen.getByText('Review Bot'))
+    fireEvent.click(screen.getByText('docs.member.addSnapshotCount').closest('button') as HTMLButtonElement)
+    expect(onAdd).toHaveBeenCalledWith(
+      ['u_ada', 'b_1'],
+      'writer',
+      { humanUids: ['u_ada'], botUids: ['b_1'] },
+    )
+  })
+
   it('multi-selects several members and adds them all in one action (#A2)', async () => {
     const onAdd = vi.fn()
     render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
@@ -204,6 +228,84 @@ describe('MemberPicker (Problem 1)', () => {
   })
 })
 
+// task #4: Bot search matches name/uid and surfaces the creator; a hidden creator's Bots are never
+// selectable; already-existing Bots are excluded from the nested list.
+describe('MemberPicker Bot search + creator attribution (task #4)', () => {
+  function botResponder(bots: Array<{ uid: string; name: string; creator_uid?: string }>) {
+    return (method: string, url: string) =>
+      method === 'get' && url.startsWith('/robot/space_bots')
+        ? { data: bots, status: 200 }
+        : { data: [], status: 200 }
+  }
+
+  it('surfaces a creator row when the query matches its Bot name, showing the creator', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    // Search by the Bot's name — the creator row stays, other humans drop out.
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'Writer Bot' },
+    })
+    expect(screen.getByText('Ada Lovelace')).toBeTruthy()
+    expect(screen.queryByText('Grace Hopper')).toBeNull()
+    // The Bot is shown beneath its creator with a creator attribution.
+    expect(screen.getByText('Writer Bot')).toBeTruthy()
+    expect(screen.getByText('docs.member.botCreator')).toBeTruthy()
+  })
+
+  it('matches a Bot by uid too', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'bot_xyz', name: 'Nameless', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'bot_xyz' },
+    })
+    expect(screen.getByText('Ada Lovelace')).toBeTruthy()
+    expect(screen.queryByText('Grace Hopper')).toBeNull()
+  })
+
+  it('never offers a hidden creator\'s Bots (self / owner)', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Owner Bot', creator_uid: 'u_ada' },
+    ])
+    const onAdd = vi.fn()
+    // Hide the creator (u_ada) — their row is gone AND their Bot must not be selectable/shown.
+    render(
+      <MemberPicker
+        space="s_1"
+        existingUids={new Set()}
+        hideUids={new Set(['u_ada'])}
+        onAdd={onAdd}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
+    expect(screen.queryByText('Ada Lovelace')).toBeNull()
+    // Searching for the hidden creator's Bot surfaces nothing.
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'Owner Bot' },
+    })
+    expect(screen.queryByText('Owner Bot')).toBeNull()
+  })
+
+  it('excludes a Bot that is already on the doc from the nested list', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+      { uid: 'b_2', name: 'Review Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set(['b_1'])} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    // Only the not-yet-added Bot appears; the existing one is filtered out.
+    expect(screen.getByText('Review Bot')).toBeTruthy()
+    expect(screen.queryByText('Writer Bot')).toBeNull()
+  })
+})
+
 // #839: the candidate roster merges the caller's friend-added agents (GET /robot/my_bots) with
 // the space members, so an agent owned by someone else but befriended by the caller — which the
 // space-member query filters out — becomes selectable, while non-friend agents never appear.
@@ -243,5 +345,109 @@ describe('MemberPicker friend-agent roster (#839)', () => {
     await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
     expect(screen.getByText('Ada Lovelace')).toBeTruthy()
     expect(screen.getByText('Helper Bot')).toBeTruthy()
+  })
+})
+
+// P1: when existingUids / the offered-Bot set changes on rerender, stale selected Bots must be
+// pruned too — a Bot that became existing, or whose creator became hidden/existing/unlisted, must
+// never survive into the submitted snapshot.
+describe('MemberPicker prunes stale selected Bots on rerender (P1)', () => {
+  function botResponder(bots: Array<{ uid: string; name: string; creator_uid?: string }>) {
+    return (method: string, url: string) =>
+      method === 'get' && url.startsWith('/robot/space_bots')
+        ? { data: bots, status: 200 }
+        : { data: [], status: 200 }
+  }
+
+  it('drops a selected Bot that became existing before submit', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+      { uid: 'b_2', name: 'Review Bot', creator_uid: 'u_ada' },
+    ])
+    const onAdd = vi.fn()
+    const { rerender } = render(
+      <MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />,
+    )
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    // Both Bots default-selected. Now b_1 gets added elsewhere → becomes existing.
+    rerender(<MemberPicker space="s_1" existingUids={new Set(['b_1'])} onAdd={onAdd} />)
+    fireEvent.click(
+      screen.getByText('docs.member.addSnapshotCount').closest('button') as HTMLButtonElement,
+    )
+    // b_1 must NOT be resubmitted; only the still-valid b_2 rides along.
+    expect(onAdd).toHaveBeenCalledWith(
+      ['u_ada', 'b_2'],
+      'writer',
+      { humanUids: ['u_ada'], botUids: ['b_2'] },
+    )
+  })
+
+  it('drops a selected human AND their Bot when they become hidden (self / owner)', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    const onAdd = vi.fn()
+    const { rerender } = render(
+      <MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />,
+    )
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    // Select Ada (auto-selects b_1) then also keep Grace so a human survives after Ada is hidden.
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('Grace Hopper'))
+    // Now hide u_ada (e.g. resolved as owner/self) — her row, her Bot, AND her selected-human entry
+    // must all drop out so a hidden uid can never ride along in the submitted snapshot.
+    rerender(
+      <MemberPicker
+        space="s_1"
+        existingUids={new Set()}
+        hideUids={new Set(['u_ada'])}
+        onAdd={onAdd}
+      />,
+    )
+    const addBtn = document.querySelector(
+      '.octo-member-picker-actions .octo-doc-primary-btn',
+    ) as HTMLButtonElement
+    fireEvent.click(addBtn)
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    const call = onAdd.mock.calls[0]
+    const submittedUids = call[0] as string[]
+    // Only the still-visible human survives; the hidden human and her Bot are both gone.
+    expect(submittedUids).toEqual(['u_grace'])
+    expect(submittedUids).not.toContain('u_ada')
+    expect(submittedUids).not.toContain('b_1')
+    // No bot snapshot arg (or an empty botUids) — a hidden creator's Bot never submits.
+    if (call[2]) expect(call[2].botUids).not.toContain('b_1')
+  })
+
+  it('drops a selected Bot whose creator becomes existing (disabled creator row)', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    const onAdd = vi.fn()
+    const { rerender } = render(
+      <MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />,
+    )
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    // Select Ada (auto-selects her Bot b_1) plus Grace so a human survives after Ada is added.
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('Grace Hopper'))
+    // Ada gets added to the doc elsewhere → her row becomes existing (disabled). Her Bot must no
+    // longer be offered/submittable: an existing creator can't be added, so nor can its nested Bot.
+    rerender(
+      <MemberPicker space="s_1" existingUids={new Set(['u_ada'])} onAdd={onAdd} />,
+    )
+    const addBtn = document.querySelector(
+      '.octo-member-picker-actions .octo-doc-primary-btn',
+    ) as HTMLButtonElement
+    fireEvent.click(addBtn)
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    const call = onAdd.mock.calls[0]
+    const submittedUids = call[0] as string[]
+    // Ada (now existing) is dropped as a human; her Bot never rides along either.
+    expect(submittedUids).toEqual(['u_grace'])
+    expect(submittedUids).not.toContain('b_1')
+    if (call[2]) expect(call[2].botUids).not.toContain('b_1')
   })
 })

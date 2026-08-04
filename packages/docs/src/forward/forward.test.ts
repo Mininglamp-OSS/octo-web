@@ -85,6 +85,36 @@ describe('forward grant API (contract 1 — distinct forward-grant endpoint, per
     // De-duped: u_a called once, so 3 unique calls total.
     expect(api.calls.filter((c) => c.url === '/docs/d_1/forward-grant')).toHaveLength(3)
   })
+
+  it('bounds fan-out concurrency at ≤ 8 in flight for a large uid snapshot', async () => {
+    let inFlight = 0
+    let peak = 0
+    let pending: Array<() => void> = []
+    api.responder = () =>
+      new Promise<{ data: object; status: number }>((resolve) => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        pending.push(() => {
+          inFlight--
+          resolve({ data: {}, status: 200 })
+        })
+      })
+    const uids = Array.from({ length: 25 }, (_, i) => `u_${i}`)
+    const promise = grantForwardMany('d_big', uids, 'reader')
+    // Repeatedly let the current in-flight wave settle so workers pull the next items, until done.
+    let done = false
+    void promise.then(() => (done = true))
+    for (let guard = 0; !done && guard < 100; guard++) {
+      await Promise.resolve()
+      const wave = pending
+      pending = []
+      wave.forEach((fire) => fire())
+      await Promise.resolve()
+    }
+    const res = await promise
+    expect(peak).toBeLessThanOrEqual(8)
+    expect(res.granted).toBe(25)
+  })
 })
 
 describe('buildDocLink — standalone `/d/:docId` share form (bypasses the host query-wipe, XIN-450)', () => {

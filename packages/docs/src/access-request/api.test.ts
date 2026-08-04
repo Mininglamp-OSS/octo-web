@@ -22,10 +22,20 @@ afterEach(() => {
 })
 
 describe('access-request API (screen 4c, contract 4 — pull-based, bare-relative paths)', () => {
-  it('requestAccess POSTs to /docs/{docId}/access-requests', async () => {
+  it('requestAccess POSTs to /docs/{docId}/access-requests with NO body when there are zero Bots', async () => {
     api.responder = () => ({ data: {}, status: 201 })
     await requestAccess('d_1')
-    expect(api.calls[0]).toMatchObject({ method: 'post', url: '/docs/d_1/access-requests' })
+    expect(api.calls[0]).toMatchObject({
+      method: 'post',
+      url: '/docs/d_1/access-requests',
+    })
+    // Zero Bots preserves the legacy request shape: an undefined body, never `{ botUids: [] }`.
+    expect(api.calls[0].body).toBeUndefined()
+  })
+
+  it('submits a de-duplicated Bot snapshot body only when Bots are present', async () => {
+    await requestAccess('d_1', { botUids: ['b_1', 'b_1', 'b_2'] })
+    expect(api.calls[0]).toMatchObject({ body: { botUids: ['b_1', 'b_2'] } })
   })
 
   it('surfaces a 409 as AccessRequestConflictError (already requested → not a failure)', async () => {

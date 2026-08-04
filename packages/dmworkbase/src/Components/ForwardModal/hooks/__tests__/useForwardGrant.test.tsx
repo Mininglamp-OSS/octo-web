@@ -105,4 +105,26 @@ describe("useForwardGrant", () => {
     const second = latest.readConfirmPayload
     expect(second).toBe(first)
   })
+
+  it("carries selected botUids in the payload when active AND enabled", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() => latest.setGrantBotUids(["b_1", "b_2"]))
+    expect(latest.readConfirmPayload()).toEqual({ role: "reader", botUids: ["b_1", "b_2"] })
+  })
+
+  it("omits botUids from the payload when none are selected (legacy { role } shape)", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() => latest.setGrantBotUids([]))
+    expect(latest.readConfirmPayload()).toEqual({ role: "reader" })
+  })
+
+  it("drops botUids once the grant switch is turned off", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() => latest.setGrantBotUids(["b_1"]))
+    act(() => latest.setGrantEnabled(false))
+    expect(latest.readConfirmPayload()).toBeUndefined()
+  })
 })

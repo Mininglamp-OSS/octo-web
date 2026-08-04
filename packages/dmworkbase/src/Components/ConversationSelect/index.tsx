@@ -8,9 +8,13 @@
  * 不传 → 行为与之前完全一致。
  */
 import React from "react"
+import WKApp from "../../App"
 import { ForwardModal } from "../ForwardModal/ForwardModal"
 import { useForwardModal } from "../ForwardModal/useForwardModal"
-import { useForwardTargetMemberCount } from "../ForwardModal/hooks"
+import {
+  useForwardTargetMemberCount,
+  useForwardBotSnapshot,
+} from "../ForwardModal/hooks"
 import type { ForwardFinished, ForwardGrantConfig, ForwardGrantRole } from "../ForwardModal/grant"
 
 export interface ConversationSelectGrant {
@@ -44,12 +48,13 @@ export default function ConversationSelect({
     setActiveTab,
     setInputValue,
     toggleSelect,
-    confirm,
+    confirm: confirmForward,
     requestChannelInfoIfNeeded,
     grantEnabled,
     grantRole,
     setGrantEnabled,
     setGrantRole,
+    setGrantBotUids,
   } = useForwardModal(
     onFinished,
     grant ? { canGrant: grant.canGrant, defaultRole: grant.defaultRole } : undefined
@@ -58,6 +63,28 @@ export default function ConversationSelect({
   // 授权区「将授权给群当前 N 名成员」提示：取真实群成员数（去重 uid），
   // 无群目标时为 undefined（个人转发不显示）。
   const targetMemberCount = useForwardTargetMemberCount(selectedIDs, selectedChannels)
+
+  // 授权区 Bot 展开器（feature: user+Bot grants）：把选中人员创建的 Bot 按人归组，
+  // 默认全选、逐个可取消；仅当授权开关开启且确有 Bot 时渲染。失败/无 Bot 时为空快照。
+  const resolveName = React.useCallback(
+    (uid: string) => allItems.find((it) => it.channelID === uid)?.displayName || uid,
+    [allItems],
+  )
+  // The hook owns the confirm-time getter: readLatestSelectedBotUids() reads the freshest selected
+  // Bot set (ref-backed, no render-phase write, no passive-effect race). confirm() layers it into
+  // the grant payload before delegating.
+  const { snapshot: botSnapshot, readLatestSelectedBotUids } = useForwardBotSnapshot(
+    selectedIDs,
+    selectedChannels,
+    grant ? WKApp.shared.currentSpaceId ?? undefined : undefined,
+    !!grant && grantEnabled,
+    resolveName,
+  )
+
+  const confirm = React.useCallback(() => {
+    setGrantBotUids(readLatestSelectedBotUids())
+    confirmForward()
+  }, [setGrantBotUids, readLatestSelectedBotUids, confirmForward])
 
   const grantConfig: ForwardGrantConfig | undefined = grant
     ? {
@@ -68,6 +95,7 @@ export default function ConversationSelect({
         onEnabledChange: setGrantEnabled,
         onRoleChange: setGrantRole,
         targetMemberCount,
+        bots: botSnapshot,
       }
     : undefined
 

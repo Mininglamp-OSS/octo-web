@@ -77,6 +77,11 @@ export function PendingRequests({
         return (
           <div className="octo-member-row" key={req.requestId}>
             <span className="octo-uid">{displayName(req.uid)}</span>
+            {!!req.botUids?.length && (
+              <span className="octo-access-request-bots">
+                {t('docs.forward.requestBots', { values: { count: req.botUids.length, names: req.botUids.map(displayName).join(', ') } })}
+              </span>
+            )}
             <select
               value={role}
               disabled={disabled}

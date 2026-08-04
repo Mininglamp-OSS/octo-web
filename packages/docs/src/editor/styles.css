@@ -1616,6 +1616,35 @@ body.octo-row-resizing {
   border-radius: 8px;
   padding: 4px;
 }
+
+.octo-member-picker-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.octo-member-picker-expand {
+  align-self: flex-start;
+  margin-left: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--octo-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.octo-member-picker-bot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px 2px 32px;
+  font-size: 13px;
+}
+
+.octo-member-picker-bot-creator {
+  color: var(--octo-muted);
+  font-size: 12px;
+}
 .octo-member-picker-empty {
   color: var(--octo-muted, #8a919e);
   font-size: 13px;
@@ -4044,6 +4073,25 @@ body.octo-row-resizing {
 
 .octo-access-request-hint {
   color: var(--octo-muted, #86909c);
+  font-size: 13px;
+}
+
+.octo-access-request-bots {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: stretch;
+}
+
+.octo-access-request-bots-label {
+  color: var(--octo-muted);
+  font-size: 12px;
+}
+
+.octo-access-request-bot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
 }
 

@@ -18,3 +18,9 @@ export {
   type UseForwardGrantResult,
 } from "./useForwardGrant"
 export { useForwardTargetMemberCount } from "./useForwardTargetMemberCount"
+export {
+  useForwardBotSnapshot,
+  selectedBotUids,
+  type ForwardNameResolver,
+  type UseForwardBotSnapshotResult,
+} from "./useForwardBotSnapshot"

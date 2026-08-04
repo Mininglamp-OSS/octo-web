@@ -273,6 +273,8 @@ export default class WKBase
    * Expand the selected target channels into a de-duplicated uid snapshot at forward time
    * (contract 2): a group → its current subscriber uids (syncSubscribes → getSubscribes),
    * a person channel → the peer uid (channelID). Failures on one channel are skipped, never fatal.
+   * Bots are NOT attached here — the forwarder picks them explicitly in the 授权区 Bot expander and
+   * they arrive via `grant.botUids`, so nothing is granted silently.
    */
   private async collectForwardUids(channels: Channel[]): Promise<string[]> {
     const uids = new Set<string>();
@@ -316,7 +318,10 @@ export default class WKBase
     // 1) grant first (先授权后发). Only when the switch is on AND docs injected an executor.
     if (grant && forward.grantAccess) {
       try {
-        const uids = await this.collectForwardUids(sendable);
+        const humanUids = await this.collectForwardUids(sendable);
+        // Merge the explicitly-kept Bot uids from the 授权区 expander onto the human snapshot.
+        // Bots the forwarder cancelled are absent from grant.botUids, so nothing is granted silently.
+        const uids = [...new Set([...humanUids, ...(grant.botUids ?? [])])];
         if (uids.length > 0) {
           const res = await forward.grantAccess(uids, grant.role);
           if (res.failed > 0) grantFailures = res.failures;

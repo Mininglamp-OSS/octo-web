@@ -13,6 +13,8 @@ import type { Role } from '../auth/roles.ts'
 export interface AccessRequest {
   requestId: string
   uid: string
+  /** Bot uid snapshot captured when the requester submitted. */
+  botUids?: string[]
   /** ISO timestamp the request was created, when the backend provides it. */
   createdAt?: string
 }
@@ -43,10 +45,14 @@ export class AccessRequestConflictError extends Error {
  * backend's by-space middleware rejects a bare request (same fix getDoc uses). In-shell callers can
  * omit it — the interceptor supplies the header there.
  */
-export async function requestAccess(docId: string, opts?: { spaceId?: string }): Promise<void> {
+export async function requestAccess(docId: string, opts?: { spaceId?: string; botUids?: string[] }): Promise<void> {
   const config = opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined
+  // Zero Bots → send NO body (preserves the pre-feature request shape); only attach a body once
+  // the requester actually carries at least one Bot.
+  const uids = [...new Set(opts?.botUids ?? [])]
+  const body = uids.length > 0 ? { botUids: uids } : undefined
   try {
-    await apiClient().post(`/docs/${docId}/access-requests`, undefined, config)
+    await apiClient().post(`/docs/${docId}/access-requests`, body, config)
   } catch (e) {
     if ((e as ApiError).response?.status === 409) throw new AccessRequestConflictError()
     throw e

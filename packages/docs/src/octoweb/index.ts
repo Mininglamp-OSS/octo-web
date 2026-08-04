@@ -197,6 +197,20 @@ export async function fetchAllSpaceMembers(spaceId: string): Promise<SpaceMember
 interface HostSpaceBot {
   uid: string
   name?: string
+  creator_uid?: string
+}
+
+/**
+ * One page fetch of the space bots, filtered to entries with a uid. Shared by fetchSpaceBotNames
+ * (name-only) and fetchSpaceBotSnapshots (name + creatorUid) so both read the same endpoint once.
+ */
+async function getSpaceBots(spaceId: string): Promise<HostSpaceBot[]> {
+  if (!spaceId) return []
+  const { data } = await apiClient().get<HostSpaceBot[]>(
+    `/robot/space_bots?space_id=${encodeURIComponent(spaceId)}`,
+  )
+  const bots = Array.isArray(data) ? data : []
+  return bots.filter((b): b is HostSpaceBot => !!b && !!b.uid)
 }
 
 /**
@@ -213,14 +227,28 @@ interface HostSpaceBot {
  * fall back to the uid — this must never break the human-member name path.
  */
 export async function fetchSpaceBotNames(spaceId: string): Promise<SpaceMemberLite[]> {
-  if (!spaceId) return []
-  const { data } = await apiClient().get<HostSpaceBot[]>(
-    `/robot/space_bots?space_id=${encodeURIComponent(spaceId)}`,
-  )
-  const bots = Array.isArray(data) ? data : []
-  return bots
-    .filter((b): b is HostSpaceBot => !!b && !!b.uid)
-    .map((b) => ({ uid: b.uid, name: b.name || b.uid }))
+  const bots = await getSpaceBots(spaceId)
+  return bots.map((b) => ({ uid: b.uid, name: b.name || b.uid }))
+}
+
+/**
+ * Same `/robot/space_bots` source as fetchSpaceBotNames, but returns the RICH snapshot shape the
+ * grant picker needs: `{ uid, name, isBot: true, creatorUid? }`. Kept separate from
+ * fetchSpaceBotNames so the name-only callers (member-name backfill, badge uids) keep their
+ * `{ uid, name }` contract untouched — the creatorUid is only meaningful to the grant snapshot UI,
+ * which nests each Bot beneath its creator.
+ *
+ * Fail-soft: an empty list on any failure / non-array body so a Bot lookup never breaks the human
+ * roster path.
+ */
+export async function fetchSpaceBotSnapshots(spaceId: string): Promise<SpaceMemberLite[]> {
+  const bots = await getSpaceBots(spaceId)
+  return bots.map((b) => ({
+    uid: b.uid,
+    name: b.name || b.uid,
+    isBot: true,
+    ...(b.creator_uid ? { creatorUid: b.creator_uid } : {}),
+  }))
 }
 
 /** Minimal view of a `/robot/my_bots` entry the docs seam reads (uid + display name). */

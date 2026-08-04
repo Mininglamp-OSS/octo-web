@@ -9,6 +9,7 @@ import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
 import { useAccessRequests, type UseAccessRequestsResult } from '../access-request/useAccessRequests.ts'
 import { PendingRequests } from '../access-request/PendingRequests.tsx'
+import { settleWithConcurrency } from '../members/batchGrant.ts'
 
 // Member panel for HTML docs. Two backends live behind one modal:
 //   1. Legacy octo-doc grants (author-only) — the existing "reader" member list, kept intact so
@@ -96,16 +97,35 @@ export function HtmlMemberPanel({
   // Grantable roles on the HTML grants path: reader/commenter/writer. admin is NOT grantable here
   // (backend AddGrant refuses admin — admin identity is owned by creator_uid), matching the
   // docs-backend forward/access contract. The picker returns the chosen role per add.
-  async function onAdd(uids: string[], role: Role) {
+  async function onAdd(
+    uids: string[],
+    role: Role,
+    snapshot?: { humanUids: string[]; botUids: string[] },
+  ) {
     if (role === 'admin') return
     const grantRole: HtmlGrantRole = role
     setError(null)
     setBusy(true)
     try {
-      for (const uid of uids) await addGrant(slug, uid.trim(), grantRole)
-      await refresh()
-    } catch {
-      setError(t('docs.member.errorAdd'))
+      // Grant each picked uid (+ any snapshot Bots) independently (bounded concurrency) so one
+      // failure never aborts the rest. Compute the partial-failure detail FIRST, then refresh
+      // independently — a refresh failure must never overwrite the precise partial-failure message.
+      const results = await settleWithConcurrency(uids, (uid) => addGrant(slug, uid.trim(), grantRole))
+      const botSet = new Set(snapshot?.botUids ?? [])
+      const failed = results.flatMap((result, index) => (result.status === 'rejected' ? [uids[index]] : []))
+      let addError: string | null = null
+      if (failed.length > 0) {
+        addError = t('docs.member.errorAddSnapshot', { values: {
+          people: failed.filter((uid) => !botSet.has(uid)).map((uid) => names.get(uid) || uid).join(', ') || '-',
+          bots: failed.filter((uid) => botSet.has(uid)).map((uid) => names.get(uid) || uid).join(', ') || '-',
+        } })
+      }
+      try {
+        await refresh()
+      } catch {
+        if (!addError) addError = t('docs.member.errorRefresh')
+      }
+      if (addError) setError(addError)
     } finally {
       setBusy(false)
     }
@@ -175,7 +195,7 @@ export function HtmlMemberPanel({
             hideUids={new Set([creatorUid].filter(Boolean) as string[])}
             roles={['reader', 'commenter', 'writer']}
             defaultRole="reader"
-            onAdd={(uids: string[], role: Role) => onAdd(uids, role)}
+            onAdd={onAdd}
             busy={busy}
           />
           {error && <p className="octo-member-error">{error}</p>}

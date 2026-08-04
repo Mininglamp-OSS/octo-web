@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import { clearMemberNameCache } from './memberNames.ts'
@@ -129,5 +129,55 @@ describe('MemberPanel — display names (#7)', () => {
       (s) => Array.from(s.options).map((o) => o.value).join(',') === 'reader,commenter,writer',
     )
     expect(requestSelect).toBeTruthy()
+  })
+})
+
+describe('MemberPanel add: partial-failure detail survives a refresh failure (task #5)', () => {
+  it('keeps the partial-failure message when the post-add refresh also fails', async () => {
+    wk.spaceMembers.push({ uid: 'u_ada', name: 'Ada Lovelace' })
+    let addAttempted = false
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        // The FIRST list (initial mount) succeeds; the refresh AFTER the add throws.
+        if (addAttempted) throw { response: { status: 500 } }
+        return { data: { items: [] }, status: 200 }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (method === 'put' && url.endsWith('/members')) {
+        addAttempted = true
+        throw { response: { status: 500 } } // the grant itself fails
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    // The partial-failure (grant) message is shown, NOT the generic refresh error.
+    await waitFor(() => expect(screen.getByText('docs.member.errorAddSnapshot')).toBeTruthy())
+    expect(screen.queryByText('docs.member.errorRefresh')).toBeNull()
+  })
+
+  it('surfaces the refresh error only when every add succeeded but the refresh failed', async () => {
+    wk.spaceMembers.push({ uid: 'u_ada', name: 'Ada Lovelace' })
+    let addAttempted = false
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        if (addAttempted) throw { response: { status: 500 } }
+        return { data: { items: [] }, status: 200 }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (method === 'put' && url.endsWith('/members')) {
+        addAttempted = true
+        return { data: {}, status: 200 } // grant succeeds
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    await waitFor(() => expect(screen.getByText('docs.member.errorRefresh')).toBeTruthy())
+    expect(screen.queryByText('docs.member.errorAddSnapshot')).toBeNull()
   })
 })

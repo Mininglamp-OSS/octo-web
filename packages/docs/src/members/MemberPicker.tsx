@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
-import { fetchAllSpaceMembers, fetchMyBots, t, type SpaceMemberLite } from '../octoweb/index.ts'
+import { fetchAllSpaceMembers, fetchMyBots, fetchSpaceBotSnapshots, t, type SpaceMemberLite } from '../octoweb/index.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { sortPickerMembers } from './sort.ts'
 
@@ -13,23 +13,25 @@ function initial(name: string): string {
 }
 
 /**
- * Candidate roster = space members (fetchAllSpaceMembers) ∪ the caller's friend-added agents
- * (fetchMyBots), de-duplicated by uid (octo-web #839). The space-member entry wins on a uid
- * collision because it carries the richer host data (avatar / robot flag); a friend agent not
- * already in the space roster is appended, flagged isBot. `my_bots` is a pure friend-dimension
- * query, so this never surfaces a non-friend agent owned by others — the picker still cannot
- * offer, and the admin cannot authorize, an agent the user has not befriended and did not create.
- *
- * A my_bots failure resolves to [] so it can never break the human-member roster path.
+ * Candidate roster = Space members ∪ the caller's friend-added agents (fetchMyBots, #839) ∪ the
+ * Space Bot snapshot (fetchSpaceBotSnapshots). De-duplicated by uid: the Space-member entry wins a
+ * uid collision (richer host data), then a friend agent, then a Space Bot backfills creatorUid so
+ * the picker can nest that Bot beneath its creator. Both Bot requests are fail-soft and never break
+ * the human roster path.
  */
 async function fetchCandidateRoster(space: string): Promise<SpaceMemberLite[]> {
-  const [members, myBots] = await Promise.all([
+  const [members, myBots, spaceBots] = await Promise.all([
     fetchAllSpaceMembers(space),
     space ? fetchMyBots(space).catch(() => [] as SpaceMemberLite[]) : Promise.resolve([]),
+    space ? fetchSpaceBotSnapshots(space).catch(() => [] as SpaceMemberLite[]) : Promise.resolve([]),
   ])
   const byUid = new Map<string, SpaceMemberLite>()
   for (const m of members) byUid.set(m.uid, m)
+  // Friend agents the space-member query dropped (#839): append flat, never overwrite a member.
   for (const b of myBots) if (!byUid.has(b.uid)) byUid.set(b.uid, b)
+  // Space Bots backfill creatorUid (+ isBot) so a Bot with a known creator nests beneath them,
+  // merging onto whatever entry already exists (member/friend) without discarding its richer data.
+  for (const b of spaceBots) byUid.set(b.uid, { ...byUid.get(b.uid), ...b, isBot: true })
   return [...byUid.values()]
 }
 
@@ -61,7 +63,7 @@ export function MemberPicker({
   /** Initial role for a scoped caller. Omit to preserve the rich-doc writer default. */
   defaultRole?: Role
   /** Add the chosen members (one or many) with the chosen role. */
-  onAdd: (uids: string[], role: Role) => Promise<void> | void
+  onAdd: (uids: string[], role: Role, snapshot?: { humanUids: string[]; botUids: string[] }) => Promise<void> | void
   /** True while a parent add/refresh is in flight (disables the Add button). */
   busy?: boolean
 }) {
@@ -71,6 +73,8 @@ export function MemberPicker({
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selectedBots, setSelectedBots] = useState<Set<string>>(new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // Default to 'writer' when offered (keeps rich-doc's prior initial), else the sole/first role
   // so a single-role dropdown ('reader' for HTML) is selected without an empty state.
   const [role, setRole] = useState<Role>(
@@ -108,30 +112,81 @@ export function MemberPicker({
     }
   }, [space])
 
+  const botsByCreator = useMemo(() => {
+    const grouped = new Map<string, SpaceMemberLite[]>()
+    for (const bot of members) {
+      // A Bot is only offered when its creator is a visible, still-addable candidate: skip bots
+      // already on the doc (existing), bots whose creator is hidden (self / owner), and bots whose
+      // creator is already on the doc (existing) — an existing creator's row is disabled, so nesting
+      // selectable Bots beneath it would let a Bot ride along under a creator that can't be added.
+      if (!bot.isBot || !bot.creatorUid || existingUids.has(bot.uid)) continue
+      if (hideUids?.has(bot.creatorUid) || existingUids.has(bot.creatorUid)) continue
+      grouped.set(bot.creatorUid, [...(grouped.get(bot.creatorUid) ?? []), bot])
+    }
+    return grouped
+  }, [members, existingUids, hideUids])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     // Drop hidden uids (self / owner) from the roster entirely before filtering/sorting.
-    const roster = hideUids?.size ? members.filter((m) => !hideUids.has(m.uid)) : members
-    const base = q
-      ? roster.filter(
-          (m) => m.name.toLowerCase().includes(q) || m.uid.toLowerCase().includes(q),
-        )
-      : roster
+    // Bots with creator metadata are rendered under their creator. Older roster-only bots lack
+    // that metadata and stay as standalone candidates for backward compatibility.
+    const humans = members.filter((m) => !m.isBot || !m.creatorUid)
+    const roster = hideUids?.size ? humans.filter((m) => !hideUids.has(m.uid)) : humans
+    if (!q) return sortPickerMembers(roster, existingUids)
+    // A query matches a human by name/uid OR a creator whose nested Bot matches by name/uid, so
+    // typing a Bot's name surfaces its creator row (the Bot is shown beneath, with its creator).
+    const base = roster.filter((m) => {
+      if (m.name.toLowerCase().includes(q) || m.uid.toLowerCase().includes(q)) return true
+      const bots = botsByCreator.get(m.uid) ?? []
+      return bots.some((b) => b.name.toLowerCase().includes(q) || b.uid.toLowerCase().includes(q))
+    })
     // Already-added members pinned at the top (#A3).
     return sortPickerMembers(base, existingUids)
-  }, [members, query, existingUids, hideUids])
+  }, [members, query, existingUids, hideUids, botsByCreator])
 
-  // Drop selections that have been added elsewhere (e.g. after a successful add + refresh).
+  // Drop selections that are no longer valid after a roster/existing change (e.g. a successful add
+  // + refresh, or a row that became existing/hidden). Humans: drop any now-existing OR now-hidden
+  // uid so a hidden creator/self/owner can never ride along in the submitted snapshot. Bots: keep
+  // only uids still OFFERED in botsByCreator — that map already excludes bots that became existing
+  // and bots whose creator is hidden/existing/no-longer-a-candidate, so a stale Bot (or a hidden
+  // creator's Bot) can never survive into the submitted snapshot.
   useEffect(() => {
     setSelected((prev) => {
       if (prev.size === 0) return prev
-      const next = new Set([...prev].filter((uid) => !existingUids.has(uid)))
+      const next = new Set([...prev].filter((uid) => !existingUids.has(uid) && !hideUids?.has(uid)))
       return next.size === prev.size ? prev : next
     })
-  }, [existingUids])
+    setSelectedBots((prev) => {
+      if (prev.size === 0) return prev
+      const offered = new Set<string>()
+      for (const bots of botsByCreator.values()) for (const b of bots) offered.add(b.uid)
+      const next = new Set([...prev].filter((uid) => offered.has(uid)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [existingUids, hideUids, botsByCreator])
 
   function toggle(uid: string) {
     setSelected((prev) => {
+      const next = new Set(prev)
+      const bots = botsByCreator.get(uid) ?? []
+      if (next.has(uid)) {
+        next.delete(uid)
+        setSelectedBots((current) => {
+          const copy = new Set(current)
+          bots.forEach((bot) => copy.delete(bot.uid))
+          return copy
+        })
+      } else {
+        next.add(uid)
+        setSelectedBots((current) => new Set([...current, ...bots.map((bot) => bot.uid)]))
+      }
+      return next
+    })
+  }
+
+  function toggleBot(uid: string) {
+    setSelectedBots((prev) => {
       const next = new Set(prev)
       if (next.has(uid)) next.delete(uid)
       else next.add(uid)
@@ -146,8 +201,13 @@ export function MemberPicker({
       : defaultRole && effectiveRoles.includes(defaultRole)
         ? defaultRole
         : effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0]
-    await onAdd([...selected], submittedRole)
+    const humanUids = [...selected]
+    const botUids = [...selectedBots]
+    const uids = [...new Set([...humanUids, ...botUids])]
+    if (botUids.length > 0) await onAdd(uids, submittedRole, { humanUids, botUids })
+    else await onAdd(uids, submittedRole)
     setSelected(new Set())
+    setSelectedBots(new Set())
     setQuery('')
   }
 
@@ -170,10 +230,18 @@ export function MemberPicker({
         {filtered.map((m) => {
           const added = existingUids.has(m.uid)
           const isSelected = selected.has(m.uid)
+          const bots = botsByCreator.get(m.uid) ?? []
+          // Surface a creator's Bots when the row is selected, or when the active query matched one
+          // of its Bots (so a Bot search reveals it under its creator even before selecting them).
+          const q = query.trim().toLowerCase()
+          const queryHitsBot =
+            !!q && bots.some((b) => b.name.toLowerCase().includes(q) || b.uid.toLowerCase().includes(q))
+          const showBots = bots.length > 0 && (isSelected || queryHitsBot)
+          const isExpanded = expanded.has(m.uid) || queryHitsBot
           return (
+            <div key={m.uid} className="octo-member-picker-group" role="presentation">
             <button
               type="button"
-              key={m.uid}
               role="option"
               aria-selected={isSelected || added}
               className={
@@ -203,6 +271,22 @@ export function MemberPicker({
                 <span className="octo-member-picker-added">{t('docs.member.alreadyAdded')}</span>
               )}
             </button>
+            {showBots && (
+              <>
+                <button type="button" className="octo-member-picker-expand" aria-expanded={isExpanded}
+                  onClick={() => setExpanded((prev) => { const next = new Set(prev); if (next.has(m.uid)) next.delete(m.uid); else next.add(m.uid); return next })}>
+                  {t(isExpanded ? 'docs.member.hideBots' : 'docs.member.showBots', { values: { count: bots.length } })}
+                </button>
+                {isExpanded && bots.map((bot) => (
+                  <label key={bot.uid} className="octo-member-picker-bot">
+                    <input type="checkbox" checked={selectedBots.has(bot.uid)} onChange={() => toggleBot(bot.uid)} />
+                    <span>{bot.name}</span><span className="octo-member-picker-badge">{t('docs.member.aiTag')}</span>
+                    <span className="octo-member-picker-bot-creator">{t('docs.member.botCreator', { values: { name: m.name } })}</span>
+                  </label>
+                ))}
+              </>
+            )}
+            </div>
           )
         })}
       </div>
@@ -216,7 +300,11 @@ export function MemberPicker({
           ))}
         </select>
         <button type="button" className="octo-doc-primary-btn" disabled={count === 0 || busy} onClick={add}>
-          {count > 1 ? t('docs.member.addCount', { values: { count } }) : t('docs.member.add')}
+          {selectedBots.size > 0
+            ? t('docs.member.addSnapshotCount', { values: { people: count, bots: selectedBots.size } })
+            : count > 1
+              ? t('docs.member.addCount', { values: { count } })
+              : t('docs.member.add')}
         </button>
       </div>
     </div>

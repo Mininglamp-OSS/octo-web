@@ -6,9 +6,13 @@ import type { ForwardGrantConfig } from "../grant"
 /**
  * 授权区（opt-in）。仅当 ForwardModal 的调用方显式传入 grant 配置时才渲染。
  * canGrant=false 走灰化+提示分支；canGrant=true 走开关 + 角色下拉 + 目标人数提示分支。
+ *
+ * Bot 展开器（feature: user+Bot grants）：授权开关开启且选中人员创建过 Bot 时，渲染
+ * 「N 人 / M Bot」汇总 + 每个人可展开、逐个取消其 Bot 的列表；默认全选。无 Bot 时不渲染该区块。
  */
 export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
   const { t } = useI18n()
+  const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set())
   if (!grant.canGrant) {
     return (
       <div className="wk-fm-grant wk-fm-grant--disabled">
@@ -19,6 +23,7 @@ export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
       </div>
     )
   }
+  const bots = grant.bots
   return (
     <div className="wk-fm-grant">
       <div className="wk-fm-grant-row">
@@ -40,6 +45,49 @@ export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
       {grant.enabled && typeof grant.targetMemberCount === "number" && grant.targetMemberCount > 0 && (
         <div className="wk-fm-grant-members">
           {t("base.forwardModal.grant.targetMembers", { values: { count: grant.targetMemberCount } })}
+        </div>
+      )}
+      {grant.enabled && bots && !bots.ready && (
+        <div className="wk-fm-grant-bots-summary">{t("base.forwardModal.grant.botLoading")}</div>
+      )}
+      {grant.enabled && bots?.ready && bots.groups.length > 0 && (
+        <div className="wk-fm-grant-bots">
+          <div className="wk-fm-grant-bots-summary">
+            {t("base.forwardModal.grant.botSummary", {
+              values: { people: bots.peopleCount, bots: bots.botCount },
+            })}
+          </div>
+          {bots.groups.map((group) => {
+            const isExpanded = expanded.has(group.uid)
+            return (
+              <div className="wk-fm-grant-bot-group" key={group.uid}>
+                <button
+                  type="button"
+                  className="wk-fm-grant-bot-expand"
+                  aria-expanded={isExpanded}
+                  onClick={() =>
+                    setExpanded((prev: Set<string>) => {
+                      const next = new Set(prev)
+                      if (next.has(group.uid)) next.delete(group.uid)
+                      else next.add(group.uid)
+                      return next
+                    })
+                  }
+                >
+                  {t(isExpanded ? "base.forwardModal.grant.hideBots" : "base.forwardModal.grant.showBots", {
+                    values: { name: group.name, count: group.bots.length },
+                  })}
+                </button>
+                {isExpanded &&
+                  group.bots.map((bot) => (
+                    <label className="wk-fm-grant-bot" key={bot.uid}>
+                      <Checkbox checked={bot.selected} onCheck={() => bots.toggleBot(bot.uid)} />
+                      <span className="wk-fm-grant-bot-name">{bot.name}</span>
+                    </label>
+                  ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

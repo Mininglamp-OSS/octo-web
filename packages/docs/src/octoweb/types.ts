@@ -240,6 +240,8 @@ export interface SpaceMemberLite {
   avatar?: string
   /** True for an AI/robot member (host `robot === 1`); absent when unknown. */
   isBot?: boolean
+  /** Creator of a Space Bot; used to build the grant-time user -> Bot snapshot. */
+  creatorUid?: string
 }
 
 /**

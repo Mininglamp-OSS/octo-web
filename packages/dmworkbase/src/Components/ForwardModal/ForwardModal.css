@@ -355,6 +355,45 @@
   color: var(--wk-text-color-secondary, #86909c);
 }
 
+.wk-fm-grant-bots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1, 4px);
+  margin-top: var(--wk-sp-2, 8px);
+}
+
+.wk-fm-grant-bots-summary {
+  font-size: var(--wk-text-size-tiny, 12px);
+  color: var(--wk-text-color-secondary, #86909c);
+}
+
+.wk-fm-grant-bot-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1, 4px);
+}
+
+.wk-fm-grant-bot-expand {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--wk-text-color-secondary, #86909c);
+  cursor: pointer;
+  font-size: var(--wk-text-size-tiny, 12px);
+}
+
+.wk-fm-grant-bot {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2, 8px);
+  padding-left: var(--wk-sp-4, 16px);
+}
+
+.wk-fm-grant-bot-name {
+  font-size: var(--wk-text-size-tiny, 12px);
+}
+
 .wk-fm-grant--disabled {
   flex-direction: row;
   align-items: center;

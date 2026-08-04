@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { setWKApp, getSpaceMembers, fetchAllSpaceMembers, fetchSpaceBotNames, fetchMyBots } from './index.ts'
+import { setWKApp, getSpaceMembers, fetchAllSpaceMembers, fetchSpaceBotNames, fetchSpaceBotSnapshots, fetchMyBots } from './index.ts'
 import { createMockWKApp } from './mock.ts'
 
 // Seam spike acceptance (#7): prove the docs package can reach the host's space-member source
@@ -101,6 +101,62 @@ describe('octoweb fetchSpaceBotNames seam', () => {
 
   it('returns an empty list for a blank space id without touching the host', async () => {
     expect(await fetchSpaceBotNames('')).toEqual([])
+    expect(wk.apiClient.calls).toHaveLength(0)
+  })
+})
+
+// The grant snapshot picker needs the RICH bot shape (isBot + creatorUid) without changing the
+// name-only fetchSpaceBotNames contract above.
+describe('octoweb fetchSpaceBotSnapshots seam', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  it('maps {uid, name, isBot, creatorUid?} and reads the same space_bots request once', async () => {
+    wk.apiClient.responder = (_m, url) =>
+      url.startsWith('/robot/space_bots')
+        ? {
+            data: [
+              { uid: 'b_1', name: 'Writer', creator_uid: 'u_ada' },
+              { uid: 'b_2', name: 'Nameless creator' },
+            ],
+            status: 200,
+          }
+        : { data: {}, status: 200 }
+    const bots = await fetchSpaceBotSnapshots('s_1')
+    expect(bots).toEqual([
+      { uid: 'b_1', name: 'Writer', isBot: true, creatorUid: 'u_ada' },
+      { uid: 'b_2', name: 'Nameless creator', isBot: true },
+    ])
+    const calls = wk.apiClient.calls.filter((c) => c.url.startsWith('/robot/space_bots'))
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('/robot/space_bots?space_id=s_1')
+  })
+
+  it('does NOT alter the name-only fetchSpaceBotNames contract', async () => {
+    wk.apiClient.responder = () => ({
+      data: [{ uid: 'b_1', name: 'Writer', creator_uid: 'u_ada' }],
+      status: 200,
+    })
+    // Same source, but the name-only accessor still returns bare { uid, name } pairs.
+    expect(await fetchSpaceBotNames('s_1')).toEqual([{ uid: 'b_1', name: 'Writer' }])
+  })
+
+  it('falls back to the uid and skips entries without a uid', async () => {
+    wk.apiClient.responder = () => ({
+      data: [{ uid: 'b_1', name: '', creator_uid: 'u_ada' }, { name: 'ghost' }],
+      status: 200,
+    })
+    expect(await fetchSpaceBotSnapshots('s_1')).toEqual([
+      { uid: 'b_1', name: 'b_1', isBot: true, creatorUid: 'u_ada' },
+    ])
+  })
+
+  it('returns an empty list for a blank space id without touching the host', async () => {
+    expect(await fetchSpaceBotSnapshots('')).toEqual([])
     expect(wk.apiClient.calls).toHaveLength(0)
   })
 })
