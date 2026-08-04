@@ -24,6 +24,8 @@
     "i18n:baseline": "node scripts/i18n-scan.mjs baseline",
     "verify:excalidraw-patch": "node scripts/verify-excalidraw-patch.mjs",
     "verify:excalidraw-build": "node scripts/verify-excalidraw-build.mjs",
+    "verify:excalidraw-development-input": "node scripts/verify-excalidraw-development-input.mjs",
+    "verify:excalidraw-production-input": "node scripts/verify-excalidraw-production-input.mjs",
     "verify:web-build-cache-key": "node scripts/verify-web-build-cache-key.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "gen:component": "node scripts/gen-component.mjs",

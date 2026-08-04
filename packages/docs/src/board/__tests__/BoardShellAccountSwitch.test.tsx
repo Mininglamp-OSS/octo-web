@@ -69,6 +69,7 @@ vi.mock('@excalidraw/excalidraw', async () => {
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
 vi.mock('../boardStore.ts', () => ({
+  hasSavedBoardViewport: () => false,
   loadBoardScene: (docId: string, uid?: string) => {
     boardStore.loads.push({ docId, uid })
     return boardStore.scenes.get(`${uid ?? 'anonymous'}::${docId}`) ?? null

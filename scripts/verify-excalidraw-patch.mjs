@@ -12,13 +12,17 @@ const work = await mkdtemp(join(tmpdir(), 'octo-excalidraw-patch-'))
 
 const expected = {
   tarball: 'b280d4b364b65cba264c5aa4e7435cc2ce6421eabbbef9765a56997a0fadf534',
-  patch: '731c0ef5dac77b30f2ff9472c35f5a671edb3e743c16cf7ebba89c5a5caf5b4a',
+  patch: '5fd160bf71554a5dbaba5c13664244dd7e3b3e8f3daf085aad15367783c879ec',
   files: {
-    'dist/dev/chunk-4FTI6OG3.js': '274cb0731f353e41eef41aa4d9a6680735402a7e0cabd69a8d31396412d1a160',
-    'dist/dev/index.js': 'af102575ebd6067bafb1b8ce894a9f2c6a9b6e859395e1cf144d5a915db66706',
+    'dist/dev/chunk-4FTI6OG3.js': '04d6b886763bc10224fc2ea122188d1c9744259a09960a80872f55f33b825437',
+    'dist/dev/index.css': '220a92d978570eb64115d422b172c4d81700e56086eb366a8bf089fd7e994eb5',
+    'dist/dev/index.js': 'fa8a29e9040c6aaceed330f24827b5bbb16b40fb89ce8e67d77d2e76513cf48d',
+    'dist/dev/locales/zh-CN-4MXUOFTH.js': '96f6f2a9152fc9d24bb998fc2c7b55e93c7040e48eb284678f38d2566bfb044b',
     'dist/dev/octo-native-shapes.js': '176ff08f2bbe45c49c407edd8660b77de4e96eaa9edb07a8f92a8119bd151abc',
-    'dist/prod/chunk-K2UTITRG.js': '236887e2295d4369484e7797bea5d0acbd7a14c1e1e16bac11dcfccf1e6ad27c',
-    'dist/prod/index.js': '18742cbd236ff9fc6f98f1972e2909ba43ea0324646371e0ac773e08161b3a94',
+    'dist/prod/chunk-K2UTITRG.js': '44f57f5be274461d1854ab42f7a471091f596abdf402eb62ab541e40ae9b422d',
+    'dist/prod/index.css': 'e72092760bae272ebe075bdadaff7f82909d318c5d819313185b19e99be31e49',
+    'dist/prod/index.js': '9c7808d4fffd62e27f6a32a4fab0b4bdaeb5c7176d0e9b5d1b0e878b841421c9',
+    'dist/prod/locales/zh-CN-LNUGB5OW.js': '8ae4ef60f98fe7c7b1dde78de29f225492b2da44851e12a02218eaffae19a85a',
     'dist/prod/octo-native-shapes.js': 'bd2eb479a5333c3b66289e8231a2c309d0d607076b6ebf8446ce0ef2415a0cbd',
     'dist/prod/data/image-GAAHSSAO.js': 'a855f8d02347910bcebfc136d1fa947d5543f6922233017c80c9a7bb037ed6b9',
     'dist/types/excalidraw/types.d.ts': 'e66dae06e8d7cb7839eb3ba3278aaa142aa7e0017e4f13f260be8ab7337aa65e',
@@ -60,8 +64,8 @@ try {
   }
 
   run('tar', ['-xzf', tarball])
-  run('git', ['apply', '--check', '--directory=package', patch])
-  run('git', ['apply', '--directory=package', patch])
+  run('git', ['apply', '--recount', '--check', '--directory=package', patch])
+  run('git', ['apply', '--recount', '--directory=package', patch])
 
   for (const [file, hash] of Object.entries(expected.files)) {
     assertHash(file, await sha256(join(work, 'package', file)), hash)
@@ -76,12 +80,29 @@ try {
   if (!prodIndex.includes('__octoResizeObserver') || !prodIndex.includes('addEventListener("resize"')) {
     throw new Error('prod WYSIWYG resize observer/fallback contract missing')
   }
+  if (!prodIndex.includes('__octoPointerAnchor=null,__octoProxyViewport=null,__octoProxyAngle=0')) {
+    throw new Error('prod WYSIWYG rich-text layout state declarations missing')
+  }
+  if (!prodIndex.includes('__octoResizeObserver&&r?ue.__octoResizeObserver.observe(r):window.addEventListener("resize",i)') ||
+      prodIndex.includes('__octoResizeObserver.observe(s)')) {
+    throw new Error('prod WYSIWYG resize observer must observe the canvas element')
+  }
   if (!prodIndex.includes('{TTDDialogTriggerTunnel:G}=pt();') ||
       prodIndex.includes('{TTDDialogTriggerTunnel:G}=_e();')) {
     throw new Error('prod toolbar must call the tunnel hook, not the command-category object')
   }
+  for (const symbol of ['History', 'ActionManager']) {
+    if (!devIndex.includes(`var ${symbol} = class`) || !devIndex.includes(`new ${symbol}(`)) {
+      throw new Error(`dev ${symbol} definition/constructor contract missing`)
+    }
+  }
   for (const [label, source] of [["dev", devIndex], ["prod", prodIndex]]) {
-    for (const seam of ["renderDefaultMainMenu", "onContextMenu", "executeAction", "executeActionWithHostFeedback", "isActionAvailable"]) {
+    if (source.includes('library.title') || !source.includes('toolBar.library')) {
+      throw new Error(`${label} library tab must use the existing toolBar.library translation`)
+    }
+  }
+  for (const [label, source] of [["dev", devIndex], ["prod", prodIndex]]) {
+    for (const seam of ["renderDefaultMainMenu", "onContextMenu", "executeAction", "executeActionWithHostFeedback", "executeActionWithResult", "isActionAvailable"]) {
       if (!source.includes(seam)) throw new Error(`${label} Board menu seam missing: ${seam}`)
     }
     const readOnlyActions = label === 'dev'
@@ -113,6 +134,25 @@ try {
     if (!source.includes('toast: null') && !source.includes('toast:null') ||
         !source.includes('errorMessage: null') && !source.includes('errorMessage:null')) {
       throw new Error(`${label} host-feedback action seam must consume native success and error feedback`)
+    }
+    const returnsBatchedActionPromise = label === 'dev'
+      ? source.includes('return unstable_batchedUpdates2(func, event)')
+      : source.includes('var Ne=e=>t=>O1(e,t)')
+    if (!returnsBatchedActionPromise) {
+      throw new Error(`${label} batched action wrapper must preserve async action results`)
+    }
+    const awaitsPaste = label === 'dev'
+      ? source.includes('await app.pasteFromClipboard(createPasteEvent({ types }))')
+      : /await [A-Za-z_$][\w$]*\.pasteFromClipboard\(/.test(source)
+    if (!awaitsPaste) {
+      throw new Error(`${label} programmatic paste must await clipboard parsing before reporting success`)
+    }
+    const guardsOnlyTrustedNativePaste = label === 'dev'
+      ? source.includes('if (event?.isTrusted && !isExcalidrawActive)')
+        && source.includes('if (event?.isTrusted && (!(elementUnderCursor instanceof HTMLCanvasElement) || isWritableElement(target)))')
+      : (source.match(/\.isTrusted/g)?.length ?? 0) >= 2
+    if (!guardsOnlyTrustedNativePaste) {
+      throw new Error(`${label} programmatic paste must not be rejected because the host menu owns focus or covers the cursor`)
     }
   }
   const exportToastSuffixCleanup = '.replace(/\\s*\\([^()]*\\)\\s*$/'

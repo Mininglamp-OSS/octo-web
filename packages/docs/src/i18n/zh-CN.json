@@ -186,6 +186,8 @@
     },
     "contextMenu": {
       "paste": "粘贴",
+      "pasteSuccess": "已粘贴",
+      "pasteFailed": "粘贴失败，请允许读取剪贴板后重试",
       "selectAll": "全选",
       "copy": "复制",
       "copySuccess": "已复制",
@@ -546,7 +548,51 @@
     "readOnlyHint": "你只有只读权限，无法评论。",
     "handleWithAI": "立即处理",
     "anonymous": "匿名",
-    "agentInstructionTitle": "让 AI 处理评论：{{request}} (doc {{slug}} · {{target}})"
+    "agentInstructionTitle": "让 AI 处理评论：{{request}} (doc {{slug}} · {{target}})",
+    "errors": {
+      "add": {
+        "forbidden": "你没有添加评论的权限。",
+        "notFound": "评论目标已不存在，请刷新后重试。",
+        "conflict": "你发表评论时画板已发生变化，请刷新后重试。",
+        "network": "无法添加评论，请检查网络连接后重试。",
+        "generic": "添加评论失败。"
+      },
+      "reply": {
+        "forbidden": "你没有回复评论的权限。",
+        "notFound": "该评论已不存在，请刷新后重试。",
+        "conflict": "你回复时讨论串已发生变化，请刷新后重试。",
+        "network": "无法发布回复，请检查网络连接后重试。",
+        "generic": "发布回复失败。"
+      },
+      "edit": {
+        "forbidden": "你没有编辑该评论的权限。",
+        "notFound": "该评论已不存在，请刷新后重试。",
+        "conflict": "该评论已在其他位置被修改，请刷新后重试。",
+        "network": "无法保存编辑，请检查网络连接后重试。",
+        "generic": "保存编辑失败。"
+      },
+      "resolve": {
+        "forbidden": "你没有解决该评论的权限。",
+        "notFound": "该评论已不存在，请刷新后重试。",
+        "conflict": "该评论已在其他位置发生变化，请刷新后重试。",
+        "network": "无法解决评论，请检查网络连接后重试。",
+        "generic": "解决评论失败。"
+      },
+      "reopen": {
+        "forbidden": "你没有重新打开该评论的权限。",
+        "notFound": "该评论已不存在，请刷新后重试。",
+        "conflict": "该评论已在其他位置发生变化，请刷新后重试。",
+        "network": "无法重新打开评论，请检查网络连接后重试。",
+        "generic": "重新打开评论失败。"
+      },
+      "delete": {
+        "forbidden": "你没有删除该评论的权限。",
+        "notFound": "该评论已被删除。",
+        "conflict": "该评论已在其他位置发生变化，请刷新后重试。",
+        "network": "无法删除评论，请检查网络连接后重试。",
+        "generic": "删除评论失败。"
+      }
+    }
   },
   "time": {
     "justNow": "刚刚",

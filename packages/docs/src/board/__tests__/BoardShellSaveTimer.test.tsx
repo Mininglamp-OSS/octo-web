@@ -50,6 +50,7 @@ vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
 // followed by a re-persist. The clearBoardScene / persistBoardScene names mirror the real module.
 const store = vi.hoisted(() => ({ calls: [] as string[] }))
 vi.mock('../boardStore.ts', () => ({
+  hasSavedBoardViewport: () => false,
   loadBoardScene: () => null,
   persistBoardScene: (..._args: unknown[]) => {
     store.calls.push('persist')

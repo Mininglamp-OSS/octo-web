@@ -4,6 +4,13 @@ import type { ReactNode } from 'react'
 import type { BoardTerminal } from '../collab/index.ts'
 import type { WhiteboardSession } from '../collab/connect.ts'
 
+const viewportHarness = vi.hoisted(() => ({
+  state: { zoom: { value: 1.1 }, scrollX: 73, scrollY: -41, selectedElementIds: {} as Record<string, boolean> },
+  updateScene: vi.fn(),
+  deliverApi: true,
+  deliverApiNow: null as null | (() => void),
+}))
+
 // Excalidraw stand-in. Real Excalidraw hands the imperative API up ONCE, with a stable handle; the
 // mock mirrors that (a stable object, delivered from a mount effect) so BoardShell's excalidrawApi
 // state settles. A naive render-time `excalidrawAPI?.({...})` would hand up a fresh object every
@@ -11,7 +18,12 @@ import type { WhiteboardSession } from '../collab/connect.ts'
 // is exported because BoardShell reads it off the import.
 vi.mock('@excalidraw/excalidraw', async () => {
   const { useEffect } = await import('react')
-  const api = { updateScene: () => {}, getAppState: () => ({}), updateLibrary: async () => [] }
+  const api = {
+    updateScene: viewportHarness.updateScene,
+    getAppState: () => viewportHarness.state,
+    getSceneElements: () => [],
+    updateLibrary: async () => [],
+  }
   const Excalidraw = ({
     children,
     excalidrawAPI,
@@ -23,12 +35,16 @@ vi.mock('@excalidraw/excalidraw', async () => {
     UIOptions?: { tools?: Record<string, boolean> }
     renderDefaultMainMenu?: boolean
   }) => {
+    viewportHarness.deliverApiNow = () => excalidrawAPI?.(api)
     useEffect(() => {
-      excalidrawAPI?.(api)
+      if (viewportHarness.deliverApi) viewportHarness.deliverApiNow?.()
     }, [excalidrawAPI])
     return (
       <div data-testid="excalidraw-canvas" data-ui-tools={JSON.stringify(UIOptions?.tools ?? {})}>
         {renderDefaultMainMenu && <button data-testid="main-menu-trigger" type="button">Menu</button>}
+        <button type="button" className="default-sidebar-trigger">Library</button>
+        <button type="button" data-testid="toolbar-search">Search</button>
+        <button type="button" data-testid="sidebar-close">Close sidebar</button>
         {children}
       </div>
     )
@@ -67,18 +83,29 @@ vi.mock('@excalidraw/excalidraw', async () => {
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
+vi.mock('../BoardCommentPanel.tsx', () => ({
+  BoardCommentPanel: ({ onClose }: { onClose: () => void }) => (
+    <button type="button" data-testid="close-comments" onClick={onClose}>Close comments</button>
+  ),
+}))
+vi.mock('../BoardVersionPanel.tsx', () => ({
+  BoardVersionPanel: ({ onClose }: { onClose?: () => void }) => (
+    <button type="button" data-testid="close-history" onClick={onClose}>Close history</button>
+  ),
+}))
+vi.mock('../BoardCanvasColorControl.tsx', () => ({ BoardCanvasColorControl: () => null }))
 
 import { BoardShell } from '../BoardShell.tsx'
 
 /** Minimal awareness double: PresenceBar reads getStates()/subscribes; the board presence effect
  *  also writes local state + reads clientID. Only the surface those touch is implemented. */
-function makeAwareness() {
+function makeAwareness(states: ReadonlyMap<number, unknown> = new Map()) {
   return {
     clientID: 1,
-    getStates: () => new Map(),
-    setLocalStateField: () => {},
-    on: () => {},
-    off: () => {},
+    getStates: () => states,
+    setLocalStateField: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
   }
 }
 
@@ -86,7 +113,10 @@ function makeAwareness() {
  * Session stub with a provider (so the presence bar renders) and a role. Only the surface BoardShell
  * reads is implemented.
  */
-function makeSession(role: 'admin' | 'writer' | 'reader'): WhiteboardSession {
+function makeSession(
+  role: 'admin' | 'writer' | 'reader',
+  awareness = makeAwareness(),
+): WhiteboardSession {
   const binding = {
     setApi: () => {},
     setRenderAdapter: () => {},
@@ -100,7 +130,7 @@ function makeSession(role: 'admin' | 'writer' | 'reader'): WhiteboardSession {
     subscribeTerminal: (_cb: (t: BoardTerminal) => void) => () => {},
     binding,
     provider: {
-      awareness: makeAwareness(),
+      awareness,
       isSynced: true,
       on: () => {},
       off: () => {},
@@ -111,6 +141,39 @@ function makeSession(role: 'admin' | 'writer' | 'reader'): WhiteboardSession {
 describe('BoardShell header alignment with the doc header (XIN-601 item 2)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    viewportHarness.state = { zoom: { value: 1.1 }, scrollX: 73, scrollY: -41, selectedElementIds: {} }
+    viewportHarness.deliverApi = true
+    viewportHarness.deliverApiNow = null
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      queueMicrotask(() => callback(0))
+      return 1
+    })
+  })
+
+  it('replays selection and collaborators when the Excalidraw API arrives after presence', async () => {
+    viewportHarness.deliverApi = false
+    viewportHarness.state.selectedElementIds = { 'shape-1': true }
+    const awareness = makeAwareness(new Map([
+      [2, { user: { id: 'peer-2', name: 'Peer' }, pointer: { x: 12, y: 34 } }],
+    ]))
+    const session = makeSession('admin', awareness)
+
+    render(
+      <BoardShell docId="doc-1" title="Shared board" space="s1" collabSession={session} collab />,
+    )
+
+    await screen.findByTestId('excalidraw-canvas')
+    await waitFor(() => expect(awareness.on).toHaveBeenCalledWith('change', expect.any(Function)))
+    expect(viewportHarness.updateScene).not.toHaveBeenCalled()
+
+    await act(async () => { viewportHarness.deliverApiNow?.() })
+
+    await waitFor(() => expect(viewportHarness.updateScene).toHaveBeenCalledWith({
+      collaborators: expect.any(Map),
+    }))
+    expect(awareness.setLocalStateField).toHaveBeenCalledWith('selectedElementIds', ['shape-1'])
+    const collaborators = viewportHarness.updateScene.mock.calls.at(-1)?.[0]?.collaborators as Map<string, unknown>
+    expect(collaborators.has('2')).toBe(true)
   })
 
   it('renders the presence bar and the ≡ more menu, and drops the standalone delete button', async () => {
@@ -192,6 +255,51 @@ describe('BoardShell header alignment with the doc header (XIN-601 item 2)', () 
     expect(row).toBeTruthy()
     act(() => row!.click())
     expect(onOpenInNewPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves 110% zoom and non-zero scroll across every drawer/sidebar transition', async () => {
+    render(
+      <BoardShell docId="doc-1" title="Shared board" space="s1" collabSession={makeSession('admin')} collab />,
+    )
+    const canvas = await screen.findByTestId('excalidraw-canvas')
+    const viewport = { zoom: { value: 1.1 }, scrollX: 73, scrollY: -41 }
+    const viewportRestoreCalls = () => viewportHarness.updateScene.mock.calls.filter(
+      ([scene]) => JSON.stringify(scene) === JSON.stringify({ appState: viewport }),
+    )
+    let calls = viewportRestoreCalls().length
+    const transition = async (action: () => void) => {
+      await act(async () => {
+        action()
+        await Promise.resolve()
+      })
+      await waitFor(() => expect(viewportRestoreCalls()).toHaveLength(calls + 1))
+      calls += 1
+    }
+    const comments = screen.getByRole('button', { name: 'docs.toolbar.comments' })
+    const openHistory = async () => {
+      await act(async () => document.querySelector<HTMLButtonElement>('.octo-doc-more-btn')!.click())
+      const history = [...document.querySelectorAll<HTMLButtonElement>('.octo-doc-more-item')]
+        .find((item) => item.textContent?.includes('docs.toolbar.history'))!
+      await transition(() => history.click())
+    }
+
+    await transition(() => comments.click())
+    await transition(() => screen.getByTestId('close-comments').click())
+    await openHistory()
+    await transition(() => screen.getByTestId('close-history').click())
+
+    // Direct drawer switches must restore even though reserveDrawer remains true.
+    await transition(() => comments.click())
+    await openHistory() // comments → history
+    await transition(() => comments.click()) // history → comments by toolbar
+    await openHistory()
+    await transition(() => document.body.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'm', metaKey: true, shiftKey: true, bubbles: true,
+    }))) // history → comments by shortcut
+
+    await transition(() => canvas.querySelector<HTMLButtonElement>('.default-sidebar-trigger')!.click())
+    await transition(() => canvas.querySelector<HTMLButtonElement>('[data-testid="sidebar-close"]')!.click())
+    await transition(() => canvas.querySelector<HTMLButtonElement>('[data-testid="toolbar-search"]')!.click())
   })
 
   it('renders no "Open in new page" row when the handler is omitted (standalone path)', async () => {

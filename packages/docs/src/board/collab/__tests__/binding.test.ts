@@ -18,6 +18,19 @@ function elsOf(doc: Y.Doc): Y.Map<Y.Map<unknown>> {
   return doc.getMap<Y.Map<unknown>>('elements')
 }
 
+function replaceSceneWithRestoreMarker(doc: Y.Doc, elements: readonly ExcalidrawElement[], epoch: number): void {
+  doc.transact(() => {
+    const map = elsOf(doc)
+    for (const id of [...map.keys()]) map.delete(id)
+    for (const el of elements) {
+      const yEl = new Y.Map<unknown>()
+      for (const [key, value] of Object.entries(el)) yEl.set(key, value)
+      map.set(el.id, yEl)
+    }
+    doc.getMap('boardRestoreMeta').set('epoch', epoch)
+  }, 'version-restore')
+}
+
 describe('ExcalidrawYjsBinding', () => {
   let doc: Y.Doc
   let api: FakeExcalidrawApi
@@ -116,6 +129,155 @@ describe('ExcalidrawYjsBinding', () => {
     expect(api.updateSceneCalls).toBe(1)
     expect(api.scene.find((e) => e.id === 'r1')?.x).toBe(9)
     expect(binding.__telemetry.remoteApplies).toBe(1)
+  })
+
+  it('authoritative restore replaces higher-version local elements and removes post-version elements', () => {
+    const current = makeEl('kept', { x: 900, version: 20 })
+    const addedLater = makeEl('later', { version: 8 })
+    binding.handleLocalChange([current, addedLater])
+
+    replaceSceneWithRestoreMarker(doc, [makeEl('kept', { x: 10, version: 1 })], 1)
+
+    expect(api.scene.map((el) => el.id)).toEqual(['kept'])
+    expect(api.scene[0]?.x).toBe(10)
+    expect(api.scene[0]?.version).toBe(1)
+  })
+
+  it('drops one delayed pre-restore scene for surviving elements without blocking later edits', () => {
+    const preRestore = makeEl('kept', { x: 900, version: 20 })
+    binding.handleLocalChange([preRestore])
+
+    replaceSceneWithRestoreMarker(doc, [makeEl('kept', { x: 10, version: 1 })], 1)
+    expect(readElement(elsOf(doc).get('kept')!).x).toBe(10)
+
+    const writesBeforeDelayedChange = binding.__telemetry.localWrites
+    binding.handleLocalChange([preRestore])
+    expect(binding.__telemetry.localWrites).toBe(writesBeforeDelayedChange)
+    expect(readElement(elsOf(doc).get('kept')!).x).toBe(10)
+
+    // The guard is one-shot and value-based: a real edit after the restore must still synchronize.
+    const postRestoreEdit = makeEl('kept', { x: 25, version: 2 })
+    binding.handleLocalChange([postRestoreEdit])
+    expect(readElement(elsOf(doc).get('kept')!).x).toBe(25)
+  })
+
+  it('does not propagate a delayed surviving-element rollback loss to a peer', () => {
+    const peerDoc = new Y.Doc()
+    syncDocs(doc, peerDoc, 'initial')
+    const peerApi = new FakeExcalidrawApi()
+    const peerBinding = new ExcalidrawYjsBinding(peerDoc, { api: peerApi })
+    const preRestore = makeEl('kept', { x: 900, version: 20 })
+    binding.handleLocalChange([preRestore])
+    syncDocs(doc, peerDoc, 'remote')
+
+    replaceSceneWithRestoreMarker(doc, [makeEl('kept', { x: 10, version: 1 })], 1)
+    syncDocs(doc, peerDoc, 'remote')
+    binding.handleLocalChange([preRestore])
+    syncDocs(doc, peerDoc, 'remote')
+
+    expect(readElement(elsOf(doc).get('kept')!).x).toBe(10)
+    expect(peerApi.scene.find((element) => element.id === 'kept')?.x).toBe(10)
+    peerBinding.destroy()
+  })
+
+  it('authoritative restore bypasses ordinary reconcile even when local has a higher version', () => {
+    const current = makeEl('kept', { x: 900, version: 20 })
+    binding.handleLocalChange([current])
+    binding.setRenderAdapter({
+      restore: (remote) => [...remote],
+      // Ordinary remote reconciliation would keep the higher-version local element.
+      reconcile: (local) => [...local],
+    })
+
+    replaceSceneWithRestoreMarker(doc, [makeEl('kept', { x: 10, version: 1 })], 1)
+
+    expect(api.scene[0]?.x).toBe(10)
+    expect(api.scene[0]?.version).toBe(1)
+  })
+
+  it('does not clear a fresh epoch-0 board when an empty doc attaches to local initialData', () => {
+    const emptyDoc = new Y.Doc()
+    const localApi = new FakeExcalidrawApi()
+    localApi.scene = [makeEl('local-only', { x: 42 })]
+    const emptyBinding = new ExcalidrawYjsBinding(emptyDoc, { api: null })
+
+    emptyBinding.setApi(localApi)
+
+    expect(localApi.updateSceneCalls).toBe(0)
+    expect(localApi.scene.map((element) => element.id)).toEqual(['local-only'])
+    emptyBinding.destroy()
+  })
+
+  it('applies a persisted positive restore epoch with an empty map and cannot resurrect stale local elements', () => {
+    const emptyDoc = new Y.Doc()
+    emptyDoc.getMap('boardRestoreMeta').set('epoch', 5)
+    const stale = makeEl('stale-local', { x: 42, version: 20 })
+    const localApi = new FakeExcalidrawApi()
+    localApi.scene = [stale]
+    const emptyBinding = new ExcalidrawYjsBinding(emptyDoc, { api: null })
+
+    emptyBinding.setApi(localApi)
+
+    expect(localApi.updateSceneCalls).toBe(1)
+    expect(localApi.scene).toEqual([])
+    expect(elsOf(emptyDoc).size).toBe(0)
+
+    // A delayed onChange carrying the pre-restore canvas must not write the deleted scene back.
+    const writesBefore = emptyBinding.__telemetry.localWrites
+    emptyBinding.handleLocalChange([stale])
+    expect(emptyBinding.__telemetry.localWrites).toBe(writesBefore)
+    expect(elsOf(emptyDoc).size).toBe(0)
+    emptyBinding.destroy()
+  })
+
+  it('rolls back the restore baseline when updateScene fails so stale canvas state is not echoed', () => {
+    const current = makeEl('kept', { x: 900, version: 20 })
+    binding.handleLocalChange([current])
+    api.onUpdate = () => { throw new Error('canvas unavailable') }
+
+    replaceSceneWithRestoreMarker(doc, [makeEl('kept', { x: 10, version: 1 })], 1)
+    expect(readElement(elsOf(doc).get('kept')!).x).toBe(10)
+
+    api.onUpdate = undefined
+    const writesBefore = binding.__telemetry.localWrites
+    binding.handleLocalChange([current])
+    expect(binding.__telemetry.localWrites).toBe(writesBefore)
+    expect(readElement(elsOf(doc).get('kept')!).x).toBe(10)
+  })
+
+  it('authoritative restore reaches two clients, does not echo/resurrect, and persists across reconnect', () => {
+    const peerDoc = new Y.Doc()
+    syncDocs(doc, peerDoc, 'initial')
+    const peerApi = new FakeExcalidrawApi()
+    const peerBinding = new ExcalidrawYjsBinding(peerDoc, { api: peerApi })
+
+    const current = makeEl('kept', { x: 900, version: 20 })
+    const later = makeEl('later', { version: 8 })
+    binding.handleLocalChange([current, later])
+    syncDocs(doc, peerDoc, 'remote')
+
+    replaceSceneWithRestoreMarker(doc, [makeEl('kept', { x: 10, version: 1 })], 1)
+    syncDocs(doc, peerDoc, 'remote')
+
+    expect(api.scene.map((el) => el.id)).toEqual(['kept'])
+    expect(peerApi.scene.map((el) => el.id)).toEqual(['kept'])
+    expect(peerApi.scene[0]?.x).toBe(10)
+
+    // A delayed onChange after updateScene sees the authoritative lastKnown
+    // baseline and cannot put the deleted post-version element back into Yjs.
+    binding.handleLocalChange(api.scene)
+    expect(elsOf(doc).has('later')).toBe(false)
+
+    const reconnected = new Y.Doc()
+    syncDocs(doc, reconnected, 'persisted')
+    const reconnectApi = new FakeExcalidrawApi()
+    const reconnectBinding = new ExcalidrawYjsBinding(reconnected, { api: reconnectApi })
+    reconnectBinding.setApi(reconnectApi)
+    expect(reconnectApi.scene.map((el) => el.id)).toEqual(['kept'])
+    expect(reconnectApi.scene[0]?.x).toBe(10)
+
+    reconnectBinding.destroy()
+    peerBinding.destroy()
   })
 
   it('T4 / T5: per-field Yjs merge keeps a peer field write when it is not CAS-gated (not whole-blob LWW)', () => {

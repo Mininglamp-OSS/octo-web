@@ -66,3 +66,11 @@ export const VIEW_BACKGROUND_COLOR_KEY = 'viewBackgroundColor'
  *  absent {@link VIEW_BACKGROUND_COLOR_KEY} repaints to and the picker's reset target, so the binding
  *  and {@link BoardCanvasColorControl} can never disagree on what "no explicit background" means. */
 export const DEFAULT_VIEW_BACKGROUND_COLOR = '#ffffff'
+
+// ── authoritative version restore ────────────────────────────────────────────
+// Kept as an explicit wire constant shared by convention with the backend's
+// liveRestore.ts. The backend writes this marker in the same Yjs transaction as
+// the replace-style scene restore; the binding observes it to bypass ordinary
+// version reconciliation (where a newer live element would otherwise win).
+export const BOARD_RESTORE_META_FIELD = 'boardRestoreMeta'
+export const BOARD_RESTORE_EPOCH_KEY = 'epoch'

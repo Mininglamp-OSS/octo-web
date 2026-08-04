@@ -30,6 +30,8 @@ import {
   APPSTATE_FIELD,
   VIEW_BACKGROUND_COLOR_KEY,
   DEFAULT_VIEW_BACKGROUND_COLOR,
+  BOARD_RESTORE_META_FIELD,
+  BOARD_RESTORE_EPOCH_KEY,
   REPAIR_ORIGIN,
   buildFileRef,
   normalizeFileRef,
@@ -160,6 +162,8 @@ export class ExcalidrawYjsBinding {
   readonly files: Y.Map<Y.Map<unknown>>
   /** Flat scene-level appState container (canvas background sync contract). Today holds only `viewBackgroundColor`. */
   readonly appState: Y.Map<unknown>
+  /** Monotonic backend marker for authoritative version restores. */
+  readonly restoreMeta: Y.Map<unknown>
   readonly undoManager: Y.UndoManager | null
   readonly __awareness = new AwarenessSurface()
 
@@ -201,6 +205,13 @@ export class ExcalidrawYjsBinding {
    * purely-local element — authored here and never seen from the doc — may be tombstoned by absence.
    */
   private readonly remoteOrigin = new Set<string>()
+  /**
+   * Exact pre-restore element snapshots that may arrive in one delayed onChange after updateScene.
+   * The guard is value-based and one-shot: it covers both removed elements and surviving elements
+   * rolled back to an older version, but cannot permanently block a later intentional recreate or
+   * edit that happens to reuse the same id.
+   */
+  private readonly pendingRestoreStaleElements = new Map<string, ExcalidrawElement>()
   /** Guard 3 flag: a remote apply is in flight. */
   private applyingRemote = false
   /**
@@ -222,12 +233,16 @@ export class ExcalidrawYjsBinding {
   private readonly onElements: (events: Y.YEvent<Y.Map<unknown>>[], txn: Y.Transaction) => void
   private readonly onFiles: (events: Y.YEvent<Y.Map<unknown>>[], txn: Y.Transaction) => void
   private readonly onAppState: (event: Y.YMapEvent<unknown>, txn: Y.Transaction) => void
+  private readonly onRestoreMeta: (event: Y.YMapEvent<unknown>, txn: Y.Transaction) => void
+  /** Last restore epoch actually painted onto an attached canvas. */
+  private lastAppliedRestoreEpoch = 0
 
   constructor(ydoc: Y.Doc, opts: WhiteboardBindingOptions = {}) {
     this.ydoc = ydoc
     this.elements = ydoc.getMap<Y.Map<unknown>>(ELEMENTS_FIELD)
     this.files = ydoc.getMap<Y.Map<unknown>>(FILES_FIELD)
     this.appState = ydoc.getMap<unknown>(APPSTATE_FIELD)
+    this.restoreMeta = ydoc.getMap<unknown>(BOARD_RESTORE_META_FIELD)
     this.api = opts.api ?? null
 
     // M-9: undo manager tracks ONLY local edits, so a remote peer's change or a server repair
@@ -268,6 +283,17 @@ export class ExcalidrawYjsBinding {
       this.applyRemoteAppState()
     }
     this.appState.observe(this.onAppState)
+
+    // A version restore replaces the scene authoritatively, even when historical
+    // elements have LOWER Excalidraw versions than the current canvas. The marker
+    // is written atomically with the backend map reconcile. The element observer
+    // handles non-empty scenes; this dedicated observer also handles restore-to-
+    // empty (where no element deep event is guaranteed).
+    this.onRestoreMeta = (_event, txn) => {
+      if (this.destroyed || txn.origin === LOCAL_ORIGIN) return
+      this.applyAuthoritativeRestore()
+    }
+    this.restoreMeta.observe(this.onRestoreMeta)
   }
 
   /** Read-only telemetry snapshot (frontend-design §5.7.4). */
@@ -284,9 +310,18 @@ export class ExcalidrawYjsBinding {
     // no-op (`this.api?.updateScene`), and guard 4 then resynced the snapshot to that state, so no
     // later observe event will re-push it. Replay the current doc onto the freshly-attached canvas
     // so B catches up the state it received before it had somewhere to draw it (XIN-85). Guarded on
-    // a non-empty doc so a fresh board that only holds local `initialData` is not wiped to empty
-    // before its first onChange seeds the doc.
-    if (api && !this.destroyed && this.elements.size > 0) this.applyRemote()
+    // a non-empty doc for ordinary replay so a fresh board that only holds local `initialData` is
+    // not wiped before its first onChange seeds the doc. A positive restore epoch is different: it
+    // makes even an empty element map authoritative and must clear stale local canvas content.
+    if (
+      api
+      && !this.destroyed
+      && this.currentRestoreEpoch() > this.lastAppliedRestoreEpoch
+    ) {
+      this.applyAuthoritativeRestore()
+    } else if (api && !this.destroyed && this.elements.size > 0) {
+      this.applyRemote()
+    }
     // Replay the synced canvas background too (canvas background sync contract): like elements, an appState value the
     // provider synced while `api` was null never reached a canvas. Independent of the element guard
     // above — a board may carry a background colour with no elements yet.
@@ -358,6 +393,19 @@ export class ExcalidrawYjsBinding {
     const changed: ExcalidrawElement[] = []
     const nextSnapshot = new Map<string, ExcalidrawElement>()
     for (const el of elements) {
+      // updateScene can race with one already-queued onChange carrying the exact pre-restore scene.
+      // Consume that snapshot once, including surviving elements whose historical version is lower;
+      // otherwise their stale higher version would win the normal CAS and undo the restore for peers.
+      const staleBeforeRestore = this.pendingRestoreStaleElements.get(el.id)
+      if (staleBeforeRestore && jsonEqual(staleBeforeRestore, el)) {
+        this.pendingRestoreStaleElements.delete(el.id)
+        const authoritative = this.lastKnown.get(el.id)
+        if (authoritative) nextSnapshot.set(el.id, cloneElement(authoritative))
+        continue
+      }
+      // Any different value is a real post-restore user change, so this id no longer needs the
+      // delayed-event guard. This also ensures the guard cannot suppress a later undo/recreate.
+      if (staleBeforeRestore) this.pendingRestoreStaleElements.delete(el.id)
       // Snapshot BY VALUE: Excalidraw mutates element objects in place and re-emits the same
       // references, so holding the live `el` would make the next onChange diff the mutated object
       // against itself (jsonEqual short-circuits on `a === b`) and silently drop the geometry
@@ -372,6 +420,10 @@ export class ExcalidrawYjsBinding {
         this.locallyAuthored.add(el.id)
       }
     }
+    // Excalidraw onChange always carries the full scene, so the first post-restore callback consumes
+    // the complete delayed-event allowance. Keeping unmatched entries longer would risk suppressing
+    // a later intentional undo/recreate that exactly matches a pre-restore value.
+    this.pendingRestoreStaleElements.clear()
     // Elements that vanished from the scene. CRUCIAL (XIN-96): Excalidraw's onChange always carries
     // `getElementsIncludingDeleted()`, so a real user delete arrives as a PRESENT element flagged
     // `isDeleted: true` (handled by the diff loop above) — it is never simply absent. An element is
@@ -663,7 +715,71 @@ export class ExcalidrawYjsBinding {
       this.telemetry.skippedOwnOrigin++
       return
     }
-    this.applyRemote()
+    // The restore marker shares this transaction with the element replacement.
+    // Bypass ordinary version reconcile or a newer live element would defeat the
+    // historical rollback. The marker observer may call this again; epoch gating
+    // makes the second callback a no-op.
+    if (this.currentRestoreEpoch() > this.lastAppliedRestoreEpoch) this.applyAuthoritativeRestore()
+    else this.applyRemote()
+  }
+
+  private currentRestoreEpoch(): number {
+    const value = this.restoreMeta.get(BOARD_RESTORE_EPOCH_KEY)
+    return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 0
+  }
+
+  /** Paint the exact restored Y.Doc scene without ordinary version reconcile. */
+  private applyAuthoritativeRestore(): void {
+    const epoch = this.currentRestoreEpoch()
+    if (epoch <= this.lastAppliedRestoreEpoch || !this.api || this.destroyed) return
+
+    let elements: ExcalidrawElement[]
+    try {
+      const fileIds = new Set<string>(this.files.keys() as Iterable<string>)
+      const repaired = repairForRender(readAllElements(this.elements), fileIds)
+      elements = this.renderAdapter ? this.renderAdapter.restore(repaired) : repaired
+    } catch {
+      this.telemetry.remoteApplyErrors++
+      return
+    }
+
+    // Install the authoritative baseline before updateScene. applyingRemote covers
+    // a synchronous callback; lastKnown makes a later onChange diff empty. Roll the
+    // baseline back if painting fails, otherwise the old canvas could be diffed against
+    // a restore it never rendered and write stale elements back into the Y.Doc.
+    const snap = new Map<string, ExcalidrawElement>()
+    for (const el of elements) snap.set(el.id, cloneElement(el))
+    const previousLastKnown = this.lastKnown
+    const canvasBeforeRestore = this.api.getSceneElementsIncludingDeleted?.() ?? []
+    const preRestoreCandidates = new Map(previousLastKnown)
+    for (const el of canvasBeforeRestore) preRestoreCandidates.set(el.id, cloneElement(el))
+    const nextPendingRestoreStaleElements = new Map<string, ExcalidrawElement>()
+    for (const [id, el] of preRestoreCandidates) {
+      const restored = snap.get(id)
+      if (!restored || !jsonEqual(restored, el)) {
+        nextPendingRestoreStaleElements.set(id, cloneElement(el))
+      }
+    }
+    this.lastKnown = snap
+    this.applyingRemote = true
+    try {
+      this.api.updateScene({ elements, captureUpdate: 'NEVER' })
+      for (const el of elements) this.remoteOrigin.add(el.id)
+      this.pendingRestoreStaleElements.clear()
+      for (const [id, stale] of nextPendingRestoreStaleElements) {
+        this.pendingRestoreStaleElements.set(id, stale)
+      }
+      this.lastAppliedRestoreEpoch = epoch
+    } catch {
+      this.lastKnown = previousLastKnown
+      this.telemetry.remoteApplyErrors++
+      return
+    } finally {
+      this.applyingRemote = false
+    }
+    this.telemetry.remoteApplies++
+    this.telemetry.remoteElements += elements.length
+    this.rehydrateFiles()
   }
 
   /** Rebuild the scene from the authoritative Y.Doc state and resync the snapshot (guard 4). */
@@ -821,6 +937,7 @@ export class ExcalidrawYjsBinding {
     this.elements.unobserveDeep(this.onElements)
     this.files.unobserveDeep(this.onFiles)
     this.appState.unobserve(this.onAppState)
+    this.restoreMeta.unobserve(this.onRestoreMeta)
     this.undoManager?.destroy()
   }
 }

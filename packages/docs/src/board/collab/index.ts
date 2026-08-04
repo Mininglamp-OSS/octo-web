@@ -59,6 +59,7 @@ export type { BindingTelemetry, AwarenessState } from './telemetry.ts'
 export {
   setLocalPresenceUser,
   publishLocalPointer,
+  publishLocalSelection,
   clearLocalPointer,
   readBoardCollaborators,
   presenceDelta,

@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  CommentApiError,
   listComments,
   getCommentThread,
   createRootComment,
@@ -17,12 +18,27 @@ import {
   type CommentThread,
   type CreateRootInput,
 } from './api.ts'
+import { t } from '../octoweb/index.ts'
 
 const PAGE_SIZE = 25
 
 export interface CommentMutationResult {
   ok: boolean
   error: string | null
+  status?: number
+  code?: string
+}
+
+type CommentAction = 'add' | 'reply' | 'edit' | 'resolve' | 'reopen' | 'delete'
+
+function mutationErrorMessage(action: CommentAction, cause: unknown): string {
+  const status = cause instanceof CommentApiError ? cause.status : undefined
+  const reason = status === 403 ? 'forbidden'
+    : status === 404 ? 'notFound'
+      : status === 409 ? 'conflict'
+        : status == null ? 'network'
+          : 'generic'
+  return t(`docs.comment.errors.${action}.${reason}`)
 }
 
 export interface UseDocComments {
@@ -81,19 +97,75 @@ export function useDocComments(docId: string): UseDocComments {
   // dataEpoch closes exactly that gap while keeping loading lifecycle and data freshness
   // fully decoupled.
   const dataEpoch = useRef(0)
+  // Durable depth raised only by explicit user loadMore actions. Recovery may display one extra
+  // bounded tail-probe page, but must not turn that probe into ever-growing refresh work.
+  const loadedPageCountRef = useRef(1)
+  // Actual number of pages represented in `threads`. A successful tail probe can make this exactly
+  // one page deeper than the durable depth. Mutation reconciliation must replay this displayed
+  // window so a rejected edit/delete cannot make already-visible comments disappear.
+  const displayedPageCountRef = useRef(1)
+
+  const paginationScopeRef = useRef(`${docId}:${includeResolved}`)
+  const hasLoadedScopeRef = useRef(false)
 
   const refresh = useCallback(async () => {
     const token = ++reqRef.current
     const startEpoch = dataEpoch.current
+    const scope = `${docId}:${includeResolved}`
+    const scopeChanged = paginationScopeRef.current !== scope
+    // A scope transition is speculative until its replacement list installs successfully. Keep the
+    // old scope/depth metadata untouched while the request is in flight (and on failure), because
+    // the old threads/cursor remain installed atomically too.
+    const loadedDepth = scopeChanged ? 1 : Math.max(1, loadedPageCountRef.current)
+    const displayedDepth = scopeChanged ? 1 : Math.max(1, displayedPageCountRef.current)
+    // One additional page beyond the durable user depth is a bounded tail probe. Replaying at least
+    // the currently displayed depth keeps a previous probe page visible, while max(..., depth + 1)
+    // prevents repeated focus/reconnect refreshes from growing the window without user action.
+    const pagesToReload = !scopeChanged && hasLoadedScopeRef.current
+      ? Math.max(displayedDepth, loadedDepth + 1)
+      : displayedDepth
     setLoading(true)
     setError(null)
     try {
-      const res = await listComments(docId, { includeResolved, limit: PAGE_SIZE })
-      // Superseded by a newer load, or invalidated by an authoritative reconcile that
-      // landed while this GET was in flight — either way don't apply this (stale) page.
+      const items: CommentThread[] = []
+      const seen = new Set<number>()
+      let cursor: number | undefined
+      let nextCursor: number | null = null
+      let pagesLoaded = 0
+
+      while (pagesLoaded < pagesToReload) {
+        const res = await listComments(docId, {
+          includeResolved,
+          ...(cursor == null ? {} : { cursor }),
+          limit: PAGE_SIZE,
+        })
+        // A newer refresh/loadMore or an authoritative reconcile owns the state now. Keep the old
+        // list installed until every requested page has arrived so a recovery is atomic.
+        if (reqRef.current !== token || dataEpoch.current !== startEpoch) return
+        for (const item of res.items) {
+          if (seen.has(item.id)) continue
+          seen.add(item.id)
+          items.push(item)
+        }
+        pagesLoaded++
+        nextCursor = res.nextCursor
+        if (nextCursor == null) break
+        cursor = nextCursor
+      }
+
       if (reqRef.current !== token || dataEpoch.current !== startEpoch) return
-      setThreads(res.items)
-      setNextCursor(res.nextCursor)
+      setThreads(items)
+      setNextCursor(nextCursor)
+      // The extra tail probe is transient recovery coverage, not user-requested pagination. Only
+      // loadMore may increase the durable depth; otherwise every focus/reconnect would add another
+      // permanent page and refresh cost would grow without bound. A shortened server result may
+      // reduce the depth, but a successful probe never raises it.
+      // Commit list, cursor and pagination metadata as one successful scope transition. A failed
+      // request reaches none of these writes and therefore preserves the old installed window.
+      paginationScopeRef.current = scope
+      loadedPageCountRef.current = Math.max(1, Math.min(loadedDepth, pagesLoaded))
+      displayedPageCountRef.current = Math.max(1, pagesLoaded)
+      hasLoadedScopeRef.current = true
       dataEpoch.current++
     } catch {
       if (reqRef.current !== token) return
@@ -151,8 +223,17 @@ export function useDocComments(docId: string): UseDocComments {
       // landed while this page was in flight — appending it now would re-introduce a
       // row reconcile just dropped (the phantom-row race), so discard it.
       if (reqRef.current !== token || dataEpoch.current !== startEpoch) return
-      setThreads((prev) => [...prev, ...res.items])
+      // This page is now newer than any reconcile that started before it completed. Invalidate
+      // those non-loading-bearing reads without touching reqRef: loadMore still owns that token and
+      // must reach its finally to clear the spinner.
+      reconcileRef.current++
+      setThreads((prev) => {
+        const ids = new Set(prev.map((item) => item.id))
+        return [...prev, ...res.items.filter((item) => !ids.has(item.id))]
+      })
       setNextCursor(res.nextCursor)
+      loadedPageCountRef.current++
+      displayedPageCountRef.current++
     } catch {
       if (reqRef.current !== token) return
       setError('Failed to load more comments.')
@@ -171,10 +252,10 @@ export function useDocComments(docId: string): UseDocComments {
   // reconcile carries TWO guards, and NEITHER touches `loading`:
   //   1. reconcileRef (its own token, bumped) — so a newer reconcile wins over
   //      an older one.
-  //   2. reqRef (the shared load token, read-only *snapshot*, never bumped) — so
-  //      a refresh/loadMore that started or completed while this GET was in
-  //      flight wins. reconcile bails before setThreads instead of clobbering
-  //      that fresher result with its own stale snapshot.
+  //   2. reqRef (the shared load token, read-only *snapshot*, never bumped here) — so
+  //      a refresh/loadMore that starts after this reconcile wins. A loadMore already in flight
+  //      shares the snapshot, so its successful apply separately bumps reconcileRef and wins when
+  //      it completes first. reconcile bails instead of clobbering either fresher result.
   // Reading reqRef without bumping it is what lets reconcile guard against a
   // newer load (guard #2) while still leaving that load's loading-bearing token
   // intact, so its `finally { setLoading(false) }` still fires (no strand).
@@ -189,16 +270,49 @@ export function useDocComments(docId: string): UseDocComments {
   const reconcile = useCallback(async () => {
     const token = ++reconcileRef.current
     const reqToken = reqRef.current
+    const scope = `${docId}:${includeResolved}`
+    const scopeChanged = paginationScopeRef.current !== scope
+    const pagesToReload = Math.max(1, displayedPageCountRef.current)
     try {
-      const res = await listComments(docId, { includeResolved, limit: PAGE_SIZE })
-      // Superseded by a newer reconcile, or preempted by a newer refresh/loadMore
-      // (which already holds fresher data) — either way, don't overwrite.
+      const items: CommentThread[] = []
+      const seen = new Set<number>()
+      let cursor: number | undefined
+      let nextCursor: number | null = null
+      let pagesLoaded = 0
+
+      while (pagesLoaded < pagesToReload) {
+        const res = await listComments(docId, {
+          includeResolved,
+          ...(cursor == null ? {} : { cursor }),
+          limit: PAGE_SIZE,
+        })
+        // Superseded by a newer reconcile, or preempted by a refresh/loadMore. Keep the old list
+        // intact until the full user-loaded depth has arrived so a failed mutation cannot collapse
+        // an expanded drawer or install a mixed old/new pagination window.
+        if (reconcileRef.current !== token || reqRef.current !== reqToken) return
+        for (const item of res.items) {
+          if (seen.has(item.id)) continue
+          seen.add(item.id)
+          items.push(item)
+        }
+        pagesLoaded++
+        nextCursor = res.nextCursor
+        if (nextCursor == null) break
+        cursor = nextCursor
+      }
+
       if (reconcileRef.current !== token || reqRef.current !== reqToken) return
-      setThreads(res.items)
-      setNextCursor(res.nextCursor)
+      setThreads(items)
+      setNextCursor(nextCursor)
+      paginationScopeRef.current = scope
+      displayedPageCountRef.current = Math.max(1, pagesLoaded)
+      loadedPageCountRef.current = scopeChanged
+        ? 1
+        : Math.max(1, Math.min(loadedPageCountRef.current, displayedPageCountRef.current))
+      hasLoadedScopeRef.current = true
       dataEpoch.current++ // authoritative truth installed: invalidate in-flight loads
     } catch {
-      // Swallow: keep whatever failure message the caller is about to set.
+      // Swallow: retain the prior list/cursor/depth and keep the caller's mutation failure message.
     }
   }, [docId, includeResolved])
 
@@ -209,16 +323,23 @@ export function useDocComments(docId: string): UseDocComments {
   // an explicit result is load-bearing: composers must retain their draft/editing state
   // when a 403 or network failure rejects the mutation.
   const runMutation = useCallback(
-    async (fn: () => Promise<unknown>, failMsg: string): Promise<CommentMutationResult> => {
+    async (fn: () => Promise<unknown>, action: CommentAction): Promise<CommentMutationResult> => {
       setError(null)
       try {
         await fn()
         await refresh()
         return { ok: true, error: null }
-      } catch {
+      } catch (cause) {
         await reconcile()
+        const failMsg = mutationErrorMessage(action, cause)
         setError(failMsg)
-        return { ok: false, error: failMsg }
+        const apiError = cause instanceof CommentApiError ? cause : null
+        return {
+          ok: false,
+          error: failMsg,
+          ...(apiError?.status != null ? { status: apiError.status } : {}),
+          ...(apiError?.code ? { code: apiError.code } : {}),
+        }
       }
     },
     [refresh, reconcile],
@@ -226,19 +347,19 @@ export function useDocComments(docId: string): UseDocComments {
 
   const createRoot = useCallback(
     (input: CreateRootInput) =>
-      runMutation(() => createRootComment(docId, input), 'Failed to add comment.'),
+      runMutation(() => createRootComment(docId, input), 'add'),
     [docId, runMutation],
   )
 
   const reply = useCallback(
     (parentId: number, body: string) =>
-      runMutation(() => createReply(docId, parentId, body), 'Failed to post reply.'),
+      runMutation(() => createReply(docId, parentId, body), 'reply'),
     [docId, runMutation],
   )
 
   const editBody = useCallback(
     (id: number, body: string) =>
-      runMutation(() => editCommentBody(docId, id, body), 'Failed to save edit.'),
+      runMutation(() => editCommentBody(docId, id, body), 'edit'),
     [docId, runMutation],
   )
 
@@ -246,14 +367,14 @@ export function useDocComments(docId: string): UseDocComments {
     (id: number, resolved: boolean) =>
       runMutation(
         () => setCommentResolved(docId, id, resolved),
-        resolved ? 'Failed to resolve comment.' : 'Failed to reopen comment.',
+        resolved ? 'resolve' : 'reopen',
       ),
     [docId, runMutation],
   )
 
   const remove = useCallback(
     (id: number, hard: boolean) =>
-      runMutation(() => deleteComment(docId, id, hard), 'Failed to delete comment.'),
+      runMutation(() => deleteComment(docId, id, hard), 'delete'),
     [docId, runMutation],
   )
 
@@ -274,6 +395,50 @@ export function useDocComments(docId: string): UseDocComments {
     resolve,
     remove,
   }
+}
+
+/**
+ * Recover stateless board-comment invalidations missed while disconnected or backgrounded.
+ * Refresh only while the drawer is open; a closed drawer already refreshes on its next open edge.
+ * The existing panel instance stays mounted, preserving selected-thread, draft, and scroll state.
+ */
+export function useRefreshBoardComments(
+  comments: UseDocComments,
+  open: boolean,
+  connected: boolean,
+): void {
+  const refreshRef = useRef(comments.refresh)
+  refreshRef.current = comments.refresh
+  const openRef = useRef(open)
+  openRef.current = open
+  const errorRef = useRef(comments.error)
+  errorRef.current = comments.error
+  const hasConnected = useRef(connected)
+  const disconnectedAfterConnect = useRef(false)
+
+  useEffect(() => {
+    if (!connected) {
+      if (hasConnected.current) disconnectedAfterConnect.current = true
+      return
+    }
+    if (!hasConnected.current) {
+      // The mount refresh normally owns first connection. If that load failed while offline, the
+      // first successful connection must retry or the open drawer remains empty indefinitely.
+      hasConnected.current = true
+      if (open && errorRef.current) void refreshRef.current()
+      return
+    }
+    if (open && disconnectedAfterConnect.current) void refreshRef.current()
+    disconnectedAfterConnect.current = false
+  }, [open, connected])
+
+  useEffect(() => {
+    const onFocus = () => {
+      if (openRef.current && document.visibilityState !== 'hidden') void refreshRef.current()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 }
 
 // Re-read comments the moment the panel goes from closed → open (XIN-1323). Comments live in a

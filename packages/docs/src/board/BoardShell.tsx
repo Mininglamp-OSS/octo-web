@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -26,7 +27,7 @@ import {
   deriveBoardCommentOverlayBounds,
   type BoardCommentOverlayBounds,
 } from './boardCommentOverlay.ts'
-import { useDocComments, useRefreshCommentsOnOpen } from '../comments/useDocComments.ts'
+import { useDocComments, useRefreshBoardComments, useRefreshCommentsOnOpen } from '../comments/useDocComments.ts'
 import type { CommentThread } from '../comments/api.ts'
 import { BoardErrorBoundary } from './BoardErrorBoundary.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
@@ -39,7 +40,7 @@ import { getDoc, getUserName } from '../pages/docsApi.ts'
 import type { Role } from '../auth/roles.ts'
 import type { ConnState } from '../collab/createCollabEditor.ts'
 import { i18n, t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
-import { loadBoardScene, persistBoardScene, clearBoardScene, forgetBoard, type BoardScene } from './boardStore.ts'
+import { loadBoardScene, persistBoardScene, clearBoardScene, forgetBoard, hasSavedBoardViewport, type BoardScene } from './boardStore.ts'
 import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
 import { installBoardNativeRelabel } from './boardNativeRelabel.ts'
 import { installLibraryControlButtons } from './libraryControlButtons.ts'
@@ -63,7 +64,7 @@ import { classifyBoardImage } from './boardImageMime.ts'
 import {
   setLocalPresenceUser,
   publishLocalPointer,
-  clearLocalPointer,
+  publishLocalSelection,
   readBoardCollaborators,
   resolveCollaboratorNames,
   type BoardCollaborator,
@@ -492,6 +493,42 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // preview (BoardScenePreview), which also renders `.excalidraw` inside `.octo-board-canvas`.
   const boardCanvasRef = useRef<HTMLDivElement>(null)
   const liveCanvasRef = useRef<HTMLDivElement>(null)
+  const viewportBeforeSidebarRef = useRef<Pick<ReturnType<ExcalidrawImperativeAPI['getAppState']>, 'zoom' | 'scrollX' | 'scrollY'> | null>(null)
+
+  const captureViewportBeforeSidebar = useCallback(() => {
+    const state = (boardApiRef.current as ExcalidrawImperativeAPI | null)?.getAppState()
+    if (!state || !Number.isFinite(state.zoom?.value) || !Number.isFinite(state.scrollX) || !Number.isFinite(state.scrollY)) return
+    viewportBeforeSidebarRef.current = {
+      zoom: { value: state.zoom.value },
+      scrollX: state.scrollX,
+      scrollY: state.scrollY,
+    }
+  }, [])
+
+  const restoreViewportAfterSidebar = useCallback(() => {
+    const viewport = viewportBeforeSidebarRef.current
+    viewportBeforeSidebarRef.current = null
+    if (!viewport) return
+    requestAnimationFrame(() => {
+      ;(boardApiRef.current as ExcalidrawImperativeAPI | null)?.updateScene({ appState: viewport })
+    })
+  }, [])
+
+  const preserveViewportForDrawerChange = useCallback((change: () => void) => {
+    captureViewportBeforeSidebar()
+    change()
+    // Restore for every drawer transition, including comment↔history switches where reserveDrawer
+    // stays true and therefore cannot trigger the layout-effect fallback below.
+    restoreViewportAfterSidebar()
+  }, [captureViewportBeforeSidebar, restoreViewportAfterSidebar])
+
+  const closeCommentsDrawer = useCallback(() => {
+    preserveViewportForDrawerChange(() => setCommentsOpen(false))
+  }, [preserveViewportForDrawerChange])
+
+  const closeVersionDrawer = useCallback(() => {
+    preserveViewportForDrawerChange(() => setVersionOpen(false))
+  }, [preserveViewportForDrawerChange])
 
   // Fail-closed editability (P1-2). On the collab (permissioned) path the canvas is read-only until
   // an authoritative editable role (writer/admin) is confirmed — an unresolved role, an unknown
@@ -557,6 +594,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const activeThreadMissing = activeCommentId != null &&
     !comments.threads.some((thread) => thread.id === activeCommentId)
   useRefreshCommentsOnOpen(comments, commentsOpen, activeThreadMissing)
+  useRefreshBoardComments(comments, commentsOpen, connState === 'connected')
   useEffect(() => {
     // Marker IDs come from the complete lightweight feed while the drawer is paginated. Resolve a
     // selected marker directly instead of walking every detailed thread page before it.
@@ -997,6 +1035,8 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // is forced so a quick draw-then-close still saves (the close/reopen acceptance path).
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestScene = useRef<BoardScene | null>(null)
+  const publishedSelectionSignatureRef = useRef<string | null>(null)
+  const publishedSelectionAwarenessRef = useRef<object | null>(null)
 
   // Write the uid-scoped local mirror and surface a failure (P2 #6). On the standalone path the
   // local mirror is the ONLY store, so a failed write (quota exceeded / storage disabled) is silent
@@ -1029,6 +1069,27 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           boardViewFrameRef.current = null
           setBoardViewRevision((value) => value + 1)
         })
+      }
+      // Presence selection is app state, not document content. Publish it independently from the
+      // pointer stream so stationary clicks, keyboard selection and programmatic deselection reach
+      // peers immediately. Sort for a stable signature and avoid an awareness write on every
+      // Excalidraw onChange caused by pointer/viewport activity.
+      const selectedElementIds = Object.entries(
+        (appState.selectedElementIds as Record<string, boolean> | undefined) ?? {},
+      )
+        .filter(([, selected]) => selected)
+        .map(([id]) => id)
+        .sort()
+      const selectionSignature = selectedElementIds.join('\u0000')
+      const awareness = collabSession?.provider?.awareness
+      if (
+        awareness
+        && (publishedSelectionAwarenessRef.current !== awareness
+          || publishedSelectionSignatureRef.current !== selectionSignature)
+      ) {
+        publishedSelectionAwarenessRef.current = awareness
+        publishedSelectionSignatureRef.current = selectionSignature
+        publishLocalSelection(awareness, selectedElementIds)
       }
       if (readOnly) {
         // Observation is not a write: record text arriving during a read-only account/role re-prime
@@ -1247,6 +1308,18 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     const awareness = collabSession?.provider?.awareness
     if (!awareness) return
     if (user) setLocalPresenceUser(awareness, user)
+    // Seed selection for either arrival order: the provider may connect after the canvas already
+    // has a selection, or the canvas API may mount after awareness is live. Waiting for another
+    // pointer/onChange event would leave the peer's selection absent indefinitely.
+    const selectedElementIds = Object.entries(
+      (excalidrawApi?.getAppState()?.selectedElementIds as Record<string, boolean> | undefined) ?? {},
+    )
+      .filter(([, selected]) => selected)
+      .map(([id]) => id)
+      .sort()
+    publishedSelectionAwarenessRef.current = awareness
+    publishedSelectionSignatureRef.current = selectedElementIds.join('\u0000')
+    publishLocalSelection(awareness, selectedElementIds)
     const update = () => {
       // Resolve each remote peer's cursor/online label from THIS client's space-member directory
       // (`names`), keyed by the peer's uid — the same seam MemberPanel and the doc caret use. A peer
@@ -1261,10 +1334,26 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     awareness.on('change', update)
     return () => {
       awareness.off('change', update)
-      // Drop our cursor so peers stop drawing a stale one once we leave this board.
-      clearLocalPointer(awareness)
     }
   }, [collabSession, user, excalidrawApi, names])
+
+  // Native library/search sidebar toggles happen inside Excalidraw. Snapshot only their toolbar or
+  // close controls (never result rows), then restore after the resulting resize. Clicking a concrete
+  // search result/comment keeps its intentional navigation semantics because it does not match.
+  useEffect(() => {
+    const host = liveCanvasRef.current
+    if (!host) return
+    const onClickCapture = (event: MouseEvent) => {
+      const target = event.target as Element | null
+      if (!target?.closest(
+        '[data-testid="toolbar-search"], .default-sidebar-trigger, .sidebar-tab-trigger, [data-testid="sidebar-close"], .sidebar__close',
+      )) return
+      captureViewportBeforeSidebar()
+      restoreViewportAfterSidebar()
+    }
+    host.addEventListener('click', onClickCapture, true)
+    return () => host.removeEventListener('click', onClickCapture, true)
+  }, [captureViewportBeforeSidebar, restoreViewportAfterSidebar, Excalidraw])
 
   // Excalidraw's live pointer (scene coords) → provider.awareness, so remote peers render this
   // cursor. No Y.Doc write; inert when there is no session.
@@ -1463,6 +1552,21 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         OctoToast.error(feedback.error)
       })
     }
+    const runPaste = async (): Promise<boolean> => {
+      if (!api) return false
+      try {
+        const executed = await api.executeActionWithHostFeedback('paste')
+        if (!executed) {
+          OctoToast.error(t('docs.board.contextMenu.pasteFailed'))
+          return false
+        }
+        OctoToast.success(t('docs.board.contextMenu.pasteSuccess'))
+        return true
+      } catch {
+        OctoToast.error(t('docs.board.contextMenu.pasteFailed'))
+        return false
+      }
+    }
     const runCut = () => {
       if (!api) return
       const initialAppState = api.getAppState()
@@ -1543,7 +1647,15 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         : t('docs.board.contextMenu.copyFailed'),
     })
     if (boardContextMenu.type === 'canvas') {
-      if (!readOnly) add('paste', 'paste', '⌘V', { separatorBefore: items.length > 0 })
+      if (!readOnly && available('paste')) {
+        items.push({
+          id: 'paste',
+          label: t('docs.board.contextMenu.paste'),
+          shortcut: '⌘V',
+          onSelect: runPaste,
+          separatorBefore: items.length > 0,
+        })
+      }
       add('copyAsPng', 'copyAsPng', undefined, { separatorBefore: items.length > 0, feedback: copyFeedback('PNG') })
       add('copyAsSvg', 'copyAsSvg', undefined, { feedback: copyFeedback('SVG') })
       add('copyText', 'copyText', undefined, { feedback: copyFeedback() })
@@ -1571,7 +1683,14 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         onSelect: runCut,
       })
     }
-    add('paste', 'paste', '⌘V')
+    if (available('paste')) {
+      items.push({
+        id: 'paste',
+        label: t('docs.board.contextMenu.paste'),
+        shortcut: '⌘V',
+        onSelect: runPaste,
+      })
+    }
     add('duplicate', 'duplicateSelection', '⌘D')
     add('copyStyles', 'copyStyles', '⌘⌥C', {
       separatorBefore: true,
@@ -1617,16 +1736,25 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       if (target?.closest('input, textarea, [contenteditable="true"]')) return
       event.preventDefault()
       if (selectedCommentTarget && role && canComment(role)) {
-        setInlineCommentTarget(selectedCommentTarget)
-        setCommentsOpen(false)
+        const openInlineComposer = () => {
+          setInlineCommentTarget(selectedCommentTarget)
+          setCommentsOpen(false)
+          setVersionOpen(false)
+        }
+        // Opening the inline composer alone does not resize the canvas. Preserve only when this
+        // shortcut also closes an existing drawer; otherwise do not leave a stale viewport pending.
+        if (commentsOpen || versionOpen) preserveViewportForDrawerChange(openInlineComposer)
+        else openInlineComposer()
       } else {
-        setCommentsOpen((open) => !open)
+        preserveViewportForDrawerChange(() => {
+          setCommentsOpen((open) => !open)
+          setVersionOpen(false)
+        })
       }
-      setVersionOpen(false)
     }
     window.addEventListener('keydown', onShortcut)
     return () => window.removeEventListener('keydown', onShortcut)
-  }, [selectedCommentTarget, role])
+  }, [selectedCommentTarget, role, commentsOpen, versionOpen, preserveViewportForDrawerChange])
 
   const getBoardElementType = useCallback((elementId: string): string | undefined => {
     const api = boardApiRef.current as ExcalidrawImperativeAPI | null
@@ -1833,6 +1961,13 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     initialBoardAppState.viewBackgroundColor = initialViewBackgroundColor
   }
 
+  const drawerOpen = (commentsOpen && role) || versionOpen
+  const reserveDrawer = !!drawerOpen && !!boardCanvasSize &&
+    canReserveBoardDrawer(boardCanvasSize.width, boardCanvasSize.height)
+  useLayoutEffect(() => {
+    restoreViewportAfterSidebar()
+  }, [reserveDrawer, restoreViewportAfterSidebar])
+
   // P1 (revoke teardown, standalone share page): a runtime terminal transition — 4403 access
   // revoked / board deleted (→ 'deleted'), 'not-found', 'locked', or session-lost 'login' — must
   // TEAR DOWN the canvas, not merely flip it read-only. The `readOnly` gate above only disables
@@ -1907,8 +2042,10 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     label: t('docs.toolbar.history'),
     icon: HistoryIcon,
     onClick: () => {
-      setVersionOpen((v) => !v)
-      setCommentsOpen(false)
+      preserveViewportForDrawerChange(() => {
+        setVersionOpen((v) => !v)
+        setCommentsOpen(false)
+      })
     },
   })
   moreItems.push({
@@ -1943,10 +2080,6 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     : undefined
   const creatorDisplay =
     creatorName || (ownerId ? ownerId.slice(0, 8) : t('docs.moreMenu.unknownCreator'))
-
-  const drawerOpen = (commentsOpen && role) || versionOpen
-  const reserveDrawer = !!drawerOpen && !!boardCanvasSize &&
-    canReserveBoardDrawer(boardCanvasSize.width, boardCanvasSize.height)
 
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-board">
@@ -1985,8 +2118,10 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               title={t('docs.toolbar.comments')}
               aria-pressed={commentsOpen}
               onClick={() => {
-                setCommentsOpen((open) => !open)
-                setVersionOpen(false)
+                preserveViewportForDrawerChange(() => {
+                  setCommentsOpen((open) => !open)
+                  setVersionOpen(false)
+                })
               }}
             >
               <span className="octo-board-comment-entry-icon" aria-hidden="true">💬</span>
@@ -2082,7 +2217,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
                 elements: initialElements,
                 appState: initialBoardAppState,
                 files: initialSceneRef.current?.files,
-                scrollToContent: true,
+                scrollToContent: !hasSavedBoardViewport(initialSceneRef.current?.appState),
               }}
               onChange={onChange}
               excalidrawAPI={handleApi}
@@ -2198,7 +2333,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               initialTarget={pendingPointTarget}
               onInitialTargetConsumed={() => setPendingPointTarget(null)}
               getElementType={getBoardElementType}
-              onClose={() => setCommentsOpen(false)}
+              onClose={closeCommentsDrawer}
             />
           </aside>
         )}
@@ -2209,7 +2344,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               role={role ?? 'reader'}
               dark={dark}
               names={names}
-              onClose={() => setVersionOpen(false)}
+              onClose={closeVersionDrawer}
             />
           </aside>
         )}

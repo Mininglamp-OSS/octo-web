@@ -8,12 +8,17 @@ import { __resetTokenCacheForTests } from '../../auth/collabToken.ts'
 // The session assembler builds a real HocuspocusProvider (opens a WebSocket); stub it so the hook's
 // registry / refcount / token-wiring is unit-testable without a live collab backend. We capture the
 // options the hook passes in and hand back a fake session whose destroy() we can assert on.
-const created: { opts: any; destroy: ReturnType<typeof vi.fn> }[] = []
+const created: { opts: any; destroy: ReturnType<typeof vi.fn>; setLocalState: ReturnType<typeof vi.fn> }[] = []
 vi.mock('./connect.ts', () => ({
   createWhiteboardSession: (opts: any) => {
     const destroy = vi.fn()
-    const session = { documentName: `octo:${opts.space}:${opts.folder}:wb:${opts.board}`, destroy }
-    created.push({ opts, destroy })
+    const setLocalState = vi.fn()
+    const session = {
+      documentName: `octo:${opts.space}:${opts.folder}:wb:${opts.board}`,
+      provider: { awareness: { setLocalState } },
+      destroy,
+    }
+    created.push({ opts, destroy, setLocalState })
     return session
   },
 }))
@@ -59,8 +64,21 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
     act(() => a.unmount())
     expect(created[0]!.destroy).not.toHaveBeenCalled() // b still holds it
     act(() => b.unmount())
+    expect(created[0]!.setLocalState).toHaveBeenCalledWith(null)
     // Release destroys through the create promise (identity-first async build), so wait for it.
     await waitFor(() => expect(created[0]!.destroy).toHaveBeenCalledTimes(1)) // last release destroys
+  })
+
+  it('does not clear awareness while another reference still owns the shared session', async () => {
+    const useWhiteboardSession = await importHook()
+    const opts = { uid: 'u_presence', space: 'demo', folder: 'f_default', board: 'd_presence' }
+    const a = renderHook(() => useWhiteboardSession(opts))
+    const b = renderHook(() => useWhiteboardSession(opts))
+    await waitFor(() => expect(a.result.current).not.toBeNull())
+    act(() => a.unmount())
+    expect(created[0]!.setLocalState).not.toHaveBeenCalled()
+    act(() => b.unmount())
+    expect(created[0]!.setLocalState).toHaveBeenCalledWith(null)
   })
 
   it('returns null synchronously on an A → B uid switch before B session resolves', async () => {
@@ -178,6 +196,44 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
     // Terminal from birth (403 = access revoked → 'deleted'), and NO cache built to hydrate.
     expect(created[0]!.opts.initialTerminal).toEqual({ kind: 'deleted' })
     expect(created[0]!.opts.disableOfflineCache).toBe(true)
+  })
+
+  it('does not install an in-flight stale session into a newly re-acquired registry entry', async () => {
+    const useWhiteboardSession = await importHook()
+    const opts = { uid: 'u_race', space: 'demo', folder: 'f_default', board: 'd_race' }
+    const tokenResolvers: Array<(value: { data: unknown; status: number }) => void> = []
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'post' && url === '/docs/collab-token') {
+        return new Promise((resolve) => tokenResolvers.push(resolve))
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const first = renderHook(() => useWhiteboardSession(opts))
+    await waitFor(() => expect(tokenResolvers).toHaveLength(1))
+    act(() => first.unmount())
+
+    const second = renderHook(() => useWhiteboardSession(opts))
+    // Token issuance is intentionally coalesced by uid+documentName, so both registry entries await
+    // the same token promise while still creating distinct sessions after it resolves.
+    expect(tokenResolvers).toHaveLength(1)
+
+    await act(async () => {
+      tokenResolvers[0]!({
+        data: { token: 'shared', expiresAt: Date.now() + 60_000, role: 'writer', permission_epoch: 1 },
+        status: 200,
+      })
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(created).toHaveLength(2))
+    expect(created[0]!.destroy).toHaveBeenCalledTimes(1)
+    expect(created[0]!.setLocalState).toHaveBeenCalledWith(null)
+    await waitFor(() => expect(second.result.current).not.toBeNull())
+    expect(second.result.current?.destroy).toBe(created[1]!.destroy)
+    expect(created[1]!.destroy).not.toHaveBeenCalled()
+
+    act(() => second.unmount())
+    await waitFor(() => expect(created[1]!.destroy).toHaveBeenCalledTimes(1))
   })
 
   it('P1b: a re-acquire that lands after the synchronous release still destroys the OLD session (no leaked provider/IndexedDB handle)', async () => {

@@ -166,7 +166,7 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
 
     // Row reconciled away (re-read from backend) AND the failure is surfaced.
     expect(result.current.threads.map((t) => t.id)).toEqual([2])
-    expect(result.current.error).toBe('Failed to delete comment.')
+    expect(result.current.error).toBe('docs.comment.errors.delete.notFound')
   })
 
   it('keeps the row and shows the error when the delete is genuinely rejected and the comment still exists (e.g. 403)', async () => {
@@ -188,7 +188,7 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
     })
 
     expect(result.current.threads.map((t) => t.id)).toEqual([1, 2])
-    expect(result.current.error).toBe('Failed to delete comment.')
+    expect(result.current.error).toBe('docs.comment.errors.delete.forbidden')
   })
 
   it('does not strand loading=true (deadlocking pagination) when a mutation is rejected mid-loadMore', async () => {
@@ -326,7 +326,7 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
     // reconcile must have bailed (preempted by the newer refresh) — S2 stays
     // intact and the delete failure is still surfaced.
     expect(result.current.threads.map((t) => t.id)).toEqual([1, 2, 3])
-    expect(result.current.error).toBe('Failed to delete comment.')
+    expect(result.current.error).toBe('docs.comment.errors.delete.forbidden')
   })
 
   it('does not re-introduce a since-deleted row when an in-flight loadMore page completes after reconcile dropped it', async () => {
@@ -398,7 +398,7 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
     expect(result.current.threads.map((t) => t.id)).toEqual([1, 2])
     expect(result.current.threads.some((t) => t.id === 30)).toBe(false)
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.error).toBe('Failed to delete comment.')
+    expect(result.current.error).toBe('docs.comment.errors.delete.notFound')
   })
 
   it('returns an explicit failure result so composers can retain their drafts', async () => {
@@ -421,8 +421,12 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
       })
     })
 
-    expect(mutationResult).toEqual({ ok: false, error: 'Failed to add comment.' })
-    expect(result.current.error).toBe('Failed to add comment.')
+    expect(mutationResult).toEqual({
+      ok: false,
+      error: 'docs.comment.errors.add.forbidden',
+      status: 403,
+    })
+    expect(result.current.error).toBe('docs.comment.errors.add.forbidden')
   })
 
   it('does not regress create/reply/resolve refresh on success', async () => {
@@ -447,5 +451,420 @@ describe('useDocComments — delete reconciles UI with authoritative backend', (
     expect(mutationResult).toEqual({ ok: true, error: null })
     expect(result.current.threads.map((t) => t.id)).toEqual([1, 2])
     expect(result.current.error).toBeNull()
+  })
+})
+
+describe('useDocComments — pagination-preserving recovery refresh', () => {
+  function range(from: number, to: number, prefix: string) {
+    return Array.from({ length: to - from + 1 }, (_, index) => {
+      const id = from + index
+      return thread(id, `${prefix}-${id}`)
+    })
+  }
+
+  it('finds a larger-id comment created after a full loaded page while disconnected', async () => {
+    let rows = range(1, 25, 'old')
+    api.responder = (_method, url) => {
+      const cursor = Number(new URL(`https://octo.test${url}`).searchParams.get('cursor') ?? 0)
+      const items = rows.filter((item) => item.id > cursor).slice(0, 25)
+      return { data: { items, nextCursor: items.length === 25 ? items.at(-1)!.id : null }, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(25))
+    rows = [...rows, thread(26, 'created-offline')]
+
+    const callsBefore = api.calls.length
+    await act(async () => { await result.current.refresh() })
+
+    const recoveryCalls = api.calls.slice(callsBefore).filter((call) => call.method === 'get')
+    expect(recoveryCalls).toHaveLength(2) // old page + bounded tail probe
+    expect(result.current.threads.map((item) => item.id)).toEqual(range(1, 26, 'unused').map((item) => item.id))
+    expect(result.current.threads.at(-1)?.body).toBe('created-offline')
+    expect(result.current.nextCursor).toBeNull()
+  })
+
+  it('finds a larger-id comment after two full loaded pages and preserves further load-more', async () => {
+    let rows = range(1, 75, 'old')
+    api.responder = (_method, url) => {
+      const cursor = Number(new URL(`https://octo.test${url}`).searchParams.get('cursor') ?? 0)
+      const items = rows.filter((item) => item.id > cursor).slice(0, 25)
+      return { data: { items, nextCursor: items.length === 25 ? items.at(-1)!.id : null }, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(25))
+    await act(async () => { await result.current.loadMore() })
+    expect(result.current.threads).toHaveLength(50)
+    rows = [...rows, thread(76, 'created-offline')]
+
+    await act(async () => { await result.current.refresh() })
+    expect(result.current.threads.map((item) => item.id)).toEqual(range(1, 75, 'unused').map((item) => item.id))
+    // The bounded probe is full, so deeper content (including #76) remains reachable via Load more.
+    expect(result.current.nextCursor).toBe(75)
+    await act(async () => { await result.current.loadMore() })
+    expect(result.current.threads.at(-1)?.id).toBe(76)
+    expect(result.current.threads.at(-1)?.body).toBe('created-offline')
+  })
+
+  it('keeps the durable user-loaded depth stable across repeated tail-probe refreshes', async () => {
+    const rows = range(1, 76, 'row')
+    api.responder = (_method, url) => {
+      const cursor = Number(new URL(`https://octo.test${url}`).searchParams.get('cursor') ?? 0)
+      const items = rows.filter((item) => item.id > cursor).slice(0, 25)
+      return { data: { items, nextCursor: items.length === 25 ? items.at(-1)!.id : null }, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(25))
+    await act(async () => { await result.current.loadMore() })
+    expect(result.current.threads).toHaveLength(50)
+
+    for (let refreshIndex = 0; refreshIndex < 3; refreshIndex++) {
+      const callsBefore = api.calls.length
+      await act(async () => { await result.current.refresh() })
+      const calls = api.calls.slice(callsBefore).filter((call) => call.method === 'get')
+      expect(calls).toHaveLength(3) // 2 user-loaded pages + 1 transient probe, every time
+      expect(result.current.threads).toHaveLength(75)
+      expect(result.current.nextCursor).toBe(75)
+    }
+
+    // Probe pages did not inflate the baseline: one user Load more advances from cursor 75 only.
+    await act(async () => { await result.current.loadMore() })
+    expect(result.current.threads.at(-1)?.id).toBe(76)
+  })
+
+  it('keeps the newer recovery authoritative when same-ID responses finish out of order', async () => {
+    let getCount = 0
+    let releaseOlder!: (value: any) => void
+    api.responder = (method) => {
+      if (method !== 'get') return { data: {}, status: 200 }
+      getCount++
+      if (getCount === 1) return { data: { items: [thread(1, 'initial')], nextCursor: null }, status: 200 }
+      if (getCount === 2) return new Promise((resolve) => { releaseOlder = resolve })
+      return { data: { items: [thread(1, 'newer')], nextCursor: null }, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads[0]?.body).toBe('initial'))
+    let older!: Promise<void>
+    await act(async () => {
+      older = result.current.refresh()
+      await Promise.resolve()
+      await result.current.refresh()
+    })
+    expect(result.current.threads[0]?.body).toBe('newer')
+    expect(result.current.loading).toBe(false)
+
+    await act(async () => {
+      releaseOlder({ data: { items: [thread(1, 'older')], nextCursor: null }, status: 200 })
+      await older
+    })
+    expect(result.current.threads[0]?.body).toBe('newer')
+    expect(result.current.loading).toBe(false)
+  })
+})
+
+describe('useDocComments — atomic recovery failure', () => {
+  it('keeps old threads, cursor, and page depth when the tail probe fails', async () => {
+    let recovery = false
+    api.responder = (_method, url) => {
+      const cursor = Number(new URL(`https://octo.test${url}`).searchParams.get('cursor') ?? 0)
+      if (!recovery) {
+        if (cursor === 25) return { data: { items: [thread(26, 'old-26')], nextCursor: null }, status: 200 }
+        return { data: { items: Array.from({ length: 25 }, (_, i) => thread(i + 1, `old-${i + 1}`)), nextCursor: 25 }, status: 200 }
+      }
+      if (cursor === 26) throw new Error('offline during tail probe')
+      if (cursor === 25) return { data: { items: [thread(26, 'new-26')], nextCursor: 26 }, status: 200 }
+      return { data: { items: Array.from({ length: 25 }, (_, i) => thread(i + 1, `new-${i + 1}`)), nextCursor: 25 }, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.nextCursor).toBe(25))
+    await act(async () => { await result.current.loadMore() })
+    const oldThreads = result.current.threads
+    expect(result.current.nextCursor).toBeNull()
+
+    recovery = true
+    await act(async () => { await result.current.refresh() })
+    expect(result.current.threads).toBe(oldThreads)
+    expect(result.current.threads.at(-1)?.body).toBe('old-26')
+    expect(result.current.nextCursor).toBeNull()
+    expect(result.current.error).toBe('Failed to load comments.')
+    expect(result.current.loading).toBe(false)
+  })
+})
+
+describe('useDocComments — failed mutation preserves loaded depth', () => {
+  it('keeps scope and displayed depth atomic when the replacement scope initially fails', async () => {
+    const unresolvedRows = Array.from({ length: 50 }, (_, index) => thread(index + 1, `old-${index + 1}`))
+    const resolvedRows = Array.from({ length: 50 }, (_, index) => thread(index + 101, `new-${index + 101}`))
+    let resolvedPhase: 'scope-refresh-fails' | 'reconcile-second-page-fails' | 'scope-refresh-succeeds' = 'scope-refresh-fails'
+    api.responder = (method, url) => {
+      if (method === 'delete') throw { response: { status: 403 } }
+      if (method === 'get') {
+        const parsed = new URL(`https://octo.test${url}`)
+        const includeResolved = parsed.searchParams.get('includeResolved') === '1'
+        const cursor = Number(parsed.searchParams.get('cursor') ?? 0)
+        if (includeResolved && resolvedPhase === 'scope-refresh-fails') {
+          resolvedPhase = 'reconcile-second-page-fails'
+          throw new Error('scope replacement failed')
+        }
+        if (includeResolved && resolvedPhase === 'reconcile-second-page-fails' && cursor === 125) {
+          resolvedPhase = 'scope-refresh-succeeds'
+          throw new Error('reconcile failed on its second page')
+        }
+        const rows = includeResolved ? resolvedRows : unresolvedRows
+        const items = rows.filter((item) => item.id > cursor).slice(0, 25)
+        return { data: { items, nextCursor: items.length === 25 ? items.at(-1)!.id : null }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(25))
+    await act(async () => { await result.current.loadMore() })
+    const oldThreads = result.current.threads
+    const oldCursor = result.current.nextCursor
+    expect(oldThreads).toHaveLength(50)
+
+    act(() => result.current.setIncludeResolved(true))
+    await waitFor(() => expect(result.current.error).toBe('Failed to load comments.'))
+    expect(result.current.threads).toBe(oldThreads)
+    expect(result.current.nextCursor).toBe(oldCursor)
+
+    // The failed scope transition must not reset displayed depth before replacement data installs.
+    // A rejected mutation therefore reconciles the complete two-page window, not one page.
+    const reconcileGetsBefore = api.calls.filter((call) => call.method === 'get').length
+    await act(async () => { await result.current.remove(101, false) })
+    expect(api.calls.filter((call) => call.method === 'get').length - reconcileGetsBefore).toBe(2)
+    expect(result.current.threads).toBe(oldThreads)
+    expect(result.current.nextCursor).toBe(oldCursor)
+
+    // Neither failed request committed the pending scope transition. The next successful scope
+    // refresh starts from one page and atomically normalizes installed data and pagination metadata.
+    const refreshGetsBefore = api.calls.filter((call) => call.method === 'get').length
+    await act(async () => { await result.current.refresh() })
+    expect(api.calls.filter((call) => call.method === 'get').length - refreshGetsBefore).toBe(1)
+    expect(result.current.threads).toHaveLength(25)
+    expect(result.current.threads[0]?.id).toBe(101)
+    expect(result.current.nextCursor).toBe(125)
+  })
+
+  it('commits a replacement scope when reconcile succeeds after the scope refresh failed', async () => {
+    const unresolvedRows = Array.from({ length: 50 }, (_, index) => thread(index + 1, `old-${index + 1}`))
+    const resolvedRows = Array.from({ length: 75 }, (_, index) => thread(index + 101, `new-${index + 101}`))
+    let failScopeRefresh = true
+    api.responder = (method, url) => {
+      if (method === 'delete') throw { response: { status: 403 } }
+      if (method === 'get') {
+        const parsed = new URL(`https://octo.test${url}`)
+        const includeResolved = parsed.searchParams.get('includeResolved') === '1'
+        if (includeResolved && failScopeRefresh) {
+          failScopeRefresh = false
+          throw new Error('scope replacement failed')
+        }
+        const cursor = Number(parsed.searchParams.get('cursor') ?? 0)
+        const rows = includeResolved ? resolvedRows : unresolvedRows
+        const items = rows.filter((item) => item.id > cursor).slice(0, 25)
+        return { data: { items, nextCursor: items.length === 25 ? items.at(-1)!.id : null }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(25))
+    await act(async () => { await result.current.loadMore() })
+    expect(result.current.threads).toHaveLength(50)
+
+    act(() => result.current.setIncludeResolved(true))
+    await waitFor(() => expect(result.current.error).toBe('Failed to load comments.'))
+    expect(result.current.threads[0]?.id).toBe(1)
+
+    const reconcileGetsBefore = api.calls.filter((call) => call.method === 'get').length
+    await act(async () => { await result.current.remove(101, false) })
+    expect(api.calls.filter((call) => call.method === 'get').length - reconcileGetsBefore).toBe(2)
+    expect(result.current.threads).toHaveLength(50)
+    expect(result.current.threads[0]?.id).toBe(101)
+    expect(result.current.nextCursor).toBe(150)
+
+    // Successful reconcile committed the replacement scope. Refresh therefore preserves the two
+    // displayed pages, rather than treating it as another new scope and collapsing to one page.
+    const firstRefreshGetsBefore = api.calls.filter((call) => call.method === 'get').length
+    await act(async () => { await result.current.refresh() })
+    expect(api.calls.filter((call) => call.method === 'get').length - firstRefreshGetsBefore).toBe(2)
+    expect(result.current.threads).toHaveLength(50)
+    expect(result.current.nextCursor).toBe(150)
+
+    // Durable depth was normalized to one, so the replacement window remains bounded at two pages.
+    const secondRefreshGetsBefore = api.calls.filter((call) => call.method === 'get').length
+    await act(async () => { await result.current.refresh() })
+    expect(api.calls.filter((call) => call.method === 'get').length - secondRefreshGetsBefore).toBe(2)
+    expect(result.current.threads).toHaveLength(50)
+  })
+
+  it('keeps a displayed tail-probe page after a rejected mutation', async () => {
+    const rows = Array.from({ length: 75 }, (_, index) => thread(index + 1, `row-${index + 1}`))
+    api.responder = (method, url) => {
+      if (method === 'delete') throw { response: { status: 403 } }
+      if (method === 'get') {
+        const cursor = Number(new URL(`https://octo.test${url}`).searchParams.get('cursor') ?? 0)
+        const items = rows.filter((item) => item.id > cursor).slice(0, 25)
+        return { data: { items, nextCursor: items.length === 25 ? items.at(-1)!.id : null }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(25))
+
+    await act(async () => { await result.current.refresh() })
+    expect(result.current.threads).toHaveLength(50)
+    expect(result.current.nextCursor).toBe(50)
+
+    const getsBefore = api.calls.filter((call) => call.method === 'get').length
+    let outcome
+    await act(async () => { outcome = await result.current.remove(1, false) })
+
+    expect(outcome).toMatchObject({ ok: false, status: 403 })
+    expect(api.calls.filter((call) => call.method === 'get').length - getsBefore).toBe(2)
+    expect(result.current.threads).toHaveLength(50)
+    expect(result.current.nextCursor).toBe(50)
+
+    // The displayed probe did not become durable refresh depth: another recovery remains bounded
+    // to the same two-page window instead of probing a third page.
+    const refreshGetsBefore = api.calls.filter((call) => call.method === 'get').length
+    await act(async () => { await result.current.refresh() })
+    expect(api.calls.filter((call) => call.method === 'get').length - refreshGetsBefore).toBe(2)
+    expect(result.current.threads).toHaveLength(50)
+  })
+
+  it('reconciles the full user-loaded window atomically after a rejected mutation', async () => {
+    let rows = Array.from({ length: 75 }, (_, index) => thread(index + 1, `old-${index + 1}`))
+    api.responder = (method, url) => {
+      if (method === 'delete') throw { response: { status: 403 } }
+      if (method === 'get') {
+        const cursor = Number(new URL(`https://octo.test${url}`).searchParams.get('cursor') ?? 0)
+        const items = rows.filter((item) => item.id > cursor).slice(0, 25)
+        return { data: { items, nextCursor: items.length === 25 ? items.at(-1)!.id : null }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(25))
+    await act(async () => { await result.current.loadMore() })
+    await act(async () => { await result.current.loadMore() })
+    expect(result.current.threads).toHaveLength(75)
+
+    rows = rows.map((item) => item.id === 60 ? thread(60, 'server-new-60') : item)
+    const getsBefore = api.calls.filter((call) => call.method === 'get').length
+    let outcome
+    await act(async () => { outcome = await result.current.remove(1, false) })
+
+    expect(outcome).toMatchObject({ ok: false, status: 403 })
+    expect(api.calls.filter((call) => call.method === 'get').length - getsBefore).toBe(3)
+    expect(result.current.threads).toHaveLength(75)
+    expect(result.current.threads.find((item) => item.id === 60)?.body).toBe('server-new-60')
+    expect(result.current.nextCursor).toBe(75)
+  })
+
+  it('keeps the old multi-page window when a later reconcile page fails', async () => {
+    let failReconcile = false
+    const rows = Array.from({ length: 50 }, (_, index) => thread(index + 1, `old-${index + 1}`))
+    api.responder = (method, url) => {
+      if (method === 'delete') throw { response: { status: 403 } }
+      if (method === 'get') {
+        const cursor = Number(new URL(`https://octo.test${url}`).searchParams.get('cursor') ?? 0)
+        if (failReconcile && cursor === 25) throw new Error('offline between reconcile pages')
+        const items = rows.filter((item) => item.id > cursor).slice(0, 25)
+        return { data: { items, nextCursor: items.length === 25 ? items.at(-1)!.id : null }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(25))
+    await act(async () => { await result.current.loadMore() })
+    const oldThreads = result.current.threads
+    const oldCursor = result.current.nextCursor
+
+    failReconcile = true
+    await act(async () => { await result.current.remove(1, false) })
+    expect(result.current.threads).toBe(oldThreads)
+    expect(result.current.nextCursor).toBe(oldCursor)
+    expect(result.current.error).toBe('docs.comment.errors.delete.forbidden')
+  })
+})
+
+describe('useDocComments — loadMore/reconcile completion ordering', () => {
+  it('keeps the newer page, cursor, and durable depth when loadMore completes before an older reconcile', async () => {
+    const rows = Array.from({ length: 75 }, (_, index) => thread(index + 1, `row-${index + 1}`))
+    let phase: 'initial' | 'race' | 'stable' = 'initial'
+    let releaseLoadMore: (() => void) | null = null
+    let releaseReconcile: (() => void) | null = null
+
+    api.responder = (method, url) => {
+      if (method === 'delete') throw { response: { status: 403 } }
+      if (method === 'get') {
+        const cursor = Number(new URL(`https://octo.test${url}`).searchParams.get('cursor') ?? 0)
+        const response = {
+          data: { items: rows.filter((item) => item.id > cursor).slice(0, 25), nextCursor: cursor + 25 },
+          status: 200,
+        }
+        if (phase === 'race' && cursor === 25) {
+          return new Promise((resolve) => { releaseLoadMore = () => resolve(response) })
+        }
+        if (phase === 'race' && cursor === 0) {
+          return new Promise((resolve) => { releaseReconcile = () => resolve(response) })
+        }
+        return response
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { result } = renderHook(() => useDocComments('d_1'))
+    await waitFor(() => expect(result.current.threads).toHaveLength(25))
+    expect(result.current.nextCursor).toBe(25)
+
+    phase = 'race'
+    let loadMorePromise: Promise<void>
+    await act(async () => {
+      loadMorePromise = result.current.loadMore()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(releaseLoadMore).not.toBeNull())
+
+    let removePromise: ReturnType<typeof result.current.remove>
+    await act(async () => {
+      removePromise = result.current.remove(1, false)
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(releaseReconcile).not.toBeNull())
+
+    // The loading-bearing request wins first and raises durable depth from one page to two.
+    await act(async () => {
+      releaseLoadMore!()
+      await loadMorePromise
+    })
+    expect(result.current.threads).toHaveLength(50)
+    expect(result.current.nextCursor).toBe(50)
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    // The older one-page reconcile must now be stale and cannot collapse the installed window.
+    await act(async () => {
+      releaseReconcile!()
+      await removePromise
+    })
+    expect(result.current.threads).toHaveLength(50)
+    expect(result.current.nextCursor).toBe(50)
+
+    // A later reconcile proves the internal durable depth also stayed at two pages.
+    phase = 'stable'
+    const getsBefore = api.calls.filter((call) => call.method === 'get').length
+    await act(async () => { await result.current.remove(2, false) })
+    expect(api.calls.filter((call) => call.method === 'get').length - getsBefore).toBe(2)
+    expect(result.current.threads).toHaveLength(50)
+    expect(result.current.nextCursor).toBe(50)
   })
 })

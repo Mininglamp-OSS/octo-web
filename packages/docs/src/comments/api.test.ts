@@ -11,6 +11,7 @@ import {
   setCommentResolved,
   deleteComment,
   isUnavailableMarkerEndpoint,
+  CommentApiError,
 } from './api.ts'
 
 let api: MockApiClient
@@ -59,6 +60,17 @@ describe('comment API — frozen contract (feature #3 §, backend PR #5)', () =>
     expect(isUnavailableMarkerEndpoint({ response: { status: 409 } })).toBe(true)
     expect(isUnavailableMarkerEndpoint({ response: { status: 401 } })).toBe(false)
     expect(isUnavailableMarkerEndpoint(new TypeError('offline'))).toBe(false)
+  })
+
+  it('preserves HTTP status and API error code on comment failures', async () => {
+    api.responder = () => {
+      throw { response: { status: 409, data: { code: 'comment_conflict' } } }
+    }
+    await expect(createReply('d_1', 1, 'draft')).rejects.toMatchObject({
+      name: 'CommentApiError',
+      status: 409,
+      code: 'comment_conflict',
+    })
   })
 
   it('walks every lightweight marker page', async () => {

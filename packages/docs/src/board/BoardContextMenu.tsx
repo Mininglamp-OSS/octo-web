@@ -7,7 +7,7 @@ export interface BoardContextMenuItem {
   shortcut?: string
   destructive?: boolean
   separatorBefore?: boolean
-  onSelect: () => void
+  onSelect: () => void | Promise<boolean>
 }
 
 interface BoardContextMenuProps {
@@ -100,7 +100,15 @@ export function BoardContextMenu({ left, top, items, bounds, onClose }: BoardCon
             role="menuitem"
             className={item.destructive ? 'is-destructive' : undefined}
             onClick={() => {
-              item.onSelect()
+              const result = item.onSelect()
+              if (result instanceof Promise) {
+                void result.then((shouldClose) => {
+                  if (shouldClose) onClose()
+                }).catch(() => {
+                  // The action owns user-facing error feedback. Keep the menu open for retry.
+                })
+                return
+              }
               onClose()
             }}
           >

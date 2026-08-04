@@ -127,13 +127,23 @@ function acquire(key: string, create: () => Promise<WhiteboardSession>): Registr
     entry = { refCount: 0, instance: null, promise }
     promise.then((session) => {
       const e = registry.get(key)
-      if (e) e.instance = session
-      else session.destroy() // released before creation finished
+      if (e && e === entry) e.instance = session
+      else {
+        // Released or replaced before creation finished: clear this entry's local presence before
+        // closing its provider. Never install the stale session into a newly re-acquired entry that
+        // happens to reuse the same key.
+        clearSessionLocalAwareness(session)
+        session.destroy()
+      }
     })
     registry.set(key, entry)
   }
   entry.refCount++
   return entry
+}
+
+function clearSessionLocalAwareness(session: WhiteboardSession): void {
+  session.provider?.awareness?.setLocalState(null)
 }
 
 function release(key: string): void {
@@ -142,18 +152,16 @@ function release(key: string): void {
   entry.refCount--
   if (entry.refCount <= 0) {
     registry.delete(key)
+    // Clear presence as soon as the final owner releases the shared session. Waiting for the async
+    // destroy path leaves the old client id visible while a quick reopen publishes a new one,
+    // producing two cursors for the same user. This lives at the registry ownership boundary (not
+    // in BoardShell's presence effect cleanup), so ordinary dependency reruns never blink presence.
+    if (entry.instance) clearSessionLocalAwareness(entry.instance)
     entry.promise.then((session) => {
-      // Instance-identity guard (P1b): a re-acquire under the same key — React18 StrictMode's
-      // double-invoked effect, a fast unmount/remount, or a uid/board value that flips back to a
-      // prior one — installs a FRESH entry AFTER the synchronous `registry.delete` above. Guarding
-      // only on `registry.has(key)` would then read `true` for that new entry and SKIP destroy,
-      // leaking THIS session: its HocuspocusProvider stays connected and its IndexeddbPersistence
-      // handle stays open on the same dbName, so a later account-switch / revoke `deleteDatabase`
-      // blocks (onblocked) and the revoked-user cache teardown fails. Destroy unless the key still
-      // maps to the very entry we released (i.e. nobody re-acquired) — comparing entry identity, not
-      // mere presence, so a distinct re-acquired session is never mistaken for this one. The reverse
-      // ordering (release racing an in-flight create) is covered by acquire's own resolve guard.
-      if (registry.get(key) !== entry) session.destroy()
+      // A session that resolved while this entry was still current was installed into
+      // `entry.instance`; release owns its teardown. If the entry was replaced before resolution,
+      // acquire's resolve guard already cleared/destroyed that stale session — do not destroy twice.
+      if (entry.instance === session) session.destroy()
     })
   }
 }

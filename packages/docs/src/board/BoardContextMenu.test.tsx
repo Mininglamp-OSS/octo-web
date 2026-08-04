@@ -17,6 +17,43 @@ describe('BoardContextMenu', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it('waits for an async action and closes only after success', async () => {
+    let finish: ((value: boolean) => void) | undefined
+    const onClose = vi.fn()
+    render(<BoardContextMenu bounds={bounds} left={12} top={20} items={[{
+      id: 'paste',
+      label: 'Paste',
+      onSelect: () => new Promise<boolean>((resolve) => { finish = resolve }),
+    }]} onClose={onClose} />)
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Paste' }))
+    expect(onClose).not.toHaveBeenCalled()
+    finish?.(true)
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+  })
+
+  it('keeps the menu open when an async action returns false or rejects', async () => {
+    const onClose = vi.fn()
+    const { rerender } = render(<BoardContextMenu bounds={bounds} left={12} top={20} items={[{
+      id: 'paste',
+      label: 'Paste',
+      onSelect: async () => false,
+    }]} onClose={onClose} />)
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Paste' }))
+    await Promise.resolve()
+    expect(onClose).not.toHaveBeenCalled()
+
+    rerender(<BoardContextMenu bounds={bounds} left={12} top={20} items={[{
+      id: 'paste',
+      label: 'Paste',
+      onSelect: async () => { throw new Error('clipboard denied') },
+    }]} onClose={onClose} />)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Paste' }))
+    await Promise.resolve()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('closes on Escape and an outside pointer without swallowing non-menu events', () => {
     const onClose = vi.fn()
     render(<><button>Outside</button><BoardContextMenu bounds={bounds} left={0} top={0} items={[]} onClose={onClose} /></>)

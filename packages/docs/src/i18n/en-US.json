@@ -186,6 +186,8 @@
     },
     "contextMenu": {
       "paste": "Paste",
+      "pasteSuccess": "Pasted",
+      "pasteFailed": "Paste failed. Allow clipboard access and try again.",
       "selectAll": "Select all",
       "copy": "Copy",
       "copySuccess": "Copied",
@@ -546,7 +548,51 @@
     "readOnlyHint": "You have read-only access — commenting is disabled.",
     "handleWithAI": "Hand off to AI",
     "anonymous": "Anonymous",
-    "agentInstructionTitle": "Ask AI to handle comment: {{request}} (doc {{slug}} · {{target}})"
+    "agentInstructionTitle": "Ask AI to handle comment: {{request}} (doc {{slug}} · {{target}})",
+    "errors": {
+      "add": {
+        "forbidden": "You do not have permission to add comments.",
+        "notFound": "This comment target no longer exists. Refresh and try again.",
+        "conflict": "The board changed while you were commenting. Refresh and try again.",
+        "network": "Could not add the comment. Check your connection and try again.",
+        "generic": "Failed to add comment."
+      },
+      "reply": {
+        "forbidden": "You do not have permission to reply.",
+        "notFound": "This comment no longer exists. Refresh and try again.",
+        "conflict": "The thread changed while you were replying. Refresh and try again.",
+        "network": "Could not post the reply. Check your connection and try again.",
+        "generic": "Failed to post reply."
+      },
+      "edit": {
+        "forbidden": "You do not have permission to edit this comment.",
+        "notFound": "This comment no longer exists. Refresh and try again.",
+        "conflict": "This comment changed elsewhere. Refresh and try again.",
+        "network": "Could not save the edit. Check your connection and try again.",
+        "generic": "Failed to save edit."
+      },
+      "resolve": {
+        "forbidden": "You do not have permission to resolve this comment.",
+        "notFound": "This comment no longer exists. Refresh and try again.",
+        "conflict": "This comment changed elsewhere. Refresh and try again.",
+        "network": "Could not resolve the comment. Check your connection and try again.",
+        "generic": "Failed to resolve comment."
+      },
+      "reopen": {
+        "forbidden": "You do not have permission to reopen this comment.",
+        "notFound": "This comment no longer exists. Refresh and try again.",
+        "conflict": "This comment changed elsewhere. Refresh and try again.",
+        "network": "Could not reopen the comment. Check your connection and try again.",
+        "generic": "Failed to reopen comment."
+      },
+      "delete": {
+        "forbidden": "You do not have permission to delete this comment.",
+        "notFound": "This comment was already deleted.",
+        "conflict": "This comment changed elsewhere. Refresh and try again.",
+        "network": "Could not delete the comment. Check your connection and try again.",
+        "generic": "Failed to delete comment."
+      }
+    }
   },
   "time": {
     "justNow": "just now",

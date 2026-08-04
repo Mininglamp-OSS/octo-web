@@ -7,7 +7,35 @@
 // header (no auth code here, mirrors members/api.ts). Backend is the real permission authority —
 // frontend role gating (roles.ts) is UX only.
 
-import { apiClient } from '../octoweb/index.ts'
+import { apiClient, type ApiError } from '../octoweb/index.ts'
+
+export class CommentApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number | undefined,
+    readonly code: string | undefined,
+    cause?: unknown,
+  ) {
+    super(message)
+    this.name = 'CommentApiError'
+    if (cause !== undefined) (this as Error & { cause?: unknown }).cause = cause
+  }
+}
+
+/** Keep the server classification when crossing the comment API boundary. */
+async function commentRequest<T>(request: () => Promise<T>): Promise<T> {
+  try {
+    return await request()
+  } catch (cause) {
+    const error = cause as ApiError<{ error?: string; code?: string }> & {
+      code?: string
+      message?: string
+    }
+    const status = error.response?.status
+    const code = error.response?.data?.code ?? error.response?.data?.error ?? error.code
+    throw new CommentApiError(error.message ?? 'Comment request failed', status, code, cause)
+  }
+}
 
 /** Wire shape of a single comment (frozen backend contract). */
 export interface Comment {
@@ -60,7 +88,7 @@ export interface ListCommentsOptions {
 
 /** GET /docs/:docId/comments — roots only at top level, each carrying its `replies`. */
 export async function getCommentThread(docId: string, id: number): Promise<CommentThread> {
-  const { data } = await apiClient().get<CommentThread>(`/docs/${docId}/comments/${id}/thread`)
+  const { data } = await commentRequest(() => apiClient().get<CommentThread>(`/docs/${docId}/comments/${id}/thread`))
   return data
 }
 
@@ -73,9 +101,9 @@ export async function listComments(
   if (opts.cursor != null) params.set('cursor', String(opts.cursor))
   if (opts.limit != null) params.set('limit', String(opts.limit))
   const qs = params.toString()
-  const { data } = await apiClient().get<ListCommentsResult>(
+  const { data } = await commentRequest(() => apiClient().get<ListCommentsResult>(
     `/docs/${docId}/comments${qs ? `?${qs}` : ''}`,
-  )
+  ))
   return { items: data.items ?? [], nextCursor: data.nextCursor ?? null }
 }
 
@@ -95,9 +123,9 @@ export async function listCommentMarkers(
 ): Promise<ListCommentMarkersResult> {
   const params = new URLSearchParams({ limit: String(limit) })
   if (cursor != null) params.set('cursor', String(cursor))
-  const { data } = await apiClient().get<ListCommentMarkersResult>(
+  const { data } = await commentRequest(() => apiClient().get<ListCommentMarkersResult>(
     `/docs/${docId}/comments/markers?${params.toString()}`,
-  )
+  ))
   return { items: data.items ?? [], nextCursor: data.nextCursor ?? null }
 }
 
@@ -105,7 +133,9 @@ export async function listCommentMarkers(
 /** Marker endpoint is optional during rolling frontend/backend deploys. Only endpoint-contract
  * absence/conflict degrades to the detailed thread feed; auth and transport failures stay visible. */
 export function isUnavailableMarkerEndpoint(error: unknown): boolean {
-  const status = (error as { response?: { status?: number } })?.response?.status
+  const status = error instanceof CommentApiError
+    ? error.status
+    : (error as { response?: { status?: number } })?.response?.status
   return status === 404 || status === 409
 }
 
@@ -131,12 +161,12 @@ export async function listAllCommentMarkers(docId: string): Promise<CommentMarke
 
 /** POST /docs/:docId/comments — ROOT (carries anchors). Returns the new comment id. */
 export async function createRootComment(docId: string, input: CreateRootInput): Promise<number> {
-  const { data } = await apiClient().post<{ id: number }>(`/docs/${docId}/comments`, {
+  const { data } = await commentRequest(() => apiClient().post<{ id: number }>(`/docs/${docId}/comments`, {
     body: input.body,
     anchorStart: input.anchorStart,
     anchorEnd: input.anchorEnd,
     anchorText: input.anchorText ?? '',
-  })
+  }))
   return data.id
 }
 
@@ -146,16 +176,16 @@ export async function createReply(
   parentId: number,
   body: string,
 ): Promise<number> {
-  const { data } = await apiClient().post<{ id: number }>(`/docs/${docId}/comments`, {
+  const { data } = await commentRequest(() => apiClient().post<{ id: number }>(`/docs/${docId}/comments`, {
     body,
     parentId,
-  })
+  }))
   return data.id
 }
 
 /** PATCH /docs/:docId/comments/:id — edit body (AUTHOR only). */
 export async function editCommentBody(docId: string, id: number, body: string): Promise<void> {
-  await apiClient().patch(`/docs/${docId}/comments/${id}`, { body })
+  await commentRequest(() => apiClient().patch(`/docs/${docId}/comments/${id}`, { body }))
 }
 
 /** PATCH /docs/:docId/comments/:id — resolve / reopen a root (WRITER+). */
@@ -164,10 +194,10 @@ export async function setCommentResolved(
   id: number,
   resolved: boolean,
 ): Promise<void> {
-  await apiClient().patch(`/docs/${docId}/comments/${id}`, { resolved })
+  await commentRequest(() => apiClient().patch(`/docs/${docId}/comments/${id}`, { resolved }))
 }
 
 /** DELETE /docs/:docId/comments/:id — author soft-delete, or admin hard-delete (?hard=1). */
 export async function deleteComment(docId: string, id: number, hard = false): Promise<void> {
-  await apiClient().delete(`/docs/${docId}/comments/${id}${hard ? '?hard=1' : ''}`)
+  await commentRequest(() => apiClient().delete(`/docs/${docId}/comments/${id}${hard ? '?hard=1' : ''}`))
 }

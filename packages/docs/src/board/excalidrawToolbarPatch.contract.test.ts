@@ -23,7 +23,7 @@ const bundles = ['dev', 'prod'].map((mode) => ({
   ),
 }))
 
-describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ source, zhCN }) => {
+describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ mode, source, zhCN }) => {
   it('defaults to straight and emits a real three-point path only for curved arrows', () => {
     expect(source).toMatch(/currentItemArrowType[\s\S]{0,80}(?:ARROW_TYPE|\w+)\.sharp/)
     expect(source).toMatch(/currentItemRoundness[\s\S]{0,40}["']sharp["']/)
@@ -38,6 +38,10 @@ describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ source, z
     expect(source).toContain('Arrow type')
     expect(source).toContain('toolBar.extraTools')
     expect(source).toContain('toolBar.mermaidToExcalidraw')
+    expect(zhCN).toContain('nextResult')
+    expect(zhCN).toContain('previousResult')
+    expect(zhCN).toContain('elementLink')
+    expect(zhCN).toContain('emptyWebEmbed')
   })
 
   it('renders merged shape and line primaries without caret controls', () => {
@@ -167,26 +171,42 @@ describe.each(bundles)('patched Excalidraw $mode toolbar contract', ({ source, z
     expect(extraTools).toBeGreaterThan(eraser)
     expect(source).toContain('App-toolbar__extra-tools-trigger')
     expect(source).toContain('App-toolbar__extra-tools-dropdown')
+    expect(source).toMatch(/aria-label[\s\S]{0,160}toolbar-extra-tools|toolbar-extra-tools[\s\S]{0,160}aria-label/)
     expect(source).toContain('toolbar-frame')
     expect(source).toContain('toolbar-search')
     // The redundant canvas-colour entry is removed from 更多工具 — slot 9 owns it now.
     expect(source).not.toContain('toolbar-more-canvas-color')
     expect(source).toContain('toolbar-reset-canvas')
-    // The approved menu uses a pure circular reset arrow. ZoomResetIcon is a magnifier-reset glyph
-    // with an unwanted diagonal handle, while UndoIcon is only a one-turn back arrow.
-    const resetItem = source.slice(Math.max(0, source.indexOf('toolbar-reset-canvas') - 600), source.indexOf('toolbar-reset-canvas') + 80)
-    expect(resetItem).toContain('M4 8a8 8 0 1 1 0 8')
-    expect(resetItem).toContain('M4 4v4h4')
-    expect(resetItem).not.toMatch(/ZoomResetIcon|TrashIcon|UndoIcon|icon:sy|icon:Vn|icon:Jd/)
-    expect(source).toContain('Generate')
+    expect(source).toMatch(/margin:\s*["']6px 0["'][\s\S]{0,120}fontWeight:\s*600[\s\S]{0,120}Generate/)
     expect(source).toContain('toolbar-mermaid')
-    expect(source).toContain('toolBar.mermaidToExcalidraw')
-    const resetMenuItem = source.slice(Math.max(0, source.indexOf('toolbar-reset-canvas') - 800), source.indexOf('toolbar-reset-canvas') + 100)
-    expect(resetMenuItem).toMatch(/CtrlOrCmd\+Delete/)
-    const mermaidMenuItem = source.slice(Math.max(0, source.indexOf('toolbar-mermaid') - 500), source.indexOf('toolbar-mermaid') + 100)
-    expect(mermaidMenuItem).toContain('Shift+M')
-    expect(source).toContain('toolbar-magicframe')
-    expect(source).toContain('plugins.diagramToCode')
+    expect(source).toMatch(/toolbar-mermaid[\s\S]{0,260}Shift\+M|Shift\+M[\s\S]{0,260}toolbar-mermaid/)
+    expect(source).toMatch(/toolbar-mermaid[\s\S]{0,300}mermaidToExcalidraw|mermaidToExcalidraw[\s\S]{0,300}toolbar-mermaid/)
+    // Preserve Excalidraw's original DropdownMenu composition and styling. The production bundle
+    // may bind Trigger/Content/Item implementations directly because static component properties
+    // can be removed by the host app's second tree-shaking pass; dev keeps the original properties.
+    const extraToolsBlock = source.slice(
+      Math.max(0, source.indexOf('App-toolbar__extra-tools-trigger') - 500),
+      source.indexOf('toolbar-mermaid') + 500,
+    )
+    expect(extraToolsBlock).toMatch(/children:\s*(?:extraToolsIcon|octoExtraToolsIcon|[A-Za-z_$][\w$]*)/)
+    expect(extraToolsBlock).not.toContain('M5 12a2 2 0 1 0 0 .01M12 12a2 2 0 1 0 0 .01M19 12a2 2 0 1 0 0 .01')
+    expect(extraToolsBlock).toMatch(/(?:(?:DropdownMenu_default\.Trigger|DropdownMenuTrigger_default)|\biI)\s*,\s*\{[^}]*App-toolbar__extra-tools-trigger/)
+    expect(extraToolsBlock).toMatch(/(?:(?:DropdownMenu_default\.Content|DropdownMenuContent_default)|\bhI)\s*,\s*\{[^}]*App-toolbar__extra-tools-dropdown/)
+    expect(extraToolsBlock.match(/(?:(?:DropdownMenu_default\.Item|DropdownMenuItem_default)|\bTt)\s*,\s*\{/g)).toHaveLength(4)
+    expect(source).toContain('dropdown-menu-container')
+    // Keep the menu in the toolbar's native positioning context. Moving this one menu to body
+    // breaks the original right/below anchoring unless the complete dropdown positioning system moves too.
+    expect(extraToolsBlock).not.toMatch(/(?:createPortal|gg)\([\s\S]{0,200}document\.body/)
+    expect(extraToolsBlock).not.toMatch(/width:\s*190|position:\s*["']fixed["']/)
+    expect(source).not.toContain('toolbar-more-canvas-color')
+  })
+
+  it('localizes icon-only search controls and sidebar tabs', () => {
+    expect(source).toMatch(/search\.nextResult[\s\S]{0,100}aria-label|aria-label[\s\S]{0,100}search\.nextResult/)
+    expect(source).toMatch(/search\.previousResult[\s\S]{0,100}aria-label|aria-label[\s\S]{0,100}search\.previousResult/)
+    expect(source).toMatch(/search\.title[\s\S]{0,120}aria-label|aria-label[\s\S]{0,120}search\.title/)
+    expect(source).toMatch(/toolBar\.library[\s\S]{0,120}aria-label|aria-label[\s\S]{0,120}toolBar\.library/)
+    expect(source).not.toContain('library.title')
   })
 
   it('localizes delayed toolbar hints and lists only the current 1-0 mapping in keyboard help', () => {
