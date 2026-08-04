@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { canComment, canEdit, canManage, canSnapshot, canRestoreVersion, isRole, type Role } from './roles.ts'
 
-// Shared capabilities keep baseline comments open to every valid role; HTML applies
-// its stricter reader/commenter boundary locally. Edit/manage remain writer/admin.
+// Shared capabilities now enforce the commenter boundary everywhere: reader may VIEW comments
+// but not create/reply; commenter/writer/admin may comment. Edit/manage remain writer/admin.
 describe('four-role capability matrix', () => {
   const ALL: Role[] = ['reader', 'commenter', 'writer', 'admin']
 
@@ -16,8 +16,8 @@ describe('four-role capability matrix', () => {
     expect(isRole(3)).toBe(false)
   })
 
-  it('keeps the shared comments baseline open to every valid role', () => {
-    expect(canComment('reader')).toBe(true)
+  it('canComment = commenter | writer | admin (reader can view but not comment)', () => {
+    expect(canComment('reader')).toBe(false)
     expect(canComment('commenter')).toBe(true)
     expect(canComment('writer')).toBe(true)
     expect(canComment('admin')).toBe(true)

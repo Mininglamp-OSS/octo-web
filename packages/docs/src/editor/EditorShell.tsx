@@ -1,7 +1,7 @@
 import { EditorContent } from '@tiptap/react'
 import { useCollabEditor } from '../collab/useCollabEditor.ts'
 import type { CollabEditorOptions, ConnState } from '../collab/createCollabEditor.ts'
-import { canManage } from '../auth/roles.ts'
+import { canComment, canManage } from '../auth/roles.ts'
 import { Toolbar, EditorBubbleMenu, LinkBubbleMenu, MathBubbleMenu } from './Toolbar.tsx'
 import { TableContextMenu } from './TableControls.tsx'
 import { Outline } from './Outline.tsx'
@@ -793,7 +793,11 @@ export function EditorShell(props: EditorShellProps) {
             <LinkBubbleMenu editor={editor} />
             <MathBubbleMenu editor={editor} />
             <TableContextMenu editor={editor} />
-            <CommentBubble editor={editor} onCreate={comments.createRoot} spaceId={props.space} />
+            {/* Selection → comment bubble is a WRITE affordance: mount only for commenter+.
+                reader may view highlights/panel but has no comment entry (fail closed). */}
+            {role && canComment(role) && (
+              <CommentBubble editor={editor} onCreate={comments.createRoot} spaceId={props.space} />
+            )}
             <Outline editor={editor} />
             <div className="octo-editor-main">
               <EditorContent editor={editor} className="octo-prose" />

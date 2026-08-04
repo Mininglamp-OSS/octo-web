@@ -41,9 +41,11 @@ export function canRestoreVersion(role: Role): boolean {
 }
 
 /**
- * Shared document commenting remains open to anyone with access (the baseline “can see → can
- * comment” contract). HTML applies its stricter reader/commenter boundary locally.
+ * Commenting is a commenter/writer/admin capability across every document type: a reader may
+ * VIEW comments (the list/markers/highlights stay visible) but must never create or reply. This
+ * unifies the stricter boundary the HTML surface already enforced locally onto the shared
+ * rich-doc / sheet / board surfaces. canEdit ⇒ canComment stays monotone.
  */
 export function canComment(role: Role): boolean {
-  return isRole(role)
+  return role === 'commenter' || role === 'writer' || role === 'admin'
 }

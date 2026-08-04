@@ -87,8 +87,8 @@ describe('InvitePanel — allowedRoles narrows the role selector (OCT-195)', () 
     render(<InvitePanel docId="d_1" role="admin" />)
     await waitFor(() => {
       const opts = Array.from(document.querySelectorAll('select option')) as HTMLOptionElement[]
-      const roleOpts = opts.filter((o) => ['reader', 'writer', 'admin'].includes(o.value))
-      expect(roleOpts.map((o) => o.value).sort()).toEqual(['admin', 'reader', 'writer'])
+      const roleOpts = opts.filter((o) => ['reader', 'commenter', 'writer', 'admin'].includes(o.value))
+      expect(roleOpts.map((o) => o.value).sort()).toEqual(['admin', 'commenter', 'reader', 'writer'])
     })
   })
 

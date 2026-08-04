@@ -1,8 +1,8 @@
 // "Pending access requests" area inside the member panel (feature #511 screen 4c admin side).
 //
 // Admin-only (the parent MemberPanel already gates on canManage). Each row shows the requester
-// (resolved to a display name when known), a reader/writer role selector, and Approve / Deny.
-// Approving grants at the chosen role (server reuses upsertGrantMax, contract 1).
+// (resolved to a display name when known), a reader/commenter/writer role selector, and
+// Approve / Deny. Approving grants at the chosen role (server reuses upsertGrantMax, contract 1).
 
 import { useState } from 'react'
 import { t } from '../octoweb/index.ts'
@@ -10,7 +10,9 @@ import type { Role } from '../auth/roles.ts'
 import { type AccessRequestRole, isAccessRequestRole } from './api.ts'
 import type { UseAccessRequestsResult } from './useAccessRequests.ts'
 
-const DEFAULT_REQUEST_ROLES: AccessRequestRole[] = ['reader', 'writer']
+// Access-request approve supports reader|commenter|writer (Backend #147); the shared authority
+// entry now offers commenter here. (Forward grant stays reader|writer — a separate contract.)
+const DEFAULT_REQUEST_ROLES: AccessRequestRole[] = ['reader', 'commenter', 'writer']
 
 export function PendingRequests({
   requests,

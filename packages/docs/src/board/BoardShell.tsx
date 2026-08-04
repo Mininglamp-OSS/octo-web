@@ -499,7 +499,10 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // meta-lookup failure can never fall open to editable. `collabMode` also covers the async window
   // BEFORE the session attaches (a collab board whose session is still loading), so that window
   // stays read-only rather than briefly editable. The standalone path (no collab expected) has no
-  // server permission model, so it stays editable unless the meta explicitly says reader.
+  // server permission model, so it stays editable unless the role is non-editable. A KNOWN role
+  // gates editability by !canEdit(role) (fail closed) so a commenter — who may comment but must not
+  // edit the body — gets a read-only canvas just like a reader; only writer/admin edit. An unknown
+  // (undefined) role keeps the prior standalone default (editable) since there is no server truth.
   const collabMode = collab ?? !!collabSession
   const terminalActive = terminal.kind !== 'none'
   // On the collab path editability additionally requires `roleResolved`, not just a truthy `role`.
@@ -512,7 +515,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // — a stale `role` alone must never fall open to editable.
   const readOnly = collabMode
     ? terminalActive || !roleResolved || !(role !== undefined && canEdit(role))
-    : role === 'reader'
+    : role !== undefined ? !canEdit(role) : false
 
   // Access is "confirmed" for hydrating the local mirror only once the collab path has an
   // authoritative role and no terminal transition. The standalone path (own-browser localStorage,
@@ -581,6 +584,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       void comments.refresh()
     })
   }, [collabSession, comments.refresh, commentMarkers.refresh])
+
+  // Runtime downgrade (stateless role frame / revoke) must close any open inline comment composer
+  // so a pre-opened bubble can't be used to write after the role drops below commenter (fail closed).
+  useEffect(() => {
+    if (role !== undefined && !canComment(role)) setInlineCommentTarget(null)
+  }, [role])
   // Pending access-request count for the Members-button badge (admin only). Called unconditionally
   // (hooks rules); the hook stays inert when not manage.
   const pendingAccess = useAccessRequests(docId, manage)
@@ -2131,7 +2140,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           </button>
         )}
 
-        {inlineCommentTarget && inlineCommentPoint && (
+        {inlineCommentTarget && inlineCommentPoint && canComment(role ?? 'reader') && (
           <BoardInlineCommentComposer
             target={inlineCommentTarget}
             {...placeCommentOverlay(

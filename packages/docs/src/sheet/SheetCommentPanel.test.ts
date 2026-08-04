@@ -148,7 +148,7 @@ function makeSheet(activeCell: { key: string; a1: string; sheetId: string } | nu
 function renderPanel(
   sheet: CollabSheet | null,
   comments: UseDocComments = makeComments(),
-  role: 'reader' | 'writer' = 'reader',
+  role: 'reader' | 'commenter' | 'writer' | 'admin' = 'commenter',
 ) {
   return render(
     createElement(SheetCommentPanel, {
@@ -205,6 +205,116 @@ describe('SheetCommentPanel — compose entry button (XIN-1337)', () => {
     renderPanel(makeSheet(null))
     fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.commentButton/ }))
     expect(screen.getByRole('button', { name: /docs\.sheet\.comment\.current/ })).toBeTruthy()
+  })
+})
+
+// Four-role comment matrix (feat: enforce commenter role). reader may VIEW threads but has no
+// write entry (no root-compose button, no reply); commenter/writer/admin may compose + reply;
+// resolve/reopen stays writer/admin. Mirrors the doc + board panels.
+describe('SheetCommentPanel — four-role permission matrix', () => {
+  beforeEach(() => {
+    setWKApp(createMockWKApp())
+  })
+  afterEach(() => cleanup())
+
+  const sheet = () => makeSheet({ key: 'default!0:0', a1: 'A1', sheetId: 'default' })
+
+  it('reader: no compose entry and no reply button (view-only), thread still rendered', () => {
+    renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), 'reader')
+    expect(screen.queryByRole('button', { name: /docs\.comment\.commentButton/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /docs\.comment\.reply/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /docs\.comment\.resolve/ })).toBeNull()
+    // The comment body is still visible — reader can read.
+    expect(screen.getByText('comment 1')).toBeTruthy()
+  })
+
+  it('commenter: compose entry + reply present, but no resolve/reopen (cannot edit body)', () => {
+    renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), 'commenter')
+    expect(screen.getByRole('button', { name: /docs\.comment\.commentButton/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /docs\.comment\.reply/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /docs\.comment\.resolve/ })).toBeNull()
+  })
+
+  // Body-edit is writer-level (PATCH contract = author + writer); a commenter author keeps delete.
+  it('commenter author: no edit button on own comment, but delete stays', () => {
+    renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), 'commenter')
+    expect(screen.queryByRole('button', { name: /docs\.comment\.edit/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /docs\.comment\.delete/ })).toBeTruthy()
+  })
+
+  it('writer author: edit + delete both present on own comment', () => {
+    renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), 'writer')
+    expect(screen.getByRole('button', { name: /docs\.comment\.edit/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /docs\.comment\.delete/ })).toBeTruthy()
+  })
+
+  // Backend #147: DELETE requires the commenter floor, so a reader author must not see soft-delete.
+  it('reader author: no delete button (soft-delete needs commenter floor)', () => {
+    renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), 'reader')
+    expect(screen.queryByRole('button', { name: /docs\.comment\.delete/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /docs\.comment\.edit/ })).toBeNull()
+  })
+
+  // Admin hard-deletes even their OWN comment (author-agnostic moderator action): remove(id, true).
+  it('admin author: delete calls remove(id, true)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const remove = vi.fn(async () => ({ ok: true, error: null }))
+    renderPanel(sheet(), makeComments({ threads: [commentThread(1)], remove }), 'admin')
+    fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.delete/ }))
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(1, true))
+  })
+
+  for (const role of ['writer', 'admin'] as const) {
+    it(`${role}: compose entry + reply + resolve all present`, () => {
+      renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), role)
+      expect(screen.getByRole('button', { name: /docs\.comment\.commentButton/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: /docs\.comment\.reply/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: /docs\.comment\.resolve/ })).toBeTruthy()
+    })
+  }
+})
+
+// Runtime downgrade fail-closed: an open reply/edit composer + the root compose must close when
+// the role drops, so a stale closure can never submit after commenter->reader / writer->commenter.
+describe('SheetCommentPanel — runtime downgrade closes open composers', () => {
+  beforeEach(() => {
+    setWKApp(createMockWKApp())
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+  afterEach(() => cleanup())
+
+  const cell = () => makeSheet({ key: 'default!0:0', a1: 'A1', sheetId: 'default' })
+
+  it('commenter->reader closes an open reply composer', () => {
+    const { rerender } = renderPanel(cell(), makeComments({ threads: [commentThread(1)] }), 'commenter')
+    fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.reply/ }))
+    expect(document.querySelector('.octo-mention-composer')).not.toBeNull()
+    rerender(
+      createElement(SheetCommentPanel, {
+        docId: 'doc-1',
+        sheet: cell(),
+        role: 'reader',
+        comments: makeComments({ threads: [commentThread(1)] }),
+      }),
+    )
+    expect(screen.queryByRole('button', { name: /docs\.comment\.reply/ })).toBeNull()
+    expect(document.querySelector('.octo-mention-composer')).toBeNull()
+  })
+
+  it('writer->commenter closes an open edit composer on own comment', () => {
+    const { rerender } = renderPanel(cell(), makeComments({ threads: [commentThread(1)] }), 'writer')
+    fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.edit/ }))
+    expect(screen.getByRole('button', { name: /docs\.comment\.save/ })).toBeTruthy()
+    rerender(
+      createElement(SheetCommentPanel, {
+        docId: 'doc-1',
+        sheet: cell(),
+        role: 'commenter',
+        comments: makeComments({ threads: [commentThread(1)] }),
+      }),
+    )
+    expect(screen.queryByRole('button', { name: /docs\.comment\.save/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /docs\.comment\.edit/ })).toBeNull()
   })
 })
 

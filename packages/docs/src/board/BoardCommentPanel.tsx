@@ -33,14 +33,26 @@ function CommentBody({
 }) {
   const currentUid = getCurrentUid()
   const isAuthor = currentUid === comment.authorUid
-  const hardDelete = !isAuthor && canManage(role)
+  // Delete floor mirrors Backend #147: DELETE requires the commenter floor, so a reader author
+  // must NOT see/trigger soft-delete. hard = admin (author-agnostic). soft = own comment at commenter+.
+  const softDelete = isAuthor && canComment(role)
+  const hardDelete = canManage(role)
+  const canDelete = softDelete || hardDelete
+  const canEditBody = isAuthor && canEdit(role)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(comment.body)
   const [busy, setBusy] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
 
+  // Runtime downgrade fail-closed: close the edit composer if the role drops below edit.
+  useEffect(() => {
+    if (editing && !canEditBody) setEditing(false)
+  }, [editing, canEditBody])
+
   async function save() {
     const body = draft.trim()
+    // Re-check on submit so a stale closure can't PATCH after writer->commenter/reader.
+    if (!canEditBody) return
     if (!body || busy) return
     setBusy(true)
     setMutationError(null)
@@ -56,6 +68,7 @@ function CommentBody({
   }
 
   async function remove() {
+    if (!canDelete) return
     if (!window.confirm(t('docs.comment.deleteConfirm'))) return
     setBusy(true)
     setMutationError(null)
@@ -107,9 +120,10 @@ function CommentBody({
         <p className="octo-comment-text"><MentionText body={comment.body} names={names} /></p>
       )}
       {!editing && mutationError && <p className="octo-member-error" role="alert">{mutationError}</p>}
-      {!editing && (isAuthor || hardDelete) && (
+      {!editing && canDelete && (
         <div className="octo-comment-actions">
-          {isAuthor && (
+          {/* Body edit is writer+ (PATCH = author + writer); a commenter author may soft-delete but not edit. */}
+          {canEditBody && (
             <button type="button" className="octo-tb-btn" onClick={() => setEditing(true)}>
               {t('docs.comment.edit')}
             </button>
@@ -155,8 +169,15 @@ function BoardThread({
     if (active) itemRef.current?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
+  // Runtime downgrade fail-closed: commenter->reader while a reply composer is open must close it.
+  useEffect(() => {
+    if (replying && !canComment(role)) setReplying(false)
+  }, [replying, role])
+
   async function sendReply() {
     const body = reply.trim()
+    // Re-check on submit so a stale closure can't reply after commenter->reader.
+    if (!canComment(role)) return
     if (!body || busy) return
     setBusy(true)
     setReplyError(null)
@@ -292,6 +313,11 @@ export function BoardCommentPanel({
   const { threads, loading, loadingThreadIds, error, nextCursor, includeResolved, setIncludeResolved, loadMore } = comments
   const loadingActiveThread = activeCommentId != null && loadingThreadIds.has(activeCommentId)
 
+  // Runtime downgrade fail-closed: commenter->reader while composing a new comment must close it.
+  useEffect(() => {
+    if (composing && !canComment(role)) setComposing(false)
+  }, [composing, role])
+
   useEffect(() => {
     if (!initialTarget) return
     setTarget(initialTarget)
@@ -305,6 +331,8 @@ export function BoardCommentPanel({
   }
 
   async function submit() {
+    // Re-check on submit so a stale closure can't create after commenter->reader.
+    if (!canComment(role)) return
     if (!target || !body.trim() || busy) return
     setBusy(true)
     setComposeError(null)

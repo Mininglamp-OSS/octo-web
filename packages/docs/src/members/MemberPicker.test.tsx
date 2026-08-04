@@ -90,13 +90,13 @@ describe('MemberPicker (Problem 1)', () => {
     expect(addBtn.disabled).toBe(true)
   })
 
-  it('preserves the three baseline roles when roles prop is omitted', async () => {
+  it('preserves the four baseline roles when roles prop is omitted', async () => {
     render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
     await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
     const options = screen.getAllByRole('option') as HTMLOptionElement[]
     // role dropdown options (the member rows use role="option" too, so filter to the <option>s).
     const roleOptions = options.filter((o) => o.tagName === 'OPTION')
-    expect(roleOptions.map((o) => o.value)).toEqual(['reader', 'writer', 'admin'])
+    expect(roleOptions.map((o) => o.value)).toEqual(['reader', 'commenter', 'writer', 'admin'])
   })
 
   it('restricts the role dropdown to a single "reader" option when roles={[\'reader\']} (HTML doc)', async () => {
@@ -124,7 +124,7 @@ describe('MemberPicker (Problem 1)', () => {
       (o) => o.tagName === 'OPTION',
     ) as HTMLOptionElement[]
     // Dropdown is non-empty (falls back to the four defaults) instead of rendering zero options.
-    expect(roleOptions.map((o) => o.value)).toEqual(['reader', 'writer', 'admin'])
+    expect(roleOptions.map((o) => o.value)).toEqual(['reader', 'commenter', 'writer', 'admin'])
     // add() submits a valid Role ('writer' default), never undefined.
     fireEvent.click(screen.getByText('Ada Lovelace'))
     fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)

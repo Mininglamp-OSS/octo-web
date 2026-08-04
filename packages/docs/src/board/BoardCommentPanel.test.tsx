@@ -301,3 +301,121 @@ describe('Board comment mutation failures', () => {
     expect(resolve).toHaveBeenCalledWith(3, false)
   })
 })
+
+// Four-role comment matrix (feat: enforce commenter role). reader sees threads but has no write
+// entry (no "add comment" affordance, no reply); commenter/writer/admin may comment + reply;
+// resolve/reopen stays writer/admin (commenter cannot edit thread state).
+describe('BoardCommentPanel — four-role permission matrix', () => {
+  const renderRole = (role: 'reader' | 'commenter' | 'writer' | 'admin') =>
+    render(
+      <BoardCommentPanel
+        role={role}
+        comments={comments({ threads: [comment()] })}
+        names={new Map([['u_self', 'Me']])}
+        activeCommentId={1}
+        onActivate={() => {}}
+        getTarget={() => ({ anchor: { version: 1, kind: 'point', x: 1, y: 2 }, label: 'Point' })}
+        getElementType={() => undefined}
+        onClose={() => {}}
+      />,
+    )
+
+  it('reader: no add-comment entry, no reply, no resolve; thread body still visible', () => {
+    renderRole('reader')
+    expect(screen.queryByRole('button', { name: 'docs.board.comment.add' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'docs.comment.reply' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'docs.comment.resolve' })).toBeNull()
+    expect(screen.getByText('existing comment')).toBeTruthy()
+  })
+
+  it('commenter: add-comment + reply present, but no resolve/reopen (cannot edit body)', () => {
+    renderRole('commenter')
+    expect(screen.getByRole('button', { name: 'docs.board.comment.add' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'docs.comment.reply' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'docs.comment.resolve' })).toBeNull()
+  })
+
+  // Body-edit is writer-level (PATCH contract = author + writer); a commenter author keeps delete.
+  it('commenter author: no edit button on own comment, but delete stays', () => {
+    renderRole('commenter')
+    expect(screen.queryByRole('button', { name: 'docs.comment.edit' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'docs.comment.delete' })).toBeTruthy()
+  })
+
+  it('writer author: edit + delete both present on own comment', () => {
+    renderRole('writer')
+    expect(screen.getByRole('button', { name: 'docs.comment.edit' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'docs.comment.delete' })).toBeTruthy()
+  })
+
+  // Backend #147: DELETE requires the commenter floor, so a reader author must not see soft-delete.
+  it('reader author: no delete button (soft-delete needs commenter floor)', () => {
+    renderRole('reader')
+    expect(screen.queryByRole('button', { name: 'docs.comment.delete' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'docs.comment.edit' })).toBeNull()
+  })
+
+  // Admin hard-deletes even their OWN comment (author-agnostic moderator action): remove(id, true).
+  it('admin author: delete calls remove(id, true)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const remove = vi.fn(async () => passed)
+    render(
+      <BoardCommentPanel
+        role="admin"
+        comments={comments({ threads: [comment()], remove })}
+        names={new Map([['u_self', 'Me']])}
+        activeCommentId={1}
+        onActivate={() => {}}
+        getTarget={() => ({ anchor: { version: 1, kind: 'point', x: 1, y: 2 }, label: 'Point' })}
+        getElementType={() => undefined}
+        onClose={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'docs.comment.delete' }))
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(1, true))
+  })
+
+  for (const role of ['writer', 'admin'] as const) {
+    it(`${role}: add-comment + reply + resolve all present`, () => {
+      renderRole(role)
+      expect(screen.getByRole('button', { name: 'docs.board.comment.add' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'docs.comment.reply' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'docs.comment.resolve' })).toBeTruthy()
+    })
+  }
+})
+
+// Runtime downgrade fail-closed: an open reply/edit composer must close when the role drops, so a
+// stale closure can never submit after commenter->reader / writer->commenter.
+describe('BoardCommentPanel — runtime downgrade closes open composers', () => {
+  const view = (role: 'reader' | 'commenter' | 'writer' | 'admin') => (
+    <BoardCommentPanel
+      role={role}
+      comments={comments({ threads: [comment()] })}
+      names={new Map([['u_self', 'Me']])}
+      activeCommentId={1}
+      onActivate={() => {}}
+      getTarget={() => ({ anchor: { version: 1, kind: 'point', x: 1, y: 2 }, label: 'Point' })}
+      getElementType={() => undefined}
+      onClose={() => {}}
+    />
+  )
+
+  it('commenter->reader closes an open reply composer', () => {
+    const { rerender } = render(view('commenter'))
+    fireEvent.click(screen.getByRole('button', { name: 'docs.comment.reply' }))
+    expect(screen.getByPlaceholderText('docs.comment.replyPlaceholder')).toBeTruthy()
+    rerender(view('reader'))
+    expect(screen.queryByPlaceholderText('docs.comment.replyPlaceholder')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'docs.comment.reply' })).toBeNull()
+  })
+
+  it('writer->commenter closes an open edit composer on own comment', () => {
+    const { rerender } = render(view('writer'))
+    fireEvent.click(screen.getByRole('button', { name: 'docs.comment.edit' }))
+    expect(screen.getByDisplayValue('existing comment')).toBeTruthy()
+    rerender(view('commenter'))
+    expect(screen.queryByDisplayValue('existing comment')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'docs.comment.edit' })).toBeNull()
+  })
+})

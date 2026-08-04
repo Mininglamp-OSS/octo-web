@@ -758,7 +758,7 @@ describe('BoardShell — Octo context-menu integration', () => {
     expect(octoToast.success).not.toHaveBeenCalled()
   })
 
-  it('keeps reader comments and safe copy/export/link actions while hiding mutations', async () => {
+  it('keeps a reader’s safe copy/export/link actions while hiding comment + mutation actions', async () => {
     const { session } = makeSession(true, 'reader')
     canvas.appState.selectedElementIds = { 'shape-1': true }
     canvas.elements = [
@@ -789,7 +789,8 @@ describe('BoardShell — Octo context-menu integration', () => {
     })
 
     const menu = await screen.findByRole('menu')
-    expect(menu.textContent).toContain('docs.board.comment.contextMenu')
+    // A reader may VIEW comments but not create them: the comment entry is gone (canComment=false).
+    expect(menu.textContent).not.toContain('docs.board.comment.contextMenu')
     for (const action of ['copy', 'copyAsPng', 'copyAsSvg', 'copyText', 'copyElementLink']) {
       expect(menu.textContent).toContain(`docs.board.contextMenu.${action}`)
     }

@@ -19,7 +19,7 @@ import { PendingRequests } from '../access-request/PendingRequests.tsx'
 import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
 import type { ShareSeed, ShareSettings } from '../share/shareScope.ts'
 
-const ROLES: Role[] = ['reader', 'writer', 'admin']
+const ROLES: Role[] = ['reader', 'commenter', 'writer', 'admin']
 
 /**
  * Admin-only member management panel (frontend-design §12.1). Hidden when role is not admin.
