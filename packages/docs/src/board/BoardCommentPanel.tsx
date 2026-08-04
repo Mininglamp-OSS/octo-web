@@ -33,10 +33,9 @@ function CommentBody({
 }) {
   const currentUid = getCurrentUid()
   const isAuthor = currentUid === comment.authorUid
-  // Delete floor mirrors Backend #147: DELETE requires the commenter floor, so a reader author
-  // must NOT see/trigger soft-delete. hard = admin (author-agnostic). soft = own comment at commenter+.
+  // Reader authors cannot delete. Authors at commenter+ soft-delete; admins hard-delete others.
   const softDelete = isAuthor && canComment(role)
-  const hardDelete = canManage(role)
+  const hardDelete = !isAuthor && canManage(role)
   const canDelete = softDelete || hardDelete
   const canEditBody = isAuthor && canEdit(role)
   const [editing, setEditing] = useState(false)

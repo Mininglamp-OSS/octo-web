@@ -89,10 +89,9 @@ function CommentBody({
   const [mutationError, setMutationError] = useState<string | null>(null)
 
   const isAuthor = comment.authorUid === currentUid
-  // Delete floor mirrors Backend #147: DELETE requires the commenter floor, so a reader author
-  // must NOT see/trigger soft-delete. hard = admin (author-agnostic). soft = own comment at commenter+.
+  // Reader authors cannot delete. Authors at commenter+ soft-delete; admins hard-delete others.
   const softDelete = isAuthor && canComment(role)
-  const hardDelete = canManage(role)
+  const hardDelete = !isAuthor && canManage(role)
   const canDelete = softDelete || hardDelete
   const canEditBody = isAuthor && canEdit(role)
 
@@ -118,11 +117,11 @@ function CommentBody({
   }
 
   async function onDelete() {
+    if (!canDelete) return
     if (!window.confirm(t('docs.comment.deleteConfirm'))) return
     setBusy(true)
     setMutationError(null)
     try {
-      if (!canDelete) return
       const result = await comments.remove(comment.id, hardDelete)
       if (!result.ok) setMutationError(result.error)
     } finally {

@@ -155,8 +155,7 @@ describe('CommentPanel — four-role permission matrix', () => {
     expect(screen.queryByRole('button', { name: 'docs.comment.edit' })).toBeNull()
   })
 
-  // Admin hard-deletes even their OWN comment (moderator action, author-agnostic): remove(id, true).
-  it('admin author: delete calls remove(id, true)', async () => {
+  it('admin author: own delete stays soft', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const remove = vi.fn(async () => passed)
     render(
@@ -169,7 +168,7 @@ describe('CommentPanel — four-role permission matrix', () => {
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'docs.comment.delete' }))
-    await waitFor(() => expect(remove).toHaveBeenCalledWith(1, true))
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(1, false))
   })
 
   for (const role of ['writer', 'admin'] as const) {
