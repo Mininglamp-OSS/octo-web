@@ -1095,6 +1095,9 @@ export default class BaseModule implements IModule {
         if (WKApp.shared.notSupportForward.includes(message.contentType)) {
           return null;
         }
+        if (message.contentType === MessageContentTypeConst.threadCreated) {
+          return null;
+        }
 
         return {
           title: t("base.module.contextMenus.forward"),
