@@ -36,7 +36,7 @@ describe('forward grant API (contract 1 — distinct forward-grant endpoint, per
     expect(api.calls[0]).toMatchObject({ body: { uid: 'u_a', role: 'commenter' } })
   })
 
-  it('maps 404 → not_found and 403 → forbidden (per-uid), other errors → error', async () => {
+  it('maps 404/403/400 distinctly and keeps server errors retryable', async () => {
     api.responder = () => {
       throw { response: { status: 404 } }
     }
@@ -46,9 +46,29 @@ describe('forward grant API (contract 1 — distinct forward-grant endpoint, per
     }
     expect(await grantForward('d', 'x', 'writer')).toBe('forbidden')
     api.responder = () => {
+      throw { response: { status: 400 } }
+    }
+    expect(await grantForward('d', 'invalid', 'reader')).toBe('rejected')
+    api.responder = () => {
       throw { response: { status: 500 } }
     }
     expect(await grantForward('d', 'y', 'reader')).toBe('error')
+  })
+
+  it('reports permanent 400 rejections separately from other failures', async () => {
+    api.responder = (_m, _u, body) => {
+      const uid = (body as { uid: string }).uid
+      if (uid === 'u_bad') throw { response: { status: 400 } }
+      if (uid === 'u_missing') throw { response: { status: 404 } }
+      return { data: {}, status: 200 }
+    }
+    const res = await grantForwardMany('d_1', ['u_ok', 'u_bad', 'u_missing'], 'commenter')
+    expect(res).toEqual({
+      granted: 1,
+      failed: 2,
+      failures: ['u_bad', 'u_missing'],
+      rejected: ['u_bad'],
+    })
   })
 
   it('grantForwardMany aggregates N/M, de-dupes uids, and reports failures (contract 2)', async () => {

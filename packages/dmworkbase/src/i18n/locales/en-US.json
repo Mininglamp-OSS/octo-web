@@ -844,6 +844,7 @@
   "forwardModal.grant.sendFailed": "Failed to forward.",
   "forwardModal.grant.partialSendFailed": "Failed to forward to {{failed}} of {{total}} targets.",
   "forwardModal.grant.partialGrantFailed": "Sent, but failed to grant access to {{failed}} member(s).",
+  "forwardModal.grant.grantRejected": "Sent, but {{failed}} access grant(s) were rejected as unsupported and cannot be retried unchanged.",
   "forwardModal.grant.forwarded": "Forwarded.",
   "joinSpace.confirm": "Join",
   "joinSpace.description": "Enter a Space invite code or invite link to join an existing workspace.",

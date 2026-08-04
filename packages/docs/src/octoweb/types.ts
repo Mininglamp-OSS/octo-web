@@ -151,6 +151,7 @@ export interface DocForwardGrantResult {
   granted: number
   failed: number
   failures?: string[]
+  rejected?: string[]
 }
 
 /**
@@ -177,7 +178,7 @@ export interface HostDocForward {
   disabledReason?: string
   defaultRole?: 'reader' | 'commenter' | 'writer'
   grantAccess?(uids: string[], role: 'reader' | 'commenter' | 'writer'): Promise<DocForwardGrantResult>
-  onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
+  onResult?(result: { sent: number; failed: number; grantFailures?: string[]; grantRejections?: string[] }): void
 }
 
 /** Minimal surface of the host's WKBase context the docs bridge touches. */
@@ -220,7 +221,7 @@ export interface OpenDocForwardOptions {
   modalTitle?: string
   /** docs-injected grant executor; host awaits it before sending. */
   grantAccess?(uids: string[], role: 'reader' | 'commenter' | 'writer'): Promise<DocForwardGrantResult>
-  onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
+  onResult?(result: { sent: number; failed: number; grantFailures?: string[]; grantRejections?: string[] }): void
 }
 
 /**

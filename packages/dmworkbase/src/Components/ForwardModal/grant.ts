@@ -45,8 +45,10 @@ export interface ForwardGrantConfig {
 export interface ForwardGrantResult {
   granted: number
   failed: number
-  /** uids that failed to be granted (404 / 403), for the partial-failure hint. */
+  /** All uids that failed to be granted. */
   failures?: string[]
+  /** Uids permanently rejected by the API contract (HTTP 400). */
+  rejected?: string[]
 }
 
 /**
@@ -91,5 +93,5 @@ export interface DocForwardOpen {
   /** docs-injected executor; host awaits it BEFORE sending (先授权后发). */
   grantAccess?(uids: string[], role: ForwardGrantRole): Promise<ForwardGrantResult>
   /** Optional outcome callback (host already toasts; docs may use this for extra UI). */
-  onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
+  onResult?(result: { sent: number; failed: number; grantFailures?: string[]; grantRejections?: string[] }): void
 }

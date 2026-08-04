@@ -302,13 +302,14 @@ export default class WKBase
   ): Promise<void> {
     const { t } = this.context;
     let grantFailures: string[] | undefined;
+    let grantRejections: string[] | undefined;
 
     // 0) disband guard 提前一次，仅为 grant 阶段决定是否有可授权目标。真正的 send 阶段
     // disband 计入交给 ForwardService（它同样过滤 disband 并计入 failedTargets）。
     const sendable = channels.filter((ch) => !isConversationDisbanded(ch));
     if (sendable.length === 0) {
       Toast.error(t("base.forwardModal.grant.sendFailed"));
-      forward.onResult?.({ sent: 0, failed: channels.length, grantFailures: undefined });
+      forward.onResult?.({ sent: 0, failed: channels.length, grantFailures: undefined, grantRejections: undefined });
       return;
     }
 
@@ -319,6 +320,7 @@ export default class WKBase
         if (uids.length > 0) {
           const res = await forward.grantAccess(uids, grant.role);
           if (res.failed > 0) grantFailures = res.failures;
+          if (res.rejected && res.rejected.length > 0) grantRejections = res.rejected;
         }
       } catch {
         // A grant failure must not block sending the message — the receiver can still
@@ -368,6 +370,12 @@ export default class WKBase
           values: { failed: state.failed, total: state.total },
         })
       );
+    } else if (grantRejections && grantRejections.length > 0) {
+      Toast.warning(
+        t("base.forwardModal.grant.grantRejected", {
+          values: { failed: grantRejections.length },
+        })
+      );
     } else if (grantFailures && grantFailures.length > 0) {
       Toast.warning(
         t("base.forwardModal.grant.partialGrantFailed", {
@@ -379,7 +387,7 @@ export default class WKBase
     }
 
     const sent = state.total - state.failed;
-    forward.onResult?.({ sent, failed: state.failed, grantFailures });
+    forward.onResult?.({ sent, failed: state.failed, grantFailures, grantRejections });
   }
 
   hideUserInfo() {
