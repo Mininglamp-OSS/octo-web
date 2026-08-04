@@ -11,8 +11,8 @@
 
 import { apiClient, type ApiError } from '../octoweb/index.ts'
 
-/** Roles a forwarder may grant — reader/writer only (no commenter/admin, AC-3/AC-16). */
-export type ForwardGrantRole = 'reader' | 'writer'
+/** Roles a forwarder may grant — reader/commenter/writer only (no admin). */
+export type ForwardGrantRole = 'reader' | 'commenter' | 'writer'
 
 /** Per-uid grant outcome, mapped from the HTTP status so the caller can aggregate N/M. */
 export type ForwardGrantOutcome = 'ok' | 'not_found' | 'forbidden' | 'error'

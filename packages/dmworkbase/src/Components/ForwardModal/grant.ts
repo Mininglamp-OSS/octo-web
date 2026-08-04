@@ -8,8 +8,8 @@
 
 import type { Channel } from "wukongimjssdk"
 
-/** Roles a forwarder may grant when forwarding a doc — no commenter / admin (AC-3 / AC-16). */
-export type ForwardGrantRole = "reader" | "writer"
+/** Roles a forwarder may grant when forwarding a doc — no admin. */
+export type ForwardGrantRole = "reader" | "commenter" | "writer"
 
 /** The grant selection emitted on confirm — undefined when the switch is off. */
 export interface ForwardGrant {

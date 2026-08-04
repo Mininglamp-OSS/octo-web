@@ -347,7 +347,7 @@ export default class WKBase
           card.ownerName = forward.ownerName ?? "";
           card.updatedAt = forward.updatedAt ?? "";
           card.url = forward.link;
-          card.permission = (grant?.role ?? forward.defaultRole ?? "reader") === "writer" ? "writer" : "reader";
+          card.permission = grant?.role ?? forward.defaultRole ?? "reader";
           return card;
         }
       : () => new MessageText(buildForwardMessageText(forward.messageTitle, forward.link));

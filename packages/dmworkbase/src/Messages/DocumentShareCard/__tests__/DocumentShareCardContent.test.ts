@@ -59,7 +59,7 @@ describe("buildDocNavUrl — locally rebuilt safe nav URL (P1-b)", () => {
   });
 });
 
-describe("permissionState — badge driven only by live ACL, wire claim neutralized (P2-3)", () => {
+describe("permissionState — live ACL gates the decoded permission badge", () => {
   it("denied → no_access, unavailable → unavailable", () => {
     expect(permissionState("denied")).toBe("no_access");
     expect(permissionState("unavailable")).toBe("unavailable");
@@ -67,6 +67,11 @@ describe("permissionState — badge driven only by live ACL, wire claim neutrali
 
   it("ready (ACL confirmed) → reader", () => {
     expect(permissionState("ready")).toBe("reader");
+  });
+
+  it("ready preserves a validated commenter/writer display permission", () => {
+    expect(permissionState("ready", "commenter")).toBe("commenter");
+    expect(permissionState("ready", "writer")).toBe("writer");
   });
 
   it.each(["loading", "error"] as const)(

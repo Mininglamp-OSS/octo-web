@@ -30,6 +30,12 @@ describe('forward grant API (contract 1 — distinct forward-grant endpoint, per
     })
   })
 
+  it('passes commenter through to the forward-grant API', async () => {
+    api.responder = () => ({ data: {}, status: 200 })
+    expect(await grantForward('d_1', 'u_a', 'commenter')).toBe('ok')
+    expect(api.calls[0]).toMatchObject({ body: { uid: 'u_a', role: 'commenter' } })
+  })
+
   it('maps 404 → not_found and 403 → forbidden (per-uid), other errors → error', async () => {
     api.responder = () => {
       throw { response: { status: 404 } }

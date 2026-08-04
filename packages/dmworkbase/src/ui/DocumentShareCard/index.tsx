@@ -4,7 +4,7 @@ import "./index.css";
 export type DocShareKind = "doc" | "board" | "sheet";
 
 /** viewer 视角的权限态（由 Cell 依据实时 ACL 取数结果给出）。 */
-export type DocSharePermissionState = "reader" | "writer" | "no_access" | "unavailable" | "checking";
+export type DocSharePermissionState = "reader" | "commenter" | "writer" | "no_access" | "unavailable" | "checking";
 
 /** 首屏预览取数状态。 */
 export type DocSharePreviewStatus = "loading" | "ready" | "denied" | "unavailable" | "error";
@@ -48,7 +48,7 @@ export interface DocumentShareCardProps {
 
 /** 权限态 → 角标/卡片色调。 */
 function toneOf(state: DocSharePermissionState): "success" | "warning" | "error" | "neutral" {
-  if (state === "reader" || state === "writer") return "success";
+  if (state === "reader" || state === "commenter" || state === "writer") return "success";
   if (state === "no_access") return "warning";
   if (state === "unavailable") return "error";
   return "neutral";

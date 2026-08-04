@@ -54,8 +54,8 @@ describe("useForwardGrant", () => {
   })
 
   it("uses caller-provided defaultRole when specified", () => {
-    render({ canGrant: true, defaultRole: "writer" })
-    expect(latest.grantRole).toBe("writer")
+    render({ canGrant: true, defaultRole: "commenter" })
+    expect(latest.grantRole).toBe("commenter")
   })
 
   it("resets role to defaultRole whenever the switch is turned back on (AC-4 / AC-15)", () => {
@@ -89,6 +89,13 @@ describe("useForwardGrant", () => {
     act(() => latest.setGrantEnabled(true))
     act(() => latest.setGrantRole("writer"))
     expect(latest.readConfirmPayload()).toEqual({ role: "writer" })
+  })
+
+  it("emits commenter when selected", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() => latest.setGrantRole("commenter"))
+    expect(latest.readConfirmPayload()).toEqual({ role: "commenter" })
   })
 
   it("readConfirmPayload keeps a stable identity across renders (safe for stable confirm)", () => {

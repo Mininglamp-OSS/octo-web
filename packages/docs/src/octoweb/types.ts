@@ -175,8 +175,8 @@ export interface HostDocForward {
   updatedAt?: string
   canGrant: boolean
   disabledReason?: string
-  defaultRole?: 'reader' | 'writer'
-  grantAccess?(uids: string[], role: 'reader' | 'writer'): Promise<DocForwardGrantResult>
+  defaultRole?: 'reader' | 'commenter' | 'writer'
+  grantAccess?(uids: string[], role: 'reader' | 'commenter' | 'writer'): Promise<DocForwardGrantResult>
   onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
 }
 
@@ -215,11 +215,11 @@ export interface OpenDocForwardOptions {
   /** Grey-out hint for non-grantors. */
   disabledReason?: string
   /** Default grant role when the switch is on (defaults to 'reader'). */
-  defaultRole?: 'reader' | 'writer'
+  defaultRole?: 'reader' | 'commenter' | 'writer'
   /** Modal title shown at the top of the conversation-select dialog. */
   modalTitle?: string
   /** docs-injected grant executor; host awaits it before sending. */
-  grantAccess?(uids: string[], role: 'reader' | 'writer'): Promise<DocForwardGrantResult>
+  grantAccess?(uids: string[], role: 'reader' | 'commenter' | 'writer'): Promise<DocForwardGrantResult>
   onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
 }
 

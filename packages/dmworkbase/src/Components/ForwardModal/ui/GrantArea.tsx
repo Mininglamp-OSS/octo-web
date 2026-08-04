@@ -33,6 +33,7 @@ export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
           onChange={(e) => grant.onRoleChange(e.target.value as ForwardGrantConfig["role"])}
         >
           <option value="reader">{t("base.forwardModal.grant.roleReader")}</option>
+          <option value="commenter">{t("base.forwardModal.grant.roleCommenter")}</option>
           <option value="writer">{t("base.forwardModal.grant.roleWriter")}</option>
         </select>
       </div>

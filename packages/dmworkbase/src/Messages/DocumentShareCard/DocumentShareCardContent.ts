@@ -7,10 +7,10 @@ import { asDocIdentifier } from "./docIdentity";
 export type DocShareKind = "doc" | "board" | "sheet";
 
 /** 转发时授予接收者的权限（forwardGrant 的结果，只承载展示语义）。 */
-export type DocSharePermission = "reader" | "writer";
+export type DocSharePermission = "reader" | "commenter" | "writer";
 
 const KINDS: DocShareKind[] = ["doc", "board", "sheet"];
-const PERMISSIONS: DocSharePermission[] = ["reader", "writer"];
+const PERMISSIONS: DocSharePermission[] = ["reader", "commenter", "writer"];
 
 /** 从 unknown 安全取字符串（SDK decodeJSON 签名为 any，一律按 unknown 收窄）。 */
 function asString(v: unknown, fallback = ""): string {
@@ -55,7 +55,7 @@ export class DocumentShareCardContent extends MessageContent {
   updatedAt = "";
   /** 可点击的文档链接（buildDocLink 生成，含 docId/spaceId）。 */
   url = "";
-  /** 转发时授予接收者的权限（reader/writer），仅展示用途。 */
+  /** 转发时授予接收者的权限（reader/commenter/writer），仅展示用途。 */
   permission: DocSharePermission = "reader";
 
   get contentType() {

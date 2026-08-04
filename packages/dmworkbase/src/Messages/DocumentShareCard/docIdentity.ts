@@ -34,13 +34,16 @@ import type { DocSharePermissionState, DocSharePreviewStatus } from "../../ui/Do
 /**
  * 权限态推导：**只由接收者本人的实时 ACL 取数结果驱动**——
  *   - denied → no_access（需申请）；unavailable → unavailable（不可用）；
- *   - ready（ACL 确认可访问）→ reader（可查看）；
+ *   - ready（ACL 确认可访问）→ 消息中经解码白名单收窄后的 reader/commenter/writer；
  *   - loading / error（尚未确认）→ checking（中性，绝不宣称"可查看/已授予"）。
- * 硬化「中和展示态声明」：不采信 payload 里的 `permission`（wire 声明可伪造）；未确认前保守显示。
+ * permission 只影响 ACL 已确认后的角标级别；未确认前始终保守显示 checking。
  */
-export function permissionState(status: DocSharePreviewStatus): DocSharePermissionState {
+export function permissionState(
+  status: DocSharePreviewStatus,
+  permission: "reader" | "commenter" | "writer" = "reader",
+): DocSharePermissionState {
   if (status === "denied") return "no_access";
   if (status === "unavailable") return "unavailable";
-  if (status === "ready") return "reader";
+  if (status === "ready") return permission;
   return "checking";
 }

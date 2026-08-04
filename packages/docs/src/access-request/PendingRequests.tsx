@@ -11,7 +11,7 @@ import { type AccessRequestRole, isAccessRequestRole } from './api.ts'
 import type { UseAccessRequestsResult } from './useAccessRequests.ts'
 
 // Access-request approve supports reader|commenter|writer (Backend #147); the shared authority
-// entry now offers commenter here. (Forward grant stays reader|writer — a separate contract.)
+// entry now offers commenter here, matching the three-role forward grant contract.
 const DEFAULT_REQUEST_ROLES: AccessRequestRole[] = ['reader', 'commenter', 'writer']
 
 export function PendingRequests({

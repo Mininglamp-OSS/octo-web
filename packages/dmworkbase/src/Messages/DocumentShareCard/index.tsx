@@ -97,7 +97,11 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
     state: DocSharePermissionState,
   ): { preview?: DocSharePreview; placeholder?: DocSharePlaceholder } {
     const { t } = this.context;
-    if ((state === "reader" || state === "writer") && this.state.status === "ready" && this.state.preview) {
+    if (
+      (state === "reader" || state === "commenter" || state === "writer") &&
+      this.state.status === "ready" &&
+      this.state.preview
+    ) {
       return { preview: this.state.preview };
     }
     if (state === "no_access") {
@@ -127,7 +131,7 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
   render() {
     const { message, context } = this.props;
     const content = message.content as DocumentShareCardContent;
-    const state = permissionState(this.state.status);
+    const state = permissionState(this.state.status, content.permission);
     const strings = this.buildStrings(content, state);
     const { preview, placeholder } = this.buildPreviewOrPlaceholder(state);
 
