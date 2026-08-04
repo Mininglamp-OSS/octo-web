@@ -38,21 +38,33 @@
 }
 
 .wk-subscrierlist-title-inline {
-    display: inline-flex;
+    display: flex;
+    width: 100%;
     align-items: center;
     gap: var(--wk-sp-3);
     min-width: 0;
+    max-width: 100%;
+}
+
+.wk-channelsetting .wk-route-header-title-next:has(.wk-subscrierlist-title-inline) {
+    width: calc(100% - var(--wk-sp-8));
 }
 
 .wk-subscrierlist-title-label {
+    min-width: 0;
+    overflow: hidden;
     color: var(--wk-text-primary);
     font-size: inherit;
     font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .wk-subscrierlist-title-add {
     display: inline-flex;
+    flex: 0 0 auto;
     align-items: center;
+    margin-left: auto;
     border: 0;
     background: transparent;
     color: var(--wk-text-primary);
@@ -61,6 +73,7 @@
     font-weight: 600;
     line-height: var(--wk-sp-6);
     padding: 0;
+    white-space: nowrap;
 }
 
 .wk-subscrierlist .wk-indextable-search-icon {
