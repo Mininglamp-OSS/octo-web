@@ -1,0 +1,39 @@
+/* R1 placeholder styling for the html_ppt read-only surface. Centered empty-state card mirroring
+   the docs list empty-state treatment; no bespoke colors so it inherits the docs theme. */
+.octo-ppt-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+}
+
+.octo-ppt-view-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 32px;
+}
+
+.octo-ppt-view-kind {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.6;
+  margin: 0;
+}
+
+.octo-ppt-view-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.octo-ppt-view-hint {
+  font-size: 14px;
+  opacity: 0.7;
+  margin: 0;
+}

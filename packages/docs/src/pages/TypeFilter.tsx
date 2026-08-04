@@ -5,7 +5,7 @@ import { DOC_TYPES, type DocType } from './docsApi.ts'
 
 /**
  * i18n label key per document kind. The candidates are the fixed {@link DOC_TYPES} enum
- * (doc/sheet/board/html), so — unlike the creator facet — there is NO server `type-facet` endpoint: the
+ * (doc/sheet/board/html/html_ppt), so — unlike the creator facet — there is NO server `type-facet` endpoint: the
  * dropdown writes the candidate set directly and reuses the same labels the list-row icon uses
  * (docs.list.kind*), keeping the filter and the rows consistent (XIN-1188).
  */
@@ -14,6 +14,7 @@ const TYPE_LABEL_KEY: Record<DocType, string> = {
   sheet: 'docs.list.kindSheet',
   board: 'docs.list.kindBoard',
   html: 'docs.list.kindHtml',
+  html_ppt: 'docs.list.kindPpt',
 }
 
 /** Shared kind label so the dropdown and the chips label a type identically. */

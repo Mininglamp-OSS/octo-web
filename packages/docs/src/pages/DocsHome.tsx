@@ -6,6 +6,8 @@ import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
 import { BoardSession } from '../board/BoardSession.tsx'
 import { HtmlDocView } from '../html/HtmlDocView.tsx'
+import { PptDocView } from '../ppt/PptDocView.tsx'
+import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
 import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
 import { docsApiBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
@@ -363,6 +365,21 @@ function HtmlRowIcon(): React.ReactElement {
   )
 }
 
+/**
+ * PPT (slide-deck) row glyph — a framed 16:9 slide with a play/present triangle, drawn in the same
+ * stroked style (no fill blocks) as the doc/board/sheet/html glyphs so an `html_ppt` row reads as a
+ * peer of the other four kinds rather than borrowing the plain-doc icon.
+ */
+function PptRowIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="2" y="3" width="12" height="8" rx="1" stroke="currentColor" strokeWidth="1" fill="none" />
+      <path d="M6.5 5.75 10 7.5 6.5 9.25V5.75Z" stroke="currentColor" strokeWidth="1" fill="none" strokeLinejoin="round" />
+      <path d="M6 13.5h4" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function WordImportIcon(): React.ReactElement {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -494,6 +511,7 @@ function DocsList({
   selectedDocId,
   onSelect,
   onCreateHtml,
+  onCreatePpt,
   reloadToken,
   botUids,
 }: {
@@ -505,6 +523,12 @@ function DocsList({
   onSelect: (docId: string, docType?: string, octoDocSlug?: string, title?: string) => void
   /** Open the "new HTML (embedded bot DM)" flow (plan Task 6). Menu-only; never calls createDoc. */
   onCreateHtml: () => void
+  /**
+   * Open the "new slides (html_ppt)" flow. R1 (XIN-1501) is entry-only: this opens a "coming soon"
+   * notice — live create + template picker land in R2 with `POST /api/v1/ppt/docs`. Menu-only;
+   * never calls createDoc (a Bento deck is not a rich-text doc).
+   */
+  onCreatePpt: () => void
   reloadToken?: number
   /** uids of every bot in the space; a row whose ownerId is here shows a bot badge. */
   botUids: Set<string>
@@ -728,26 +752,30 @@ function DocsList({
     // so a known spreadsheet row opens straight into SheetView. When the list API omitted docType
     // AND we have no local board record — a NON-creator viewing a shared board — pass `undefined`
     // so openDoc resolves the authoritative kind via getDoc (the M2 routing bug).
-    const knownKind: 'board' | 'doc' | 'sheet' | 'html' | undefined = board
+    const knownKind: 'board' | 'doc' | 'sheet' | 'html' | 'html_ppt' | undefined = board
       ? 'board'
       : d.docType === 'sheet'
         ? 'sheet'
         : d.docType === 'html'
           ? 'html'
-          : d.docType === 'doc'
-            ? 'doc'
-            : undefined
+          : d.docType === 'html_ppt'
+            ? 'html_ppt'
+            : d.docType === 'doc'
+              ? 'doc'
+              : undefined
     // Row-icon kind (visual only, always concrete): a known board, then an explicit sheet, else a
     // plain doc — the three-way distinction so a spreadsheet never renders as a document icon
     // (XIN-1188). Independent of `knownKind` above, which stays `undefined` for an unresolved
     // shared row so openDoc can still resolve the authoritative shell via getDoc.
-    const iconKind: 'board' | 'sheet' | 'html' | 'doc' = board
+    const iconKind: 'board' | 'sheet' | 'html' | 'html_ppt' | 'doc' = board
       ? 'board'
       : d.docType === 'sheet'
         ? 'sheet'
         : d.docType === 'html'
           ? 'html'
-          : 'doc'
+          : d.docType === 'html_ppt'
+            ? 'html_ppt'
+            : 'doc'
     const kindLabel =
       iconKind === 'board'
         ? t('docs.list.kindBoard')
@@ -755,7 +783,9 @@ function DocsList({
           ? t('docs.list.kindSheet')
           : iconKind === 'html'
             ? t('docs.list.kindHtml')
-            : t('docs.list.kindDoc')
+            : iconKind === 'html_ppt'
+              ? t('docs.list.kindPpt')
+              : t('docs.list.kindDoc')
     // Recent rows put the creator on its OWN line, then a SINGLE merged time line reporting only
     // the LATEST event (XIN-1236 merged design). Mine rows keep the plain "updated" sub-line
     // (frontend-design §2.1 / §5.1).
@@ -809,6 +839,8 @@ function DocsList({
               <SheetRowIcon />
             ) : iconKind === 'html' ? (
               <HtmlRowIcon />
+            ) : iconKind === 'html_ppt' ? (
+              <PptRowIcon />
             ) : (
               <DocRowIcon />
             )}
@@ -1021,6 +1053,21 @@ function DocsList({
             >
               <span className="octo-docs-new-menu-icon" aria-hidden="true"><HtmlRowIcon /></span>
               {t('docs.list.newHtml')}
+            </button>
+            {/* New slides (html_ppt). R1 (XIN-1501) is entry + routing shell only: this opens a
+                "coming soon" notice rather than creating a deck. Live create + the 4-template picker
+                (POST /api/v1/ppt/docs) land in R2 — like the HTML entry, it NEVER calls createDoc. */}
+            <button
+              type="button"
+              className="octo-docs-new-menu-item"
+              disabled={creating}
+              onClick={() => {
+                setNewMenuAt(null)
+                onCreatePpt()
+              }}
+            >
+              <span className="octo-docs-new-menu-icon" aria-hidden="true"><PptRowIcon /></span>
+              {t('docs.list.newPpt')}
             </button>
             {/* Import entries merged into the "New" dropdown (was a standalone "Import" button).
                 Flag ON; formal owner sign-off still PENDING, gated by needs-human-review (was hidden
@@ -1311,16 +1358,18 @@ export function DocsHome() {
   // persisted/deep-link target that already carries one of them opens straight into the right
   // shell on first paint — no getDoc detour, and (for html) no risk of falling back to the
   // rich-text editor. Only a docId with an UNKNOWN kind still defers to getDoc on mount.
-  const initialKnownKind: 'board' | 'doc' | 'sheet' | 'html' | undefined =
+  const initialKnownKind: 'board' | 'doc' | 'sheet' | 'html' | 'html_ppt' | undefined =
     initialTarget.current?.docType === 'board'
       ? 'board'
       : initialTarget.current?.docType === 'sheet'
         ? 'sheet'
         : initialTarget.current?.docType === 'html'
           ? 'html'
-          : initialTarget.current?.docType === 'doc'
-            ? 'doc'
-            : undefined
+          : initialTarget.current?.docType === 'html_ppt'
+            ? 'html_ppt'
+            : initialTarget.current?.docType === 'doc'
+              ? 'doc'
+              : undefined
   const [selectedDocId, setSelectedDocId] = useState<string | null>(
     () => (initialKnownKind ? (initialTarget.current?.docId ?? null) : null),
   )
@@ -1423,6 +1472,10 @@ export function DocsHome() {
   // closes the other). A ref mirrors the draft so the NavRail re-entry handler can re-mount the
   // SAME chat (same requestId) without a stale closure and without re-sending (§5 risk 1).
   const [htmlModalOpen, setHtmlModalOpen] = useState(false)
+  // R1 (XIN-1501) "new slides" entry: the caret-menu item is wired but live create + the template
+  // picker land in R2 (POST /api/v1/ppt/docs). Until then the entry opens this "coming soon" notice
+  // — it NEVER creates a doc, so a Bento deck is never mis-minted as a rich-text placeholder.
+  const [pptComingSoonOpen, setPptComingSoonOpen] = useState(false)
   const [htmlChatDraft, setHtmlChatDraft] = useState<HtmlCreationDraft | null>(null)
   const htmlChatDraftRef = useRef<HtmlCreationDraft | null>(null)
   useEffect(() => {
@@ -1729,8 +1782,10 @@ export function DocsHome() {
 
   // Choose the right-pane renderer by doc type: a spreadsheet ('sheet') mounts the collaborative
   // Univer SheetView; a whiteboard ('board') mounts the Excalidraw shell; an agent-authored
-  // read-only HTML doc ('html') mounts the view-only HtmlDocView; everything else (incl.
-  // unknown/absent kind) uses the Tiptap EditorShell — the safe default for legacy docs.
+  // read-only HTML doc ('html') mounts the view-only HtmlDocView; a Bento slide-deck ('html_ppt')
+  // mounts the read-only PptDocView — an EXPLICIT peer branch so PPT NEVER falls through to the
+  // Tiptap EditorShell / Hocuspocus collab-token path (no-fallback contract, XIN-1501). Everything
+  // else (incl. unknown/absent kind) uses the Tiptap EditorShell — the safe default for legacy docs.
   const buildRightPane = useCallback(
     (
       docId: string,
@@ -1741,6 +1796,11 @@ export function DocsHome() {
       // Read-only HTML: NO editor/collab wiring — a human may only view it (comments arrive in 2b).
       if (docType === 'html') {
         return <HtmlDocView key={docId} docId={docId} slug={octoDocSlug} space={space} onDeleted={onDocDeleted} />
+      }
+      // Bento slide-deck: read-only PPT surface (R1 placeholder). NO editor/collab wiring and NO
+      // Hocuspocus token — the live editor/preview/present surfaces land in R2+.
+      if (docType === 'html_ppt') {
+        return <PptDocView key={docId} docId={docId} slug={octoDocSlug} space={space} />
       }
       if (docType === 'sheet') {
         return (
@@ -1770,7 +1830,7 @@ export function DocsHome() {
   // (durable sessionStorage + shareable `?doc=` URL), and push the matching shell into the host's
   // right pane. Split out from openDoc so the kind can be resolved asynchronously first.
   const commitOpen = useCallback(
-    (docId: string, docType: 'board' | 'doc' | 'sheet' | 'html', octoDocSlug?: string, title?: string) => {
+    (docId: string, docType: 'board' | 'doc' | 'sheet' | 'html' | 'html_ppt', octoDocSlug?: string, title?: string) => {
       // Opening a doc closes any active html chat (mutually exclusive right-pane modes, §8). Clear
       // the draft + its refresh timers here; the doc shell is pushed below, so no empty-state flash.
       if (htmlChatDraftRef.current) {
@@ -1827,9 +1887,16 @@ export function DocsHome() {
       latestOpenRef.current = docId
       // Known kind — the creator's own board (API `docType` or the local registry, both surfaced
       // by isBoardDoc at the call site), an explicit `'doc'`, a `'sheet'` (created / imported /
-      // known list row), or an agent-authored read-only `'html'` doc: open the right shell
-      // immediately without a round-trip.
-      if (docType === 'board' || docType === 'doc' || docType === 'sheet' || docType === 'html') {
+      // known list row), an agent-authored read-only `'html'` doc, or a Bento `'html_ppt'`
+      // slide-deck: open the right shell immediately without a round-trip. `html_ppt` is listed
+      // explicitly so it reaches the read-only PptDocView and never the rich-text editor.
+      if (
+        docType === 'board' ||
+        docType === 'doc' ||
+        docType === 'sheet' ||
+        docType === 'html' ||
+        docType === 'html_ppt'
+      ) {
         commitOpen(docId, docType, octoDocSlug, title)
         return
       }
@@ -1852,8 +1919,8 @@ export function DocsHome() {
         .then((meta) => {
           if (superseded()) return // superseded by a newer open or a Space switch
           // Preserve the resolved kind verbatim: a real 'sheet' must reach SheetView, a 'board'
-          // the whiteboard shell, an 'html' the read-only view; everything else falls back to the
-          // rich-text editor.
+          // the whiteboard shell, an 'html' the read-only view, an 'html_ppt' the read-only PPT
+          // surface (never the rich-text editor); everything else falls back to the rich-text editor.
           commitOpen(
             docId,
             meta?.docType === 'board'
@@ -1862,7 +1929,9 @@ export function DocsHome() {
                 ? 'sheet'
                 : meta?.docType === 'html'
                   ? 'html'
-                  : 'doc',
+                  : meta?.docType === 'html_ppt'
+                    ? 'html_ppt'
+                    : 'doc',
             meta?.octoDocSlug,
             meta?.title,
           )
@@ -2019,6 +2088,7 @@ export function DocsHome() {
           selectedDocId={selectedDocId}
           onSelect={openDoc}
           onCreateHtml={() => setHtmlModalOpen(true)}
+          onCreatePpt={() => setPptComingSoonOpen(true)}
           reloadToken={listReloadToken}
           botUids={botUids}
         />
@@ -2028,6 +2098,15 @@ export function DocsHome() {
           publishBaseUrl={docsApiBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
           onClose={() => setHtmlModalOpen(false)}
           onSubmit={onSubmitHtml}
+        />
+        <ConfirmModal
+          open={pptComingSoonOpen}
+          title={t('docs.ppt.createTitle')}
+          message={t('docs.ppt.createComingSoon')}
+          confirmLabel={t('docs.ppt.createComingSoonOk')}
+          cancelLabel={t('docs.ppt.createComingSoonOk')}
+          onConfirm={() => setPptComingSoonOpen(false)}
+          onCancel={() => setPptComingSoonOpen(false)}
         />
       </div>
     )
@@ -2043,6 +2122,7 @@ export function DocsHome() {
           selectedDocId={selectedDocId}
           onSelect={openDoc}
           onCreateHtml={() => setHtmlModalOpen(true)}
+          onCreatePpt={() => setPptComingSoonOpen(true)}
           reloadToken={listReloadToken}
           botUids={botUids}
         />
@@ -2064,6 +2144,15 @@ export function DocsHome() {
         publishBaseUrl={docsApiBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
         onClose={() => setHtmlModalOpen(false)}
         onSubmit={onSubmitHtml}
+      />
+      <ConfirmModal
+        open={pptComingSoonOpen}
+        title={t('docs.ppt.createTitle')}
+        message={t('docs.ppt.createComingSoon')}
+        confirmLabel={t('docs.ppt.createComingSoonOk')}
+        cancelLabel={t('docs.ppt.createComingSoonOk')}
+        onConfirm={() => setPptComingSoonOpen(false)}
+        onCancel={() => setPptComingSoonOpen(false)}
       />
     </div>
   )

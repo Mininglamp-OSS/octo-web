@@ -9,11 +9,13 @@
     "newBoard": "New board",
     "newSheet": "New sheet",
     "newHtml": "New HTML",
+    "newPpt": "New slides",
     "comingSoon": "Coming soon",
     "kindDoc": "Document",
     "kindBoard": "Board",
     "kindSheet": "Spreadsheet",
     "kindHtml": "HTML",
+    "kindPpt": "Slides",
     "botBadge": "Bot",
     "back": "All documents",
     "updatedAt": "Updated",
@@ -877,6 +879,13 @@
     "nextChange": "Next",
     "oldVersion": "Old v{{v}}",
     "newVersion": "New v{{v}}"
+  },
+  "ppt": {
+    "createTitle": "New slides",
+    "createComingSoon": "Slides (Bento PPT) creation is coming soon.",
+    "createComingSoonOk": "Got it",
+    "viewTitle": "Slides",
+    "previewComingSoon": "Slides preview is coming soon."
   },
   "onboarding": {
     "helpTitle": "Agent CLI onboarding help",

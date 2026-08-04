@@ -9,11 +9,13 @@
     "newBoard": "新建画板",
     "newSheet": "新建表格",
     "newHtml": "新建 HTML",
+    "newPpt": "新建幻灯片",
     "comingSoon": "即将上线",
     "kindDoc": "文档",
     "kindBoard": "画板",
     "kindSheet": "表格",
     "kindHtml": "网页",
+    "kindPpt": "幻灯片",
     "botBadge": "机器人",
     "back": "全部文档",
     "updatedAt": "更新于",
@@ -877,6 +879,13 @@
     "nextChange": "下一处",
     "oldVersion": "旧版 v{{v}}",
     "newVersion": "新版 v{{v}}"
+  },
+  "ppt": {
+    "createTitle": "新建幻灯片",
+    "createComingSoon": "幻灯片（Bento PPT）创建即将上线，敬请期待。",
+    "createComingSoonOk": "知道了",
+    "viewTitle": "幻灯片",
+    "previewComingSoon": "幻灯片预览即将上线。"
   },
   "onboarding": {
     "helpTitle": "Agent CLI 上手帮助",

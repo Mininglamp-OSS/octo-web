@@ -5,6 +5,7 @@ import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { BoardSession } from '../board/BoardSession.tsx'
 import { HtmlDocView } from '../html/HtmlDocView.tsx'
+import { PptDocView } from '../ppt/PptDocView.tsx'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
@@ -625,6 +626,24 @@ export function StandaloneDocPage({
           slug={meta.octoDocSlug}
           space={addressing.space}
           creatorNicknameOnly
+        />
+      </div>
+    )
+  }
+  // Bento slide-deck ('html_ppt'): render the read-only PptDocView (R1 placeholder), mirroring
+  // DocsHome.buildRightPane. This is an EXPLICIT peer branch so a shared /d/<docId> PPT link does
+  // NOT fall through to the collab EditorShell below — a Bento deck has no Yjs data and would 404
+  // there, and the standalone editor would otherwise try to open a Hocuspocus room for it. The
+  // preflight reader gate already ran and recordDocView logged the view, same as every other kind.
+  if (meta.docType === 'html_ppt') {
+    return (
+      <div className="octo-doc-standalone">
+        <PptDocView
+          key={editorDocId}
+          docId={editorDocId}
+          slug={meta.octoDocSlug}
+          space={addressing.space}
+          title={meta.title}
         />
       </div>
     )

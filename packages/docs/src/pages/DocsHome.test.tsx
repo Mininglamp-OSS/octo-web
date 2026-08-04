@@ -87,6 +87,17 @@ vi.mock('../html/HtmlDocView.tsx', () => ({
   ),
 }))
 
+// Bento slide-deck (html_ppt) read-only surface. Mocked so a routing test can assert an html_ppt
+// row/target lands here and NEVER on the Tiptap editor-shell (the no-fallback contract, XIN-1501).
+vi.mock('../ppt/PptDocView.tsx', () => ({
+  PptDocView: (props: { docId: string; slug?: string }) => (
+    <div data-testid="ppt-doc-view">
+      <span data-testid="ppt-doc">{props.docId}</span>
+      <span data-testid="ppt-slug">{props.slug ?? ''}</span>
+    </div>
+  ),
+}))
+
 // Replace the embedded bot-DM shell (pulls @octo/base Conversation + WKSDK) with a marker so the
 // new-HTML flow is testable without a live IM channel. Surfaces the bot uid, requestId and part of
 // the auto-sent task text, plus the onClose affordance (plan Task 6).
@@ -823,6 +834,33 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(calls.some((c) => c.method === 'get' && c.url === '/docs/h_known')).toBe(false)
   })
 
+  it('opens a persisted html_ppt doc directly into PptDocView on refresh (NO Tiptap editor fallback, NO getDoc round-trip)', async () => {
+    // No-fallback contract (XIN-1501): a stored docType='html_ppt' must open the read-only
+    // PptDocView on first paint. It must NEVER fall through to the collab EditorShell (a Bento
+    // deck has no Yjs payload) and must not take a getDoc detour that could default it to 'doc'.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'p_known', docType: 'html_ppt' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // PptDocView mounts immediately from the stored kind — never the rich-text editor.
+    expect(screen.getByTestId('ppt-doc-view')).toBeTruthy()
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // No per-doc getDoc round-trip (which could have defaulted an unknown kind to the editor).
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/p_known')).toBe(false)
+  })
+
   it('opens a persisted sheet doc directly into SheetView on refresh (no getDoc round-trip)', async () => {
     // Same whitelist fix also covers sheet, which the reviewer flagged as missing alongside html.
     window.sessionStorage.setItem(
@@ -1324,6 +1362,104 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
       docType: 'html',
       octoDocSlug: 'octo-html-report',
     })
+  })
+
+  it('opens an existing html_ppt row into the read-only PptDocView (never the editor, no per-doc lookup)', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              {
+                docId: 'ppt_row',
+                title: 'Quarterly Deck',
+                ownerId: 'u_owner',
+                role: 'admin',
+                docType: 'html_ppt',
+              },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Quarterly Deck')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Quarterly Deck'))
+
+    await waitFor(() => expect(screen.getByTestId('ppt-doc-view')).toBeTruthy())
+    expect(screen.getByTestId('ppt-doc').textContent).toBe('ppt_row')
+    // Bento slide-deck: it must NOT open the rich-text editor / sheet (no-fallback contract).
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    expect(screen.queryByTestId('sheet-view')).toBeNull()
+    // The list row already carried docType='html_ppt' — no authoritative getDoc round-trip.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/ppt_row')).toBe(false)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'ppt_row',
+      docType: 'html_ppt',
+    })
+  })
+
+  it('resolves an unknown-kind row to PptDocView via getDoc when the backend reports html_ppt (no editor fallback)', async () => {
+    // The list API omitted docType, so the row opens with an UNKNOWN kind and defers to getDoc.
+    // A backend docType='html_ppt' must resolve to PptDocView, NOT default to the Tiptap editor.
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/ppt_shared') {
+        return { data: { docId: 'ppt_shared', title: 'Shared Deck', role: 'admin', docType: 'html_ppt' }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: { total: 1, items: [{ docId: 'ppt_shared', title: 'Shared Deck', ownerId: 'u_owner', role: 'admin' }] },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Shared Deck')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared Deck'))
+
+    // getDoc resolved html_ppt → the read-only PPT surface, never the rich-text editor.
+    await waitFor(() => expect(screen.getByTestId('ppt-doc-view')).toBeTruthy())
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('shows the "new slides" caret-menu entry that opens the R1 coming-soon notice without creating a doc', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+
+    // Open the split "New" dropdown and choose "New slides".
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newPpt'))
+
+    // R1: a "coming soon" notice appears — no doc is created and no editor/PPT surface opens.
+    await waitFor(() => expect(screen.getByText('docs.ppt.createComingSoon')).toBeTruthy())
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    expect(screen.queryByTestId('ppt-doc-view')).toBeNull()
+    // The entry must NOT call createDoc (a Bento deck is never minted through the rich-doc path).
+    expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
   })
 
   it('re-pushes an open html doc WITH its slug when the docs nav menu is re-activated', async () => {
@@ -1889,6 +2025,7 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     { docId: 'd_sheet', title: 'A Sheet', ownerId: 'u_o', role: 'admin', docType: 'sheet', viewedAt: '2026-07-15T05:00:00.000Z' },
     { docId: 'd_board', title: 'A Board', ownerId: 'u_o', role: 'admin', docType: 'board', viewedAt: '2026-07-15T04:00:00.000Z' },
     { docId: 'd_html', title: 'A Web Page', ownerId: 'u_o', role: 'admin', docType: 'html', octoDocSlug: 'sp/fd/html-slug', viewedAt: '2026-07-15T03:00:00.000Z' },
+    { docId: 'd_ppt', title: 'A Slide Deck', ownerId: 'u_o', role: 'admin', docType: 'html_ppt', viewedAt: '2026-07-15T02:30:00.000Z' },
   ]
 
   function mountList() {
@@ -1925,6 +2062,13 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     await waitFor(() => expect(screen.getByText('A Web Page')).toBeTruthy())
     // The html row carries its own aria-label/title on the row icon (HtmlRowIcon).
     expect(screen.getByLabelText('docs.list.kindHtml')).toBeTruthy()
+  })
+
+  it('renders the html_ppt row with its own kindPpt icon (distinct from doc/sheet/board/html)', async () => {
+    mountList()
+    await waitFor(() => expect(screen.getByText('A Slide Deck')).toBeTruthy())
+    // The slide-deck row carries its own aria-label/title on the row icon (PptRowIcon).
+    expect(screen.getByLabelText('docs.list.kindPpt')).toBeTruthy()
   })
 
   it('shows the type filter on both tabs and drives a multi-select OR request', async () => {
