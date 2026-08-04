@@ -10,6 +10,7 @@ import {
   type ThreadSidebarStatusMap,
 } from "../../Components/ConversationListGrouped/archivedThreads";
 import ChatConversationList, {
+  getRecentConversationUnreadCount,
   isMutedForRecentConversation,
 } from "../../Components/ChatConversationList";
 import Provider from "../../Service/Provider";
@@ -213,12 +214,9 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     return sum + unread;
   }, 0);
 
-  const recentUnread = conversations.reduce(
-    (sum: number, c: ConversationWrap) => {
-      if (isMutedForRecentConversation(c)) return sum;
-      return sum + (c.unread || 0);
-    },
-    0
+  const recentUnread = getRecentConversationUnreadCount(
+    conversations,
+    isMutedForRecentConversation
   );
 
   return (

@@ -1,16 +1,17 @@
-import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, t } from '@octo/base';
+import { ChatPage, ConversationWrap, EndpointCategory, WKApp, Menus, getRecentConversationUnreadCount, isMutedForRecentConversation, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, shouldShowChatNavUnreadBadge, t } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
 import './index.css';
 import AppLayout from '../Layout';
-import { WKSDK, ChannelTypePerson } from 'wukongimjssdk';
-import { setFaviconBadge, clearFaviconBadge } from '../utils/faviconBadge';
+import { WKSDK } from 'wukongimjssdk';
+import { clearFaviconBadge } from '../utils/faviconBadge';
 import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
+import { getLiveChatNavUnreadCount } from './chatNavUnreadBadge';
 
 /**
  * 全局 ?verified=1 处理：CAS 实名认证完成后 verify-service 会 302 回
@@ -96,34 +97,24 @@ async function registerMenus() {
 
   WKApp.menus.register("chat", (_context) => {
     const m = new Menus("chat", "/", t("app.nav.chat"), <ChatIcon />, <ChatIcon />)
-    let badge = 0;
+    const badge = getLiveChatNavUnreadCount({
+      conversations: WKSDK.shared().conversationManager.conversations,
+      shouldSkipChannelForSpace,
+      shouldSkipPersonConversationForSpace,
+      toRecentConversation: (conversation) => new ConversationWrap(conversation),
+      isMutedForRecentConversation,
+      getRecentConversationUnreadCount,
+    });
 
-    for (const conversation of WKSDK.shared().conversationManager.conversations) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(conversation.channel)
-      if (channelInfo?.mute) {
-        continue
-      }
-      // Space 过滤：复用 shouldSkipChannelForSpace 完整逻辑（含 channelSpaceMap 缓存）
-      if (shouldSkipChannelForSpace(conversation.channel)) {
-        continue
-      }
-      if (shouldSkipPersonConversationForSpace(conversation)) continue
-      // Person 频道在 Space 模式下优先使用 per-Space 未读计数
-      const currentSpaceId = WKApp.shared.currentSpaceId
-      if (currentSpaceId
-          && conversation.channel.channelType === ChannelTypePerson
-          && conversation.extra?.spaceUnread !== undefined) {
-        badge += conversation.extra.spaceUnread
-      } else {
-        badge += conversation.unread
-      }
-    }
-
-    // badge 和 favicon 角标已下线
+    // favicon 角标已下线
     clearFaviconBadge()
 
     if ((window as any).__POWERED_ELECTRON__) {
       (window as any).ipc.send("conversation-anager-unread-count", badge);
+    }
+
+    if (shouldShowChatNavUnreadBadge(WKApp.currentMenuId, badge)) {
+      m.badge = badge;
     }
 
     return m

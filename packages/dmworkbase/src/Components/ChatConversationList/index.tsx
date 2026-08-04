@@ -22,6 +22,10 @@ import CreateCategoryModal from "../CreateCategoryModal"
 import { ContextMenusData } from "../ContextMenus"
 import { useI18n } from "../../i18n"
 import { getImChannelInfo } from "../../im-runtime/channelRuntime"
+export {
+    getRecentConversationUnreadCount,
+    shouldShowChatNavUnreadBadge,
+} from "./recentUnread"
 
 export function isMutedForRecentConversation(conv: ConversationWrap): boolean {
     const isThread = conv.channel.channelType === ChannelTypeCommunityTopic
