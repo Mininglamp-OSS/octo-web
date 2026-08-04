@@ -98,6 +98,11 @@ import {
 } from "../../Messages/RichText/RichTextContent";
 import { formatMessageTimestamp } from "../../Utils/time";
 import { isSafeUrl } from "../../Utils/security";
+import {
+  isConversationViewportVisible,
+  isOwnedConversationSingleton,
+  shouldMarkConversationRead,
+} from "../../features/notifications";
 import { imageBlockToPasteFile } from "../MessageInput/richTextPaste";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
@@ -265,6 +270,8 @@ const FoldImage: React.FC<{ src: string }> = ({ src }) => {
 
 export interface ConversationProps {
   channel: Channel;
+  /** 辅助会话（例如侧边 Thread）不占用主会话的全局单例。 */
+  isAuxiliary?: boolean;
   chatBg?: string; // 聊天背景
   shouldShowHistorySplit?: boolean;
   initLocateMessageSeq?: number;
@@ -319,6 +326,7 @@ export class Conversation
   static contextType = I18nContext;
   declare context: React.ContextType<typeof I18nContext>;
 
+  private static openChannelOwner?: symbol;
   // 缓存各会话的引用/回复状态，切换会话时保留
   private static replyStateCache: Map<
     string,
@@ -351,6 +359,21 @@ export class Conversation
   private _consumedComposeIds: Set<string> = new Set();
   private _initialComposeGeneration = 0;
   private _initialComposeMounted = false;
+  private readonly _openChannelOwner = Symbol("openChannelOwner");
+  private _ownedOpenChannel?: Channel;
+  private _lastAttentionCheckedMessageSeq = 0;
+  private _unsubscribeVmAttentionListener?: () => void;
+  private _attentionRefreshHandler = () => {
+    const run = () => this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+    else window.setTimeout(run, 0);
+  };
+  private _vmAttentionListener = () => {
+    const latestMessageSeq = this.vm.lastMessage?.messageSeq || 0;
+    if (latestMessageSeq <= this._lastAttentionCheckedMessageSeq) return;
+    this._lastAttentionCheckedMessageSeq = latestMessageSeq;
+    this._attentionRefreshHandler();
+  };
   private onOpenThreadPanel?: (
     threadChannelId: string,
     threadName: string
@@ -1328,12 +1351,19 @@ export class Conversation
     if (onContext) {
       onContext(this);
     }
-    WKApp.shared.openChannel = channel;
+    if (!this.props.isAuxiliary) {
+      WKApp.shared.openChannel = channel;
+      this._ownedOpenChannel = channel;
+      Conversation.openChannelOwner = this._openChannelOwner;
+    }
 
-    // 注册附件发送守卫：返回 false 表示有未发送附件，需弹确认
-    WKApp.shared.pendingAttachmentGuard = () =>
-      this.getPendingAttachments().length === 0;
-    WKApp.shared.pendingAttachmentGuardId = this._guardId;
+    // 辅助 Thread 不覆盖主会话的全局附件守卫；否则开关侧栏会让主会话
+    // 的待发送附件失去离开确认，或被侧栏草稿反向阻塞。
+    if (!this.props.isAuxiliary) {
+      WKApp.shared.pendingAttachmentGuard = () =>
+        this.getPendingAttachments().length === 0;
+      WKApp.shared.pendingAttachmentGuardId = this._guardId;
+    }
 
     if (this.vm.hasDraft()) {
       this.restoreDraft(this.vm.draft());
@@ -1353,6 +1383,11 @@ export class Conversation
       this.forceUpdate();
     };
     WKApp.mittBus.on("wk:exit-multiple-mode", this._exitMultipleModeHandler);
+    WKApp.mittBus.on("wk:app-foreground", this._attentionRefreshHandler);
+    WKApp.mittBus.on("wk:active-menu-changed", this._attentionRefreshHandler);
+    this._unsubscribeVmAttentionListener = this.vm.addListener(
+      this._vmAttentionListener
+    );
 
     window.addEventListener("beforeunload", this._beforeUnloadHandler);
 
@@ -1419,6 +1454,7 @@ export class Conversation
     if (next && next !== prev) {
       this.tryConsumeInitialCompose();
     }
+    this._vmAttentionListener();
   }
 
   componentWillUnmount() {
@@ -1428,6 +1464,10 @@ export class Conversation
       WKApp.mittBus.off("wk:exit-multiple-mode", this._exitMultipleModeHandler);
       this._exitMultipleModeHandler = undefined;
     }
+    WKApp.mittBus.off("wk:app-foreground", this._attentionRefreshHandler);
+    WKApp.mittBus.off("wk:active-menu-changed", this._attentionRefreshHandler);
+    this._unsubscribeVmAttentionListener?.();
+    this._unsubscribeVmAttentionListener = undefined;
     window.removeEventListener("beforeunload", this._beforeUnloadHandler);
     if (this._channelInfoListener) {
       this._unsubscribeChannelInfoListener?.();
@@ -1469,8 +1509,19 @@ export class Conversation
     }
     this.vm.markUnread();
     this.markConversationExtra();
-    WKApp.shared.openChannel = undefined;
-    WKSDK.shared().conversationManager.openConversation = undefined;
+    if (Conversation.openChannelOwner === this._openChannelOwner) {
+      if (
+        isOwnedConversationSingleton(
+          WKApp.shared.openChannel,
+          this._ownedOpenChannel
+        )
+      ) {
+        WKApp.shared.openChannel = undefined;
+      }
+      Conversation.openChannelOwner = undefined;
+    }
+    this._ownedOpenChannel = undefined;
+    this.vm.releaseOpenConversationOwnership();
   }
 
   markConversationExtra() {
@@ -1917,6 +1968,11 @@ export class Conversation
       <div
         key={session.sessionId}
         id={session.anchorId}
+        data-message-seq={
+          !session.isExpanded && session.lastMessage.messageSeq > 0
+            ? session.lastMessage.messageSeq
+            : undefined
+        }
         className={classNames(
           "wk-message-item",
           "wk-message-item-fold-session",
@@ -2174,6 +2230,7 @@ export class Conversation
   // 上传已读数据
   uploadReadedIfNeed() {
     const viewport = document.getElementById(this.vm.messageContainerId);
+    if (!this.canRecordReadAttention(viewport)) return;
     const visiableMessages = this.allVisiableMessages(viewport);
     if (visiableMessages && visiableMessages.length > 0) {
       const unreadMessages = new Array<Message>();
@@ -2196,13 +2253,27 @@ export class Conversation
   // 更新已读位置和提醒项
   updateBrowseToMessageSeqAndReminderDoneIfNeed() {
     const viewport = document.getElementById(this.vm.messageContainerId);
+    if (!this.canRecordReadAttention(viewport)) return;
 
     this.updateBrowseToMessageSeq(viewport); // 更新已读位置
 
     this.updateReminderDoneIfNeed(viewport); // 更新提醒项
+    WKApp.mittBus.emit("wk:message-attention-state-changed");
   }
 
   // 更新已预览的位置
+  private canRecordReadAttention(viewport: HTMLElement | null): boolean {
+    const viewportVisible = isConversationViewportVisible(viewport, document);
+    return shouldMarkConversationRead({
+      chatModuleActive: WKApp.currentMenuId === "chat",
+      documentVisible: document.visibilityState === "visible",
+      windowFocused: document.hasFocus(),
+      currentConversation: viewport !== null,
+      // Callers below still select the actual visible messages within this viewport.
+      newMessageVisible: viewportVisible,
+    });
+  }
+
   updateBrowseToMessageSeq(viewport: HTMLElement | null) {
     const lastVisiableMessage = this.lastVisiableMessage(viewport); // 当前UI显示的最后一条可见的消息
     if (
@@ -2364,11 +2435,15 @@ export class Conversation
     }
 
     const targetScrollTop = viewport.scrollTop;
+    const viewportBottom = targetScrollTop + viewport.clientHeight;
     for (let index = 0; index < this.vm.messages.length; index++) {
       const message = this.vm.messages[index];
       const element = this.getMessageElement(message);
       if (element) {
-        if (element.offsetTop + element.clientHeight / 2 > targetScrollTop) {
+        if (
+          element.offsetTop < viewportBottom &&
+          element.offsetTop + element.clientHeight / 2 > targetScrollTop
+        ) {
           // message 要漏出来一半才算可见
           visiableMessages.push(message);
         }
@@ -2491,7 +2566,9 @@ export class Conversation
     return (
       <Provider
         create={() => {
-          this.vm = new ConversationVM(channel, initLocateMessageSeq);
+          this.vm = new ConversationVM(channel, initLocateMessageSeq, {
+            registerAsOpenConversation: !this.props.isAuxiliary,
+          });
           return this.vm;
         }}
         render={(vm: ConversationVM) => {
@@ -2534,6 +2611,8 @@ export class Conversation
                   <div
                     className="wk-conversation-messages"
                     id={vm.messageContainerId}
+                    data-conversation-channel-id={channel.channelID}
+                    data-conversation-channel-type={channel.channelType}
                     onScroll={this.handleScroll.bind(this)}
                     onWheel={this.handleWheel.bind(this)}
                   >

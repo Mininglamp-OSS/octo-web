@@ -135,7 +135,7 @@ export class SummaryModule implements IModule {
         }) as EventListener);
 
         WKApp.route.register("/summary/detail", (param: any) => {
-            return <SummaryDetailPage taskId={param?.taskId} />;
+            return <SummaryDetailPage taskId={param?.taskId} emitSelection />;
         });
 
         WKApp.route.register("/summary/share", (param: any) => {

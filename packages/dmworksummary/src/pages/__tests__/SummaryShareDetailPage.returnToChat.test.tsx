@@ -1,7 +1,7 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { WKApp } from "@octo/base";
+import { titleContextStore, WKApp } from "@octo/base";
 import SummaryShareDetailPage from "../SummaryShareDetailPage";
 import { getSummaryShare } from "../../api/summaryApi";
 
@@ -36,6 +36,7 @@ describe("SummaryShareDetailPage return to chat", () => {
     const showConversation = vi.fn();
 
     beforeEach(() => {
+    titleContextStore.clear("summary");
         vi.clearAllMocks();
         vi.mocked(getSummaryShare).mockResolvedValue(response);
         WKApp.endpoints.showConversation = showConversation;
@@ -60,6 +61,10 @@ describe("SummaryShareDetailPage return to chat", () => {
         render(<SummaryShareDetailPage shareId="share-1" />);
 
         await screen.findByRole("heading", { name: "Shared summary" });
+    expect(titleContextStore.get("summary")).toEqual({
+      primaryTitle: "Shared summary",
+      moduleTitle: "智能总结",
+    });
         expect(screen.queryByRole("button", { name: "返回群聊" })).toBeNull();
     });
 
@@ -80,5 +85,19 @@ describe("SummaryShareDetailPage return to chat", () => {
         render(<SummaryShareDetailPage shareId="share-1" />);
 
         expect(await screen.findByText("暂无来源")).toBeInTheDocument();
+    });
+
+    it("falls back to the module title when the shared summary title is empty", async () => {
+        vi.mocked(getSummaryShare).mockResolvedValue({
+            ...response,
+            snapshot: { ...response.snapshot, title: "   " },
+        });
+
+        render(<SummaryShareDetailPage shareId="share-1" />);
+
+        await screen.findByText("Project group");
+        await waitFor(() => {
+            expect(titleContextStore.get("summary")).toBeUndefined();
+        });
     });
 });

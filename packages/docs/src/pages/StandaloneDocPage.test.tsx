@@ -1,8 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
-import { setWKApp } from '../octoweb/index.ts'
-import { createMockWKApp } from '../octoweb/mock.ts'
-import type { DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  render,
+  screen,
+  waitFor,
+  cleanup,
+  fireEvent,
+} from "@testing-library/react";
+import { setWKApp } from "../octoweb/index.ts";
+import { createMockWKApp } from "../octoweb/mock.ts";
+import type { DocMoreMenuItem } from "../editor/DocMoreMenu.tsx";
+import { titleContextStore } from "@octo/base";
 
 // Replace the heavy collaborative editor with a lightweight marker. This is the crux of the
 // AC-12 acceptance: the standalone page's boundary states are driven entirely by the GET
@@ -81,8 +88,9 @@ function apiError(status: number) {
 let wk: ReturnType<typeof createMockWKApp>
 
 beforeEach(() => {
-  window.sessionStorage.clear()
-  window.localStorage.clear()
+  titleContextStore.clear("docs");
+  window.sessionStorage.clear();
+  window.localStorage.clear();
   // Reset the URL between tests so a `?sid=`/`?sp=` pushed by one test (Copy-link / return-target /
   // space-resolution cases) cannot leak into the next, which reads the link's `?sp=` (standaloneLinkSpace).
   window.history.pushState({}, '', '/')
@@ -294,8 +302,16 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
 
     render(<StandaloneDocPage docId="d_ok" />)
 
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    expect(screen.getByTestId('editor-doc').textContent).toBe('d_ok')
+    await waitFor(() =>
+      expect(screen.getByTestId("editor-shell")).toBeTruthy()
+    );
+    await waitFor(() =>
+      expect(titleContextStore.get("docs")).toEqual({
+        primaryTitle: "Shared Doc",
+        moduleTitle: "docs.menu.title",
+      })
+    );
+    expect(screen.getByTestId("editor-doc").textContent).toBe("d_ok");
 
     // XIN-416 (boss real-device acceptance): the standalone editor view no longer shows a
     // "← 全部文档" return link. A standalone `/d/:docId` share page is a pure, self-contained
@@ -317,6 +333,20 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // The reverse "Open in App" exit was removed (boss change): standalone links are opened from
     // an external chat, not from inside the shell, so there is nothing to return to.
     expect(lead.textContent).not.toContain('docs.standalone.openInApp')
+  })
+
+  it('falls back to the module title when the document title is empty', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_untitled') {
+        return { data: { docId: 'd_untitled', title: '   ', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_untitled" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(titleContextStore.get('docs')).toBeUndefined()
   })
 
   it('AC-3: clicking the Copy link menu row copies the CANONICAL /d/:docId link, stripping ?sid', async () => {

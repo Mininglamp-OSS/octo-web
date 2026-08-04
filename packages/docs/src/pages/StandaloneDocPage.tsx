@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
-import { getWKApp, t } from '../octoweb/index.ts'
+import { titleContextStore } from '@octo/base'
+import { getWKApp, t, useI18n } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { BoardSession } from '../board/BoardSession.tsx'
@@ -323,10 +324,29 @@ export function StandaloneDocPage({
   onSessionExpired?: () => void
 }): ReactElement {
   const wk = getWKApp()
+  const { locale } = useI18n()
   const uid = wk.loginInfo?.uid ?? ''
   const [phase, setPhase] = useState<Phase>({ status: 'loading' })
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const titleContextOwner = useRef(Symbol('standalone-doc-title-context'))
+
+  useEffect(() => {
+    const primaryTitle = phase.status === 'ready' ? phase.meta.title?.trim() : ''
+    if (!primaryTitle) {
+      titleContextStore.clear('docs', titleContextOwner.current)
+      return
+    }
+    titleContextStore.set(
+      'docs',
+      {
+        primaryTitle,
+        moduleTitle: t('docs.menu.title'),
+      },
+      titleContextOwner.current,
+    )
+    return () => titleContextStore.clear('docs', titleContextOwner.current)
+  }, [locale, phase])
 
   // Resolve the standalone space ONCE, and address BOTH the preflight's explicit X-Space-Id header
   // and the EditorShell room fallback from it, so preflight and room can never target different

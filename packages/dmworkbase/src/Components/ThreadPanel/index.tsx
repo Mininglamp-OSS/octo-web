@@ -1922,6 +1922,7 @@ export default class ThreadPanel extends Component<
           <Conversation
             key={thread.channel_id}
             channel={threadChannel}
+            isAuxiliary
             shouldShowHistorySplit={false}
             inputNotice={
               thread.status === ThreadStatus.Archived

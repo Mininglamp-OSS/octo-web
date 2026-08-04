@@ -11,7 +11,11 @@ import { createElement } from 'react'
 // buildDocLink is a pure, dependency-free util (only reads window.location.origin), so the stub
 // re-exports the REAL implementation from base — docs tests exercise the same canonical builder as
 // production rather than a divergent copy.
-export { buildDocLink, type DocLinkTarget } from '../../../dmworkbase/src/Utils/docLink.ts'
+export {
+  buildDocLink,
+  type DocLinkTarget,
+} from "../../../dmworkbase/src/Utils/docLink.ts";
+export { titleContextStore } from "../../../dmworkbase/src/features/documentTitle";
 
 export const WKApp = {
   shared: {

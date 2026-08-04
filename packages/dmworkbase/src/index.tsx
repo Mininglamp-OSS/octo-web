@@ -65,6 +65,8 @@ export { NotificationUtil, notificationUtil } from './Utils/NotificationUtil'
 export * from './Utils/NotificationUtil'
 export * from './Utils/clipboard'
 export * from './Utils/docLink'
+export * from './features/documentTitle'
+export * from './features/notifications'
 
 export { default as MessageBase } from "./Messages/Base"
 export  * from "./Messages/Image"
@@ -82,6 +84,7 @@ export * from "./Components/MeInfo";
 export * from "./Service/Context";
 export * from "./Components/SmallTableEdit";
 export * from "./Service/Convert";
+export * from "./Service/Model";
 
 export * from "./Utils/search"
 

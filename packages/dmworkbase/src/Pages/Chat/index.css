@@ -366,13 +366,23 @@
 .wk-chat-conversation-header-channel {
   display: flex;
   align-items: center;
+  gap: var(--wk-sp-2);
   min-width: 0;
   overflow: hidden;
+}
+
+.wk-chat-conversation-header-channel-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
 }
 
 .wk-chat-conversation-header-channel-avatar img {
   width: 28px;
   height: 28px;
+  display: block;
   border-radius: var(--wk-avatar-radius, 50%);
 }
 
@@ -397,13 +407,16 @@
 }
 
 .wk-chat-conversation-header-channel-info-name {
-  margin-left: 4px; /* Figma: gap=4 */
   font-size: 14px; /* Figma: 14px */
   font-weight: 500; /* Figma: 500 */
   color: var(--wk-brand-primary); /* Figma */
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.wk-chat-conversation-header-channel-info-name--thread {
+  gap: var(--wk-sp-1-5);
 }
 
 /* 面包屑容器 */
@@ -420,15 +433,12 @@
 .wk-chat-conversation-header-parent-group {
   display: block;
   color: var(--wk-text-tertiary, #9498a8);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
   cursor: pointer;
   transition: color 150ms;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex-shrink: 1;
+  flex-shrink: 0;
 }
 
 .wk-chat-conversation-header-parent-group:hover {
@@ -442,19 +452,22 @@
 
 /* 分隔符 › */
 .wk-chat-conversation-header-separator {
-  color: var(--wk-text-quaternary, #c4c7d0);
-  font-size: 11px;
-  font-weight: 300;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--wk-text-tertiary, #9498a8);
   flex-shrink: 0;
+  transform: translateY(1px);
   user-select: none;
-  margin: 0 1px;
 }
 
 /* 子区名称（当前频道）：🧵 icon + 名称，加粗 */
 .wk-chat-conversation-header-thread-name {
   display: block;
   color: var(--wk-text-primary, #1a1c24);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;

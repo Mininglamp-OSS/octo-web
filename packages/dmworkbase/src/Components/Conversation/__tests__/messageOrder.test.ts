@@ -7,6 +7,7 @@ const sdkState = vi.hoisted(() => ({
     channelInfos: new Map<string, any>(),
     syncMessages: vi.fn(),
     conversation: null as any,
+    openConversation: undefined as any,
     notifyConversationListeners: vi.fn(),
     scrollToBottom: vi.fn(),
     markConversationUnread: vi.fn(() => Promise.resolve()),
@@ -50,6 +51,12 @@ vi.mock("wukongimjssdk", () => {
                     notifySubscribeChangeListeners: () => {},
                 },
                 conversationManager: {
+                    get openConversation() {
+                        return sdkState.openConversation
+                    },
+                    set openConversation(value: any) {
+                        sdkState.openConversation = value
+                    },
                     findConversation: () => sdkState.conversation,
                     notifyConversationListeners: sdkState.notifyConversationListeners,
                     addConversationListener: () => {},
@@ -225,6 +232,7 @@ describe("ConversationVM message ordering", () => {
         sdkState.channelInfos.clear()
         sdkState.syncMessages.mockReset()
         sdkState.conversation = null
+        sdkState.openConversation = undefined
         sdkState.notifyConversationListeners.mockReset()
         sdkState.scrollToBottom.mockReset()
         sdkState.markConversationUnread.mockReset()
@@ -240,6 +248,105 @@ describe("ConversationVM message ordering", () => {
         expect(first.messageContainerId).toMatch(/^viewport-\d+$/)
         expect(second.messageContainerId).toMatch(/^viewport-\d+$/)
         expect(first.messageContainerId).not.toBe(second.messageContainerId)
+    })
+
+    it("keeps a fully unread conversation unread until the visible-message gate advances browseTo", async () => {
+        const vm = new ConversationVM(channel)
+        const latest = wrap({
+            clientMsgNo: "remote-3",
+            messageSeq: 3,
+            timestamp: 300,
+            fromUID: "u1",
+        })
+        sdkState.conversation = {
+            channel,
+            unread: 3,
+            extra: {},
+        }
+        vm.unreadCount = 3
+        vm.browseToMessageSeq = 0
+        vm.lastMessage = latest
+
+        await vm.refreshNewMsgCount()
+
+        expect(vm.unreadCount).toBe(3)
+        expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
+
+        // Conversation advances browseTo only after its foreground + viewport
+        // checks pass. Once that happens, the same calculation clears unread.
+        vm.browseToMessageSeq = 3
+        await vm.refreshNewMsgCount()
+        expect(vm.unreadCount).toBe(0)
+        expect(sdkState.markConversationUnread).toHaveBeenCalledWith(channel, 0)
+    })
+
+    it("counts the first remote message when browseTo is still zero", async () => {
+        const vm = new ConversationVM(channel)
+        sdkState.conversation = {
+            channel,
+            unread: 0,
+            extra: {},
+        }
+        vm.browseToMessageSeq = 0
+        vm.lastMessage = wrap({
+            clientMsgNo: "remote-1",
+            messageSeq: 1,
+            timestamp: 100,
+            fromUID: "u1",
+        })
+
+        await vm.refreshNewMsgCount()
+
+        expect(vm.unreadCount).toBe(1)
+        expect(sdkState.conversation.unread).toBe(1)
+    })
+
+    it("does not let an auxiliary VM claim the SDK open conversation", () => {
+        const primaryConversation = { channel: new Channel("group-1", 2) }
+        const threadConversation = { channel: new Channel("thread-1", 6) }
+        sdkState.openConversation = primaryConversation
+        const auxiliary = new ConversationVM(
+            threadConversation.channel,
+            undefined,
+            { registerAsOpenConversation: false },
+        )
+
+        ;(auxiliary as any).claimOpenConversation(threadConversation)
+
+        expect(sdkState.openConversation).toBe(primaryConversation)
+        auxiliary.releaseOpenConversationOwnership()
+        expect(sdkState.openConversation).toBe(primaryConversation)
+    })
+
+    it("only releases the exact SDK open conversation owned by the VM", () => {
+        const ownedConversation = { channel: new Channel("group-1", 2) }
+        const replacement = { channel: new Channel("group-1", 2) }
+        const primary = new ConversationVM(ownedConversation.channel)
+
+        ;(primary as any).claimOpenConversation(ownedConversation)
+        expect(sdkState.openConversation).toBe(ownedConversation)
+
+        sdkState.openConversation = replacement
+        primary.releaseOpenConversationOwnership()
+        expect(sdkState.openConversation).toBe(replacement)
+
+        ;(primary as any).claimOpenConversation(ownedConversation)
+        primary.releaseOpenConversationOwnership()
+        expect(sdkState.openConversation).toBeUndefined()
+    })
+
+    it("does not let an older VM clear a newer owner's shared conversation object", () => {
+        const sharedConversation = { channel: new Channel("group-1", 2) }
+        const older = new ConversationVM(sharedConversation.channel)
+        const newer = new ConversationVM(sharedConversation.channel)
+
+        ;(older as any).claimOpenConversation(sharedConversation)
+        ;(newer as any).claimOpenConversation(sharedConversation)
+        older.releaseOpenConversationOwnership()
+        expect(sdkState.openConversation).toBe(sharedConversation)
+
+        newer.releaseOpenConversationOwnership()
+        expect(sdkState.openConversation).toBeUndefined()
     })
 
     it("sorts no-seq messages with invalid order after sequenced messages", () => {

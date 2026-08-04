@@ -56,6 +56,19 @@ export const I18nContext = React.createContext({
 
 export const useI18n = () => React.useContext(I18nContext);
 
+const titleContexts = new Map<string, { context: any; owner?: symbol }>();
+export const titleContextStore = {
+  get: (menuId: string) => titleContexts.get(menuId)?.context,
+  set: (menuId: string, context: any, owner?: symbol) => {
+    titleContexts.set(menuId, { context, owner });
+  },
+  clear: (menuId: string, owner?: symbol) => {
+    const current = titleContexts.get(menuId);
+    if (current && (!owner || current.owner === owner))
+      titleContexts.delete(menuId);
+  },
+};
+
 export const WKApp = {
   loginInfo: { token: 'test-token-abc', uid: 'test-uid' },
   shared: { currentSpaceId: 'space-123', deviceId: 'test-device-uuid', logout: () => {}, avatarUser: () => '' },
@@ -63,6 +76,7 @@ export const WKApp = {
   mittBus: { on: () => {}, off: () => {}, emit: () => {} },
   apiClient: {},
   endpoints: { showConversation: () => {} },
+  menus: { menusList: () => [] },
 };
 
 export default WKApp;

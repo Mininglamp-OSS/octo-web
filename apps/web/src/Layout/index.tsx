@@ -537,8 +537,15 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
             if (WKApp.loginInfo.token) {
                 applyStandaloneSummarySpaceFromQuery();
-                const standaloneTaskNo = parseStandaloneSummaryTaskNo(window.location.pathname);
-                return <SummaryDetailPage taskId={standaloneTaskNo ?? undefined} />;
+                const standaloneTaskNo = parseStandaloneSummaryTaskNo(
+                    window.location.pathname
+                );
+                return (
+                    <SummaryDetailPage
+                        taskId={standaloneTaskNo ?? undefined}
+                        emitSelection
+                    />
+                );
             }
             persistStandaloneReturn();
             // Anonymous: fall through to the login screen (below) without navigating away.

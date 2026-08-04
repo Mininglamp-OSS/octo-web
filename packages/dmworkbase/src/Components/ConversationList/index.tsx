@@ -5,6 +5,7 @@ import {
   ChannelInfo,
   ChannelTypePerson,
   ChannelTypeGroup,
+  ConversationAction,
   ReminderType,
 } from "wukongimjssdk";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
@@ -47,6 +48,7 @@ import {
   muteChannelSetting,
   topChannelSetting,
 } from "../../bridge/channelSetting/channelSettingActions";
+import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
 // ── 在线态判定/渲染 helper ──────────────────────────────────────────────
@@ -1297,11 +1299,36 @@ export default class ConversationList extends Component<
                 icon: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
                 onClick: () => {
                   if (!channel) return;
-                  WKApp.apiClient.put("conversation/clearUnread", {
-                    channel_id: channel.channelID,
-                    channel_type: channel.channelType,
-                    unread: 0,
-                  });
+                  void WKApp.apiClient
+                    .put("conversation/clearUnread", {
+                      channel_id: channel.channelID,
+                      channel_type: channel.channelType,
+                      unread: 0,
+                    })
+                    .then(() => {
+                      conv.conversation.unread = 0;
+                      if (
+                        WKApp.shared.currentSpaceId &&
+                        channel.channelType === ChannelTypePerson &&
+                        conv.conversation.extra?.spaceUnread !== undefined
+                      ) {
+                        conv.conversation.extra.spaceUnread = 0;
+                      }
+                      WKSDK.shared().conversationManager.notifyConversationListeners(
+                        conv.conversation,
+                        ConversationAction.update
+                      );
+                      getBrowserUnreadConversationSync().publish({
+                        accountId: WKApp.loginInfo.uid,
+                        spaceId: WKApp.shared.currentSpaceId || "",
+                        channelId: channel.channelID,
+                        channelType: channel.channelType,
+                        unread: 0,
+                      });
+                    })
+                    .catch(() => {
+                      // Keep the current unread state when the server rejects the clear.
+                    });
                 },
               });
             }

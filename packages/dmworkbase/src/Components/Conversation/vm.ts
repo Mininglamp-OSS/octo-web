@@ -48,6 +48,8 @@ import {
     setImChannelSubscribersCache,
     syncImChannelSubscribers,
 } from "../../im-runtime/channelRuntime";
+import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
+import { isOwnedConversationSingleton } from "../../features/notifications/messageAttention";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -93,11 +95,16 @@ export interface ConversationRenderFoldSessionItem {
 
 export type ConversationRenderItem = ConversationRenderMessageItem | ConversationRenderFoldSessionItem
 
+export interface ConversationVMOptions {
+    registerAsOpenConversation?: boolean
+}
+
 const PendingMessageOrderBase = Number.MAX_SAFE_INTEGER / 2
 
 export default class ConversationVM extends ProviderListener {
 
     private static nextMessageContainerSeq = 0
+    private static openConversationOwner?: symbol
 
     loading: boolean = false // 消息是否加载中
     channel: Channel
@@ -143,6 +150,9 @@ export default class ConversationVM extends ProviderListener {
     afterFoldSessionClientMsgNos: Set<string> = new Set() // 紧跟在折叠卡片后的消息，需强制独立显示
     private foldSessionActiveTimer: ReturnType<typeof setTimeout> | null = null // 协作态超时自动结束
     private reactionSyncController: ReturnType<typeof createMessageReactionSyncController>
+    private readonly registerAsOpenConversation: boolean
+    private readonly openConversationOwner = Symbol("openConversationOwner")
+    private ownedOpenConversation?: Conversation
 
     fileDragEnter?: boolean // 文件拖拽上传（拖进来了）
     fileDragLeave?: boolean // 文件拖拽上传（拖离开了）
@@ -165,9 +175,14 @@ export default class ConversationVM extends ProviderListener {
     private _subscribersResolved: boolean = false
     subscribersReady: Promise<void>
 
-    constructor(channel: Channel, initLocateMessageSeq?: number) {
+    constructor(
+        channel: Channel,
+        initLocateMessageSeq?: number,
+        options: ConversationVMOptions = {},
+    ) {
         super()
         this.channel = channel
+        this.registerAsOpenConversation = options.registerAsOpenConversation !== false
         this.reactionSyncController = createMessageReactionSyncController({
             channel,
             // messagesOfOrigin 是已加载消息的权威集合；pullupHasMore 期间新消息先进入
@@ -839,6 +854,31 @@ export default class ConversationVM extends ProviderListener {
         }
     }
 
+    private claimOpenConversation(conversation: Conversation): void {
+        if (!this.registerAsOpenConversation) {
+            return
+        }
+        WKSDK.shared().conversationManager.openConversation = conversation
+        this.ownedOpenConversation = conversation
+        ConversationVM.openConversationOwner = this.openConversationOwner
+    }
+
+    releaseOpenConversationOwnership(): void {
+        const conversationManager = WKSDK.shared().conversationManager
+        if (ConversationVM.openConversationOwner === this.openConversationOwner) {
+            if (
+                isOwnedConversationSingleton(
+                    conversationManager.openConversation,
+                    this.ownedOpenConversation,
+                )
+            ) {
+                conversationManager.openConversation = undefined
+            }
+            ConversationVM.openConversationOwner = undefined
+        }
+        this.ownedOpenConversation = undefined
+    }
+
     didMount(): void {
 
         this.conversationListener = (conversation: Conversation, action: ConversationAction) => {
@@ -1080,15 +1120,13 @@ export default class ConversationVM extends ProviderListener {
                 this.updateLastMessageIfNeed(new MessageWrap(conversation.lastMessage))
             }
 
-            WKSDK.shared().conversationManager.openConversation = conversation
+            this.claimOpenConversation(conversation)
         }
 
         this.requestMessagesOfFirstPage(this.initLocateMessageSeq, () => {
             if (this.onFirstMessagesLoaded) {
                 this.onFirstMessagesLoaded()
             }
-            // 进入会话即标记 reminders 已读，避免折叠分组后 @ 角标残留
-            this.markReminderDones()
         })
 
         // 订阅 task 上传失败事件（module.tsx 全局触发，这里仅处理当前 channel）
@@ -1116,7 +1154,7 @@ export default class ConversationVM extends ProviderListener {
     }
 
     didUnMount(): void {
-        this.markReminderDones()
+        this.releaseOpenConversationOwnership()
         WKSDK.shared().chatManager.removeMessageListener(this.messageListener)
         WKSDK.shared().chatManager.removeMessageStatusListener(this.messageStatusListener)
         WKApp.endpointManager.removeMethod(EndpointID.clearChannelMessages)
@@ -1221,28 +1259,6 @@ export default class ConversationVM extends ProviderListener {
             limit: 100,
             page: 1
         })
-    }
-
-    // 标记提醒已完成
-    markReminderDones() {
-        const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
-        if (conversation && conversation.reminders && conversation.reminders.length > 0) {
-            const ids = new Array<number>()
-            for (const reminder of conversation.reminders) {
-                if (!reminder.done) {
-                    ids.push(reminder.reminderID)
-                }
-            }
-            if (ids.length > 0) {
-                WKSDK.shared().reminderManager.done(ids)
-            }
-        }
-        // 进场兜底：清 SDK 本地的 isMentionMe，与 reminders done 保持一致
-        const conv = WKSDK.shared().conversationManager.findConversation(this.channel)
-        if (conv) {
-            conv.isMentionMe = false
-        }
-
     }
 
     async onDownArrow() {
@@ -1623,9 +1639,7 @@ export default class ConversationVM extends ProviderListener {
     async refreshNewMsgCount() {
 
         const oldUnreadCount = this.unreadCount
-        if (this.browseToMessageSeq == 0) {
-            this.unreadCount = 0
-        } else if (!this.lastMessage) { // 没有给定最新的消息 没办法算未读数量
+        if (!this.lastMessage) { // 没有给定最新的消息 没办法算未读数量
             this.unreadCount = 0
         } else if (this.lastMessage.send) { // // 如果最后一条消息是自己发的 则新消息数量为0
             this.browseToMessageSeq = this.lastMessage.messageSeq
@@ -1641,6 +1655,20 @@ export default class ConversationVM extends ProviderListener {
             const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
             if (conversation) {
                 conversation.unread = this.unreadCount
+                if (
+                    WKApp.shared.currentSpaceId &&
+                    conversation.channel.channelType === ChannelTypePerson &&
+                    conversation.extra?.spaceUnread !== undefined
+                ) {
+                    conversation.extra.spaceUnread = this.unreadCount
+                }
+                getBrowserUnreadConversationSync().publish({
+                    accountId: WKApp.loginInfo.uid,
+                    spaceId: WKApp.shared.currentSpaceId || "",
+                    channelId: conversation.channel.channelID,
+                    channelType: conversation.channel.channelType,
+                    unread: this.unreadCount,
+                })
             }
             // 未读清零时：先持久化到服务端，成功后再通知监听者 + 刷新 sidebar 快照（#203）。
             // markConversationUnread 是异步 HTTP PUT，必须 await 确保 /sidebar/sync 读到

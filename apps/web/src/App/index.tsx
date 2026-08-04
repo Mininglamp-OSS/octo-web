@@ -5,12 +5,12 @@ import React, { useEffect } from 'react';
 import './index.css';
 import AppLayout from '../Layout';
 import { WKSDK, ChannelTypePerson } from 'wukongimjssdk';
-import { setFaviconBadge, clearFaviconBadge } from '../utils/faviconBadge';
 import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
+import { createOctoDocumentTitleController } from '../features/documentTitle/octoDocumentTitle';
 
 /**
  * 全局 ?verified=1 处理：CAS 实名认证完成后 verify-service 会 302 回
@@ -45,10 +45,19 @@ function useRealnameVerifiedLandingHandler() {
 function App() {
   useRealnameVerifiedLandingHandler()
   useDeprecatedFriendApplyReddotCleanup()
+  useOctoDocumentTitle()
   registerMenus()
   return (
     <AppLayout />
   );
+}
+
+function useOctoDocumentTitle() {
+  useEffect(() => {
+    const controller = createOctoDocumentTitleController()
+    controller.start()
+    return () => controller.stop()
+  }, [])
 }
 
 function useDeprecatedFriendApplyReddotCleanup() {
@@ -96,7 +105,9 @@ async function registerMenus() {
 
   WKApp.menus.register("chat", (_context) => {
     const m = new Menus("chat", "/", t("app.nav.chat"), <ChatIcon />, <ChatIcon />)
-    let badge = 0;
+    // Electron's existing tray/taskbar contract intentionally remains the unread MESSAGE total.
+    // The Web document title uses a separate unread-CONVERSATION selector.
+    let electronUnreadMessageCount = 0
 
     for (const conversation of WKSDK.shared().conversationManager.conversations) {
       const channelInfo = WKSDK.shared().channelManager.getChannelInfo(conversation.channel)
@@ -113,17 +124,15 @@ async function registerMenus() {
       if (currentSpaceId
           && conversation.channel.channelType === ChannelTypePerson
           && conversation.extra?.spaceUnread !== undefined) {
-        badge += conversation.extra.spaceUnread
+        electronUnreadMessageCount += conversation.extra.spaceUnread
       } else {
-        badge += conversation.unread
+        electronUnreadMessageCount += conversation.unread
       }
     }
 
-    // badge 和 favicon 角标已下线
-    clearFaviconBadge()
-
+    // favicon 数字角标已下线；Electron 的既有托盘语义保持不变。
     if ((window as any).__POWERED_ELECTRON__) {
-      (window as any).ipc.send("conversation-anager-unread-count", badge);
+      (window as any).ipc.send("conversation-anager-unread-count", electronUnreadMessageCount);
     }
 
     return m

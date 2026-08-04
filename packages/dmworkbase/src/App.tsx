@@ -13,6 +13,8 @@ export type MittEvents = {
   /** App 回前台(visibilitychange/focus):打开中的会话据此重同步成员列表,
    * 修复合盖/息屏久后 WS 断连期间成员变更 CMD 丢失导致 @ 搜不到新成员(octo-web#567) */
   "wk:app-foreground": undefined;
+  /** 当前会话消息 DOM/滚动位置变化，供待决的多标签页提醒尽早登记前台抑制。 */
+  "wk:message-attention-state-changed": undefined;
   /** 消息 reaction 乐观更新或服务端对账完成，携带 messageId 做局部刷新 */
   "message-reaction-updated": string;
   "wk:pending-thread": {
@@ -60,6 +62,10 @@ export type MittEvents = {
    * 不会自动 remount, 接收方需要主动 reload。
    */
   'wk:nav-menu-activated': { menuId: string };
+  /** The canonical active top-level page changed (including boot, history and config reconciliation). */
+  'wk:active-menu-changed': { menuId?: string };
+  /** Login, logout or account replacement changed the identity that owns page-level state. */
+  'wk:auth-state-changed': undefined;
   /**
    * dmloop 派单(quick-create)后的看板补刷协议。派单是异步的(agent 稍后建 issue,dmloop 暂无 WS 推送):
    * NewLoopPage 派单成功发 `wk:loop-issues-dispatched`;常驻的 LoopPage 据此有界补发 `wk:loop-issues-refresh`,
@@ -878,6 +884,7 @@ export default class WKApp extends ProviderListener {
     );
 
     WKApp.endpoints.addOnLogin(() => {
+      WKApp.mittBus.emit("wk:auth-state-changed");
       this.startMain();
     });
 
@@ -1068,6 +1075,7 @@ export default class WKApp extends ProviderListener {
     this.channelSpaceMap.clear();
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
+    WKApp.mittBus.emit("wk:auth-state-changed");
   }
 
   // 登出

@@ -13,7 +13,13 @@ import {
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
 import { Channel, MessageText } from "wukongimjssdk";
-import { I18nContext, t, ForwardService, interpretForwardResult } from "@octo/base";
+import {
+  I18nContext,
+  t,
+  ForwardService,
+  interpretForwardResult,
+  titleContextStore,
+} from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
@@ -173,6 +179,7 @@ function AbstractCallout({ abstract, title }: { abstract?: string; title: string
 export default class SummaryDetailPage extends Component<SummaryDetailPageProps, SummaryDetailPageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
+    private readonly titleContextOwner = Symbol("summary-title-context");
 
     private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
     private contentScrollRef = React.createRef<HTMLDivElement>();
@@ -285,6 +292,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // loadSchedule 在 setState 前用「发起时捕获的 seq」与最新 seq 比对：不一致说明期间
     // 已切换 task 或重新加载，旧请求的响应必须丢弃，绝不污染当前 task 的 scheduleItem。
     private scheduleLoadSeq = 0;
+    private publishedTitleLocale?: string;
 
     /** bump 并返回最新调度加载序列号；任何会改变「当前 scheduleItem 归属」的入口都应调用。 */
     private nextScheduleSeq(): number {
@@ -333,9 +341,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     componentDidUpdate(prevProps: any, prevState?: SummaryDetailPageState) {
+        if (
+            this.props.emitSelection &&
+            this.state.detail &&
+            this.publishedTitleLocale !== this.context?.locale
+        ) {
+            this.publishDetailTitle(this.state.detail);
+        }
         const prevTaskId = prevProps.taskId;
         const currentTaskId = this.detailLookupId;
         if (prevTaskId !== currentTaskId && currentTaskId != null) {
+            if (this.props.emitSelection) {
+                titleContextStore.clear("summary", this.titleContextOwner);
+            }
             this.listPageActive = false;
             this.clearAllTimers();
             // Blocking 5：切 task 立即清空上一 task 的 schedule 状态，避免在新 detail
@@ -393,6 +411,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     componentWillUnmount() {
+        if (this.props.emitSelection) {
+            titleContextStore.clear("summary", this.titleContextOwner);
+        }
         this.unmounted = true;
         this.teardownTocObserver();
         if (this.layoutResizeObserver) {
@@ -613,6 +634,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 lastKnownStatus: detail.status,
                 workflowGateContent: false,
             });
+            this.publishDetailTitle(detail);
             if (detail.status === TaskStatus.COMPLETED && detail.result_id) {
                 const markRead = api.markSummaryRead;
                 if (markRead) void markRead(detail.task_id, { team_result_id: detail.result_id }).then((attention) => {
@@ -677,6 +699,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (this.scheduleLoadSeq !== seq || this.detailLookupId !== requestTaskId) return;
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
         }
+    }
+
+    private publishDetailTitle(detail: SummaryDetail): void {
+        if (!this.props.emitSelection) return;
+        this.publishedTitleLocale = this.context?.locale;
+        const primaryTitle = deriveSummaryDisplayContent(detail.topic || detail.title || "");
+        if (!primaryTitle) {
+            titleContextStore.clear("summary", this.titleContextOwner);
+            return;
+        }
+        const moduleTitle =
+            WKApp.menus.menusList().find((menu) => menu.id === "summary")?.title ||
+            t("summary.menu.title");
+        titleContextStore.set(
+            "summary",
+            { primaryTitle, moduleTitle },
+            this.titleContextOwner
+        );
     }
 
     /**

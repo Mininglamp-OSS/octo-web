@@ -7,14 +7,24 @@ import {
   fireEvent,
   act,
   createEvent,
-} from '@testing-library/react'
-import type { ReactNode } from 'react'
-import { setWKApp } from '../octoweb/index.ts'
-import { createMockWKApp } from '../octoweb/mock.ts'
-import { resolveDocTarget, clearDocTarget, readDocFromHistory, DocsHome } from './DocsHome.tsx'
-import { captureDocTargetDeepLink, CLI_REFERENCE_URL, httpUrlOr } from '../config.ts'
-import zhLocale from '../i18n/zh-CN.json'
-import enLocale from '../i18n/en-US.json'
+} from "@testing-library/react";
+import type { ReactNode } from "react";
+import { setWKApp } from "../octoweb/index.ts";
+import { createMockWKApp } from "../octoweb/mock.ts";
+import {
+  resolveDocTarget,
+  clearDocTarget,
+  readDocFromHistory,
+  DocsHome,
+} from "./DocsHome.tsx";
+import {
+  captureDocTargetDeepLink,
+  CLI_REFERENCE_URL,
+  httpUrlOr,
+} from "../config.ts";
+import zhLocale from "../i18n/zh-CN.json";
+import enLocale from "../i18n/en-US.json";
+import { titleContextStore } from "@octo/base";
 
 // Replace the heavy editor shell (Tiptap + Yjs + Hocuspocus) with a marker so the DocsHome
 // render tests exercise target-resolution / navigation without mounting the real editor.
@@ -114,8 +124,9 @@ let pushStateSpy: ReturnType<typeof vi.fn>
 const realLocation = window.location
 
 beforeEach(() => {
-  window.sessionStorage.clear()
-  window.localStorage.clear()
+  titleContextStore.clear("docs");
+  window.sessionStorage.clear();
+  window.localStorage.clear();
   // jsdom's window.location.assign is non-configurable and throws "Not implemented" on call.
   // Swap in a minimal stub exposing only what DocsHome touches (search + assign) so the
   // open / back navigations are observable without a real page load.
@@ -1162,11 +1173,21 @@ describe('DocsHome — list-open shell selection by docType (XIN-58)', () => {
 
     fireEvent.click(screen.getByText('Shared X'))
 
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    expect(screen.getByTestId('editor-doc').textContent).toBe('d_x')
-    expect(screen.queryByTestId('board-shell')).toBeNull()
-    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(false)
-  })
+    await waitFor(() =>
+      expect(screen.getByTestId("editor-shell")).toBeTruthy()
+    );
+    expect(screen.getByTestId("editor-doc").textContent).toBe("d_x");
+    expect(screen.queryByTestId("board-shell")).toBeNull();
+    expect(calls.some((c) => c.method === "get" && c.url === "/docs/d_x")).toBe(
+      false
+    );
+    await waitFor(() =>
+      expect(titleContextStore.get("docs")).toEqual({
+        primaryTitle: "Shared X",
+        moduleTitle: "docs.menu.title",
+      })
+    );
+  });
 
   it('unknown kind (list omits docType, non-creator) resolves a board via getDoc → board shell', async () => {
     // The core regression: registry is empty (non-creator) and the list row has no docType, yet

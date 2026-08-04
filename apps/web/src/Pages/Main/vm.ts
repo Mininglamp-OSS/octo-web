@@ -218,6 +218,7 @@ export default class MainVM extends ProviderListener {
     WKApp.currentMenuId = target.id;
     this._pendingRouteActivation = undefined;
     this.notifyListener();
+    WKApp.mittBus.emit("wk:active-menu-changed", { menuId: target.id });
     WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: target.id });
     return true;
   }
@@ -259,6 +260,9 @@ export default class MainVM extends ProviderListener {
     this._currentMenus = result.currentMenu;
     this._historyRoutePaths = result.historyRoutePaths;
     WKApp.currentMenuId = result.currentMenu?.id;
+    WKApp.mittBus.emit("wk:active-menu-changed", {
+      menuId: result.currentMenu?.id,
+    });
     if (result.activeMenuVanished) {
       WKApp.routeRight.popToRoot();
     }
@@ -292,6 +296,9 @@ export default class MainVM extends ProviderListener {
     this._currentMenus = result.currentMenu;
     this._historyRoutePaths = result.historyRoutePaths;
     WKApp.currentMenuId = result.currentMenu?.id;
+    WKApp.mittBus.emit("wk:active-menu-changed", {
+      menuId: result.currentMenu?.id,
+    });
     // NB: unlike onMenuClick we deliberately do NOT WKApp.routeRight.popToRoot() here. The route
     // being activated (e.g. /docs) mounts fresh and populates the right pane itself via
     // replaceToRoot on mount; popping first would empty the shared queue and briefly flash the
@@ -338,6 +345,7 @@ export default class MainVM extends ProviderListener {
     // componentDidMount to decide whether to mount the right-pane page (see MarketSidebar.tsx:66),
     // so a missing id here is exactly why refreshing /mcp-market/mcp lands on an empty right pane.
     WKApp.currentMenuId = menus?.id;
+    WKApp.mittBus.emit("wk:active-menu-changed", { menuId: menus?.id });
     // An explicit menu selection (user click via onMenuClick, or switchToMenuById) cancels any
     // pending boot-route activation: the user has chosen a view, so a config-gated menu that
     // resolves later must not yank them off it. didMount sets _pendingRouteActivation only AFTER

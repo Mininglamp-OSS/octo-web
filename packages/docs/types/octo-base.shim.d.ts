@@ -22,6 +22,17 @@
 // already re-declares the structural WKApp/APIClient/RouteManager interfaces in
 // octoweb/types.ts, and getWKApp() casts the real WKApp to WKAppShape explicitly.
 declare module '@octo/base' {
+  export interface PageTitleContext {
+    primaryTitle: string
+    parentTitle?: string
+    moduleTitle?: string
+  }
+  export const titleContextStore: {
+    get(menuId: string): PageTitleContext | undefined
+    set(menuId: string, context: PageTitleContext, owner?: symbol): void
+    clear(menuId: string, owner?: symbol): void
+  }
+
   // WKApp is cast through `unknown` to WKAppShape in octoweb/index.ts, so its precise
   // shape is irrelevant to docs typecheck; declare it as `unknown`-ish to avoid
   // re-importing the host class type.
@@ -55,7 +66,10 @@ declare module '@octo/base' {
   export function t(key: string, values?: Record<string, unknown>): string
 
   // React hook returning a `t` bound to the current locale via I18nProvider context.
-  export function useI18n(): { t: (key: string, values?: Record<string, unknown>) => string }
+  export function useI18n(): {
+    t: (key: string, values?: Record<string, unknown>) => string
+    locale: string
+  }
 
   // NavRail menu entry class. DocsModule.init() constructs `new Menus(id, routePath,
   // title, icon, selectedIcon)` and registers it via WKApp.menus.register. Only the
