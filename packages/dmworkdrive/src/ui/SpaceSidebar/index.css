@@ -32,6 +32,14 @@
   color: var(--wk-text-tertiary, #6b7075);
 }
 
+/* The create-shared "+" is the one Semi button in this rail, so it needs the same
+   brand ring the space rows get — `@octo/base` drops Semi's own ring app-wide.
+   Scoped through `.drive-sidebar` to win on specificity, not on load order. */
+.drive-sidebar .drive-sidebar__label .semi-button:focus-visible {
+  outline: 2px solid var(--wk-text-accent, #7f3bf5);
+  outline-offset: 1px;
+}
+
 .drive-space-item {
   display: flex;
   align-items: center;

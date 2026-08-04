@@ -130,22 +130,28 @@
 }
 
 /* Hidden until the row is hovered or holds focus (docs' row-menu behaviour),
-   and kept visible while its dropdown is open. */
+   and kept visible while its dropdown is open. Every reveal selector repeats
+   `:not(--head)` so it outranks the hide rule above on specificity rather than
+   on source order — and so the `aria-expanded` case, which would otherwise sit
+   a step below it, actually wins while a menu is open. */
 .drive-file-row:not(.drive-file-row--head) .drive-file__ops .semi-button {
   opacity: 0;
   color: var(--wk-text-tertiary, #6b7075);
   transition: opacity 0.12s ease, background 0.12s ease;
 }
 
-.drive-file-row:hover .drive-file__ops .semi-button,
-.drive-file-row:focus-within .drive-file__ops .semi-button,
-.drive-file__ops .semi-button[aria-expanded='true'] {
+.drive-file-row:not(.drive-file-row--head):hover .drive-file__ops .semi-button,
+.drive-file-row:not(.drive-file-row--head):focus-within .drive-file__ops .semi-button,
+.drive-file-row:not(.drive-file-row--head) .drive-file__ops .semi-button[aria-expanded='true'] {
   opacity: 1;
 }
 
 /* A blob row has no focusable name, so its action buttons are the focused
-   component; give them the same brand ring on their own boundary. */
-.drive-file__ops .semi-button:focus-visible {
+   component; give them the same brand ring on their own boundary. Scoped
+   through `.drive-file-row` to clear both Semi's own `:focus-visible` outline
+   and `@octo/base`'s app-wide `outline: none` (both 0,3,0) on specificity
+   instead of stylesheet order. */
+.drive-file-row .drive-file__ops .semi-button:focus-visible {
   outline: 2px solid var(--wk-text-accent, #7f3bf5);
   outline-offset: 1px;
 }

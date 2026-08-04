@@ -61,10 +61,13 @@
 /* Toolbar buttons: docs' pill primary / outlined secondary specs mapped onto the
    Semi buttons Drive already renders, so behaviour (disabled, focus ring, icon
    slot) is untouched and only the skin changes. Secondary mirrors docs'
-   `filter-btn`; primary mirrors docs' `list-new` pill. */
+   `filter-btn`; primary mirrors docs' `list-new` pill.
+   Both specs share docs' 32px control height: docs never puts its content-height
+   `filter-btn` next to its 32px pill, but Drive does, so the height has to be
+   stated here rather than left to each button's content. */
 .drive-main__actions .drive-btn.semi-button {
   height: auto;
-  min-height: 0;
+  min-height: 32px;
   padding: 5px 10px;
   border: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
   border-radius: var(--wk-r-sm, 6px);
@@ -105,6 +108,18 @@
 .drive-main__actions .drive-btn.semi-button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* Keyboard focus for the header actions, same brand ring the rows, rail and
+   breadcrumb use. `@octo/base` deliberately kills Semi's own ring app-wide
+   (`WKBase/index.css`: `.semi-button.semi-button-primary:focus-visible` et al →
+   `outline: none`, specificity 0,3,0), so without this rule these buttons — the
+   upload CTA included — have no focus indicator at all. Three classes plus the
+   pseudo-class puts us at 0,4,0, which outranks that global rule regardless of
+   stylesheet order. `--wk-text-accent` is theme-aware, so dark follows. */
+.drive-main__actions .drive-btn.semi-button:focus-visible {
+  outline: 2px solid var(--wk-text-accent, #7f3bf5);
+  outline-offset: 1px;
 }
 
 /* Dark-mode CTA contrast — a deliberate, documented deviation from docs.

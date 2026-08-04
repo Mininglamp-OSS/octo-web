@@ -23,6 +23,11 @@ const meta: Meta<typeof FileList> = {
     onDelete: () => {},
     onShare: () => {},
     onDownload: () => {},
+    // Full-capability role. Without these the ops column renders nothing, so the
+    // hover reveal and the focus ring on the row actions are unreachable.
+    canDownload: true,
+    canEdit: true,
+    canShare: true,
   },
 };
 
