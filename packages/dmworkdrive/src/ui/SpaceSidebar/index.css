@@ -54,6 +54,13 @@
   background: var(--wk-bg-hover, #dfe0e2);
 }
 
+/* Same brand focus ring as the file rows; drawn inside the row so the scrolling
+   rail cannot clip it. Keyboard-only, so a click leaves no ring behind. */
+.drive-space-item:focus-visible {
+  outline: 2px solid var(--wk-text-accent, #7f3bf5);
+  outline-offset: -2px;
+}
+
 .drive-space-item--active {
   background: var(--wk-bg-selected, rgba(127, 59, 245, 0.06));
   color: var(--wk-text-primary, #1f2329);

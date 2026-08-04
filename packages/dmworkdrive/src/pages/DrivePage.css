@@ -107,6 +107,23 @@
   cursor: default;
 }
 
+/* Dark-mode CTA contrast — a deliberate, documented deviation from docs.
+   `--wk-brand-primary` is not redefined for dark, so it stays #1c1c23 while
+   `--wk-bg-base` becomes `--wk-neutral-850` (also #1c1c23): docs' brand pill and
+   ours both dissolve into the page. Dark therefore uses the inverse pairing
+   (light surface + inverse text), which is the only existing token combination
+   that keeps both the button and its label readable. Light mode is untouched and
+   stays value-identical to docs. */
+body[theme-mode='dark'] .drive-main__actions .drive-btn--primary.semi-button {
+  background: var(--wk-text-primary, #e4e6ed);
+  color: var(--wk-text-inverse, #111318);
+}
+
+body[theme-mode='dark'] .drive-main__actions .drive-btn--primary.semi-button:not(:disabled):hover {
+  background: var(--wk-color-white, #fff);
+  color: var(--wk-text-inverse, #111318);
+}
+
 .drive-main__body {
   flex: 1;
   min-height: 0;

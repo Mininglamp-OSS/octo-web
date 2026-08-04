@@ -38,6 +38,11 @@
   color: var(--wk-text-primary, #1f2329);
 }
 
+.drive-breadcrumb__link:focus-visible {
+  outline: 2px solid var(--wk-text-accent, #7f3bf5);
+  outline-offset: 1px;
+}
+
 .drive-breadcrumb__current {
   max-width: 240px;
   overflow: hidden;

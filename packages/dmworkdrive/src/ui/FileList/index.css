@@ -41,13 +41,28 @@
 }
 
 /* Drive rows are navigational rather than selectable, so the active treatment
-   binds to keyboard focus — same tokens docs uses for its selected row. */
-.drive-file-row:not(.drive-file-row--head):focus-within {
+   binds to KEYBOARD focus: docs' selected tint plus a brand focus ring drawn
+   around the whole row, which is the interactive bound the row represents.
+   `:has(…:focus-visible)` is what keeps a mouse click from leaving a ring
+   behind, and the ring uses `--wk-text-accent` because docs'
+   `--wk-brand-primary-ring` is not redefined for dark (it stays #1c1c23 on a
+   #1c1c23 page). `outline-offset: -2px` draws inside the row so the scroll
+   container cannot clip it. */
+.drive-file-row:not(.drive-file-row--head):has(.drive-file__name-link:focus-visible) {
   background: var(--wk-bg-selected, rgba(127, 59, 245, 0.06));
+  outline: 2px solid var(--wk-text-accent, #7f3bf5);
+  outline-offset: -2px;
 }
 
-.drive-file-row:not(.drive-file-row--head):focus-within .drive-file__name-link {
+.drive-file-row:not(.drive-file-row--head):has(.drive-file__name-link:focus-visible)
+  .drive-file__name-link {
   font-weight: 600;
+}
+
+/* The row owns the focus treatment, so the name button drops the UA ring. */
+.drive-file__name-link:focus,
+.drive-file__name-link:focus-visible {
+  outline: none;
 }
 
 /* Column labels: docs has no table head, so this stays a quiet caption row —
@@ -126,4 +141,11 @@
 .drive-file-row:focus-within .drive-file__ops .semi-button,
 .drive-file__ops .semi-button[aria-expanded='true'] {
   opacity: 1;
+}
+
+/* A blob row has no focusable name, so its action buttons are the focused
+   component; give them the same brand ring on their own boundary. */
+.drive-file__ops .semi-button:focus-visible {
+  outline: 2px solid var(--wk-text-accent, #7f3bf5);
+  outline-offset: 1px;
 }
