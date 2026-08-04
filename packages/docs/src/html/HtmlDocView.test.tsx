@@ -66,9 +66,11 @@ async function waitForFrame(container: HTMLElement): Promise<HTMLIFrameElement> 
 
 beforeEach(() => {
   delete (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
+  ;(window as unknown as { __OCTO_HTML_SOURCE_DIFF_ENABLED__?: boolean }).__OCTO_HTML_SOURCE_DIFF_ENABLED__ = true
 })
 
 afterEach(() => {
+  delete (window as unknown as { __OCTO_HTML_SOURCE_DIFF_ENABLED__?: unknown }).__OCTO_HTML_SOURCE_DIFF_ENABLED__
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
