@@ -22,6 +22,7 @@ vi.mock('wukongimjssdk', () => ({
     },
     ChannelTypeGroup: 2,
     ChannelTypePerson: 1,
+    MessageContent: class {},
     MessageText: class {},
     WKSDK: { shared: () => ({ chatManager: { send: sendMock } }) },
 }));
