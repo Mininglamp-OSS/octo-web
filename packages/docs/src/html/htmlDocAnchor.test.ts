@@ -47,6 +47,24 @@ describe('buildAnchorFromSelection', () => {
     expect(anchor).toMatchObject({ kind: 'element', aid: 'sec1', label: 'section' })
   })
 
+  it('CSS.escapes a hostile aid so the selector cannot break out', () => {
+    // A hostile aid with a quote/bracket must produce a valid, escaped attribute selector that
+    // still matches ONLY the intended element (querySelector must not throw and must resolve it).
+    const hostile = '"] , script'
+    const el = document.createElement('p')
+    el.setAttribute('data-odoc-aid', hostile)
+    el.textContent = 'x'
+    document.body.appendChild(el)
+    const anchor = buildAnchorFromSelection(selectContents(el.firstChild as Node))
+    expect(anchor?.kind).toBe('element')
+    if (anchor?.kind === 'element') {
+      expect(anchor.aid).toBe(hostile)
+      // The escaped selector round-trips: it matches exactly the hostile element and nothing throws.
+      expect(() => document.querySelector(anchor.selector)).not.toThrow()
+      expect(document.querySelector(anchor.selector)).toBe(el)
+    }
+  })
+
   it('builds a TEXT anchor with the selected text when no aid is present', () => {
     document.body.innerHTML = '<div><p>just plain text here</p></div>'
     const p = document.querySelector('p') as HTMLElement

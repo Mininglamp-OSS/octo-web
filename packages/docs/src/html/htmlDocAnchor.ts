@@ -7,6 +7,17 @@ import type { Anchor } from './htmlDocComments.ts'
 import type { OctoDocComment } from './htmlDocComments.ts'
 import { t } from '../octoweb/index.ts'
 
+/**
+ * Robust CSS escaping for a hostile aid interpolated into an attribute selector: prefer the
+ * platform CSS.escape, else escape every non-word char so quotes/brackets/backslashes cannot
+ * break out of the selector.
+ */
+function escapeAidForSelector(value: string): string {
+  const cssApi = (globalThis as { CSS?: { escape?: (s: string) => string } }).CSS
+  if (cssApi?.escape) return cssApi.escape(value)
+  return value.replace(/[^\w-]/g, (c) => `\\${c}`)
+}
+
 /** How much surrounding text to snapshot for a text anchor (drift re-location aid). */
 const CONTEXT_CHARS = 40
 
@@ -62,7 +73,7 @@ export function buildAnchorFromSelection(sel: Selection | null): Anchor | null {
     return {
       kind: 'element',
       aid,
-      selector: `[data-odoc-aid="${aid}"]`,
+      selector: `[data-odoc-aid="${escapeAidForSelector(aid)}"]`,
       label: aidEl.tagName.toLowerCase(),
     }
   }

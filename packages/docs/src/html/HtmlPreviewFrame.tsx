@@ -1,4 +1,8 @@
-// Shared sandboxed preview. Scripts stay disabled and editable controls are neutralized.
+// Shared sandboxed preview. Scripts run in an isolated (allow-scripts, NO allow-same-origin)
+// sandbox; the parent talks to the frame only through the constrained postMessage bridge
+// (htmlDocBridge). The sandbox blocks parent DOM/origin/credential access but NOT outbound network
+// from doc JS — network egress is an accepted capability for agent-authored HTML. Editable controls
+// are still neutralized in the markup; referrerPolicy="no-referrer" strips the Referer leak channel.
 
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -8,6 +12,7 @@ import {
   resolveAbsoluteOctoDocBase,
   resolveOctoDocBase,
 } from './htmlDocFrameHelpers.ts'
+import { bridgeAvailable, injectBridgeScript, newBridgeToken } from './htmlDocBridge.ts'
 import { getWKApp, t } from '../octoweb/index.ts'
 
 export type PreviewLoadState =
@@ -21,8 +26,24 @@ export interface HtmlPreviewFrameProps {
   version: string
   title: string
   className?: string
-  /** Fired once the iframe document has loaded; hands back the live contentDocument (or null). */
-  onFrameLoad?: (doc: Document | null, frame: HTMLIFrameElement) => void
+  /**
+   * Isolation mode for the untrusted agent HTML. Two mutually-exclusive, both-safe modes — the
+   * dangerous allow-scripts + allow-same-origin combination is NEVER offered:
+   *   - 'scripts' (DEFAULT, issue #27): sandbox="allow-scripts", NO allow-same-origin. Doc JS runs
+   *     in an opaque origin walled off from the parent; the postMessage bridge is injected and
+   *     selection/anchor data crosses the boundary over it. contentDocument is unreadable (null).
+   *   - 'readonly-dom': sandbox="allow-same-origin", NO allow-scripts. Scripts never execute, so
+   *     the parent may safely read contentDocument directly (used by the static page-diff view,
+   *     which mirrors scroll and highlights changes across two panes). No bridge is injected.
+   */
+  isolation?: 'scripts' | 'readonly-dom'
+  /**
+   * Fired once the iframe has loaded; hands back the frame. NOTE: in the default 'scripts' mode
+   * the contentDocument is a cross-origin, opaque document the parent CANNOT read — selection/
+   * anchor data crosses the boundary over the postMessage bridge instead, and `doc` is null. In
+   * 'readonly-dom' mode `doc` is the live (script-free) contentDocument.
+   */
+  onFrameLoad?: (doc: Document | null, frame: HTMLIFrameElement, token: string | null) => void
   /** Fired on every state transition so a parent can read the raw source / react to error. */
   onStateChange?: (state: PreviewLoadState) => void
   /** Test/imperative hook: receive the iframe ref once mounted. */
@@ -41,6 +62,7 @@ export function HtmlPreviewFrame({
   version,
   title,
   className,
+  isolation = 'scripts',
   onFrameLoad,
   onStateChange,
   frameRef,
@@ -48,6 +70,10 @@ export function HtmlPreviewFrame({
   const [state, setState] = useState<PreviewLoadState>({ status: 'loading' })
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const seq = useRef(0)
+  // Per-render bridge token embedded in this srcDoc build; handed to the parent on load so it can
+  // reject replies from a stale generation. Not a secret (hostile doc JS reads it), just a
+  // correlation id — accepted facts stay non-privileged.
+  const tokenRef = useRef<string | null>(null)
 
   useEffect(() => {
     const mySeq = ++seq.current
@@ -71,15 +97,21 @@ export function HtmlPreviewFrame({
         }
         const raw = await res.text()
         if (mySeq !== seq.current) return
-        const next: PreviewLoadState = raw.trim()
-          ? {
-              status: 'ready',
-              // Absolutize known asset attrs, then inject <base> as the catch-all (CSS url()/root
-              // resources) — identical to the original HtmlDocView pipeline.
-              html: injectBaseHref(absolutizeDocAssetUrls(raw, url), resolveAbsoluteOctoDocBase()),
-              raw,
-            }
-          : { status: 'empty' }
+        // Absolutize asset attrs + inject <base> (CSS url()/root resource catch-all). In 'scripts'
+        // isolation append the postMessage bridge; 'readonly-dom' runs no scripts, so it's omitted.
+        const prepared = injectBaseHref(absolutizeDocAssetUrls(raw, url), resolveAbsoluteOctoDocBase())
+        let html = prepared
+        // Only mint/store a token when the bridge can ACTUALLY be injected. injectBridgeScript fails
+        // closed (returns HTML unchanged, no bridge) when DOMParser is unavailable (SSR), so gate on
+        // bridgeAvailable() to keep tokenRef in lockstep with what's really in the srcDoc.
+        if (raw.trim() && isolation === 'scripts' && bridgeAvailable()) {
+          const token = newBridgeToken()
+          tokenRef.current = token
+          html = injectBridgeScript(prepared, token)
+        } else {
+          tokenRef.current = null
+        }
+        const next: PreviewLoadState = raw.trim() ? { status: 'ready', html, raw } : { status: 'empty' }
         setState(next)
         onStateChange?.(next)
       })
@@ -95,9 +127,10 @@ export function HtmlPreviewFrame({
         onStateChange?.(next)
       })
     return () => controller.abort()
-    // onStateChange intentionally excluded — parents pass inline callbacks; refetch keys on slug/version.
+    // onStateChange intentionally excluded — parents pass inline callbacks; refetch keys on
+    // slug/version/isolation (isolation flips bridge injection, so a change must rebuild srcDoc).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, version])
+  }, [slug, version, isolation])
 
   useEffect(() => {
     frameRef?.(iframeRef.current)
@@ -122,15 +155,34 @@ export function HtmlPreviewFrame({
   if (state.status === 'empty') {
     return <div className="octo-html-doc-state">{t('docs.state.empty')}</div>
   }
+  const scriptsMode = isolation === 'scripts'
   return (
     <iframe
       ref={iframeRef}
       className={className ?? 'octo-html-doc-frame'}
-      // allow-same-origin lets comments read selections; scripts stay disabled.
-      sandbox="allow-same-origin"
+      // Two mutually-exclusive, both-safe sandboxes. NEVER combine allow-scripts with
+      // allow-same-origin (that pairing fully defeats the sandbox). No allow-forms/allow-popups/
+      // allow-top-navigation/allow-downloads in either mode.
+      //   scripts:      doc JS runs in an opaque origin, walled off from the PARENT (issue #27).
+      //   readonly-dom: no scripts execute, so same-origin DOM reads by the parent are safe.
+      // THREAT BOUNDARY: the sandbox stops parent DOM/origin/credential access, NOT arbitrary
+      // OUTBOUND network from doc JS (fetch/img/beacon to author-chosen hosts still work — network
+      // egress is an accepted capability for agent-authored HTML, see htmlDocBridge). referrerPolicy
+      // caps one leak channel by never sending our URL as a Referer on those requests.
+      sandbox={scriptsMode ? 'allow-scripts' : 'allow-same-origin'}
+      referrerPolicy="no-referrer"
       title={title}
       srcDoc={state.html}
-      onLoad={() => onFrameLoad?.(iframeRef.current?.contentDocument ?? null, iframeRef.current as HTMLIFrameElement)}
+      // In 'scripts' mode contentDocument is cross-origin (opaque) and unreadable — hand back null
+      // and let the postMessage bridge carry selection/anchor data. In 'readonly-dom' mode the
+      // (script-free) document is safe to read, so pass it through.
+      onLoad={() =>
+        onFrameLoad?.(
+          scriptsMode ? null : iframeRef.current?.contentDocument ?? null,
+          iframeRef.current as HTMLIFrameElement,
+          scriptsMode ? tokenRef.current : null,
+        )
+      }
     />
   )
 }

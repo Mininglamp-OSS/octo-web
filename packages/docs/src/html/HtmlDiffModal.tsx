@@ -446,6 +446,9 @@ export function HtmlDiffModal({ slug, from, to, title, onClose }: HtmlDiffModalP
                     version={from}
                     title={`${title} · v${from}`}
                     className="octo-html-doc-frame octo-diff-frame"
+                    // Static diff view: read the (script-free) DOM directly to highlight changes and
+                    // mirror scroll. No scripts run, so same-origin DOM access stays safe.
+                    isolation="readonly-dom"
                     onFrameLoad={onFrameLoad('old')}
                   />
                 </div>
@@ -458,6 +461,7 @@ export function HtmlDiffModal({ slug, from, to, title, onClose }: HtmlDiffModalP
                     version={to}
                     title={`${title} · v${to}`}
                     className="octo-html-doc-frame octo-diff-frame"
+                    isolation="readonly-dom"
                     onFrameLoad={onFrameLoad('new')}
                   />
                 </div>

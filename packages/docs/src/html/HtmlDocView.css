@@ -115,6 +115,26 @@
   margin: 4px 0;
   font-size: 13px;
 }
+/* Activatable anchor/quote: a click scrolls + highlights the anchor in the frame. Reset button
+   chrome so it reads as the quote/anchor it replaces; only add an affordance cursor. */
+.octo-html-doc-comment-quote--activatable,
+.octo-html-doc-comment-anchor--activatable {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+.octo-html-doc-comment-anchor--activatable {
+  background: none;
+  padding: 0;
+  color: var(--octo-doc-accent, var(--semi-color-primary, currentColor));
+}
+.octo-html-doc-comment-quote--activatable:hover,
+.octo-html-doc-comment-anchor--activatable:hover {
+  text-decoration: underline;
+}
 /* Author + time meta line under each comment / reply. */
 .octo-html-doc-comment-meta {
   display: flex;

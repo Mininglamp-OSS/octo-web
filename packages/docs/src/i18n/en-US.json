@@ -541,6 +541,7 @@
     "targetDoc": "Document-level comment",
     "targetAnchor": "Comment will be anchored to",
     "clearAnchor": "Clear target",
+    "scrollToAnchor": "Jump to anchor",
     "placeholder": "Write a comment…",
     "send": "Send",
     "readOnlyHint": "You have read-only access — commenting is disabled.",

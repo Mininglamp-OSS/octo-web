@@ -541,6 +541,7 @@
     "targetDoc": "文档级评论",
     "targetAnchor": "将评论定位到",
     "clearAnchor": "取消定位",
+    "scrollToAnchor": "跳转到锚点位置",
     "placeholder": "写下评论…",
     "send": "发送",
     "readOnlyHint": "你只有只读权限，无法评论。",

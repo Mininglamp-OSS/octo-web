@@ -1,19 +1,18 @@
 // Read-only viewer for a `docType==='html'` document (env ring 2a).
 //
-// Contract:
-//   - READ-ONLY: the HTML is agent-authored; a human may only read it (comments + "让 AI
-//     处理" arrive in ring 2b). This component renders NO editing chrome and loads the
-//     payload in a sandboxed iframe without script permission.
-//   - IFRAME: the published HTML is fetched as-is and rendered by the browser so agent CSS
-//     (<style>, inline style, external stylesheet links) stays intact.
-//   - SEPARATE BACKEND: octo-doc is a distinct deployment from the same-origin Yjs
-//     `/api/v1` docs backend, so we use a plain fetch (with credentials) against
-//     resolveOctoDocBase() rather than the octoweb apiClient.
+// Contract: agent-authored HTML the human may only read (no editing chrome). The payload runs in a
+// sandboxed iframe that may execute the doc's OWN JavaScript (issue #27) but is walled off from the
+// parent. octo-doc is a separate backend, so the frame fetches via plain credentialed fetch, not
+// the octoweb apiClient.
 //
-// SECURITY: the published HTML is NOT sanitized end-to-end by the backend (ring 1 only
-// validates aid-replace fragments, not the whole Publish payload), so it may contain
-// <script>, on* handlers, javascript: URLs, or interactive/editable controls. The render
-// path isolates it with iframe sandbox="allow-same-origin" and never grants allow-scripts.
+// SECURITY (issue #27): the Publish payload is NOT sanitized end-to-end, so it may carry <script>,
+// on* handlers, javascript: URLs, or controls. The frame uses sandbox="allow-scripts" WITHOUT
+// allow-same-origin (combining them defeats the sandbox — NEVER do it): doc JS runs in an opaque
+// origin and cannot reach the parent DOM/credentials/origin; forms/popups/downloads/top-nav stay
+// denied. This does NOT stop outbound network from doc JS — egress is an accepted capability for
+// agent HTML (see htmlDocBridge threat-boundary note). Selection/anchor data crosses the
+// constrained postMessage bridge (htmlDocBridge): the parent gates on event.source === the frame's
+// contentWindow + a bounded schema and accepts only non-privileged UI facts.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
@@ -37,8 +36,9 @@ import { isHtmlSourceDiffEnabled } from './htmlSourceDiffFeature.ts'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { useDocDelete } from '../editor/useDocDelete.ts'
 import { DocMoreMenu, OpenNewPageIcon, LinkIcon, DeleteIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
-import { buildAnchorFromSelection, truncateAnchorText } from './htmlDocAnchor.ts'
+import { truncateAnchorText } from './htmlDocAnchor.ts'
 import type { Anchor } from './htmlDocComments.ts'
+import { BRIDGE_CHANNEL, isValidAid, parseBridgeInbound } from './htmlDocBridge.ts'
 import {
   absolutizeDocAssetUrls,
   buildOctoDocUrl,
@@ -55,26 +55,18 @@ export {
 } from './htmlDocFrameHelpers.ts'
 import './HtmlDocView.css'
 
-// Interactive/editable elements the read-only view must never render, even if DOMPurify's
-// default (script/handler) baseline would otherwise let their markup through. This enforces
-// the product's "human reads, never edits" hard constraint.
+// Interactive/editable elements the read-only view must never render (enforces "human reads,
+// never edits"), even though DOMPurify's default baseline would let their markup through.
 const FORBID_TAGS = ['input', 'button', 'textarea', 'select', 'option', 'form', 'label', 'fieldset']
-// contenteditable would make plain elements editable; autofocus/onfocus are event-ish
-// affordances. (Generic on* handlers + javascript: URLs are already removed by DOMPurify's
-// default profile; contenteditable must be forbidden explicitly.)
-// style is forbidden: DOMPurify keeps inline style verbatim without deep-cleaning CSS values,
-// leaving a CSS injection surface (url(javascript:…)/expression()/url(//evil?leak) exfil/UI
-// overlay). Presentational styling belongs to octo-doc's published-page class/external CSS.
+// contenteditable makes plain elements editable; autofocus/onfocus are event-ish affordances.
+// style is forbidden because DOMPurify keeps inline CSS verbatim (url(javascript:)/expression()/
+// exfil url() surface it does not deep-clean). Presentational styling belongs to published CSS.
 const FORBID_ATTR = ['contenteditable', 'autofocus', 'onfocus', 'style']
 
 /**
- * Legacy sanitizer retained for callers that still need a stripped inline fragment.
- *
- * Relies on DOMPurify's default safe baseline (drops <script>, on* handlers and
- * javascript:/data: script URLs) and additionally strips interactive/editable elements and
- * the contenteditable attribute so the rendered doc is strictly presentational. Ordinary
- * display markup is preserved by the default allow-list; inline style is forbidden (see
- * FORBID_ATTR) to close the CSS-value injection surface DOMPurify does not deep-clean.
+ * Legacy sanitizer for callers that still need a stripped inline fragment. DOMPurify default
+ * baseline (drops script tags, on* handlers, javascript: URLs) plus FORBID_TAGS/FORBID_ATTR
+ * (interactive tags, contenteditable, inline style) yields strictly presentational output.
  */
 export function sanitizeDocHtml(raw: string): string {
   return DOMPurify.sanitize(raw, {
@@ -83,8 +75,12 @@ export function sanitizeDocHtml(raw: string): string {
   })
 }
 
-function cssAttrValue(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+// Escape a (bounded) aid interpolated into an attribute selector. Prefer platform CSS.escape;
+// else escape every non-word char so a hostile aid can't break out of the selector.
+function escapeAidForSelector(value: string): string {
+  const cssApi = (globalThis as { CSS?: { escape?: (s: string) => string } }).CSS
+  if (cssApi?.escape) return cssApi.escape(value)
+  return value.replace(/[^\w-]/g, (c) => `\\${c}`)
 }
 
 export function resolveHtmlDocAnchorText(
@@ -96,7 +92,7 @@ export function resolveHtmlDocAnchorText(
   if (anchor.kind !== 'element') return null
   if (!doc) return null
   try {
-    const el = doc.querySelector(`[data-odoc-aid="${cssAttrValue(anchor.aid)}"]`)
+    const el = doc.querySelector(`[data-odoc-aid="${escapeAidForSelector(anchor.aid)}"]`)
     const text = el?.textContent?.trim()
     return text ? truncateAnchorText(text) : null
   } catch {
@@ -137,16 +133,11 @@ type LoadState =
       isAuthor: boolean
     }
 
-// Minimal metadata the render page injects as window.__ODOC__ (see doc-side render).
-// ⚠️ identity here is the CURRENT VIEWER's session identity (identityFromSession), NOT the
-// doc creator. __ODOC__ (core.OverlayConfig) does NOT carry creator_uid — so never derive
-// authorship by comparing viewer uid against identity.login (that is always the viewer =
-// always true). Authorship comes from window.__ODOC_CAP__.isAuthor (see parseOdocCap).
-//
-// creator_uid / creator_name / created_at fields are DEPRECATED — the header now reads
-// ownerId/createdAt from docs-backend getDoc (single source of truth, same as EditorShell).
-// Interface entries retained only so a payload that still carries them parses cleanly; DO NOT
-// reintroduce readers of these fields — future backends may drop them without notice.
+// Minimal metadata the render page injects as window.__ODOC__. ⚠️ identity is the CURRENT VIEWER,
+// NOT the doc creator, and __ODOC__ carries no creator_uid — so never derive authorship from it
+// (that always makes the viewer the "author"). Authorship comes from __ODOC_CAP__.isAuthor.
+// creator_uid/creator_name/created_at are DEPRECATED — header now reads ownerId/createdAt from
+// docs-backend getDoc. Kept only so legacy payloads parse; do NOT reintroduce readers.
 interface OctoDocMeta {
   slug?: string
   title?: string
@@ -172,11 +163,9 @@ function parseOdocMeta(html: string): OctoDocMeta | null {
   }
 }
 
-// Authorship is decided by the backend (resolveCap: viewer Login == doc CreatorUID → CapAuthor)
-// and inlined as window.__ODOC_CAP__ = {isAuthor: true}. ⚠️ That marker is a JS object literal
-// (unquoted key), NOT valid JSON — JSON.parse would throw and make EVERY viewer non-author
-// (incl. the real author). Read the boolean directly. This is the only trustworthy author signal
-// on the client (__ODOC__ carries no creator_uid). Missing marker → not author (fail closed).
+// Authorship is backend-decided (resolveCap) and inlined as window.__ODOC_CAP__ = {isAuthor: true}.
+// ⚠️ That marker is a JS object literal (unquoted key), NOT JSON — parse the boolean directly;
+// JSON.parse would throw and make every viewer non-author. Missing marker → not author (fail closed).
 function parseOdocCap(html: string): boolean {
   const m = html.match(/__ODOC_CAP__\s*=\s*\{[^}]*\bisAuthor\b\s*:\s*(true|false)/)
   return m?.[1] === 'true'
@@ -203,9 +192,21 @@ export function HtmlDocView({
   // content. Overlay state only — the content itself is never mutated / made editable.
   const [pendingAnchor, setPendingAnchor] = useState<Anchor | null>(null)
   const frameRef = useRef<HTMLIFrameElement | null>(null)
-  const selectionDocRef = useRef<Document | null>(null)
   const mayCommentRef = useRef(false)
   const [frameReadyTick, setFrameReadyTick] = useState(0)
+  // Element-anchor display text resolved over the bridge (aid → text). The parent cannot read the
+  // cross-origin iframe DOM, so it asks the frame and caches the reply here. resolveAnchorText is a
+  // pure cache read; the comment panel reports which element aids are visible (post-commit) and a
+  // parent effect sends one bridge request per not-yet-requested aid.
+  const [anchorTextCache, setAnchorTextCache] = useState<Record<string, string | null>>({})
+  const requestedAidsRef = useRef<Set<string>>(new Set())
+  const pendingResolveRef = useRef<Map<string, string>>(new Map())
+  // Element aids the comment panel currently renders (reported post-commit); drives the resolve
+  // effect below. State (not a ref) so a new set re-runs the effect.
+  const [visibleAnchorAids, setVisibleAnchorAids] = useState<string[]>([])
+  // Current render generation's bridge token (from HtmlPreviewFrame). Requests carry it and replies
+  // must echo it; a token mismatch drops stale / cross-document / replayed traffic.
+  const bridgeTokenRef = useRef<string | null>(null)
   // Header UI state.
   const [membersOpen, setMembersOpen] = useState(false)
   // 历史版本 panel (≡ → 历史版本) + two-version diff modal state.
@@ -301,22 +302,16 @@ export function HtmlDocView({
   // Creator display: resolved name → short uid → placeholder. Never blank, never crashes.
   const headerCreator = creatorName || (ownerId ? ownerId.slice(0, 8) : '—')
   const creatorAvatarUrl = avatarUrlForUid(ownerId)
-  // Two independent gates, kept separate on purpose (合并 = UI 骗人):
-  //   - canManageBackend: docs-backend admin, drives Share/Invite/Requests inside the panel.
-  //     role=null (still resolving) collapses to false — the panel renders a loading placeholder
-  //     for those slots rather than a half-baked admin UI.
-  //   - canOpenPanel: entry-visibility union — either authority is enough to see the button and
-  //     open the modal. When role is still resolving, canOpenPanel short-circuits on isAuthor so
-  //     a non-author viewer never gets a flashed entry that later disappears.
-  // The panel itself derives canManageAuthorGrants from isAuthor alone; we intentionally stop
-  // forwarding the legacy `canManage` prop so a merged authority can never leak the author-only
-  // slots (Add member / Current Members) or trigger the author-only listGrants 403.
-  // The header ≡ Delete affordance is gated on isAuthor for the same reason — symmetric with the
-  // grants-side hiding, so a docs-backend admin who is not the author never sees a guaranteed-403
-  // affordance whose backend is octo-doc /v1/docs/{slug} (author-only).
+  // Two independent gates, kept separate on purpose:
+  //   - canManageBackend: docs-backend admin (Share/Invite/Requests). role=null → false (loading).
+  //   - canOpenPanel: entry-visibility union (author OR admin); short-circuits on isAuthor while
+  //     role resolves so a non-author viewer never gets a flashed entry.
+  // The panel derives author-only grants from isAuthor alone; we stop forwarding legacy `canManage`
+  // so a merged authority can never leak author-only slots or trigger the author-only listGrants
+  // 403. Delete is likewise isAuthor-gated (its backend is author-only octo-doc /v1/docs/{slug}).
   const creatorUid = ownerId
-  // Centralised capability derivation from the backend-resolved role (fail closed while null).
-  // These are the single seam every write affordance gates on — never viewer-uid vs __ODOC__.
+  // Capability derivation from the backend-resolved role (fail closed while null). Single seam
+  // every write affordance gates on — never viewer-uid vs __ODOC__.
   const mayComment = resolvedRole != null && resolvedRole !== 'reader'
   mayCommentRef.current = mayComment && mode === 'page'
   const mayEdit = resolvedRole != null && canEdit(resolvedRole)
@@ -435,86 +430,111 @@ export function HtmlDocView({
     [selectModeTab],
   )
 
-  const onFrameSelectionChange = useCallback(() => {
-    // Only a commenter+ may lift a selection anchor; a reader's selection is never actionable.
-    if (!mayCommentRef.current) return
-    const doc = frameRef.current?.contentDocument
-    const body = doc?.body
-    const sel = doc?.getSelection?.() ?? doc?.defaultView?.getSelection?.() ?? null
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed || !body) return
-    if (!body.contains(sel.getRangeAt(0).commonAncestorContainer)) return
-    const anchor = buildAnchorFromSelection(sel)
-    if (anchor) setPendingAnchor(anchor)
+  // Reset per-generation bridge state on each frame load: the new token gates all subsequent
+  // traffic (prior-document requests/replies drop on mismatch) and the resolved-text cache is
+  // invalidated since aids may now map to different content.
+  const handleFrameLoad = useCallback((_doc: Document | null, frame: HTMLIFrameElement, token: string | null) => {
+    frameRef.current = frame
+    bridgeTokenRef.current = token
+    requestedAidsRef.current = new Set()
+    pendingResolveRef.current = new Map()
+    setAnchorTextCache({})
+    setFrameReadyTick((v) => v + 1)
   }, [])
 
-  const cleanupFrameSelectionWatcher = useCallback(() => {
-    selectionDocRef.current?.removeEventListener('selectionchange', onFrameSelectionChange)
-    selectionDocRef.current = null
-  }, [onFrameSelectionChange])
-
-  const syncFrameSelectionWatcher = useCallback(() => {
-    cleanupFrameSelectionWatcher()
-    if (!mayCommentRef.current) return
-    const doc = frameRef.current?.contentDocument
-    if (!doc) return
-    try {
-      doc.addEventListener('selectionchange', onFrameSelectionChange)
-      selectionDocRef.current = doc
-    } catch (err) {
-      console.warn('[HtmlDocView] unable to initialize iframe document hooks', err)
-    }
-  }, [cleanupFrameSelectionWatcher, onFrameSelectionChange])
-
-  const handleFrameLoad = useCallback(
-    (doc: Document | null, frame: HTMLIFrameElement) => {
-      frameRef.current = frame
-      setFrameReadyTick((v) => v + 1)
-      cleanupFrameSelectionWatcher()
-      try {
-        if (!doc) throw new Error('missing iframe document')
-        if (mayCommentRef.current) {
-          doc.addEventListener('selectionchange', onFrameSelectionChange)
-          selectionDocRef.current = doc
-        }
-      } catch (err) {
-        console.warn('[HtmlDocView] unable to initialize iframe document hooks', err)
+  // Single window-level bridge listener. The iframe is cross-origin (no allow-same-origin) so the
+  // parent gates on event.source === contentWindow + current token + a bounded schema before
+  // trusting anything. Only non-privileged UI facts are accepted (a selection anchor the human
+  // still submits; text we explicitly requested).
+  useEffect(() => {
+    const onMessage = (ev: MessageEvent) => {
+      const frame = frameRef.current
+      // srcDoc frames have an opaque origin, so identity is the exact contentWindow, not origin.
+      if (!frame || ev.source !== frame.contentWindow) return
+      const msg = parseBridgeInbound(ev.data)
+      if (!msg) return
+      // Correlate to the CURRENT generation; a stale/forged token is discarded.
+      if (!bridgeTokenRef.current || msg.token !== bridgeTokenRef.current) return
+      if (msg.type === 'selection') {
+        if (!mayCommentRef.current) return
+        // Adopt only a fresh non-null anchor; a null (collapse) report is ignored so a locked
+        // anchor survives the selection collapsing when the human moves to the composer.
+        if (msg.anchor) setPendingAnchor(msg.anchor)
+      } else if (msg.type === 'anchor-text') {
+        // Accept only replies to a nonce WE issued this generation (reject stale/replayed nonces).
+        const aid = pendingResolveRef.current.get(msg.nonce)
+        if (!aid) return
+        pendingResolveRef.current.delete(msg.nonce)
+        setAnchorTextCache((prev) => ({ ...prev, [aid]: msg.text }))
       }
-    },
-    [cleanupFrameSelectionWatcher, onFrameSelectionChange],
-  )
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
 
+  // RENDER-PURE cache read: no ref writes, no scheduling. Cache misses are filled by the resolve
+  // effect, which is driven by the aids the comment panel reports post-commit (onVisibleAnchors).
   const resolveAnchorText = useCallback(
     (anchor: Anchor | null | undefined): string | null => {
-      try {
-        return resolveHtmlDocAnchorText(anchor, frameRef.current?.contentDocument)
-      } catch {
-        return null
-      }
+      if (!anchor) return null
+      if (anchor.kind === 'text') return truncateAnchorText(anchor.text)
+      if (anchor.kind !== 'element') return null
+      const aid = anchor.aid
+      if (!isValidAid(aid)) return null
+      return aid in anchorTextCache ? anchorTextCache[aid] : null
     },
-    [frameReadyTick],
+    [anchorTextCache],
   )
 
-  useEffect(() => {
-    if (state.status !== 'ready') {
-      cleanupFrameSelectionWatcher()
-    }
-  }, [cleanupFrameSelectionWatcher, state.status])
+  // The comment panel reports the element aids it renders in a post-commit effect; adopt them here
+  // (identity-stable when unchanged so the resolve effect below doesn't churn).
+  const handleVisibleAnchorAids = useCallback((aids: string[]) => {
+    setVisibleAnchorAids((prev) =>
+      prev.length === aids.length && prev.every((a, i) => a === aids[i]) ? prev : aids,
+    )
+  }, [])
 
-  // Keep the watcher reconciled with runtime permission/mode changes. This handles both removal
-  // and re-attachment without requiring another iframe load, while the sync's remove-first rule
-  // guarantees at most one listener on the current document.
+  // Post-commit resolve: send one bridge request per reported aid not yet requested/cached. Runs
+  // AFTER render off reported aids, so nothing schedules during render. Each request carries the
+  // current token + a unique nonce; the listener accepts only a matching-token, issued-nonce reply.
   useEffect(() => {
-    if (!mayComment || mode === 'code') {
-      setPendingAnchor(null)
+    const win = frameRef.current?.contentWindow
+    const token = bridgeTokenRef.current
+    if (!win || !token) return
+    for (const aid of visibleAnchorAids) {
+      if (!isValidAid(aid) || requestedAidsRef.current.has(aid) || aid in anchorTextCache) continue
+      requestedAidsRef.current.add(aid)
+      const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      pendingResolveRef.current.set(nonce, aid)
+      try {
+        win.postMessage({ channel: BRIDGE_CHANNEL, type: 'resolve-anchor-text', token, nonce, aid }, '*')
+      } catch {
+        // Frame gone: leave uncached so a later render retries.
+        requestedAidsRef.current.delete(aid)
+        pendingResolveRef.current.delete(nonce)
+      }
     }
-    syncFrameSelectionWatcher()
-  }, [mayComment, mode, syncFrameSelectionWatcher])
+  }, [visibleAnchorAids, frameReadyTick, anchorTextCache])
 
-  useEffect(() => {
-    return () => {
-      cleanupFrameSelectionWatcher()
+  // Explicit activation: clicking a comment thread scrolls its element anchor into view and briefly
+  // highlights it in the frame (non-destructive). Only element anchors carry a locatable aid; the
+  // aid is validated/bounded before it crosses the bridge.
+  const activateAnchor = useCallback((anchor: Anchor | null | undefined) => {
+    if (!anchor || anchor.kind !== 'element' || !isValidAid(anchor.aid)) return
+    const win = frameRef.current?.contentWindow
+    const token = bridgeTokenRef.current
+    if (!win || !token) return
+    try {
+      win.postMessage({ channel: BRIDGE_CHANNEL, type: 'scroll-to-anchor', token, aid: anchor.aid }, '*')
+    } catch {
+      /* frame gone; nothing to scroll */
     }
-  }, [cleanupFrameSelectionWatcher])
+  }, [])
+
+  // A permission/mode change that turns commenting off must drop any pending selection anchor.
+  useEffect(() => {
+    if (!mayComment || mode === 'code') setPendingAnchor(null)
+  }, [mayComment, mode])
 
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-html-doc" data-testid="html-doc-view">
@@ -765,6 +785,8 @@ export function HtmlDocView({
               mutationVersion={meta?.version}
               pendingAnchor={pendingAnchor}
               resolveAnchorText={resolveAnchorText}
+              onVisibleAnchors={handleVisibleAnchorAids}
+              onActivateAnchor={activateAnchor}
               onClearPendingAnchor={() => setPendingAnchor(null)}
               onPosted={() => setPendingAnchor(null)}
             />

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { StrictMode } from 'react'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import {
   HtmlDocView,
@@ -38,22 +39,53 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
   } as unknown as Response
 }
 
-function selectNodeTextInDocument(doc: Document, node: Node) {
-  const range = doc.createRange()
-  range.selectNodeContents(node)
-  const sel = doc.getSelection?.() ?? doc.defaultView?.getSelection()
-  sel?.removeAllRanges()
-  sel?.addRange(range)
-  doc.dispatchEvent(new Event('selectionchange'))
+// The iframe now runs with sandbox="allow-scripts" (NO allow-same-origin), so the parent can no
+// longer read contentDocument or attach a selectionchange listener to it. Selection/anchor data
+// crosses the boundary over the postMessage bridge (htmlDocBridge). These helpers simulate the
+// in-frame bridge script by posting bridge-shaped messages with source === the frame's
+// contentWindow (the exact identity check HtmlDocView enforces).
+import { BRIDGE_CHANNEL, type BridgeAnchor } from './htmlDocBridge.ts'
+
+// The parent gates bridge traffic on a per-render token embedded in the srcDoc bridge script
+// (TOKEN = "..."). Tests read it back out so simulated frame messages echo the current generation.
+function frameToken(iframe: HTMLIFrameElement): string {
+  const src = iframe.getAttribute('srcdoc') ?? ''
+  const m = /TOKEN = "([^"]*)"/.exec(src)
+  return m ? m[1] : ''
 }
 
-function writeIframeBody(iframe: HTMLIFrameElement, body: string): Document {
-  const doc = iframe.contentDocument as Document
-  doc.open()
-  doc.write(`<!doctype html><html><body>${body}</body></html>`)
-  doc.close()
-  fireEvent.load(iframe)
-  return doc
+function postBridge(iframe: HTMLIFrameElement, data: Record<string, unknown>) {
+  // jsdom won't let us set MessageEvent.source to an arbitrary Window, so define it directly to
+  // match the frame's contentWindow — the value HtmlDocView compares event.source against.
+  const token = 'token' in data ? data.token : frameToken(iframe)
+  const ev = new MessageEvent('message', { data: { channel: BRIDGE_CHANNEL, token, ...data } })
+  Object.defineProperty(ev, 'source', { value: iframe.contentWindow, configurable: true })
+  window.dispatchEvent(ev)
+}
+
+/** Simulate the in-frame bridge reporting a selection anchor (or null to clear). */
+function bridgeSelection(iframe: HTMLIFrameElement, anchor: BridgeAnchor | null) {
+  postBridge(iframe, { type: 'selection', anchor })
+}
+
+/**
+ * Stand in for the in-frame bridge answering element-text lookups. Intercepts the parent's
+ * postMessage request to the frame, reads its nonce, and posts back the matching anchor-text
+ * reply (source === contentWindow, echoing the request token). Returns a restore fn.
+ */
+function autoAnswerAnchorText(iframe: HTMLIFrameElement, textByAid: Record<string, string | null>) {
+  const win = iframe.contentWindow as Window
+  const orig = win.postMessage.bind(win)
+  win.postMessage = ((msg: unknown) => {
+    const m = msg as { channel?: string; type?: string; nonce?: string; aid?: string; token?: string }
+    if (m && m.channel === BRIDGE_CHANNEL && m.type === 'resolve-anchor-text' && m.nonce && m.aid) {
+      const text = m.aid in textByAid ? textByAid[m.aid] : null
+      postBridge(iframe, { type: 'anchor-text', token: m.token, nonce: m.nonce, text })
+    }
+  }) as typeof win.postMessage
+  return () => {
+    win.postMessage = orig
+  }
 }
 
 async function waitForFrame(container: HTMLElement): Promise<HTMLIFrameElement> {
@@ -226,6 +258,23 @@ describe('resolveHtmlDocAnchorText', () => {
       )
     ).toBeNull()
   })
+
+  it('safely resolves a hostile data-odoc-aid (selector metacharacters) without throwing', () => {
+    // The aid carries a quote+bracket that would break a naive attribute selector; escaping must
+    // neutralize it. The matching element resolves; a non-matching hostile aid returns null.
+    const hostile = '"] , script'
+    const doc = new DOMParser().parseFromString(
+      `<p data-odoc-aid='${hostile}'>hostile text</p>`,
+      'text/html'
+    )
+    expect(() =>
+      resolveHtmlDocAnchorText({ kind: 'element', aid: hostile, selector: 'x', label: 'p' }, doc)
+    ).not.toThrow()
+    expect(resolveHtmlDocAnchorText({ kind: 'element', aid: hostile, selector: 'x', label: 'p' }, doc)).toBe('hostile text')
+    expect(
+      resolveHtmlDocAnchorText({ kind: 'element', aid: '"] , [x], nope', selector: 'x', label: 'p' }, doc)
+    ).toBeNull()
+  })
 })
 
 describe('HtmlDocView — read-only rendering', () => {
@@ -239,8 +288,9 @@ describe('HtmlDocView — read-only rendering', () => {
     const { container } = render(<HtmlDocView docId="d_html_1" space="sp" />)
 
     const frame = await waitForFrame(container)
-    expect(frame.getAttribute('sandbox')).toBe('allow-same-origin')
-    expect(frame.getAttribute('sandbox')).not.toContain('allow-scripts')
+    // allow-scripts WITHOUT allow-same-origin: doc JS runs but is walled off from the parent.
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(frame.getAttribute('sandbox')).not.toContain('allow-same-origin')
     expect(frame.getAttribute('srcdoc')).toContain('Agent Report')
     expect(frame.getAttribute('srcdoc')).toContain('style="color:red"')
     expect(container.querySelector('.octo-html-doc-content')).toBeNull()
@@ -303,7 +353,7 @@ describe('HtmlDocView — read-only rendering', () => {
     expect(container.querySelector('[role="toolbar"]')).toBeNull()
   })
 
-  it('keeps raw HTML in srcdoc while sandbox blocks scripts from running', async () => {
+  it('keeps raw HTML in srcdoc and runs it only under the allow-scripts (no same-origin) sandbox', async () => {
     stubFetch((url) => {
       if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p>safe body</p><script>window.__pwned = 1</script>')
@@ -311,8 +361,9 @@ describe('HtmlDocView — read-only rendering', () => {
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     const frame = await waitForFrame(container)
     expect(frame.getAttribute('srcdoc')).toContain('<script>window.__pwned = 1</script>')
-    expect(frame.getAttribute('sandbox')).toBe('allow-same-origin')
-    expect(frame.getAttribute('sandbox')).not.toContain('allow-scripts')
+    // Scripts run, but only inside an opaque origin walled off from the parent.
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(frame.getAttribute('sandbox')).not.toContain('allow-same-origin')
   })
 
   it('neutralizes interactive payload markup inside srcdoc instead of inlining it into the host DOM', async () => {
@@ -409,7 +460,11 @@ describe('HtmlDocView — read-only rendering', () => {
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     const frame = await waitForFrame(container)
 
-    writeIframeBody(frame, '<p data-odoc-aid="a4">quoted paragraph from iframe</p>')
+    // The parent can't read the cross-origin frame; it asks the bridge for the element's text.
+    // Install the auto-answering bridge stub BEFORE the frame loads so the very first resolve
+    // request (fired when the comment panel first renders the element anchor) is answered.
+    autoAnswerAnchorText(frame, { a4: 'quoted paragraph from iframe' })
+    fireEvent.load(frame)
 
     await waitFor(() => expect(screen.getByTestId('comment-quote').textContent).toBe('quoted paragraph from iframe'))
   })
@@ -428,16 +483,15 @@ describe('HtmlDocView — read-only rendering', () => {
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     const frame = await waitForFrame(container)
-    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a1">selected words</p>')
-    const anchored = frameDoc.querySelector('p') as HTMLElement
+    fireEvent.load(frame)
 
-    selectNodeTextInDocument(frameDoc, anchored.firstChild ?? anchored)
+    bridgeSelection(frame, { kind: 'element', aid: 'a1', selector: '[data-odoc-aid="a1"]', label: 'p' })
     await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a1'))
 
     const input = screen.getByPlaceholderText('docs.comment.placeholder')
     fireEvent.focus(input)
-    frameDoc.getSelection()?.removeAllRanges()
-    frameDoc.dispatchEvent(new Event('selectionchange'))
+    // Collapsing the selection makes the bridge report null; the locked anchor must survive it.
+    bridgeSelection(frame, null)
 
     expect(screen.getByTestId('pending-anchor').textContent).toContain('#a1')
   })
@@ -453,19 +507,22 @@ describe('HtmlDocView — read-only rendering', () => {
 
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     const frame = await waitForFrame(container)
-    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="late">late role</p>')
+    fireEvent.load(frame)
+    const lateAnchor: BridgeAnchor = { kind: 'element', aid: 'late', selector: '[data-odoc-aid="late"]', label: 'p' }
 
-    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('p')!.firstChild!)
+    // Before role resolves, mayComment is false so the bridge selection is ignored.
+    bridgeSelection(frame, lateAnchor)
     expect(screen.queryByTestId('pending-anchor')).toBeNull()
 
     resolveDoc({ data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 })
     await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
-    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('p')!.firstChild!)
+    // Same frame, no reload; the live permission now lets the next selection through.
+    bridgeSelection(frame, lateAnchor)
     await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#late'))
     expect(container.querySelector('iframe.octo-html-doc-frame')).toBe(frame)
   })
 
-  it('reconciles one selection listener across permission and mode transitions', async () => {
+  it('gates one bridge selection channel across permission and mode transitions', async () => {
     let currentRole: 'commenter' | 'reader' = 'commenter'
     const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
     wk.apiClient.responder = (method, url) =>
@@ -477,32 +534,33 @@ describe('HtmlDocView — read-only rendering', () => {
 
     const { container, rerender } = render(<HtmlDocView docId="d1" space="sp1" />)
     const frame = await waitForFrame(container)
-    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a1">one</p><p data-odoc-aid="a2">two</p>')
+    fireEvent.load(frame)
     await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
-    const addSpy = vi.spyOn(frameDoc, 'addEventListener')
-    const removeSpy = vi.spyOn(frameDoc, 'removeEventListener')
+    const a1: BridgeAnchor = { kind: 'element', aid: 'a1', selector: '[data-odoc-aid="a1"]', label: 'p' }
+    const a2: BridgeAnchor = { kind: 'element', aid: 'a2', selector: '[data-odoc-aid="a2"]', label: 'p' }
 
+    // Demote to reader: the same window listener stays, but its mayComment gate now drops selections.
     currentRole = 'reader'
     rerender(<HtmlDocView docId="d1" space="sp2" />)
     await waitFor(() => expect(screen.queryByPlaceholderText('docs.comment.placeholder')).toBeNull())
-    expect(removeSpy.mock.calls.filter(([type]) => type === 'selectionchange')).toHaveLength(1)
-    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('[data-odoc-aid="a1"]')!.firstChild!)
+    bridgeSelection(frame, a1)
     expect(screen.queryByTestId('pending-anchor')).toBeNull()
 
+    // Re-promote to commenter without reloading the iframe; the live gate lets selections through.
     currentRole = 'commenter'
     rerender(<HtmlDocView docId="d1" space="sp3" />)
     await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
     expect(container.querySelector('iframe.octo-html-doc-frame')).toBe(frame)
-    expect(addSpy.mock.calls.filter(([type]) => type === 'selectionchange')).toHaveLength(1)
-    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('[data-odoc-aid="a2"]')!.firstChild!)
+    bridgeSelection(frame, a2)
     await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a2'))
 
+    // Code mode drops the anchor; back to page reloads the frame and selection resumes.
     fireEvent.click(screen.getByRole('tab', { name: 'docs.mode.code' }))
     expect(screen.queryByTestId('pending-anchor')).toBeNull()
     fireEvent.click(screen.getByRole('tab', { name: 'docs.mode.page' }))
     const nextFrame = await waitForFrame(container)
-    const nextDoc = writeIframeBody(nextFrame, '<p data-odoc-aid="a3">three</p>')
-    selectNodeTextInDocument(nextDoc, nextDoc.querySelector('p')!.firstChild!)
+    fireEvent.load(nextFrame)
+    bridgeSelection(nextFrame, { kind: 'element', aid: 'a3', selector: '[data-odoc-aid="a3"]', label: 'p' })
     await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a3'))
   })
 
@@ -519,16 +577,47 @@ describe('HtmlDocView — read-only rendering', () => {
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     const frame = await waitForFrame(container)
-    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a2">clearable words</p>')
-    const anchored = frameDoc.querySelector('p') as HTMLElement
+    fireEvent.load(frame)
 
-    selectNodeTextInDocument(frameDoc, anchored.firstChild ?? anchored)
+    bridgeSelection(frame, { kind: 'element', aid: 'a2', selector: '[data-odoc-aid="a2"]', label: 'p' })
     await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a2'))
 
     fireEvent.click(screen.getByText('docs.comment.clearAnchor'))
 
     expect(screen.getByTestId('pending-anchor').textContent).toContain('docs.comment.targetDoc')
     expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a2')
+  })
+
+  it('ignores bridge messages whose source is not the iframe (forged origin / other window)', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => {
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
+      return htmlResponse('<p data-odoc-aid="a9">words</p>')
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+
+    // A perfectly-shaped selection message but from a source that is NOT the frame's contentWindow
+    // (e.g. window itself, an extension, or another frame) must be dropped by the identity check.
+    const forged = new MessageEvent('message', {
+      data: { channel: BRIDGE_CHANNEL, type: 'selection', anchor: { kind: 'element', aid: 'a9', selector: '[data-odoc-aid="a9"]', label: 'p' } },
+    })
+    Object.defineProperty(forged, 'source', { value: window, configurable: true })
+    window.dispatchEvent(forged)
+
+    // The forged message was dropped: the composer target stays doc-level (no #a9 adopted).
+    expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a9')
+
+    // The same message from the real frame IS honored, proving the gate is source identity, not shape.
+    bridgeSelection(frame, { kind: 'element', aid: 'a9', selector: '[data-odoc-aid="a9"]', label: 'p' })
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a9'))
   })
 
   it('uses the rendered numeric version when posting from the latest route with an element anchor', async () => {
@@ -547,16 +636,15 @@ describe('HtmlDocView — read-only rendering', () => {
     })
     const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" />)
     const frame = await waitForFrame(container)
-    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a3">post anchored words</p>')
-    const anchored = frameDoc.querySelector('p') as HTMLElement
+    fireEvent.load(frame)
 
-    selectNodeTextInDocument(frameDoc, anchored.firstChild ?? anchored)
+    bridgeSelection(frame, { kind: 'element', aid: 'a3', selector: '[data-odoc-aid="a3"]', label: 'p' })
     await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a3'))
 
     const input = screen.getByPlaceholderText('docs.comment.placeholder')
     fireEvent.focus(input)
-    frameDoc.getSelection()?.removeAllRanges()
-    frameDoc.dispatchEvent(new Event('selectionchange'))
+    // Collapse is reported as a null selection; the locked anchor must persist through posting.
+    bridgeSelection(frame, null)
     fireEvent.change(input, { target: { value: 'anchored note' } })
     fireEvent.click(screen.getByText('docs.comment.send'))
 
@@ -576,6 +664,269 @@ describe('HtmlDocView — read-only rendering', () => {
     ).toBe(true)
     expect(body.version).toBe(4)
     expect(body.anchor).toMatchObject({ kind: 'element', aid: 'a3' })
+  })
+
+  // --- issue #27 iteration-2 reviewer findings: deterministic bridge behaviour ---
+
+  it('resolves an element-anchor quote via the post-commit bridge queue (render stays pure)', async () => {
+    // resolveAnchorText must not postMessage during render; the request is flushed after commit.
+    // We assert the request is only observed AFTER render settles, and the reply fills the quote.
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => {
+      if (url.includes('/comments')) {
+        return jsonResponse({
+          data: [
+            {
+              id: 'c1', text: 'note', author: { uid: 'u_owner' }, created_at: 1,
+              anchor: { kind: 'element', aid: 'aq', selector: '[data-odoc-aid="aq"]', label: 'p' },
+              replies: [],
+            },
+          ],
+        })
+      }
+      return htmlResponse('<p data-odoc-aid="aq">resolved quote text</p>')
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    let sawRequest = false
+    const win = frame.contentWindow as Window
+    const orig = win.postMessage.bind(win)
+    win.postMessage = ((msg: unknown) => {
+      const m = msg as { channel?: string; type?: string; nonce?: string; token?: string }
+      if (m?.channel === BRIDGE_CHANNEL && m.type === 'resolve-anchor-text') {
+        sawRequest = true
+        // Answer as the frame would, echoing the token.
+        postBridge(frame, { type: 'anchor-text', token: m.token, nonce: m.nonce, text: 'resolved quote text' })
+      }
+    }) as typeof win.postMessage
+    fireEvent.load(frame)
+    await waitFor(() => expect(screen.getByTestId('comment-quote').textContent).toBe('resolved quote text'))
+    expect(sawRequest).toBe(true)
+    win.postMessage = orig
+  })
+
+  it('resolves anchor text under StrictMode with no render-phase update warning (render stays pure)', async () => {
+    // Regression for finding #1: resolveAnchorText must be a pure cache read — no ref writes and no
+    // queueMicrotask/setState during render. Under StrictMode (double-invoked render) any such
+    // side effect surfaces as a React "Cannot update a component while rendering" console.error.
+    // We capture console.error and assert the anchor path emits none while the quote still resolves.
+    const errors: string[] = []
+    const errSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '))
+    })
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => {
+      if (url.includes('/comments')) {
+        return jsonResponse({
+          data: [
+            {
+              id: 'c1', text: 'note', author: { uid: 'u_owner' }, created_at: 1,
+              anchor: { kind: 'element', aid: 'asm', selector: '[data-odoc-aid="asm"]', label: 'p' },
+              replies: [],
+            },
+          ],
+        })
+      }
+      return htmlResponse('<p data-odoc-aid="asm">strict quote</p>')
+    })
+    const { container } = render(
+      <StrictMode>
+        <HtmlDocView docId="d1" space="sp" />
+      </StrictMode>,
+    )
+    const frame = await waitForFrame(container)
+    autoAnswerAnchorText(frame, { asm: 'strict quote' })
+    fireEvent.load(frame)
+    await waitFor(() => expect(screen.getByTestId('comment-quote').textContent).toBe('strict quote'))
+    // No render-phase state-update warning attributable to anchor resolution.
+    const bad = errors.filter(
+      (e) => /Cannot update a component .* while rendering/i.test(e) || /Warning: Cannot update/i.test(e),
+    )
+    expect(bad).toEqual([])
+    errSpy.mockRestore()
+  })
+
+  it('rejects a stale/replayed anchor-text reply (unknown nonce) and a wrong-token reply', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => {
+      if (url.includes('/comments')) {
+        return jsonResponse({
+          data: [
+            {
+              id: 'c1', text: 'note', author: { uid: 'u_owner' }, created_at: 1,
+              anchor: { kind: 'element', aid: 'as', selector: '[data-odoc-aid="as"]', label: 'p' },
+              replies: [],
+            },
+          ],
+        })
+      }
+      return htmlResponse('<p data-odoc-aid="as">real text</p>')
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+    // A forged reply with a nonce we never issued must be ignored (no injected quote).
+    postBridge(frame, { type: 'anchor-text', nonce: 'never-issued', text: 'FORGED' })
+    // A reply with a wrong token is also ignored.
+    postBridge(frame, { type: 'anchor-text', token: 'wrong-token', nonce: 'never-issued', text: 'FORGED2' })
+    // Give effects a tick; the quote must NOT be the forged text.
+    await waitFor(() => expect(screen.getByTestId('html-doc-comment')).toBeTruthy())
+    expect(screen.queryByText('FORGED')).toBeNull()
+    expect(screen.queryByText('FORGED2')).toBeNull()
+  })
+
+  it('rejects a replayed gen-A token+nonce against gen B (two real srcDoc generations)', async () => {
+    // Build TWO actual generations with distinct tokens: gen A at v1, gen B at v2 (each a fresh
+    // fetch → fresh srcDoc → fresh newBridgeToken). Issue a resolve nonce in gen A, switch to gen B,
+    // then replay gen A's (token, nonce) from the SAME contentWindow — it must be rejected (stale
+    // token). A gen-A nonce replayed under gen B's token is also rejected (unissued nonce).
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => {
+      if (url.includes('/comments')) {
+        return jsonResponse({
+          data: [
+            {
+              id: 'c1', text: 'note', author: { uid: 'u_owner' }, created_at: 1,
+              anchor: { kind: 'element', aid: 'ar', selector: '[data-odoc-aid="ar"]', label: 'p' },
+              replies: [],
+            },
+          ],
+        })
+      }
+      return htmlResponse('<p data-odoc-aid="ar">gen text</p>')
+    })
+
+    // Capture the (token, nonce) of every resolve request the parent issues, per generation.
+    const issued: Array<{ token?: string; nonce?: string }> = []
+    function tapFrame(f: HTMLIFrameElement) {
+      const win = f.contentWindow as Window
+      const orig = win.postMessage.bind(win)
+      win.postMessage = ((msg: unknown) => {
+        const m = msg as { channel?: string; type?: string; token?: string; nonce?: string }
+        if (m?.channel === BRIDGE_CHANNEL && m.type === 'resolve-anchor-text') {
+          issued.push({ token: m.token, nonce: m.nonce })
+        }
+      }) as typeof win.postMessage
+      return orig
+    }
+
+    // --- Generation A (v1) ---
+    const { container, rerender } = render(<HtmlDocView docId="d1" space="sp" version="1" />)
+    const frameA = await waitForFrame(container)
+    const tokenA = frameToken(frameA)
+    tapFrame(frameA)
+    fireEvent.load(frameA)
+    // The post-commit resolve effect issues a request for the visible element anchor under gen A.
+    await waitFor(() => expect(issued.some((r) => r.token === tokenA && r.nonce)).toBe(true))
+    const nonceA = issued.find((r) => r.token === tokenA)?.nonce as string
+
+    // --- Generation B (v2): a fresh fetch rebuilds srcDoc with a NEW token ---
+    rerender(<HtmlDocView docId="d1" space="sp" version="2" />)
+    const frameB = await waitFor(() => {
+      const f = container.querySelector('iframe.octo-html-doc-frame') as HTMLIFrameElement
+      const tk = frameToken(f)
+      if (!tk || tk === tokenA) throw new Error('gen B token not ready')
+      return f
+    })
+    const tokenB = frameToken(frameB)
+    expect(tokenB).not.toBe(tokenA)
+    tapFrame(frameB)
+    fireEvent.load(frameB)
+
+    // Replay gen A's token+nonce from the current frame: dropped by the stale-token gate.
+    postBridge(frameB, { type: 'anchor-text', token: tokenA, nonce: nonceA, text: 'REPLAY_A' })
+    // Gen A's nonce under gen B's (current) token: dropped by the unissued-nonce gate.
+    postBridge(frameB, { type: 'anchor-text', token: tokenB, nonce: nonceA, text: 'REPLAY_A_B' })
+    await waitFor(() => expect(screen.getByTestId('html-doc-comment')).toBeTruthy())
+    expect(screen.queryByText('REPLAY_A')).toBeNull()
+    expect(screen.queryByText('REPLAY_A_B')).toBeNull()
+
+    // A legitimate gen-B reply (current token + a gen-B-issued nonce) IS accepted.
+    await waitFor(() => expect(issued.some((r) => r.token === tokenB && r.nonce)).toBe(true))
+    const nonceB = issued.find((r) => r.token === tokenB)?.nonce as string
+    postBridge(frameB, { type: 'anchor-text', token: tokenB, nonce: nonceB, text: 'gen text' })
+    await waitFor(() => expect(screen.getByTestId('comment-quote').textContent).toBe('gen text'))
+  })
+
+  it('safely handles a hostile data-odoc-aid selection anchor (no selector break-out)', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => (url.includes('/comments') ? jsonResponse({ data: [] }) : htmlResponse('<p>x</p>')))
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    fireEvent.load(frame)
+    // A selection anchor whose aid carries selector metacharacters is accepted as a bounded string
+    // (worst case: a bogus comment target). It must NOT throw and must surface as the target.
+    const hostile = '"] , [data-x="'
+    bridgeSelection(frame, { kind: 'element', aid: hostile, selector: `[data-odoc-aid="${hostile}"]`, label: 'p' })
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain(`#${hostile}`))
+  })
+
+  it('activates a thread anchor: clicking the quote posts a scroll-to-anchor to the frame', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => {
+      if (url.includes('/comments')) {
+        return jsonResponse({
+          data: [
+            {
+              id: 'c1', text: 'note', author: { uid: 'u_owner' }, created_at: 1,
+              anchor: { kind: 'element', aid: 'ah', selector: '[data-odoc-aid="ah"]', label: 'p' },
+              replies: [],
+            },
+          ],
+        })
+      }
+      return htmlResponse('<p data-odoc-aid="ah">scroll target</p>')
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    const sent: Array<{ type?: string; aid?: string; token?: string }> = []
+    const win = frame.contentWindow as Window
+    const orig = win.postMessage.bind(win)
+    win.postMessage = ((msg: unknown) => {
+      const m = msg as { channel?: string; type?: string; aid?: string; token?: string; nonce?: string }
+      if (m?.channel === BRIDGE_CHANNEL) {
+        sent.push({ type: m.type, aid: m.aid, token: m.token })
+        if (m.type === 'resolve-anchor-text') postBridge(frame, { type: 'anchor-text', token: m.token, nonce: m.nonce, text: 'scroll target' })
+      }
+    }) as typeof win.postMessage
+    fireEvent.load(frame)
+    const quote = await screen.findByTestId('comment-quote')
+    fireEvent.click(quote)
+    await waitFor(() => expect(sent.some((m) => m.type === 'scroll-to-anchor' && m.aid === 'ah')).toBe(true))
+    // The scroll request carries the current render token.
+    const scroll = sent.find((m) => m.type === 'scroll-to-anchor')
+    expect(scroll?.token).toBe(frameToken(frame))
+    win.postMessage = orig
   })
 })
 

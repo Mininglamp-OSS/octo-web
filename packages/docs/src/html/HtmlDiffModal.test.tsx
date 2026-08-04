@@ -181,6 +181,16 @@ describe('HtmlDiffModal', () => {
     expect(screen.getByTestId('html-diff-old')).toBeTruthy()
     expect(screen.getByTestId('html-diff-new')).toBeTruthy()
     expect(screen.getByText('1/1')).toBeTruthy()
+    // The diff panes use readonly-dom isolation: EXACT allow-same-origin (never allow-scripts),
+    // no bridge injected, and no <script> in the built srcdoc — the parent reads the DOM directly.
+    const frames = document.querySelectorAll('iframe.octo-diff-frame')
+    expect(frames.length).toBe(2)
+    frames.forEach((f) => {
+      expect(f.getAttribute('sandbox')).toBe('allow-same-origin')
+      const srcdoc = f.getAttribute('srcdoc') ?? ''
+      expect(srcdoc).not.toContain('octodoc-bridge')
+      expect(srcdoc).not.toMatch(/<script/i)
+    })
   })
 
   it('switches page layout and closes on Esc/backdrop', async () => {

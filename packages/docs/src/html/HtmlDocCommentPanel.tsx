@@ -47,6 +47,10 @@ export interface HtmlDocCommentPanelProps {
   onPosted?: () => void
   /** Resolves the full anchored source text from the iframe document when available. */
   resolveAnchorText?: (anchor: Anchor | null | undefined) => string | null
+  /** Post-commit report of the element aids this panel renders, so the parent can resolve them. */
+  onVisibleAnchors?: (aids: string[]) => void
+  /** Explicit activation: scroll the thread's element anchor into view + highlight it in the frame. */
+  onActivateAnchor?: (anchor: Anchor | null | undefined) => void
 }
 
 /** Short human label for how a comment is anchored (element aid / selected text / doc-level). */
@@ -120,6 +124,8 @@ export function HtmlDocCommentPanel({
   mutationVersion,
   pendingAnchor,
   resolveAnchorText,
+  onVisibleAnchors,
+  onActivateAnchor,
   onClearPendingAnchor,
   onPosted,
 }: HtmlDocCommentPanelProps) {
@@ -150,6 +156,18 @@ export function HtmlDocCommentPanel({
     void reload()
     return () => { reloadSeq.current += 1 }
   }, [reload])
+
+  // Post-commit: report the element aids currently rendered so the parent can resolve their text
+  // over the bridge. Derived from committed thread data, so the parent never schedules work during
+  // render. Recomputed only when threads change.
+  useEffect(() => {
+    if (!onVisibleAnchors) return
+    const aids: string[] = []
+    for (const th of threads) {
+      if (th.anchor?.kind === 'element' && !aids.includes(th.anchor.aid)) aids.push(th.anchor.aid)
+    }
+    onVisibleAnchors(aids)
+  }, [threads, onVisibleAnchors])
 
   // A concrete positive integer version is required for every mutation (PR #1096 contract:
   // list may use `latest`, mutations must target a concrete version). Shared by root + reply.
@@ -245,17 +263,44 @@ export function HtmlDocCommentPanel({
           const canResolveAnchor = thread.anchor?.kind === 'element' || thread.anchor?.kind === 'text'
           const quoteText = (canResolveAnchor ? resolveAnchorText?.(thread.anchor) : null) ?? fallbackAnchorText(thread.anchor)
           const label = anchorLabel(thread.anchor)
+          // Only element anchors carry a locatable aid, so only they are click-to-scroll.
+          const canActivate = thread.anchor?.kind === 'element' && !!onActivateAnchor
+          const activate = canActivate ? () => onActivateAnchor?.(thread.anchor) : undefined
 
           return (
             <li key={thread.id} className="octo-html-doc-comment" data-testid="html-doc-comment">
               {quoteText ? (
-                <blockquote className="octo-html-doc-comment-quote" data-testid="comment-quote" title={quoteText}>
-                  {quoteText}
-                </blockquote>
+                canActivate ? (
+                  <button
+                    type="button"
+                    className="octo-html-doc-comment-quote octo-html-doc-comment-quote--activatable"
+                    data-testid="comment-quote"
+                    title={t('docs.comment.scrollToAnchor')}
+                    onClick={activate}
+                  >
+                    {quoteText}
+                  </button>
+                ) : (
+                  <blockquote className="octo-html-doc-comment-quote" data-testid="comment-quote" title={quoteText}>
+                    {quoteText}
+                  </blockquote>
+                )
               ) : thread.anchor ? (
-                <div className="octo-html-doc-comment-anchor" title={label}>
-                  {label}
-                </div>
+                canActivate ? (
+                  <button
+                    type="button"
+                    className="octo-html-doc-comment-anchor octo-html-doc-comment-anchor--activatable"
+                    data-testid="comment-anchor"
+                    title={t('docs.comment.scrollToAnchor')}
+                    onClick={activate}
+                  >
+                    {label}
+                  </button>
+                ) : (
+                  <div className="octo-html-doc-comment-anchor" title={label}>
+                    {label}
+                  </div>
+                )
               ) : null}
               <CommentMeta author={thread.author} createdAt={thread.created_at} />
               <p className="octo-html-doc-comment-text">{thread.text}</p>
