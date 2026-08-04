@@ -90,7 +90,7 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
   }
 
   /**
-   * 决定预览区显内容还是占位：有权限(reader/writer)+取数就绪+有内容 → 显首屏预览；
+   * 决定预览区显内容还是占位：实时 ACL 确认可访问且有内容 → 显首屏预览；
    * 否则给占位（无权限→申请引导 / 失效 / 检查中 / 空文档），与 octo 原型一致，ACL-safe。
    */
   private buildPreviewOrPlaceholder(
@@ -131,7 +131,7 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
   render() {
     const { message, context } = this.props;
     const content = message.content as DocumentShareCardContent;
-    const state = permissionState(this.state.status, content.permission);
+    const state = permissionState(this.state.status);
     const strings = this.buildStrings(content, state);
     const { preview, placeholder } = this.buildPreviewOrPlaceholder(state);
 

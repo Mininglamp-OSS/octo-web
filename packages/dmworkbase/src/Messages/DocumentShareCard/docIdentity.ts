@@ -32,18 +32,12 @@ export function buildDocNavUrl(docId: string, spaceId: string): string {
 import type { DocSharePermissionState, DocSharePreviewStatus } from "../../ui/DocumentShareCard";
 
 /**
- * 权限态推导：**只由接收者本人的实时 ACL 取数结果驱动**——
- *   - denied → no_access（需申请）；unavailable → unavailable（不可用）；
- *   - ready（ACL 确认可访问）→ 消息中经解码白名单收窄后的 reader/commenter/writer；
- *   - loading / error（尚未确认）→ checking（中性，绝不宣称"可查看/已授予"）。
- * permission 只影响 ACL 已确认后的角标级别；未确认前始终保守显示 checking。
+ * 权限态只由接收者的实时 ACL 结果驱动。预览接口仅证明可访问，
+ * 不返回真实角色，因此不能把消息 payload 中的授权意图当作当前权限。
  */
-export function permissionState(
-  status: DocSharePreviewStatus,
-  permission: "reader" | "commenter" | "writer" = "reader",
-): DocSharePermissionState {
+export function permissionState(status: DocSharePreviewStatus): DocSharePermissionState {
   if (status === "denied") return "no_access";
   if (status === "unavailable") return "unavailable";
-  if (status === "ready") return permission;
+  if (status === "ready") return "reader";
   return "checking";
 }
