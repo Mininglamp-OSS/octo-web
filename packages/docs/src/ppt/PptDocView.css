@@ -6,34 +6,36 @@
   justify-content: center;
   width: 100%;
   height: 100%;
-  min-height: 240px;
+  /* No single spacing token reaches this height (scale tops out at --wk-sp-12 = 48px),
+     so compose the empty-state minimum from the largest existing token rather than a raw px. */
+  min-height: calc(var(--wk-sp-12) * 5);
 }
 
 .octo-ppt-view-state {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--wk-sp-2);
   text-align: center;
-  padding: 32px;
+  padding: var(--wk-sp-8);
 }
 
 .octo-ppt-view-kind {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--wk-text-size-base);
+  font-weight: var(--wk-font-semibold);
   letter-spacing: 0.02em;
   opacity: 0.6;
   margin: 0;
 }
 
 .octo-ppt-view-title {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: var(--wk-text-size-2xl);
+  font-weight: var(--wk-font-semibold);
   margin: 0;
 }
 
 .octo-ppt-view-hint {
-  font-size: 14px;
+  font-size: var(--wk-text-size-md);
   opacity: 0.7;
   margin: 0;
 }
