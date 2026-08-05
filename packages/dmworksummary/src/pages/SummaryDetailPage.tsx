@@ -57,6 +57,10 @@ import {
     scheduleToParams,
     formatScheduleSummary,
     shouldReactivateOnSave,
+    summaryNotifyCompletionKey,
+    hasSentSummaryNotify,
+    markSummaryNotifySent,
+    withSummaryNotifyLock,
 } from "../utils/summaryHelpers";
 import CitationText from "../components/CitationText";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
@@ -2191,7 +2195,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * 群内总结 tip：总结变 COMPLETED 时，向每个「群聊」源发一条系统 tip
      *「{发起人}总结了群聊内容」（照抄截屏 tip，不可回复）。
      * - 仅发起人（creator）发送，避免每个查看者都发一遍；
-     * - v1 不做跨完成事件的持久去重：同一 task 重新生成并再次完成时仍需发送；
+     * - 按 completion run（result_id，旧接口回退 updated_at）+ source 去重：同一完成
+     *   只发一次，而同一 task 重新生成产生新 run 后仍会再次发送；
      * - 同一实例内用 summaryNotifyInFlight 防止同一次完成的两条触发路径并发重复发送；
      * - 已解散的群跳过（沿用 isConversationDisbanded 这条既有发送不变量）；
      * - 发送走 chatManager.send，与 handleForwardToChat 一致；群频道无需注入 space_id。
@@ -2211,23 +2216,32 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 .map((src) => src.source_id)
         )];
         if (groupSourceIds.length === 0) return;
+        const completionKey = summaryNotifyCompletionKey(detail);
 
         for (const sourceId of groupSourceIds) {
-            const inFlightKey = `${detail.task_id}:${sourceId}`;
+            const inFlightKey = `${completionKey || detail.task_id}:${sourceId}`;
+            if (completionKey && hasSentSummaryNotify(completionKey, sourceId)) continue;
             if (this.summaryNotifyInFlight.has(inFlightKey)) continue; // 本实例正在发
             const ch = new Channel(sourceId, ChannelTypeGroup);
-            // 已解散群不发（保持与既有发送路径一致的只读不变量）。
-            if (isConversationDisbanded(ch)) continue;
 
             this.summaryNotifyInFlight.add(inFlightKey);
             try {
-                const msg = new SummaryNotifyContent();
-                msg.fromUID = myUid;
-                msg.fromName = WKApp.loginInfo.selfDisplayName() || "";
-                await WKSDK.shared().chatManager.send(msg, ch);
-            } catch (error) {
-                // AC4：单群失败不影响其余群，但必须保留 channel + error 的可观测性。
-                console.warn("Failed to send group summary notification", ch, error);
+                await withSummaryNotifyLock(inFlightKey, async () => {
+                    // 进入跨 tab 锁后必须重读 marker；等待锁期间另一 tab 可能已发送成功。
+                    if (completionKey && hasSentSummaryNotify(completionKey, sourceId)) return;
+                    // 已解散群不发（保持与既有发送路径一致的只读不变量）。
+                    if (isConversationDisbanded(ch)) return;
+                    try {
+                        const msg = new SummaryNotifyContent();
+                        msg.fromUID = myUid;
+                        msg.fromName = WKApp.loginInfo.selfDisplayName();
+                        await WKSDK.shared().chatManager.send(msg, ch);
+                        if (completionKey) markSummaryNotifySent(completionKey, sourceId);
+                    } catch (error) {
+                        // AC4：单群失败不影响其余群，但必须保留 channel + error 的可观测性。
+                        console.warn("Failed to send group summary notification", ch, error);
+                    }
+                });
             } finally {
                 this.summaryNotifyInFlight.delete(inFlightKey);
             }

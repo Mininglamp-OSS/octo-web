@@ -1118,6 +1118,9 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.reply",
       (message, context) => {
+        if (!isMessageSelectable(message)) {
+          return null;
+        }
         return {
           title: t("base.module.contextMenus.reply"),
           onClick: () => {

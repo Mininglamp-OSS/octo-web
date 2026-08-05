@@ -4,6 +4,7 @@ import WKApp from "../../App";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { MessageCell } from "../MessageCell";
 import { t } from "../../i18n";
+import { getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 
 export class SummaryNotifyContent extends MessageContent {
@@ -16,25 +17,25 @@ export class SummaryNotifyContent extends MessageContent {
         if (senderUID === WKApp.loginInfo.uid) {
             name = t("base.message.summaryNotify.you")
         } else {
-            let channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(senderUID, ChannelTypePerson))
+            let channelInfo = getImChannelInfo(WKSDK.shared(), new Channel(senderUID, ChannelTypePerson))
             const displayName = channelInfo?.orgData?.displayName
-            const candidate = [displayName, this.fromName]
-                .find((value) => typeof value === "string" && value.trim())
-            // 缓存和消息体都缺少有效名称时使用中性称谓，避免空白或误称为“你”。
-            name = candidate?.trim() || t("base.message.summaryNotify.unknown")
+            // 远端消息只信任 envelope sender 对应的本地资料缓存；from_name 属于
+            // sender-controlled payload，缓存未命中时不能用它伪装其他成员。
+            name = displayName?.trim() || t("base.message.summaryNotify.unknown")
         }
         return t("base.message.summaryNotify.text", { values: { name } })
     }
 
-    // 仅供本地待发送消息 / digest 使用；实际消息气泡必须以 envelope 的 message.fromUID
-    // 调用 tipForSender，不能信任发送者可控的 payload.from_uid。
+    // Content 本身没有认证 envelope，不能根据 payload UID/姓名生成身份文案。
     get tip() {
-        return this.tipForSender(this.fromUID)
+        return t("base.message.summaryNotify.text", {
+            values: { name: t("base.message.summaryNotify.unknown") }
+        })
     }
 
     decodeJSON(content: any): void {
-        this.fromUID = content["from_uid"]
-        this.fromName = content["from_name"]
+        this.fromUID = typeof content?.["from_uid"] === "string" ? content["from_uid"].trim() : ""
+        this.fromName = typeof content?.["from_name"] === "string" ? content["from_name"].trim() : ""
     }
 
     encodeJSON(): any {
@@ -46,6 +47,7 @@ export class SummaryNotifyContent extends MessageContent {
     }
 
     get conversationDigest() {
+        // digest 的消费路径拿不到 message envelope，因此必须保持 sender-neutral。
         return this.tip
     }
 

@@ -93,9 +93,6 @@ export class SummaryNotifyContent {
   encodeJSON() {
     return { from_uid: this.fromUID || '', from_name: this.fromName || '' };
   }
-  get contentType() {
-    return 21;
-  }
 }
 
 // 群解散判定：测试默认返回 false（未解散）。需要覆盖解散分支的用例可 vi.mocked 覆盖。

@@ -140,6 +140,63 @@ export function clearAgentChatReferenced(channelId?: string | null): void {
     }
 }
 
+// ─── 群内总结 tip：按「完成轮次 + source」有界持久去重 ──────────────
+// AC5 要求同一 task 再次完成仍发送，因此 key 必须包含 result_id（旧接口回退 updated_at），
+// 不能只按 task_id。单一 LRU 列表限制为 200 项，避免每个 task 创建永久 localStorage key。
+const SUMMARY_NOTIFY_RUNS_KEY = 'summary-notify-runs:v1';
+const SUMMARY_NOTIFY_RUNS_LIMIT = 200;
+
+export function summaryNotifyCompletionKey(detail: {
+    task_id: number;
+    result_id?: number;
+    updated_at?: string;
+}): string | null {
+    const run = detail.result_id != null
+        ? `result:${detail.result_id}`
+        : detail.updated_at
+            ? `updated:${detail.updated_at}`
+            : null;
+    return run ? `${detail.task_id}:${run}` : null;
+}
+
+function readSummaryNotifyRuns(): string[] {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(SUMMARY_NOTIFY_RUNS_KEY) || '[]');
+        return Array.isArray(parsed)
+            ? parsed.filter((item): item is string => typeof item === 'string')
+            : [];
+    } catch {
+        return [];
+    }
+}
+
+export function hasSentSummaryNotify(completionKey: string, sourceId: string): boolean {
+    return readSummaryNotifyRuns().includes(`${completionKey}:${sourceId}`);
+}
+
+export function markSummaryNotifySent(completionKey: string, sourceId: string): void {
+    try {
+        const marker = `${completionKey}:${sourceId}`;
+        const entries = readSummaryNotifyRuns().filter((item) => item !== marker);
+        entries.push(marker);
+        localStorage.setItem(SUMMARY_NOTIFY_RUNS_KEY, JSON.stringify(entries.slice(-SUMMARY_NOTIFY_RUNS_LIMIT)));
+    } catch {
+        // storage 不可用时退化为当前实例 in-flight 保护，不阻断通知主流程。
+    }
+}
+
+/**
+ * Web Locks 在支持的浏览器中把同一 completion/source 的检查-发送-落标记串行化，
+ * 从而覆盖多 tab 竞态；不支持时退化为 localStorage + 当前实例 in-flight。
+ */
+export async function withSummaryNotifyLock<T>(key: string, action: () => Promise<T>): Promise<T> {
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+    if (locks?.request) {
+        return locks.request(`octo-summary-notify:${key}`, action);
+    }
+    return action();
+}
+
 /** 周对应天数 */
 export const DAYS_PER_WEEK = 7;
 /** interval_days 上界（与后端 MaxIntervalDays 对齐） */

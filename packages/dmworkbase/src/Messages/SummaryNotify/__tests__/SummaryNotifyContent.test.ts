@@ -76,19 +76,26 @@ describe("SummaryNotifyContent", () => {
     expect(decoded.fromName).toBe("Alice");
   });
 
+  it("normalizes malformed or blank identity fields while decoding", () => {
+    const decoded = new SummaryNotifyContent();
+    decoded.decodeJSON({ from_uid: 42, from_name: "  " });
+    expect(decoded.fromUID).toBe("");
+    expect(decoded.fromName).toBe("");
+  });
+
   it("shows «你» when the sender is the current user", () => {
     const content = new SummaryNotifyContent();
     content.fromUID = "me";
     content.fromName = "Me";
-    expect(content.tip).toBe("你总结了群聊内容");
-    expect(content.conversationDigest).toBe("你总结了群聊内容");
+    expect(content.tipForSender("me")).toBe("你总结了群聊内容");
+    expect(content.conversationDigest).toBe("某用户总结了群聊内容");
   });
 
-  it("falls back to fromName when the sender is someone else", () => {
+  it("does not trust payload fromName when the remote sender profile is not cached", () => {
     const content = new SummaryNotifyContent();
     content.fromUID = "alice";
-    content.fromName = "Alice";
-    expect(content.tip).toBe("Alice总结了群聊内容");
+    content.fromName = "张总";
+    expect(content.tipForSender("alice")).toBe("某用户总结了群聊内容");
   });
 
   it("prefers channel displayName over fromName when available", () => {
@@ -98,16 +105,15 @@ describe("SummaryNotifyContent", () => {
     const content = new SummaryNotifyContent();
     content.fromUID = "alice";
     content.fromName = "Alice";
-    expect(content.tip).toBe("Alice (Sales)总结了群聊内容");
+    expect(content.tipForSender("alice")).toBe("Alice (Sales)总结了群聊内容");
   });
 
-  it("falls back to fromName when channelInfo exists but displayName is missing", () => {
-    // channelInfo 命中但 orgData.displayName 缺失时，不能渲染成 undefined。
+  it("uses the neutral fallback when channelInfo exists but displayName is missing", () => {
     channelManager.getChannelInfo.mockReturnValue({ orgData: {} });
     const content = new SummaryNotifyContent();
     content.fromUID = "alice";
     content.fromName = "Alice";
-    expect(content.tip).toBe("Alice总结了群聊内容");
+    expect(content.tipForSender("alice")).toBe("某用户总结了群聊内容");
   });
 
   it("uses a neutral fallback when both cached and embedded names are blank", () => {
@@ -115,7 +121,7 @@ describe("SummaryNotifyContent", () => {
     const content = new SummaryNotifyContent();
     content.fromUID = "unknown";
     content.fromName = "";
-    expect(content.tip).toBe("某用户总结了群聊内容");
+    expect(content.tipForSender("unknown")).toBe("某用户总结了群聊内容");
   });
 
   it("renders the authenticated envelope sender instead of spoofable payload from_uid", () => {
@@ -134,5 +140,16 @@ describe("SummaryNotifyContent", () => {
     expect(channelManager.getChannelInfo).toHaveBeenLastCalledWith(
       expect.objectContaining({ channelID: "alice" }),
     );
+  });
+
+  it("keeps digest sender-neutral even when payload claims another uid", () => {
+    channelManager.getChannelInfo.mockReturnValue({
+      orgData: { displayName: "Victim" },
+    });
+    const content = new SummaryNotifyContent();
+    content.fromUID = "victim";
+    content.fromName = "Victim";
+    expect(content.conversationDigest).toBe("某用户总结了群聊内容");
+    expect(channelManager.getChannelInfo).not.toHaveBeenCalled();
   });
 });

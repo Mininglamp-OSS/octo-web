@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 // octo-web#289: 群内总结 tip 的 v1 行为。
 // 覆盖 sendGroupSummaryNotify:
 //  - 仅发起人（creator）、仅群聊源、COMPLETED 才发；
-//  - 同一 task 每次重新生成并完成都发送，不做跨完成事件持久去重；
+//  - 同一完成轮次只发一次；同一 task 重新生成产生新 result_id 后再次发送；
 //  - 单个源失败 console.warn 且不影响其余源;
 //  - 已解散群跳过;
 //  - 同实例并发触发不重复发。
@@ -92,6 +92,8 @@ const ME = 'test-uid';
 function makeDetail(over: any = {}) {
     return {
         task_id: 1,
+        result_id: 10,
+        updated_at: '2026-08-05T00:00:00Z',
         summary_mode: SummaryMode.BY_GROUP,
         status: TaskStatus.COMPLETED,
         creator_id: ME,
@@ -117,6 +119,7 @@ function newPage() {
 describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        localStorage.clear();
         sendMock.mockResolvedValue(undefined);
         disbandedMock.mockReturnValue(false);
         getSummaryDetailMock.mockReset();
@@ -131,7 +134,6 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
         sendMock.mock.calls.forEach((c) => expect(c[1].channelType).toBe(2));
         sendMock.mock.calls.forEach((c) => {
             expect(c[0]).toMatchObject({
-                contentType: 21,
                 fromUID: ME,
                 fromName: 'Verified Test User',
             });
@@ -167,12 +169,18 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
         expect(sendMock).not.toHaveBeenCalled();
     });
 
-    it('sends again when the same task completes after regeneration (AC5: no persistent dedup)', async () => {
-        const detail = makeDetail();
+    it('sends again when the same task completes in a new result run (AC5)', async () => {
+        await newPage().sendGroupSummaryNotify(makeDetail({ result_id: 10 }));
+        expect(sendMock).toHaveBeenCalledTimes(2);
+        await newPage().sendGroupSummaryNotify(makeDetail({ result_id: 11 }));
+        expect(sendMock).toHaveBeenCalledTimes(4);
+    });
+
+    it('does not resend the same completion run across instances', async () => {
+        const detail = makeDetail({ result_id: 10 });
+        await newPage().sendGroupSummaryNotify(detail);
         await newPage().sendGroupSummaryNotify(detail);
         expect(sendMock).toHaveBeenCalledTimes(2);
-        await newPage().sendGroupSummaryNotify(detail);
-        expect(sendMock).toHaveBeenCalledTimes(4);
     });
 
     it('warns once with channel and error when one source fails, then continues', async () => {
@@ -230,12 +238,13 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
     it('notifies on both COMPLETED transitions when the same task is regenerated', async () => {
         const page = newPage();
         const processing = makeDetail({ status: TaskStatus.PROCESSING });
-        const completed = makeDetail();
+        const firstCompleted = makeDetail({ result_id: 10 });
+        const secondCompleted = makeDetail({ result_id: 11 });
         page.state.lastKnownStatus = TaskStatus.PROCESSING;
         getSummaryDetailMock
-            .mockResolvedValueOnce(completed)
+            .mockResolvedValueOnce(firstCompleted)
             .mockResolvedValueOnce(processing)
-            .mockResolvedValueOnce(completed);
+            .mockResolvedValueOnce(secondCompleted);
         const notify = vi.spyOn(page, 'sendGroupSummaryNotify').mockResolvedValue(undefined);
         const event = new CustomEvent('status', { detail: { taskIds: [1] } });
 
@@ -244,8 +253,8 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
         await page.handleStatusChangeEvent(event); // PROCESSING -> COMPLETED again
 
         expect(notify).toHaveBeenCalledTimes(2);
-        expect(notify).toHaveBeenNthCalledWith(1, completed);
-        expect(notify).toHaveBeenNthCalledWith(2, completed);
+        expect(notify).toHaveBeenNthCalledWith(1, firstCompleted);
+        expect(notify).toHaveBeenNthCalledWith(2, secondCompleted);
     });
 
     it('does not notify when the first observed status is already COMPLETED', async () => {
