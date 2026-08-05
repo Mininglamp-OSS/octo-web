@@ -885,7 +885,37 @@
     "createComingSoon": "Slides (Bento PPT) creation is coming soon.",
     "createComingSoonOk": "Got it",
     "viewTitle": "Slides",
-    "previewComingSoon": "Slides preview is coming soon."
+    "previewComingSoon": "Slides preview is coming soon.",
+    "create": {
+      "title": "New slides",
+      "templateLabel": "Choose a template",
+      "titleLabel": "Title",
+      "titlePlaceholder": "Untitled slides",
+      "titleTooLong": "The title is too long.",
+      "submit": "Create",
+      "cancel": "Cancel",
+      "loading": "Creating…",
+      "error": "Couldn't create the slides. Please try again.",
+      "validationError": "Please check the title and template, then try again."
+    },
+    "template": {
+      "blank": {
+        "name": "Blank",
+        "desc": "Start from scratch"
+      },
+      "pitch": {
+        "name": "Pitch",
+        "desc": "Investor and sales pitch decks"
+      },
+      "report": {
+        "name": "Report",
+        "desc": "Weekly and quarterly data reports"
+      },
+      "lesson": {
+        "name": "Lesson",
+        "desc": "Courseware and teaching slides"
+      }
+    }
   },
   "onboarding": {
     "helpTitle": "Agent CLI onboarding help",

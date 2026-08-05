@@ -885,7 +885,37 @@
     "createComingSoon": "幻灯片（Bento PPT）创建即将上线，敬请期待。",
     "createComingSoonOk": "知道了",
     "viewTitle": "幻灯片",
-    "previewComingSoon": "幻灯片预览即将上线。"
+    "previewComingSoon": "幻灯片预览即将上线。",
+    "create": {
+      "title": "新建幻灯片",
+      "templateLabel": "选择模板",
+      "titleLabel": "标题",
+      "titlePlaceholder": "无标题幻灯片",
+      "titleTooLong": "标题过长。",
+      "submit": "创建",
+      "cancel": "取消",
+      "loading": "创建中…",
+      "error": "创建幻灯片失败，请重试。",
+      "validationError": "请检查标题和模板后重试。"
+    },
+    "template": {
+      "blank": {
+        "name": "空白",
+        "desc": "从零开始"
+      },
+      "pitch": {
+        "name": "路演",
+        "desc": "融资与对外演示"
+      },
+      "report": {
+        "name": "汇报",
+        "desc": "周报季报数据汇报"
+      },
+      "lesson": {
+        "name": "课程",
+        "desc": "教学讲义与课件"
+      }
+    }
   },
   "onboarding": {
     "helpTitle": "Agent CLI 上手帮助",

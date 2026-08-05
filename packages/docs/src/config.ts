@@ -178,6 +178,19 @@ export const FONT_FAMILY_ENABLED = envOr(import.meta.env?.VITE_DOCS_FONT_FAMILY,
  */
 export const LINE_SPACING_ENABLED = envOr(import.meta.env?.VITE_DOCS_LINE_SPACING, 'true') === 'true'
 
+/**
+ * Feature flag for the live "New slides" create + four-template picker (R2-F1, XIN-1495).
+ *
+ * R1 (XIN-1501) shipped the html_ppt entry + routing shell only; the caret-menu "New slides" item
+ * opened a "coming soon" notice. R2-F1 replaces that notice with the real template picker that
+ * POSTs to `/api/v1/ppt/docs`. This flag gates ONLY that upgrade — it never touches the html_ppt
+ * routing / read-only view, so an OFF build cleanly falls back to the R1 coming-soon notice with no
+ * regression to the R1 entry, filter, or no-fallthrough routing. DEFAULT ON now that the R2-B1
+ * backend (`POST /api/v1/ppt/docs` + 4 templates + atomic idempotent create) is merged upstream; an
+ * explicit `VITE_DOCS_PPT_CREATE=false` build restores the coming-soon behaviour (rollback intact).
+ */
+export const PPT_CREATE_ENABLED = envOr(import.meta.env?.VITE_DOCS_PPT_CREATE, 'true') === 'true'
+
 // ── Default document addressing (frontend-design §7.2) ───────────────────────
 //
 // The docs-backend currently exposes only per-doc endpoints (`/docs/:docId/...`)

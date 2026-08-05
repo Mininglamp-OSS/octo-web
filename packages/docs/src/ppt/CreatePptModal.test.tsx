@@ -1,0 +1,253 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react'
+import { setWKApp } from '../octoweb/index.ts'
+import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
+import { CreatePptModal } from './CreatePptModal.tsx'
+
+// Drive the POST /ppt/docs response through the mock apiClient responder.
+function mountApi(
+  responder: MockApiClient['responder'],
+): ReturnType<typeof createMockWKApp> {
+  const wk = createMockWKApp()
+  wk.apiClient.responder = responder
+  setWKApp(wk)
+  return wk
+}
+
+const okResponder: MockApiClient['responder'] = (_m, url) => {
+  if (url === '/ppt/docs') return { data: { data: { editorUrl: '/ppt/d/new_deck' } }, status: 201 }
+  return { data: {}, status: 200 }
+}
+
+/** All four template cards, in DOM order. */
+function cards(): HTMLElement[] {
+  return screen.getAllByRole('radio')
+}
+
+describe('CreatePptModal', () => {
+  beforeEach(() => {
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+      configurable: true,
+      value: vi.fn(function (this: HTMLDialogElement) {
+        this.setAttribute('open', '')
+      }),
+    })
+    Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+      configurable: true,
+      value: vi.fn(function (this: HTMLDialogElement) {
+        this.removeAttribute('open')
+      }),
+    })
+    mountApi(okResponder)
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it('renders nothing when closed', () => {
+    const { container } = render(
+      <CreatePptModal open={false} spaceId="s_1" onClose={() => {}} onCreated={() => {}} />,
+    )
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('renders a native <dialog> with dialog a11y semantics', () => {
+    const { container } = render(
+      <CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />,
+    )
+    const dialogEl = container.querySelector('dialog.octo-ppt-create-modal')
+    expect(dialogEl?.tagName).toBe('DIALOG')
+    const byRole = screen.getByRole('dialog')
+    expect(byRole.getAttribute('aria-modal')).toBe('true')
+    expect(byRole.getAttribute('aria-labelledby')).toBeTruthy()
+  })
+
+  // ── PPT-UI-001: keyboard semantics ───────────────────────────────────────
+  it('exposes a radiogroup of four radio cards with blank selected by default', () => {
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />)
+    expect(screen.getByRole('radiogroup')).toBeTruthy()
+    const radios = cards()
+    expect(radios).toHaveLength(4)
+    // First card = blank, selected by default (aria-checked + roving tabindex 0).
+    expect(radios[0].getAttribute('aria-checked')).toBe('true')
+    expect(radios[0].getAttribute('tabindex')).toBe('0')
+    for (const r of radios.slice(1)) {
+      expect(r.getAttribute('aria-checked')).toBe('false')
+      expect(r.getAttribute('tabindex')).toBe('-1')
+    }
+  })
+
+  it('focuses the default template card on open (clear keyboard start point)', async () => {
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />)
+    await waitFor(() => expect(document.activeElement).toBe(cards()[0]))
+  })
+
+  it('arrow keys move selection AND focus across the cards; Space/Enter confirm', () => {
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />)
+    const radios = cards()
+    fireEvent.keyDown(radios[0], { key: 'ArrowRight' })
+    expect(radios[1].getAttribute('aria-checked')).toBe('true')
+    expect(document.activeElement).toBe(radios[1])
+    expect(radios[0].getAttribute('aria-checked')).toBe('false')
+
+    // Wrap-around backwards from the first card lands on the last.
+    fireEvent.keyDown(radios[1], { key: 'ArrowLeft' })
+    expect(radios[0].getAttribute('aria-checked')).toBe('true')
+
+    // Space/Enter confirm the focused card (native button click → onSelect).
+    fireEvent.click(radios[2])
+    expect(radios[2].getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('keeps focus order group → title → Create → Cancel in the DOM', () => {
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />)
+    const group = screen.getByRole('radiogroup')
+    const titleInput = screen.getByLabelText('docs.ppt.create.titleLabel')
+    const create = screen.getByRole('button', { name: 'docs.ppt.create.submit' })
+    const cancel = screen.getByRole('button', { name: 'docs.ppt.create.cancel' })
+    // DOCUMENT_POSITION_FOLLOWING === 4: b follows a.
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(follows(group, titleInput)).toBe(true)
+    expect(follows(titleInput, create)).toBe(true)
+    expect(follows(create, cancel)).toBe(true)
+  })
+
+  it('closes and restores focus to the trigger on Esc (dialog cancel)', async () => {
+    const onClose = vi.fn()
+    const trigger = document.createElement('button')
+    document.body.appendChild(trigger)
+    trigger.focus()
+    expect(document.activeElement).toBe(trigger)
+
+    const { container, rerender } = render(
+      <CreatePptModal open spaceId="s_1" onClose={onClose} onCreated={() => {}} />,
+    )
+    const dialogEl = container.querySelector('dialog') as HTMLDialogElement
+    // Esc on a native <dialog> fires a cancel event, which our handler routes to onClose.
+    fireEvent(dialogEl, new Event('cancel', { bubbles: false, cancelable: true }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    // Parent closes the modal → focus is returned to the trigger.
+    rerender(<CreatePptModal open={false} spaceId="s_1" onClose={onClose} onCreated={() => {}} />)
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+    trigger.remove()
+  })
+
+  // ── PPT-HUMAN-001: create → land on the backend editor route ─────────────
+  it('creates the deck and hands the caller the backend editorUrl (no fabricated route)', async () => {
+    const wk = mountApi(okResponder)
+    const onCreated = vi.fn()
+    render(
+      <CreatePptModal open spaceId="s_1" folderId="f_1" onClose={() => {}} onCreated={onCreated} />,
+    )
+    // Pick the "report" template (3rd card) and type a title.
+    fireEvent.click(cards()[2])
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'Quarterly review' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('/ppt/d/new_deck'))
+    const call = wk.apiClient.calls.find((c) => c.url === '/ppt/docs')
+    expect(call?.body).toEqual({ title: 'Quarterly review', templateId: 'report', folderId: 'f_1' })
+    expect(call?.config?.headers?.['Idempotency-Key']).toBeTruthy()
+  })
+
+  // ── PPT-HUMAN-002: empty / invalid title, 400 handling ───────────────────
+  it('disables Create until a non-empty title is entered', () => {
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />)
+    const create = screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement
+    expect(create.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: '   ' },
+    })
+    expect(create.disabled).toBe(true) // whitespace-only is still empty
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'Deck' },
+    })
+    expect(create.disabled).toBe(false)
+  })
+
+  it('on 400 shows an inline error, does NOT navigate, and keeps the modal open', async () => {
+    mountApi(() => Promise.reject({ response: { status: 400, data: { error: 'VALIDATION_ERROR' } } }))
+    const onCreated = vi.fn()
+    const onClose = vi.fn()
+    render(<CreatePptModal open spaceId="s_1" onClose={onClose} onCreated={onCreated} />)
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'Deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.validationError')).toBeTruthy())
+    expect(onCreated).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    // Modal still mounted + retriable.
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('a non-400 failure shows the generic error and keeps the modal open', async () => {
+    mountApi(() => Promise.reject({ response: { status: 500 } }))
+    const onCreated = vi.fn()
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={onCreated} />)
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'Deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  // ── Double-submit + idempotency ──────────────────────────────────────────
+  it('prevents double-submit: Create shows loading + disabled, and only ONE request is sent', async () => {
+    let resolve!: (v: unknown) => void
+    const wk = mountApi(
+      () => new Promise((r) => { resolve = r as (v: unknown) => void }),
+    )
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />)
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'Deck' },
+    })
+    const create = () => screen.getByRole('button', { name: /docs\.ppt\.create\.(submit|loading)/ }) as HTMLButtonElement
+    fireEvent.click(create())
+    // In-flight: label flips to loading and the button is disabled.
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.loading')).toBeTruthy())
+    expect(create().disabled).toBe(true)
+    // A second click while loading is a no-op.
+    fireEvent.click(create())
+    fireEvent.click(create())
+    expect(wk.apiClient.calls.filter((c) => c.url === '/ppt/docs')).toHaveLength(1)
+    await act(async () => {
+      resolve({ data: { data: { editorUrl: '/ppt/d/x' } }, status: 201 })
+    })
+  })
+
+  it('retry after a failure reuses the SAME idempotency key (no duplicate deck)', async () => {
+    let attempt = 0
+    const wk = mountApi(() => {
+      attempt += 1
+      if (attempt === 1) return Promise.reject({ response: { status: 500 } })
+      return { data: { data: { editorUrl: '/ppt/d/deck' } }, status: 201 }
+    })
+    const onCreated = vi.fn()
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={onCreated} />)
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'Deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
+    // Retry the same submit.
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('/ppt/d/deck'))
+
+    const keys = wk.apiClient.calls
+      .filter((c) => c.url === '/ppt/docs')
+      .map((c) => c.config?.headers?.['Idempotency-Key'])
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).toBe(keys[1])
+    expect(keys[0]).toBeTruthy()
+  })
+})

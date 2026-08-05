@@ -1436,7 +1436,7 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
-  it('shows the "new slides" caret-menu entry that opens the R1 coming-soon notice without creating a doc', async () => {
+  it('shows the "new slides" caret-menu entry that opens the R2 template picker without precreating a doc', async () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     const calls: Array<{ method: string; url: string }> = []
@@ -1454,12 +1454,15 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
     fireEvent.click(screen.getByText('docs.list.newPpt'))
 
-    // R1: a "coming soon" notice appears — no doc is created and no editor/PPT surface opens.
-    await waitFor(() => expect(screen.getByText('docs.ppt.createComingSoon')).toBeTruthy())
+    // R2 (flag ON): the four-template picker opens — no doc is created and no editor/PPT surface
+    // opens (the deck is minted only on submit, via POST /api/v1/ppt/docs, never here).
+    await waitFor(() => expect(screen.getByRole('radiogroup')).toBeTruthy())
+    expect(screen.getAllByRole('radio')).toHaveLength(4)
     expect(screen.queryByTestId('editor-shell')).toBeNull()
     expect(screen.queryByTestId('ppt-doc-view')).toBeNull()
-    // The entry must NOT call createDoc (a Bento deck is never minted through the rich-doc path).
+    // Opening the picker must NOT call createDoc or the ppt create endpoint — nothing is precreated.
     expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
+    expect(calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(false)
   })
 
   it('re-pushes an open html doc WITH its slug when the docs nav menu is re-activated', async () => {
