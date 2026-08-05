@@ -20,10 +20,15 @@ async function fetchSpaceBots(spaceId: string): Promise<SpaceBotSnapshot[]> {
   const data = await APIClient.shared.get<SpaceBotSnapshot[]>("/robot/space_bots", {
     param: { space_id: spaceId },
   });
-  // Validate the shape: keep only array entries carrying a uid; anything else → [].
-  return Array.isArray(data)
-    ? data.filter((b): b is SpaceBotSnapshot => !!b && typeof b.uid === "string" && !!b.uid)
-    : [];
+  // Grant-critical loader: FAIL CLOSED on a malformed (non-array) 200. Silently coercing it to []
+  // would let the authoritative snapshot resolve "no Bots" off a broken response and quietly proceed
+  // to a humans-only grant; throwing instead surfaces the retryable error snapshot and blocks
+  // confirmation until a well-formed catalog is read.
+  if (!Array.isArray(data)) {
+    throw new Error("space_bots: malformed non-array response");
+  }
+  // Keep only array entries carrying a uid; anything else is dropped as an unusable row.
+  return data.filter((b): b is SpaceBotSnapshot => !!b && typeof b.uid === "string" && !!b.uid);
 }
 
 /**

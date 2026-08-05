@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
-import { fetchAllSpaceMembers, fetchMyBots, fetchSpaceBotSnapshots, t, type SpaceMemberLite } from '../octoweb/index.ts'
+import { fetchAllSpaceMembers, fetchMyOwnedBots, fetchSpaceBotSnapshots, t, type SpaceMemberLite } from '../octoweb/index.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { sortPickerMembers } from './sort.ts'
 
@@ -13,37 +13,42 @@ function initial(name: string): string {
 }
 
 /**
- * Candidate roster = Space members ∪ the caller's friend-added agents (fetchMyBots, #839) ∪ the
- * Space Bot snapshot (fetchSpaceBotSnapshots). De-duplicated by uid: the Space-member entry wins a
- * uid collision (richer host data), then a friend agent, then a Space Bot backfills creatorUid so
- * the picker can nest that Bot beneath its creator. Both Bot requests are fail-soft and never break
- * the human roster path.
+ * Candidate roster = Space members ∪ the caller's OWNED agents (fetchMyOwnedBots — bots the current
+ * user CREATED in this Space, Boss decision) ∪ the Space Bot snapshot (fetchSpaceBotSnapshots).
+ * De-duplicated by uid: the Space-member entry wins a uid collision (richer host data), then an
+ * owned agent, then a Space Bot backfills creatorUid so the picker can nest that Bot beneath its
+ * creator. Both Bot requests are fail-soft and never break the human roster path.
  *
- * Provenance boundary (P1): trust to grant a creator-less Bot as a standalone candidate comes ONLY
- * from viewer-scoped sources — the Space MEMBER roster (queryMembers) or the caller's friend agents
- * (fetchMyBots, #839). We track that trusted-uid set SEPARATELY and stamp `safeStandalone` from it,
- * never from "an entry already exists": the Space-Bot catalog is NOT viewer-scoped, so a catalog
- * entry (even a duplicate row sharing a uid with another catalog-only entry) can never confer trust
- * on itself. A creator-less, non-trusted catalog Bot therefore never becomes a grantable standalone
- * (it may still show disabled when already granted); a catalog Bot with a resolvable creator still
- * nests beneath them regardless of trust.
+ * Provenance boundary (P1 + Boss ownership): trust to grant a creator-less Bot as a standalone
+ * candidate comes ONLY from viewer-scoped, caller-attributable sources — the Space MEMBER roster
+ * (queryMembers) or the caller's OWNED agents (fetchMyOwnedBots, /robot/owned_bots). A merely
+ * friend-added bot owned by someone else is NOT such a source: it is neither a standalone candidate
+ * nor default-selected as "mine" (the earlier /robot/my_bots friend-dimension merge is gone). We
+ * track that trusted-uid set SEPARATELY and stamp `safeStandalone` from it, never from "an entry
+ * already exists": the Space-Bot catalog is NOT viewer-scoped, so a catalog entry (even a duplicate
+ * row sharing a uid with another catalog-only entry) can never confer trust on itself. A
+ * creator-less, non-trusted catalog Bot therefore never becomes a grantable standalone (it may
+ * still show disabled when already granted); a catalog Bot with a resolvable creator still nests
+ * beneath them regardless of trust.
  */
 async function fetchCandidateRoster(space: string): Promise<SpaceMemberLite[]> {
-  const [members, myBots, spaceBots] = await Promise.all([
+  const [members, ownedBots, spaceBots] = await Promise.all([
     fetchAllSpaceMembers(space),
-    space ? fetchMyBots(space).catch(() => [] as SpaceMemberLite[]) : Promise.resolve([]),
+    space ? fetchMyOwnedBots(space).catch(() => [] as SpaceMemberLite[]) : Promise.resolve([]),
     space ? fetchSpaceBotSnapshots(space).catch(() => [] as SpaceMemberLite[]) : Promise.resolve([]),
   ])
   const byUid = new Map<string, SpaceMemberLite>()
-  // Trusted-provenance uids come ONLY from viewer-scoped sources (member roster + my_bots). Tracked
-  // separately so a catalog entry can never bootstrap trust off a prior (possibly catalog-only) row.
+  // Trusted-provenance uids come ONLY from viewer-scoped, caller-attributable sources (member
+  // roster + the caller's OWNED bots). Tracked separately so a catalog entry can never bootstrap
+  // trust off a prior (possibly catalog-only) row.
   const trustedBotUids = new Set<string>()
   for (const m of members) {
     byUid.set(m.uid, m)
     if (m.isBot) trustedBotUids.add(m.uid)
   }
-  // Friend agents the space-member query dropped (#839): append flat, never overwrite a member.
-  for (const b of myBots) {
+  // Agents the current user OWNS that the space-member query dropped (creator-owned, non-member):
+  // append flat, never overwrite a member's richer row.
+  for (const b of ownedBots) {
     if (!byUid.has(b.uid)) byUid.set(b.uid, b)
     if (b.isBot) trustedBotUids.add(b.uid)
   }
@@ -161,22 +166,58 @@ export function MemberPicker({
     [members],
   )
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    // Drop hidden uids (self / owner) from the roster entirely before filtering/sorting.
+  // Topology-level OFFERED set (independent of the search query): the uids the current roster pass
+  // actually renders as selectable top-level rows, split into humans and standalone Bots. This is
+  // the authoritative reachability set for the selection invariant (Scope A): a uid may only stay
+  // selected while it is still offered here. The query filter only hides rows for display; it never
+  // invalidates a selection. Nested Bot uids never appear here (they live under botsByCreator).
+  const offered = useMemo(() => {
     const nestedBotUids = new Set<string>()
     for (const bots of botsByCreator.values()) for (const bot of bots) nestedBotUids.add(bot.uid)
-    // A known creator may fall back to standalone only at a legitimate document boundary:
-    // hidden self/owner or an existing member. An absent creator is grantable standalone ONLY with
-    // trusted provenance (`safeStandalone`: a Space-member Bot or a befriended agent); a creator-less catalog-only Bot is never a
-    // grantable candidate and only surfaces — disabled — when it is already granted (existing).
-    const topLevel = members.filter(
-      (m) => {
-        if (!m.isBot) return !nestedBotUids.has(m.uid)
-        if (nestedBotUids.has(m.uid)) return false
-        if (!m.creatorUid) return m.safeStandalone === true || existingUids.has(m.uid)
-        return !!hideUids?.has(m.creatorUid) || existingUids.has(m.creatorUid) || existingUids.has(m.uid)
-      },
+    const humanUids = new Set<string>()
+    const standaloneBotUids = new Set<string>()
+    // Rows to RENDER (includes already-granted rows shown disabled) — a superset of the selectable
+    // sets, kept so existing members/Bots stay visible (pinned, disabled) without being selectable.
+    const displayHumanUids = new Set<string>()
+    const displayStandaloneBotUids = new Set<string>()
+    for (const m of members) {
+      if (hideUids?.has(m.uid)) continue
+      if (!m.isBot) {
+        if (nestedBotUids.has(m.uid)) continue
+        displayHumanUids.add(m.uid)
+        // A human is offered as a selectable candidate only while not already granted (existing).
+        // An existing member still renders (pinned, disabled) but can never be re-submitted.
+        if (!existingUids.has(m.uid)) humanUids.add(m.uid)
+        continue
+      }
+      if (nestedBotUids.has(m.uid)) continue
+      // A Bot is offered standalone when it is NOT nested under a visible creator AND either:
+      //   - it carries trusted, caller-attributable provenance (`safeStandalone`: a Space-member
+      //     Bot or one the current user OWNS), or
+      //   - it is already granted (shown disabled), or
+      //   - it has a known creator who is at a legitimate document boundary (hidden self/owner, or
+      //     an existing member) so the Bot can no longer nest but stays independently grantable.
+      const creatorAtBoundary = !!m.creatorUid &&
+        (!!hideUids?.has(m.creatorUid) || existingUids.has(m.creatorUid))
+      const alreadyGranted = existingUids.has(m.uid)
+      const offeredStandalone = m.safeStandalone === true || alreadyGranted || creatorAtBoundary
+      if (!offeredStandalone) continue
+      displayStandaloneBotUids.add(m.uid)
+      // Already-granted Bots render disabled but are never re-submittable.
+      if (!alreadyGranted) standaloneBotUids.add(m.uid)
+    }
+    return { humanUids, standaloneBotUids, displayHumanUids, displayStandaloneBotUids, nestedBotUids }
+  }, [members, existingUids, hideUids, botsByCreator])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    // Reuse the topology-level OFFERED set so display and the reachability invariant agree on which
+    // rows are top-level: a standalone Bot surfaces only with trusted provenance or when already
+    // granted (disabled); a known-creator Bot falls back to standalone only at a legitimate document
+    // boundary (hidden self/owner or an existing member); a creator-less catalog-only Bot is never a
+    // grantable candidate and only appears — disabled — when already granted (existing).
+    const topLevel = members.filter((m) =>
+      m.isBot ? offered.displayStandaloneBotUids.has(m.uid) : offered.displayHumanUids.has(m.uid),
     )
     const roster = hideUids?.size ? topLevel.filter((m) => !hideUids.has(m.uid)) : topLevel
     if (!q) return sortPickerMembers(roster, existingUids)
@@ -189,18 +230,31 @@ export function MemberPicker({
     })
     // Already-added members pinned at the top (#A3).
     return sortPickerMembers(base, existingUids)
-  }, [members, query, existingUids, hideUids, botsByCreator])
+  }, [members, query, existingUids, offered, botsByCreator])
 
-  // Drop selections that are no longer valid after a roster/existing change (e.g. a successful add
-  // + refresh, or a row that became existing/hidden). Humans: drop any now-existing OR now-hidden
-  // uid so a hidden creator/self/owner can never ride along in the submitted snapshot. Bots: keep
-  // only uids still nested UNDER A CURRENTLY-SELECTED creator and not already present. A Bot whose
-  // creator was deselected, became existing/hidden, or turned standalone is pruned so no stale or
-  // hidden Bot selection can survive to submit (P1).
+  // Enforce the reachability invariant (Scope A): every uid still in `selected` / `selectedBots`
+  // must remain RENDERED, ENABLED, ATTRIBUTABLE and VALID on the current pass. On any roster /
+  // existing / hide / topology change we drop selections that no longer qualify:
+  //   - Humans: keep only uids still offered as a selectable human row. A human who became
+  //     existing/hidden OR whose row vanished from the roster (creator removed, search topology,
+  //     roster reload) is pruned so a stale/hidden uid can never ride along in the submitted
+  //     snapshot.
+  //   - Standalone Bots (tracked inside `selected`): keep only uids still offered as a standalone
+  //     Bot row. A standalone Bot whose offered row vanished (its trusted provenance or
+  //     already-granted status changed, or it turned nested) is pruned immediately.
+  //   - Nested Bots: keep only uids still nested UNDER A CURRENTLY-SELECTED creator. A Bot whose
+  //     creator was deselected, became existing/hidden, or turned standalone is pruned.
   useEffect(() => {
     setSelected((prev) => {
       if (prev.size === 0) return prev
-      const next = new Set([...prev].filter((uid) => !existingUids.has(uid) && !hideUids?.has(uid)))
+      const next = new Set(
+        [...prev].filter((uid) => {
+          const entry = memberByUid.get(uid)
+          // Unknown uid (roster no longer offers it at all) → drop.
+          if (!entry) return false
+          return entry.isBot ? offered.standaloneBotUids.has(uid) : offered.humanUids.has(uid)
+        }),
+      )
       return next.size === prev.size ? prev : next
     })
     setSelectedBots((prev) => {
@@ -213,7 +267,7 @@ export function MemberPicker({
       const next = new Set([...prev].filter((uid) => selectable.has(uid)))
       return next.size === prev.size ? prev : next
     })
-  }, [existingUids, hideUids, botsByCreator, selected])
+  }, [memberByUid, offered, botsByCreator, selected])
 
   // Toggle a human row. Both state transitions happen in the EVENT phase as independent, pure
   // setter calls (no setter nested inside another updater) so React StrictMode's double-invoked
@@ -267,8 +321,18 @@ export function MemberPicker({
       : defaultRole && effectiveRoles.includes(defaultRole)
         ? defaultRole
         : effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0]
-    const humanUids = [...selected].filter((uid) => !memberByUid.get(uid)?.isBot)
-    const standaloneBotUids = [...selected].filter((uid) => memberByUid.get(uid)?.isBot)
+    // Defensive intersection with the CURRENT offered sets (Scope A). Even if state briefly lagged
+    // a render, only uids still offered may submit; a uid whose row vanished is excluded, and a Bot
+    // is classified strictly by `memberByUid[...].isBot` — a vanished/unknown uid is dropped, never
+    // silently reclassified as a human.
+    const humanUids = [...selected].filter((uid) => {
+      const entry = memberByUid.get(uid)
+      return !!entry && !entry.isBot && offered.humanUids.has(uid)
+    })
+    const standaloneBotUids = [...selected].filter((uid) => {
+      const entry = memberByUid.get(uid)
+      return !!entry && entry.isBot === true && offered.standaloneBotUids.has(uid)
+    })
     // Only nested Bots whose creator is currently selected may ride along — a defensive re-check so
     // no stale/hidden Bot selection can submit even if state briefly lagged a render (P1).
     const selectableNested = new Set<string>()
@@ -279,6 +343,7 @@ export function MemberPicker({
     const nestedBotUids = [...selectedBots].filter((uid) => selectableNested.has(uid))
     const botUids = [...new Set([...nestedBotUids, ...standaloneBotUids])]
     const uids = [...new Set([...humanUids, ...botUids])]
+    if (uids.length === 0) return
     if (botUids.length > 0) await onAdd(uids, submittedRole, { humanUids, botUids })
     else await onAdd(uids, submittedRole)
     setSelected(new Set())
@@ -334,11 +399,17 @@ export function MemberPicker({
               title={added ? t('docs.member.alreadyAdded') : undefined}
               onClick={() => toggle(m.uid)}
             >
+              {/* Selection indicator: an SVG tick, never a text/unicode glyph (UI spec). */}
               <span
                 className={'octo-member-picker-check' + (isSelected ? ' is-checked' : '')}
                 aria-hidden="true"
               >
-                {isSelected ? '✓' : ''}
+                {isSelected && (
+                  <svg viewBox="0 0 16 16" width="10" height="10" focusable="false" aria-hidden="true">
+                    <path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
               </span>
               <span
                 className="octo-member-picker-avatar"

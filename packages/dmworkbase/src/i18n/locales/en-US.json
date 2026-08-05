@@ -847,6 +847,8 @@
   "forwardModal.grant.botRetry": "Retry",
   "forwardModal.grant.showBots": "{{name}}'s {{count}} Bots",
   "forwardModal.grant.hideBots": "Hide {{name}}'s Bots",
+  "forwardModal.grant.botCheckedFor": "{{bot}} (selected for {{person}})",
+  "forwardModal.grant.botUncheckedFor": "{{bot}} (not selected for {{person}})",
   "forwardModal.grant.disabledReason": "Only the document admin can grant access when forwarding.",
   "forwardModal.grant.grantFailed": "Failed to grant access; the message was still sent.",
   "forwardModal.grant.sendFailed": "Failed to forward.",

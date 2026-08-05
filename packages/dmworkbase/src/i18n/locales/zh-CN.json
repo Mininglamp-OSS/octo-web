@@ -847,6 +847,8 @@
   "forwardModal.grant.botRetry": "重试",
   "forwardModal.grant.showBots": "{{name}} 的 {{count}} 个 Bot",
   "forwardModal.grant.hideBots": "收起 {{name}} 的 Bot",
+  "forwardModal.grant.botCheckedFor": "{{bot}}（已为 {{person}} 选中）",
+  "forwardModal.grant.botUncheckedFor": "{{bot}}（未为 {{person}} 选中）",
   "forwardModal.grant.disabledReason": "仅文档管理员可在转发时授权。",
   "forwardModal.grant.grantFailed": "授权失败，消息仍已发送。",
   "forwardModal.grant.sendFailed": "转发失败。",

@@ -350,39 +350,46 @@ describe('MemberPicker Bot search + creator attribution (task #4)', () => {
   })
 })
 
-// #839: the candidate roster merges the caller's friend-added agents (GET /robot/my_bots) with
-// the space members, so an agent owned by someone else but befriended by the caller — which the
-// space-member query filters out — becomes selectable, while non-friend agents never appear.
-describe('MemberPicker friend-agent roster (#839)', () => {
-  it('merges friend agents from my_bots and dedups by uid', async () => {
-    // my_bots returns a friend agent owned by someone else (not in spaceMembers) plus a duplicate
+// Boss ownership decision: the candidate roster merges the caller's OWNED agents (GET
+// /robot/owned_bots) with the space members, so a bot the current user CREATED but which the
+// space-member query filtered out becomes selectable. A merely friend-added bot owned by someone
+// else is NOT included — ownership, not friendship, drives standalone candidacy.
+describe('MemberPicker owned-agent roster (Boss ownership)', () => {
+  it('merges owned agents from owned_bots and dedups by uid', async () => {
+    // owned_bots returns an agent the current user created (not in spaceMembers) plus a duplicate
     // of an existing space bot (u_bot) that must NOT render twice.
     wk.apiClient.responder = (_m, url) =>
-      url.startsWith('/robot/my_bots')
+      url.startsWith('/robot/owned_bots')
         ? {
             data: [
-              { uid: 'u_friendbot', name: 'Friend Bot' },
+              { uid: 'u_ownedbot', name: 'Owned Bot' },
               { uid: 'u_bot', name: 'Helper Bot (dup)' },
             ],
             status: 200,
           }
         : { data: {}, status: 200 }
     render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Friend Bot')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Owned Bot')).toBeTruthy())
     // The space-member entry wins on the uid collision (its name, rendered once).
     expect(screen.getAllByText('Helper Bot')).toHaveLength(1)
     expect(screen.queryByText('Helper Bot (dup)')).toBeNull()
-    // The friend agent carries the AI badge (one for u_bot, one for u_friendbot).
+    // The owned agent carries the AI badge (one for u_bot, one for u_ownedbot).
     expect(screen.getAllByText('docs.member.aiTag')).toHaveLength(2)
     // It is selectable and adds by its uid.
     const addBtn = screen.getByText('docs.member.add').closest('button') as HTMLButtonElement
-    fireEvent.click(screen.getByText('Friend Bot'))
+    fireEvent.click(screen.getByText('Owned Bot'))
     expect(addBtn.disabled).toBe(false)
   })
 
-  it('renders the space roster unchanged when my_bots fails', async () => {
+  it('does NOT read /robot/my_bots (friendship must not confer standalone candidacy)', async () => {
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
+    expect(wk.apiClient.calls.some((c) => c.url.startsWith('/robot/my_bots'))).toBe(false)
+  })
+
+  it('renders the space roster unchanged when owned_bots fails', async () => {
     wk.apiClient.responder = (_m, url) => {
-      if (url.startsWith('/robot/my_bots')) throw new Error('boom')
+      if (url.startsWith('/robot/owned_bots')) throw new Error('boom')
       return { data: {}, status: 200 }
     }
     render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
@@ -535,19 +542,19 @@ describe('MemberPicker creator-less Space Bots (P1 provenance)', () => {
     expect(screen.getByText('docs.member.alreadyAdded')).toBeTruthy()
   })
 
-  it('still offers a creator-less friend agent (my_bots provenance)', async () => {
+  it('still offers a creator-less owned agent (owned_bots provenance)', async () => {
     wk.apiClient.responder = (_m: string, url: string) =>
-      url.startsWith('/robot/my_bots')
-        ? { data: [{ uid: 'u_friendbot', name: 'Friend Bot' }], status: 200 }
+      url.startsWith('/robot/owned_bots')
+        ? { data: [{ uid: 'u_ownedbot', name: 'Owned Bot' }], status: 200 }
         : { data: [], status: 200 }
     const onAdd = vi.fn()
     render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
-    await waitFor(() => expect(screen.getByText('Friend Bot')).toBeTruthy())
-    const row = screen.getByText('Friend Bot').closest('button') as HTMLButtonElement
+    await waitFor(() => expect(screen.getByText('Owned Bot')).toBeTruthy())
+    const row = screen.getByText('Owned Bot').closest('button') as HTMLButtonElement
     expect(row.disabled).toBe(false)
-    fireEvent.click(screen.getByText('Friend Bot'))
+    fireEvent.click(screen.getByText('Owned Bot'))
     fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
-    expect(onAdd).toHaveBeenCalledWith(['u_friendbot'], 'writer', { humanUids: [], botUids: ['u_friendbot'] })
+    expect(onAdd).toHaveBeenCalledWith(['u_ownedbot'], 'writer', { humanUids: [], botUids: ['u_ownedbot'] })
   })
 
   it('still offers a creator-less Bot that is itself a Space member', async () => {
@@ -631,22 +638,97 @@ describe('MemberPicker Bot expander UX (task #3)', () => {
     expect(b2.checked).toBe(false)
   })
 
-  it('leaves no hidden Bot selection after the search query clears', async () => {
-    wk.apiClient.responder = botResponder([
-      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
-    ])
+  it('excludes a stale standalone Bot from the payload after a real selection + query/topology transition', async () => {
+    // A creator-less OWNED bot is a real, grantable standalone. Select it, then a topology change
+    // removes it from the offered roster (owner reassigned it / it left the space) on rerender. The
+    // Add button must disable and any submit must NOT carry the vanished uid (not tautological: the
+    // uid WAS selected and enabled before the transition).
+    let ownedResponse: Array<{ uid: string; name: string }> = [{ uid: 'u_ownedbot', name: 'Owned Bot' }]
+    wk.apiClient.responder = (_m, url) =>
+      url.startsWith('/robot/owned_bots') ? { data: ownedResponse, status: 200 } : { data: [], status: 200 }
     const onAdd = vi.fn()
-    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    const { rerender } = render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Owned Bot')).toBeTruthy())
+    // Real selection: the standalone Bot is enabled and ticked.
+    fireEvent.click(screen.getByText('Owned Bot'))
+    const addBtn = screen.getByText('docs.member.add').closest('button') as HTMLButtonElement
+    expect(addBtn.disabled).toBe(false)
+    // Topology transition: owned_bots no longer returns it (and re-fetch triggered by remount key).
+    ownedResponse = []
+    rerender(<MemberPicker space="s_1" key="reload" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.queryByText('Owned Bot')).toBeNull())
+    // The vanished uid was pruned: Add is disabled again, nothing submits.
+    expect(
+      (screen.getByText('docs.member.add').closest('button') as HTMLButtonElement).disabled,
+    ).toBe(true)
+    expect(onAdd).not.toHaveBeenCalled()
+  })
+})
+
+// Latest blocking P1 (yujiawei): selection reachability across live rerenders. A selected human
+// whose creator/roster row disappears — because the person left the space or the roster reloaded
+// without them — must be pruned so it can never ride along in the submitted snapshot, and their
+// auto-selected Bots must go with them. These are end-to-end-ish rerenders through the real
+// candidate roster + prune effect + submit path (no internal stubbing of the invariant).
+describe('MemberPicker selection reachability across rerenders (yujiawei P1)', () => {
+  it('prunes a selected creator (and their Bots) when the creator leaves the roster', async () => {
+    // Space s_1 has Ada+Grace+bot with Ada's Bot; space s_2 dropped Ada. Changing the `space` prop
+    // re-fetches the roster on the SAME mount (no remount), so the prune effect — not a fresh mount
+    // — is what removes the vanished creator + her auto-selected Bot.
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url.startsWith('/robot/space_bots')
+        ? { data: [{ uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' }], status: 200 }
+        : { data: [], status: 200 }
+    wk.getSpaceMembers = async (spaceId: string) =>
+      spaceId === 's_1'
+        ? [
+            { uid: 'u_ada', name: 'Ada Lovelace' },
+            { uid: 'u_grace', name: 'Grace Hopper' },
+          ]
+        : [{ uid: 'u_grace', name: 'Grace Hopper' }]
+    const onAdd = vi.fn()
+    const { rerender } = render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
-    const search = screen.getByPlaceholderText('docs.member.pickPlaceholder')
-    // Search a Bot: its creator row + preview surface, but WITHOUT selecting the creator the Bot
-    // control is disabled, so no selection can be created via search.
-    fireEvent.change(search, { target: { value: 'Writer Bot' } })
-    const botCheckbox = screen.getByText('Writer Bot').closest('label')!.querySelector('input') as HTMLInputElement
-    expect(botCheckbox.disabled).toBe(true)
-    fireEvent.click(botCheckbox)
-    // Clear the query — nothing was selected, so Add stays disabled (no invisible submission).
-    fireEvent.change(search, { target: { value: '' } })
-    expect((screen.getByText('docs.member.add').closest('button') as HTMLButtonElement).disabled).toBe(true)
+    // Select Ada (auto-selects her Bot b_1) plus Grace so a human survives the topology change.
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    fireEvent.click(screen.getByText('Grace Hopper'))
+    // Ada leaves: switch to s_2 (same mount, roster re-fetch without her).
+    rerender(<MemberPicker space="s_2" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.queryByText('Ada Lovelace')).toBeNull())
+    const addBtn = document.querySelector(
+      '.octo-member-picker-actions .octo-doc-primary-btn',
+    ) as HTMLButtonElement
+    fireEvent.click(addBtn)
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    const submittedUids = onAdd.mock.calls[0][0] as string[]
+    // Only the still-offered human survives; the vanished creator and her Bot are both gone.
+    expect(submittedUids).toEqual(['u_grace'])
+    expect(submittedUids).not.toContain('u_ada')
+    expect(submittedUids).not.toContain('b_1')
+    if (onAdd.mock.calls[0][2]) expect(onAdd.mock.calls[0][2].botUids).not.toContain('b_1')
+  })
+
+  it('prunes a selected human whose row disappears on a bare roster reload', async () => {
+    wk.getSpaceMembers = async (spaceId: string) =>
+      spaceId === 's_1'
+        ? [
+            { uid: 'u_ada', name: 'Ada Lovelace' },
+            { uid: 'u_grace', name: 'Grace Hopper' },
+          ]
+        : [{ uid: 'u_ada', name: 'Ada Lovelace' }]
+    const onAdd = vi.fn()
+    const { rerender } = render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('Grace Hopper'))
+    // Roster reload (space switch) drops Grace entirely.
+    rerender(<MemberPicker space="s_2" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.queryByText('Grace Hopper')).toBeNull())
+    fireEvent.click(document.querySelector('.octo-member-picker-actions .octo-doc-primary-btn') as HTMLButtonElement)
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    const submittedUids = onAdd.mock.calls[0][0] as string[]
+    expect(submittedUids).toEqual(['u_ada'])
+    expect(submittedUids).not.toContain('u_grace')
   })
 })

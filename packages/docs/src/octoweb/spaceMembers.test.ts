@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { setWKApp, getSpaceMembers, fetchAllSpaceMembers, fetchSpaceBotNames, fetchSpaceBotSnapshots, fetchMyBots } from './index.ts'
+import { setWKApp, getSpaceMembers, fetchAllSpaceMembers, fetchSpaceBotNames, fetchSpaceBotSnapshots, fetchMyBots, fetchMyOwnedBots } from './index.ts'
 import { createMockWKApp } from './mock.ts'
 
 // Seam spike acceptance (#7): prove the docs package can reach the host's space-member source
@@ -203,5 +203,41 @@ describe('octoweb fetchMyBots seam', () => {
   it('returns an empty list for a non-array body', async () => {
     wk.apiClient.responder = () => ({ data: { nope: true }, status: 200 })
     expect(await fetchMyBots('s_1')).toEqual([])
+  })
+})
+
+// Boss ownership decision: the doc-grant picker sources standalone "My Bots" from the OWNER-scoped
+// GET /robot/owned_bots, stamping each with isBot + safeStandalone + creatorUid=currentUid so a
+// bot the current user created is grantable + attributable, and a merely befriended bot never rides
+// this seam.
+describe('octoweb fetchMyOwnedBots seam (owner-scoped picker provenance)', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  it('reads /robot/owned_bots and stamps isBot + safeStandalone + creatorUid=currentUid', async () => {
+    wk.apiClient.responder = (_m, url) =>
+      url.startsWith('/robot/owned_bots')
+        ? { data: [{ uid: 'b_mine', name: 'My Bot' }, { uid: 'b_2', name: '' }], status: 200 }
+        : { data: {}, status: 200 }
+    const bots = await fetchMyOwnedBots('s_1')
+    expect(bots).toEqual([
+      { uid: 'b_mine', name: 'My Bot', isBot: true, safeStandalone: true, creatorUid: 'u_self' },
+      { uid: 'b_2', name: 'b_2', isBot: true, safeStandalone: true, creatorUid: 'u_self' },
+    ])
+    const calls = wk.apiClient.calls.filter((c) => c.url.startsWith('/robot/owned_bots'))
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('/robot/owned_bots?space_id=s_1')
+    // It must NOT touch the friend-dimension endpoint.
+    expect(wk.apiClient.calls.some((c) => c.url.startsWith('/robot/my_bots'))).toBe(false)
+  })
+
+  it('returns an empty list for a non-array body and for a blank space id', async () => {
+    wk.apiClient.responder = () => ({ data: { nope: true }, status: 200 })
+    expect(await fetchMyOwnedBots('s_1')).toEqual([])
+    expect(await fetchMyOwnedBots('')).toEqual([])
   })
 })

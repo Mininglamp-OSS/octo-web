@@ -1625,15 +1625,27 @@ body.octo-row-resizing {
 
 .octo-member-picker-expand {
   align-self: flex-start;
-  margin-left: 32px;
+  margin-left: var(--wk-sp-8, 32px);
   display: inline-flex;
   align-items: center;
   gap: var(--wk-sp-1);
   border: 0;
+  border-radius: var(--wk-r-full, 9999px);
   background: transparent;
   color: var(--octo-muted);
   font-size: 12px;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
   cursor: pointer;
+}
+
+.octo-member-picker-expand:hover {
+  background: var(--wk-brand-alpha-06, rgba(28, 28, 35, 0.06));
+  color: var(--octo-text, #1c1c23);
+}
+
+.octo-member-picker-expand:focus-visible {
+  outline: 2px solid var(--wk-brand-alpha-20, rgba(28, 28, 35, 0.2));
+  outline-offset: 1px;
 }
 
 /* Decorative chevron for the Bot expander (no functional emoji; rotates on expand). */
@@ -1653,8 +1665,18 @@ body.octo-row-resizing {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 2px 8px 2px 32px;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px) var(--wk-sp-1, 4px) var(--wk-sp-8, 32px);
+  border-radius: var(--wk-r-xs, 3px);
   font-size: 13px;
+}
+
+.octo-member-picker-bot:not(.is-preview):hover {
+  background: var(--wk-brand-alpha-04, rgba(28, 28, 35, 0.04));
+}
+
+.octo-member-picker-bot input:focus-visible {
+  outline: 2px solid var(--wk-brand-alpha-20, rgba(28, 28, 35, 0.2));
+  outline-offset: 1px;
 }
 
 /* Read-only Bot preview under an unselected person: muted, non-interactive. */

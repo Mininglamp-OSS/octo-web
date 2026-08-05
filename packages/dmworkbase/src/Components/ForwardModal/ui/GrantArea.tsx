@@ -1,4 +1,5 @@
 import React from "react"
+import { Lock } from "lucide-react"
 import Checkbox from "../../Checkbox"
 import { useI18n } from "../../../i18n"
 import type { ForwardGrantConfig } from "../grant"
@@ -16,7 +17,7 @@ export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
   if (!grant.canGrant) {
     return (
       <div className="wk-fm-grant wk-fm-grant--disabled">
-        <span className="wk-fm-grant-lock">🔒</span>
+        <Lock className="wk-fm-grant-lock" size={16} strokeWidth={2} aria-hidden="true" />
         <span className="wk-fm-grant-hint">
           {grant.disabledReason ?? t("base.forwardModal.grant.disabledReason")}
         </span>
@@ -51,8 +52,8 @@ export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
         <div className="wk-fm-grant-bots-summary">{t("base.forwardModal.grant.botLoading")}</div>
       )}
       {grant.enabled && bots?.error && (
-        <div className="wk-fm-grant-bots-summary" role="alert">
-          {t("base.forwardModal.grant.botError")}
+        <div className="wk-fm-grant-bots-summary wk-fm-grant-bots-error" role="alert">
+          <span className="wk-fm-grant-bots-error-text">{t("base.forwardModal.grant.botError")}</span>
           <button type="button" className="wk-fm-grant-bot-retry" onClick={bots.retry}>
             {t("base.forwardModal.grant.botRetry")}
           </button>
@@ -89,7 +90,16 @@ export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
                 {isExpanded &&
                   group.bots.map((bot) => (
                     <label className="wk-fm-grant-bot" key={bot.uid}>
-                      <Checkbox checked={bot.selected} onCheck={() => bots.toggleBot(bot.uid)} />
+                      <Checkbox
+                        checked={bot.selected}
+                        onCheck={() => bots.toggleBot(bot.uid)}
+                        ariaLabel={t(
+                          bot.selected
+                            ? "base.forwardModal.grant.botCheckedFor"
+                            : "base.forwardModal.grant.botUncheckedFor",
+                          { values: { bot: bot.name, person: group.name } },
+                        )}
+                      />
                       <span className="wk-fm-grant-bot-name">{bot.name}</span>
                     </label>
                   ))}

@@ -114,7 +114,14 @@ export function ForwardModal({
         <div className="wk-fm-divider" />
 
         <div className="wk-fm-right">
-          <SelectedPanel selectedItems={selectedItems} onRemove={onToggleSelect} />
+          {/* Right panel shares the ONE authoritative Bot snapshot (Scope C): when the grant switch
+              is on, a selected person shows their selected/default Bots nested, synced with the
+              授权区. Off / group / thread targets stay flat. */}
+          <SelectedPanel
+            selectedItems={selectedItems}
+            onRemove={onToggleSelect}
+            bots={grant?.enabled ? grant.bots : undefined}
+          />
         </div>
       </div>
 

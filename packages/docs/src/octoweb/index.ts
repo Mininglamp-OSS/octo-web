@@ -261,14 +261,11 @@ interface HostMyBot {
  * Fetch the current user's friend-added agents via `GET /robot/my_bots` (octo-server
  * modules/robot/api.go myBots) and map them to the lite member shape, flagged `isBot`.
  *
- * WHY: the doc-authorize candidate roster is sourced from `queryMembers`
- * (GET /space/{id}/members), whose WHERE clause drops bots the caller did NOT create
- * (`r.robot_id IS NULL OR r.creator_uid = loginUID`, octo-web #839). So an agent owned by
- * someone else but added as a friend by the current user never reaches the picker and can
- * never be authorized, even though the doc write path (PUT /docs/:docId/members) accepts any
- * uid. `my_bots` is a pure friend-dimension query (`FROM friend WHERE f.uid = loginUID`), so
- * it returns exactly the caller's friend-added agents and NEVER a non-friend agent owned by
- * others — merging it into the roster satisfies the security boundary by construction.
+ * NOTE (Boss ownership decision): this friend-dimension list is NO LONGER the doc-grant candidate
+ * provenance — the MemberPicker now sources standalone "My Bots" from the OWNER-scoped
+ * `fetchMyOwnedBots` (/robot/owned_bots) so a bot merely befriended (owned by someone else) is not
+ * a standalone candidate nor default-selected as "mine". `fetchMyBots` remains for callers that
+ * genuinely need the friend dimension.
  *
  * `spaceId`, when supplied, scopes the result to friend agents that are also members of that
  * space (the backend's optional `space_id` filter), keeping the candidate list relevant to the
@@ -325,6 +322,32 @@ export async function fetchOwnedBots(spaceId: string): Promise<import('./types.t
       if (b.description) lite.description = b.description
       return lite
     })
+}
+
+/**
+ * Fetch the current user's OWNED agents in a Space as grant-picker candidates (Boss decision:
+ * "My Bots" = bots the current user CREATED, not merely befriended). Sourced from the owner-scoped
+ * `GET /robot/owned_bots?space_id=` (server enforces owner + Space + active), so a friend-added bot
+ * owned by someone else is EXCLUDED by construction — it never becomes a standalone candidate and is
+ * never default-selected as "mine".
+ *
+ * Maps each owned bot to the lite member shape flagged `isBot` + `safeStandalone` (a viewer-scoped,
+ * caller-owned provenance the picker may grant standalone) and stamps `creatorUid = currentUid` so
+ * the picker attributes it to its true owner (the current user) rather than treating it as
+ * creator-less. Fail-soft: an EMPTY list on failure / non-array body so an owned-bots hiccup never
+ * breaks the human roster path (callers wrap in `.catch(() => [])`).
+ */
+export async function fetchMyOwnedBots(spaceId?: string): Promise<SpaceMemberLite[]> {
+  if (!spaceId) return []
+  const owned = await fetchOwnedBots(spaceId)
+  const creatorUid = getCurrentUid()
+  return owned.map((b) => ({
+    uid: b.uid,
+    name: b.name,
+    isBot: true as const,
+    safeStandalone: true as const,
+    ...(creatorUid ? { creatorUid } : {}),
+  }))
 }
 
 /**

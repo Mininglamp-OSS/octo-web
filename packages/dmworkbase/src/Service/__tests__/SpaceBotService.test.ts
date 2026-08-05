@@ -36,8 +36,20 @@ describe("SpaceBotService.listShared (in-flight-only dedup, no stale result cach
     expect(hoisted.get).toHaveBeenCalledTimes(2) // NOT served from a permanent cache
   })
 
-  it("filters non-array / uid-less entries", async () => {
+  it("filters uid-less / null entries from an array body", async () => {
     hoisted.get.mockResolvedValue([{ uid: "b_1" }, { name: "no-uid" }, null])
+    const bots = await SpaceBotService.listShared("s_1")
+    expect(bots.map((b) => b.uid)).toEqual(["b_1"])
+  })
+
+  it("FAILS CLOSED on a malformed non-array 200 (grant-critical loader throws, no silent [])", async () => {
+    // A non-array body must not be coerced to an empty catalog — that would let the authoritative
+    // snapshot resolve "no Bots" off a broken response and quietly grant humans-only. It throws so
+    // the snapshot shows the retryable error and blocks confirmation.
+    hoisted.get.mockResolvedValueOnce({ nope: true })
+    await expect(SpaceBotService.listShared("s_1")).rejects.toThrow(/malformed/)
+    // The rejection is not retained: a later well-formed read re-fetches and succeeds.
+    hoisted.get.mockResolvedValueOnce([{ uid: "b_1", creator_uid: "u_ada" }])
     const bots = await SpaceBotService.listShared("s_1")
     expect(bots.map((b) => b.uid)).toEqual(["b_1"])
   })
