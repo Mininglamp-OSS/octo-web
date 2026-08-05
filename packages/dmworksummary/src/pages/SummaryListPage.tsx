@@ -220,12 +220,24 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 origin_channel_id: this.props.channelId || undefined,
             };
             const resp = await api.listSummaries(params);
-            this.setState(prev => ({
-                items: [...prev.items, ...resp.items],
-                page: nextPage,
-                loadingMore: false,
-                hasMore: prev.items.length + resp.items.length < resp.total,
-            }), () => this.maybeStartBatchPoll());
+            // Stale-response guard: if a concurrent loadData / silent refresh
+            // reset the list under us (page dropped back below what we captured
+            // pre-await), appending this batch would splice a hole into items.
+            // Discard the batch instead — the fresh list already covers up to
+            // its own extent, and normal scrolling will re-request the next
+            // page in order. Prevents #290 refresh-timer × loadMore race from
+            // permanently corrupting the list.
+            this.setState(prev => {
+                if (prev.page !== nextPage - 1) {
+                    return { loadingMore: false } as any;
+                }
+                return {
+                    items: [...prev.items, ...resp.items],
+                    page: nextPage,
+                    loadingMore: false,
+                    hasMore: prev.items.length + resp.items.length < resp.total,
+                };
+            }, () => this.maybeStartBatchPoll());
         } catch {
             this.setState({ loadingMore: false });
         }
@@ -283,7 +295,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             if (changed) {
                 // #290：进入终态时，仅原地打 status 补丁不够——完成后 backend 才会
                 // 填/改标题、结果预览等字段，且列表加载后新建的任务不在轮询集合里。
-                // 因此终态变化触发一次「静默」全量刷新（不显示加载态、不重置分页深度）。
+                // 因此终态变化触发一次全量刷新(委派给 loadData · 见 refreshListSilently)。
+                // 会短暂显示 spinner + 塌回 page 1—这是 loadData 的必然副作用,
+                // 换来 correct-by-construction 的过滤/space/loadMore 语义。
+                // 本地 status 补丁在触发刷新前先落到 items,避免卡片在往返窗口里
+                // 显示陈旧的 non-terminal 状态(含取消按钮)。
                 const hasTerminal = changedIds.some(id => {
                     const u = updateMap.get(id);
                     return !!u && isTerminalStatus(u.status);
@@ -314,25 +330,35 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     }
 
     /**
-     * 静默全量刷新（#290）：任务进入终态后调用 loadData()。#290 原方案就是
-     * 用 loadData() —— 我们绕过它想避免 spinner + page collapse,但四轮
-     * review 后结论是:offset-paged list 上做静默 refresh + merge/replace
-     * 都会在某个 route 破坏 filter/space/loadMore 语义。loadData 是
-     * "correct by construction" 姿势(见 yujiawei round-4 escalation
-     * 建议 a)—— spinner 一闪是合理的用户反馈,而且 loadData 恢复了旧
-     * replace 模型的正确性:filter 变化时 fall-out 行会被丢掉、space
-     * 切换清空、loadMore 的分页游标被重置。
+     * 终态完成后刷新列表(#290)。委派给 loadData —— #290 原方案就是用 loadData()。
+     * 我们绕过它想避免 spinner + page collapse,但四轮 review 后结论是:
+     * offset-paged list 上做静默 refresh + merge/replace 都会在某个 route 破坏
+     * filter/space/loadMore 语义。loadData 是 "correct by construction" 姿势 ——
+     * spinner 一闪是合理的用户反馈,而且 loadData 恢复了旧 replace 模型的正确性:
+     * filter 变化时 fall-out 行会被丢掉、space 切换清空、loadMore 的分页游标
+     * 由 loadData 重置为 1(loadMore 的 stale-response guard 会 discard 过期 append)。
      *
      * `isRefreshing` 防重入(2s 轮询 tick 撞到 refresh 在跑就跳过);
-     * `isMounted_` 由 loadData 内部无需再查,但保留在 componentWillUnmount
-     * 里让其他 in-flight 逻辑安全。
+     * `isMounted_` 在进入 loadData 前短路(loadData 内部 React 对 unmounted
+     * 组件的 setState 已经是 no-op,但显式检查更明确)。
+     *
+     * 背景刷新故意吞掉 loadData 抛出的错误:自动 refresh 不该给 idle 的用户
+     * 弹网络错误 banner(loadData 的 catch 会设 state.error 显示 <Banner>)。
+     * 快照错误状态,失败时恢复—用户下次手动触发时才看得到真实错误。
      */
     private async refreshListSilently() {
         if (this.isRefreshing) return;
         if (!this.isMounted_) return;
         this.isRefreshing = true;
+        const savedError = this.state.error;
         try {
             await this.loadData();
+            // If loadData set an error banner during a background refresh,
+            // restore the pre-refresh error state so an idle user does not
+            // see a network banner on an otherwise healthy list.
+            if (this.isMounted_ && this.state.error && !savedError) {
+                this.setState({ error: null });
+            }
         } finally {
             this.isRefreshing = false;
         }

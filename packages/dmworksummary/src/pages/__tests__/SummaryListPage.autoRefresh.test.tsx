@@ -191,4 +191,89 @@ describe('SummaryListPage auto-refresh on completion (#290)', () => {
         resolveList({ items: [], total: 0 });
         await first;
     });
+
+    /**
+     * P1-1 regression (yujiawei round-5): if loadMore is in flight when the
+     * background refresh (via loadData) resets page to 1 and replaces items,
+     * appending loadMore's stale response would splice a hole. The
+     * `prev.page !== nextPage - 1` guard in loadMore must discard the batch
+     * instead. Cover both interleavings.
+     */
+    it('discards a stale loadMore response when refresh reset the list first', async () => {
+        // Start at page 5, 100 rows loaded, hasMore=true.
+        const initialItems = Array.from({ length: 100 }, (_, i) => ({
+            task_id: i + 1,
+            status: TaskStatus.COMPLETED,
+            topic: `t${i + 1}`,
+        }));
+        const { page } = makePage(initialItems);
+        (page as any).state = {
+            ...(page as any).state,
+            page: 5,
+            pageSize: 20,
+            hasMore: true,
+        };
+
+        // loadMore fires: captures nextPage=6, awaits.
+        let resolveLoadMore: (v: any) => void = () => {};
+        vi.mocked(api.listSummaries).mockImplementationOnce(
+            () => new Promise((r) => { resolveLoadMore = r; }) as any
+        );
+        const loadMorePromise = (page as any).loadMore();
+        await new Promise((r) => setTimeout(r, 0));
+
+        // Simulate a concurrent refresh landing first: it reset page to 1 and
+        // replaced items with a fresh page-1 batch.
+        (page as any).state = {
+            ...(page as any).state,
+            items: Array.from({ length: 20 }, (_, i) => ({
+                task_id: i + 1,
+                status: TaskStatus.COMPLETED,
+                topic: `fresh-${i + 1}`,
+            })),
+            page: 1,
+            hasMore: true,
+        };
+
+        // Now loadMore's stale page-6 response resolves.
+        resolveLoadMore({
+            items: Array.from({ length: 20 }, (_, i) => ({
+                task_id: i + 101,
+                status: TaskStatus.COMPLETED,
+                topic: `stale-${i + 101}`,
+            })),
+            total: 200,
+        });
+        await loadMorePromise;
+
+        // The stale batch must be discarded: items stays at the fresh page-1
+        // (20 rows, page=1) — no hole is spliced in, no stale rows appended.
+        const items = (page.state as any).items;
+        expect(items).toHaveLength(20);
+        expect((page.state as any).page).toBe(1);
+        expect(items[0].topic).toBe('fresh-1');
+        expect(items[19].topic).toBe('fresh-20');
+        // loadingMore reset so scroll can resume.
+        expect((page.state as any).loadingMore).toBe(false);
+    });
+
+    /**
+     * P2-6 regression: a failed background refresh should not surface an
+     * error banner to an idle user. If loadData sets state.error during the
+     * refresh, refreshListSilently must clear it (unless there was already
+     * a pre-refresh error, which is unrelated and should be preserved).
+     */
+    it('suppresses the loadData error banner on background refresh failure', async () => {
+        vi.mocked(api.listSummaries).mockRejectedValue(new Error('network'));
+
+        const { page } = makePage([
+            { task_id: 1, status: TaskStatus.COMPLETED, topic: 'x' },
+        ]);
+        expect((page.state as any).error).toBeFalsy();
+
+        await (page as any).refreshListSilently();
+
+        // The error banner must not persist on an otherwise healthy list.
+        expect((page.state as any).error).toBeFalsy();
+    });
 });
