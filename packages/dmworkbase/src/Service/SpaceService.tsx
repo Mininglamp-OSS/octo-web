@@ -4,6 +4,7 @@ import { hasSpacePrefix } from "./SpacePrefix"
 import { ChannelTypeCommunityTopic } from "./Const"
 import { parseThreadChannelId } from "./Thread"
 import { getImChannelInfo, getImChannelSubscribers } from "../im-runtime/channelRuntime"
+import { createAsyncCache } from "../Utils/asyncCache"
 
 export type JoinSpaceStatus = "NEED_APPROVAL" | "PENDING"
 
@@ -256,6 +257,23 @@ export interface InviteResp {
     invite_url: string
 }
 
+/**
+ * 名册缓存的存活时长。30s 量级足以覆盖「打开转发面板 → 关闭 → 再打开」以及
+ * 多个消费面在同一屏内并发拉取，同时把成员变动的可见延迟控制在可接受范围。
+ * 本 Service 内的写操作会主动失效，所以这个窗口只对外部来源的变更生效。
+ */
+const SPACE_ROSTER_TTL_MS = 30_000
+/**
+ * 单页条数。取 10000（与 Contacts / docs octoweb 既有实现一致），大多数空间
+ * 一趟拉完。不用 getAllMembers 的默认 100：那会退化成 800 人 8 趟串行请求，
+ * 且 100×50 的上限只有 5000，低于已知的 5760 人空间。
+ */
+const SPACE_ROSTER_PAGE_LIMIT = 10_000
+/** 兜底防异常空间无限循环（20×10000 = 20 万，远超任何真实空间）。 */
+const SPACE_ROSTER_MAX_PAGES = 20
+
+const rosterCache = createAsyncCache<SpaceMember[]>({ ttlMs: SPACE_ROSTER_TTL_MS })
+
 export class SpaceService {
     static shared = new SpaceService()
 
@@ -272,23 +290,65 @@ export class SpaceService {
         return WKApp.apiClient.get(`space/${spaceId}`)
     }
 
-    async getMembers(spaceId: string, page: number = 1, limit: number = 50): Promise<SpaceMember[]> {
-        const resp = await WKApp.apiClient.get(`space/${spaceId}/members?page=${page}&limit=${limit}`)
+    async getMembers(spaceId: string, page: number = 1, limit: number = 50, signal?: AbortSignal): Promise<SpaceMember[]> {
+        const path = `space/${spaceId}/members?page=${page}&limit=${limit}`
+        // 仅在调用方给了 signal 时才带 config，保持既有调用形态不变。
+        const resp = signal ? await WKApp.apiClient.get(path, { signal }) : await WKApp.apiClient.get(path)
         return resp || []
     }
 
     // 拉取一个 space 的全部成员（分页循环到取空/达上限）。收敛此前散落在
     // dmloop directory / SettingsPage 各自复制的分页逻辑，
     // 避免翻页上限相互漂移。
-    async getAllMembers(spaceId: string, pageLimit: number = 100, maxPages: number = 50): Promise<SpaceMember[]> {
+    //
+    // 注意默认上限是 100×50 = 5000。已知有 5760 人的空间（见 packages/docs
+    // octoweb 的 picker 截断修复），所以需要完整名册的调用方应改用 getRoster，
+    // 或显式传更大的 pageLimit。
+    async getAllMembers(spaceId: string, pageLimit: number = 100, maxPages: number = 50, signal?: AbortSignal): Promise<SpaceMember[]> {
         if (!spaceId) return []
         const acc: SpaceMember[] = []
         for (let page = 1; page <= maxPages; page++) {
-            const batch = await this.getMembers(spaceId, page, pageLimit)
+            const batch = await this.getMembers(spaceId, page, pageLimit, signal)
             acc.push(...batch)
+            // 取消检查放在 await 之后并抛错，而不是 break 返回半份名册——
+            // 半份名册会被上层当成完整结果，静默丢人。
+            if (signal?.aborted) {
+                const err = new Error("Aborted")
+                err.name = "AbortError"
+                throw err
+            }
             if (!batch || batch.length < pageLimit) break
         }
         return acc
+    }
+
+    /**
+     * 带缓存的全量成员名册。
+     *
+     * 与 getAllMembers 的区别：结果按 spaceId 缓存，TTL 内的并发/重复调用共享
+     * 同一次请求。`space/{id}/members` 目前被转发面板、通讯录、Chat 侧栏、docs
+     * 成员选择器和企业模块各自全量拉取且互不复用，此方法是它们的统一入口。
+     *
+     * 翻页参数用 10000×20（与 Contacts / docs 既有实现一致），而非
+     * getAllMembers 的 100×50 —— 后者上限 5000，低于已知的 5760 人空间。
+     */
+    async getRoster(spaceId: string, options?: { maxAgeMs?: number; signal?: AbortSignal }): Promise<SpaceMember[]> {
+        if (!spaceId) return []
+        return rosterCache.get(
+            spaceId,
+            () => this.getAllMembers(spaceId, SPACE_ROSTER_PAGE_LIMIT, SPACE_ROSTER_MAX_PAGES),
+            options,
+        )
+    }
+
+    /** 同步读已缓存的名册（不触发请求），用于首帧兜底。 */
+    peekRoster(spaceId: string): SpaceMember[] | undefined {
+        return rosterCache.peek(spaceId)
+    }
+
+    /** 失效名册缓存。不传 spaceId 则清空全部（例如登出）。 */
+    invalidateRoster(spaceId?: string): void {
+        rosterCache.invalidate(spaceId)
     }
 
     async createInvite(spaceId: string): Promise<InviteResp> {
@@ -318,14 +378,21 @@ export class SpaceService {
     }
 
     async removeMembers(spaceId: string, uids: string[]): Promise<void> {
-        return WKApp.apiClient.delete(`space/${spaceId}/members`, { data: { uids } })
+        const result = await WKApp.apiClient.delete(`space/${spaceId}/members`, { data: { uids } })
+        // 写后失效：否则 TTL 窗口内会读回自己刚移除的成员。
+        rosterCache.invalidate(spaceId)
+        return result
     }
 
     async disbandSpace(spaceId: string): Promise<void> {
-        return WKApp.apiClient.delete(`space/${spaceId}`, {})
+        const result = await WKApp.apiClient.delete(`space/${spaceId}`, {})
+        rosterCache.invalidate(spaceId)
+        return result
     }
 
     async updateMemberRole(spaceId: string, uid: string, role: number): Promise<void> {
-        return WKApp.apiClient.put(`space/${spaceId}/members/${uid}/role`, { role })
+        const result = await WKApp.apiClient.put(`space/${spaceId}/members/${uid}/role`, { role })
+        rosterCache.invalidate(spaceId)
+        return result
     }
 }
