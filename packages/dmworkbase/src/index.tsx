@@ -65,6 +65,7 @@ export { NotificationUtil, notificationUtil } from './Utils/NotificationUtil'
 export * from './Utils/NotificationUtil'
 export * from './Utils/clipboard'
 export * from './Utils/docLink'
+export * from './Utils/asyncCache'
 export * from './features/documentTitle'
 export * from './features/notifications'
 
