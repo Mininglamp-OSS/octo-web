@@ -70,7 +70,7 @@ export const titleContextStore = {
 };
 
 export const WKApp = {
-  loginInfo: { token: 'test-token-abc', uid: 'test-uid' },
+  loginInfo: { token: 'test-token-abc', uid: 'test-uid', name: 'Test User', selfDisplayName: () => 'Verified Test User' },
   shared: { currentSpaceId: 'space-123', deviceId: 'test-device-uuid', logout: () => {}, avatarUser: () => '' },
   routeRight: { push: () => {}, replaceToRoot: () => {}, popToRoot: () => {} },
   mittBus: { on: () => {}, off: () => {}, emit: () => {} },
@@ -92,6 +92,9 @@ export class SummaryNotifyContent {
   contentObj: Record<string, unknown> = {};
   encodeJSON() {
     return { from_uid: this.fromUID || '', from_name: this.fromName || '' };
+  }
+  get contentType() {
+    return 21;
   }
 }
 

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-// octo-web#289 (review 返工): 群内总结 tip 的可靠性口径。
+// octo-web#289: 群内总结 tip 的 v1 行为。
 // 覆盖 sendGroupSummaryNotify:
 //  - 仅发起人（creator）、仅群聊源、COMPLETED 才发；
-//  - 去重按 (task_id, source_id) 持久化到 localStorage —— 跨实例(多 tab / reload)不重发；
-//  - 单个源失败不落标记，下次可重试（不永久漏发）;
+//  - 同一 task 每次重新生成并完成都发送，不做跨完成事件持久去重；
+//  - 单个源失败 console.warn 且不影响其余源;
 //  - 已解散群跳过;
 //  - 同实例并发触发不重复发。
 
@@ -117,7 +117,6 @@ function newPage() {
 describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        localStorage.clear();
         sendMock.mockResolvedValue(undefined);
         disbandedMock.mockReturnValue(false);
         getSummaryDetailMock.mockReset();
@@ -130,6 +129,13 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
         const channelIds = sendMock.mock.calls.map((c) => c[1].channelID).sort();
         expect(channelIds).toEqual(['group-a', 'group-b']);
         sendMock.mock.calls.forEach((c) => expect(c[1].channelType).toBe(2));
+        sendMock.mock.calls.forEach((c) => {
+            expect(c[0]).toMatchObject({
+                contentType: 21,
+                fromUID: ME,
+                fromName: 'Verified Test User',
+            });
+        });
     });
 
     it('deduplicates repeated group source ids within one detail response', async () => {
@@ -161,49 +167,40 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
         expect(sendMock).not.toHaveBeenCalled();
     });
 
-    it('does not resend across instances (multi-tab / reload) via persistent marker', async () => {
+    it('sends again when the same task completes after regeneration (AC5: no persistent dedup)', async () => {
         const detail = makeDetail();
         await newPage().sendGroupSummaryNotify(detail);
         expect(sendMock).toHaveBeenCalledTimes(2);
-        // 新实例（模拟 reload / 另一个 tab）：持久标记已记录 → 不再重发。
         await newPage().sendGroupSummaryNotify(detail);
-        expect(sendMock).toHaveBeenCalledTimes(2);
+        expect(sendMock).toHaveBeenCalledTimes(4);
     });
 
-    it('retries a source that failed to send (no marker on failure)', async () => {
-        // group-b 首次发送失败、之后成功；其余源始终成功。
-        let bAttempts = 0;
+    it('warns once with channel and error when one source fails, then continues', async () => {
+        const error = new Error('transient');
         sendMock.mockImplementation((_msg: any, ch: any) => {
-            if (ch.channelID === 'group-b') {
-                bAttempts += 1;
-                if (bAttempts === 1) return Promise.reject(new Error('transient'));
-            }
+            if (ch.channelID === 'group-a') return Promise.reject(error);
             return Promise.resolve(undefined);
         });
-        const detail = makeDetail();
-        await newPage().sendGroupSummaryNotify(detail); // a ok, b fail
-        // 再次触发（同 task）：a 已标记跳过，b 未标记 → 只重试 b，且这次成功。
-        await newPage().sendGroupSummaryNotify(detail);
-        const targets = sendMock.mock.calls.map((c) => c[1].channelID);
-        expect(targets.filter((id) => id === 'group-a')).toEqual(['group-a']); // a 只发一次
-        expect(targets.filter((id) => id === 'group-b').length).toBe(2); // b 失败后重试
-        // 重试成功后再触发不应再发。
-        sendMock.mockClear();
-        await newPage().sendGroupSummaryNotify(detail);
-        expect(sendMock).not.toHaveBeenCalled();
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        await newPage().sendGroupSummaryNotify(makeDetail());
+
+        expect(sendMock.mock.calls.map((c) => c[1].channelID)).toEqual(['group-a', 'group-b']);
+        expect(warn).toHaveBeenCalledOnce();
+        expect(warn).toHaveBeenCalledWith(
+            'Failed to send group summary notification',
+            expect.objectContaining({ channelID: 'group-a', channelType: 2 }),
+            error,
+        );
+        warn.mockRestore();
     });
 
-    it('skips disbanded group sources and does not mark them', async () => {
+    it('skips disbanded group sources', async () => {
         disbandedMock.mockImplementation((ch: any) => ch.channelID === 'group-b');
         const detail = makeDetail();
         await newPage().sendGroupSummaryNotify(detail);
         const targets = sendMock.mock.calls.map((c) => c[1].channelID);
         expect(targets).toEqual(['group-a']); // group-b 已解散被跳过
-        // group-b 未落标记：若之后恢复（不再解散），仍可补发。
-        disbandedMock.mockReturnValue(false);
-        sendMock.mockClear();
-        await newPage().sendGroupSummaryNotify(detail);
-        expect(sendMock.mock.calls.map((c) => c[1].channelID)).toEqual(['group-b']);
     });
 
     it('does not double-send under concurrent invocations on the same instance', async () => {
@@ -228,6 +225,27 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
 
         expect(notify).toHaveBeenCalledOnce();
         expect(notify).toHaveBeenCalledWith(detail);
+    });
+
+    it('notifies on both COMPLETED transitions when the same task is regenerated', async () => {
+        const page = newPage();
+        const processing = makeDetail({ status: TaskStatus.PROCESSING });
+        const completed = makeDetail();
+        page.state.lastKnownStatus = TaskStatus.PROCESSING;
+        getSummaryDetailMock
+            .mockResolvedValueOnce(completed)
+            .mockResolvedValueOnce(processing)
+            .mockResolvedValueOnce(completed);
+        const notify = vi.spyOn(page, 'sendGroupSummaryNotify').mockResolvedValue(undefined);
+        const event = new CustomEvent('status', { detail: { taskIds: [1] } });
+
+        await page.handleStatusChangeEvent(event); // PROCESSING -> COMPLETED
+        await page.handleStatusChangeEvent(event); // regenerate: COMPLETED -> PROCESSING
+        await page.handleStatusChangeEvent(event); // PROCESSING -> COMPLETED again
+
+        expect(notify).toHaveBeenCalledTimes(2);
+        expect(notify).toHaveBeenNthCalledWith(1, completed);
+        expect(notify).toHaveBeenNthCalledWith(2, completed);
     });
 
     it('does not notify when the first observed status is already COMPLETED', async () => {

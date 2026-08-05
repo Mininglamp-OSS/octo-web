@@ -49,7 +49,7 @@ vi.mock("../../../i18n", () => ({
 }));
 
 import { MessageContentTypeConst } from "../../../Service/Const";
-import { SummaryNotifyContent } from "../index";
+import { SummaryNotifyCell, SummaryNotifyContent } from "../index";
 
 describe("SummaryNotifyContent", () => {
   beforeEach(() => {
@@ -116,5 +116,23 @@ describe("SummaryNotifyContent", () => {
     content.fromUID = "unknown";
     content.fromName = "";
     expect(content.tip).toBe("某用户总结了群聊内容");
+  });
+
+  it("renders the authenticated envelope sender instead of spoofable payload from_uid", () => {
+    channelManager.getChannelInfo.mockImplementation((channel: any) => ({
+      orgData: { displayName: channel.channelID === "alice" ? "Alice" : "Mallory" },
+    }));
+    const content = new SummaryNotifyContent();
+    content.fromUID = "mallory";
+    content.fromName = "Mallory";
+    const cell = new SummaryNotifyCell({
+      message: { fromUID: "alice", content },
+    } as any);
+
+    const element = cell.render() as any;
+    expect(element.props.children).toBe("Alice总结了群聊内容");
+    expect(channelManager.getChannelInfo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ channelID: "alice" }),
+    );
   });
 });

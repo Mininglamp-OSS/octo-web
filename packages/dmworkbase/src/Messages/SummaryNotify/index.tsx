@@ -11,12 +11,12 @@ export class SummaryNotifyContent extends MessageContent {
     fromName!: string
 
 
-    get tip() {
+    tipForSender(senderUID: string) {
         let name = ""
-        if (this.fromUID === WKApp.loginInfo.uid) {
+        if (senderUID === WKApp.loginInfo.uid) {
             name = t("base.message.summaryNotify.you")
         } else {
-            let channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(this.fromUID, ChannelTypePerson))
+            let channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(senderUID, ChannelTypePerson))
             const displayName = channelInfo?.orgData?.displayName
             const candidate = [displayName, this.fromName]
                 .find((value) => typeof value === "string" && value.trim())
@@ -24,6 +24,12 @@ export class SummaryNotifyContent extends MessageContent {
             name = candidate?.trim() || t("base.message.summaryNotify.unknown")
         }
         return t("base.message.summaryNotify.text", { values: { name } })
+    }
+
+    // 仅供本地待发送消息 / digest 使用；实际消息气泡必须以 envelope 的 message.fromUID
+    // 调用 tipForSender，不能信任发送者可控的 payload.from_uid。
+    get tip() {
+        return this.tipForSender(this.fromUID)
     }
 
     decodeJSON(content: any): void {
@@ -49,6 +55,7 @@ export class SummaryNotifyCell extends MessageCell {
     render() {
         const { message } = this.props
         let content = message.content as SummaryNotifyContent
-        return <div className="wk-message-system">{content.tip}</div>
+        // message.fromUID 来自认证后的消息 envelope；payload.from_uid 只保留作兼容字段。
+        return <div className="wk-message-system">{content.tipForSender(message.fromUID)}</div>
     }
 }
