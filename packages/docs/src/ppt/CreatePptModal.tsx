@@ -12,7 +12,7 @@
 // and double-submit prevention with idempotency-key reuse on retry.
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { t } from '../octoweb/index.ts'
+import { t, useI18n } from '../octoweb/index.ts'
 import {
   createPptDoc,
   DEFAULT_PPT_TEMPLATE,
@@ -115,6 +115,12 @@ export function CreatePptModal({
   onCreated,
   triggerRef,
 }: CreatePptModalProps): React.ReactElement | null {
+  // Subscribe to the host locale (P2-2). The modal stays mounted (returns null when closed), so a
+  // one-shot module-level t() would freeze every label — and the template names/aria-labels below —
+  // at first-render language. useI18n() re-renders the component on a live zh/en switch; `locale`
+  // also keys the template memo so it recomputes. Imperative submit-time error strings keep using
+  // the module `t()` (read once, at submit) to avoid re-keying the verified cross-space closure.
+  const { locale } = useI18n()
   const [selected, setSelected] = useState<PptTemplateId>(DEFAULT_PPT_TEMPLATE)
   const [title, setTitle] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -152,7 +158,8 @@ export function CreatePptModal({
   const titleFieldId = useId()
   const errorId = useId()
 
-  // Template metadata (name + scene) resolved from i18n; memoised on locale-stable keys.
+  // Template metadata (name + scene) resolved from i18n; recomputed when the active locale changes
+  // so card names and their aria-labels follow a live zh/en switch (P2-2).
   const templates = useMemo(
     () =>
       PPT_TEMPLATES.map((id) => ({
@@ -160,7 +167,7 @@ export function CreatePptModal({
         name: t(`docs.ppt.template.${id}.name`),
         desc: t(`docs.ppt.template.${id}.desc`),
       })),
-    [],
+    [locale],
   )
 
   // The submitted title (P2-3): the request body carries `title.trim()`, so the idempotency key and
@@ -411,7 +418,16 @@ export function CreatePptModal({
           requestClose()
         }}
         onKeyDown={onDialogKeyDown}
-        onMouseDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => {
+          // A press on the ::backdrop (which showModal() promotes to the top layer) or on the
+          // dialog's own margin reports the <dialog> itself as the event target; a press inside the
+          // content reports a descendant. Close only on the former, so a real-browser backdrop click
+          // dismisses (P2-1) — the outer overlay wrapper never receives the event once the dialog is
+          // in the top layer. Content presses stop here so they don't bubble to the wrapper's
+          // requestClose on the no-top-layer (jsdom) fallback path.
+          if (e.target === dialogRef.current) requestClose()
+          else e.stopPropagation()
+        }}
       >
         <header className="octo-ppt-create-header">
           <h3 id={titleId} className="octo-ppt-create-title">

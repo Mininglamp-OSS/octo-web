@@ -125,10 +125,11 @@ export function isSameOriginPath(path: string | null | undefined): path is strin
  * the same refused url — the user can never reach a deck the server already made.
  *
  * So for the trusted-route path we NORMALISE instead of reject: resolve against the current origin
- * and, when the resolved origin matches, hand back `pathname + search + hash` (a clean rooted path,
- * regardless of whether the input was absolute or relative). Cross-origin, scheme-relative
- * (`//host`), backslash-smuggled, and non-http(s) (`javascript:`) values still resolve off-origin (or
- * fail to parse) and return `null` — the open-redirect protection is intact; only same-origin
+ * and, when the resolved origin matches AND the scheme is http(s), hand back a single-rooted
+ * `pathname + search + hash` (leading slash runs collapsed to one, so the value can never be re-read
+ * as scheme-relative). Cross-origin, scheme-relative (`//host`), backslash-smuggled, and non-http(s)
+ * (`javascript:`, `blob:`) values still resolve off-origin, fail the scheme gate, or fail to parse,
+ * and return `null` — the open-redirect protection is intact; only same-origin http(s)
  * absolute/relative inputs are additionally accepted. Control chars are rejected up front for the
  * same reason as gate 1 above (the URL parser silently strips tab/newline/CR, smuggling `//host`).
  */
@@ -146,7 +147,15 @@ export function resolveSameOriginPath(raw: string | null | undefined): string | 
     return null
   }
   if (url.origin !== origin) return null
-  return url.pathname + url.search + url.hash
+  // Only real page schemes: blob:<origin>/… also reports a matching origin, but its pathname is the
+  // whole inner URL, so it would be handed back as a non-navigable, non-rooted value.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+  // url.pathname can itself begin with `//` — from an absolute input (`https://<origin>//evil…`),
+  // a backslash-smuggled one, or a rooted `/..//evil…` whose dot-segments clamp to the root and
+  // leave a doubled slash. location.assign() re-parses `//host…` as SCHEME-RELATIVE and bounces
+  // cross-origin, re-opening the redirect this guard closes. Collapse the leading slash run so the
+  // result is a single rooted path.
+  return url.pathname.replace(/^\/+/, '/') + url.search + url.hash
 }
 
 /**

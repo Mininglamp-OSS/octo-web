@@ -831,6 +831,34 @@ describe('resolveSameOriginPath — PPT editorUrl normalise (P2-1)', () => {
     expect(resolveSameOriginPath(null)).toBeNull()
     expect(resolveSameOriginPath(undefined)).toBeNull()
   })
+
+  it('collapses leading-slash runs so a normalised path can never be scheme-relative (P1-1)', () => {
+    // Each input parses same-origin, but its pathname begins with `//` (or resolves to one via
+    // dot-segments / backslash smuggling). Handing that back verbatim lets location.assign()
+    // re-parse it as SCHEME-RELATIVE and bounce cross-origin. The guard must return a single-rooted
+    // path that stays same-origin when re-parsed.
+    const rows = [
+      `${origin}//evil.example.com/steal`, // absolute same-origin, pathname `//evil…`
+      `${origin}/\\/evil.example.com/steal`, // backslash → `/` in special schemes → `//evil…`
+      '/..//evil.example.com/steal', // rooted; `/..` clamps to root, leaving `//evil…`
+      '/a/../..//evil.example.com', // rooted; dot-segments collapse to `//evil…`
+    ]
+    for (const raw of rows) {
+      const result = resolveSameOriginPath(raw)
+      expect(result).not.toBeNull()
+      // Exactly one leading slash — not scheme-relative.
+      expect(result!.startsWith('//')).toBe(false)
+      expect(result!.startsWith('/')).toBe(true)
+      // Re-parsing the returned value (as location.assign would) stays on the current origin.
+      expect(new URL(result!, origin).origin).toBe(origin)
+    }
+  })
+
+  it('rejects non-http(s) same-origin protocols (e.g. blob:) whose pathname is not a real page path', () => {
+    // blob:<origin>/… reports a matching origin, but its pathname is the whole inner URL, so it is
+    // not a navigable rooted path. Only http/https page schemes are accepted.
+    expect(resolveSameOriginPath(`blob:${origin}/550e8400-e29b-41d4-a716-446655440000`)).toBeNull()
+  })
 })
 
 describe('standalone return target — open-redirect-safe post-login bounce (blocker 4)', () => {
