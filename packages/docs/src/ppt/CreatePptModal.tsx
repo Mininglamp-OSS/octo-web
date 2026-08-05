@@ -16,6 +16,7 @@ import { t } from '../octoweb/index.ts'
 import {
   createPptDoc,
   DEFAULT_PPT_TEMPLATE,
+  MissingEditorUrlError,
   newIdempotencyKey,
   PPT_TEMPLATES,
   PPT_TITLE_MAX,
@@ -118,6 +119,12 @@ export function CreatePptModal({
   const [title, setTitle] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Non-retriable failure latch (P2-1). Set when the create can never succeed under the SAME payload:
+  // the backend returned a route the caller refused (unsafe/cross-origin), or a 201 carried no
+  // editorUrl (MissingEditorUrlError). Retrying reuses the same idempotency key → the backend dedups
+  // → the same dead result, so a generic "please try again" is futile. When true we show a distinct
+  // message and disable Create; editing the payload (title/template) mints a fresh key and clears it.
+  const [fatal, setFatal] = useState(false)
 
   const dialogRef = useRef<HTMLDialogElement>(null)
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -156,17 +163,33 @@ export function CreatePptModal({
     [],
   )
 
+  // The submitted title (P2-3): the request body carries `title.trim()`, so the idempotency key and
+  // the enable/disable gate must both key on the TRIMMED value, not the raw input — otherwise a
+  // whitespace-only edit ("AAA" → "AAA ") re-mints the key for a byte-identical payload and can
+  // create a second deck. Hoisted above the effects so the idem-key effect can depend on it.
+  const trimmed = title.trim()
+
+  // Invalidate any in-flight submit on EVERY open/space transition — including open → false (P1-3).
+  // In the app a Space switch closes the picker in the SAME React batch that changes spaceId
+  // (DocsHome onSpaceChanged → setSpace(next) + backToList() → setPptModalOpen(false)), so the guard
+  // MUST bump on the open → false edge too. Keeping the bump inside the reset effect below (which
+  // early-returns on `!open`) missed exactly that edge: the in-flight space-A create kept a matching
+  // token and its late resolve navigated into the previous space's deck. `backToList` is also the
+  // reconciler for doc-delete and nav-menu reactivation, so this open-guard-free bump covers those
+  // closes too.
+  useEffect(() => {
+    submitSeqRef.current += 1
+  }, [open, spaceId])
+
   // Reset the draft whenever the modal opens or the space changes; remember what to restore focus to.
-  // Bumping submitSeqRef here invalidates any in-flight submit's generation token, so a create that
-  // was fired before a space switch cannot navigate after it resolves (P1-3).
   useEffect(() => {
     if (!open) return
     setSelected(DEFAULT_PPT_TEMPLATE)
     setTitle('')
     setSubmitting(false)
     setError(null)
+    setFatal(false)
     submittingRef.current = false
-    submitSeqRef.current += 1
     // Capture the restore target. Prefer the caller-supplied PERSISTENT trigger (the caret button that
     // opened the picker) over document.activeElement: the picker is launched from a caret DROPDOWN menu
     // item that unmounts the instant it is clicked (the menu closes as it fires onCreatePpt), so by the
@@ -184,15 +207,21 @@ export function CreatePptModal({
           : null
   }, [open, spaceId, triggerRef])
 
-  // Mint the idempotency key for the current payload (P1-2). Keyed on the payload (title + template)
-  // as well as open/space so the key is STABLE across an identical retry — a plain retry re-runs
-  // onSubmit without changing title/selected, so no new key is minted and the backend dedups to the
-  // same deck — but a FRESH key is minted the moment the user edits the title or picks another
-  // template, so a content-changed resubmit is a distinct create (never a stale-title dedup).
+  // Mint the idempotency key for the current payload (P1-2 / P2-3). Keyed on the SUBMITTED payload
+  // (trimmed title + template) as well as open/space so the key is STABLE across an identical retry
+  // — a plain retry re-runs onSubmit without changing the trimmed title/selected, so no new key is
+  // minted and the backend dedups to the same deck — but a FRESH key is minted the moment the user
+  // changes the submitted content, so a content-changed resubmit is a distinct create. Keying on the
+  // TRIMMED title (not the raw input) closes P2-3: a whitespace-only edit ("AAA" → "AAA ") sends a
+  // byte-identical body, so it must NOT re-mint the key and risk a duplicate deck.
   useEffect(() => {
     if (!open) return
     idempotencyKeyRef.current = newIdempotencyKey()
-  }, [open, spaceId, title, selected])
+    // A genuine payload change is a distinct create — clear any prior error (P2-3), including the
+    // non-retriable one (P2-1), so Create becomes usable again for the new content.
+    setError(null)
+    setFatal(false)
+  }, [open, spaceId, trimmed, selected])
 
   // Restore focus to the element that had it before the modal opened (the trigger caret).
   // This MUST run AFTER the native <dialog> has finished closing. On the Esc/close route the
@@ -239,9 +268,9 @@ export function CreatePptModal({
 
   if (!open) return null
 
-  const trimmed = title.trim()
   const tooLong = title.length > PPT_TITLE_MAX
-  const canSubmit = trimmed.length > 0 && !tooLong && !submitting
+  // `fatal` (P2-1) keeps Create disabled after a non-retriable failure until the payload changes.
+  const canSubmit = trimmed.length > 0 && !tooLong && !submitting && !fatal
 
   // Cancel/Esc/overlay dismissal — blocked while a create is in flight so the request can't be
   // orphaned mid-submit (the retry would otherwise mint under a fresh key on reopen). Focus is
@@ -330,11 +359,13 @@ export function CreatePptModal({
       // await, this create belongs to a stale context — do NOT navigate to its wrong-space deck.
       if (submitSeqRef.current !== token) return
       // Trust the backend route ONLY — no frontend fallback (preserves R1 no-fallthrough). The caller
-      // gates the route through the open-redirect guard; a `false` return means it REFUSED to navigate
-      // (unsafe route, P1-1) — surface an inline error and keep the modal open/retriable instead of
-      // soft-locking on a dead "success".
+      // gates the route through the same-origin guard; a `false` return means it REFUSED to navigate
+      // (unsafe / cross-origin route, P1-1 / P2-1). That is NON-retriable: retrying reuses the same
+      // idempotency key so the backend returns the same dead route — surface a distinct message and
+      // disable Create (the user recovers by changing the title/template, which mints a fresh key).
       if (onCreated(result.editorUrl) === false) {
-        setError(t('docs.ppt.create.error'))
+        setError(t('docs.ppt.create.unavailable'))
+        setFatal(true)
         submittingRef.current = false
         setSubmitting(false)
       }
@@ -342,10 +373,21 @@ export function CreatePptModal({
       // A superseded submit (space switched mid-await) must not clobber the fresh draft with its late
       // error either — bail on a stale generation (P1-3).
       if (submitSeqRef.current !== token) return
+      // A 201 with no editorUrl (MissingEditorUrlError) is NON-retriable for the same reason as an
+      // unsafe route (P2-1): the same key re-dedups to the same routeless deck. Distinct message +
+      // disable Create instead of the generic retriable error.
+      if (err instanceof MissingEditorUrlError) {
+        setError(t('docs.ppt.create.unavailable'))
+        setFatal(true)
+        submittingRef.current = false
+        setSubmitting(false)
+        return
+      }
       const status = (err as { response?: { status?: number } })?.response?.status
       // 400 → inline validation error, modal stays open, no navigation (hard metric #2).
-      // Everything else (401/409/5xx/missing editorUrl/network) → generic error, modal stays open
-      // and retriable; the same idempotency key is reused so a retry never duplicates a deck.
+      // Everything else (401/409/5xx/network) → generic error, modal stays open and retriable; the
+      // same idempotency key is reused so a retry never duplicates a deck. (A routeless 201 is the
+      // MissingEditorUrlError handled above — non-retriable, not this generic branch.)
       setError(status === 400 ? t('docs.ppt.create.validationError') : t('docs.ppt.create.error'))
       submittingRef.current = false
       setSubmitting(false)

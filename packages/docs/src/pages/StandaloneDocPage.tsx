@@ -114,6 +114,42 @@ export function isSameOriginPath(path: string | null | undefined): path is strin
 }
 
 /**
+ * Resolve `raw` to a same-origin path to navigate to, or `null` when it is not same-origin (P2-1).
+ *
+ * The difference from `isSameOriginPath` is deliberate: that guard REJECTS anything that is not a
+ * rooted RELATIVE path — correct for the post-login return target, where the value is user-tamperable
+ * and must be a bare `/…` path. But a backend-supplied PPT `editorUrl` may legitimately arrive as a
+ * same-origin ABSOLUTE url (`http://localhost:3000/ppt/d/abc`) or a bare-relative (`d/abc`), and
+ * rejecting those makes the whole create flow a dead-end: the deck exists server-side, the frontend
+ * refuses to navigate, and an unedited retry reuses the same Idempotency-Key so the backend returns
+ * the same refused url — the user can never reach a deck the server already made.
+ *
+ * So for the trusted-route path we NORMALISE instead of reject: resolve against the current origin
+ * and, when the resolved origin matches, hand back `pathname + search + hash` (a clean rooted path,
+ * regardless of whether the input was absolute or relative). Cross-origin, scheme-relative
+ * (`//host`), backslash-smuggled, and non-http(s) (`javascript:`) values still resolve off-origin (or
+ * fail to parse) and return `null` — the open-redirect protection is intact; only same-origin
+ * absolute/relative inputs are additionally accepted. Control chars are rejected up front for the
+ * same reason as gate 1 above (the URL parser silently strips tab/newline/CR, smuggling `//host`).
+ */
+export function resolveSameOriginPath(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string' || raw.length === 0) return null
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(raw)) return null
+  if (typeof window === 'undefined') return null
+  const origin = window.location.origin
+  if (!origin) return null
+  let url: URL
+  try {
+    url = new URL(raw, origin)
+  } catch {
+    return null
+  }
+  if (url.origin !== origin) return null
+  return url.pathname + url.search + url.hash
+}
+
+/**
  * Whether a stashed return target is a SAFE same-origin STANDALONE link.
  *
  * Layers the standalone-target gate (P2-2) on top of the shared same-origin core: even a same-origin

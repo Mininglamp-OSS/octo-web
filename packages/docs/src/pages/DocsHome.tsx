@@ -7,7 +7,7 @@ import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
 import { BoardSession } from '../board/BoardSession.tsx'
 import { HtmlDocView } from '../html/HtmlDocView.tsx'
 import { PptDocView } from '../ppt/PptDocView.tsx'
-import { isSameOriginPath } from './StandaloneDocPage.tsx'
+import { resolveSameOriginPath } from './StandaloneDocPage.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
 import { CreatePptModal } from '../ppt/CreatePptModal.tsx'
@@ -1655,15 +1655,23 @@ export function DocsHome() {
   // through to any editor shell — trusting the backend route verbatim preserves the R1
   // no-fallthrough contract (a Bento deck never reaches the Tiptap editor / Hocuspocus path).
   //
-  // Open-redirect guard (P1-1): the route is attacker-influenceable (a compromised/misbehaving
-  // backend could return a `javascript:` or cross-origin `editorUrl`), and it is fed straight to
-  // window.location.assign. Gate it through the repo's existing same-origin guard (isSameOriginPath,
-  // the XIN-392 open-redirect core) BEFORE navigating. On an unsafe route we do NOT navigate and do
-  // NOT close the picker; returning false lets the modal surface an inline error and stay retriable.
+  // Open-redirect guard (P1-1) + same-origin NORMALISE (P2-1): the route is attacker-influenceable
+  // (a compromised/misbehaving backend could return a `javascript:` or cross-origin `editorUrl`), and
+  // it is fed straight to window.location.assign. resolveSameOriginPath resolves it against the
+  // current origin and returns a clean rooted path for a same-origin ABSOLUTE or relative url — so a
+  // backend that returns `http://<origin>/ppt/d/x` (or `d/x`) is accepted instead of dead-ending —
+  // while cross-origin / scheme-relative / `javascript:` still return null. On null we do NOT navigate
+  // and do NOT close the picker; returning false lets the modal surface its non-retriable message.
+  //
+  // Ordering (P2-2): navigate FIRST, close AFTER. If assign throws (e.g. a sandboxed embed forbids
+  // top-level navigation), the exception propagates into onSubmit's catch and the still-OPEN modal can
+  // show it. Closing first would setError on an unmounted modal — a silent no-op / soft-lock.
   const onPptCreated = useCallback((editorUrl: string): boolean => {
-    if (typeof window === 'undefined' || !isSameOriginPath(editorUrl)) return false
+    if (typeof window === 'undefined') return false
+    const target = resolveSameOriginPath(editorUrl)
+    if (target === null) return false
+    window.location.assign(target)
     setPptModalOpen(false)
-    window.location.assign(editorUrl)
     return true
   }, [])
 

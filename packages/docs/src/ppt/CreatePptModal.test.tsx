@@ -446,10 +446,100 @@ describe('CreatePptModal', () => {
     expect(keys[0]).not.toBe(keys[1])
   })
 
-  // P1-3: if the user switches space while a create is in flight, the late-resolving space-A create
-  // must NOT navigate — it would drop the user into the wrong-space deck. A generation token captured
-  // at submit start is invalidated by the space-change reset, so the post-await handoff is skipped.
-  it('does NOT complete/navigate when the space changes mid-submit (cross-space late-resolve guard)', async () => {
+  // P2-3: a WHITESPACE-ONLY title edit is NOT a content change — the body carries `title.trim()`, so
+  // "AAA" and "AAA " POST byte-identical payloads. The idempotency key must therefore stay STABLE
+  // across such an edit; re-minting it (the bug: the effect keyed on the raw title) would let the
+  // backend treat the second submit as a distinct create and, if the first actually succeeded
+  // server-side, mint a duplicate deck. Keying the effect on the trimmed title fixes it.
+  it('does NOT re-mint the idempotency key when only trailing whitespace is added to the title (same trimmed payload)', async () => {
+    let attempt = 0
+    const wk = mountApi(() => {
+      attempt += 1
+      if (attempt === 1) return Promise.reject({ response: { status: 500 } })
+      return { data: { data: { editorUrl: '/ppt/d/deck' } }, status: 201 }
+    })
+    const onCreated = vi.fn()
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={onCreated} />)
+
+    const titleInput = screen.getByLabelText('docs.ppt.create.titleLabel')
+    fireEvent.change(titleInput, { target: { value: 'AAA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
+
+    // Add a trailing space — the trimmed payload is unchanged, so this is an identical retry.
+    fireEvent.change(titleInput, { target: { value: 'AAA ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('/ppt/d/deck'))
+
+    const calls = wk.apiClient.calls.filter((c) => c.url === '/ppt/docs')
+    expect(calls).toHaveLength(2)
+    // Both bodies carry the trimmed title, so they are byte-identical…
+    expect(calls[0].body).toMatchObject({ title: 'AAA' })
+    expect(calls[1].body).toMatchObject({ title: 'AAA' })
+    // …and MUST reuse the same key so the backend dedups instead of minting a duplicate deck.
+    const keys = calls.map((c) => c.config?.headers?.['Idempotency-Key'])
+    expect(keys[0]).toBeTruthy()
+    expect(keys[0]).toBe(keys[1])
+  })
+
+  // P2-1: a NON-retriable failure (the caller refused the backend route, onCreated → false) must show
+  // its own message and DISABLE Create — retrying reuses the same key and re-dedups to the same dead
+  // route. Editing the payload mints a fresh key and re-enables Create.
+  it('P2-1: on a refused (unsafe) route shows the non-retriable message + disables Create, re-enabled after a payload edit', async () => {
+    mountApi(okResponder)
+    // onCreated returns false → the caller refused to navigate (unsafe/cross-origin route).
+    const onCreated = vi.fn(() => false as const)
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={onCreated} />)
+
+    const titleInput = screen.getByLabelText('docs.ppt.create.titleLabel')
+    fireEvent.change(titleInput, { target: { value: 'Deck' } })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.unavailable')).toBeTruthy())
+    const submit = () => screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement
+    expect(submit().disabled).toBe(true)
+
+    // A genuine payload edit mints a fresh key → distinct create → Create is usable again.
+    fireEvent.change(titleInput, { target: { value: 'Deck v2' } })
+    expect(submit().disabled).toBe(false)
+    expect(screen.queryByText('docs.ppt.create.unavailable')).toBeNull()
+  })
+
+  // P2-1: a 201 with no editorUrl (MissingEditorUrlError) is likewise non-retriable — same distinct
+  // message + disabled Create, never the generic retriable error.
+  it('P2-1: a 201 with no editorUrl shows the non-retriable message + disables Create', async () => {
+    mountApi((_m, url) => {
+      if (url === '/ppt/docs') return { data: { data: {} }, status: 201 } // no editorUrl
+      return { data: {}, status: 200 }
+    })
+    const onCreated = vi.fn()
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={onCreated} />)
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'Deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.unavailable')).toBeTruthy())
+    expect(onCreated).not.toHaveBeenCalled()
+    expect(
+      (screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+
+  // P1-3 (fix #5): if the user switches space while a create is in flight, the late-resolving
+  // space-A create must NOT navigate — it would drop the user into the wrong-space deck. A
+  // generation token captured at submit start is invalidated by the open/space-change bump, so the
+  // post-await handoff is skipped.
+  //
+  // This drives the REAL app transition, not the earlier open-held rerender. In DocsHome the
+  // Space-switch reconciler (onSpaceChanged → setSpace(next) + backToList()) flips BOTH props in ONE
+  // React batch: `open` → false AND `spaceId` → the new id. `spaceId` never changes while `open`
+  // stays true — the picker is always closed in the same batch. The prior test held `open` true
+  // (`rerender(<CreatePptModal open spaceId="s_B" />)`), a state that cannot occur in the app, so it
+  // passed even while the generation bump lived inside the reset effect that early-returns on
+  // `!open` (the shipped bug). Bumping the token in its own open-guard-free effect is what makes the
+  // real close+space-change transition invalidate the in-flight submit.
+  it('does NOT navigate when a space switch closes the picker mid-submit (open→false AND spaceId→new in one update)', async () => {
     let resolve!: (v: unknown) => void
     mountApi(() => new Promise((r) => { resolve = r as (v: unknown) => void }))
     const onCreated = vi.fn()
@@ -462,10 +552,12 @@ describe('CreatePptModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
     await waitFor(() => expect(screen.getByText('docs.ppt.create.loading')).toBeTruthy())
 
-    // User switches to space B while the space-A create is still awaiting.
-    rerender(<CreatePptModal open spaceId="s_B" onClose={() => {}} onCreated={onCreated} />)
+    // The Space switch closes the picker (open→false) AND moves to space B in the SAME update — the
+    // exact DocsHome batch. The picker is never left open across a spaceId change.
+    rerender(<CreatePptModal open={false} spaceId="s_B" onClose={() => {}} onCreated={onCreated} />)
 
-    // The space-A create finally resolves — but its generation is stale now, so no handoff/navigation.
+    // The space-A create finally resolves — but its generation is stale now, so no handoff/navigation
+    // into the previous space's deck.
     await act(async () => {
       resolve({ data: { data: { editorUrl: '/ppt/d/deck_A' } }, status: 201 })
     })

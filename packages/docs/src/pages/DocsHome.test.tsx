@@ -1560,13 +1560,18 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
 
     // The create round-trip completes, but the unsafe route is refused: no navigation happens and
-    // the picker stays open with an inline error (retriable), never a silent soft-lock.
+    // the picker stays open. Because the cross-origin route is NON-retriable (a retry reuses the same
+    // Idempotency-Key → the backend returns the same refused route), the modal shows its distinct
+    // non-retriable message and DISABLES Create — not the generic retriable error (P2-1).
     await waitFor(() =>
       expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(true),
     )
-    await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.unavailable')).toBeTruthy())
     expect(assignSpy).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(
+      (screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 
   it('R2-F1 P1-1: navigates for a safe same-origin editorUrl (happy path preserved)', async () => {
@@ -1593,6 +1598,50 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
 
     await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/ppt/d/new_deck'))
+  })
+
+  // ── R2-F1 P2-2: navigate BEFORE closing the picker ─────────────────────────
+  // onPptCreated used to setPptModalOpen(false) and THEN window.location.assign(editorUrl). When
+  // assign throws (a sandboxed embed can forbid top-level navigation), the exception propagates into
+  // CreatePptModal.onSubmit's catch, which calls setError — but on an ALREADY-CLOSED modal, so the
+  // error never renders and the user is soft-locked on a silent no-op. Assigning FIRST keeps the
+  // modal open when assign throws, so the failure surfaces and the create stays retriable.
+  it('R2-F1 P2-2: keeps the picker open and surfaces the error when navigation throws (assign before close)', async () => {
+    const throwingAssign = vi.fn(() => {
+      throw new Error('navigation blocked (sandboxed embed)')
+    })
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: throwingAssign },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      // A perfectly safe same-origin route — the only failure here is that assign itself throws.
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: '/ppt/d/new_deck' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    // assign was attempted (navigate-first), but it threw…
+    await waitFor(() => expect(throwingAssign).toHaveBeenCalledWith('/ppt/d/new_deck'))
+    // …and because the close runs only AFTER a successful assign, the picker is still open and the
+    // error is visible + retriable — not a silently-closed soft-lock.
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(
+      (screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement).disabled,
+    ).toBe(false)
   })
 
   it('re-pushes an open html doc WITH its slug when the docs nav menu is re-activated', async () => {

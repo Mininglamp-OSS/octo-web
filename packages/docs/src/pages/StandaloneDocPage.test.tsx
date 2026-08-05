@@ -77,6 +77,7 @@ import {
   persistStandaloneReturn,
   consumeStandaloneReturn,
   withReturnSid,
+  resolveSameOriginPath,
   STANDALONE_RETURN_KEY,
 } from './StandaloneDocPage.tsx'
 
@@ -798,6 +799,37 @@ describe('XIN-501 — preflight addresses the doc space from the link ?sp, never
     expect(wk.shared.currentSpaceId).toBe('space-doc')
     const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
     expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+  })
+})
+
+describe('resolveSameOriginPath — PPT editorUrl normalise (P2-1)', () => {
+  const origin = window.location.origin
+
+  it('normalises a same-origin ABSOLUTE url to a rooted path (the P2-1 accept case)', () => {
+    expect(resolveSameOriginPath(`${origin}/ppt/d/abc`)).toBe('/ppt/d/abc')
+    // query + hash are preserved.
+    expect(resolveSameOriginPath(`${origin}/ppt/d/abc?sp=1#s2`)).toBe('/ppt/d/abc?sp=1#s2')
+  })
+
+  it('accepts a rooted-relative path and a bare-relative path (resolved against origin root)', () => {
+    expect(resolveSameOriginPath('/ppt/d/abc?sp=1')).toBe('/ppt/d/abc?sp=1')
+    // A bare-relative value that isSameOriginPath would REJECT is normalised to a rooted path here.
+    expect(resolveSameOriginPath('d/abc')).toBe('/d/abc')
+  })
+
+  it('rejects cross-origin / scheme-relative / javascript / control-char / empty values', () => {
+    for (const bad of [
+      'https://evil.example.com/steal', // cross-origin absolute
+      '//evil.example.com', // scheme-relative → off-origin
+      'javascript:alert(1)', // script payload (opaque origin)
+      '/\n/evil.example.com', // newline smuggles //host past the URL parser
+      '/\t/evil.example.com', // tab → same
+      '', // empty
+    ]) {
+      expect(resolveSameOriginPath(bad)).toBeNull()
+    }
+    expect(resolveSameOriginPath(null)).toBeNull()
+    expect(resolveSameOriginPath(undefined)).toBeNull()
   })
 })
 

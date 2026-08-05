@@ -896,7 +896,8 @@
       "cancel": "Cancel",
       "loading": "Creating…",
       "error": "Couldn't create the slides. Please try again.",
-      "validationError": "Please check the title and template, then try again."
+      "validationError": "Please check the title and template, then try again.",
+      "unavailable": "The slides were created but can't be opened from here. Please contact support."
     },
     "template": {
       "blank": {

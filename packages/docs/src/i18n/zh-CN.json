@@ -896,7 +896,8 @@
       "cancel": "取消",
       "loading": "创建中…",
       "error": "创建幻灯片失败，请重试。",
-      "validationError": "请检查标题和模板后重试。"
+      "validationError": "请检查标题和模板后重试。",
+      "unavailable": "幻灯片已创建，但无法在此打开，请联系管理员。"
     },
     "template": {
       "blank": {
