@@ -77,12 +77,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     private batchPollTimer: ReturnType<typeof setInterval> | null = null;
     private isBatchPolling = false;
     private isRefreshing = false;
-    // Monotonic list-mutation sequence: bumped by every path that mutates
-    // items / page (loadData, loadMore, refreshListSilently). An in-flight
-    // refresh captures the value pre-await and bails on resume if the
-    // sequence advanced — that is what protects the cursor when a
-    // scroll-triggered loadMore races the completion refresh.
-    private listSeq = 0;
     // Cleared by componentWillUnmount so any in-flight refresh's setState
     // becomes a no-op instead of restarting maybeStartBatchPoll on a
     // torn-down component.
@@ -180,10 +174,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     }
 
     async loadData() {
-        // Bump the list-mutation sequence so any in-flight silent refresh
-        // captured before this reload bails on resume instead of clobbering
-        // the freshly-loaded items.
-        this.listSeq++;
         this.setState({ loading: true, error: null, page: 1, hasMore: true });
         try {
             const { pageSize, statusFilter, keyword } = this.state;
@@ -218,10 +208,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
 
     async loadMore() {
         if (this.state.loadingMore || !this.state.hasMore || this.state.loading) return;
-        // Bump the list-mutation sequence: an in-flight silent refresh
-        // captured before this loadMore appended a page must bail so it
-        // does not overwrite the appended items or reset the cursor.
-        this.listSeq++;
         this.setState({ loadingMore: true });
         try {
             const nextPage = this.state.page + 1;
@@ -328,35 +314,34 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     }
 
     /**
-     * 静默全量刷新（#290）：拉取最新列表并替换 items，但不置 `loading`（不闪加载态），
-     * 也不重置分页——用 page_size = pageSize × 已加载页数 一次覆盖所有已加载页，
-     * 保留用户的滚动深度。与 loadData 的区别就是「无加载态、不塌回第 1 页」。
-     * 出错则保留上一份好数据，交给下一次轮询重试。
+     * 静默全量刷新（#290）：拉取最新列表 · 把返回的行 **合并** 进 `state.items`
+     * (按 task_id 覆盖 · 新任务前置)· 从不裁掉用户已加载的尾部 · 从不改
+     * `state.page`。用 `page_size = min(pageSize × page, 100)` 只覆盖前缀,
+     * 用户已滚过的行由 in-place merge 保留不动。与 loadData 的区别:不塌回
+     * 第 1 页、不闪加载态、不缩短列表。出错则保留原状,下次交给终态事件重试。
      *
      * Concurrency invariants:
      * - `isRefreshing` short-circuits overlapping refresh calls.
-     * - `listSeq` (bumped by loadData / loadMore / this method) is captured
-     *   pre-await; a bump during our fetch means another path has already
-     *   mutated items / page, and the refresh response would clobber it.
      * - Captured `statusFilter` / `keyword` / `channelId`: if any changed
-     *   during the fetch the response is scoped to stale filters.
-     * - `loadingMore` bail on resume: a scroll-triggered loadMore may have
-     *   started after we captured listSeq but before its own bump landed;
-     *   check the flag directly to close that window.
+     *   during the fetch the response is scoped to stale filters, drop it.
      * - `isMounted_` guard: don't setState after unmount.
+     *
+     * Merge-not-replace closes the concurrent-writer question by construction:
+     * we never overwrite `items[k]` past what the server just returned, so a
+     * loadMore that appended rows during the fetch cannot lose them, and a
+     * refresh that races another refresh cannot roll rows back. `page` is
+     * refresh-invariant.
      */
     private async refreshListSilently() {
         if (this.isRefreshing) return;
         this.isRefreshing = true;
-        // Capture list identity + filter identity pre-await for the
-        // stale-write guard on resume.
-        const seq = ++this.listSeq;
         const capturedStatus = this.state.statusFilter;
         const capturedKeyword = this.state.keyword;
         const capturedChannel = this.props.channelId;
         try {
             const { pageSize, page } = this.state;
-            // 覆盖已加载页；防止后端对 page_size 有上限，clamp 到 100。
+            // 覆盖已加载页前缀；防止后端对 page_size 有上限，clamp 到 100。
+            // 尾部由 merge 保留，不再依赖此值覆盖全部已加载行。
             const coverSize = Math.min(pageSize * Math.max(1, page), 100);
             const params: ListSummariesParams = {
                 page: 1,
@@ -367,31 +352,29 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             };
             const resp = await api.listSummaries(params);
             if (!this.isMounted_) return;
-            // Any of these means the response would clobber newer state:
-            //  - listSeq advanced → loadData / loadMore already mutated items/page
-            //  - filter/keyword/channel changed → response is scoped to stale filters
-            //  - loadingMore in flight → its append is authoritative for the cursor
             if (
-                seq !== this.listSeq ||
                 capturedStatus !== this.state.statusFilter ||
                 capturedKeyword !== this.state.keyword ||
-                capturedChannel !== this.props.channelId ||
-                this.state.loadingMore
+                capturedChannel !== this.props.channelId
             ) {
                 return;
             }
-            // Truncate to a whole-page boundary so state.page stays consistent
-            // with items.length regardless of what the backend actually
-            // returned. Math.floor + slice keeps loadMore's `state.page + 1`
-            // pointing at the row immediately after the tail — no gap, no
-            // duplicate — even if the backend cap ever changes.
-            const coveredPages = Math.max(1, Math.floor(resp.items.length / pageSize));
-            const trimmedItems = resp.items.slice(0, coveredPages * pageSize);
-            this.setState({
-                items: trimmedItems,
-                page: coveredPages,
-                total: resp.total,
-                hasMore: trimmedItems.length < resp.total,
+            // Merge instead of replace: overlay fresh rows onto existing by
+            // task_id (fresh wins for enriched fields like title / preview),
+            // preserving user's loaded tail past coverSize. Brand-new tasks
+            // in the fresh response that weren't loaded before come in at
+            // the top (list is sorted newest-first).
+            this.setState((prev) => {
+                const freshById = new Map(resp.items.map((x: any) => [x.task_id, x]));
+                const existingIds = new Set(prev.items.map((x: any) => x.task_id));
+                const newFromFresh = resp.items.filter((x: any) => !existingIds.has(x.task_id));
+                const overlaidExisting = prev.items.map((x: any) => freshById.get(x.task_id) ?? x);
+                const merged = [...newFromFresh, ...overlaidExisting];
+                return {
+                    items: merged as any,
+                    total: resp.total,
+                    hasMore: merged.length < resp.total,
+                };
             }, () => {
                 if (this.isMounted_) this.maybeStartBatchPoll();
             });
