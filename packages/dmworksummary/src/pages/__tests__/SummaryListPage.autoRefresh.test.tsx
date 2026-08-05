@@ -430,4 +430,63 @@ describe('SummaryListPage auto-refresh on completion (#290)', () => {
         ]);
         expect((page.state as any).total).toBe(1);
     });
+
+    /**
+     * Round-8 P1 regression (Jerry-Xin / yujiawei): the loadDataSeq guard
+     * alone was asymmetric. When loadData starts first and its
+     * setState({ loading: true }) is enqueued but not yet committed
+     * (React 18 batching from a promise continuation), a concurrent scroll
+     * fires loadMore which reads state.loading === false, captures the
+     * already-bumped seq, requests a deep page. loadData resolves first
+     * (page 1, 20 rows). loadMore's stale deep page resolves — seq matches
+     * → appended. Rows in between stranded.
+     *
+     * Fix: synchronous this.isLoadingData flag, checked in loadMore's entry
+     * guard alongside state.loading — closes the deferred-commit window
+     * regardless of React batching.
+     */
+    it('does not fire loadMore while loadData is in flight (isLoadingData sync flag)', async () => {
+        const { page } = makePage(
+            Array.from({ length: 100 }, (_, i) => ({
+                task_id: i + 1,
+                status: TaskStatus.COMPLETED,
+                topic: `t${i + 1}`,
+            }))
+        );
+        (page as any).state = {
+            ...(page as any).state,
+            page: 5,
+            pageSize: 20,
+            hasMore: true,
+        };
+
+        // loadData starts and awaits, but its setState is not observably
+        // committed yet (mimicking React 18 batching from a promise
+        // continuation).
+        let resolveLoadData: (v: any) => void = () => {};
+        vi.mocked(api.listSummaries).mockImplementationOnce(
+            () => new Promise((r) => { resolveLoadData = r; }) as any
+        );
+        const loadDataPromise = (page as any).loadData({ silent: true });
+        await new Promise((r) => setTimeout(r, 0));
+
+        // Simulate the race: state.loading is not yet true (as would happen
+        // in React 18 with deferred commit — reset it as if the setState
+        // hadn't landed). isLoadingData must still guard.
+        (page as any).state = { ...(page as any).state, loading: false };
+
+        // Now a scroll fires loadMore. It must NOT fire a request.
+        vi.mocked(api.listSummaries).mockClear();
+        const secondCallSpy = vi.fn();
+        vi.mocked(api.listSummaries).mockImplementation(secondCallSpy as any);
+
+        await (page as any).loadMore();
+
+        expect(secondCallSpy).not.toHaveBeenCalled();
+        expect((page.state as any).loadingMore).toBe(false);
+
+        // Cleanup.
+        resolveLoadData({ items: [], total: 0 });
+        await loadDataPromise;
+    });
 });

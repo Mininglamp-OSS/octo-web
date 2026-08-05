@@ -81,9 +81,16 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     // loadData captures the value pre-await; if it advanced during the
     // request (user changed filter/keyword/space, or another loadData fired),
     // the response is stale and we drop it instead of overwriting newer
-    // user-driven state. Only loadData bumps — loadMore's cursor consistency
-    // is guarded separately by the prev.page === nextPage-1 check.
+    // user-driven state. loadMore also captures pre-await and drops its
+    // batch on mismatch — closes loadMore-starts-first, loadData-bumps-after.
     private loadDataSeq = 0;
+    // Synchronous "is a loadData in flight" flag. React 18 batching means
+    // this.state.loading is not visible immediately after setState from a
+    // promise continuation, so loadMore reading state.loading would miss a
+    // just-started loadData. Setting/clearing a plain field is synchronous
+    // and closes the loadData-starts-first, loadMore-scrolls-after ordering.
+    // Kept alongside loadDataSeq — the pair covers both interleavings.
+    private isLoadingData = false;
     // Cleared by componentWillUnmount so any in-flight refresh's setState
     // becomes a no-op instead of restarting maybeStartBatchPoll on a
     // torn-down component.
@@ -182,18 +189,23 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
 
     async loadData(opts: { silent?: boolean } = {}) {
         // Bump-and-capture sequence: this loadData's response is only allowed
-        // to commit if no newer loadData/loadMore/filter change has started
-        // meanwhile. Guards against a background refresh overwriting a fresh
-        // user-driven load, and against a stale loadMore appending after a
-        // loadData reset. Bumping this also invalidates any in-flight
-        // loadMore (which captured its own seq at entry).
+        // to commit if no newer loadData/filter change has started meanwhile.
+        // Extended in round-7 so loadMore also captures pre-await and drops
+        // its batch on mismatch. Round-8 added isLoadingData below because
+        // this sequence alone is asymmetric — a loadMore that starts AFTER
+        // loadData already bumped captures the already-bumped value and
+        // would still commit.
         const seq = ++this.loadDataSeq;
+        this.isLoadingData = true;
         // Only toggle loading. Do NOT pre-set page:1 / hasMore:true here —
         // if the request fails in silent mode we would leave items at the
         // old depth with page reset to 1, and the next loadMore would
-        // duplicate rows (#290 Jerry-Xin / yujiawei round-6 P1-2). Commit
-        // page/hasMore atomically with items on success instead.
-        this.setState({ loading: true, error: null });
+        // duplicate rows (round-6). Commit page/hasMore atomically with
+        // items on success instead.
+        // Silent refresh keeps the existing error banner if any (round-8
+        // yujiawei P2-2): a user-visible error the user already saw must
+        // not be erased by an automatic background refresh.
+        this.setState(opts.silent ? { loading: true } : { loading: true, error: null });
         try {
             const { pageSize, statusFilter, keyword } = this.state;
             const params: ListSummariesParams = {
@@ -205,6 +217,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             };
             const resp = await api.listSummaries(params);
             if (seq !== this.loadDataSeq) return;
+            // Post-await mount check (round-8 yujiawei P2-3): the entry
+            // isMounted_ guard cannot cover the await window; React 18 will
+            // drop setState on an unmounted fiber but the callback would
+            // still be scheduled. Explicit check makes the guarantee ours.
+            if (!this.isMounted_) return;
             this.setState({
                 items: resp.items,
                 page: 1,
@@ -212,10 +229,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 loading: false,
                 hasMore: resp.items.length < resp.total,
             }, () => {
-                this.maybeStartBatchPoll();
+                if (this.isMounted_) this.maybeStartBatchPoll();
             });
         } catch (err: any) {
             if (seq !== this.loadDataSeq) return;
+            if (!this.isMounted_) return;
             // Background refresh (silent=true) must not surface a network
             // banner to an idle user — just clear loading and leave the last
             // good list visible. A user-triggered loadData still shows the
@@ -225,6 +243,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 return;
             }
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
+        } finally {
+            this.isLoadingData = false;
         }
     }
 
@@ -237,14 +257,16 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     };
 
     async loadMore() {
-        if (this.state.loadingMore || !this.state.hasMore || this.state.loading) return;
-        // Capture the loadData generation counter: if any loadData (user or
-        // background-refresh) starts and bumps it while our request is in
-        // flight, the list was reset under us and our appended batch would
-        // splice a hole. Discard on seq mismatch. This is more robust than
-        // the earlier `prev.page !== nextPage - 1` check, which is a no-op
-        // at nextPage === 2 because loadData resets page back to 1 as well
-        // (round-6: Jerry-Xin / yujiawei P1-1).
+        // isLoadingData is a synchronous flag set at loadData entry: closes
+        // the "loadData started first, scroll fires before React commits
+        // loading:true" ordering that reading state.loading would miss.
+        if (this.state.loadingMore || !this.state.hasMore
+            || this.state.loading || this.isLoadingData) return;
+        // Also capture loadDataSeq: if any loadData starts and bumps it
+        // while our request is in flight, the list will be reset under us
+        // and our appended batch would splice a hole. Discard on mismatch.
+        // The pair (isLoadingData at entry + seq at commit) closes both
+        // orderings — loadData-first, loadMore-first — deterministically.
         const seq = this.loadDataSeq;
         this.setState({ loadingMore: true });
         try {
@@ -259,8 +281,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             };
             const resp = await api.listSummaries(params);
             if (seq !== this.loadDataSeq) {
-                // A concurrent loadData landed / is landing; its response is
-                // authoritative for items/page. Drop our batch.
                 this.setState({ loadingMore: false });
                 return;
             }
