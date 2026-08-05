@@ -4,13 +4,15 @@
 // disabled "submitted" state. Idempotency is enforced server-side by (doc_id, requester).
 //
 // user+Bot grants: the requester's own Bots in this Space are listed DEFAULT-SELECTED and
-// individually cancellable. The request DEFAULTS to carrying every owned Bot, so an UNKNOWN set
-// (loading, or a lookup failure) must NOT masquerade as zero Bots: the button is disabled while
-// Bots load, a lookup failure shows a recoverable error + retry, and only a real zero-Bot success
-// permits a human-only request.
+// individually cancellable. Ownership comes from the owner-scoped `/robot/owned_bots` seam (server
+// enforces owner + Space + active) rather than filtering the space-wide catalog client-side. The
+// request DEFAULTS to carrying every owned Bot, so an UNKNOWN set (loading, a lookup failure, or a
+// shape-degraded 200) must NOT masquerade as zero Bots: the button is disabled while Bots load, a
+// failure shows a recoverable error + retry, and only a real zero-Bot success permits a human-only
+// request.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchSpaceBotSnapshots, getCurrentUid, t } from '../octoweb/index.ts'
+import { fetchMyOwnedBots, t } from '../octoweb/index.ts'
 import { requestAccess, AccessRequestConflictError } from './api.ts'
 
 type SubmitState = 'idle' | 'submitting' | 'submitted' | 'error'
@@ -36,7 +38,7 @@ export function RequestAccessButton({ docId, spaceId }: { docId: string; spaceId
 
 function RequestAccessButtonInner({ docId, spaceId }: { docId: string; spaceId?: string }) {
   const [state, setState] = useState<SubmitState>('idle')
-  // The requester's own Bots in this Space (creatorUid === current uid). Default: all selected.
+  // The requester's own Bots in this Space (owner-scoped). Default: all selected.
   const [myBots, setMyBots] = useState<MyBot[]>([])
   const [cancelled, setCancelled] = useState<Set<string>>(() => new Set())
   const [botsState, setBotsState] = useState<BotsState>(spaceId ? 'loading' : 'ready')
@@ -55,11 +57,10 @@ function RequestAccessButtonInner({ docId, spaceId }: { docId: string; spaceId?:
     setBotsState('loading')
     setMyBots([])
     setCancelled(new Set())
-    void fetchSpaceBotSnapshots(spaceId)
+    void fetchMyOwnedBots(spaceId)
       .then((bots) => {
         if (generation.current !== gen) return
-        const me = getCurrentUid()
-        setMyBots(bots.filter((b) => b.creatorUid === me).map((b) => ({ uid: b.uid, name: b.name })))
+        setMyBots(bots.map((b) => ({ uid: b.uid, name: b.name })))
         setBotsState('ready')
       })
       .catch(() => {

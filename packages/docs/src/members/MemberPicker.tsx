@@ -351,6 +351,11 @@ export function MemberPicker({
     setQuery('')
   }
 
+  // Button label counts must match what actually submits: standalone Bots live in `selected` too, so
+  // splitting by `isBot` keeps a Bot from being labelled as a person (offered sets gate submission).
+  const selectedHumanCount = [...selected].filter((uid) => !memberByUid.get(uid)?.isBot).length
+  const selectedBotCount =
+    [...selected].filter((uid) => memberByUid.get(uid)?.isBot).length + selectedBots.size
   const count = selected.size
 
   return (
@@ -464,10 +469,10 @@ export function MemberPicker({
           ))}
         </select>
         <button type="button" className="octo-doc-primary-btn" disabled={count === 0 || busy} onClick={add}>
-          {selectedBots.size > 0
-            ? t('docs.member.addSnapshotCount', { values: { people: count, bots: selectedBots.size } })
-            : count > 1
-              ? t('docs.member.addCount', { values: { count } })
+          {selectedBotCount > 0
+            ? t('docs.member.addSnapshotCount', { values: { people: selectedHumanCount, bots: selectedBotCount } })
+            : selectedHumanCount > 1
+              ? t('docs.member.addCount', { values: { count: selectedHumanCount } })
               : t('docs.member.add')}
         </button>
       </div>

@@ -200,17 +200,31 @@ interface HostSpaceBot {
   creator_uid?: string
 }
 
+/** A `/robot/space_bots` 200 whose body is not an array — a broken response, not an empty space. */
+class MalformedSpaceBotsError extends Error {
+  constructor() {
+    super('space_bots: malformed non-array response')
+    this.name = 'MalformedSpaceBotsError'
+  }
+}
+
 /**
  * One page fetch of the space bots, filtered to entries with a uid. Shared by fetchSpaceBotNames
  * (name-only) and fetchSpaceBotSnapshots (name + creatorUid) so both read the same endpoint once.
+ *
+ * FAILS CLOSED on a shape-degraded 200: a non-array body is a broken response, NOT "this space has
+ * no Bots". Coercing it to `[]` would resolve a KNOWN-empty Bot set off a malformed payload, and a
+ * grant-critical caller (the access request defaults to carrying every owned Bot) would then submit
+ * humans-only with no signal. Throwing lets such callers surface a recoverable error + retry, and
+ * matches the base-side loader. Cosmetic name-backfill swallows it explicitly (fetchSpaceBotNames).
  */
 async function getSpaceBots(spaceId: string): Promise<HostSpaceBot[]> {
   if (!spaceId) return []
   const { data } = await apiClient().get<HostSpaceBot[]>(
     `/robot/space_bots?space_id=${encodeURIComponent(spaceId)}`,
   )
-  const bots = Array.isArray(data) ? data : []
-  return bots.filter((b): b is HostSpaceBot => !!b && !!b.uid)
+  if (!Array.isArray(data)) throw new MalformedSpaceBotsError()
+  return data.filter((b): b is HostSpaceBot => !!b && !!b.uid)
 }
 
 /**
@@ -223,11 +237,15 @@ async function getSpaceBots(spaceId: string): Promise<HostSpaceBot[]> {
  * so one request per space backfills those names with no per-uid fanout and no extra permission.
  *
  * Returns `{ uid, name }` pairs (name falls back to the uid so a bot with no display name is never
- * blank). Resolves to an EMPTY list on any failure or non-array body so callers can merge safely and
- * fall back to the uid — this must never break the human-member name path.
+ * blank). Name backfill is COSMETIC, so a malformed (non-array) 200 degrades to an EMPTY list here
+ * and the uid fallback stands — unlike the grant-critical snapshot path, which fails closed. Request
+ * failures still reject; callers wrap them so the human-member name path never breaks.
  */
 export async function fetchSpaceBotNames(spaceId: string): Promise<SpaceMemberLite[]> {
-  const bots = await getSpaceBots(spaceId)
+  const bots = await getSpaceBots(spaceId).catch((e: unknown) => {
+    if (e instanceof MalformedSpaceBotsError) return [] as HostSpaceBot[]
+    throw e
+  })
   return bots.map((b) => ({ uid: b.uid, name: b.name || b.uid }))
 }
 
@@ -238,8 +256,10 @@ export async function fetchSpaceBotNames(spaceId: string): Promise<SpaceMemberLi
  * `{ uid, name }` contract untouched — the creatorUid is only meaningful to the grant snapshot UI,
  * which nests each Bot beneath its creator.
  *
- * Fail-soft: an empty list on any failure / non-array body so a Bot lookup never breaks the human
- * roster path.
+ * Fails CLOSED on a malformed (non-array) 200: the Bot set stays UNKNOWN (rejects) instead of
+ * reading as zero Bots, so a grant-critical caller blocks + offers retry rather than silently
+ * dropping the Bot dimension. Roster callers that merely widen a candidate list still wrap this in
+ * `.catch(() => [])`, where a missing candidate cannot be submitted unseen.
  */
 export async function fetchSpaceBotSnapshots(spaceId: string): Promise<SpaceMemberLite[]> {
   const bots = await getSpaceBots(spaceId)
@@ -293,6 +313,14 @@ interface HostOwnedBot {
   description?: string
 }
 
+/** A `/robot/owned_bots` 200 whose body is not an array — broken, not "this user owns no bots". */
+class MalformedOwnedBotsError extends Error {
+  constructor() {
+    super('owned_bots: malformed non-array response')
+    this.name = 'MalformedOwnedBotsError'
+  }
+}
+
 /**
  * Fetch the bots the CURRENT user owns in a Space via `GET /robot/owned_bots?space_id=<encoded>`
  * (octo-server modules/robot ownedBots) for the docs "new HTML" picker.
@@ -308,14 +336,26 @@ interface HostOwnedBot {
  * EMPTY list on a non-array body, and drops entries with no uid — so the caller can render an
  * "empty"/"error" state without a broken row.
  */
-export async function fetchOwnedBots(spaceId: string): Promise<import('./types.ts').OwnedBotLite[]> {
-  if (!spaceId) return []
+/**
+ * One `/robot/owned_bots` read, filtered to entries with a uid. `strict` FAILS CLOSED on a
+ * shape-degraded 200 for grant-critical callers (an UNKNOWN owned-Bot set must never read as zero);
+ * the non-strict form keeps the picker's tolerant "render empty" behaviour.
+ */
+async function getOwnedBots(spaceId: string, strict: boolean): Promise<HostOwnedBot[]> {
   const { data } = await apiClient().get<HostOwnedBot[]>(
     `/robot/owned_bots?space_id=${encodeURIComponent(spaceId)}`,
   )
-  const bots = Array.isArray(data) ? data : []
+  if (!Array.isArray(data)) {
+    if (strict) throw new MalformedOwnedBotsError()
+    return []
+  }
+  return data.filter((b): b is HostOwnedBot => !!b && !!b.uid)
+}
+
+export async function fetchOwnedBots(spaceId: string): Promise<import('./types.ts').OwnedBotLite[]> {
+  if (!spaceId) return []
+  const bots = await getOwnedBots(spaceId, false)
   return bots
-    .filter((b): b is HostOwnedBot => !!b && !!b.uid)
     .map((b) => {
       const lite: import('./types.ts').OwnedBotLite = { uid: b.uid, name: b.name || b.uid }
       // Carry description only when the server actually sent one — no `description: undefined` noise.
@@ -334,16 +374,19 @@ export async function fetchOwnedBots(spaceId: string): Promise<import('./types.t
  * Maps each owned bot to the lite member shape flagged `isBot` + `safeStandalone` (a viewer-scoped,
  * caller-owned provenance the picker may grant standalone) and stamps `creatorUid = currentUid` so
  * the picker attributes it to its true owner (the current user) rather than treating it as
- * creator-less. Fail-soft: an EMPTY list on failure / non-array body so an owned-bots hiccup never
- * breaks the human roster path (callers wrap in `.catch(() => [])`).
+ * creator-less.
+ *
+ * Fails CLOSED on a malformed (non-array) 200 so a grant-critical caller (the access request, which
+ * defaults to carrying every owned Bot) blocks + retries instead of silently reading zero Bots.
+ * Roster callers that merely widen a candidate list still wrap this in `.catch(() => [])`.
  */
 export async function fetchMyOwnedBots(spaceId?: string): Promise<SpaceMemberLite[]> {
   if (!spaceId) return []
-  const owned = await fetchOwnedBots(spaceId)
+  const owned = await getOwnedBots(spaceId, true)
   const creatorUid = getCurrentUid()
   return owned.map((b) => ({
     uid: b.uid,
-    name: b.name,
+    name: b.name || b.uid,
     isBot: true as const,
     safeStandalone: true as const,
     ...(creatorUid ? { creatorUid } : {}),

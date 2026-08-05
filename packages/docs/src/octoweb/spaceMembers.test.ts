@@ -94,9 +94,18 @@ describe('octoweb fetchSpaceBotNames seam', () => {
     expect(bots).toEqual([{ uid: 'bot1', name: 'bot1' }])
   })
 
-  it('returns an empty list for a non-array body', async () => {
+  it('degrades a malformed non-array 200 to an empty list (cosmetic name backfill)', async () => {
     wk.apiClient.responder = () => ({ data: { nope: true }, status: 200 })
     expect(await fetchSpaceBotNames('s_1')).toEqual([])
+  })
+
+  // Only the shape-degraded body is swallowed: a genuine request failure must still reject so
+  // callers keep deciding for themselves (they wrap it) instead of reading a silent empty list.
+  it('still rejects on a genuine request failure', async () => {
+    wk.apiClient.responder = () => {
+      throw new Error('boom')
+    }
+    await expect(fetchSpaceBotNames('s_1')).rejects.toThrow('boom')
   })
 
   it('returns an empty list for a blank space id without touching the host', async () => {
@@ -158,6 +167,13 @@ describe('octoweb fetchSpaceBotSnapshots seam', () => {
   it('returns an empty list for a blank space id without touching the host', async () => {
     expect(await fetchSpaceBotSnapshots('')).toEqual([])
     expect(wk.apiClient.calls).toHaveLength(0)
+  })
+
+  // Grant-critical: a malformed 200 must stay an UNKNOWN Bot set, never read as zero Bots, so a
+  // caller that defaults to carrying Bots blocks + retries instead of silently submitting none.
+  it('rejects on a malformed non-array 200 instead of reading as zero Bots', async () => {
+    wk.apiClient.responder = () => ({ data: { items: [] }, status: 200 })
+    await expect(fetchSpaceBotSnapshots('s_1')).rejects.toThrow(/malformed non-array/)
   })
 })
 
@@ -235,9 +251,11 @@ describe('octoweb fetchMyOwnedBots seam (owner-scoped picker provenance)', () =>
     expect(wk.apiClient.calls.some((c) => c.url.startsWith('/robot/my_bots'))).toBe(false)
   })
 
-  it('returns an empty list for a non-array body and for a blank space id', async () => {
+  // Grant-critical: an owned-Bot set from a malformed 200 stays UNKNOWN (rejects) so a caller that
+  // defaults to carrying owned Bots blocks instead of silently reading zero.
+  it('rejects on a malformed non-array 200 and skips the request for a blank space id', async () => {
     wk.apiClient.responder = () => ({ data: { nope: true }, status: 200 })
-    expect(await fetchMyOwnedBots('s_1')).toEqual([])
+    await expect(fetchMyOwnedBots('s_1')).rejects.toThrow(/malformed non-array/)
     expect(await fetchMyOwnedBots('')).toEqual([])
   })
 })

@@ -289,7 +289,8 @@ describe('MemberPicker Bot search + creator attribution (task #4)', () => {
     expect(screen.getByText('Owner Bot')).toBeTruthy()
     expect(screen.getByText('docs.member.botCreator')).toBeTruthy()
     fireEvent.click(screen.getByText('Owner Bot'))
-    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    // A standalone Bot counts as a Bot, not a person, in the button label.
+    fireEvent.click(screen.getByText('docs.member.addSnapshotCount').closest('button') as HTMLButtonElement)
     expect(onAdd).toHaveBeenCalledWith(
       ['b_1'],
       'writer',
@@ -306,7 +307,7 @@ describe('MemberPicker Bot search + creator attribution (task #4)', () => {
     await waitFor(() => expect(screen.getByText('Independent Bot')).toBeTruthy())
     expect(screen.getByText('docs.member.botCreator')).toBeTruthy()
     fireEvent.click(screen.getByText('Independent Bot'))
-    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    fireEvent.click(screen.getByText('docs.member.addSnapshotCount').closest('button') as HTMLButtonElement)
     expect(onAdd).toHaveBeenCalledWith(
       ['b_1'],
       'writer',
@@ -553,7 +554,7 @@ describe('MemberPicker creator-less Space Bots (P1 provenance)', () => {
     const row = screen.getByText('Owned Bot').closest('button') as HTMLButtonElement
     expect(row.disabled).toBe(false)
     fireEvent.click(screen.getByText('Owned Bot'))
-    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    fireEvent.click(screen.getByText('docs.member.addSnapshotCount').closest('button') as HTMLButtonElement)
     expect(onAdd).toHaveBeenCalledWith(['u_ownedbot'], 'writer', { humanUids: [], botUids: ['u_ownedbot'] })
   })
 
@@ -651,7 +652,7 @@ describe('MemberPicker Bot expander UX (task #3)', () => {
     await waitFor(() => expect(screen.getByText('Owned Bot')).toBeTruthy())
     // Real selection: the standalone Bot is enabled and ticked.
     fireEvent.click(screen.getByText('Owned Bot'))
-    const addBtn = screen.getByText('docs.member.add').closest('button') as HTMLButtonElement
+    const addBtn = screen.getByText('docs.member.addSnapshotCount').closest('button') as HTMLButtonElement
     expect(addBtn.disabled).toBe(false)
     // Topology transition: owned_bots no longer returns it (and re-fetch triggered by remount key).
     ownedResponse = []

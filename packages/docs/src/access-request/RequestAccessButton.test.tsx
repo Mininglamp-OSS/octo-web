@@ -16,14 +16,13 @@ afterEach(() => cleanup())
 
 describe('RequestAccessButton — user + Bot access request (task #2/#3)', () => {
   it('lists the requester\'s own Space Bots default-selected and submits them all', async () => {
-    // loginInfo.uid defaults to 'u_self' in the mock.
+    // The owner-scoped endpoint returns only the caller's own Bots (server enforces owner + Space).
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) {
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
         return {
           data: [
-            { uid: 'b_mine1', name: 'My Writer', creator_uid: 'u_self' },
-            { uid: 'b_mine2', name: 'My Review', creator_uid: 'u_self' },
-            { uid: 'b_other', name: 'Someone Else', creator_uid: 'u_other' },
+            { uid: 'b_mine1', name: 'My Writer' },
+            { uid: 'b_mine2', name: 'My Review' },
           ],
           status: 200,
         }
@@ -31,10 +30,12 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
       return { data: {}, status: 201 }
     }
     render(<RequestAccessButton docId="d_1" spaceId="s_1" />)
-    // Only the two Bots I created show; the other user's Bot is filtered out.
     await waitFor(() => expect(screen.getByText('My Writer')).toBeTruthy())
     expect(screen.getByText('My Review')).toBeTruthy()
-    expect(screen.queryByText('Someone Else')).toBeNull()
+    // Ownership is resolved server-side: no space-wide catalog read, no client-side creator filter.
+    expect(wk.apiClient.calls.some((c) => c.url.startsWith('/robot/space_bots'))).toBe(false)
+    const owned = wk.apiClient.calls.filter((c) => c.url.startsWith('/robot/owned_bots'))
+    expect(owned[0].url).toBe('/robot/owned_bots?space_id=s_1')
 
     fireEvent.click(screen.getByText('docs.forward.requestAccess'))
     await waitFor(() =>
@@ -47,7 +48,7 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
   it('disables the request button while Bots are loading', async () => {
     let release: (v: unknown) => void = () => {}
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) {
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
         return new Promise((r) => (release = r)) as never
       }
       return { data: {}, status: 201 }
@@ -66,7 +67,7 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
   it('shows a recoverable error + retry when the Bot lookup fails, then succeeds on retry', async () => {
     let attempt = 0
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) {
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
         attempt++
         if (attempt === 1) throw new Error('boom')
         return { data: [{ uid: 'b_mine1', name: 'My Writer', creator_uid: 'u_self' }], status: 200 }
@@ -87,9 +88,34 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
     expect(post.body).toEqual({ botUids: ['b_mine1'] })
   })
 
+  // A shape-degraded 200 must NOT read as "zero Bots": the Bot set is UNKNOWN, so the request stays
+  // blocked with a retry instead of silently filing a humans-only access request.
+  it('treats a malformed non-array 200 as an error, not zero Bots', async () => {
+    let attempt = 0
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
+        attempt++
+        if (attempt === 1) return { data: { items: [] }, status: 200 }
+        return { data: [{ uid: 'b_mine1', name: 'My Writer', creator_uid: 'u_self' }], status: 200 }
+      }
+      return { data: {}, status: 201 }
+    }
+    render(<RequestAccessButton docId="d_1" spaceId="s_1" />)
+    await waitFor(() => expect(screen.getByText('docs.forward.requestBotsError')).toBeTruthy())
+    const blocked = screen.getByText('docs.forward.requestAccess').closest('button') as HTMLButtonElement
+    expect(blocked.disabled).toBe(true)
+    expect(wk.apiClient.calls.some((c) => c.method === 'post')).toBe(false)
+    // Retry reads a well-formed catalog and carries the owned Bot again.
+    fireEvent.click(screen.getByText('docs.forward.requestBotsRetry'))
+    await waitFor(() => expect(screen.getByText('My Writer')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.forward.requestAccess'))
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.method === 'post')).toBe(true))
+    expect(wk.apiClient.calls.find((c) => c.method === 'post')!.body).toEqual({ botUids: ['b_mine1'] })
+  })
+
   it('lets the requester cancel a single Bot before submitting', async () => {
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) {
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
         return {
           data: [
             { uid: 'b_mine1', name: 'My Writer', creator_uid: 'u_self' },
@@ -116,8 +142,8 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
     // No space → ready immediately with a human-only request enabled.
     fireEvent.click(screen.getByText('docs.forward.requestAccess'))
     await waitFor(() => expect(wk.apiClient.calls.some((c) => c.method === 'post')).toBe(true))
-    // No space_bots lookup happened.
-    expect(wk.apiClient.calls.some((c) => c.url.startsWith('/robot/space_bots'))).toBe(false)
+    // No Bot lookup happened at all without a space.
+    expect(wk.apiClient.calls.some((c) => c.url.startsWith('/robot/owned_bots'))).toBe(false)
     const post = wk.apiClient.calls.find((c) => c.method === 'post')!
     // Zero Bots → no body (legacy shape), never `{ botUids: [] }`.
     expect(post.body).toBeUndefined()
@@ -126,7 +152,7 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
   it('reloads Bots and drops the old set when spaceId changes, ignoring a stale response', async () => {
     let releaseS1: (v: unknown) => void = () => {}
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) {
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
         if (url.includes('s_1')) return new Promise((r) => (releaseS1 = r)) as never
         return { data: [{ uid: 'b_s2', name: 'S2 Bot', creator_uid: 'u_self' }], status: 200 }
       }
@@ -148,7 +174,7 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
 
   it('resets the submit state when the document (docId) switches', async () => {
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: [], status: 200 }
       return { data: {}, status: 201 }
     }
     const { rerender } = render(<RequestAccessButton docId="d_1" spaceId="s_1" />)
@@ -168,7 +194,7 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
   it('drops a stale in-flight submit for the previous doc so it cannot overwrite the new doc state', async () => {
     let releaseD1: (v: unknown) => void = () => {}
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: [], status: 200 }
       if (method === 'post' && url.includes('/docs/d_1/')) {
         return new Promise((r) => (releaseD1 = r)) as never
       }
@@ -199,7 +225,7 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
   it('keeps the new doc idle even when the stale submit resolves before any effect flush', async () => {
     let releaseD1: (v: unknown) => void = () => {}
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: [], status: 200 }
       if (method === 'post' && url.includes('/docs/d_1/')) {
         return new Promise((r) => (releaseD1 = r)) as never
       }
@@ -230,7 +256,7 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
   it('keeps the new doc idle when a stale submit rejects (409 or error) before any effect flush', async () => {
     let rejectD1: (e: unknown) => void = () => {}
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: [], status: 200 }
       if (method === 'post' && url.includes('/docs/d_1/')) {
         return new Promise((_r, rej) => (rejectD1 = rej)) as never
       }
@@ -261,7 +287,7 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
     let releaseA: (v: unknown) => void = () => {}
     let aPostCount = 0
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: [], status: 200 }
       if (method === 'post' && url.includes('/docs/d_a/')) {
         aPostCount++
         if (aPostCount === 1) return new Promise((r) => (releaseA = r)) as never
@@ -302,7 +328,7 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
     let rejectA: (e: unknown) => void = () => {}
     let aPostCount = 0
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: [], status: 200 }
       if (method === 'post' && url.includes('/docs/d_a/')) {
         aPostCount++
         if (aPostCount === 1) return new Promise((_r, rej) => (rejectA = rej)) as never
