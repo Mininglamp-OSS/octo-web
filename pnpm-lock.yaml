@@ -311,6 +311,9 @@ importers:
       concurrently:
         specifier: ^8.2.2
         version: 8.2.2
+      cross-env:
+        specifier: ^7.0.3
+        version: 7.0.3
       electron:
         specifier: 26.0.0
         version: 26.0.0
