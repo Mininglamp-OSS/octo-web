@@ -413,6 +413,20 @@ export async function transferFromIm(req: TransferFromImReq): Promise<TransferRe
   return post<TransferResult>('/blobs/transfer-from-im', req);
 }
 
+export interface ImTransferredResult {
+  exists: boolean;
+  file_id?: number;
+  space_id?: string;
+  parent_id?: number;
+}
+
+/** Query whether an IM file (identified by its message url) has already been
+ *  transferred into the caller's personal space. Used by the chat file card to
+ *  switch its icon action between "save to drive" and "view in drive". */
+export async function checkImTransferred(refId: string): Promise<ImTransferredResult> {
+  return get<ImTransferredResult>('/blobs/im-transferred', { ref_id: refId });
+}
+
 // ─── Type-2 blobs — two-phase direct upload ─────────────────────────────────
 
 export async function prepareUpload(req: PrepareUploadReq): Promise<PrepareUploadResp> {

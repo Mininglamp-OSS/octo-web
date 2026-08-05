@@ -11,6 +11,7 @@ import { HardDrive } from 'lucide-react';
 import DriveSidebar from './pages/DriveSidebar';
 import DriveContent from './pages/DriveContent';
 import { DriveVM } from './pages/DriveVM';
+import { transferFromIm, checkImTransferred } from './api/driveApi';
 
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
@@ -104,6 +105,31 @@ export default class DriveModule implements IModule {
       'zh-CN': zhCN,
       'en-US': enUS,
     });
+
+    // Bridge for the chat file card's "save to Drive" action. Backend accepts
+    // an empty target_space_id and defaults to the caller's personal space,
+    // so we don't pre-resolve it (one fewer round-trip).
+    WKApp.saveMessageToDrive = async ({ im_group_no, im_msg_id }: { im_group_no: string; im_msg_id: string }) => {
+      const result = await transferFromIm({
+        im_group_no,
+        im_msg_id,
+        target_space_id: '',
+        target_parent_id: 0,
+      });
+      return { file_id: result.id, space_id: result.space_id, parent_id: result.parent_id };
+    };
+
+    // Chat file card hover-check: has this IM file already been transferred?
+    WKApp.checkDriveTransferred = (refId: string) => checkImTransferred(refId);
+
+    // Chat file card "view in drive": open the drive route, ensure the right
+    // pane is mounted, and let the VM focus/flash the target file.
+    WKApp.openDriveFile = ({ space_id, parent_id, file_id }: { space_id: string; parent_id: number; file_id: number }) => {
+      WKApp.routeLeft.popToRoot();
+      mountDriveContent();
+      WKApp.route.syncPath('/drive');
+      vm.focusFile(space_id, parent_id, file_id);
+    };
 
     // `/drive` renders the space rail into contentLeft. hostShell keeps
     // URL-driven renders mounting the full shell (see above). The share/invite

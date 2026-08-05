@@ -766,6 +766,18 @@ export default class WKApp extends ProviderListener {
     originChannel?: { channelId: string; channelType: number },
   ) => void;
   static searchChatCandidates?: (params: { keyword?: string; chat_type?: string; space_id?: string }) => Promise<any[]>;
+  // Transfer an IM file message into the drive's personal space. Set by
+  // DriveModule.init(). Absent when the drive module isn't registered or the
+  // `drive_on` remote flag is false — callers must guard on presence.
+  // Returns the resulting drive file coordinates so the caller can flip its UI
+  // state to "view in drive" without a follow-up query.
+  static saveMessageToDrive?: (params: { im_group_no: string; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number }>;
+  // Query whether an IM file (by its message url) is already transferred into
+  // the caller's personal drive space. Registered by DriveModule; the chat file
+  // card uses it to switch its icon action between "save" and "view".
+  static checkDriveTransferred?: (refId: string) => Promise<{ exists: boolean; file_id?: number; space_id?: string; parent_id?: number }>;
+  // Open the drive UI and focus/flash a specific file. Registered by DriveModule.
+  static openDriveFile?: (params: { space_id: string; parent_id: number; file_id: number }) => void;
   // Id of the currently active sidebar menu (kept in sync by Main page)
   static currentMenuId?: string;
   static apiClient = APIClient.shared; // api客户端

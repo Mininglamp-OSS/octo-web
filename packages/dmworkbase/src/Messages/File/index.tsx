@@ -6,7 +6,7 @@ import WKApp from "../../App";
 import { FileContent } from "./FileContent";
 import { downloadFile } from "../../Utils/download";
 import { WKSDK, Task, TaskStatus } from "wukongimjssdk";
-import { Toast } from "@douyinfe/semi-ui";
+import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import WKModal from "../../Components/WKModal";
 import MarkdownContent from "../Text/MarkdownContent";
 import MessageRow from "../../ui/message/MessageRow";
@@ -350,6 +350,8 @@ interface FileCellState {
   textPreviewContent: string;
   textPreviewName: string;
   textPreviewExt: string;
+  /** 该 IM 文件是否已存进云盘。undefined = 未查过；hover 时首次查询后填入。 */
+  imTransferred?: { exists: boolean; file_id?: number; space_id?: string; parent_id?: number };
 }
 
 export class FileCell extends MessageCell<any, FileCellState> {
@@ -357,6 +359,8 @@ export class FileCell extends MessageCell<any, FileCellState> {
   declare context: React.ContextType<typeof I18nContext>;
 
   private _task?: RestartableTask;
+  /** 200ms hover debounce timer for the "check-if-transferred" query. */
+  private _hoverTimer: ReturnType<typeof setTimeout> | null = null;
 
   private _taskListener = (task: Task) => {
     const { message } = this.props;
@@ -407,6 +411,10 @@ export class FileCell extends MessageCell<any, FileCellState> {
   componentWillUnmount() {
     super.componentWillUnmount();
     WKSDK.shared().taskManager.removeListener(this._taskListener);
+    if (this._hoverTimer !== null) {
+      clearTimeout(this._hoverTimer);
+      this._hoverTimer = null;
+    }
   }
 
   getFileURL(content: FileContent): string {
@@ -429,6 +437,75 @@ export class FileCell extends MessageCell<any, FileCellState> {
     if (!url || !isSafeUrl(url)) return;
 
     await downloadFile(url, content.name || "file");
+  };
+
+  handleSaveToDrive = async () => {
+    const { message } = this.props;
+    const { t } = this.context;
+    const content = message.content as FileContent;
+    const url = this.getFileURL(content);
+    if (!url || !isSafeUrl(url)) {
+      Toast.error(t("base.messageFile.saveToDriveFailed"));
+      return;
+    }
+    // 已存过 → 直接在云盘中查看，不再转存。parent_id 可能是 0（个人空间
+    // 根目录，合法），故只校验 file_id + space_id，parent_id 缺省当 0。
+    const known = this.state.imTransferred;
+    if (known?.exists && known.file_id && known.space_id) {
+      WKApp.openDriveFile?.({
+        space_id: known.space_id,
+        parent_id: known.parent_id ?? 0,
+        file_id: known.file_id,
+      });
+      return;
+    }
+    const save = WKApp.saveMessageToDrive;
+    if (!save) return;
+    try {
+      const result = await save({
+        im_group_no: message.channel.channelID,
+        im_msg_id: message.messageID,
+      });
+      // 转存成功：立即把状态切到"已存"，下次点击/hover 直接走查看分支。
+      this.setState({
+        imTransferred: {
+          exists: true,
+          file_id: result.file_id,
+          space_id: result.space_id,
+          parent_id: result.parent_id,
+        },
+      });
+      Toast.success(t("base.messageFile.saveToDriveSuccess"));
+    } catch {
+      Toast.error(t("base.messageFile.saveToDriveFailed"));
+    }
+  };
+
+  /** 首次 hover 存云盘图标时(经过 200ms 防抖)查询该 IM 文件是否已转存。 */
+  private scheduleTransferCheck = () => {
+    if (this.state.imTransferred !== undefined) return; // 已查过
+    if (this._hoverTimer !== null) return;
+    const check = WKApp.checkDriveTransferred;
+    if (!check) return; // drive 模块未装 → 保持"存到云盘"
+    const { message } = this.props;
+    const content = message.content as FileContent;
+    const refId = this.getFileURL(content);
+    if (!refId) return;
+    this._hoverTimer = setTimeout(() => {
+      this._hoverTimer = null;
+      check(refId)
+        .then((res) => this.setState({ imTransferred: res }))
+        .catch(() => {
+          /* 查询失败保持未知,下次 hover 会再试;不打扰用户 */
+        });
+    }, 200);
+  };
+
+  private cancelPendingTransferCheck = () => {
+    if (this._hoverTimer !== null) {
+      clearTimeout(this._hoverTimer);
+      this._hoverTimer = null;
+    }
   };
 
   handlePreview = () => {
@@ -595,8 +672,8 @@ export class FileCell extends MessageCell<any, FileCellState> {
               >
                 <svg
                   viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
+                  width="16"
+                  height="16"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -654,40 +731,84 @@ export class FileCell extends MessageCell<any, FileCellState> {
                 <div className="wk-message-file-name" title={content.name}>
                   {content.name || t("base.messageFile.unknownFile")}
                 </div>
-                <div className="wk-message-file-meta">
-                  <span className="wk-message-file-size">
-                    {formatFileSize(content.size)}
-                  </span>
-                  {content.extension && (
-                    <span className="wk-message-file-ext">
-                      {content.extension.toUpperCase()}
+                <div className="wk-message-file-meta-row">
+                  <div className="wk-message-file-meta">
+                    <span className="wk-message-file-size">
+                      {formatFileSize(content.size)}
                     </span>
-                  )}
-                </div>
-              </div>
-              <div className="wk-message-file-actions">
-                <div
-                  className="wk-message-file-action"
-                  title={t("base.conversation.file.download")}
-                  onClick={(e) => {
-                    e.stopPropagation(); // 阻止冒泡，避免触发预览
-                    this.handleDownload();
-                  }}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="18"
-                    height="18"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
+                    {content.extension && (
+                      <span className="wk-message-file-ext">
+                        {content.extension.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="wk-message-file-actions">
+                    {WKApp.saveMessageToDrive && WKApp.remoteConfig?.driveOn && (
+                      <Tooltip
+                        content={
+                          this.state.imTransferred?.exists
+                            ? t("base.messageFile.viewInDrive")
+                            : t("base.messageFile.saveToDrive")
+                        }
+                        position="top"
+                      >
+                        <div
+                          className="wk-message-file-action"
+                          aria-label={
+                            this.state.imTransferred?.exists
+                              ? t("base.messageFile.viewInDrive")
+                              : t("base.messageFile.saveToDrive")
+                          }
+                          onMouseEnter={this.scheduleTransferCheck}
+                          onMouseLeave={this.cancelPendingTransferCheck}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            this.handleSaveToDrive();
+                          }}
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            width="16"
+                            height="16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
+                            <polyline points="16 16 12 12 8 16" />
+                            <line x1="12" y1="12" x2="12" y2="21" />
+                          </svg>
+                        </div>
+                      </Tooltip>
+                    )}
+                    <Tooltip content={t("base.conversation.file.download")} position="top">
+                      <div
+                        className="wk-message-file-action"
+                        aria-label={t("base.conversation.file.download")}
+                        onClick={(e) => {
+                          e.stopPropagation(); // 阻止冒泡，避免触发预览
+                          this.handleDownload();
+                        }}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          width="16"
+                          height="16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                      </div>
+                    </Tooltip>
+                  </div>
                 </div>
               </div>
             </div>

@@ -28,6 +28,9 @@ export class DriveVM extends ProviderListener {
   spacesError: string | null = null;
   activeSpaceId: string | null = null;
   path: Crumb[] = [];
+  /** File id to flash/scroll to after a focus jump (e.g. "view in drive" from
+   *  a chat file card). Consumed by FileList; cleared by DriveContent ~2s later. */
+  highlightFileId: number | null = null;
 
   private loadStarted = false;
   /** uid the cached spaces belong to; guards against an in-tab user change. */
@@ -88,6 +91,7 @@ export class DriveVM extends ProviderListener {
     this.spacesError = null;
     this.activeSpaceId = null;
     this.path = [];
+    this.highlightFileId = null;
     this.loadedUid = WKApp.loginInfo.uid ?? '';
     this.spacesLoading = true;
     this.notifyListener();
@@ -145,6 +149,23 @@ export class DriveVM extends ProviderListener {
   /** Jump to a crumb in the path trail (truncating deeper folders). */
   navigateTo(index: number): void {
     this.path = this.path.slice(0, index + 1);
+    this.notifyListener();
+  }
+
+  /** Jump to a file in a space and mark it for flash highlight. Currently the
+   *  IM-transfer callers only produce files at the personal space root, so we
+   *  reset the path to root regardless of parentId. */
+  focusFile(spaceId: string, _parentId: number, fileId: number): void {
+    const space = this.spaces.find((s) => s.id === spaceId);
+    this.activeSpaceId = spaceId;
+    this.path = [{ id: 0, name: space ? spaceDisplayName(space, t) : t('drive.file.root') }];
+    this.highlightFileId = fileId;
+    this.notifyListener();
+  }
+
+  clearHighlight(): void {
+    if (this.highlightFileId === null) return;
+    this.highlightFileId = null;
     this.notifyListener();
   }
 

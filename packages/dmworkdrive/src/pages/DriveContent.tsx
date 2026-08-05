@@ -100,6 +100,15 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     setMemberModalOpen(false);
   }, [activeSpaceId]);
 
+  // Clear the row flash ~2s after focusFile lands, so the CSS animation stops
+  // and the row returns to its normal state. Re-arms on every new highlight.
+  const highlightFileId = vm.highlightFileId;
+  useEffect(() => {
+    if (highlightFileId == null) return;
+    const timer = window.setTimeout(() => vm.clearHighlight(), 2000);
+    return () => window.clearTimeout(timer);
+  }, [highlightFileId, vm]);
+
   const openFolder = useCallback((entry: DriveEntry) => {
     vm.enterFolder(entry.id, entry.name);
   }, [vm]);
@@ -215,6 +224,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             canDownload={canDownload}
             canEdit={canEdit}
             canShare={canShare}
+            highlightFileId={highlightFileId}
           />
         )}
         {truncatedTotal !== null && (
