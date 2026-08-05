@@ -1,0 +1,45 @@
+diff --git a/out/node-module-collector/pnpmNodeModulesCollector.js b/out/node-module-collector/pnpmNodeModulesCollector.js
+index 602599280ab621d078748187bb6b4ae9431c1739..630d2c43206b28913a5a8b2d2a6215d87f09fd58 100644
+--- a/out/node-module-collector/pnpmNodeModulesCollector.js
++++ b/out/node-module-collector/pnpmNodeModulesCollector.js
+@@ -24,13 +24,18 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+         const { packageJson } = (await this.cache.locatePackageVersion({ pkgName: packageName, parentDir: this.rootDir, requiredRange: tree.version })) || {};
+         const all = packageJson ? { ...packageJson.dependencies, ...packageJson.optionalDependencies } : { ...tree.dependencies, ...tree.optionalDependencies };
+         const optional = packageJson ? { ...packageJson.optionalDependencies } : {};
+-        const deps = { ...(tree.dependencies || {}), ...(tree.optionalDependencies || {}) };
++        const declaredDeps = packageJson ? { ...packageJson.dependencies, ...packageJson.optionalDependencies } : { ...(tree.dependencies || {}), ...(tree.optionalDependencies || {}) };
++        const treeDeps = { ...(tree.dependencies || {}), ...(tree.optionalDependencies || {}) };
+         this.productionGraph[dependencyId] = { dependencies: [] };
+-        const depPromises = Object.entries(deps).map(async ([packageName, dependency]) => {
++        const depPromises = Object.entries(declaredDeps).map(async ([packageName, range]) => {
+             // First check if it's in production dependencies
+             if (!all[packageName]) {
+                 return undefined;
+             }
++            const dependency = treeDeps[packageName] || (await this.resolveMissingDep(packageName, range));
++            if (dependency == null) {
++                return undefined;
++            }
+             // Then check if optional dependency path exists (using actual resolved path)
+             if (optional[packageName]) {
+                 const pkg = await this.cache.locatePackageVersion({ pkgName: packageName, parentDir: this.rootDir, requiredRange: dependency.version });
+@@ -52,6 +57,19 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+         }
+         this.productionGraph[dependencyId] = { dependencies: collectedDependencies };
+     }
++    async resolveMissingDep(packageName, range) {
++        const pkg = await this.cache.locatePackageVersion({ pkgName: packageName, parentDir: this.rootDir, requiredRange: range });
++        if (pkg && pkg.packageJson && pkg.packageJson.version) {
++            return { version: pkg.packageJson.version };
++        }
++        for (const key of this.allDependencies.keys()) {
++            if (key.startsWith(packageName + "@")) {
++                return { version: key.substring(packageName.length + 1) };
++            }
++        }
++        return null;
++    }
++
+     async collectAllDependencies(tree) {
+         var _a, _b;
+         // Collect regular dependencies

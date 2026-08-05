@@ -17,7 +17,15 @@ module.exports = {
   electronDownload: {
     mirror: "https://registry.npmmirror.com/-/binary/electron/",
   },
-  files: ["resources/**/*","out-election/**/*", "build/**/*"], // 需要打包的文件
+  files: [
+    "resources/**/*",
+    "out-election/**/*",
+    "build/**/*",
+    // 主进程运行时依赖及其传递依赖（electron-screenshots -> debug -> ms 等），
+    // 默认 files 不含 node_modules，需显式声明，否则运行时 Cannot find module。
+    "node_modules/**/*",
+    "package.json",
+  ], // 需要打包的文件
   extraMetadata: {
     main: "out-election/main/index.js",
   },
