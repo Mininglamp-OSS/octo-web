@@ -116,6 +116,27 @@ describe("createAsyncCache", () => {
         expect(cache.peek("k")).toBeUndefined();
     });
 
+    it("starts a fresh load for callers arriving after keyed invalidation", async () => {
+        const cache = createAsyncCache<string>({ ttlMs: 1000 });
+        const stale = deferred<string>();
+        const fresh = deferred<string>();
+        const loader = vi.fn()
+            .mockImplementationOnce(() => stale.promise)
+            .mockImplementationOnce(() => fresh.promise);
+
+        const existingWaiter = cache.get("k", loader);
+        cache.invalidate("k");
+        const postInvalidation = cache.get("k", loader);
+
+        expect(loader).toHaveBeenCalledTimes(2);
+        stale.resolve("stale");
+        fresh.resolve("fresh");
+
+        await expect(existingWaiter).resolves.toBe("stale");
+        await expect(postInvalidation).resolves.toBe("fresh");
+        expect(cache.peek("k")).toBe("fresh");
+    });
+
     it("discards an in-flight result after a keyless invalidate", async () => {
         const cache = createAsyncCache<string>({ ttlMs: 1000 });
         const d = deferred<string>();
@@ -126,6 +147,32 @@ describe("createAsyncCache", () => {
 
         await expect(pending).resolves.toBe("stale");
         expect(cache.peek("k")).toBeUndefined();
+    });
+
+    it("starts fresh loads after keyless invalidation", async () => {
+        const cache = createAsyncCache<string>({ ttlMs: 1000 });
+        const staleA = deferred<string>();
+        const staleB = deferred<string>();
+        const freshA = deferred<string>();
+        const loaderA = vi.fn()
+            .mockImplementationOnce(() => staleA.promise)
+            .mockImplementationOnce(() => freshA.promise);
+
+        const existingA = cache.get("a", loaderA);
+        const existingB = cache.get("b", () => staleB.promise);
+        cache.invalidate();
+        const postInvalidationA = cache.get("a", loaderA);
+
+        expect(loaderA).toHaveBeenCalledTimes(2);
+        staleA.resolve("stale-a");
+        staleB.resolve("stale-b");
+        freshA.resolve("fresh-a");
+
+        await expect(existingA).resolves.toBe("stale-a");
+        await expect(existingB).resolves.toBe("stale-b");
+        await expect(postInvalidationA).resolves.toBe("fresh-a");
+        expect(cache.peek("a")).toBe("fresh-a");
+        expect(cache.peek("b")).toBeUndefined();
     });
 
     it("drops cached entries on invalidate", async () => {
@@ -145,6 +192,27 @@ describe("createAsyncCache", () => {
 
         await cache.get("k", loader);
         await expect(cache.get("k", loader, { maxAgeMs: 0 })).resolves.toBe("v2");
+    });
+
+    it("clones mutable values for every get and peek", async () => {
+        const cache = createAsyncCache<string[]>({
+            ttlMs: 1000,
+            clone: (value) => [...value],
+        });
+        const loader = vi.fn(async () => ["a", "b"]);
+
+        const first = await cache.get("k", loader);
+        first.reverse();
+        first.push("injected");
+
+        const second = await cache.get("k", loader);
+        const peeked = cache.peek("k");
+
+        expect(second).toEqual(["a", "b"]);
+        expect(peeked).toEqual(["a", "b"]);
+        expect(second).not.toBe(first);
+        expect(peeked).not.toBe(second);
+        expect(loader).toHaveBeenCalledTimes(1);
     });
 
     it("rejects an aborted caller but still commits the shared load", async () => {

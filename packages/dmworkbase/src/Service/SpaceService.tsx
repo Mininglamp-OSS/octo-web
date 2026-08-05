@@ -272,7 +272,10 @@ const SPACE_ROSTER_PAGE_LIMIT = 10_000
 /** 兜底防异常空间无限循环（20×10000 = 20 万，远超任何真实空间）。 */
 const SPACE_ROSTER_MAX_PAGES = 20
 
-const rosterCache = createAsyncCache<SpaceMember[]>({ ttlMs: SPACE_ROSTER_TTL_MS })
+const rosterCache = createAsyncCache<SpaceMember[]>({
+    ttlMs: SPACE_ROSTER_TTL_MS,
+    clone: (members) => [...members],
+})
 
 export class SpaceService {
     static shared = new SpaceService()

@@ -149,7 +149,26 @@ describe("SpaceService.getRoster", () => {
     const first = await SpaceService.shared.getRoster("space-1");
     const second = await SpaceService.shared.getRoster("space-1");
 
-    expect(second).toBe(first);
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let one caller mutate the cached roster array", async () => {
+    api.get.mockResolvedValue([member("u1"), member("u2")]);
+
+    const first = await SpaceService.shared.getRoster("space-1");
+    first.reverse();
+    first.push(member("injected"));
+
+    await expect(SpaceService.shared.getRoster("space-1")).resolves.toEqual([
+      member("u1"),
+      member("u2"),
+    ]);
+    expect(SpaceService.shared.peekRoster("space-1")).toEqual([
+      member("u1"),
+      member("u2"),
+    ]);
     expect(api.get).toHaveBeenCalledTimes(1);
   });
 
