@@ -111,6 +111,11 @@ export function CreatePptModal({
   // Idempotency key for the CURRENT submit session: minted once per open and REUSED across retries
   // so a lost-response retry never mints a duplicate deck (hard metric #3). Reset on each open.
   const idempotencyKeyRef = useRef<string>('')
+  // Synchronous double-submit latch: flipped true the instant a create starts, BEFORE React
+  // re-renders the disabled button. Two clicks in the same tick can both observe `submitting`
+  // state as false, so the state-derived `disabled` alone can leak a second HTTP request; this ref
+  // closes that window (belt-and-suspenders over idempotency-key reuse). Reset on each open/failure.
+  const submittingRef = useRef(false)
 
   const titleId = useId()
   const groupId = useId()
@@ -136,6 +141,7 @@ export function CreatePptModal({
     setTitle('')
     setSubmitting(false)
     setError(null)
+    submittingRef.current = false
     idempotencyKeyRef.current = newIdempotencyKey()
     restoreFocusRef.current =
       typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
@@ -170,10 +176,43 @@ export function CreatePptModal({
   const canSubmit = trimmed.length > 0 && !tooLong && !submitting
 
   // Cancel/Esc/overlay dismissal — blocked while a create is in flight so the request can't be
-  // orphaned mid-submit (the retry would otherwise mint under a fresh key on reopen).
+  // orphaned mid-submit (the retry would otherwise mint under a fresh key on reopen). Focus is
+  // restored to the trigger synchronously on THIS route: the native dialog moves focus to BODY on
+  // the Esc/close path in real browsers, and the parent-driven unmount cleanup fires too late to
+  // catch that (design §3 focus restore, PPT-UI-001).
   const requestClose = () => {
     if (submitting) return
+    restoreFocusRef.current?.focus?.()
     onClose()
+  }
+
+  // Focus trap (design §3, PPT-UI-001): keep Tab/Shift+Tab cycling within the dialog. Only the
+  // boundary transitions are intercepted — the browser handles intermediate Tabs natively. The
+  // tabbable set follows the roving radiogroup (only the selected card is tabbable) plus the title
+  // input and the enabled footer buttons, in DOM order: radio → title → Create → Cancel.
+  const onDialogKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Tab') return
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const tabbable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => el.tabIndex !== -1)
+    if (tabbable.length === 0) return
+    const first = tabbable[0]
+    const last = tabbable[tabbable.length - 1]
+    const active = document.activeElement
+    const inside = active instanceof HTMLElement && dialog.contains(active)
+    if (e.shiftKey) {
+      if (!inside || active === first) {
+        e.preventDefault()
+        last.focus()
+      }
+    } else if (!inside || active === last) {
+      e.preventDefault()
+      first.focus()
+    }
   }
 
   // Roving-tabindex arrow navigation across the 4 radio cards. Arrows move selection AND focus
@@ -205,7 +244,8 @@ export function CreatePptModal({
   }
 
   const onSubmit = async () => {
-    if (!canSubmit) return
+    if (!canSubmit || submittingRef.current) return
+    submittingRef.current = true
     setSubmitting(true)
     setError(null)
     try {
@@ -223,6 +263,7 @@ export function CreatePptModal({
       // Everything else (401/409/5xx/missing editorUrl/network) → generic error, modal stays open
       // and retriable; the same idempotency key is reused so a retry never duplicates a deck.
       setError(status === 400 ? t('docs.ppt.create.validationError') : t('docs.ppt.create.error'))
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
@@ -243,6 +284,7 @@ export function CreatePptModal({
           e.preventDefault()
           requestClose()
         }}
+        onKeyDown={onDialogKeyDown}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="octo-ppt-create-header">

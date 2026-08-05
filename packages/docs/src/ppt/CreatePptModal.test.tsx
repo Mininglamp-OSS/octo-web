@@ -136,6 +136,89 @@ describe('CreatePptModal', () => {
     trigger.remove()
   })
 
+  // ── R2-F1 defect 1: Esc/close restores focus on the close route itself ────
+  // The parent-driven unmount cleanup is not enough: in a real browser the
+  // native dialog steals focus to BODY on the Esc route before the parent flips
+  // `open`. Focus must be restored synchronously by the close handler, without
+  // relying on the caller re-rendering with open={false}.
+  it('restores focus to the trigger synchronously on the Esc/cancel route', () => {
+    const trigger = document.createElement('button')
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    const { container } = render(
+      <CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />,
+    )
+    const dialogEl = container.querySelector('dialog') as HTMLDialogElement
+    // Simulate the browser having moved focus off the trigger (dialog took it).
+    ;(cards()[0] as HTMLButtonElement).focus()
+    expect(document.activeElement).not.toBe(trigger)
+
+    // Esc → cancel event. Focus must return to the trigger WITHOUT any rerender.
+    fireEvent(dialogEl, new Event('cancel', { bubbles: false, cancelable: true }))
+    expect(document.activeElement).toBe(trigger)
+    trigger.remove()
+  })
+
+  it('restores focus to the trigger synchronously when Cancel is clicked', () => {
+    const trigger = document.createElement('button')
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />)
+    ;(cards()[0] as HTMLButtonElement).focus()
+    expect(document.activeElement).not.toBe(trigger)
+
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.cancel' }))
+    expect(document.activeElement).toBe(trigger)
+    trigger.remove()
+  })
+
+  // ── R2-F1 defect 2: Tab focus is trapped inside the dialog ────────────────
+  it('traps Tab focus inside the dialog (Tab from the last control wraps to the first)', () => {
+    const { container } = render(
+      <CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />,
+    )
+    const dialogEl = container.querySelector('dialog') as HTMLDialogElement
+    // Enable Create so all four tab stops (radio → title → Create → Cancel) exist.
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'Deck' },
+    })
+    const selectedRadio = cards()[0] // blank, tabindex 0
+    const cancel = screen.getByRole('button', { name: 'docs.ppt.create.cancel' })
+
+    // Tab from the last control (Cancel) wraps forward to the first (selected radio).
+    cancel.focus()
+    fireEvent.keyDown(dialogEl, { key: 'Tab' })
+    expect(document.activeElement).toBe(selectedRadio)
+
+    // Shift+Tab from the first control wraps backward to the last (Cancel).
+    selectedRadio.focus()
+    fireEvent.keyDown(dialogEl, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(cancel)
+  })
+
+  // ── R2-F1 defect 3: Create disables synchronously on the first click ──────
+  // Two clicks dispatched within a single React batch (before `submitting`
+  // state flushes) must still fire only ONE request — a synchronous guard, not
+  // just the state-derived `disabled` attribute.
+  it('sends only ONE request when Create is double-clicked within one batch', () => {
+    const wk = mountApi(() => new Promise(() => {})) // never resolves; stays in-flight
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />)
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'Deck' },
+    })
+    const create = screen.getByRole('button', {
+      name: /docs\.ppt\.create\.(submit|loading)/,
+    }) as HTMLButtonElement
+    // Both clicks in ONE act() batch → state has not re-rendered between them.
+    act(() => {
+      create.click()
+      create.click()
+    })
+    expect(wk.apiClient.calls.filter((c) => c.url === '/ppt/docs')).toHaveLength(1)
+  })
+
   // ── PPT-HUMAN-001: create → land on the backend editor route ─────────────
   it('creates the deck and hands the caller the backend editorUrl (no fabricated route)', async () => {
     const wk = mountApi(okResponder)
