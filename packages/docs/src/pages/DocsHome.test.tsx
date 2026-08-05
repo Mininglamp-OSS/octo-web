@@ -1531,6 +1531,70 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     await waitFor(() => expect(document.activeElement).toBe(caret))
   })
 
+  // ── R2-F1 P1-1: open-redirect — a backend editorUrl is gated before navigation ─────────────
+  // onPptCreated fed window.location.assign the backend editorUrl after only an emptiness check, so
+  // a compromised/misbehaving backend could bounce the user to a `javascript:` or cross-origin URL.
+  // The create flow now runs the returned route through the repo's same-origin guard before assign.
+  it('R2-F1 P1-1: does NOT navigate when the backend returns an unsafe (cross-origin) editorUrl', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: assignSpy },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      // A hostile absolute cross-origin route — must be rejected, never navigated to.
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: 'https://evil.example.com/steal' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    // The create round-trip completes, but the unsafe route is refused: no navigation happens and
+    // the picker stays open with an inline error (retriable), never a silent soft-lock.
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(true),
+    )
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
+    expect(assignSpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+  })
+
+  it('R2-F1 P1-1: navigates for a safe same-origin editorUrl (happy path preserved)', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: assignSpy },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: '/ppt/d/new_deck' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/ppt/d/new_deck'))
+  })
+
   it('re-pushes an open html doc WITH its slug when the docs nav menu is re-activated', async () => {
     // Repro of the "open html → click the 文档 nav button → 出错了" bug: the nav-reactivation
     // re-push must carry octoDocSlug, else HtmlDocView falls back to docId and 404s against octo-doc.

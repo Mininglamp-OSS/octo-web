@@ -411,4 +411,64 @@ describe('CreatePptModal', () => {
     expect(keys[0]).toBe(keys[1])
     expect(keys[0]).toBeTruthy()
   })
+
+  // P1-2: a CONTENT-CHANGED resubmit must mint a FRESH idempotency key. Reusing the open-time key
+  // across a title change lets the backend dedup the second submit and return the first (stale-title)
+  // deck — the user changed the title but gets the old-title deck.
+  it('re-mints the idempotency key when the title changes between submits (no stale-title dedup)', async () => {
+    let attempt = 0
+    const wk = mountApi(() => {
+      attempt += 1
+      if (attempt === 1) return Promise.reject({ response: { status: 500 } })
+      return { data: { data: { editorUrl: '/ppt/d/deck' } }, status: 201 }
+    })
+    const onCreated = vi.fn()
+    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={onCreated} />)
+
+    const titleInput = screen.getByLabelText('docs.ppt.create.titleLabel')
+    fireEvent.change(titleInput, { target: { value: 'AAA' } })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
+
+    // The user edits the title, then resubmits — this is NOT an identical retry.
+    fireEvent.change(titleInput, { target: { value: 'BBB' } })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('/ppt/d/deck'))
+
+    const calls = wk.apiClient.calls.filter((c) => c.url === '/ppt/docs')
+    expect(calls).toHaveLength(2)
+    expect(calls[0].body).toMatchObject({ title: 'AAA' })
+    expect(calls[1].body).toMatchObject({ title: 'BBB' })
+    const keys = calls.map((c) => c.config?.headers?.['Idempotency-Key'])
+    expect(keys[0]).toBeTruthy()
+    expect(keys[1]).toBeTruthy()
+    // Content changed → the second submit must carry a DIFFERENT key.
+    expect(keys[0]).not.toBe(keys[1])
+  })
+
+  // P1-3: if the user switches space while a create is in flight, the late-resolving space-A create
+  // must NOT navigate — it would drop the user into the wrong-space deck. A generation token captured
+  // at submit start is invalidated by the space-change reset, so the post-await handoff is skipped.
+  it('does NOT complete/navigate when the space changes mid-submit (cross-space late-resolve guard)', async () => {
+    let resolve!: (v: unknown) => void
+    mountApi(() => new Promise((r) => { resolve = r as (v: unknown) => void }))
+    const onCreated = vi.fn()
+    const { rerender } = render(
+      <CreatePptModal open spaceId="s_A" onClose={() => {}} onCreated={onCreated} />,
+    )
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'Deck A' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.loading')).toBeTruthy())
+
+    // User switches to space B while the space-A create is still awaiting.
+    rerender(<CreatePptModal open spaceId="s_B" onClose={() => {}} onCreated={onCreated} />)
+
+    // The space-A create finally resolves — but its generation is stale now, so no handoff/navigation.
+    await act(async () => {
+      resolve({ data: { data: { editorUrl: '/ppt/d/deck_A' } }, status: 201 })
+    })
+    expect(onCreated).not.toHaveBeenCalled()
+  })
 })

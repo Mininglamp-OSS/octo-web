@@ -30,8 +30,13 @@ export interface CreatePptModalProps {
   /** Optional target folder passed straight through to the create call. */
   folderId?: string
   onClose(): void
-  /** Called with the backend-returned editor route after a successful create. NOT called on cancel. */
-  onCreated(editorUrl: string): void
+  /**
+   * Called with the backend-returned editor route after a successful create. NOT called on cancel.
+   * Returns `false` when the caller REFUSED to navigate (e.g. the route failed the open-redirect
+   * guard, P1-1); the modal then surfaces an inline error and stays open/retriable instead of
+   * silently soft-locking. `void`/`true` mean the caller took over navigation and the modal unmounts.
+   */
+  onCreated(editorUrl: string): boolean | void
   /**
    * The PERSISTENT element that opened the picker (the DocsHome "new" caret button), to restore focus
    * to on close. Supplied explicitly because the picker is launched from a caret dropdown MENU ITEM
@@ -118,14 +123,22 @@ export function CreatePptModal({
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
   // The element focused before the modal opened, restored on close (design §3 focus trap + restore).
   const restoreFocusRef = useRef<HTMLElement | null>(null)
-  // Idempotency key for the CURRENT submit session: minted once per open and REUSED across retries
-  // so a lost-response retry never mints a duplicate deck (hard metric #3). Reset on each open.
+  // Idempotency key for the CURRENT submit session. It must be REUSED across an identical retry (so
+  // a lost-response retry dedups to the same deck, hard metric #3) but RE-MINTED whenever the payload
+  // (title/template) changes — otherwise a content-changed resubmit reuses the key, the backend
+  // dedups on it, and the user gets the FIRST (stale-title) deck back (P1-2). Minted by the
+  // payload-keyed effect below, not just on open.
   const idempotencyKeyRef = useRef<string>('')
   // Synchronous double-submit latch: flipped true the instant a create starts, BEFORE React
   // re-renders the disabled button. Two clicks in the same tick can both observe `submitting`
   // state as false, so the state-derived `disabled` alone can leak a second HTTP request; this ref
   // closes that window (belt-and-suspenders over idempotency-key reuse). Reset on each open/failure.
   const submittingRef = useRef(false)
+  // Generation token for the in-flight submit (P1-3). The open/space reset effect bumps this, so if
+  // the user switches space (or the modal reopens) mid-await, the submit's captured token goes stale
+  // and its late resolve must NOT navigate to the wrong-space deck. Same idiom as useDocComments'
+  // reqRef / SummaryListPage's loadDataSeq generation guards.
+  const submitSeqRef = useRef(0)
 
   const titleId = useId()
   const groupId = useId()
@@ -143,8 +156,9 @@ export function CreatePptModal({
     [],
   )
 
-  // Reset the draft whenever the modal opens or the space changes; mint a fresh idempotency key for
-  // the new submit session and remember what to restore focus to.
+  // Reset the draft whenever the modal opens or the space changes; remember what to restore focus to.
+  // Bumping submitSeqRef here invalidates any in-flight submit's generation token, so a create that
+  // was fired before a space switch cannot navigate after it resolves (P1-3).
   useEffect(() => {
     if (!open) return
     setSelected(DEFAULT_PPT_TEMPLATE)
@@ -152,7 +166,7 @@ export function CreatePptModal({
     setSubmitting(false)
     setError(null)
     submittingRef.current = false
-    idempotencyKeyRef.current = newIdempotencyKey()
+    submitSeqRef.current += 1
     // Capture the restore target. Prefer the caller-supplied PERSISTENT trigger (the caret button that
     // opened the picker) over document.activeElement: the picker is launched from a caret DROPDOWN menu
     // item that unmounts the instant it is clicked (the menu closes as it fires onCreatePpt), so by the
@@ -169,6 +183,16 @@ export function CreatePptModal({
           ? document.activeElement
           : null
   }, [open, spaceId, triggerRef])
+
+  // Mint the idempotency key for the current payload (P1-2). Keyed on the payload (title + template)
+  // as well as open/space so the key is STABLE across an identical retry — a plain retry re-runs
+  // onSubmit without changing title/selected, so no new key is minted and the backend dedups to the
+  // same deck — but a FRESH key is minted the moment the user edits the title or picks another
+  // template, so a content-changed resubmit is a distinct create (never a stale-title dedup).
+  useEffect(() => {
+    if (!open) return
+    idempotencyKeyRef.current = newIdempotencyKey()
+  }, [open, spaceId, title, selected])
 
   // Restore focus to the element that had it before the modal opened (the trigger caret).
   // This MUST run AFTER the native <dialog> has finished closing. On the Esc/close route the
@@ -292,6 +316,9 @@ export function CreatePptModal({
     submittingRef.current = true
     setSubmitting(true)
     setError(null)
+    // Capture the submit generation (P1-3). The open/space reset effect bumps submitSeqRef, so if the
+    // user switches space (or the modal resets) mid-await, this captured token goes stale.
+    const token = submitSeqRef.current
     try {
       const result = await createPptDoc({
         title: trimmed,
@@ -299,9 +326,22 @@ export function CreatePptModal({
         folderId,
         idempotencyKey: idempotencyKeyRef.current,
       })
-      // Trust the backend route ONLY — no frontend fallback (preserves R1 no-fallthrough).
-      onCreated(result.editorUrl)
+      // Cross-space late-resolve guard (P1-3): if the space changed (or the modal reset) during the
+      // await, this create belongs to a stale context — do NOT navigate to its wrong-space deck.
+      if (submitSeqRef.current !== token) return
+      // Trust the backend route ONLY — no frontend fallback (preserves R1 no-fallthrough). The caller
+      // gates the route through the open-redirect guard; a `false` return means it REFUSED to navigate
+      // (unsafe route, P1-1) — surface an inline error and keep the modal open/retriable instead of
+      // soft-locking on a dead "success".
+      if (onCreated(result.editorUrl) === false) {
+        setError(t('docs.ppt.create.error'))
+        submittingRef.current = false
+        setSubmitting(false)
+      }
     } catch (err) {
+      // A superseded submit (space switched mid-await) must not clobber the fresh draft with its late
+      // error either — bail on a stale generation (P1-3).
+      if (submitSeqRef.current !== token) return
       const status = (err as { response?: { status?: number } })?.response?.status
       // 400 → inline validation error, modal stays open, no navigation (hard metric #2).
       // Everything else (401/409/5xx/missing editorUrl/network) → generic error, modal stays open
