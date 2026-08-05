@@ -12,6 +12,7 @@ import { DocTitle } from '../editor/EditorShell.tsx'
 import { DocTerminal } from '../editor/DocTerminal.tsx'
 import { PresenceBar } from '../editor/PresenceBar.tsx'
 import { DocMoreMenu, DeleteIcon, ExportIcon, OpenNewPageIcon, HistoryIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
+import { DocGuide } from '../editor/DocGuide.tsx'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { BoardVersionPanel } from './BoardVersionPanel.tsx'
 import { BoardCommentPanel, type BoardAnchorTarget } from './BoardCommentPanel.tsx'
@@ -1978,6 +1979,14 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           {collabSession?.provider && (
             <PresenceBar provider={collabSession.provider} connState={connState} synced={synced} names={names} />
           )}
+          {/* Usage guide (使用指导): how to drive THIS surface from octo-cli, and where the
+              version-accurate bundled skill docs live. Placed to the LEFT of 评论, with the other
+              doc actions. Unlike 评论 it is NOT role-gated: reading the guide needs no permission,
+              so it sits OUTSIDE the `role &&` gate below. */}
+          {/* The LIVE title (XIN-1306, same reason as onForwardToChat below): the static `title`
+              prop is only the pre-fetch fallback, so passing it put "无标题文档" into the guide
+              panel and the forwarded prompt. */}
+          <DocGuide kind="board" space={space} docId={docId} title={currentTitle} />
           {role && (
             <button
               type="button"

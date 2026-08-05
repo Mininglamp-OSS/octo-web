@@ -148,6 +148,20 @@ declare module '@octo/base' {
   // WuKongIM Channel primitives (plan Task 5), re-exported from @octo/base (which re-exports them
   // from wukongimjssdk). The docs embedded-bot-DM shell constructs `new Channel(botUid,
   // ChannelTypePerson)` and reads getChannelKey() for the React key.
+  /**
+   * Forward one plain-text message to each channel (dmworkbase Service/ForwardService).
+   *
+   * The docs package cannot construct a `MessageText` itself (only `@octo/base` may import
+   * wukongimjssdk), so the host exposes this thin seam: it builds the content and delegates to
+   * ForwardService.send, which owns disband-skip, per-channel accounting, `space_id` injection and
+   * the partial-failure result shape.
+   */
+  export function forwardPlainText(
+    channels: Channel[],
+    text: string,
+    opts?: { spaceId?: string | null; channelMode?: 'parallel' | 'serial' },
+  ): Promise<{ targets: number; failedTargets: number; messageAttempts: number; failedMessages: number }>
+
   export const ChannelTypePerson: number
   export const MAX_MESSAGE_LENGTH: number
   export class Channel {
@@ -168,6 +182,23 @@ declare module '@octo/base' {
   }
   export type InitialComposeState = 'prepared' | 'sent' | 'failed'
 
+  // Composer handle reached through ConversationContext. Only `restoreDraft` is declared: the docs
+  // guide uses it to blank a composer it filled itself when the send was rejected, so the pending
+  // unmount cannot persist our prompt as the user's draft.
+  export interface MessageInputContext {
+    restoreDraft(text: string): void
+  }
+
+  // Handle on a mounted Conversation, handed out via ConversationProps.onContext. Declared with only
+  // the accessor the docs seam needs; the real context carries considerably more.
+  export interface ConversationContext {
+    // Matches the real signature (Conversation/index.tsx: `messageInputContext(): MessageInputContext
+    // | undefined`) — the backing field is unset until MessageInput mounts. Declaring it non-optional
+    // would let a future unguarded `ctx.messageInputContext().restoreDraft(...)` typecheck and then
+    // throw at runtime.
+    messageInputContext(): MessageInputContext | undefined
+  }
+
   // The host Conversation component (packages/dmworkbase/src/Components/Conversation). Only the
   // props the docs embedded-bot-DM shell passes are declared here; the real component carries many
   // more. Typed loosely (`any` return) to avoid pulling host react typings across the seam.
@@ -175,6 +206,12 @@ declare module '@octo/base' {
     channel: Channel
     initialCompose?: InitialCompose
     inputNotice?: unknown
+    // "Mounted, but not the primary conversation": skips taking over WKApp.shared.openChannel and the
+    // global pendingAttachmentGuard, and does not register as the open conversation
+    // (Conversation/index.tsx:274, 1354-1366, 2570). ThreadPanel passes it for its secondary
+    // conversation; the docs guide's off-screen sender needs the same containment.
+    isAuxiliary?: boolean
+    onContext?: (ctx: ConversationContext) => void
     onInitialComposeStateChange?: (
       requestId: string,
       state: InitialComposeState,

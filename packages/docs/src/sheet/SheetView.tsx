@@ -42,6 +42,7 @@ import {
   DeleteIcon,
   type DocMoreMenuItem,
 } from '../editor/DocMoreMenu.tsx'
+import { DocGuide } from '../editor/DocGuide.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { useDocDelete } from '../editor/useDocDelete.ts'
 import { t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
@@ -733,6 +734,11 @@ export function SheetView(props: SheetViewProps) {
         />
         <div className="octo-doc-header-right">
           {sheet && <PresenceBar provider={sheet.provider} connState={conn} synced={conn === 'connected'} names={names} />}
+          {/* Usage guide (使用指导): how to drive THIS surface from octo-cli, and where the
+              version-accurate bundled skill docs live. Sits to the LEFT of 评论 among the other doc
+              actions, not ahead of the presence avatars. Unlike 评论 it is NOT role-gated: reading
+              the guide needs no permission. */}
+          <DocGuide kind="sheet" space={space} docId={docId} title={title} />
           <button type="button" className={tb('comments')} aria-pressed={panel === 'comments'} onClick={() => toggle('comments')}>
             💬 {t('docs.toolbar.comments')}
           </button>
