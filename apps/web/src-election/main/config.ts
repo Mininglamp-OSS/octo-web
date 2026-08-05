@@ -1,7 +1,7 @@
-const DMWORK_CONFIG = {
-  appId: "com.dmwork.im",
-  name: "DMWork",
+const OCTO_CONFIG = {
+  appId: "com.mininglamp.octo.web",
+  name: "OCTO",
   updateUrl: 'https://api.example.com/'
 };
 
-export default DMWORK_CONFIG;
+export default OCTO_CONFIG;

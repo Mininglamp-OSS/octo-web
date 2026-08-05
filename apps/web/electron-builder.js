@@ -75,10 +75,13 @@ module.exports = {
     // installerHeaderIcon: "./build/icon.ico", // 安装时头部图标
     createDesktopShortcut: true, // 创建桌面图标
     createStartMenuShortcut: true, // 创建开始菜单图标
-    shortcutName: "DMWork", // 图标名称
+    shortcutName: "OCTO", // 图标名称
   },
   linux: {
     target: ["AppImage", "deb"],
     icon: "resources/icons/icon.icns",
+    category: "Network;InstantMessaging;",
+    // eslint-disable-next-line no-template-curly-in-string
+    artifactName: '${productName}-${version}-linux-${arch}.${ext}',
   },
 };

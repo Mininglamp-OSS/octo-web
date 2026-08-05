@@ -143,5 +143,10 @@
     "workerDirectory": [
       "public"
     ]
-  }
+  },
+  "author": {
+    "name": "Mininglamp Technology",
+    "email": "dev@mlamp.cn"
+  },
+  "description": "OCTO - Enterprise Instant Messaging"
 }

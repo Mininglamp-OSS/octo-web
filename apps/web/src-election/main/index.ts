@@ -16,7 +16,7 @@ import Screenshots from "electron-screenshots";
 import { join } from "path";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
-import DMWORK_CONFIG from "./config";
+import OCTO_CONFIG from "./config";
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
@@ -41,10 +41,10 @@ const TRAY_FLASH_INTERVAL_MS = 1000;
 
 let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
   {
-    label: "DMWork",
+    label: "OCTO",
     submenu: [
       {
-        label: `关于DMWork`,
+        label: `关于OCTO`,
       },
       { label: "服务", role: "services" },
       { type: "separator" },
@@ -377,6 +377,7 @@ const createMainWindow = async () => {
   mainWindow = new BrowserWindow(getWindowConfig());
   mainWindow.center();
   mainWindow.once("ready-to-show", () => {
+    mainWindow.setTitle('OCTO');
     mainWindow.show(); // 显示窗口
     mainWindow.focus();
   });
@@ -494,7 +495,7 @@ function onDeepLink(url: string) {
   mainWindow.webContents.send("deep-link", url);
 }
 
-app.setName(DMWORK_CONFIG.name);
+app.setName(OCTO_CONFIG.name);
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
   onDeepLink(url);
@@ -521,7 +522,7 @@ app.on("ready", () => {
   createMainWindow(); // 创建窗口
 
   if (isWin) {
-    app.setAppUserModelId("DMWork");
+    app.setAppUserModelId("OCTO");
   }
 
   screenshots = new Screenshots({
