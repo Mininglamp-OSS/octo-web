@@ -178,8 +178,8 @@ describe('octoweb fetchMyBots seam', () => {
         : { data: {}, status: 200 }
     const bots = await fetchMyBots('s_1')
     expect(bots).toEqual([
-      { uid: 'bot_friend', name: "Someone's Bot", isBot: true },
-      { uid: 'bot_mine', name: 'My Bot', isBot: true },
+      { uid: 'bot_friend', name: "Someone's Bot", isBot: true, safeStandalone: true },
+      { uid: 'bot_mine', name: 'My Bot', isBot: true, safeStandalone: true },
     ])
     const calls = wk.apiClient.calls.filter((c) => c.url.startsWith('/robot/my_bots'))
     expect(calls).toHaveLength(1)
@@ -197,7 +197,7 @@ describe('octoweb fetchMyBots seam', () => {
       data: [{ uid: 'bot1', name: '' }, { name: 'ghost' }],
       status: 200,
     })
-    expect(await fetchMyBots('s_1')).toEqual([{ uid: 'bot1', name: 'bot1', isBot: true }])
+    expect(await fetchMyBots('s_1')).toEqual([{ uid: 'bot1', name: 'bot1', isBot: true, safeStandalone: true }])
   })
 
   it('returns an empty list for a non-array body', async () => {

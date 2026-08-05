@@ -242,6 +242,15 @@ export interface SpaceMemberLite {
   isBot?: boolean
   /** Creator of a Space Bot; used to build the grant-time user -> Bot snapshot. */
   creatorUid?: string
+  /**
+   * True when this Bot's grantability rests on a trusted, viewer-scoped provenance the caller can
+   * vouch for: a Space MEMBER Bot (from queryMembers) or a friend-added agent (GET /robot/my_bots,
+   * #839). The Space-Bot catalog (GET /robot/space_bots) is NOT viewer-scoped and carries no such
+   * vouch, so a catalog-ONLY Bot without a resolvable creator MUST NOT become a grantable
+   * standalone candidate. Absent → no independent provenance; the Bot is only offered when it nests
+   * under a visible creator (or is already granted, in which case it shows disabled).
+   */
+  safeStandalone?: boolean
 }
 
 /**

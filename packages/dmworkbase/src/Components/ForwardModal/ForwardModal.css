@@ -164,6 +164,63 @@
   color: rgba(28, 28, 35, 0.22);
 }
 
+/* Person-row Bot preview (UX #4): expander + display-only nested Bot rows. */
+.wk-fm-item-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-fm-item-bot-expand {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  color: var(--wk-icon-default);
+}
+
+.wk-fm-item-bot-expand:hover {
+  color: var(--wk-icon-hover);
+}
+
+.wk-fm-item-bot-chevron {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 0.15s ease;
+}
+
+.wk-fm-item-bot-expand[aria-expanded="true"] .wk-fm-item-bot-chevron {
+  transform: rotate(180deg);
+}
+
+.wk-fm-item-bots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-1) 0 var(--wk-sp-1) calc(var(--wk-sp-10) + var(--wk-sp-1));
+}
+
+.wk-fm-item-bot {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  color: var(--wk-text-tertiary);
+  cursor: default;
+}
+
+.wk-fm-item-bot-name {
+  font-size: var(--wk-text-size-tiny);
+  color: var(--wk-text-tertiary);
+}
+
 /* ── 右列：已选列表 ── */
 .wk-fm-right {
   flex: 1;

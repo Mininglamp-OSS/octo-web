@@ -29,7 +29,7 @@ vi.mock("../../../../im-runtime/currentChannelRuntime", () => ({
 }))
 
 vi.mock("../../../../Service/SpaceBotService", () => ({
-  default: { list: hoisted.listBots },
+  default: { list: hoisted.listBots, listShared: hoisted.listBots },
 }))
 
 import { Channel } from "wukongimjssdk"

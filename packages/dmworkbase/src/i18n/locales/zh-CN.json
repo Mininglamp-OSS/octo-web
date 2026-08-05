@@ -820,6 +820,8 @@
   "forwardModal.confirm": "确认",
   "forwardModal.confirmWithCount": "确认({{count}})",
   "forwardModal.external": "外部",
+  "forwardModal.showBotsPreview": "展开 {{count}} 个 Bot",
+  "forwardModal.hideBotsPreview": "收起 Bot",
   "forwardModal.kindDirect": "私聊",
   "forwardModal.kindGroup": "群",
   "forwardModal.kindThread": "子区",

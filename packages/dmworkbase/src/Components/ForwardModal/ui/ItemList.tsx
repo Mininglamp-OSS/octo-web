@@ -2,7 +2,7 @@ import React from "react"
 import VisibilityTrigger from "../../VisibilityTrigger"
 import { useI18n } from "../../../i18n"
 import type { ForwardItem } from "../ForwardModal"
-import { ItemRow } from "./ItemRow"
+import { ItemRow, type ForwardBotPreview } from "./ItemRow"
 
 /**
  * 可选列表。loading / 空态 / 正常渲染三态，正常渲染时逐项包 VisibilityTrigger 触发懒加载。
@@ -18,6 +18,8 @@ export interface ItemListProps {
   showMeta: boolean
   onToggleSelect: (item: ForwardItem) => void
   onItemVisible?: (item: ForwardItem) => void
+  /** Person-row Bot preview (UX #4). Absent → no expander. */
+  botPreview?: ForwardBotPreview
 }
 
 export function ItemList({
@@ -28,6 +30,7 @@ export function ItemList({
   showMeta,
   onToggleSelect,
   onItemVisible,
+  botPreview,
 }: ItemListProps) {
   const { t } = useI18n()
   return (
@@ -45,6 +48,7 @@ export function ItemList({
               flat={flat}
               showMeta={showMeta}
               onToggle={onToggleSelect}
+              botPreview={botPreview}
             />
           )
           if (onItemVisible) {

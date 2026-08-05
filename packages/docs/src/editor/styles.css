@@ -1626,11 +1626,27 @@ body.octo-row-resizing {
 .octo-member-picker-expand {
   align-self: flex-start;
   margin-left: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
   border: 0;
   background: transparent;
   color: var(--octo-muted);
   font-size: 12px;
   cursor: pointer;
+}
+
+/* Decorative chevron for the Bot expander (no functional emoji; rotates on expand). */
+.octo-member-picker-chevron {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 0.15s ease;
+}
+.octo-member-picker-expand[aria-expanded='true'] .octo-member-picker-chevron {
+  transform: rotate(180deg);
 }
 
 .octo-member-picker-bot {
@@ -1639,6 +1655,15 @@ body.octo-row-resizing {
   gap: 8px;
   padding: 2px 8px 2px 32px;
   font-size: 13px;
+}
+
+/* Read-only Bot preview under an unselected person: muted, non-interactive. */
+.octo-member-picker-bot.is-preview {
+  color: var(--octo-muted);
+  cursor: default;
+}
+.octo-member-picker-bot.is-preview input {
+  cursor: not-allowed;
 }
 
 .octo-member-picker-bot-creator {

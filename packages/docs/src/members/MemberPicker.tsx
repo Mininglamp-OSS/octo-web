@@ -18,6 +18,15 @@ function initial(name: string): string {
  * uid collision (richer host data), then a friend agent, then a Space Bot backfills creatorUid so
  * the picker can nest that Bot beneath its creator. Both Bot requests are fail-soft and never break
  * the human roster path.
+ *
+ * Provenance boundary (P1): trust to grant a creator-less Bot as a standalone candidate comes ONLY
+ * from viewer-scoped sources — the Space MEMBER roster (queryMembers) or the caller's friend agents
+ * (fetchMyBots, #839). We track that trusted-uid set SEPARATELY and stamp `safeStandalone` from it,
+ * never from "an entry already exists": the Space-Bot catalog is NOT viewer-scoped, so a catalog
+ * entry (even a duplicate row sharing a uid with another catalog-only entry) can never confer trust
+ * on itself. A creator-less, non-trusted catalog Bot therefore never becomes a grantable standalone
+ * (it may still show disabled when already granted); a catalog Bot with a resolvable creator still
+ * nests beneath them regardless of trust.
  */
 async function fetchCandidateRoster(space: string): Promise<SpaceMemberLite[]> {
   const [members, myBots, spaceBots] = await Promise.all([
@@ -26,12 +35,29 @@ async function fetchCandidateRoster(space: string): Promise<SpaceMemberLite[]> {
     space ? fetchSpaceBotSnapshots(space).catch(() => [] as SpaceMemberLite[]) : Promise.resolve([]),
   ])
   const byUid = new Map<string, SpaceMemberLite>()
-  for (const m of members) byUid.set(m.uid, m)
+  // Trusted-provenance uids come ONLY from viewer-scoped sources (member roster + my_bots). Tracked
+  // separately so a catalog entry can never bootstrap trust off a prior (possibly catalog-only) row.
+  const trustedBotUids = new Set<string>()
+  for (const m of members) {
+    byUid.set(m.uid, m)
+    if (m.isBot) trustedBotUids.add(m.uid)
+  }
   // Friend agents the space-member query dropped (#839): append flat, never overwrite a member.
-  for (const b of myBots) if (!byUid.has(b.uid)) byUid.set(b.uid, b)
+  for (const b of myBots) {
+    if (!byUid.has(b.uid)) byUid.set(b.uid, b)
+    if (b.isBot) trustedBotUids.add(b.uid)
+  }
   // Space Bots backfill creatorUid (+ isBot) so a Bot with a known creator nests beneath them,
   // merging onto whatever entry already exists (member/friend) without discarding its richer data.
-  for (const b of spaceBots) byUid.set(b.uid, { ...byUid.get(b.uid), ...b, isBot: true })
+  for (const b of spaceBots) {
+    const prev = byUid.get(b.uid)
+    byUid.set(b.uid, { ...prev, ...b, isBot: true })
+  }
+  // Stamp safe standalone provenance solely from the trusted-uid set (never from catalog presence).
+  for (const uid of trustedBotUids) {
+    const entry = byUid.get(uid)
+    if (entry) byUid.set(uid, { ...entry, safeStandalone: true })
+  }
   return [...byUid.values()]
 }
 
@@ -141,11 +167,14 @@ export function MemberPicker({
     const nestedBotUids = new Set<string>()
     for (const bots of botsByCreator.values()) for (const bot of bots) nestedBotUids.add(bot.uid)
     // A known creator may fall back to standalone only at a legitimate document boundary:
-    // hidden self/owner or an existing member. An absent creator remains unlisted.
+    // hidden self/owner or an existing member. An absent creator is grantable standalone ONLY with
+    // trusted provenance (`safeStandalone`: a Space-member Bot or a befriended agent); a creator-less catalog-only Bot is never a
+    // grantable candidate and only surfaces — disabled — when it is already granted (existing).
     const topLevel = members.filter(
       (m) => {
-        if (!m.isBot || !m.creatorUid) return !nestedBotUids.has(m.uid)
+        if (!m.isBot) return !nestedBotUids.has(m.uid)
         if (nestedBotUids.has(m.uid)) return false
+        if (!m.creatorUid) return m.safeStandalone === true || existingUids.has(m.uid)
         return !!hideUids?.has(m.creatorUid) || existingUids.has(m.creatorUid) || existingUids.has(m.uid)
       },
     )
@@ -165,8 +194,9 @@ export function MemberPicker({
   // Drop selections that are no longer valid after a roster/existing change (e.g. a successful add
   // + refresh, or a row that became existing/hidden). Humans: drop any now-existing OR now-hidden
   // uid so a hidden creator/self/owner can never ride along in the submitted snapshot. Bots: keep
-  // only uids still nested and not already present. Bots that become standalone are independently
-  // selectable and must no longer ride along with a previously selected creator.
+  // only uids still nested UNDER A CURRENTLY-SELECTED creator and not already present. A Bot whose
+  // creator was deselected, became existing/hidden, or turned standalone is pruned so no stale or
+  // hidden Bot selection can survive to submit (P1).
   useEffect(() => {
     setSelected((prev) => {
       if (prev.size === 0) return prev
@@ -175,37 +205,57 @@ export function MemberPicker({
     })
     setSelectedBots((prev) => {
       if (prev.size === 0) return prev
-      const offered = new Set<string>()
-      for (const bots of botsByCreator.values()) for (const b of bots) offered.add(b.uid)
-      const next = new Set([...prev].filter((uid) => offered.has(uid)))
+      const selectable = new Set<string>()
+      for (const [creatorUid, bots] of botsByCreator) {
+        if (!selected.has(creatorUid)) continue
+        for (const b of bots) selectable.add(b.uid)
+      }
+      const next = new Set([...prev].filter((uid) => selectable.has(uid)))
       return next.size === prev.size ? prev : next
     })
-  }, [existingUids, hideUids, botsByCreator])
+  }, [existingUids, hideUids, botsByCreator, selected])
 
+  // Toggle a human row. Both state transitions happen in the EVENT phase as independent, pure
+  // setter calls (no setter nested inside another updater) so React StrictMode's double-invoked
+  // updaters stay side-effect free. Selecting a human defaults all their nested Bots on; deselecting
+  // drops those Bots. Each updater derives purely from its own previous state.
   function toggle(uid: string) {
+    const bots = botsByCreator.get(uid) ?? []
+    const willSelect = !selected.has(uid)
     setSelected((prev) => {
       const next = new Set(prev)
-      const bots = botsByCreator.get(uid) ?? []
-      if (next.has(uid)) {
-        next.delete(uid)
-        setSelectedBots((current) => {
-          const copy = new Set(current)
-          bots.forEach((bot) => copy.delete(bot.uid))
-          return copy
-        })
-      } else {
-        next.add(uid)
-        setSelectedBots((current) => new Set([...current, ...bots.map((bot) => bot.uid)]))
-      }
+      if (next.has(uid)) next.delete(uid)
+      else next.add(uid)
+      return next
+    })
+    if (bots.length === 0) return
+    setSelectedBots((prev) => {
+      const next = new Set(prev)
+      if (willSelect) bots.forEach((bot) => next.add(bot.uid))
+      else bots.forEach((bot) => next.delete(bot.uid))
       return next
     })
   }
 
+  // Toggle one nested Bot. Guarded: a Bot may only enter the selection while its creator is
+  // selected (the UI already disables the control when the human is unselected; this keeps the
+  // invariant even if invoked directly). Deselecting is always allowed.
   function toggleBot(uid: string) {
     setSelectedBots((prev) => {
       const next = new Set(prev)
-      if (next.has(uid)) next.delete(uid)
-      else next.add(uid)
+      if (next.has(uid)) {
+        next.delete(uid)
+        return next
+      }
+      let creatorSelected = false
+      for (const [creatorUid, bots] of botsByCreator) {
+        if (bots.some((b) => b.uid === uid)) {
+          creatorSelected = selected.has(creatorUid)
+          break
+        }
+      }
+      if (!creatorSelected) return prev
+      next.add(uid)
       return next
     })
   }
@@ -219,7 +269,15 @@ export function MemberPicker({
         : effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0]
     const humanUids = [...selected].filter((uid) => !memberByUid.get(uid)?.isBot)
     const standaloneBotUids = [...selected].filter((uid) => memberByUid.get(uid)?.isBot)
-    const botUids = [...new Set([...selectedBots, ...standaloneBotUids])]
+    // Only nested Bots whose creator is currently selected may ride along — a defensive re-check so
+    // no stale/hidden Bot selection can submit even if state briefly lagged a render (P1).
+    const selectableNested = new Set<string>()
+    for (const [creatorUid, bots] of botsByCreator) {
+      if (!selected.has(creatorUid)) continue
+      for (const b of bots) selectableNested.add(b.uid)
+    }
+    const nestedBotUids = [...selectedBots].filter((uid) => selectableNested.has(uid))
+    const botUids = [...new Set([...nestedBotUids, ...standaloneBotUids])]
     const uids = [...new Set([...humanUids, ...botUids])]
     if (botUids.length > 0) await onAdd(uids, submittedRole, { humanUids, botUids })
     else await onAdd(uids, submittedRole)
@@ -251,12 +309,15 @@ export function MemberPicker({
           const standaloneCreator = m.isBot && m.creatorUid
             ? humanNameByUid.get(m.creatorUid) || m.creatorUid
             : undefined
-          // Surface a creator's Bots when the row is selected, or when the active query matched one
-          // of its Bots (so a Bot search reveals it under its creator even before selecting them).
+          // Every human with eligible nested Bots exposes the expander regardless of selection
+          // (UX #3): the admin can inspect a person's Bots before selecting them. While the person
+          // is unselected, the nested Bot controls are read-only (disabled) and create no selection;
+          // selecting the person defaults all their Bots on (see toggle). The active query also
+          // force-expands a creator whose Bot matched, so a Bot search reveals it under its creator.
           const q = query.trim().toLowerCase()
           const queryHitsBot =
             !!q && bots.some((b) => b.name.toLowerCase().includes(q) || b.uid.toLowerCase().includes(q))
-          const showBots = bots.length > 0 && (isSelected || queryHitsBot)
+          const showBots = bots.length > 0
           const isExpanded = expanded.has(m.uid) || queryHitsBot
           return (
             <div key={m.uid} className="octo-member-picker-group" role="presentation">
@@ -298,13 +359,20 @@ export function MemberPicker({
             </button>
             {showBots && (
               <>
+                {/* Expander is its own control: clicking it toggles the Bot list, never the human
+                    row's selection (UX #3). Chevron is decorative; state is on aria-expanded. */}
                 <button type="button" className="octo-member-picker-expand" aria-expanded={isExpanded}
                   onClick={() => setExpanded((prev) => { const next = new Set(prev); if (next.has(m.uid)) next.delete(m.uid); else next.add(m.uid); return next })}>
+                  <span className="octo-member-picker-chevron" aria-hidden="true" />
                   {t(isExpanded ? 'docs.member.hideBots' : 'docs.member.showBots', { values: { count: bots.length } })}
                 </button>
                 {isExpanded && bots.map((bot) => (
-                  <label key={bot.uid} className="octo-member-picker-bot">
-                    <input type="checkbox" checked={selectedBots.has(bot.uid)} onChange={() => toggleBot(bot.uid)} />
+                  // Bot controls are live only while the human is selected. When the human is
+                  // unselected the checkbox is a disabled, read-only preview: inspecting a Bot must
+                  // create no Bot selection. Selecting the human defaults these on (see toggle).
+                  <label key={bot.uid} className={'octo-member-picker-bot' + (isSelected ? '' : ' is-preview')}>
+                    <input type="checkbox" checked={isSelected && selectedBots.has(bot.uid)}
+                      disabled={!isSelected} onChange={() => toggleBot(bot.uid)} />
                     <span>{bot.name}</span><span className="octo-member-picker-badge">{t('docs.member.aiTag')}</span>
                     <span className="octo-member-picker-bot-creator">{t('docs.member.botCreator', { values: { name: m.name } })}</span>
                   </label>

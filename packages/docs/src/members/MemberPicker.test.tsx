@@ -494,3 +494,159 @@ describe('MemberPicker prunes stale selected Bots on rerender (P1)', () => {
     if (call[2]) expect(call[2].botUids).not.toContain('b_1')
   })
 })
+
+// Latest P1 (creator_uid-missing): a Space-Bot catalog entry with no creator_uid has no viewer-
+// scoped provenance, so it MUST NOT become a grantable standalone. Only an already-granted
+// creator-less Bot stays visible — disabled. Member-roster / friend Bots keep their grantability.
+describe('MemberPicker creator-less Space Bots (P1 provenance)', () => {
+  function botResponder(bots: Array<{ uid: string; name: string; creator_uid?: string }>) {
+    return (method: string, url: string) =>
+      method === 'get' && url.startsWith('/robot/space_bots')
+        ? { data: bots, status: 200 }
+        : { data: [], status: 200 }
+  }
+
+  it('never offers a creator-less catalog-only Bot as a grantable standalone', async () => {
+    wk.apiClient.responder = botResponder([{ uid: 'b_orphan', name: 'Orphan Catalog Bot' }])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
+    // The creator-less catalog Bot is not listed at all (no safe provenance to grant it alone).
+    expect(screen.queryByText('Orphan Catalog Bot')).toBeNull()
+  })
+
+  it('does not let a DUPLICATE creator-less catalog row (same uid) bootstrap trust', async () => {
+    // Two catalog-only rows share b_dup and neither is a member/friend. The second row must not
+    // gain safeStandalone from the first — it stays ungrantable (regression: trust from any prev).
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_dup', name: 'Dup Catalog Bot' },
+      { uid: 'b_dup', name: 'Dup Catalog Bot' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
+    expect(screen.queryByText('Dup Catalog Bot')).toBeNull()
+  })
+
+  it('keeps an already-granted creator-less Bot visible but disabled', async () => {
+    wk.apiClient.responder = botResponder([{ uid: 'b_orphan', name: 'Granted Orphan' }])
+    render(<MemberPicker space="s_1" existingUids={new Set(['b_orphan'])} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Granted Orphan')).toBeTruthy())
+    const row = screen.getByText('Granted Orphan').closest('button') as HTMLButtonElement
+    expect(row.disabled).toBe(true)
+    expect(screen.getByText('docs.member.alreadyAdded')).toBeTruthy()
+  })
+
+  it('still offers a creator-less friend agent (my_bots provenance)', async () => {
+    wk.apiClient.responder = (_m: string, url: string) =>
+      url.startsWith('/robot/my_bots')
+        ? { data: [{ uid: 'u_friendbot', name: 'Friend Bot' }], status: 200 }
+        : { data: [], status: 200 }
+    const onAdd = vi.fn()
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Friend Bot')).toBeTruthy())
+    const row = screen.getByText('Friend Bot').closest('button') as HTMLButtonElement
+    expect(row.disabled).toBe(false)
+    fireEvent.click(screen.getByText('Friend Bot'))
+    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    expect(onAdd).toHaveBeenCalledWith(['u_friendbot'], 'writer', { humanUids: [], botUids: ['u_friendbot'] })
+  })
+
+  it('still offers a creator-less Bot that is itself a Space member', async () => {
+    // u_bot is a member-roster Bot (from spaceMembers) with no creator_uid — grantable standalone.
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Helper Bot')).toBeTruthy())
+    const row = screen.getByText('Helper Bot').closest('button') as HTMLButtonElement
+    expect(row.disabled).toBe(false)
+  })
+})
+
+// MemberPicker UX (task #3): the Bot expander is available on EVERY human with eligible nested
+// Bots regardless of selected state. Expanding an unselected person is a read-only preview that
+// creates NO Bot selection; the expander never toggles the human; selecting defaults the Bots on;
+// selection survives collapse/expand; a query-driven expand leaves no hidden selection on clear.
+describe('MemberPicker Bot expander UX (task #3)', () => {
+  function botResponder(bots: Array<{ uid: string; name: string; creator_uid?: string }>) {
+    return (method: string, url: string) =>
+      method === 'get' && url.startsWith('/robot/space_bots')
+        ? { data: bots, status: 200 }
+        : { data: [], status: 200 }
+  }
+
+  it('shows the expander for an UNSELECTED person and previews Bots read-only (no selection)', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    const onAdd = vi.fn()
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    // Expander present without selecting Ada; clicking it does NOT select Ada.
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    const adaRow = screen.getByText('Ada Lovelace').closest('button') as HTMLButtonElement
+    expect(adaRow.classList.contains('is-selected')).toBe(false)
+    // The previewed Bot checkbox is disabled and unchecked (display-only).
+    const botCheckbox = screen.getByText('Writer Bot').closest('label')!.querySelector('input') as HTMLInputElement
+    expect(botCheckbox.disabled).toBe(true)
+    expect(botCheckbox.checked).toBe(false)
+    // Attempting to toggle it changes nothing; Add stays disabled (no selection at all).
+    fireEvent.click(botCheckbox)
+    expect((screen.getByText('docs.member.add').closest('button') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('selecting the person defaults all their Bots and lets one be cancelled', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+      { uid: 'b_2', name: 'Review Bot', creator_uid: 'u_ada' },
+    ])
+    const onAdd = vi.fn()
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    // Both default checked + enabled once the person is selected.
+    const b1 = screen.getByText('Writer Bot').closest('label')!.querySelector('input') as HTMLInputElement
+    const b2 = screen.getByText('Review Bot').closest('label')!.querySelector('input') as HTMLInputElement
+    expect(b1.checked && b2.checked).toBe(true)
+    expect(b1.disabled).toBe(false)
+    fireEvent.click(b2) // cancel one
+    fireEvent.click(screen.getByText('docs.member.addSnapshotCount').closest('button') as HTMLButtonElement)
+    expect(onAdd).toHaveBeenCalledWith(['u_ada', 'b_1'], 'writer', { humanUids: ['u_ada'], botUids: ['b_1'] })
+  })
+
+  it('preserves Bot selection across collapse/expand', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+      { uid: 'b_2', name: 'Review Bot', creator_uid: 'u_ada' },
+    ])
+    const onAdd = vi.fn()
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    fireEvent.click(screen.getByText('Review Bot').closest('label')!.querySelector('input') as HTMLInputElement) // cancel b_2
+    fireEvent.click(screen.getByText('docs.member.hideBots')) // collapse
+    fireEvent.click(screen.getByText('docs.member.showBots')) // re-expand
+    const b1 = screen.getByText('Writer Bot').closest('label')!.querySelector('input') as HTMLInputElement
+    const b2 = screen.getByText('Review Bot').closest('label')!.querySelector('input') as HTMLInputElement
+    // b_1 still selected, b_2 still cancelled across the collapse/expand cycle.
+    expect(b1.checked).toBe(true)
+    expect(b2.checked).toBe(false)
+  })
+
+  it('leaves no hidden Bot selection after the search query clears', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    const onAdd = vi.fn()
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    const search = screen.getByPlaceholderText('docs.member.pickPlaceholder')
+    // Search a Bot: its creator row + preview surface, but WITHOUT selecting the creator the Bot
+    // control is disabled, so no selection can be created via search.
+    fireEvent.change(search, { target: { value: 'Writer Bot' } })
+    const botCheckbox = screen.getByText('Writer Bot').closest('label')!.querySelector('input') as HTMLInputElement
+    expect(botCheckbox.disabled).toBe(true)
+    fireEvent.click(botCheckbox)
+    // Clear the query — nothing was selected, so Add stays disabled (no invisible submission).
+    fireEvent.change(search, { target: { value: '' } })
+    expect((screen.getByText('docs.member.add').closest('button') as HTMLButtonElement).disabled).toBe(true)
+  })
+})

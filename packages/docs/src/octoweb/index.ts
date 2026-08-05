@@ -286,7 +286,7 @@ export async function fetchMyBots(spaceId?: string): Promise<SpaceMemberLite[]> 
   const bots = Array.isArray(data) ? data : []
   return bots
     .filter((b): b is HostMyBot => !!b && !!b.uid)
-    .map((b) => ({ uid: b.uid, name: b.name || b.uid, isBot: true }))
+    .map((b) => ({ uid: b.uid, name: b.name || b.uid, isBot: true, safeStandalone: true }))
 }
 
 /** Minimal view of a `/robot/owned_bots` entry the docs "new HTML" picker reads. */

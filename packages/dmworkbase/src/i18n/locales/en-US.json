@@ -820,6 +820,8 @@
   "forwardModal.confirm": "Confirm",
   "forwardModal.confirmWithCount": "Confirm ({{count}})",
   "forwardModal.external": "External",
+  "forwardModal.showBotsPreview": "Show {{count}} Bots",
+  "forwardModal.hideBotsPreview": "Hide Bots",
   "forwardModal.kindDirect": "DM",
   "forwardModal.kindGroup": "Grp",
   "forwardModal.kindThread": "Thread",

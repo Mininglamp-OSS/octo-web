@@ -13,6 +13,7 @@ import { useForwardModal } from "../ForwardModal/useForwardModal"
 import {
   useForwardTargetMemberCount,
   useForwardBotSnapshot,
+  useForwardBotPreview,
 } from "../ForwardModal/hooks"
 import type { ForwardFinished, ForwardGrantConfig, ForwardGrantRole } from "../ForwardModal/grant"
 
@@ -88,6 +89,16 @@ export default function ConversationSelect({
     confirmForward()
   }, [grantEnabled, botSnapshot, setGrantBotUids, readLatestSelectedBotUids, confirmForward])
 
+  // Person-row Bot preview (UX #4): lets an UNSELECTED person candidate be expanded to inspect the
+  // Bots they created, drawing from the SAME shared catalog the 授权区 snapshot uses. Opt-in with
+  // grant only; display-only — it never selects a target and never contributes to the grant payload
+  // (GrantArea stays authoritative). Absent grant → no preview (既有转发路径零回归).
+  const { botsFor } = useForwardBotPreview(grant ? grant.spaceId : undefined)
+  const botPreview = React.useMemo(
+    () => (grant ? { botsFor } : undefined),
+    [grant, botsFor],
+  )
+
   const grantConfig: ForwardGrantConfig | undefined = grant
     ? {
         canGrant: grant.canGrant,
@@ -117,6 +128,7 @@ export default function ConversationSelect({
       onTabChange={setActiveTab}
       onItemVisible={requestChannelInfoIfNeeded}
       grant={grantConfig}
+      botPreview={botPreview}
     />
   )
 }

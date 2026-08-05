@@ -123,9 +123,11 @@ export function useForwardBotSnapshot(
       }
 
       // 2) fetch Space Bots and group by creator — only creators present in the people snapshot.
+      // Shared cached catalog read so the person-row preview and this selected-target resolution
+      // draw from ONE consistent fetch (UX #4).
       let bots: Array<{ uid?: string; name?: string; creator_uid?: string }> = []
       try {
-        bots = await SpaceBotService.list(spaceId)
+        bots = await SpaceBotService.listShared(spaceId)
       } catch {
         if (generation.current === gen) setLoadError(true)
         return
