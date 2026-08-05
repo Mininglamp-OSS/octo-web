@@ -3,8 +3,15 @@ export interface BotPublishPromptValues {
   apiBaseUrl?: string;
 }
 
+const SPACE_ID_SHELL_TOKEN_RE = /^[A-Za-z0-9_-]+$/;
+
+function sanitizeSpaceId(raw?: string): string {
+  const trimmed = raw?.trim() || "";
+  return SPACE_ID_SHELL_TOKEN_RE.test(trimmed) ? trimmed : "<space-id>";
+}
+
 export function getBotPublishPrompt(values: BotPublishPromptValues = {}): string {
-  const spaceId = values.spaceId?.trim() || "<space-id>";
+  const spaceId = sanitizeSpaceId(values.spaceId);
   const apiBaseUrl = values.apiBaseUrl?.trim() || "<api-base-url>";
 
   return `使用 octo-cli 内置的 Marketplace Skill，将指定 Skill 上架到 OCTO Marketplace。
@@ -17,20 +24,24 @@ export function getBotPublishPrompt(values: BotPublishPromptValues = {}): string
 
 > 请上传要上架的 \`.zip\` / \`.skill\` 包，或提供 Agent 当前运行环境可访问的 Skill 包或 Skill 目录位置。
 
-不要解释正在读取 Skill、复述本 Prompt 或逐步播报检查过程。用户提供前不要搜索磁盘或猜测路径。
+不要解释正在读取 Skill、复述本 Prompt 或逐步播报检查过程。用户提供前不要为查找 Skill 包搜索磁盘或猜测路径。
 
 1. 运行 \`octo-cli version\`。如果未安装或不包含 \`octo-marketplace\` Skill，运行
    \`npm install -g @mininglamp-oss/octo-cli@latest\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
-   如果不存在或无法唯一确定，从当前 Octo Channel 的安全环境或配置读取 Bot Token，
-   通过 stdin 登录或更新固定 Profile \`space-${spaceId}\`：
+   如果不存在或无法唯一确定，按顺序查找当前 Agent Runtime 中配置的 Octo Bot Token：
+   （1）环境变量 \`OCTO_BOT_TOKEN\`；（2）OpenClaw 配置（如 \`~/.openclaw/\` 下的配置文件）；
+   （3）当前工作目录的 \`.env\`。不要为获取 Token 搜索网络或访问外部文档。
+   找到后，通过 stdin 登录或更新固定 Profile \`space-${spaceId}\`：
 
    \`\`\`bash
    <read-token> | octo-cli auth login --with-token --profile space-${spaceId} --space ${spaceId} --api-base-url ${apiBaseUrl}
    \`\`\`
 
    不得输出 Token 或把 Token 放入命令参数。
+   登录后再次运行 \`octo-cli auth list\`，确认 Profile \`space-${spaceId}\` 的 \`space_id\` 等于 \`${spaceId}\`。
+   三处都找不到时，不要继续自行查找，提示用户运行 \`octo-cli auth login\` 或为当前 Runtime 配置 Bot Token。
 
 3. 使用选定的 Profile 运行以下命令，读取并遵循最新的 \`octo-marketplace\` Skill：
 

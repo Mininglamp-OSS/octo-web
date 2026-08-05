@@ -31,10 +31,27 @@ describe("buildInstallPrompt", () => {
     expect(prompt).toContain("octo-cli skills octo-marketplace");
     expect(prompt).toContain("npm install -g @mininglamp-oss/octo-cli@latest");
     expect(prompt).toContain("octo-cli auth list");
+    expect(prompt).toContain("当前 Agent Runtime 中配置的 Octo Bot Token");
+    expect(prompt).toContain("OCTO_BOT_TOKEN");
+    expect(prompt).toContain("~/.openclaw/");
+    expect(prompt).toContain("当前工作目录的 `.env`");
+    expect(prompt).toContain("octo-cli auth login");
+    expect(prompt).toContain("Profile `space-space-456` 的 `space_id` 等于 `space-456`");
+    expect(prompt).not.toContain("可搜索网络");
+    expect(prompt).not.toContain("Runtime 官方文档");
     expect(prompt).toContain("不要解释正在读取 Skill、复述本 Prompt 或逐步播报检查过程");
     expect(prompt).toContain("--profile space-space-456 --space space-456 --api-base-url https://octo.example.com");
     expect(prompt).toContain('`skills.md` 中“Install”流程');
     expect(prompt).not.toContain("在下载或覆盖文件前，向用户展示");
     expect(prompt).not.toContain("go install github.com/Mininglamp-OSS/octo-cli");
+  });
+
+  it("falls back to a placeholder when spaceId is not shell-safe", () => {
+    const payload = "space-456; rm -rf /";
+    const prompt = buildInstallPrompt("skill-123", payload, "https://octo.example.com");
+
+    expect(prompt).not.toContain(payload);
+    expect(prompt).toContain("- Space ID：`<space-id>`");
+    expect(prompt).toContain("--profile space-<space-id> --space <space-id>");
   });
 });

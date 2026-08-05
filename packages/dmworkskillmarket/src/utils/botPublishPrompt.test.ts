@@ -14,14 +14,34 @@ describe("getBotPublishPrompt", () => {
     expect(prompt).toContain("Skill 包或 Skill 目录位置");
     expect(prompt).not.toContain("点击输入框旁");
     expect(prompt).not.toContain("拖入当前对话");
-    expect(prompt).toContain("用户提供前不要搜索磁盘或猜测路径");
+    expect(prompt).toContain("用户提供前不要为查找 Skill 包搜索磁盘或猜测路径");
     expect(prompt).not.toContain("<skill-package-path>");
     expect(prompt).not.toContain("<skill-zip-path>");
     expect(prompt).toContain("Space ID：`space-1`");
+    expect(prompt).toContain("当前 Agent Runtime 中配置的 Octo Bot Token");
+    expect(prompt).toContain("OCTO_BOT_TOKEN");
+    expect(prompt).toContain("~/.openclaw/");
+    expect(prompt).toContain("当前工作目录的 `.env`");
+    expect(prompt).toContain("octo-cli auth login");
+    expect(prompt).toContain("Profile `space-space-1` 的 `space_id` 等于 `space-1`");
+    expect(prompt).not.toContain("可搜索网络");
+    expect(prompt).not.toContain("Runtime 官方文档");
     expect(prompt).toContain('`skills.md` 中“Publish as a Bot”流程');
     expect(prompt).toContain("使用用户提供的附件、Skill 包路径或");
     expect(prompt).toContain("以上 Space ID、API 地址和可见范围是本次操作的权威输入");
     expect(prompt).not.toContain("在上传或覆盖现有 Skill 前，向用户展示");
     expect(prompt).not.toContain("go install github.com/Mininglamp-OSS/octo-cli");
+  });
+
+  it("falls back to a placeholder when spaceId is not shell-safe", () => {
+    const payload = "space-1$(whoami)";
+    const prompt = getBotPublishPrompt({
+      spaceId: payload,
+      apiBaseUrl: "https://octo.example.com/api",
+    });
+
+    expect(prompt).not.toContain(payload);
+    expect(prompt).toContain("- Space ID：`<space-id>`");
+    expect(prompt).toContain("--profile space-<space-id> --space <space-id>");
   });
 });

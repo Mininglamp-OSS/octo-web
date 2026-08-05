@@ -85,6 +85,19 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain("不得输出 Token");
   });
 
+  it("states the bounded local lookup order for runtime token discovery", () => {
+    const p = getMcpBotPublishPrompt({ spaceId: goodId });
+    expect(p).toContain("当前 Agent Runtime 中配置的 Octo Bot Token");
+    expect(p).toContain("OCTO_BOT_TOKEN");
+    expect(p).toContain("~/.openclaw/");
+    expect(p).toContain("当前工作目录的 `.env`");
+    expect(p).toContain("octo-cli auth login");
+    expect(p).toContain(`Profile \`space-${goodId}\` 的 \`space_id\` 等于 \`${goodId}\``);
+    expect(p).toContain("用户提供前不要为查找 MCP 配置信息搜索磁盘或猜测路径");
+    expect(p).not.toContain("可搜索网络");
+    expect(p).not.toContain("Runtime 官方文档");
+  });
+
   it("uses the placeholder when apiBaseUrl is empty", () => {
     const p = getMcpBotPublishPrompt({ spaceId: goodId, apiBaseUrl: "" });
     expect(p).toContain("<api-base-url>");
