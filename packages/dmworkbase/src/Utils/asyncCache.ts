@@ -14,8 +14,14 @@
  *     天然 miss，无需监听 `space-changed`，也无需在 Service 层 import WKApp。
  */
 
-/** 调用方传入的取消信号被触发时抛出的错误。名字对齐 DOMException 的约定。 */
-function abortError(): Error {
+/**
+ * 调用方传入的取消信号被触发时抛出的错误。名字对齐 DOMException 的约定。
+ *
+ * 导出供 Service 层复用：axios 取消后经 APIClient 包装成 `ERR_CANCELED`，而
+ * `normalizeApiError`（apiError.ts）只归类 `ECONNABORTED` / `ERR_NETWORK`，
+ * 取消会退化成「未知错误」。转发 signal 的 Service 需要把它翻译回 AbortError。
+ */
+export function abortError(): Error {
     const err = new Error("Aborted");
     err.name = "AbortError";
     return err;
@@ -59,7 +65,13 @@ export interface AsyncCacheOptions {
 }
 
 export interface AsyncCacheGetOptions {
-    /** 本次可接受的最大陈旧时长（严格小于才算命中）；省略则用 `ttlMs`，传 0 强制绕过缓存。 */
+    /**
+     * 本次可接受的最大陈旧时长（严格小于才算命中）；省略则用 `ttlMs`。
+     *
+     * 传 0 会跳过任何已完成的缓存值，但**仍会合流到正在进行的加载**——否则并发
+     * 的「强制刷新」会各自打一个请求。要真正拿到一次独立的新请求，请先
+     * `invalidate(key)` 再 get。
+     */
     maxAgeMs?: number;
     /** 取消本次等待（不影响底层加载与其他等待方）。 */
     signal?: AbortSignal;

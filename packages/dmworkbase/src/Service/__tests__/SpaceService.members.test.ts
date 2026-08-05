@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), delete: vi.fn() }));
+const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() }));
 
 vi.mock("../../App", () => ({
   default: {
-    apiClient: { get: api.get, put: api.put, delete: api.delete },
+    apiClient: { get: api.get, put: api.put, post: api.post, delete: api.delete },
     shared: {},
     loginInfo: {},
   },
@@ -32,6 +32,7 @@ describe("SpaceService member pagination", () => {
   beforeEach(() => {
     api.get.mockReset();
     api.put.mockReset();
+    api.post.mockReset();
     api.delete.mockReset();
     SpaceService.shared.invalidateRoster();
   });
@@ -84,12 +85,51 @@ describe("SpaceService member pagination", () => {
     await expect(SpaceService.shared.getAllMembers("")).resolves.toEqual([]);
     expect(api.get).not.toHaveBeenCalled();
   });
+
+  it("translates an in-flight cancellation into AbortError", async () => {
+    const controller = new AbortController();
+    // 复刻 APIClient 的真实行为：axios 取消抛 ERR_CANCELED，而
+    // normalizeApiError（apiError.ts:96-109）只归类 ECONNABORTED / ERR_NETWORK，
+    // 于是取消被包装成通用「未知错误」。调用方必须仍看到 AbortError。
+    api.get.mockImplementation(async () => {
+      controller.abort();
+      throw { code: "err.shared.unknown", message: "unknown error", normalized: {} };
+    });
+
+    await expect(
+      SpaceService.shared.getMembers("space-1", 1, 10, controller.signal)
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("surfaces AbortError through getAllMembers on an in-flight cancellation", async () => {
+    const controller = new AbortController();
+    api.get.mockImplementation(async () => {
+      controller.abort();
+      throw { code: "err.shared.unknown", message: "unknown error" };
+    });
+
+    await expect(
+      SpaceService.shared.getAllMembers("space-1", 2, 50, controller.signal)
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mask a genuine failure as a cancellation", async () => {
+    const controller = new AbortController();
+    api.get.mockRejectedValue(new Error("boom"));
+
+    // signal 未触发 → 原始错误必须原样抛出，不能被翻译成 AbortError。
+    await expect(
+      SpaceService.shared.getMembers("space-1", 1, 10, controller.signal)
+    ).rejects.toThrow("boom");
+  });
 });
 
 describe("SpaceService.getRoster", () => {
   beforeEach(() => {
     api.get.mockReset();
     api.put.mockReset();
+    api.post.mockReset();
     api.delete.mockReset();
     SpaceService.shared.invalidateRoster();
   });
@@ -153,6 +193,29 @@ describe("SpaceService.getRoster", () => {
 
     await SpaceService.shared.getRoster("space-1");
     await SpaceService.shared.updateMemberRole("space-1", "u1", 2);
+    await SpaceService.shared.getRoster("space-1");
+
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("refetches after disbandSpace invalidates the roster", async () => {
+    api.get.mockResolvedValue([member("u1")]);
+    api.delete.mockResolvedValue(undefined);
+
+    await SpaceService.shared.getRoster("space-1");
+    await SpaceService.shared.disbandSpace("space-1");
+    await SpaceService.shared.getRoster("space-1");
+
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("refetches after leaveSpace invalidates the roster", async () => {
+    api.get.mockResolvedValue([member("u1")]);
+    api.post.mockResolvedValue(undefined);
+
+    await SpaceService.shared.getRoster("space-1");
+    // 自己退出后名册里不该还有自己——与 removeMembers 对称。
+    await SpaceService.shared.leaveSpace("space-1");
     await SpaceService.shared.getRoster("space-1");
 
     expect(api.get).toHaveBeenCalledTimes(2);

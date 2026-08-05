@@ -4,7 +4,7 @@ import { hasSpacePrefix } from "./SpacePrefix"
 import { ChannelTypeCommunityTopic } from "./Const"
 import { parseThreadChannelId } from "./Thread"
 import { getImChannelInfo, getImChannelSubscribers } from "../im-runtime/channelRuntime"
-import { createAsyncCache } from "../Utils/asyncCache"
+import { abortError, createAsyncCache } from "../Utils/asyncCache"
 
 export type JoinSpaceStatus = "NEED_APPROVAL" | "PENDING"
 
@@ -292,9 +292,19 @@ export class SpaceService {
 
     async getMembers(spaceId: string, page: number = 1, limit: number = 50, signal?: AbortSignal): Promise<SpaceMember[]> {
         const path = `space/${spaceId}/members?page=${page}&limit=${limit}`
-        // 仅在调用方给了 signal 时才带 config，保持既有调用形态不变。
-        const resp = signal ? await WKApp.apiClient.get(path, { signal }) : await WKApp.apiClient.get(path)
-        return resp || []
+        try {
+            // 仅在调用方给了 signal 时才带 config，保持既有调用形态不变。
+            const resp = signal ? await WKApp.apiClient.get(path, { signal }) : await WKApp.apiClient.get(path)
+            return resp || []
+        } catch (err) {
+            // 请求进行中被取消时，axios 抛 ERR_CANCELED，而 normalizeApiError
+            // （apiError.ts:96-109）只归类 ECONNABORTED / ERR_NETWORK，取消会被
+            // 包装成「未知错误」——调用方无从识别，还会弹错误提示。这里按
+            // signal.aborted 判定而非匹配错误码：请求被取消时该标志必然为真，
+            // 不依赖 APIClient 包装后的错误形状。
+            if (signal?.aborted) throw abortError()
+            throw err
+        }
     }
 
     // 拉取一个 space 的全部成员（分页循环到取空/达上限）。收敛此前散落在
@@ -308,15 +318,12 @@ export class SpaceService {
         if (!spaceId) return []
         const acc: SpaceMember[] = []
         for (let page = 1; page <= maxPages; page++) {
+            // 请求进行中被取消由 getMembers 翻译成 AbortError 抛出。
             const batch = await this.getMembers(spaceId, page, pageLimit, signal)
             acc.push(...batch)
-            // 取消检查放在 await 之后并抛错，而不是 break 返回半份名册——
-            // 半份名册会被上层当成完整结果，静默丢人。
-            if (signal?.aborted) {
-                const err = new Error("Aborted")
-                err.name = "AbortError"
-                throw err
-            }
+            // 这一层只兜「abort 落在两页之间」（无请求在飞）的窗口。抛错而不是
+            // break 返回半份名册——半份会被上层当成完整结果，静默丢人。
+            if (signal?.aborted) throw abortError()
             if (!batch || batch.length < pageLimit) break
         }
         return acc
@@ -370,7 +377,12 @@ export class SpaceService {
     }
 
     async leaveSpace(spaceId: string): Promise<void> {
-        return WKApp.apiClient.post(`space/${spaceId}/leave`, {})
+        const result = await WKApp.apiClient.post(`space/${spaceId}/leave`, {})
+        // 自己退出是 removeMembers 的对称操作，同样要失效名册，否则 TTL 窗口内
+        // 还能读到把自己算在内的旧名册。（joinSpace 只有邀请码，拿不到 spaceId，
+        // 无法在此失效。）
+        rosterCache.invalidate(spaceId)
+        return result
     }
 
     async updateSpace(spaceId: string, data: { name?: string; description?: string }): Promise<void> {
