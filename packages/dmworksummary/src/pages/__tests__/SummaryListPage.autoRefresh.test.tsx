@@ -222,8 +222,10 @@ describe('SummaryListPage auto-refresh on completion (#290)', () => {
         const loadMorePromise = (page as any).loadMore();
         await new Promise((r) => setTimeout(r, 0));
 
-        // Simulate a concurrent refresh landing first: it reset page to 1 and
-        // replaced items with a fresh page-1 batch.
+        // Simulate a concurrent refresh landing first: it reset page to 1,
+        // replaced items with a fresh page-1 batch, AND bumped loadDataSeq
+        // (which is what real loadData does at entry).
+        (page as any).loadDataSeq++;
         (page as any).state = {
             ...(page as any).state,
             items: Array.from({ length: 20 }, (_, i) => ({
@@ -278,7 +280,105 @@ describe('SummaryListPage auto-refresh on completion (#290)', () => {
     });
 
     /**
-     * Jerry-Xin round-6 P1: if a background refresh is in flight and the
+     * P1-1 regression at nextPage === 2 (round-7 Jerry-Xin / yujiawei): the
+     * previous `prev.page !== nextPage - 1` guard was a no-op here because
+     * loadData also resets page to 1 — "list was reset" and "nothing changed"
+     * both looked like `prev.page === 1`. Now loadMore captures loadDataSeq
+     * pre-await and drops the batch when it advances.
+     */
+    it('discards a stale loadMore@page-2 response when a concurrent loadData ran', async () => {
+        const { page } = makePage(
+            Array.from({ length: 20 }, (_, i) => ({
+                task_id: i + 1,
+                status: TaskStatus.COMPLETED,
+                topic: `t${i + 1}`,
+            }))
+        );
+        (page as any).state = {
+            ...(page as any).state,
+            page: 1,
+            pageSize: 20,
+            hasMore: true,
+        };
+
+        // loadMore fires from page:1 → nextPage=2, awaits.
+        let resolveLoadMore: (v: any) => void = () => {};
+        vi.mocked(api.listSummaries).mockImplementationOnce(
+            () => new Promise((r) => { resolveLoadMore = r; }) as any
+        );
+        const loadMorePromise = (page as any).loadMore();
+        await new Promise((r) => setTimeout(r, 0));
+
+        // Concurrent loadData fires and completes, resetting items to a
+        // fresh page-1 batch. state.page ends up 1 again.
+        vi.mocked(api.listSummaries).mockImplementationOnce(
+            async () => ({
+                items: Array.from({ length: 20 }, (_, i) => ({
+                    task_id: 200 + i,
+                    status: TaskStatus.COMPLETED,
+                    topic: `fresh-${i}`,
+                })),
+                total: 40,
+            } as any)
+        );
+        await (page as any).loadData();
+
+        // Stale page-2 response arrives. prev.page is 1 (matching nextPage-1),
+        // so the old guard would have appended. loadDataSeq guard catches it.
+        resolveLoadMore({
+            items: Array.from({ length: 20 }, (_, i) => ({
+                task_id: 21 + i,
+                status: TaskStatus.COMPLETED,
+                topic: `stale-page2-${i}`,
+            })),
+            total: 40,
+        });
+        await loadMorePromise;
+
+        const items = (page.state as any).items;
+        expect(items).toHaveLength(20);
+        expect((page.state as any).page).toBe(1);
+        expect(items.every((x: any) => !String(x.topic).startsWith('stale-page2'))).toBe(true);
+    });
+
+    /**
+     * P1-2 regression (round-7 Jerry-Xin / yujiawei): a failed silent
+     * refresh must NOT leave state.page reset to 1 with items still at the
+     * old depth. loadData now defers the page/hasMore reset to the success
+     * commit, so a failure preserves whatever cursor the user had before.
+     */
+    it('preserves pagination cursor when a silent refresh fails at deep scroll', async () => {
+        const { page } = makePage(
+            Array.from({ length: 100 }, (_, i) => ({
+                task_id: i + 1,
+                status: TaskStatus.COMPLETED,
+                topic: `t${i + 1}`,
+            }))
+        );
+        (page as any).state = {
+            ...(page as any).state,
+            page: 5,
+            pageSize: 20,
+            hasMore: true,
+            total: 200,
+        };
+
+        vi.mocked(api.listSummaries).mockRejectedValue(new Error('network'));
+
+        await (page as any).refreshListSilently();
+
+        // items unchanged, page NOT reset, hasMore preserved → next loadMore
+        // requests page 6, not page 2, so no rows duplicate.
+        const items = (page.state as any).items;
+        expect(items).toHaveLength(100);
+        expect((page.state as any).page).toBe(5);
+        expect((page.state as any).hasMore).toBe(true);
+        expect((page.state as any).error).toBeFalsy();
+        expect((page.state as any).loading).toBe(false);
+    });
+
+    /**
+     * Background refresh in flight, user changes filter and a fresh loadData
      * user then changes the status filter, the newer filter-triggered
      * loadData must win — the older refresh response must be discarded
      * rather than overwriting the user's newer view. loadDataSeq is the

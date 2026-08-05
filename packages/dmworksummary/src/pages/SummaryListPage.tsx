@@ -182,12 +182,18 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
 
     async loadData(opts: { silent?: boolean } = {}) {
         // Bump-and-capture sequence: this loadData's response is only allowed
-        // to commit if no newer loadData/filter change has started meanwhile.
-        // Guards against a background refresh (fire-and-forget from
-        // refreshListSilently) overwriting a fresh user-driven loadData that
-        // ran under a newer filter/keyword/space.
+        // to commit if no newer loadData/loadMore/filter change has started
+        // meanwhile. Guards against a background refresh overwriting a fresh
+        // user-driven load, and against a stale loadMore appending after a
+        // loadData reset. Bumping this also invalidates any in-flight
+        // loadMore (which captured its own seq at entry).
         const seq = ++this.loadDataSeq;
-        this.setState({ loading: true, error: null, page: 1, hasMore: true });
+        // Only toggle loading. Do NOT pre-set page:1 / hasMore:true here —
+        // if the request fails in silent mode we would leave items at the
+        // old depth with page reset to 1, and the next loadMore would
+        // duplicate rows (#290 Jerry-Xin / yujiawei round-6 P1-2). Commit
+        // page/hasMore atomically with items on success instead.
+        this.setState({ loading: true, error: null });
         try {
             const { pageSize, statusFilter, keyword } = this.state;
             const params: ListSummariesParams = {
@@ -201,6 +207,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             if (seq !== this.loadDataSeq) return;
             this.setState({
                 items: resp.items,
+                page: 1,
                 total: resp.total,
                 loading: false,
                 hasMore: resp.items.length < resp.total,
@@ -231,6 +238,14 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
 
     async loadMore() {
         if (this.state.loadingMore || !this.state.hasMore || this.state.loading) return;
+        // Capture the loadData generation counter: if any loadData (user or
+        // background-refresh) starts and bumps it while our request is in
+        // flight, the list was reset under us and our appended batch would
+        // splice a hole. Discard on seq mismatch. This is more robust than
+        // the earlier `prev.page !== nextPage - 1` check, which is a no-op
+        // at nextPage === 2 because loadData resets page back to 1 as well
+        // (round-6: Jerry-Xin / yujiawei P1-1).
+        const seq = this.loadDataSeq;
         this.setState({ loadingMore: true });
         try {
             const nextPage = this.state.page + 1;
@@ -243,24 +258,18 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 origin_channel_id: this.props.channelId || undefined,
             };
             const resp = await api.listSummaries(params);
-            // Stale-response guard: if a concurrent loadData / silent refresh
-            // reset the list under us (page dropped back below what we captured
-            // pre-await), appending this batch would splice a hole into items.
-            // Discard the batch instead — the fresh list already covers up to
-            // its own extent, and normal scrolling will re-request the next
-            // page in order. Prevents #290 refresh-timer × loadMore race from
-            // permanently corrupting the list.
-            this.setState(prev => {
-                if (prev.page !== nextPage - 1) {
-                    return { loadingMore: false } as any;
-                }
-                return {
-                    items: [...prev.items, ...resp.items],
-                    page: nextPage,
-                    loadingMore: false,
-                    hasMore: prev.items.length + resp.items.length < resp.total,
-                };
-            }, () => this.maybeStartBatchPoll());
+            if (seq !== this.loadDataSeq) {
+                // A concurrent loadData landed / is landing; its response is
+                // authoritative for items/page. Drop our batch.
+                this.setState({ loadingMore: false });
+                return;
+            }
+            this.setState(prev => ({
+                items: [...prev.items, ...resp.items],
+                page: nextPage,
+                loadingMore: false,
+                hasMore: prev.items.length + resp.items.length < resp.total,
+            }), () => this.maybeStartBatchPoll());
         } catch {
             this.setState({ loadingMore: false });
         }
