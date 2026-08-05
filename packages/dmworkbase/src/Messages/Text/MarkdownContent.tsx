@@ -6,6 +6,8 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import { Toast } from "@douyinfe/semi-ui";
+import { Copy } from "lucide-react";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import "yet-another-react-lightbox/styles.css";
@@ -16,6 +18,7 @@ import WKApp from "../../App";
 import { isSafeUrl } from "../../Utils/security";
 import { linkifySafeUrls } from "../../Utils/linkify";
 import { downloadFile } from "../../Utils/download";
+import { copyToClipboard } from "../../Utils/clipboard";
 import { t } from "../../i18n";
 import { getMentionRenderState } from "./mentionRenderState";
 import {
@@ -303,6 +306,63 @@ function segmentText(
   return segments;
 }
 
+function reactNodeText(children: React.ReactNode): string {
+  if (children == null || typeof children === "boolean") return "";
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children);
+  }
+  if (Array.isArray(children)) return children.map(reactNodeText).join("");
+  if (React.isValidElement(children)) {
+    return reactNodeText((children.props as any)?.children);
+  }
+  return "";
+}
+
+const MarkdownCodeBlock: React.FC<{
+  children: React.ReactNode;
+  preProps: any;
+}> = ({ children, preProps }) => {
+  const [copying, setCopying] = useState(false);
+
+  const handleCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (copying) return;
+
+    setCopying(true);
+    try {
+      const ok = await copyToClipboard(reactNodeText(children));
+      if (ok) {
+        Toast.success(t("base.message.markdown.copyCodeSuccess"));
+      } else {
+        Toast.warning(t("base.module.contextMenus.copyFailed"));
+      }
+    } catch {
+      Toast.warning(t("base.module.contextMenus.copyFailed"));
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  const copyLabel = t("base.message.markdown.copyCode");
+
+  return (
+    <div className="wk-markdown-pre-wrapper">
+      <button
+        type="button"
+        className="wk-markdown-code-copy"
+        aria-label={copyLabel}
+        title={copyLabel}
+        disabled={copying}
+        onClick={handleCopy}
+      >
+        <Copy size={14} strokeWidth={2} aria-hidden="true" />
+      </button>
+      <pre {...preProps}>{children}</pre>
+    </div>
+  );
+};
+
 const baseComponents: any = {
   a: ({ href, children, ...props }: any) => {
     // AC-13b (feature #511): middle-ellipsize the DISPLAY text only when it is itself a long bare
@@ -329,9 +389,7 @@ const baseComponents: any = {
   },
   p: ({ node: _node, children, ...props }: any) => renderParagraph(children, props),
   pre: ({ children, ...props }: any) => (
-    <div className="wk-markdown-pre-wrapper">
-      <pre {...props}>{children}</pre>
-    </div>
+    <MarkdownCodeBlock preProps={props}>{children}</MarkdownCodeBlock>
   ),
   img: ({ src, alt }: any) => <MarkdownImage src={src} alt={alt} />,
 };

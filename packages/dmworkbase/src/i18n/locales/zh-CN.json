@@ -1030,6 +1030,8 @@
   "message.interactiveCard.inputTooLarge": "提交内容过大",
   "message.interactiveCard.copySuccess": "已复制",
   "message.interactiveCard.copyFailed": "复制失败",
+  "message.markdown.copyCode": "复制代码",
+  "message.markdown.copyCodeSuccess": "已复制代码",
   "message.imagePreview.rotate": "旋转",
   "message.interactiveCard.copyTable": "复制",
   "message.interactiveCard.denyDialog.title": "拒绝文档访问申请",
