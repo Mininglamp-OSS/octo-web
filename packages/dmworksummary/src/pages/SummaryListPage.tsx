@@ -227,6 +227,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 page: 1,
                 total: resp.total,
                 loading: false,
+                // Round-9 yujiawei P2-3: a silent refresh that succeeds
+                // must clear a pre-existing error banner too. Otherwise a
+                // failed user-driven load leaves a non-dismissable banner
+                // that sits above a perfectly fresh list.
+                error: null,
                 hasMore: resp.items.length < resp.total,
             }, () => {
                 if (this.isMounted_) this.maybeStartBatchPoll();
@@ -244,7 +249,12 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             }
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
         } finally {
-            this.isLoadingData = false;
+            // Sequence-owned clear (round-9 yujiawei P2-2): with two
+            // overlapping loadData calls, the older stale one returning
+            // early at the seq check would otherwise clear the flag while
+            // the newer one is still in flight. Only the current loadData
+            // is allowed to release the guard.
+            if (seq === this.loadDataSeq) this.isLoadingData = false;
         }
     }
 
@@ -350,21 +360,20 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 // 因此终态变化触发一次全量刷新(委派给 loadData · 见 refreshListSilently)。
                 // 会短暂显示 spinner + 塌回 page 1—这是 loadData 的必然副作用,
                 // 换来 correct-by-construction 的过滤/space/loadMore 语义。
-                // 本地 status 补丁在触发刷新前先落到 items,避免卡片在往返窗口里
-                // 显示陈旧的 non-terminal 状态(含取消按钮)。
+                //
+                // 终态分支不落 local status 补丁(round-9 yujiawei P1):
+                // 早期版本先 patch 到 items 再 refresh · 但若 refresh 失败(silent
+                // 分支静默 return · 或被 isRefreshing 丢),items 已经写成 COMPLETED
+                // 会让 maybeStartBatchPoll 看到 active tasks 为空 → stopBatchPoll →
+                // 永远无法自动 retry · 卡片保留 stale 标题/预览。
+                // 保留 items 里的 non-terminal 状态,下次 poll tick 依然 detect
+                // change → 自动 retry refresh。渲染层因 loading:true 会 unmount
+                // 列表容器,用户看不到瞬时的 "still-non-terminal" 状态。
                 const hasTerminal = changedIds.some(id => {
                     const u = updateMap.get(id);
                     return !!u && isTerminalStatus(u.status);
                 });
                 if (hasTerminal) {
-                    // Apply the confirmed status patch immediately so cards
-                    // do not render a stale non-terminal status (with Cancel
-                    // affordance) for the refresh round-trip. Fire the silent
-                    // refresh right after — do not defer it into the setState
-                    // callback (that adds a React commit for no benefit), and
-                    // do not call maybeStartBatchPoll here because the refresh
-                    // itself calls it on completion.
-                    this.setState({ items: newItems });
                     void this.refreshListSilently();
                 } else {
                     // 非终态（如 PENDING→PROCESSING）保留廉价的原地状态补丁即可。

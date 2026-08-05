@@ -60,7 +60,7 @@ function makePage(items: Array<Record<string, unknown>>) {
 describe('SummaryListPage auto-refresh on completion (#290)', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('applies the local status patch immediately AND triggers a full reload via loadData when a task reaches a terminal status', async () => {
+    it('triggers a full reload via loadData when a task reaches a terminal status (round-9: no local patch)', async () => {
         vi.mocked(api.batchStatus).mockResolvedValue([
             { id: 1, status: TaskStatus.COMPLETED },
         ] as any);
@@ -74,19 +74,22 @@ describe('SummaryListPage auto-refresh on completion (#290)', () => {
         ]);
 
         await (page as any).doBatchPoll([1]);
-        // Yield for the fire-and-forget refresh (which awaits loadData) to
-        // complete its full setState chain.
         for (let i = 0; i < 5; i++) {
             await new Promise((r) => setTimeout(r, 0));
         }
 
-        // Local status patch was applied to items BEFORE the loadData round
-        // trip, so the card did not sit at a stale PROCESSING status.
-        // Find the first patch that carries the items array with COMPLETED status.
-        const localPatch = setStatePatches.find(
-            (p: any) => Array.isArray(p.items) && p.items[0]?.status === TaskStatus.COMPLETED
-        );
-        expect(localPatch).toBeDefined();
+        // Terminal branch delegates directly to loadData without an
+        // intermediate local status patch (round-9 yujiawei P1 fix). The
+        // ONLY items commit should come from loadData's success path with
+        // the fresh title, not an earlier local COMPLETED-status patch.
+        // Rationale: pre-patching to COMPLETED would strand the task in
+        // stopBatchPoll if the refresh fails, preventing self-retry.
+        const itemsCommits = setStatePatches.filter((p: any) => Array.isArray(p.items));
+        expect(itemsCommits).toHaveLength(1);
+        expect((itemsCommits[0] as any).items[0]).toMatchObject({
+            status: TaskStatus.COMPLETED,
+            topic: '完成后的标题',
+        });
 
         // loadData was invoked (via refreshListSilently) and enriched the row.
         expect(api.listSummaries).toHaveBeenCalledTimes(1);
@@ -488,5 +491,56 @@ describe('SummaryListPage auto-refresh on completion (#290)', () => {
         // Cleanup.
         resolveLoadData({ items: [], total: 0 });
         await loadDataPromise;
+    });
+
+    /**
+     * Round-9 P1 regression (yujiawei): the terminal branch used to pre-patch
+     * items to COMPLETED before firing the refresh. If the refresh failed,
+     * items would already show all tasks as terminal → next poll tick sees
+     * currentActiveIds=[] → stopBatchPoll → the task keeps its stale title
+     * indefinitely with no auto-recovery.
+     *
+     * Fix: remove the local patch. Now items keep the non-terminal status
+     * across the failed refresh, so the next poll tick still detects the
+     * status change and re-fires the refresh, giving natural retry.
+     */
+    it('retries the refresh on the next poll tick when the first attempt fails', async () => {
+        const { page } = makePage([
+            { task_id: 1, status: TaskStatus.PROCESSING, topic: 'x' },
+        ]);
+
+        // batchStatus keeps reporting COMPLETED across ticks.
+        vi.mocked(api.batchStatus).mockResolvedValue([
+            { id: 1, status: TaskStatus.COMPLETED },
+        ] as any);
+
+        // First refresh fails; second succeeds.
+        vi.mocked(api.listSummaries)
+            .mockRejectedValueOnce(new Error('network'))
+            .mockResolvedValueOnce({
+                items: [{ task_id: 1, status: TaskStatus.COMPLETED, topic: 'fresh' }],
+                total: 1,
+            } as any);
+
+        // Tick 1: refresh fails. items is untouched (no local patch since
+        // round-9), so the task still shows PROCESSING.
+        await (page as any).doBatchPoll([1]);
+        for (let i = 0; i < 5; i++) {
+            await new Promise((r) => setTimeout(r, 0));
+        }
+        expect((page.state as any).items[0].status).toBe(TaskStatus.PROCESSING);
+        expect((page.state as any).items[0].topic).toBe('x');
+
+        // Tick 2: batchStatus reports COMPLETED again → change still detected
+        // → refresh fires again → succeeds.
+        await (page as any).doBatchPoll([1]);
+        for (let i = 0; i < 5; i++) {
+            await new Promise((r) => setTimeout(r, 0));
+        }
+        expect((page.state as any).items[0]).toMatchObject({
+            status: TaskStatus.COMPLETED,
+            topic: 'fresh',
+        });
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
     });
 });
