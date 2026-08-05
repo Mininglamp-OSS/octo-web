@@ -6,7 +6,7 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import { Toast } from "@douyinfe/semi-ui";
+import Toast from "@douyinfe/semi-ui/lib/es/toast";
 import { Copy } from "lucide-react";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -321,7 +321,8 @@ function reactNodeText(children: React.ReactNode): string {
 const MarkdownCodeBlock: React.FC<{
   children: React.ReactNode;
   preProps: any;
-}> = ({ children, preProps }) => {
+  isStreaming?: boolean;
+}> = ({ children, preProps, isStreaming = false }) => {
   const [copying, setCopying] = useState(false);
 
   const handleCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -331,7 +332,9 @@ const MarkdownCodeBlock: React.FC<{
 
     setCopying(true);
     try {
-      const ok = await copyToClipboard(reactNodeText(children));
+      const ok = await copyToClipboard(
+        reactNodeText(children).replace(/\n$/, "")
+      );
       if (ok) {
         Toast.success(t("base.message.markdown.copyCodeSuccess"));
       } else {
@@ -348,16 +351,18 @@ const MarkdownCodeBlock: React.FC<{
 
   return (
     <div className="wk-markdown-pre-wrapper">
-      <button
-        type="button"
-        className="wk-markdown-code-copy"
-        aria-label={copyLabel}
-        title={copyLabel}
-        disabled={copying}
-        onClick={handleCopy}
-      >
-        <Copy size={14} strokeWidth={2} aria-hidden="true" />
-      </button>
+      {!isStreaming && (
+        <button
+          type="button"
+          className="wk-markdown-code-copy"
+          aria-label={copyLabel}
+          title={copyLabel}
+          disabled={copying}
+          onClick={handleCopy}
+        >
+          <Copy size={14} strokeWidth={2} aria-hidden="true" />
+        </button>
+      )}
       <pre {...preProps}>{children}</pre>
     </div>
   );
@@ -392,6 +397,15 @@ const baseComponents: any = {
     <MarkdownCodeBlock preProps={props}>{children}</MarkdownCodeBlock>
   ),
   img: ({ src, alt }: any) => <MarkdownImage src={src} alt={alt} />,
+};
+
+const streamingBaseComponents: any = {
+  ...baseComponents,
+  pre: ({ children, ...props }: any) => (
+    <MarkdownCodeBlock preProps={props} isStreaming>
+      {children}
+    </MarkdownCodeBlock>
+  ),
 };
 
 /**
@@ -623,7 +637,10 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
     stableMentions.current.length > 0 || stableEmojis.current.length > 0;
 
   const components = useMemo(() => {
-    if (!hasTokens) return baseComponents;
+    const activeBaseComponents = isStreaming
+      ? streamingBaseComponents
+      : baseComponents;
+    if (!hasTokens) return activeBaseComponents;
     const process = (children: React.ReactNode) =>
       processTextChildren(
         children,
@@ -637,7 +654,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
       ({ node, children, ordered, checked, index, siblingCount, ...props }: any) =>
         React.createElement(Tag, props, process(children));
     return {
-      ...baseComponents,
+      ...activeBaseComponents,
       p: wrap("p"),
       td: wrap("td"),
       th: wrap("th"),
@@ -655,6 +672,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
     stableEmojis.current,
     stableOnMentionClick,
     isSend,
+    isStreaming,
   ]);
 
   // 根据是否启用数学公式 / markdown 选择插件
