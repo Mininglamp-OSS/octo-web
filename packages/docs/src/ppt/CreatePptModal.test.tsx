@@ -136,41 +136,63 @@ describe('CreatePptModal', () => {
     trigger.remove()
   })
 
-  // ── R2-F1 defect 1: Esc/close restores focus on the close route itself ────
-  // The parent-driven unmount cleanup is not enough: in a real browser the
-  // native dialog steals focus to BODY on the Esc route before the parent flips
-  // `open`. Focus must be restored synchronously by the close handler, without
-  // relying on the caller re-rendering with open={false}.
-  it('restores focus to the trigger synchronously on the Esc/cancel route', () => {
+  // ── R2-F1 defect 1: Esc/close restores focus to the trigger AFTER close ───
+  // Faithful to the real DOM race: a native <dialog> moves focus to <body> as it
+  // unwinds the Esc/close, AFTER any synchronous restore our handler ran. So the
+  // restore must happen on a post-close animation frame, not synchronously inside
+  // the cancel/keydown handler. These tests mount a real trigger element and assert
+  // document.activeElement === trigger AFTER the close + the browser's focus-to-body,
+  // which is exactly what the old synchronous-only implementation failed on.
+  it('restores focus to the trigger after Esc, surviving the browser moving focus to <body>', async () => {
+    const onClose = vi.fn()
     const trigger = document.createElement('button')
     document.body.appendChild(trigger)
     trigger.focus()
+    expect(document.activeElement).toBe(trigger)
 
-    const { container } = render(
-      <CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />,
+    const { container, rerender } = render(
+      <CreatePptModal open spaceId="s_1" onClose={onClose} onCreated={() => {}} />,
     )
     const dialogEl = container.querySelector('dialog') as HTMLDialogElement
-    // Simulate the browser having moved focus off the trigger (dialog took it).
-    ;(cards()[0] as HTMLButtonElement).focus()
+    // The open effect moves focus into the dialog (default card).
+    await waitFor(() => expect(document.activeElement).toBe(cards()[0]))
+
+    // Esc on a native <dialog> fires a cancel event, which our handler routes to onClose.
+    fireEvent(dialogEl, new Event('cancel', { bubbles: false, cancelable: true }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    // Parent closes the modal in response.
+    rerender(<CreatePptModal open={false} spaceId="s_1" onClose={onClose} onCreated={() => {}} />)
+
+    // Reproduce the real-browser race: focus lands on <body> AFTER the close handler ran.
+    ;(document.activeElement as HTMLElement | null)?.blur()
     expect(document.activeElement).not.toBe(trigger)
 
-    // Esc → cancel event. Focus must return to the trigger WITHOUT any rerender.
-    fireEvent(dialogEl, new Event('cancel', { bubbles: false, cancelable: true }))
-    expect(document.activeElement).toBe(trigger)
+    // The post-close restore must still win and return focus to the trigger.
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
     trigger.remove()
   })
 
-  it('restores focus to the trigger synchronously when Cancel is clicked', () => {
+  it('restores focus to the trigger after Cancel is clicked, surviving focus-to-body', async () => {
+    const onClose = vi.fn()
     const trigger = document.createElement('button')
     document.body.appendChild(trigger)
     trigger.focus()
 
-    render(<CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />)
+    const { rerender } = render(
+      <CreatePptModal open spaceId="s_1" onClose={onClose} onCreated={() => {}} />,
+    )
     ;(cards()[0] as HTMLButtonElement).focus()
     expect(document.activeElement).not.toBe(trigger)
 
     fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.cancel' }))
-    expect(document.activeElement).toBe(trigger)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    rerender(<CreatePptModal open={false} spaceId="s_1" onClose={onClose} onCreated={() => {}} />)
+
+    // Browser drops focus to <body> as the dialog closes, after our handler ran.
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).not.toBe(trigger)
+
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
     trigger.remove()
   })
 

@@ -11,7 +11,7 @@
 // + Esc-restores-focus + visible focus ring, PPT-UI-001), trust-the-backend-route + inline 400,
 // and double-submit prevention with idempotency-key reuse on retry.
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { t } from '../octoweb/index.ts'
 import {
   createPptDoc,
@@ -149,6 +149,26 @@ export function CreatePptModal({
         : null
   }, [open, spaceId])
 
+  // Restore focus to the element that had it before the modal opened (the trigger caret).
+  // This MUST run AFTER the native <dialog> has finished closing. On the Esc/close route the
+  // browser moves focus to <body> asynchronously relative to our React handlers, so a synchronous
+  // focus() inside the cancel/keydown handler is immediately overwritten and focus ends up on
+  // <body> (the observed R2-F1 defect). Deferring to the next animation frame (with a timeout
+  // fallback) lets us run after the browser's own focus move and reliably land on the trigger
+  // (design §3 focus restore, PPT-UI-001).
+  const scheduleFocusRestore = useCallback(() => {
+    const el = restoreFocusRef.current
+    if (!el) return
+    const run = () => {
+      // Only reclaim focus if the dialog close dropped it to <body> (or nowhere); never yank it
+      // away if the app has meanwhile placed it somewhere deliberate.
+      const active = typeof document !== 'undefined' ? document.activeElement : null
+      if (!active || active === document.body) el.focus?.()
+    }
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run)
+    else setTimeout(run, 0)
+  }, [])
+
   // Open the native dialog and, on close, restore focus to the trigger (caret menu item).
   useEffect(() => {
     const dialog = dialogRef.current
@@ -165,9 +185,9 @@ export function CreatePptModal({
         if (typeof dialog.close === 'function') dialog.close()
         else dialog.removeAttribute('open')
       }
-      restoreFocusRef.current?.focus?.()
+      scheduleFocusRestore()
     }
-  }, [open])
+  }, [open, scheduleFocusRestore])
 
   if (!open) return null
 
@@ -177,12 +197,12 @@ export function CreatePptModal({
 
   // Cancel/Esc/overlay dismissal — blocked while a create is in flight so the request can't be
   // orphaned mid-submit (the retry would otherwise mint under a fresh key on reopen). Focus is
-  // restored to the trigger synchronously on THIS route: the native dialog moves focus to BODY on
-  // the Esc/close path in real browsers, and the parent-driven unmount cleanup fires too late to
-  // catch that (design §3 focus restore, PPT-UI-001).
+  // restored to the trigger on a post-close animation frame (see scheduleFocusRestore): the native
+  // dialog moves focus to BODY on the Esc/close path in real browsers, so a synchronous restore
+  // here would be overwritten (design §3 focus restore, PPT-UI-001).
   const requestClose = () => {
     if (submitting) return
-    restoreFocusRef.current?.focus?.()
+    scheduleFocusRestore()
     onClose()
   }
 
