@@ -152,6 +152,9 @@ export function MemberPicker({
     )
     for (const bot of members) {
       if (!bot.isBot || !bot.creatorUid || existingUids.has(bot.uid)) continue
+      // hideUids means "omit ENTIRELY": a doc owner Bot (owner lives in doc_meta, so it is absent
+      // from existingUids) must not be nested, default-selected and submitted via its creator.
+      if (hideUids?.has(bot.uid)) continue
       // Only nest under a visible, addable creator. Otherwise the Bot remains a standalone
       // candidate so creator visibility/membership never removes the Bot's own grantability.
       if (!visibleHumanUids.has(bot.creatorUid)) continue

@@ -268,6 +268,33 @@ describe('MemberPicker Bot search + creator attribution (task #4)', () => {
     expect(screen.queryByText('Grace Hopper')).toBeNull()
   })
 
+  // hideUids means "omit ENTIRELY". A doc-owner Bot lives in doc_meta, so it is absent from
+  // existingUids and nothing else stops it from riding along under its (visible) creator.
+  it('never nests, selects or submits a hidden Bot under its visible creator', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_owner', name: 'Owner Bot', creator_uid: 'u_ada' },
+    ])
+    const onAdd = vi.fn()
+    render(
+      <MemberPicker
+        space="s_1"
+        existingUids={new Set()}
+        hideUids={new Set(['b_owner'])}
+        onAdd={onAdd}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    // Neither nested under the creator nor offered standalone, and no expander to reveal it.
+    expect(screen.queryByText('Owner Bot')).toBeNull()
+    expect(screen.queryByText('docs.member.showBots')).toBeNull()
+    // Selecting the creator must not pull the hidden Bot in: the label stays person-only.
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    expect(screen.queryByText('docs.member.addSnapshotCount')).toBeNull()
+    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    // No Bot dimension at all in the submission (the snapshot arg is only sent when Bots exist).
+    expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'writer')
+  })
+
   it('offers a hidden creator\'s Bot as a standalone candidate', async () => {
     wk.apiClient.responder = botResponder([
       { uid: 'b_1', name: 'Owner Bot', creator_uid: 'u_ada' },

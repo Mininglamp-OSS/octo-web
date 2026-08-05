@@ -583,7 +583,7 @@ export function EditorShell(props: EditorShellProps) {
           )}
           <h2>{title}</h2>
           <p className="octo-terminal-msg">{t('docs.error.permission.forbidden')}</p>
-          <RequestAccessButton docId={docId} />
+          <RequestAccessButton docId={docId} spaceId={props.space} />
         </div>
       )
     }

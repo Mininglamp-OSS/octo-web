@@ -292,8 +292,10 @@ interface HostMyBot {
  * doc's space; omit it to list all friend agents.
  *
  * Returns `{ uid, name, isBot: true }` triples (name falls back to the uid so an agent with no
- * display name is never blank). Resolves to an EMPTY list on a non-array body; callers wrap the
- * call in `.catch(() => [])` so a my_bots failure never breaks the human-member roster path.
+ * display name is never blank). It deliberately does NOT stamp `safeStandalone`: friendship is not a
+ * grant-trust provenance, so a friend Bot owned by someone else must never be independently
+ * grantable off this list. Resolves to an EMPTY list on a non-array body; callers wrap the call in
+ * `.catch(() => [])` so a my_bots failure never breaks the human-member roster path.
  */
 export async function fetchMyBots(spaceId?: string): Promise<SpaceMemberLite[]> {
   const path = spaceId
@@ -303,7 +305,7 @@ export async function fetchMyBots(spaceId?: string): Promise<SpaceMemberLite[]> 
   const bots = Array.isArray(data) ? data : []
   return bots
     .filter((b): b is HostMyBot => !!b && !!b.uid)
-    .map((b) => ({ uid: b.uid, name: b.name || b.uid, isBot: true, safeStandalone: true }))
+    .map((b) => ({ uid: b.uid, name: b.name || b.uid, isBot: true }))
 }
 
 /** Minimal view of a `/robot/owned_bots` entry the docs "new HTML" picker reads. */
