@@ -303,17 +303,15 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                     return !!u && isTerminalStatus(u.status);
                 });
                 if (hasTerminal) {
-                    // Apply the confirmed status patch immediately, then fire
-                    // the silent refresh to enrich rows with backend-populated
-                    // fields. Skipping the local patch leaves cards showing a
-                    // stale non-terminal status (with Cancel affordance) for
-                    // the round-trip window; if the refresh throws, the poller
-                    // would also rediscover the same transition every 2s and
-                    // dispatch summary-status-change indefinitely.
-                    this.setState({ items: newItems }, () => {
-                        this.maybeStartBatchPoll();
-                        void this.refreshListSilently();
-                    });
+                    // Apply the confirmed status patch immediately so cards
+                    // do not render a stale non-terminal status (with Cancel
+                    // affordance) for the refresh round-trip. Fire the silent
+                    // refresh right after — do not defer it into the setState
+                    // callback (that adds a React commit for no benefit), and
+                    // do not call maybeStartBatchPoll here because the refresh
+                    // itself calls it on completion.
+                    this.setState({ items: newItems });
+                    void this.refreshListSilently();
                 } else {
                     // 非终态（如 PENDING→PROCESSING）保留廉价的原地状态补丁即可。
                     this.setState({ items: newItems }, () => {
@@ -398,7 +396,14 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 if (this.isMounted_) this.maybeStartBatchPoll();
             });
         } catch {
-            // 保留上一份好数据，下个轮询再试。
+            // Refresh failed. The local status patch applied before this
+            // refresh already wrote the terminal status, so the next
+            // doBatchPoll tick sees no change and will NOT re-fire the
+            // refresh — a transient network blip degrades the list back to
+            // the pre-fix behaviour (stale title / preview / new-task
+            // invisibility) until some other event triggers a full load.
+            // Not attempting an in-place retry keeps the failure mode
+            // simple: no unbounded event storm, no stuck spinner.
         } finally {
             this.isRefreshing = false;
         }
