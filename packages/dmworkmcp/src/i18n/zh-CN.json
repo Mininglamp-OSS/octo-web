@@ -149,7 +149,7 @@
     "sectionBasics": "基本信息",
     "sectionBasicsDesc": "展示在市场卡片和详情页顶部",
     "sectionConnect": "接入方式",
-    "sectionConnectDesc": "MCP 服务器如何被启动和调用",
+    "sectionConnectDesc": "连接器服务如何被启动和调用",
     "sectionTools": "工具清单",
     "sectionToolsDesc": "接入后智能体可用的工具集",
     "sectionExamples": "使用示例",

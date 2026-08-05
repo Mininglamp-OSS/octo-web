@@ -60,7 +60,7 @@ describe("SkillDetailModal", () => {
     expect(screen.queryByText(/Agent 安装|skillMarket\.detail\.installTitle/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /复制安装 Prompt|skillMarket\.detail\.copyPrompt/ })).not.toBeInTheDocument();
     expect(screen.queryByText("meeting-note-cleaner.zip")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /下载 Skill 包|skillMarket\.detail\.downloadBtn/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /下载技能包|skillMarket\.detail\.downloadBtn/ })).not.toBeInTheDocument();
   });
 
   it("does not show visibility metadata", async () => {
