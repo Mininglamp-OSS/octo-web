@@ -1465,6 +1465,72 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     expect(calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(false)
   })
 
+  // ── R2-F1: focus returns to the PERSISTENT caret after the picker closes ───
+  // Drives the REAL wiring — DocsList caret → dropdown menu → 新建幻灯片 menu item → CreatePptModal →
+  // close — not a hand-focused trigger. This is the path the previous CreatePptModal unit tests never
+  // exercised: they mounted a persistent trigger and focused it directly, so restore always "worked",
+  // while the real app captured `document.activeElement` — the dropdown menu item, which UNMOUNTS the
+  // instant it is clicked (the menu closes as it opens the modal). Restoring to that detached node
+  // silently no-ops and focus is stranded on <body>. The fix hands the modal the persistent caret to
+  // restore to instead; these tests assert focus lands back on that caret after Esc and after Cancel.
+  async function openPickerFromCaretMenu(): Promise<HTMLElement> {
+    const caret = screen.getByLabelText('docs.list.newMenu')
+    caret.focus() // the real user/AT focuses the caret before it is activated
+    fireEvent.click(caret)
+    // The dropdown menu item takes focus when activated (real browsers focus a clicked button); mirror
+    // that so document.activeElement is the menu item at click time — the exact pre-condition of the
+    // R2-F1 defect. jsdom's fireEvent.click does NOT move focus, so we set it explicitly.
+    const item = screen.getByRole('button', { name: 'docs.list.newPpt' })
+    item.focus()
+    expect(document.activeElement).toBe(item)
+    fireEvent.click(item)
+    await waitFor(() => expect(screen.getByRole('radiogroup')).toBeTruthy())
+    // The menu item that opened the modal is now gone — it can never be a valid restore target, and
+    // (with it detached) document.activeElement has fallen back to <body>.
+    expect(screen.queryByText('docs.list.newPpt')).toBeNull()
+    expect(item.isConnected).toBe(false)
+    return caret
+  }
+
+  const pptListResponder = (method: string, url: string) => {
+    if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+    return { data: {}, status: 200 }
+  }
+
+  it('R2-F1: restores focus to the persistent caret after the picker is closed with Esc', async () => {
+    const wk = createMockWKApp()
+    wk.apiClient.responder = pptListResponder
+    setWKApp(wk)
+
+    const { container } = render(<DocsHome />)
+    const caret = await openPickerFromCaretMenu()
+
+    // Esc on the native <dialog> fires a cancel event, routed to onClose (modal closes).
+    const dialogEl = container.querySelector('dialog') as HTMLDialogElement
+    fireEvent(dialogEl, new Event('cancel', { bubbles: false, cancelable: true }))
+    // Reproduce the real-browser race: focus falls to <body> after the close, before the restore lands.
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).not.toBe(caret)
+
+    // The post-close restore lands on the PERSISTENT caret — not the detached menu item, not <body>.
+    await waitFor(() => expect(document.activeElement).toBe(caret))
+  })
+
+  it('R2-F1: restores focus to the persistent caret after the picker is closed with Cancel', async () => {
+    const wk = createMockWKApp()
+    wk.apiClient.responder = pptListResponder
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    const caret = await openPickerFromCaretMenu()
+
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.cancel' }))
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).not.toBe(caret)
+
+    await waitFor(() => expect(document.activeElement).toBe(caret))
+  })
+
   it('re-pushes an open html doc WITH its slug when the docs nav menu is re-activated', async () => {
     // Repro of the "open html → click the 文档 nav button → 出错了" bug: the nav-reactivation
     // re-push must carry octoDocSlug, else HtmlDocView falls back to docId and 404s against octo-doc.

@@ -32,6 +32,15 @@ export interface CreatePptModalProps {
   onClose(): void
   /** Called with the backend-returned editor route after a successful create. NOT called on cancel. */
   onCreated(editorUrl: string): void
+  /**
+   * The PERSISTENT element that opened the picker (the DocsHome "new" caret button), to restore focus
+   * to on close. Supplied explicitly because the picker is launched from a caret dropdown MENU ITEM
+   * that unmounts the instant it is clicked — so `document.activeElement` at open time is already a
+   * detached node / `<body>` and cannot be a reliable restore target (R2-F1). The caret persists across
+   * the menu open/close, so restoring to it lands focus correctly. Optional: falls back to
+   * `document.activeElement` when omitted (e.g. programmatic opens in tests).
+   */
+  triggerRef?: React.RefObject<HTMLElement | null>
 }
 
 /**
@@ -98,6 +107,7 @@ export function CreatePptModal({
   folderId,
   onClose,
   onCreated,
+  triggerRef,
 }: CreatePptModalProps): React.ReactElement | null {
   const [selected, setSelected] = useState<PptTemplateId>(DEFAULT_PPT_TEMPLATE)
   const [title, setTitle] = useState('')
@@ -143,11 +153,22 @@ export function CreatePptModal({
     setError(null)
     submittingRef.current = false
     idempotencyKeyRef.current = newIdempotencyKey()
+    // Capture the restore target. Prefer the caller-supplied PERSISTENT trigger (the caret button that
+    // opened the picker) over document.activeElement: the picker is launched from a caret DROPDOWN menu
+    // item that unmounts the instant it is clicked (the menu closes as it fires onCreatePpt), so by the
+    // time this open effect runs the previously-focused element is a DETACHED menu item and
+    // document.activeElement has already fallen back to <body>. Restoring to either silently no-ops and
+    // focus is stranded on <body> (the R2-F1 defect). The caret persists across the menu open/close, so
+    // it is the correct, still-connected restore target. Fall back to document.activeElement only when
+    // no trigger is supplied (e.g. programmatic opens in tests).
+    const trigger = triggerRef?.current
     restoreFocusRef.current =
-      typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null
-  }, [open, spaceId])
+      trigger && trigger.isConnected
+        ? trigger
+        : typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null
+  }, [open, spaceId, triggerRef])
 
   // Restore focus to the element that had it before the modal opened (the trigger caret).
   // This MUST run AFTER the native <dialog> has finished closing. On the Esc/close route the
@@ -157,17 +178,20 @@ export function CreatePptModal({
   // fallback) lets us run after the browser's own focus move and reliably land on the trigger
   // (design §3 focus restore, PPT-UI-001).
   const scheduleFocusRestore = useCallback(() => {
-    const el = restoreFocusRef.current
-    if (!el) return
     const run = () => {
-      // Only reclaim focus if the dialog close dropped it to <body> (or nowhere); never yank it
-      // away if the app has meanwhile placed it somewhere deliberate.
+      // Prefer the LIVE persistent trigger (the caret) — it survives the menu close, whereas the element
+      // captured on open may have detached. Only reclaim focus if the dialog close dropped it to <body>
+      // (or nowhere); never yank it away if the app has meanwhile placed it somewhere deliberate. Never
+      // focus a detached node: el.focus() on a node not in the document silently no-ops and leaves focus
+      // on <body> (the observed R2-F1 failure), so guard on isConnected.
+      const target = triggerRef?.current ?? restoreFocusRef.current
+      if (!target || target.isConnected === false) return
       const active = typeof document !== 'undefined' ? document.activeElement : null
-      if (!active || active === document.body) el.focus?.()
+      if (!active || active === document.body) target.focus?.()
     }
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run)
     else setTimeout(run, 0)
-  }, [])
+  }, [triggerRef])
 
   // Open the native dialog and, on close, restore focus to the trigger (caret menu item).
   useEffect(() => {

@@ -196,6 +196,62 @@ describe('CreatePptModal', () => {
     trigger.remove()
   })
 
+  // ── R2-F1 root cause: restore target must be the PERSISTENT trigger, not a detached opener ──
+  // The picker is opened from a caret dropdown MENU ITEM that unmounts the instant it is clicked.
+  // document.activeElement at open time is therefore a node that will detach; restoring to it no-ops
+  // onto <body> (the observed defect). When a triggerRef pointing at a PERSISTENT element (the caret)
+  // is supplied, the modal must restore focus to THAT, ignoring the detached opener.
+  it('restores focus to the persistent triggerRef target even when the captured opener has detached (R2-F1)', async () => {
+    const persistent = document.createElement('button')
+    persistent.textContent = 'caret'
+    document.body.appendChild(persistent)
+    const triggerRef = { current: persistent as HTMLElement | null }
+
+    // The transient opener (a menu item) had focus when the modal opened.
+    const transientOpener = document.createElement('button')
+    document.body.appendChild(transientOpener)
+    transientOpener.focus()
+    expect(document.activeElement).toBe(transientOpener)
+
+    const { rerender } = render(
+      <CreatePptModal open spaceId="s_1" triggerRef={triggerRef} onClose={() => {}} onCreated={() => {}} />,
+    )
+    // The opener detaches while the modal is up (the dropdown menu has closed).
+    transientOpener.remove()
+    expect(transientOpener.isConnected).toBe(false)
+
+    rerender(
+      <CreatePptModal open={false} spaceId="s_1" triggerRef={triggerRef} onClose={() => {}} onCreated={() => {}} />,
+    )
+    ;(document.activeElement as HTMLElement | null)?.blur()
+
+    // Focus lands on the persistent caret, never on the detached opener or <body>.
+    await waitFor(() => expect(document.activeElement).toBe(persistent))
+    persistent.remove()
+  })
+
+  // Control: with NO triggerRef and the captured opener detached, the old document.activeElement path
+  // cannot restore focus — it strands on <body>. This is the R2-F1 defect the triggerRef fix removes.
+  it('control: without triggerRef, a detached opener leaves focus on <body> (the R2-F1 defect)', async () => {
+    const transientOpener = document.createElement('button')
+    document.body.appendChild(transientOpener)
+    transientOpener.focus()
+
+    const { rerender } = render(
+      <CreatePptModal open spaceId="s_1" onClose={() => {}} onCreated={() => {}} />,
+    )
+    transientOpener.remove()
+    rerender(<CreatePptModal open={false} spaceId="s_1" onClose={() => {}} onCreated={() => {}} />)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+
+    // No connected restore target → focus cannot return; it stays on <body>.
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)))
+    })
+    expect(document.activeElement).toBe(document.body)
+  })
+
+
   // ── R2-F1 defect 2: Tab focus is trapped inside the dialog ────────────────
   it('traps Tab focus inside the dialog (Tab from the last control wraps to the first)', () => {
     const { container } = render(

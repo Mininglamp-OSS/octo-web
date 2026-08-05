@@ -528,15 +528,21 @@ function DocsList({
   /**
    * Open the "new slides (html_ppt)" flow. Behind the R2 flag this opens the four-template picker
    * (POST /api/v1/ppt/docs); with the flag off it opens the R1 "coming soon" notice. Menu-only;
-   * never calls createDoc (a Bento deck is not a rich-text doc).
+   * never calls createDoc (a Bento deck is not a rich-text doc). Receives the PERSISTENT caret button
+   * that opened the menu so the modal can restore focus to it on close (the menu item itself unmounts
+   * on click, so it is not a valid restore target — R2-F1).
    */
-  onCreatePpt: () => void
+  onCreatePpt: (opener?: HTMLElement | null) => void
   reloadToken?: number
   /** uids of every bot in the space; a row whose ownerId is here shows a bot badge. */
   botUids: Set<string>
 }): React.ReactElement {
   const [creating, setCreating] = useState(false)
   const [newMenuAt, setNewMenuAt] = useState<{ left: number; top: number } | null>(null)
+  // The persistent "new" split-button caret. Handed to onCreatePpt so the picker restores focus HERE
+  // on close: the dropdown menu item that fires onCreatePpt unmounts the instant it is clicked, so it
+  // cannot be the restore target — the caret persists across the menu open/close and can (R2-F1).
+  const caretRef = useRef<HTMLButtonElement>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const boardImportInputRef = useRef<HTMLInputElement>(null)
   // Client-side pin (置顶) — persisted in localStorage; pinned docs sort to the top. Pin is a
@@ -1002,6 +1008,7 @@ function DocsList({
             </button>
             <button
               type="button"
+              ref={caretRef}
               aria-label={t('docs.list.newMenu')}
               title={t('docs.list.newMenu')}
               disabled={creating}
@@ -1066,7 +1073,9 @@ function DocsList({
               disabled={creating}
               onClick={() => {
                 setNewMenuAt(null)
-                onCreatePpt()
+                // Hand the picker the PERSISTENT caret (not this menu item, which unmounts as the menu
+                // closes on the line above) as its focus-restore target — R2-F1.
+                onCreatePpt(caretRef.current)
               }}
             >
               <span className="octo-docs-new-menu-icon" aria-hidden="true"><PptRowIcon /></span>
@@ -1479,6 +1488,10 @@ export function DocsHome() {
   // (POST /api/v1/ppt/docs); when OFF it falls back to the R1 "coming soon" notice (no regression).
   // Either way it NEVER calls createDoc — a Bento deck is never mis-minted as a rich-text placeholder.
   const [pptModalOpen, setPptModalOpen] = useState(false)
+  // The persistent element that opened the PPT picker (the DocsList caret button), handed in via
+  // onCreatePpt and forwarded to CreatePptModal as its focus-restore target (R2-F1). A ref, not state:
+  // it only needs to be readable inside the modal's open/close effects, and must not trigger a render.
+  const pptOpenerRef = useRef<HTMLElement | null>(null)
   const [htmlChatDraft, setHtmlChatDraft] = useState<HtmlCreationDraft | null>(null)
   const htmlChatDraftRef = useRef<HtmlCreationDraft | null>(null)
   useEffect(() => {
@@ -2102,6 +2115,7 @@ export function DocsHome() {
       open={pptModalOpen}
       spaceId={space}
       folderId={folder}
+      triggerRef={pptOpenerRef}
       onClose={() => setPptModalOpen(false)}
       onCreated={onPptCreated}
     />
@@ -2126,7 +2140,10 @@ export function DocsHome() {
           selectedDocId={selectedDocId}
           onSelect={openDoc}
           onCreateHtml={() => setHtmlModalOpen(true)}
-          onCreatePpt={() => setPptModalOpen(true)}
+          onCreatePpt={(opener) => {
+            pptOpenerRef.current = opener ?? null
+            setPptModalOpen(true)
+          }}
           reloadToken={listReloadToken}
           botUids={botUids}
         />
@@ -2152,7 +2169,10 @@ export function DocsHome() {
           selectedDocId={selectedDocId}
           onSelect={openDoc}
           onCreateHtml={() => setHtmlModalOpen(true)}
-          onCreatePpt={() => setPptModalOpen(true)}
+          onCreatePpt={(opener) => {
+            pptOpenerRef.current = opener ?? null
+            setPptModalOpen(true)
+          }}
           reloadToken={listReloadToken}
           botUids={botUids}
         />
