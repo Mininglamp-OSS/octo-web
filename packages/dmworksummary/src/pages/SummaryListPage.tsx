@@ -77,6 +77,13 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     private batchPollTimer: ReturnType<typeof setInterval> | null = null;
     private isBatchPolling = false;
     private isRefreshing = false;
+    // Monotonic sequence bumped on every loadData() entry. An in-flight
+    // loadData captures the value pre-await; if it advanced during the
+    // request (user changed filter/keyword/space, or another loadData fired),
+    // the response is stale and we drop it instead of overwriting newer
+    // user-driven state. Only loadData bumps — loadMore's cursor consistency
+    // is guarded separately by the prev.page === nextPage-1 check.
+    private loadDataSeq = 0;
     // Cleared by componentWillUnmount so any in-flight refresh's setState
     // becomes a no-op instead of restarting maybeStartBatchPoll on a
     // torn-down component.
@@ -173,7 +180,13 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         return { items: resp.items, total: resp.total };
     }
 
-    async loadData() {
+    async loadData(opts: { silent?: boolean } = {}) {
+        // Bump-and-capture sequence: this loadData's response is only allowed
+        // to commit if no newer loadData/filter change has started meanwhile.
+        // Guards against a background refresh (fire-and-forget from
+        // refreshListSilently) overwriting a fresh user-driven loadData that
+        // ran under a newer filter/keyword/space.
+        const seq = ++this.loadDataSeq;
         this.setState({ loading: true, error: null, page: 1, hasMore: true });
         try {
             const { pageSize, statusFilter, keyword } = this.state;
@@ -185,6 +198,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 origin_channel_id: this.props.channelId || undefined,
             };
             const resp = await api.listSummaries(params);
+            if (seq !== this.loadDataSeq) return;
             this.setState({
                 items: resp.items,
                 total: resp.total,
@@ -194,6 +208,15 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 this.maybeStartBatchPoll();
             });
         } catch (err: any) {
+            if (seq !== this.loadDataSeq) return;
+            // Background refresh (silent=true) must not surface a network
+            // banner to an idle user — just clear loading and leave the last
+            // good list visible. A user-triggered loadData still shows the
+            // banner + Retry so they can act on the failure.
+            if (opts.silent) {
+                this.setState({ loading: false });
+                return;
+            }
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
         }
     }
@@ -339,26 +362,17 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
      * 由 loadData 重置为 1(loadMore 的 stale-response guard 会 discard 过期 append)。
      *
      * `isRefreshing` 防重入(2s 轮询 tick 撞到 refresh 在跑就跳过);
-     * `isMounted_` 在进入 loadData 前短路(loadData 内部 React 对 unmounted
-     * 组件的 setState 已经是 no-op,但显式检查更明确)。
+     * `isMounted_` 在进入 loadData 前短路。
      *
-     * 背景刷新故意吞掉 loadData 抛出的错误:自动 refresh 不该给 idle 的用户
-     * 弹网络错误 banner(loadData 的 catch 会设 state.error 显示 <Banner>)。
-     * 快照错误状态,失败时恢复—用户下次手动触发时才看得到真实错误。
+     * `silent: true` 让 loadData 在失败时不设 error banner(见 #290 review):
+     * 自动 refresh 不该给 idle 的用户弹网络错误。
      */
     private async refreshListSilently() {
         if (this.isRefreshing) return;
         if (!this.isMounted_) return;
         this.isRefreshing = true;
-        const savedError = this.state.error;
         try {
-            await this.loadData();
-            // If loadData set an error banner during a background refresh,
-            // restore the pre-refresh error state so an idle user does not
-            // see a network banner on an otherwise healthy list.
-            if (this.isMounted_ && this.state.error && !savedError) {
-                this.setState({ error: null });
-            }
+            await this.loadData({ silent: true });
         } finally {
             this.isRefreshing = false;
         }

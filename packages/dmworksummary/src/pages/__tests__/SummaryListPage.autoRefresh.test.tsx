@@ -259,9 +259,9 @@ describe('SummaryListPage auto-refresh on completion (#290)', () => {
 
     /**
      * P2-6 regression: a failed background refresh should not surface an
-     * error banner to an idle user. If loadData sets state.error during the
-     * refresh, refreshListSilently must clear it (unless there was already
-     * a pre-refresh error, which is unrelated and should be preserved).
+     * error banner to an idle user. loadData now takes a { silent: true }
+     * flag; refreshListSilently passes it so the catch branch skips the
+     * error setState entirely (rather than trying to clear it after commit).
      */
     it('suppresses the loadData error banner on background refresh failure', async () => {
         vi.mocked(api.listSummaries).mockRejectedValue(new Error('network'));
@@ -275,5 +275,59 @@ describe('SummaryListPage auto-refresh on completion (#290)', () => {
 
         // The error banner must not persist on an otherwise healthy list.
         expect((page.state as any).error).toBeFalsy();
+    });
+
+    /**
+     * Jerry-Xin round-6 P1: if a background refresh is in flight and the
+     * user then changes the status filter, the newer filter-triggered
+     * loadData must win — the older refresh response must be discarded
+     * rather than overwriting the user's newer view. loadDataSeq is the
+     * generation counter that closes this window.
+     */
+    it('discards a stale background refresh when a newer user-triggered loadData ran under a different filter', async () => {
+        const { page } = makePage([
+            { task_id: 1, status: TaskStatus.COMPLETED, topic: 'x' },
+        ]);
+
+        // Background refresh's loadData is in flight — hold its response.
+        let resolveBackground: (v: any) => void = () => {};
+        vi.mocked(api.listSummaries).mockImplementationOnce(
+            () => new Promise((r) => { resolveBackground = r; }) as any
+        );
+        const refreshPromise = (page as any).refreshListSilently();
+        await new Promise((r) => setTimeout(r, 0));
+
+        // User changes the filter; a fresh loadData fires and resolves first.
+        vi.mocked(api.listSummaries).mockImplementationOnce(
+            async () => ({
+                items: [{ task_id: 99, status: TaskStatus.PROCESSING, topic: 'fresh-filter' }],
+                total: 1,
+            } as any)
+        );
+        (page as any).state = { ...(page as any).state, statusFilter: TaskStatus.PROCESSING };
+        await (page as any).loadData();
+
+        // Fresh state committed.
+        expect((page.state as any).items).toEqual([
+            expect.objectContaining({ task_id: 99, topic: 'fresh-filter' }),
+        ]);
+
+        // Now the stale background refresh resolves with the old scope's
+        // response. loadDataSeq advanced → this response must be dropped.
+        resolveBackground({
+            items: [
+                { task_id: 1, status: TaskStatus.COMPLETED, topic: 'stale-1' },
+                { task_id: 2, status: TaskStatus.COMPLETED, topic: 'stale-2' },
+            ],
+            total: 999,
+        });
+        await refreshPromise;
+
+        // Items must still reflect the newer filter's response, not the
+        // stale background one.
+        expect((page.state as any).items).toEqual([
+            expect.objectContaining({ task_id: 99, topic: 'fresh-filter' }),
+        ]);
+        expect((page.state as any).total).toBe(1);
     });
 });
