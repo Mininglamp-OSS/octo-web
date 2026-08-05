@@ -175,6 +175,18 @@ describe('octoweb fetchSpaceBotSnapshots seam', () => {
     wk.apiClient.responder = () => ({ data: { items: [] }, status: 200 })
     await expect(fetchSpaceBotSnapshots('s_1')).rejects.toThrow(/malformed non-array/)
   })
+
+  // A numeric uid must not satisfy the row predicate: it would land in a string-typed field and go
+  // out in the POST body as a JSON number.
+  it('drops rows whose uid is not a string', async () => {
+    wk.apiClient.responder = () => ({
+      data: [{ uid: 7, name: 'Numeric' }, { uid: 'b_ok', name: 'Real' }],
+      status: 200,
+    })
+    expect(await fetchSpaceBotSnapshots('s_1')).toEqual([
+      { uid: 'b_ok', name: 'Real', isBot: true },
+    ])
+  })
 })
 
 // #839: friend-added agents (including ones owned by others) reach the doc-authorize roster via
@@ -259,5 +271,14 @@ describe('octoweb fetchMyOwnedBots seam (owner-scoped picker provenance)', () =>
     wk.apiClient.responder = () => ({ data: { nope: true }, status: 200 })
     await expect(fetchMyOwnedBots('s_1')).rejects.toThrow(/malformed non-array/)
     expect(await fetchMyOwnedBots('')).toEqual([])
+  })
+
+  // One shape further in: an array whose rows all fail validation (wrong key, numeric uid) is also a
+  // broken payload, not "this user owns nothing" — reading it as zero is the same fail-open.
+  it('rejects when every row fails uid validation, but not when the list is genuinely empty', async () => {
+    wk.apiClient.responder = () => ({ data: [{ id: 'b_1' }, { uid: 7 }], status: 200 })
+    await expect(fetchMyOwnedBots('s_1')).rejects.toThrow(/malformed/)
+    wk.apiClient.responder = () => ({ data: [], status: 200 })
+    expect(await fetchMyOwnedBots('s_1')).toEqual([])
   })
 })

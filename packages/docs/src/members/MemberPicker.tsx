@@ -328,6 +328,20 @@ export function MemberPicker({
     // a render, only uids still offered may submit; a uid whose row vanished is excluded, and a Bot
     // is classified strictly by `memberByUid[...].isBot` — a vanished/unknown uid is dropped, never
     // silently reclassified as a human.
+    const { humanUids, standaloneBotUids, nestedBotUids } = submittable
+    const botUids = [...new Set([...nestedBotUids, ...standaloneBotUids])]
+    const uids = [...new Set([...humanUids, ...botUids])]
+    if (uids.length === 0) return
+    if (botUids.length > 0) await onAdd(uids, submittedRole, { humanUids, botUids })
+    else await onAdd(uids, submittedRole)
+    setSelected(new Set())
+    setSelectedBots(new Set())
+    setQuery('')
+  }
+
+  // The button label and the submitted payload MUST be derived from one classification, otherwise the
+  // label can count a uid the submission drops (e.g. an unknown uid read as a human).
+  const submittable = useMemo(() => {
     const humanUids = [...selected].filter((uid) => {
       const entry = memberByUid.get(uid)
       return !!entry && !entry.isBot && offered.humanUids.has(uid)
@@ -344,22 +358,13 @@ export function MemberPicker({
       for (const b of bots) selectableNested.add(b.uid)
     }
     const nestedBotUids = [...selectedBots].filter((uid) => selectableNested.has(uid))
-    const botUids = [...new Set([...nestedBotUids, ...standaloneBotUids])]
-    const uids = [...new Set([...humanUids, ...botUids])]
-    if (uids.length === 0) return
-    if (botUids.length > 0) await onAdd(uids, submittedRole, { humanUids, botUids })
-    else await onAdd(uids, submittedRole)
-    setSelected(new Set())
-    setSelectedBots(new Set())
-    setQuery('')
-  }
+    return { humanUids, standaloneBotUids, nestedBotUids }
+  }, [selected, selectedBots, memberByUid, offered, botsByCreator])
 
-  // Button label counts must match what actually submits: standalone Bots live in `selected` too, so
-  // splitting by `isBot` keeps a Bot from being labelled as a person (offered sets gate submission).
-  const selectedHumanCount = [...selected].filter((uid) => !memberByUid.get(uid)?.isBot).length
+  const selectedHumanCount = submittable.humanUids.length
   const selectedBotCount =
-    [...selected].filter((uid) => memberByUid.get(uid)?.isBot).length + selectedBots.size
-  const count = selected.size
+    new Set([...submittable.nestedBotUids, ...submittable.standaloneBotUids]).size
+  const count = selectedHumanCount + selectedBotCount
 
   return (
     <div className="octo-member-picker">

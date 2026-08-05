@@ -217,6 +217,10 @@ class MalformedSpaceBotsError extends Error {
  * grant-critical caller (the access request defaults to carrying every owned Bot) would then submit
  * humans-only with no signal. Throwing lets such callers surface a recoverable error + retry, and
  * matches the base-side loader. Cosmetic name-backfill swallows it explicitly (fetchSpaceBotNames).
+ *
+ * `uid` is validated as a STRING (not merely truthy): a numeric uid would satisfy a truthiness check
+ * and flow into a string-typed field and into a POST body as a JSON number. Mirrors the base-side
+ * `SpaceBotService`.
  */
 async function getSpaceBots(spaceId: string): Promise<HostSpaceBot[]> {
   if (!spaceId) return []
@@ -224,7 +228,7 @@ async function getSpaceBots(spaceId: string): Promise<HostSpaceBot[]> {
     `/robot/space_bots?space_id=${encodeURIComponent(spaceId)}`,
   )
   if (!Array.isArray(data)) throw new MalformedSpaceBotsError()
-  return data.filter((b): b is HostSpaceBot => !!b && !!b.uid)
+  return data.filter((b): b is HostSpaceBot => !!b && typeof b.uid === 'string' && !!b.uid)
 }
 
 /**
@@ -339,9 +343,12 @@ class MalformedOwnedBotsError extends Error {
  * "empty"/"error" state without a broken row.
  */
 /**
- * One `/robot/owned_bots` read, filtered to entries with a uid. `strict` FAILS CLOSED on a
- * shape-degraded 200 for grant-critical callers (an UNKNOWN owned-Bot set must never read as zero);
- * the non-strict form keeps the picker's tolerant "render empty" behaviour.
+ * One `/robot/owned_bots` read, filtered to entries with a STRING uid (a numeric uid must not flow
+ * into a string-typed field or a POST body as a JSON number). `strict` FAILS CLOSED on a
+ * shape-degraded 200 for grant-critical callers (an UNKNOWN owned-Bot set must never read as zero):
+ * a non-array body, and also rows that ALL fail validation — otherwise a payload keyed `id` instead
+ * of `uid` would filter to `[]` and read as "this user owns nothing". The non-strict form keeps the
+ * picker's tolerant "render empty" behaviour.
  */
 async function getOwnedBots(spaceId: string, strict: boolean): Promise<HostOwnedBot[]> {
   const { data } = await apiClient().get<HostOwnedBot[]>(
@@ -351,7 +358,9 @@ async function getOwnedBots(spaceId: string, strict: boolean): Promise<HostOwned
     if (strict) throw new MalformedOwnedBotsError()
     return []
   }
-  return data.filter((b): b is HostOwnedBot => !!b && !!b.uid)
+  const bots = data.filter((b): b is HostOwnedBot => !!b && typeof b.uid === 'string' && !!b.uid)
+  if (strict && bots.length === 0 && data.length > 0) throw new MalformedOwnedBotsError()
+  return bots
 }
 
 export async function fetchOwnedBots(spaceId: string): Promise<import('./types.ts').OwnedBotLite[]> {

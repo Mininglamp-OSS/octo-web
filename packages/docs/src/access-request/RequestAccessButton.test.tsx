@@ -113,6 +113,46 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
     expect(wk.apiClient.calls.find((c) => c.method === 'post')!.body).toEqual({ botUids: ['b_mine1'] })
   })
 
+  // A 4xx is a permanent verdict about the CALLER, not an unknown Bot set. The standalone share
+  // surface exists for outsiders, who are not Space members and therefore always get one from
+  // owned_bots; blocking them would remove the pre-feature ability to ask for access at all.
+  it('still submits a human-only request when the Bot dimension is forbidden (4xx)', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
+        throw { response: { status: 400, data: { error: 'err.shared.auth.forbidden' } } }
+      }
+      return { data: {}, status: 201 }
+    }
+    render(<RequestAccessButton docId="d_1" spaceId="s_other" />)
+    // Informational note, NOT the retryable error, and the primary stays actionable.
+    await waitFor(() => expect(screen.getByText('docs.forward.requestBotsUnavailable')).toBeTruthy())
+    expect(screen.queryByText('docs.forward.requestBotsError')).toBeNull()
+    expect(screen.queryByText('docs.forward.requestBotsRetry')).toBeNull()
+    const submit = screen.getByText('docs.forward.requestAccess').closest('button') as HTMLButtonElement
+    expect(submit.disabled).toBe(false)
+    fireEvent.click(submit)
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.method === 'post')).toBe(true))
+    // Zero Bots carried: the pre-feature request shape (no body).
+    expect(wk.apiClient.calls.find((c) => c.method === 'post')!.body).toBeUndefined()
+    await waitFor(() => expect(screen.getByText('docs.forward.accessRequested')).toBeTruthy())
+  })
+
+  it('keeps 403 unavailable but treats 429 and 5xx as retryable', async () => {
+    for (const [status, unavailable] of [[403, true], [429, false], [503, false]] as const) {
+      wk.apiClient.responder = (method, url) => {
+        if (method === 'get' && url.startsWith('/robot/owned_bots')) throw { response: { status } }
+        return { data: {}, status: 201 }
+      }
+      render(<RequestAccessButton docId="d_1" spaceId="s_other" />)
+      const key = unavailable ? 'docs.forward.requestBotsUnavailable' : 'docs.forward.requestBotsError'
+      await waitFor(() => expect(screen.getByText(key)).toBeTruthy())
+      const submit = screen.getByText('docs.forward.requestAccess').closest('button') as HTMLButtonElement
+      // Transient failures still block (retry can succeed); an authorization verdict does not.
+      expect(submit.disabled).toBe(!unavailable)
+      cleanup()
+    }
+  })
+
   it('lets the requester cancel a single Bot before submitting', async () => {
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url.startsWith('/robot/owned_bots')) {
