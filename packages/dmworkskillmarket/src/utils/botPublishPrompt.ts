@@ -31,8 +31,9 @@ export function getBotPublishPrompt(values: BotPublishPromptValues = {}): string
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
    如果不存在或无法唯一确定，按顺序查找当前 Agent Runtime 中配置的 Octo Bot Token：
-   （1）环境变量 \`OCTO_BOT_TOKEN\`；（2）OpenClaw 配置（如 \`~/.openclaw/\` 下的配置文件）；
-   （3）当前工作目录的 \`.env\`。不要为获取 Token 搜索网络或访问外部文档。
+   环境变量 \`OCTO_BOT_TOKEN\`；
+   OpenClaw 配置（如 \`~/.openclaw/\` 下的配置文件）；
+   当前工作目录的 \`.env\`。不要为获取 Token 搜索网络或访问外部文档。
    找到后，通过 stdin 登录或更新固定 Profile \`space-${spaceId}\`：
 
    \`\`\`bash
