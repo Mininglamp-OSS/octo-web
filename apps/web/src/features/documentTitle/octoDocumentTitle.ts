@@ -153,6 +153,9 @@ export function createOctoDocumentTitleController(): DocumentTitleController {
     subscribeAuthChanges,
     subscribeLocaleChanges: (listener) => i18n.subscribe(() => listener()),
     restoreUnreadState: async () => {
+      // 未登录（含 token 过期已被清）时不要发 conversation/sync —— 否则必然 401，
+      // 徒增无效请求并可能叠加到登出跳转的噪音里。登录态由 title 渲染的 getIsLoggedIn 兜底。
+      if (!WKApp.loginInfo.isLogined()) return;
       const pathname = window.location.pathname;
       const menuId = resolveTitleMenuId(pathname, WKApp.currentMenuId);
       // ChatPage owns the normal conversation hydration. Other full-page modules

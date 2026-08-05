@@ -847,6 +847,11 @@ export default class WKApp extends ProviderListener {
   deviceModel: string = ""; // 设备型号
   private remoteConfigForegroundRefreshStarted: boolean = false;
   private lastRemoteConfigForegroundRefreshAt: number = 0;
+  // 幂等登出闸门：token 过期后往往有多个并发请求同时 401，各自触发一次
+  // logoutCallback → logout()。若不加护栏，window.location.replace("/login")
+  // 会被连发多次，且导航是异步的、飞行中的请求继续 reject 继续 logout，
+  // 造成"登录页反复跳转 / 控制台疯狂刷 401"的死循环。首次进入即置位，后续重入直接返回。
+  private _loggingOut: boolean = false;
 
   set notificationIsClose(v: boolean) {
     this._notificationIsClose = v;
@@ -1080,6 +1085,10 @@ export default class WKApp extends ProviderListener {
 
   // 登出
   logout() {
+    // 幂等守卫：并发 401 会重复调用本方法，只允许第一次真正执行清理与跳转，
+    // 后续重入直接返回，避免 window.location.replace 被连发导致的反复跳转/刷屏。
+    if (this._loggingOut) return;
+    this._loggingOut = true;
     this.clearLocalLoginState();
     window.location.replace("/login");
   }
