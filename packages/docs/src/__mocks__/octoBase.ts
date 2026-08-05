@@ -161,3 +161,30 @@ export function Conversation() {
 }
 
 export const MAX_MESSAGE_LENGTH = 5000
+
+/**
+ * `forwardPlainText` stub. Tests assert the CALL (channels + text + spaceId) rather than a real
+ * send; `forwardPlainTextCalls` records each invocation so a case can check what would have gone
+ * out. Resolves to an all-delivered result by default; a test may push a rejection via
+ * `forwardPlainTextImpl`.
+ */
+export const forwardPlainTextCalls: Array<{
+  channels: Array<{ channelID: string; channelType: number }>
+  text: string
+  opts?: { spaceId?: string | null }
+}> = []
+export let forwardPlainTextImpl:
+  | ((text: string) => Promise<{ targets: number; failedTargets: number }>)
+  | null = null
+export function setForwardPlainTextImpl(fn: typeof forwardPlainTextImpl) {
+  forwardPlainTextImpl = fn
+}
+export async function forwardPlainText(
+  channels: Array<{ channelID: string; channelType: number }>,
+  text: string,
+  opts?: { spaceId?: string | null },
+) {
+  forwardPlainTextCalls.push({ channels, text, opts })
+  if (forwardPlainTextImpl) return forwardPlainTextImpl(text)
+  return { targets: channels.length, failedTargets: 0, messageAttempts: channels.length, failedMessages: 0 }
+}

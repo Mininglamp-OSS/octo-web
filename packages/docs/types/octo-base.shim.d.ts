@@ -148,6 +148,20 @@ declare module '@octo/base' {
   // WuKongIM Channel primitives (plan Task 5), re-exported from @octo/base (which re-exports them
   // from wukongimjssdk). The docs embedded-bot-DM shell constructs `new Channel(botUid,
   // ChannelTypePerson)` and reads getChannelKey() for the React key.
+  /**
+   * Forward one plain-text message to each channel (dmworkbase Service/ForwardService).
+   *
+   * The docs package cannot construct a `MessageText` itself (only `@octo/base` may import
+   * wukongimjssdk), so the host exposes this thin seam: it builds the content and delegates to
+   * ForwardService.send, which owns disband-skip, per-channel accounting, `space_id` injection and
+   * the partial-failure result shape.
+   */
+  export function forwardPlainText(
+    channels: Channel[],
+    text: string,
+    opts?: { spaceId?: string | null; channelMode?: 'parallel' | 'serial' },
+  ): Promise<{ targets: number; failedTargets: number; messageAttempts: number; failedMessages: number }>
+
   export const ChannelTypePerson: number
   export const MAX_MESSAGE_LENGTH: number
   export class Channel {

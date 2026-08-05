@@ -37,6 +37,7 @@ import { isHtmlSourceDiffEnabled } from './htmlSourceDiffFeature.ts'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { useDocDelete } from '../editor/useDocDelete.ts'
 import { DocMoreMenu, OpenNewPageIcon, LinkIcon, DeleteIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
+import { DocGuide } from '../editor/DocGuide.tsx'
 import { buildAnchorFromSelection, truncateAnchorText } from './htmlDocAnchor.ts'
 import type { Anchor } from './htmlDocComments.ts'
 import {
@@ -559,6 +560,11 @@ export function HtmlDocView({
             </button>
           </div>}
           <HtmlPresenceBar displayName={viewerName} />
+          {/* Usage guide (使用指导): how to drive THIS surface from octo-cli, and where the
+              version-accurate bundled skill docs live. Sits to the LEFT of 评论 among the other doc
+              actions, not ahead of the presence avatars. Unlike 评论 it is NOT mode-gated: the guide
+              is reference material that stays reachable in code mode too. */}
+          <DocGuide kind="html" space={space} docId={docId} title={headerTitle} />
           {/* Comments belong to the rendered page; code mode has no selection anchors, so the toggle
               is hidden there (a switch-back hint sits in the code body instead). */}
           {mode === 'page' && (
