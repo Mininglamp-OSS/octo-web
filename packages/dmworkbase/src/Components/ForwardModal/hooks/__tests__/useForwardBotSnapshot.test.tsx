@@ -257,7 +257,7 @@ describe("useForwardBotSnapshot", () => {
     expect(hoisted.listBots).not.toHaveBeenCalled()
   })
 
-  it("does not fetch when the Space id is missing", async () => {
+  it("fails closed with retry when the document Space id is missing", async () => {
     hoisted.listBots.mockResolvedValue([{ uid: "b_1", name: "Bot", creator_uid: "u_ada" }])
     await render({
       selectedIDs: ["u_ada"],
@@ -265,7 +265,10 @@ describe("useForwardBotSnapshot", () => {
       spaceId: undefined,
       enabled: true,
     })
-    expect(latest).toBeUndefined()
+    expect(latest?.ready).toBe(false)
+    expect(latest?.error).toBe(true)
+    expect(latest?.retry).toEqual(expect.any(Function))
+    expect(readLatest()).toEqual([])
     expect(hoisted.listBots).not.toHaveBeenCalled()
   })
 

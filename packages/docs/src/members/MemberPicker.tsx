@@ -129,14 +129,25 @@ export function MemberPicker({
     return grouped
   }, [members, existingUids, hideUids])
 
+  const memberByUid = useMemo(() => new Map(members.map((m) => [m.uid, m])), [members])
+  const humanNameByUid = useMemo(
+    () => new Map(members.filter((m) => !m.isBot).map((m) => [m.uid, m.name])),
+    [members],
+  )
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     // Drop hidden uids (self / owner) from the roster entirely before filtering/sorting.
     const nestedBotUids = new Set<string>()
     for (const bots of botsByCreator.values()) for (const bot of bots) nestedBotUids.add(bot.uid)
-    // Bots that cannot be nested (creator hidden/existing/absent) stay standalone.
+    // A known creator may fall back to standalone only at a legitimate document boundary:
+    // hidden self/owner or an existing member. An absent creator remains unlisted.
     const topLevel = members.filter(
-      (m) => !nestedBotUids.has(m.uid) && (!m.isBot || !existingUids.has(m.uid)),
+      (m) => {
+        if (!m.isBot || !m.creatorUid) return !nestedBotUids.has(m.uid)
+        if (nestedBotUids.has(m.uid)) return false
+        return !!hideUids?.has(m.creatorUid) || existingUids.has(m.creatorUid) || existingUids.has(m.uid)
+      },
     )
     const roster = hideUids?.size ? topLevel.filter((m) => !hideUids.has(m.uid)) : topLevel
     if (!q) return sortPickerMembers(roster, existingUids)
@@ -206,8 +217,9 @@ export function MemberPicker({
       : defaultRole && effectiveRoles.includes(defaultRole)
         ? defaultRole
         : effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0]
-    const humanUids = [...selected]
-    const botUids = [...selectedBots]
+    const humanUids = [...selected].filter((uid) => !memberByUid.get(uid)?.isBot)
+    const standaloneBotUids = [...selected].filter((uid) => memberByUid.get(uid)?.isBot)
+    const botUids = [...new Set([...selectedBots, ...standaloneBotUids])]
     const uids = [...new Set([...humanUids, ...botUids])]
     if (botUids.length > 0) await onAdd(uids, submittedRole, { humanUids, botUids })
     else await onAdd(uids, submittedRole)
@@ -236,6 +248,9 @@ export function MemberPicker({
           const added = existingUids.has(m.uid)
           const isSelected = selected.has(m.uid)
           const bots = botsByCreator.get(m.uid) ?? []
+          const standaloneCreator = m.isBot && m.creatorUid
+            ? humanNameByUid.get(m.creatorUid) || m.creatorUid
+            : undefined
           // Surface a creator's Bots when the row is selected, or when the active query matched one
           // of its Bots (so a Bot search reveals it under its creator even before selecting them).
           const q = query.trim().toLowerCase()
@@ -272,6 +287,11 @@ export function MemberPicker({
               </span>
               <span className="octo-member-picker-name">{m.name}</span>
               {m.isBot && <span className="octo-member-picker-badge">{t('docs.member.aiTag')}</span>}
+              {standaloneCreator && (
+                <span className="octo-member-picker-bot-creator">
+                  {t('docs.member.botCreator', { values: { name: standaloneCreator } })}
+                </span>
+              )}
               {added && (
                 <span className="octo-member-picker-added">{t('docs.member.alreadyAdded')}</span>
               )}

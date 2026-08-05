@@ -287,27 +287,54 @@ describe('MemberPicker Bot search + creator attribution (task #4)', () => {
       target: { value: 'Owner Bot' },
     })
     expect(screen.getByText('Owner Bot')).toBeTruthy()
+    expect(screen.getByText('docs.member.botCreator')).toBeTruthy()
     fireEvent.click(screen.getByText('Owner Bot'))
     fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
-    expect(onAdd).toHaveBeenCalledWith(['b_1'], 'writer')
+    expect(onAdd).toHaveBeenCalledWith(
+      ['b_1'],
+      'writer',
+      { humanUids: [], botUids: ['b_1'] },
+    )
   })
 
-  it.each([
-    ['existing', 'u_ada', new Set(['u_ada'])],
-    ['absent', 'u_missing', new Set<string>()],
-  ])('offers a Bot with an %s creator as a standalone candidate', async (_case, creatorUid, existingUids) => {
+  it('offers an existing member\'s Bot standalone with creator attribution', async () => {
     wk.apiClient.responder = botResponder([
-      { uid: 'b_1', name: 'Independent Bot', creator_uid: creatorUid },
+      { uid: 'b_1', name: 'Independent Bot', creator_uid: 'u_ada' },
     ])
     const onAdd = vi.fn()
-    render(<MemberPicker space="s_1" existingUids={existingUids} onAdd={onAdd} />)
+    render(<MemberPicker space="s_1" existingUids={new Set(['u_ada'])} onAdd={onAdd} />)
     await waitFor(() => expect(screen.getByText('Independent Bot')).toBeTruthy())
+    expect(screen.getByText('docs.member.botCreator')).toBeTruthy()
     fireEvent.click(screen.getByText('Independent Bot'))
     fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
-    expect(onAdd).toHaveBeenCalledWith(['b_1'], 'writer')
+    expect(onAdd).toHaveBeenCalledWith(
+      ['b_1'],
+      'writer',
+      { humanUids: [], botUids: ['b_1'] },
+    )
   })
 
-  it('excludes a Bot that is already on the doc from the nested list', async () => {
+  it('does not offer a Bot whose creator is absent from the Space roster', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Orphan Bot', creator_uid: 'u_missing' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
+    expect(screen.queryByText('Orphan Bot')).toBeNull()
+  })
+
+  it('keeps an already-granted standalone Bot visible and disabled', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Granted Bot', creator_uid: 'u_missing' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set(['b_1'])} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Granted Bot')).toBeTruthy())
+    const row = screen.getByText('Granted Bot').closest('button') as HTMLButtonElement
+    expect(row.disabled).toBe(true)
+    expect(screen.getByText('docs.member.alreadyAdded')).toBeTruthy()
+  })
+
+  it('removes an existing Bot from nesting but keeps it visible as a disabled standalone row', async () => {
     wk.apiClient.responder = botResponder([
       { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
       { uid: 'b_2', name: 'Review Bot', creator_uid: 'u_ada' },
@@ -316,9 +343,10 @@ describe('MemberPicker Bot search + creator attribution (task #4)', () => {
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
     fireEvent.click(screen.getByText('Ada Lovelace'))
     fireEvent.click(screen.getByText('docs.member.showBots'))
-    // Only the not-yet-added Bot appears; the existing one is filtered out.
+    // Only the not-yet-added Bot is nested; the existing one remains a disabled top-level row.
     expect(screen.getByText('Review Bot')).toBeTruthy()
-    expect(screen.queryByText('Writer Bot')).toBeNull()
+    const existingRow = screen.getByText('Writer Bot').closest('button') as HTMLButtonElement
+    expect(existingRow.disabled).toBe(true)
   })
 })
 

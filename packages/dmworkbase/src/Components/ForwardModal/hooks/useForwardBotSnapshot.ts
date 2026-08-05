@@ -86,7 +86,11 @@ export function useForwardBotSnapshot(
     setResolved(null)
     resolvedRef.current = null
     setLoadError(false)
-    if (!enabled || !spaceId || selectedChannels.length !== selectedIDs.length) return
+    if (!enabled) return
+    if (!spaceId || selectedChannels.length !== selectedIDs.length) {
+      setLoadError(true)
+      return
+    }
 
     const commit = (model: ResolvedModel) => {
       if (generation.current !== gen) return
@@ -166,8 +170,8 @@ export function useForwardBotSnapshot(
   const retry = useCallback(() => setRetryGeneration((value) => value + 1), [])
 
   const snapshot = useMemo<ForwardBotSnapshot | undefined>(() => {
-    // Gated off (switch closed / no space / mismatched selection) → nothing to render at all.
-    if (!enabled || !spaceId) return undefined
+    // A closed switch is gated off. Missing document Space is an authorization lookup error.
+    if (!enabled) return undefined
 
     // Loading/error snapshots carry no Bots and keep confirmation blocked.
     if (!resolved) {

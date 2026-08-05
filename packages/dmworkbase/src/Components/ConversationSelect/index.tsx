@@ -8,7 +8,6 @@
  * 不传 → 行为与之前完全一致。
  */
 import React from "react"
-import WKApp from "../../App"
 import { ForwardModal } from "../ForwardModal/ForwardModal"
 import { useForwardModal } from "../ForwardModal/useForwardModal"
 import {
@@ -21,6 +20,8 @@ export interface ConversationSelectGrant {
   canGrant: boolean
   disabledReason?: string
   defaultRole?: ForwardGrantRole
+  /** Document Space used for authoritative Bot discovery. */
+  spaceId?: string
 }
 
 interface ConversationSelectProps {
@@ -76,7 +77,7 @@ export default function ConversationSelect({
   const { snapshot: botSnapshot, readLatestSelectedBotUids } = useForwardBotSnapshot(
     selectedIDs,
     selectedChannels,
-    grant ? WKApp.shared.currentSpaceId ?? undefined : undefined,
+    grant?.spaceId,
     !!grant && grantEnabled,
     resolveName,
   )

@@ -258,6 +258,7 @@ export default class WKBase
             canGrant: forward.canGrant,
             disabledReason: forward.disabledReason,
             defaultRole: forward.defaultRole ?? "reader",
+            spaceId: forward.spaceId,
           }
         : undefined,
       // 每次打开递增 key，强制 ConversationSelect 重新挂载，
