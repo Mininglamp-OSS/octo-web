@@ -8,6 +8,7 @@ import { useUpload } from '../hooks/useUpload';
 import { useMembers } from '../hooks/useMembers';
 import { useSelection } from '../hooks/useSelection';
 import { useDropzone } from '../hooks/useDropzone';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { runBatch } from '../hooks/runBatch';
 import type { DriveEntry } from '../bridge/types';
 import * as api from '../api/driveApi';
@@ -18,6 +19,7 @@ import Breadcrumb from '../ui/Breadcrumb';
 import FileList from '../ui/FileList';
 import BulkActionBar from '../ui/BulkActionBar';
 import DropzoneOverlay from '../ui/DropzoneOverlay';
+import FilterChips from '../ui/FilterChips';
 import NameInputModal from '../ui/NameInputModal';
 import MoveModal from '../ui/MoveModal';
 import UploadButton from '../ui/UploadButton';
@@ -205,6 +207,16 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   useEffect(() => {
     canUploadRef.current = !!canUpload;
   }, [canUpload]);
+
+  // Infinite scroll: as the sentinel scrolls into view (200px rootMargin so
+  // the next page is landing as the user approaches the bottom), fire
+  // loadMore(). loadMore() itself is a no-op when !hasMore or already
+  // loading, so double-triggers are cheap.
+  const sentinelRef = useInfiniteScroll<HTMLDivElement>({
+    hasMore,
+    loading: filesLoading || loadingMore,
+    onLoadMore: loadMore,
+  });
 
   // ── Batch ops ────────────────────────────────────────────────────────────
   // Content shape for the batch-delete confirm. Three shapes:
@@ -396,6 +408,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
         <div className="drive-main__header">
           <Breadcrumb path={vm.path} onNavigate={(i) => vm.navigateTo(i)} />
           <div className="drive-main__actions">
+            <FilterChips value={typeFilter} onChange={setTypeFilter} />
             {canUpload && (
               <UploadButton
                 disabled={!hasSpace}
@@ -490,7 +503,17 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             }
           />
         )}
-        {total !== null && total > entries.length && (
+        {hasMore && (
+          <>
+            {loadingMore && (
+              <div className="drive-main__loading-more">
+                <Spin size="small" />
+              </div>
+            )}
+            <div ref={sentinelRef} className="drive-main__sentinel" aria-hidden="true" />
+          </>
+        )}
+        {total !== null && !hasMore && entries.length > 0 && total > entries.length && (
           <p className="drive-main__truncated">
             {t('drive.file.truncated')} ({entries.length}/{total})
           </p>

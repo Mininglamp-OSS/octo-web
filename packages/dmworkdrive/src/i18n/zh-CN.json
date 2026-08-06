@@ -36,6 +36,13 @@
     "selectAll": "全选",
     "selectRow": "选择此项"
   },
+  "filter": {
+    "aria": "按类型筛选",
+    "all": "全部",
+    "folder": "文件夹",
+    "doc": "文档",
+    "blob": "文件"
+  },
   "move": {
     "title": "移动到",
     "noSubfolder": "该文件夹下没有子文件夹",

@@ -1,0 +1,42 @@
+/* Compact segmented pill selector shown in the drive header actions row.
+   Docs' rounded-filter pattern, but sized to sit next to a 32px button. */
+
+.drive-filter-chips {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
+  border-radius: var(--wk-r-full, 999px);
+  background: var(--wk-bg-surface, #fff);
+  gap: 2px;
+}
+
+.drive-filter-chips__chip {
+  min-height: 26px;
+  padding: 3px 12px;
+  border: none;
+  border-radius: var(--wk-r-full, 999px);
+  background: transparent;
+  color: var(--wk-text-secondary, #555b61);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.drive-filter-chips__chip:hover:not(.drive-filter-chips__chip--active) {
+  background: var(--wk-bg-hover, #dfe0e2);
+  color: var(--wk-text-primary, #1f2329);
+}
+
+.drive-filter-chips__chip--active {
+  background: var(--wk-brand-primary, #1c1c23);
+  color: var(--wk-brand-primary-contrast, #fff);
+}
+
+.drive-filter-chips__chip:focus-visible {
+  outline: 2px solid var(--wk-text-accent, #7f3bf5);
+  outline-offset: 2px;
+}

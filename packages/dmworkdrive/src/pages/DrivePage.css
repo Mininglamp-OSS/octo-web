@@ -147,6 +147,22 @@ body[theme-mode='dark'] .drive-main__actions .drive-btn--primary.semi-button:not
   position: relative;
 }
 
+/* Bottom-of-list sentinel for IntersectionObserver-driven infinite scroll.
+   Zero-height and invisible; positioned after the truncated notice would
+   have been, so passing rootMargin: 200px still fires ~one row early. */
+.drive-main__sentinel {
+  height: 1px;
+  width: 100%;
+}
+
+.drive-main__loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0;
+  color: var(--wk-text-tertiary, #6b7075);
+}
+
 .drive-main__center {
   display: flex;
   align-items: center;
