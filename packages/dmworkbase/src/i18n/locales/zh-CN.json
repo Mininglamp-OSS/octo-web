@@ -1230,6 +1230,7 @@
   "uploadCredentials.failed": "上传失败",
   "uploadCredentials.missingFields": "响应缺少凭证字段",
   "navRail.ariaLabel": "主导航",
+  "navRail.language.label": "语言",
   "navRail.language.name.en": "English",
   "navRail.language.name.zh": "简体中文",
   "navRail.language.switchToChinese": "切换到简体中文",

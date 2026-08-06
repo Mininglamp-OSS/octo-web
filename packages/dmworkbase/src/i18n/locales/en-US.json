@@ -1230,6 +1230,7 @@
   "uploadCredentials.failed": "Upload failed",
   "uploadCredentials.missingFields": "Credential fields are missing from the response",
   "navRail.ariaLabel": "Main navigation",
+  "navRail.language.label": "Language",
   "navRail.language.name.en": "English",
   "navRail.language.name.zh": "简体中文",
   "navRail.language.switchToChinese": "Switch to 简体中文",

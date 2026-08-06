@@ -80,6 +80,9 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                     onClick={this.handleToggle}
                 >
                     <IconBuilding />
+                    <span className="wk-navrail__item-label">
+                        {current?.name ?? t("base.navRail.spaceSwitcher.switch")}
+                    </span>
                 </button>
 
                 <NavFlyout

@@ -82,6 +82,7 @@ export default class NavRail extends Component<NavRailProps> {
             canManageSpace = false,
         } = this.props;
         const userChannel = new Channel(WKApp.loginInfo.uid || "", ChannelTypePerson);
+        const userName = WKApp.loginInfo.name || WKApp.loginInfo.uid || t("base.navRail.me");
 
         return (
             <>
@@ -99,6 +100,7 @@ export default class NavRail extends Component<NavRailProps> {
                                 <WKAvatar channel={userChannel} />
                             </button>
                             {isOnline && <div className="wk-navrail__user-status" />}
+                            <span className="wk-navrail__user-name">{userName}</span>
                         </div>
                     </div>
 

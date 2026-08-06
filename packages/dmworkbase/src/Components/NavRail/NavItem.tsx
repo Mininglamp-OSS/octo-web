@@ -21,6 +21,7 @@ export default function NavItem({ icon, label, active, badge, onClick }: NavItem
             onClick={onClick}
         >
             {icon}
+            <span className="wk-navrail__item-label">{label}</span>
             {!!badge && (
                 <span className="wk-navrail__badge">{badgeLabel}</span>
             )}

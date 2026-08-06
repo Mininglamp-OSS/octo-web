@@ -68,6 +68,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                         onClick={onSettingsClick}
                     >
                         <IconSettings />
+                        <span className="wk-navrail__item-label">{t("base.navRail.settings")}</span>
                     </button>
 
                     {/* 版本更新气泡 */}

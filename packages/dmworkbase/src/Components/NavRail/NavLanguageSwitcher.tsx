@@ -66,6 +66,7 @@ export default function NavLanguageSwitcher() {
         onClick={() => setOpen((value) => !value)}
       >
         <IconLanguage aria-hidden="true" />
+        <span className="wk-navrail__item-label">{t("base.navRail.language.label")}</span>
       </button>
 
       <NavFlyout
