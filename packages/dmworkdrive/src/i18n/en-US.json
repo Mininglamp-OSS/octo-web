@@ -37,6 +37,13 @@
     "selectAll": "Select all",
     "selectRow": "Select item"
   },
+  "filter": {
+    "aria": "Filter by type",
+    "all": "All",
+    "folder": "Folders",
+    "doc": "Docs",
+    "blob": "Files"
+  },
   "move": {
     "title": "Move to",
     "noSubfolder": "No subfolders here",
