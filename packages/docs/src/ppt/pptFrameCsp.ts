@@ -13,6 +13,17 @@
 // inline/eval/`data:`/`blob:` runtime Bento needs. This is FULLY FE-wireable — it lives in the srcdoc
 // bytes we already control — and needs no change to the global nginx / index.html CSP.
 //
+// P1-1 (round-6, XIN-1630 — the containment must not be bypassable by the deck author it contains).
+// The deck HTML is attacker-controlled and NOT sanitized. A meta CSP only governs the document if the
+// browser parses it as the FIRST directive of the real `<head>` before any deck script runs, so the
+// injection MUST land there under the HTML5 tree-construction rules — not merely at the first textual
+// `<head>` match. Regex surgery over untrusted HTML cannot guarantee that: a `<head>` inside a leading
+// comment, a `<script>` hoisted into an implicit head ahead of a later literal `<head>`, or a `<head`
+// inside a quoted attribute all displace a textual-match injection so the deck ends up ungoverned
+// (fail OPEN). We therefore PARSE the HTML with the browser's own HTML parser, insert the meta as the
+// first child of the real `<head>` via the DOM, and re-serialize — so those vectors fail CLOSED. See
+// `withFrameCsp` and the adversarial cases in pptFrameCsp.test.ts.
+//
 // NOT covered here (filed as a follow-up, see the PR body / issue): the PARENT-document `frame-src`
 // that would allowlist exactly this frame in the app's TOP-LEVEL CSP. A meta CSP cannot set another
 // document's policy, and the app shell's CSP is delivered by the global nginx config the architect
@@ -41,27 +52,43 @@ export const PPT_FRAME_CSP = [
   "form-action 'none'",
 ].join('; ')
 
-/** The CSP meta element injected at the head of the deck document. */
-const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${PPT_FRAME_CSP}">`
+/** Serialize a parsed DocumentType back to source so re-serialization does not drop the deck's doctype
+ *  (a missing `<!DOCTYPE html>` would force quirks mode and change how Bento lays the deck out). */
+function serializeDoctype(dt: DocumentType): string {
+  let s = `<!DOCTYPE ${dt.name}`
+  if (dt.publicId) s += ` PUBLIC "${dt.publicId}"`
+  if (dt.systemId) s += dt.publicId ? ` "${dt.systemId}"` : ` SYSTEM "${dt.systemId}"`
+  return `${s}>`
+}
 
 /**
- * Inject the PPT-frame CSP `<meta>` into a deck's rendered HTML so it governs the srcdoc document
- * BEFORE any deck script runs. Inserts just inside `<head>` when present; otherwise opens a `<head>`
- * right after `<html>`; otherwise prepends the meta (a srcdoc fragment gets an implicit head and the
- * meta still applies before body content is parsed). A deck that already ships its own CSP meta keeps
- * it — the browser enforces the INTERSECTION, so our `connect-src 'none'` still binds. The tag is
- * matched with a function replacer so no `$`-sequence in the deck HTML is treated as a replacement
- * pattern.
+ * Inject the PPT-frame CSP `<meta>` so it governs the srcdoc document BEFORE any deck script runs.
+ *
+ * The deck HTML is attacker-controlled and unsanitized, so the injection must survive an adversarial
+ * author (P1-1, XIN-1630). Rather than a textual `<head>` match — which a comment / pre-head script /
+ * attribute-embedded `<head>` can displace so the meta lands somewhere inert (fail OPEN) — we parse
+ * the HTML with the platform HTML parser (`DOMParser`, `text/html`, which follows the HTML5
+ * tree-construction algorithm and never executes scripts), insert the meta as the FIRST child of the
+ * parser's real `<head>`, and re-serialize. Because the browser re-parses our output the same way, the
+ * meta is guaranteed to be the head's first directive — ahead of any deck `<script>`, including one
+ * the parser hoists into an implicit head — so the (a) leading-comment, (b) pre-head-script, and
+ * (c) `<head`-in-attribute vectors all fail CLOSED. A deck that ships its own CSP meta keeps it; ours
+ * precedes it and the browser enforces the INTERSECTION, so `connect-src 'none'` still binds.
+ *
+ * `DOMParser` is a browser platform API and this surface only ever renders in an iframe, so it is
+ * always present in production. Should it somehow be unavailable, we return the HTML unchanged rather
+ * than fall back to a bypassable textual injection: the opaque-origin sandbox (P0) remains the primary
+ * containment, and a control that cannot be placed reliably must not masquerade as one.
  */
 export function withFrameCsp(html: string): string {
   if (typeof html !== 'string') return html
-  const headOpen = /<head\b[^>]*>/i
-  if (headOpen.test(html)) {
-    return html.replace(headOpen, (m) => `${m}${CSP_META}`)
-  }
-  const htmlOpen = /<html\b[^>]*>/i
-  if (htmlOpen.test(html)) {
-    return html.replace(htmlOpen, (m) => `${m}<head>${CSP_META}</head>`)
-  }
-  return `${CSP_META}${html}`
+  if (typeof DOMParser === 'undefined') return html
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const head = doc.head || doc.documentElement
+  const meta = doc.createElement('meta')
+  meta.setAttribute('http-equiv', 'Content-Security-Policy')
+  meta.setAttribute('content', PPT_FRAME_CSP)
+  head.insertBefore(meta, head.firstChild)
+  const doctype = doc.doctype ? serializeDoctype(doc.doctype) : ''
+  return `${doctype}${doc.documentElement.outerHTML}`
 }

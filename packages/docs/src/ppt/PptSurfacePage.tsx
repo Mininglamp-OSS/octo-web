@@ -98,13 +98,14 @@ export function resolveDeckSpace(): string {
 /**
  * The deck's own space as carried by the deep-link's dedicated `?sp=` query param — the same carrier
  * the standalone doc route reads (StandaloneDocPage.standaloneLinkSpace). On the PPT routes this `?sp=`
- * is minted by the PPT link builders (pptLink.ts): the create flow stamps the deck's space onto the
- * forwarded editor link (`/ppt/d/:docId?sp=`), and `buildPptPresentLink` stamps it onto a present
- * link, so a cross-space cold deep-link resolves the right `X-Space-Id` before the shell restores
- * currentSpaceId. (Note `buildDocLink` mints `?sp=` for the STANDALONE `/d/:docId` route only, a
- * different route — it does NOT produce these PPT paths.) Returns '' when the link carries no `?sp=`
- * (an editor link the backend forwarded without one, an older/hand-built link, or SSR); the caller
- * then falls back to live/cached currentSpaceId.
+ * is minted by `withDeckSpace` (pptLink.ts): the create flow stamps the deck's space onto the
+ * forwarded editor link (`/ppt/d/:docId?sp=`), so a cross-space cold deep-link resolves the right
+ * `X-Space-Id` before the shell restores currentSpaceId. (Note `buildDocLink` mints `?sp=` for the
+ * STANDALONE `/d/:docId` route only, a different route — it does NOT produce these PPT paths. The
+ * present route has no `?sp=` minter yet, so cross-space present-share is not resolved — see
+ * pptLink.ts.) Returns '' when the link carries no `?sp=` (an editor link the backend forwarded
+ * without one, an older/hand-built link, or SSR); the caller then falls back to live/cached
+ * currentSpaceId.
  */
 function linkSpace(): string {
   if (typeof window === 'undefined') return ''
