@@ -420,3 +420,20 @@ export interface ImTransferredItem {
   im_channel_type: number;
   im_msg_id: string;
 }
+
+/**
+ * Materialize the source_key string exactly as octo-drive's `buildSourceKey`
+ * does: `${im_channel_type}#${im_group_no}#${im_msg_id}`.
+ *
+ * ⚠️  This is the ONLY place in octo-web that constructs a source_key. Callers
+ * (module.tsx's batch dedupe / results read-back) MUST route through this
+ * function so any future backend format change is localized to one edit
+ * instead of drifting across call sites. Do not inline `${...}#${...}#${...}`
+ * elsewhere.
+ *
+ * Backend anchor: octo-drive `internal/modules/imtransfer/service.go`
+ * `buildSourceKey`, migration `db/migrations/007_add_file_source_key.up.sql`.
+ */
+export function imTransferredSourceKey(item: ImTransferredItem): string {
+  return `${item.im_channel_type}#${item.im_group_no}#${item.im_msg_id}`;
+}

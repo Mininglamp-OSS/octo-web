@@ -13,6 +13,7 @@ import DriveContent from './pages/DriveContent';
 import { DriveVM } from './pages/DriveVM';
 import { transferFromIm, checkImTransferredBatch } from './api/driveApi';
 import type { ImTransferredEntry } from './api/driveApi';
+import { imTransferredSourceKey } from './bridge/types';
 
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
@@ -161,7 +162,7 @@ export default class DriveModule implements IModule {
     WKApp.checkDriveTransferred = (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) =>
       new Promise<ImTransferredEntry | null>((resolve, reject) => {
         if (!pendingBatch) pendingBatch = new Map();
-        const sourceKey = `${msg.im_channel_type}#${msg.im_group_no}#${msg.im_msg_id}`;
+        const sourceKey = imTransferredSourceKey(msg);
         const existing = pendingBatch.get(sourceKey);
         if (existing) {
           existing.waiters.push({ resolve, reject });
