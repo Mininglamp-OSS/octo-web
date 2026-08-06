@@ -5,7 +5,7 @@ import MessageBase from "../Base";
 import WKApp from "../../App";
 import { FileContent } from "./FileContent";
 import { downloadFile } from "../../Utils/download";
-import { WKSDK, Task, TaskStatus } from "wukongimjssdk";
+import { WKSDK, Task, TaskStatus, MessageStatus } from "wukongimjssdk";
 import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import WKModal from "../../Components/WKModal";
 import MarkdownContent from "../Text/MarkdownContent";
@@ -409,6 +409,37 @@ export class FileCell extends MessageCell<any, FileCellState> {
 
     // 挂载时查询转存状态：多条消息在钩子层微批合并成一次批量请求。
     // 群/子区/私聊统一支持（源码 source_key 已带 channelType 区分）。
+    // 自己刚发出的消息在收到 send-ack 前 messageID 为空 / status===Wait
+    // (vm.ts:updateMessageStatusBySendAck 才写入 server messageID)——此时
+    // 服务端还没这条消息，跳过查询避免 empty-msg_id 污染 batch 请求。
+    // ack 后 componentDidUpdate 会补一次查询。
+    this.runTransferredCheck();
+  }
+
+  componentDidUpdate(prevProps: { message: any }) {
+    // 处理"自己发的文件从发送中→ack 成功"的过渡：mount 时可能 messageID 为空
+    // 跳过了查询，ack 回来后 message 变 Normal + 拿到 server messageID，此时
+    // 需要补一次查询，否则用户自己刚发的文件的转存状态永远显示不出来。
+    const prev = prevProps.message;
+    const cur = (this.props as { message: any }).message;
+    const becameNormal =
+      cur.messageID && cur.status === MessageStatus.Normal &&
+      (!prev.messageID || prev.status !== MessageStatus.Normal);
+    if (becameNormal) {
+      this.runTransferredCheck();
+    }
+  }
+
+  // isMessagePersisted：消息已被服务端 ack、拥有 server messageID，可作 im_msg_id
+  // 参与云盘转存 / 已存查询。发送中(Wait) / 失败(Fail) / 无 messageID 时为 false。
+  private isMessagePersisted(): boolean {
+    const { message } = this.props;
+    return Boolean(message.messageID) && message.status === MessageStatus.Normal;
+  }
+
+  private runTransferredCheck(): void {
+    if (!this.isMessagePersisted()) return;
+    const { message } = this.props;
     const check = WKApp.checkDriveTransferred;
     if (check && WKApp.remoteConfig?.driveOn) {
       check({
@@ -470,6 +501,11 @@ export class FileCell extends MessageCell<any, FileCellState> {
     const { message } = this.props;
     const { t } = this.context;
     const content = message.content as FileContent;
+    // 防御式：本 handler 只能在 icon gate 已放行时被调（icon 会在
+    // isMessagePersisted 为 false 时拦截 onClick），这里再检查一次防止
+    // 未来被别的入口误调（例如 keyboard trigger / a11y 路径）导致把空
+    // im_msg_id 传给后端。
+    if (!this.isMessagePersisted()) return;
     // 已存过 → 直接在云盘中查看，不再转存。查看只依赖 file_id + space_id，
     // 与文件 URL 无关，所以放在 URL 安全校验之前——避免 URL 畸形时把
     // 已转存文件的"在云盘查看"也误拦掉。本期定位到空间根目录。
@@ -748,21 +784,30 @@ export class FileCell extends MessageCell<any, FileCellState> {
                     {WKApp.saveMessageToDrive && WKApp.remoteConfig?.driveOn && (
                       <Tooltip
                         content={
-                          this.state.imTransferred?.exists
-                            ? t("base.messageFile.viewInDrive")
-                            : t("base.messageFile.saveToDrive")
+                          !this.isMessagePersisted()
+                            ? t("base.messageFile.saveToDrivePendingAck")
+                            : this.state.imTransferred?.exists
+                              ? t("base.messageFile.viewInDrive")
+                              : t("base.messageFile.saveToDrive")
                         }
                         position="top"
                       >
                         <div
                           className="wk-message-file-action"
                           aria-label={
-                            this.state.imTransferred?.exists
-                              ? t("base.messageFile.viewInDrive")
-                              : t("base.messageFile.saveToDrive")
+                            !this.isMessagePersisted()
+                              ? t("base.messageFile.saveToDrivePendingAck")
+                              : this.state.imTransferred?.exists
+                                ? t("base.messageFile.viewInDrive")
+                                : t("base.messageFile.saveToDrive")
                           }
                           onClick={(e) => {
                             e.stopPropagation();
+                            // 未 ack / 无 server messageID：静默拦截点击，避免把
+                            // 空 im_msg_id 传给后端(#1261 review round 3 flagged case)。
+                            // 视觉上与下载按钮口径一致（始终高亮、运行时静默返回），
+                            // hover tooltip 提示原因。
+                            if (!this.isMessagePersisted()) return;
                             this.handleSaveToDrive();
                           }}
                         >

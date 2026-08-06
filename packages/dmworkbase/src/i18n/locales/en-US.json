@@ -887,6 +887,7 @@
   "messageFile.retryHint": "Click the icon to retry",
   "messageFile.saveToDrive": "Save to Drive",
   "messageFile.saveToDriveFailed": "Failed to save to Drive",
+  "messageFile.saveToDrivePendingAck": "Message is still being sent",
   "messageFile.saveToDriveSuccess": "Saved to Drive",
   "messageFile.unknownFile": "Unknown file",
   "messageFile.uploadFailed": "Upload failed",

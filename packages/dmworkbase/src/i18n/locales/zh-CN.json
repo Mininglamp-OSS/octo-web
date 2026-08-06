@@ -887,6 +887,7 @@
   "messageFile.retryHint": "点击图标重试",
   "messageFile.saveToDrive": "存到云盘",
   "messageFile.saveToDriveFailed": "存到云盘失败",
+  "messageFile.saveToDrivePendingAck": "消息发送中，请稍候",
   "messageFile.saveToDriveSuccess": "已存到云盘",
   "messageFile.unknownFile": "未知文件",
   "messageFile.uploadFailed": "上传失败",

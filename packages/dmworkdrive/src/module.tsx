@@ -161,6 +161,17 @@ export default class DriveModule implements IModule {
     };
     WKApp.checkDriveTransferred = (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) =>
       new Promise<ImTransferredEntry | null>((resolve, reject) => {
+        // Defensive filter: an empty im_msg_id means the message hasn't been
+        // ack'd yet (server messageID is written in vm.ts:updateMessageStatus-
+        // BySendAck) — the drive backend has nothing to look up and one bad
+        // item would fail the whole batch. Return null (= "not transferred")
+        // synchronously without enqueueing. FileCell also gates the caller
+        // side (isMessagePersisted); this is a second line of defense for
+        // any future caller. Same for im_group_no.
+        if (!msg.im_group_no || !msg.im_msg_id) {
+          resolve(null);
+          return;
+        }
         if (!pendingBatch) pendingBatch = new Map();
         const sourceKey = imTransferredSourceKey(msg);
         const existing = pendingBatch.get(sourceKey);
