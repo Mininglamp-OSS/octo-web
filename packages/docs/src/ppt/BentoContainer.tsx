@@ -1,17 +1,29 @@
-// Same-origin Bento container for the html_ppt peer surfaces (R3-F1, XIN-1495 / XIN-1583).
+// Isolated Bento container for the html_ppt peer surfaces (R3-F1, XIN-1495 / XIN-1583).
 //
 // Bento is a single-HTML slide engine that runs its own JS. The backend (octo-docs-backend #161)
 // serves a deck's rendered source at `GET /api/v1/ppt/docs/:docId/source` and mounts NO
 // `/ppt/frame/:id` host page — so we do NOT navigate an iframe at a bespoke host route. Instead we
 // FETCH the rendered single-file source through the shared apiClient (pptSourceClient.ts), so the
-// app's auth / `X-Space-Id` / language interceptors apply, and host that HTML in a SAME-ORIGIN
-// iframe via `srcdoc` (a srcdoc document inherits the embedder's origin, so it is same-origin by
-// construction — no cross-origin host page, no baked-in credentials in a frame `src`).
+// app's auth / `X-Space-Id` / language interceptors apply, and host that HTML in a sandboxed iframe
+// via `srcdoc`.
 //
-// The bootstrap payload (source mode/version + any short-lived asset metadata) is still handed to
-// the frame over the origin-checked `postMessage` handshake (bootstrapTransfer.ts): a srcdoc frame
-// with `allow-same-origin` reports `event.origin === window.location.origin`, so the same trust gate
-// — and its cross-origin negative control — holds unchanged.
+// SECURITY (XIN-1608 P0): the deck HTML is user-authored and NOT end-to-end sanitized, so it may
+// carry <script>, on* handlers, or javascript: URLs. A srcdoc document inherits the embedder's
+// origin, so granting `allow-same-origin` alongside `allow-scripts` would let the deck's scripts run
+// AS the parent origin with full access to parent-origin cookies / localStorage / DOM (a stored-XSS
+// escalation). We therefore run the frame WITHOUT `allow-same-origin` (see sandboxForMode): the
+// srcdoc loads in an OPAQUE origin where Bento's scripts still execute against the frame's own
+// document but can touch nothing in the parent origin. This mirrors the intent of the sibling
+// `packages/docs/src/html/HtmlDocView.tsx` (which isolates its unsanitized fetched HTML) while still
+// letting the engine run. The deck's rendered source is delivered by the `srcdoc` injection itself —
+// that is the load-bearing delivery path.
+//
+// The origin-checked `postMessage` handshake (bootstrapTransfer.ts) is retained UNCHANGED and stays
+// fail-closed: it only ever trusts an EXACT same-origin match, so an opaque-origin frame's request
+// (`event.origin === 'null'`) is rejected without a reply — the same negative control the acceptance
+// matrix pins. It is forward scaffolding (a future same-origin-served host page) and issues NO
+// Hocuspocus token; the P0 isolation change does not weaken its origin gate (verified by
+// bootstrapTransfer.test.ts, which is sandbox-independent).
 //
 // This component is the peer mount point — it is deliberately NOT wired through EditorShell (a Bento
 // deck has no Yjs/ProseMirror payload and no Hocuspocus room; mounting it through the rich-text host
@@ -44,23 +56,28 @@ type SourceState =
   | { status: 'error' }
 
 /**
- * Per-mode iframe sandbox. Bento needs `allow-scripts` to run and `allow-same-origin` to reach the
- * same-origin bootstrap channel; `present` additionally needs `allow-fullscreen` for the fullscreen
- * present affordance. No `allow-top-navigation` — the deck can never navigate the host away.
+ * Per-mode iframe sandbox. The deck source is user-authored and NOT end-to-end sanitized, so the
+ * frame runs Bento's scripts (`allow-scripts`) but DELIBERATELY WITHOUT `allow-same-origin`: the
+ * srcdoc document therefore loads in an OPAQUE origin, and its scripts cannot read the parent
+ * origin's cookies / localStorage / DOM (XIN-1608 P0 — Option A). Granting both `allow-scripts` and
+ * `allow-same-origin` over unsanitized HTML would let the deck execute AS the parent origin, so the
+ * two are never combined here. `present` additionally needs `allow-fullscreen`. No
+ * `allow-top-navigation` — the deck can never navigate the host away.
  */
 function sandboxForMode(mode: PptBootstrap['mode']): string {
-  const base = 'allow-scripts allow-same-origin'
+  const base = 'allow-scripts'
   if (mode === 'present') return `${base} allow-fullscreen`
   return base
 }
 
 /**
- * Mount a same-origin Bento frame (srcdoc) with the deck's fetched source and answer its
- * origin-checked bootstrap request with `bootstrap`.
+ * Mount an isolated (opaque-origin) Bento frame (srcdoc) with the deck's fetched source and answer
+ * any origin-checked bootstrap request with `bootstrap`.
  *
- * The `serveBootstrap` listener is attached for this container's lifetime and only ever replies to a
- * SAME-ORIGIN request whose docId matches this deck — a cross-origin message is dropped without a
- * reply (see bootstrapTransfer.ts).
+ * The `serveBootstrap` listener is attached for this container's lifetime and only ever replies to an
+ * EXACT same-origin request whose docId matches this deck — every other message (including the
+ * opaque-origin frame's own `event.origin === 'null'`) is dropped without a reply (see
+ * bootstrapTransfer.ts). The handshake is thus fail-closed under the isolated sandbox.
  */
 export function BentoContainer({
   bootstrap,
@@ -126,9 +143,10 @@ export function BentoContainer({
     <iframe
       ref={iframeRef}
       className={className ?? 'octo-ppt-frame'}
-      // Same-origin, first-party Bento host: the source is fetched through the app's own apiClient and
-      // rendered from `srcdoc`, which inherits this document's origin. Scripts + same-origin are
-      // required for the engine and the bootstrap channel; present adds fullscreen. See sandboxForMode.
+      // First-party Bento host: the source is fetched through the app's own apiClient and rendered
+      // from `srcdoc`. The sandbox grants `allow-scripts` (the engine needs to run) but NOT
+      // `allow-same-origin`, so the deck loads in an OPAQUE origin and its scripts cannot touch the
+      // parent origin (XIN-1608 P0); present adds fullscreen. See sandboxForMode.
       sandbox={sandboxForMode(bootstrap.mode)}
       allow="fullscreen"
       title={title}

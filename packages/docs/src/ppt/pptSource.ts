@@ -57,8 +57,14 @@ export function backendModeFor(mode: PptBootstrapMode): PptBackendMode {
       return 'live'
     case 'preview':
     case 'present':
-    default:
       return 'published'
+    default: {
+      // Exhaustiveness guard: this function decides published-vs-live, so a NEW PptBootstrapMode
+      // must be mapped deliberately rather than silently defaulting to 'published'. A future member
+      // makes `mode` non-`never` here and fails typecheck until it is handled above.
+      const exhaustive: never = mode
+      return exhaustive
+    }
   }
 }
 

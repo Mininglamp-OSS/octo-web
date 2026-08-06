@@ -80,6 +80,36 @@ describe("standalone return target", () => {
         ).toBeNull();
     });
 
+    it("accepts the html_ppt peer surface deep-links so they replay after login (XIN-1608)", () => {
+        for (const good of [
+            "/ppt/d/d_abc",
+            "/ppt/d/d_abc/",
+            "/ppt/d/d_abc?foo=bar",
+            "/docs/d_abc/present",
+            "/docs/d_abc/present/",
+            "/docs/d_abc/present?version=3",
+        ]) {
+            window.sessionStorage.setItem(KEY, good);
+            expect(consumeStandaloneReturn()).toBe(good);
+        }
+    });
+
+    it("rejects docs paths that are not the exact /docs/:id/present shape (keeps the shell)", () => {
+        for (const bad of [
+            "/docs", // list namespace
+            "/docs/d_abc", // editor route, not a return target
+            "/docs/d_abc/edit", // wrong tail
+            "/docs/d_abc/present/extra", // extra segment
+            "/ppt/d", // no id
+            "/ppt/d/", // empty id
+            "/ppt/x/d_abc", // wrong shape
+        ]) {
+            window.sessionStorage.setItem(KEY, bad);
+            expect(consumeStandaloneReturn()).toBeNull();
+            expect(window.sessionStorage.getItem(KEY)).toBeNull();
+        }
+    });
+
     it("clearStandaloneReturn deletes the key without navigating or consuming (R9 P1)", () => {
         const href = window.location.href;
         window.sessionStorage.setItem(KEY, "/drive/invite/tok_1");

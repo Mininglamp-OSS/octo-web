@@ -14,7 +14,7 @@
 // container.
 
 import { useEffect, useState, type ReactElement } from 'react'
-import { t } from '../octoweb/index.ts'
+import { getWKApp, t } from '../octoweb/index.ts'
 import { PPT_SOURCE_ENABLED } from '../config.ts'
 import { canEdit as roleCanEdit } from '../auth/roles.ts'
 import { getDoc, HTML_PPT_DOC_TYPE, type DocMeta } from '../pages/docsApi.ts'
@@ -62,8 +62,39 @@ function SurfaceState({
   )
 }
 
+/**
+ * Resolve the owning space for a PPT deep-link's by-space reads (getDoc preflight + source fetch).
+ *
+ * The PPT surfaces mount via the host Layout's EARLY RETURN, before the app-shell logic that
+ * restores `currentSpaceId` from localStorage runs — so on a cross-space cold deep-link the live
+ * `WKApp.shared.currentSpaceId` is still empty. Mirror the standalone branches: prefer the live
+ * value, else the cached `currentSpaceId` localStorage key the shell persists. Returns '' when there
+ * is no signal at all, in which case the caller omits the explicit header and lets the global request
+ * interceptor decide (exactly as an in-shell entry does) rather than forcing a wrong space.
+ */
+export function resolveDeckSpace(): string {
+  const live = getWKApp().shared?.currentSpaceId
+  if (live) return live
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = window.localStorage.getItem('currentSpaceId')
+      if (cached) return cached
+    } catch {
+      // localStorage unavailable (private mode / disabled): no signal → '' (omit the header).
+    }
+  }
+  return ''
+}
+
 export function PptSurfacePage({ docId, mode, version, onSessionExpired }: PptSurfacePageProps): ReactElement {
   const gated = !PPT_SOURCE_ENABLED
+  // Resolve the owning space for the cross-space cold deep-link. Both PPT routes mount via the
+  // Layout EARLY RETURN — before the app shell restores currentSpaceId — so the live value is often
+  // empty on a fresh tab. Mirror the standalone branches (Layout ~L421 / StandaloneDocPage) by
+  // falling back to the cached `currentSpaceId` localStorage key the shell persists, so the by-space
+  // reads below are scoped instead of unscoped (XIN-1608 P1). '' → omit the header and let the global
+  // interceptor decide, exactly as an in-shell entry would.
+  const space = resolveDeckSpace()
   const [phase, setPhase] = useState<Phase>({ status: 'loading' })
 
   useEffect(() => {
@@ -75,7 +106,7 @@ export function PptSurfacePage({ docId, mode, version, onSessionExpired }: PptSu
       return
     }
     setPhase({ status: 'loading' })
-    getDoc(docId)
+    getDoc(docId, space ? { spaceId: space } : undefined)
       .then((meta) => {
         if (!cancelled) setPhase({ status: 'ready', meta })
       })
@@ -91,7 +122,7 @@ export function PptSurfacePage({ docId, mode, version, onSessionExpired }: PptSu
     return () => {
       cancelled = true
     }
-  }, [gated, docId, onSessionExpired])
+  }, [gated, docId, space, onSessionExpired])
 
   // Gated shell — the only state that ships until R3-B1 merges.
   if (gated) {
@@ -159,6 +190,7 @@ export function PptSurfacePage({ docId, mode, version, onSessionExpired }: PptSu
       <div className="octo-ppt-surface-body">
         <BentoContainer
           bootstrap={buildPptBootstrap({ docId: deckId, mode, version: resolvedVersion, canEdit })}
+          space={space || undefined}
           title={meta.title || t('docs.ppt.viewTitle')}
         />
       </div>

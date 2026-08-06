@@ -8,6 +8,15 @@ const STANDALONE_DOC_PATH = /^\/d\/([A-Za-z0-9_-]+)\/?$/;
 const STANDALONE_SUMMARY_PATH = /^\/s\/([A-Za-z0-9_-]+)\/?$/;
 const STANDALONE_SUMMARY_SHARE_PATH = /^\/s\/share\/([A-Za-z0-9_-]+)\/?$/;
 
+// html_ppt peer surfaces (R3-F1, XIN-1495 / XIN-1608). Layout persists a return target for these two
+// full-window PPT routes on the anonymous deep-link path (index.tsx ~L505), but they are NOT
+// registered enterprise standalone handlers, so without an allowlist entry consumeStandaloneReturn
+// discarded the stored target and the user landed on the app root after sign-in. Mirror the docId
+// safety of the standalone doc path (`A-Z a-z 0-9 _ -`, single segment) and match the exact route
+// shapes parsed in packages/docs/src/ppt/pptRoutes.ts, so only a real PPT deep-link replays.
+const STANDALONE_PPT_EDITOR_PATH = /^\/ppt\/d\/([A-Za-z0-9_-]+)\/?$/;
+const STANDALONE_PPT_PRESENT_PATH = /^\/docs\/([A-Za-z0-9_-]+)\/present\/?$/;
+
 // `/drive/s/:token` and `/drive/invite/:token` — drive share / space-invite landings
 // (PR#1146 N2). Both require login: a signed-in user who opens the link while logged
 // out is bounced back here after sign-in. Matches a SINGLE path segment before decode
@@ -51,6 +60,8 @@ function isSafeReturnPath(path: string | null, handlers: readonly ReturnHandler[
     if (STANDALONE_DOC_PATH.test(url.pathname)) return true;
     if (STANDALONE_SUMMARY_PATH.test(url.pathname)) return true;
     if (STANDALONE_SUMMARY_SHARE_PATH.test(url.pathname)) return true;
+    if (STANDALONE_PPT_EDITOR_PATH.test(url.pathname)) return true;
+    if (STANDALONE_PPT_PRESENT_PATH.test(url.pathname)) return true;
     if (isSafeDriveLandingPath(url.pathname)) return true;
     return handlers.some((handler) => handler.persistReturnOnAnonymous && handler.match(url.pathname));
 }
