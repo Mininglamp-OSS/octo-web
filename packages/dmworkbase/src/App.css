@@ -62,8 +62,8 @@
     --wk-message-item: #0F0F0F;
     --wk-message-color: white;
 
-    --semi-color-primary: var(--wk-color-theme, #1C1C23);
-    --semi-color-primary-hover: #2A2A33;
+    --semi-color-primary: var(--wk-neutral-600);
+    --semi-color-primary-hover: var(--wk-neutral-500);
 
     /* Dark mode 适配变量 */
     --bg-primary: #1a1a1a;
@@ -124,6 +124,15 @@ html {
     --semi-color-primary-light-default: #F1F1F3;
     --semi-color-primary-light-hover: #E9E9EC;
     --semi-color-primary-light-active: #E1E1E5;
+  }
+
+  html body[theme-mode=dark] {
+    --semi-color-primary: var(--wk-neutral-600);
+    --semi-color-primary-hover: var(--wk-neutral-500);
+    --semi-color-primary-active: var(--wk-neutral-700);
+    --semi-color-primary-light-default: var(--wk-white-alpha-08);
+    --semi-color-primary-light-hover: var(--wk-white-alpha-12);
+    --semi-color-primary-light-active: var(--wk-white-alpha-12);
   }
 
   div {

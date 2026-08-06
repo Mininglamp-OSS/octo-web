@@ -7,10 +7,10 @@
   align-items: center;
   gap: var(--wk-sp-1);
   padding: var(--wk-sp-1) var(--wk-sp-2);
-  background-color: rgba(242, 243, 244, 1);
+  background-color: var(--wk-bg-elevated);
   border-radius: var(--wk-r-full);
   font-size: var(--wk-text-size-sm);
-  color: rgba(28, 28, 35, 0.4);
+  color: var(--wk-text-tertiary);
   user-select: none;
 }
 
@@ -44,7 +44,7 @@
   margin: 0;
   border: none;
   background: transparent;
-  color: rgba(28, 28, 35, 0.6);
+  color: var(--wk-text-secondary);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
@@ -52,5 +52,5 @@
 }
 
 .wk-msg-system-tag-close:hover {
-  color: rgba(28, 28, 35, 1);
+  color: var(--wk-text-primary);
 }

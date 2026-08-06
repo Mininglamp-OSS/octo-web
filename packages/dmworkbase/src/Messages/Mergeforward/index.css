@@ -44,7 +44,7 @@
 
 .wk-mergeforwards-content-item {
   font-size: var(--wk-text-size-base);
-  color: var(--wk-icon-muted);
+  color: var(--wk-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -63,7 +63,7 @@
   align-items: center;
   justify-content: space-between;
   font-size: var(--wk-text-size-sm);
-  color: var(--wk-brand-tint-35);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-mergeforwards-content-tip p {

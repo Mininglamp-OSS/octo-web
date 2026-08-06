@@ -4,8 +4,8 @@
   flex-direction: column;
   gap: 4px;
   padding: 12px;
-  background: rgba(28, 28, 35, 0.04);
-  border-left: 4px solid rgba(28, 28, 35, 0.8);
+  background: var(--wk-bg-elevated);
+  border-left: 4px solid var(--wk-border-strong);
   border-radius: 0 4px 4px 0;
   cursor: pointer;
   transition: background 0.2s;
@@ -14,7 +14,7 @@
 }
 
 .wk-thread-created-card:hover {
-  background: rgba(28, 28, 35, 0.06);
+  background: var(--wk-bg-hover);
 }
 
 /* 消息正文预览 */
@@ -22,7 +22,7 @@
   font-size: 14px;
   font-weight: 400;
   line-height: 22px;
-  color: rgba(28, 28, 35, 1.0);
+  color: var(--wk-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -40,7 +40,7 @@
 
 /* Thread 链接 */
 .wk-thread-created-link {
-  color: rgba(127, 59, 245, 1.0);
+  color: var(--wk-text-accent);
   font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
@@ -57,7 +57,7 @@
 
 /* 参与者文字 */
 .wk-thread-created-participants {
-  color: rgba(28, 28, 35, 0.6);
+  color: var(--wk-text-secondary);
   font-size: 12px;
   white-space: nowrap;
   margin-left: auto;

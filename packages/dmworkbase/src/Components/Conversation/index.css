@@ -134,7 +134,7 @@ body[theme-mode="dark"] .wk-conversation-content {
 .wk-fold-session-participant-name {
   font-size: 14px;
   font-weight: 600 !important;
-  color: #000000;
+  color: var(--wk-text-primary);
 }
 
 /* AI 名称样式 (和普通名字一样,不需要特殊样式) */
@@ -216,7 +216,7 @@ body[theme-mode="dark"] .wk-conversation-content {
 .wk-fold-session-time {
   font-size: 14px;
   font-weight: 400;
-  color: rgba(28, 28, 35, 0.4);
+  color: var(--wk-text-tertiary);
   white-space: nowrap;
 }
 
@@ -313,8 +313,8 @@ body[theme-mode="dark"] .wk-conversation-content {
 .wk-fold-msg-name {
   font-size: 12px;
   font-weight: 700;
-  color: rgba(28, 28, 35, 1);
-  background: rgba(255, 255, 255, 1);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
   border-radius: 3px;
   padding: 2px 8px;
   height: 20px;
@@ -326,13 +326,13 @@ body[theme-mode="dark"] .wk-conversation-content {
 .wk-fold-msg-time {
   font-size: 12px;
   font-weight: 400;
-  color: rgba(28, 28, 35, 0.4);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-fold-msg-text {
   font-size: 14px;
   font-weight: 400;
-  color: rgba(28, 28, 35, 0.8);
+  color: var(--wk-text-primary);
   line-height: 1.6;
 }
 

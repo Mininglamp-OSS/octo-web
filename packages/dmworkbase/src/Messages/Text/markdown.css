@@ -8,6 +8,7 @@
   line-height: 1.6;
   word-break: break-word;
   min-width: 0;
+  color: var(--wk-text-primary);
 }
 
 /* ── 段落 ── */
@@ -108,6 +109,10 @@
   border-radius: var(--wk-r-md);
   overflow: hidden;
   border: 1px solid var(--wk-border-subtle);
+}
+
+body[theme-mode="dark"] .wk-markdown-pre-wrapper {
+  border-color: var(--wk-border-strong);
 }
 
 .wk-markdown pre {

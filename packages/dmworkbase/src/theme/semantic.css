@@ -340,10 +340,37 @@
 /* ============================================================
    Dark Theme — body[theme-mode=dark]
 
-   ⚠️ 暗黑模式当前已关闭（App.tsx 强制 ThemeMode.light），设置面板无切换入口
-   保留以下 CSS 变量定义以备后续重启暗黑模式功能
+   由 WKApp.config.themeMode 控制 body[theme-mode=dark]。
    ============================================================ */
 body[theme-mode="dark"] {
+  /* Legacy aliases still used by the chat shell and conversation list. */
+  --wk-color-theme: var(--wk-neutral-0);
+  --wk-brand-primary: var(--wk-text-primary);
+  --wk-brand-primary-hover: var(--wk-color-white);
+  --wk-brand-from: var(--wk-text-primary);
+  --wk-brand-to: var(--wk-text-primary);
+  --wk-brand-gradient: var(--wk-brand-primary);
+  --wk-brand-gradient-hover: var(--wk-brand-primary-hover);
+  --wk-brand-gradient-subtle: var(--wk-white-alpha-08);
+  --wk-brand-primary-ring: var(--wk-white-alpha-12);
+  --wk-brand-glow: var(--wk-white-alpha-12);
+  --wk-brand-tint-03: var(--wk-white-alpha-04);
+  --wk-brand-tint-04: var(--wk-white-alpha-04);
+  --wk-brand-tint-06: var(--wk-white-alpha-06);
+  --wk-brand-tint-08: var(--wk-white-alpha-08);
+  --wk-brand-tint-10: var(--wk-white-alpha-08);
+  --wk-brand-tint-12: var(--wk-white-alpha-12);
+  --wk-brand-tint-15: var(--wk-white-alpha-12);
+  --wk-brand-tint-35: var(--wk-white-alpha-40);
+  --wk-brand-accent: var(--wk-text-primary);
+  --wk-icon-muted: var(--wk-white-alpha-40);
+  --wk-icon-default: var(--wk-white-alpha-80);
+  --wk-icon-hover: var(--wk-color-white);
+  --wk-text-strong: var(--wk-color-white);
+  --wk-bg-item-hover: var(--wk-white-alpha-08);
+  --wk-bg-tab: var(--wk-white-alpha-06);
+  --wk-shadow-dropdown: 0 12px 32px var(--wk-black-alpha-50);
+
   --wk-accent-tint-06: rgba(127, 59, 245, 0.1);
   --wk-accent-tint-08: rgba(127, 59, 245, 0.12);
   --wk-accent-tint-10: rgba(127, 59, 245, 0.16);
@@ -460,8 +487,12 @@ body[theme-mode="dark"] {
   --wk-code-border: var(--wk-white-alpha-07);
 
   /* Semi Design token 覆盖 */
-  --semi-color-primary: var(--wk-brand-primary);
-  --semi-color-primary-hover: var(--wk-brand-primary-hover);
+  --semi-color-primary: var(--wk-neutral-600);
+  --semi-color-primary-hover: var(--wk-neutral-500);
+  --semi-color-primary-active: var(--wk-neutral-700);
+  --semi-color-primary-light-default: var(--wk-white-alpha-08);
+  --semi-color-primary-light-hover: var(--wk-white-alpha-12);
+  --semi-color-primary-light-active: var(--wk-white-alpha-12);
   --semi-color-bg-0: var(--wk-bg-surface);
   --semi-color-bg-1: var(--wk-bg-elevated);
   --semi-color-text-0: var(--wk-text-primary);

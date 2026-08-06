@@ -5,30 +5,32 @@
   min-width: 200px;
   max-width: 280px;
   gap: 12px;
-  background: rgba(28, 28, 35, 0.05);
+  box-sizing: border-box;
+  background: var(--wk-bg-elevated);
+  border: 1px solid var(--wk-border-default);
   border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.15s, box-shadow 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 /* 可点击的文件卡片 hover 效果 */
 .wk-message-file--clickable:hover {
-  background: rgba(28, 28, 35, 0.08);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  background: var(--wk-bg-hover);
+  box-shadow: var(--wk-shadow-sm);
 }
 
 .wk-message-file--clickable:active {
-  background: rgba(28, 28, 35, 0.12);
+  background: var(--wk-bg-selected);
 }
 
 /* 激活态（正在预览） */
 .wk-message-file--active {
-  border: 1px solid var(--wk-color-theme);
+  border-color: var(--wk-brand-primary);
   background: var(--wk-brand-tint-06);
 }
 
 .wk-message-file--active:hover {
-  border-color: var(--wk-color-theme);
+  border-color: var(--wk-brand-primary);
   background: var(--wk-brand-tint-06);
 }
 
@@ -43,7 +45,7 @@
 }
 
 .wk-message-file-icon-label {
-  color: #fff;
+  color: var(--wk-text-on-brand);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -60,7 +62,7 @@
 .wk-message-file-name {
   font-size: 14px;
   font-weight: 500;
-  color: rgba(28, 28, 35, 0.8);
+  color: var(--wk-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -72,14 +74,14 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: rgba(28, 28, 35, 0.4);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-message-file-ext {
   padding: 0 4px;
   border-radius: 2px;
-  background-color: rgba(99, 102, 241, 0.1);
-  color: var(--wk-color-theme);
+  background-color: var(--wk-brand-tint-08);
+  color: var(--wk-brand-primary);
   font-size: 10px;
   font-weight: 600;
   line-height: 1.6;
@@ -99,12 +101,12 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--wk-color-theme);
+  color: var(--wk-brand-primary);
   transition: background-color 0.2s;
 }
 
 .wk-message-file-action:hover {
-  background-color: rgba(99, 102, 241, 0.1);
+  background-color: var(--wk-brand-tint-08);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-name {
@@ -116,22 +118,22 @@
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-ext {
-  background-color: rgba(0, 180, 148, 0.1);
-  color: var(--wk-color-theme);
+  background-color: var(--wk-brand-tint-08);
+  color: var(--wk-brand-primary);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-action {
-  color: var(--wk-color-theme);
+  color: var(--wk-brand-primary);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-action:hover {
-  background-color: rgba(0, 180, 148, 0.08);
+  background-color: var(--wk-brand-tint-08);
 }
 
 .wk-message-file-caption {
   padding: 4px 8px 8px;
   font-size: 14px;
-  color: var(--wk-text-item);
+  color: var(--wk-text-primary);
   word-break: break-word;
   line-height: 1.4;
 }
@@ -148,7 +150,7 @@
 
 .wk-message-file-progress-bar {
   height: 4px;
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: var(--wk-border-default);
   border-radius: 2px;
   overflow: hidden;
   margin: 6px 0 2px;
@@ -156,22 +158,22 @@
 
 .wk-message-file-progress-fill {
   height: 100%;
-  background-color: var(--wk-color-primary, #1c1c23);
+  background-color: var(--wk-brand-primary);
   border-radius: 2px;
   transition: width 0.2s ease;
 }
 
 .wk-message-file-progress-text {
   font-size: 11px;
-  color: var(--wk-text-item-second, #999);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-progress-bar {
-  background-color: rgba(0, 180, 148, 0.15);
+  background-color: var(--wk-border-default);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-progress-fill {
-  background-color: var(--wk-color-theme);
+  background-color: var(--wk-brand-primary);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-progress-text {
@@ -180,22 +182,22 @@
 
 /* 失败状态文案 */
 .wk-message-file-failed-text {
-  color: #ef4444;
+  color: var(--wk-color-error);
 }
 
 .wk-message-file-retry-hint {
   font-size: 11px;
-  color: #ef4444;
+  color: var(--wk-color-error);
   margin-top: 2px;
 }
 
 /* 发送方气泡里失败文案 */
 .wk-message-base-bubble-box.send .wk-message-file-failed-text {
-  color: #ef4444;
+  color: var(--wk-color-error);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-retry-hint {
-  color: #ef4444;
+  color: var(--wk-color-error);
 }
 
 /* Text file preview modal */

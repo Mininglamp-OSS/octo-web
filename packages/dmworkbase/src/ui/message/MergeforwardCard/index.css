@@ -4,9 +4,9 @@
  */
 
 .wk-mf-card {
-  background: rgba(28, 28, 35, 0.03);
+  background: var(--wk-bg-elevated);
   border-radius: 8px;
-  border: 1px solid rgba(46, 50, 56, 0.09);
+  border: 1px solid var(--wk-border-default);
   padding: 12px;
   cursor: pointer;
   /* 宽度由最长内容决定，不设固定宽度 */
@@ -17,14 +17,14 @@
 }
 
 .wk-mf-card:hover {
-  background: rgba(28, 28, 35, 0.02);
+  background: var(--wk-bg-hover);
 }
 
 /* 标题行 */
 .wk-mf-card__title {
   font-size: 14px;
   font-weight: 500;
-  color: #1c1c23;
+  color: var(--wk-text-primary);
   margin-bottom: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -41,7 +41,7 @@
 
 .wk-mf-card__item {
   font-size: 12px;
-  color: rgba(28, 28, 35, 0.6);
+  color: var(--wk-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -50,12 +50,12 @@
 /* 分割线 */
 .wk-mf-card__divider {
   height: 1px;
-  background: rgba(46, 50, 56, 0.09);
+  background: var(--wk-border-default);
   margin-bottom: 10px;
 }
 
 /* 底部标签 */
 .wk-mf-card__footer {
   font-size: 12px;
-  color: rgba(28, 28, 35, 0.35);
+  color: var(--wk-text-tertiary);
 }

@@ -1,6 +1,7 @@
 
 
 .wk-message-split-box {
+    --wk-message-split-line-color: var(--wk-border-default);
     width: 85%;
     margin: 0 auto;
     padding: 20px;
@@ -8,8 +9,12 @@
     display: table;
 }
 
+body[theme-mode="dark"] .wk-message-split-box {
+    --wk-message-split-line-color: var(--wk-border-strong);
+}
+
 .wk-message-split-content {
-    color: rgba(9,30,66,.74);
+    color: var(--wk-text-tertiary);
     padding: 5px 8px 0;
     white-space: nowrap;
     width: auto;
@@ -18,11 +23,7 @@
 }
 
 .wk-message-split-line1 {
-    background-image: -webkit-gradient(linear,0 0,0 100%,from(transparent),to(rgba(9,30,66,.12)));
-    background-image: -webkit-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
-    background-image: -moz-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
-    background-image: -o-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
-    background-image: linear-gradient(360deg,transparent,rgba(9,30,66,.12));
+    background-image: linear-gradient(360deg, transparent, var(--wk-message-split-line-color));
     background-position: 0 0,0 100%;
     background-repeat: no-repeat;
     -moz-background-size: 100% 1px;
@@ -34,11 +35,7 @@
 }
 
 .wk-message-split-line2 {
-    background-image: -webkit-gradient(linear,0 0,0 100%,from(#c5d0d5),to(transparent));
-    background-image: -webkit-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
-    background-image: -moz-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
-    background-image: -o-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
-    background-image: linear-gradient(360deg,rgba(9,30,66,.12),transparent);
+    background-image: linear-gradient(360deg, var(--wk-message-split-line-color), transparent);
     background-position: 0 0,0 100%;
     background-repeat: no-repeat;
     -moz-background-size: 100% 1px;

@@ -1183,6 +1183,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                         {translate("summary.templates.custom.myTemplatesTitleWithCount", { values: { count: customTemplates.length, limit: customTemplateLimit } })}
                                     </div>
                                     <Button
+                                        className="summary-template-create-btn"
                                         theme="borderless"
                                         size="small"
                                         icon={<Plus size={14} />}

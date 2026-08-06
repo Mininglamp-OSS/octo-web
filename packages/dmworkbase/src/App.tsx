@@ -880,8 +880,11 @@ export default class WKApp extends ProviderListener {
     this.deviceName = this.getOSAndVersion();
     this.deviceModel = this.getBrandsFromUserAgent();
 
-    // 暗黑模式已关闭，强制亮色
-    WKApp.config.themeMode = ThemeMode.light;
+    const storedThemeMode = StorageService.shared.getItem("theme-mode");
+    WKApp.config.themeMode =
+      storedThemeMode === `${ThemeMode.dark}` || storedThemeMode === "dark"
+        ? ThemeMode.dark
+        : ThemeMode.light;
 
     registerImConnectAddressProvider(
       WKSDK.shared(),
