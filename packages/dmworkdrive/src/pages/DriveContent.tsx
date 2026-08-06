@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useI18n, buildDocLink } from '@octo/base';
 import { Button, Modal, Spin } from '@douyinfe/semi-ui';
 import { FolderPlus, FilePlus2, UserPlus, Users } from 'lucide-react';
@@ -6,6 +6,8 @@ import { useFileList } from '../hooks/useFileList';
 import { useDriveOps } from '../hooks/useDriveOps';
 import { useUpload } from '../hooks/useUpload';
 import { useMembers } from '../hooks/useMembers';
+import { useSelection } from '../hooks/useSelection';
+import { runBatch } from '../hooks/runBatch';
 import type { DriveEntry } from '../bridge/types';
 import * as api from '../api/driveApi';
 import { Toast } from '../utils/toast';
@@ -13,6 +15,7 @@ import { triggerBrowserDownload } from '../utils/download';
 import { spaceDisplayName } from '../utils/spaceName';
 import Breadcrumb from '../ui/Breadcrumb';
 import FileList from '../ui/FileList';
+import BulkActionBar from '../ui/BulkActionBar';
 import NameInputModal from '../ui/NameInputModal';
 import MoveModal from '../ui/MoveModal';
 import UploadButton from '../ui/UploadButton';
@@ -42,6 +45,12 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   const { entries, loading: filesLoading, truncatedTotal, reload } = useFileList(activeSpaceId, currentParentId);
   const ops = useDriveOps();
   const upload = useUpload(reload);
+
+  // Selection is scoped to <space>::<parent> so navigating between folders
+  // never carries stale ids into a listing they don't belong to.
+  const selectionContextKey = activeSpaceId ? `${activeSpaceId}::${currentParentId}` : null;
+  const selection = useSelection(entries, selectionContextKey);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const handleDownload = useCallback(
     async (entry: DriveEntry) => {
@@ -163,61 +172,247 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   const canShare = isPersonal || (isShared && m.canShare);
   const canManage = isShared && m.canManage; // invite + member mgmt: shared-space admin+
 
+  // ── Batch ops ────────────────────────────────────────────────────────────
+  // Content shape for the batch-delete confirm. Three shapes:
+  //  - all files → light generic prompt, no danger keyword.
+  //  - all folders → "N 项文件夹" highlighted; suffix warns about cascade.
+  //  - mixed → same cascade warning framed around "M 项文件夹 among N total".
+  const buildBatchDeleteContent = useCallback(
+    (files: DriveEntry[], folders: DriveEntry[]) => {
+      const total = files.length + folders.length;
+      if (folders.length === 0) {
+        return t('drive.bulk.deleteContentFiles', { values: { count: String(total) } });
+      }
+      const danger = (text: string) => (
+        <span style={{ color: 'var(--wk-danger)', fontWeight: 500 }}>{text}</span>
+      );
+      if (files.length === 0) {
+        return (
+          <span>
+            {t('drive.bulk.deleteContentFoldersPrefix')}
+            {' '}
+            {danger(t('drive.bulk.deleteContentFoldersWord', { values: { count: String(total) } }))}
+            {' '}
+            {t('drive.bulk.deleteContentFoldersSuffix')}
+          </span>
+        );
+      }
+      return (
+        <span>
+          {t('drive.bulk.deleteContentMixedPrefix', { values: { count: String(total) } })}
+          {' '}
+          {danger(t('drive.bulk.deleteContentMixedWord', { values: { folderCount: String(folders.length) } }))}
+          {t('drive.bulk.deleteContentMixedSuffix')}
+        </span>
+      );
+    },
+    [t],
+  );
+
+  // Present a batch result as an alert-style dialog. Success-only paths get a
+  // Toast; anything with failures uses a Modal so the user can read the list.
+  const reportBatchResult = useCallback(
+    (
+      action: 'delete' | 'move' | 'download',
+      succeeded: DriveEntry[],
+      failed: Array<{ entry: DriveEntry; error: string }>,
+    ) => {
+      const actionLabel = t(`drive.bulk.action${action.charAt(0).toUpperCase()}${action.slice(1)}`);
+      if (failed.length === 0) {
+        Toast.success(
+          `${t('drive.bulk.resultTitleAllOk')} · ${t('drive.bulk.resultSummarySuccess', {
+            values: { count: String(succeeded.length) },
+          })}`,
+        );
+        return;
+      }
+      // Sample first 8 failed rows; anything more folds under "…".
+      const shown = failed.slice(0, 8);
+      const rest = failed.length - shown.length;
+      Modal.warning({
+        title:
+          succeeded.length === 0
+            ? t('drive.bulk.resultTitleAllFailed')
+            : t('drive.bulk.resultTitlePartial'),
+        content: (
+          <div>
+            {succeeded.length > 0 && (
+              <div style={{ color: 'var(--wk-ok)', marginBottom: 8 }}>
+                ✓ {t('drive.bulk.resultSummarySuccess', { values: { count: String(succeeded.length) } })}
+              </div>
+            )}
+            <div style={{ color: 'var(--wk-danger)', marginBottom: 6, fontWeight: 500 }}>
+              ✕ {t('drive.bulk.resultSummaryFailed', { values: { count: String(failed.length) } })} · {actionLabel}
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, maxHeight: 220, overflowY: 'auto', fontSize: 13 }}>
+              {shown.map((f) => (
+                <li key={f.entry.id} style={{ marginBottom: 2 }}>
+                  {f.entry.name}{' '}
+                  <span style={{ color: 'var(--wk-text-tertiary)' }}>— {f.error}</span>
+                </li>
+              ))}
+              {rest > 0 && (
+                <li style={{ color: 'var(--wk-text-tertiary)', listStyle: 'none', marginTop: 4 }}>
+                  … +{rest}
+                </li>
+              )}
+            </ul>
+          </div>
+        ),
+        okText: t('drive.bulk.resultOk'),
+        hasCancel: false,
+      });
+    },
+    [t],
+  );
+
+  const selectedEntries = selection.selectedEntries;
+  const handleBulkDelete = useCallback(() => {
+    if (selectedEntries.length === 0) return;
+    const folders = selectedEntries.filter((e) => e.type === 'folder');
+    const files = selectedEntries.filter((e) => e.type !== 'folder');
+    const hasFolder = folders.length > 0;
+
+    Modal.confirm({
+      title:
+        folders.length > 0 && files.length > 0
+          ? t('drive.bulk.deleteTitleMixed')
+          : folders.length > 0
+            ? t('drive.bulk.deleteTitleFolders')
+            : t('drive.bulk.deleteTitleFiles'),
+      content: buildBatchDeleteContent(files, folders),
+      okText: t('drive.file.delete'),
+      cancelText: t('drive.common.cancel'),
+      okButtonProps: { type: 'danger' },
+      onOk: async () => {
+        setBulkBusy(true);
+        try {
+          const { succeeded, failed } = await runBatch(
+            selectedEntries,
+            async (entry) => {
+              const ok = await ops.deleteEntry(entry);
+              if (!ok) throw new Error(t('drive.toast.opFailed'));
+            },
+          );
+          if (succeeded.length > 0) reload();
+          selection.clear();
+          reportBatchResult('delete', succeeded, failed);
+        } finally {
+          setBulkBusy(false);
+        }
+      },
+    });
+    // hasFolder is destructured for a future 'folder-aware' danger surface;
+    // silence the unused-var lint without changing behaviour.
+    void hasFolder;
+  }, [selectedEntries, buildBatchDeleteContent, ops, reload, selection, reportBatchResult, t]);
+
+  const handleBulkMove = useCallback(() => {
+    // MoveModal batch flow lands in the next commit — for now, guard the user
+    // with a hint so the button doesn't silently swallow clicks.
+    Toast.info(t('drive.bulk.move'));
+  }, [t]);
+
+  const handleBulkDownload = useCallback(async () => {
+    if (selectedEntries.length === 0) return;
+    // Backend has no zip endpoint; loop signed-URL downloads. Skip folders —
+    // getDownloadUrl only serves blobs.
+    const blobs = selectedEntries.filter((e) => e.type === 'blob');
+    if (blobs.length === 0) {
+      Toast.info(t('drive.bulk.download'));
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      const { succeeded, failed } = await runBatch(blobs, async (entry) => {
+        const { url, filename } = await api.getDownloadUrl(entry.id);
+        api.assertSafePresignedURL(url);
+        triggerBrowserDownload(url, filename || entry.name);
+      });
+      reportBatchResult('download', succeeded, failed);
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [selectedEntries, reportBatchResult, t]);
+
+  // While anything is selected, the header morphs into the batch bar; this
+  // keeps the active batch focused and prevents accidental clicks on the
+  // regular toolbar (new folder / upload) that shouldn't apply per-item.
+  const showBulkBar = selection.hasSelection;
+
+  const showSelectionCheckboxes = useMemo(
+    () => canEdit || canDownload, // Selection is only useful if some batch op is available.
+    [canEdit, canDownload],
+  );
+
   return (
     <main className="drive-main">
-      <div className="drive-main__header">
-        <Breadcrumb path={vm.path} onNavigate={(i) => vm.navigateTo(i)} />
-        <div className="drive-main__actions">
-          {canUpload && (
-            <UploadButton
-              disabled={!hasSpace}
-              onFiles={(files) => {
-                if (activeSpaceId) upload.addFiles(files, activeSpaceId, currentParentId);
-              }}
-            />
-          )}
-          {canEdit && (
-            <Button
-              className="drive-btn"
-              icon={<FolderPlus size={16} />}
-              disabled={!hasSpace}
-              onClick={() => setFolderModalOpen(true)}
-            >
-              {t('drive.file.newFolder')}
-            </Button>
-          )}
-          {/* Mount doc = adding content (like upload), gated at uploader_downloader+;
-              unmount/remove is editor+ and lives in the file row menu. */}
-          {canUpload && (
-            <Button
-              className="drive-btn"
-              icon={<FilePlus2 size={16} />}
-              disabled={!hasSpace}
-              onClick={() => setMountModalOpen(true)}
-            >
-              {t('drive.mount.title')}
-            </Button>
-          )}
-          {canManage && (
-            <Button
-              className="drive-btn"
-              icon={<UserPlus size={16} />}
-              onClick={() => setInviteModalOpen(true)}
-            >
-              {t('drive.invite.title')}
-            </Button>
-          )}
-          {canManage && (
-            <Button
-              className="drive-btn"
-              icon={<Users size={16} />}
-              onClick={() => setMemberModalOpen(true)}
-            >
-              {t('drive.member.title')}
-            </Button>
-          )}
+      {showBulkBar ? (
+        <BulkActionBar
+          count={selection.count}
+          canEdit={canEdit}
+          canDownload={canDownload}
+          busy={bulkBusy}
+          onDelete={handleBulkDelete}
+          onMove={handleBulkMove}
+          onDownload={handleBulkDownload}
+          onClear={selection.clear}
+        />
+      ) : (
+        <div className="drive-main__header">
+          <Breadcrumb path={vm.path} onNavigate={(i) => vm.navigateTo(i)} />
+          <div className="drive-main__actions">
+            {canUpload && (
+              <UploadButton
+                disabled={!hasSpace}
+                onFiles={(files) => {
+                  if (activeSpaceId) upload.addFiles(files, activeSpaceId, currentParentId);
+                }}
+              />
+            )}
+            {canEdit && (
+              <Button
+                className="drive-btn"
+                icon={<FolderPlus size={16} />}
+                disabled={!hasSpace}
+                onClick={() => setFolderModalOpen(true)}
+              >
+                {t('drive.file.newFolder')}
+              </Button>
+            )}
+            {/* Mount doc = adding content (like upload), gated at uploader_downloader+;
+                unmount/remove is editor+ and lives in the file row menu. */}
+            {canUpload && (
+              <Button
+                className="drive-btn"
+                icon={<FilePlus2 size={16} />}
+                disabled={!hasSpace}
+                onClick={() => setMountModalOpen(true)}
+              >
+                {t('drive.mount.title')}
+              </Button>
+            )}
+            {canManage && (
+              <Button
+                className="drive-btn"
+                icon={<UserPlus size={16} />}
+                onClick={() => setInviteModalOpen(true)}
+              >
+                {t('drive.invite.title')}
+              </Button>
+            )}
+            {canManage && (
+              <Button
+                className="drive-btn"
+                icon={<Users size={16} />}
+                onClick={() => setMemberModalOpen(true)}
+              >
+                {t('drive.member.title')}
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <UploadProgress items={upload.items} onRetry={upload.retry} onDismiss={upload.dismiss} />
 
@@ -242,6 +437,17 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             canEdit={canEdit}
             canShare={canShare}
             highlightFileId={highlightFileId}
+            selection={
+              showSelectionCheckboxes
+                ? {
+                    isSelected: selection.isSelected,
+                    toggle: selection.toggle,
+                    isAllSelected: selection.isAllSelected,
+                    isIndeterminate: selection.isIndeterminate,
+                    toggleAll: selection.toggleAll,
+                  }
+                : undefined
+            }
           />
         )}
         {truncatedTotal !== null && (
