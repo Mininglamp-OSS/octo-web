@@ -509,10 +509,17 @@ app.setName(OCTO_CONFIG.name);
 
 // NOTE: the one-time userData migration from the legacy <appData>/DMWork profile
 // to <appData>/OCTO is intentionally NOT part of this PR. It lives in the
-// separate PR (feat/octo-userdata-migration) because it is destructive and needs
-// its own failure-mode coverage (staging copy + atomic rename, legacy
-// SingletonLock detection, fallback to the legacy profile on failure). See
-// review discussion on PR #1258.
+// separate PR #1265 (feat/octo-userdata-migration) because it is destructive and
+// needs its own failure-mode coverage (staging copy + atomic rename, legacy
+// SingletonLock detection, fallback to the legacy profile on failure).
+//
+// Until that migration PR lands, keep userData on the legacy path: app.setName
+// above would relocate Electron's default userData from <appData>/DMWork to
+// <appData>/OCTO, and shipping that without the migration would strand every
+// existing user's profile (empty profile on upgrade). The setPath override below
+// is removed by #1265, which takes over the path decision (OCTO after a
+// successful migration, legacy on deferral/failure).
+app.setPath("userData", join(app.getPath("appData"), "DMWork"));
 
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
