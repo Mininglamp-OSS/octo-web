@@ -8,18 +8,15 @@ import rehypeKatex from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import Toast from "@douyinfe/semi-ui/lib/es/toast";
 import { Copy } from "lucide-react";
-import Lightbox from "yet-another-react-lightbox";
-import Download from "yet-another-react-lightbox/plugins/download";
-import "yet-another-react-lightbox/styles.css";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
 import "./markdown.css";
 import WKApp from "../../App";
 import { isSafeUrl } from "../../Utils/security";
 import { linkifySafeUrls } from "../../Utils/linkify";
-import { downloadFile } from "../../Utils/download";
 import { copyToClipboard } from "../../Utils/clipboard";
 import { t } from "../../i18n";
+import { ImagePreviewLightbox } from "../Image/ImagePreview";
 import { getMentionRenderState } from "./mentionRenderState";
 import {
   isForwardDocCard,
@@ -475,7 +472,7 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
 /**
  * Markdown / RichText 正文内联图片：
  *  - url 安全校验（仅 http/https，挡 data:/javascript:/file: 等），不安全则降级为文本占位；
- *  - 点击打开 Lightbox 大图预览（与 ImageCell 行为一致，带下载）；
+ *  - 点击复用 ImageCell 的大图预览与底部工具栏；
  *  - src 经 datasource 处理，与其它图片渲染路径补全 base URL 保持一致。
  */
 const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
@@ -504,24 +501,11 @@ const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
         loading="lazy"
         onClick={() => setOpen(true)}
       />
-      <Lightbox
+      <ImagePreviewLightbox
         open={open}
         close={() => setOpen(false)}
         slides={[{ src: resolved, alt: alt || "" }]}
-        plugins={[Download]}
-        download={{
-          download: ({ slide }) => {
-            if (slide?.src) {
-              downloadFile(slide.src, alt || "image.png");
-            }
-          },
-        }}
-        carousel={{ finite: true }}
-        controller={{ closeOnBackdropClick: true }}
-        render={{
-          buttonPrev: () => null,
-          buttonNext: () => null,
-        }}
+        filename={alt || "image.png"}
       />
     </>
   );
