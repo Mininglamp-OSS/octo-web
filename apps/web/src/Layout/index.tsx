@@ -4,7 +4,6 @@ import { listen } from '@tauri-apps/api/event'
 import { MainPage } from "../Pages/Main";
 import SpaceGate from "../Components/SpaceGate";
 import { Notification as NotificationUI, Button } from '@douyinfe/semi-ui';
-import { IconInfoCircle } from '@douyinfe/semi-icons';
 import { checkUpdate, installUpdate, UpdateManifest } from '@tauri-apps/api/updater'
 import { relaunch } from '@tauri-apps/api/process'
 import { os } from "@tauri-apps/api";
@@ -337,29 +336,26 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
 
     showUpdateUI(manifest: UpdateManifest) {
       const notifyID =  NotificationUI.info({
-            className: "wk-octo-notification",
-            theme: "normal",
-            icon: <IconInfoCircle className="wk-octo-notification__icon" />,
-            title: <span className="wk-octo-notification__title">{t("app.layout.update.newVersion", { values: { version: manifest.version } })}</span>,
+            title: t("app.layout.update.newVersion", { values: { version: manifest.version } }),
             duration: 0,
             content: (
-                <div className="wk-octo-notification__content">
-                    <div className="wk-octo-notification__body">{manifest.body}</div>
-                    <div className="wk-octo-notification__actions">
-                        <Button className="wk-octo-notification__action" onClick={ async () => {
+                <>
+                    <div>{manifest.body}</div>
+                    <div style={{ marginTop: 8 }}>
+                        <Button onClick={ async () => {
                            // install complete, restart app
                            if(await os.platform() !== "darwin") {
                                 await installUpdate()
                             }
                           await relaunch()
                         }}>{t("base.common.update")}</Button>
-                        <Button className="wk-octo-notification__action" onClick={()=>{
+                        <Button onClick={()=>{
                             NotificationUI.close(notifyID)
-                        }} type="secondary">
+                        }} type="secondary" style={{ marginLeft: 20 }}>
                             {t("app.layout.update.later")}
                         </Button>
                     </div>
-                </div>
+                </>
             ),
         })
     }
