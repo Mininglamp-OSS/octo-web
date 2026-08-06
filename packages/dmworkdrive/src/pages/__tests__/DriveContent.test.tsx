@@ -253,6 +253,20 @@ describe('DriveContent — open doc builds the canonical no-sp link (Phase-1 rem
 
   it('opens the bare /d/:docId (no ?sp) even when the doc carries its real space', async () => {
     stubMembers({ canDownload: true });
+    // FileList only renders when entries is non-empty (empty → EmptyState),
+    // so seed one entry to give the FileList ref something to capture.
+    vi.mocked(useFileList).mockReturnValue({
+      entries: [{ id: 999 } as unknown as never],
+      loading: false,
+      loadingMore: false,
+      error: null,
+      total: 1,
+      hasMore: false,
+      reload: vi.fn(),
+      loadMore: vi.fn(),
+      filter: 'all',
+      setFilter: vi.fn(),
+    });
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     render(<DriveContent vm={vmWith(space('mountSpace', 'shared'))} />);
     await waitFor(() => expect(fileListRef.current).not.toBeNull());
@@ -274,6 +288,19 @@ describe('DriveContent — open doc builds the canonical no-sp link (Phase-1 rem
 
   it('omits sp and never falls back to the drive mount space when doc_space_id is absent', async () => {
     stubMembers({ canDownload: true });
+    // See note above — seed one entry so FileList (not EmptyState) renders.
+    vi.mocked(useFileList).mockReturnValue({
+      entries: [{ id: 999 } as unknown as never],
+      loading: false,
+      loadingMore: false,
+      error: null,
+      total: 1,
+      hasMore: false,
+      reload: vi.fn(),
+      loadMore: vi.fn(),
+      filter: 'all',
+      setFilter: vi.fn(),
+    });
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     render(<DriveContent vm={vmWith(space('mountSpace', 'shared'))} />);
     await waitFor(() => expect(fileListRef.current).not.toBeNull());

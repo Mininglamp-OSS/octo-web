@@ -44,6 +44,20 @@
     "doc": "Docs",
     "blob": "Files"
   },
+  "empty": {
+    "folder": {
+      "title": "This folder is empty",
+      "hint": "Click Upload, or drop files anywhere here"
+    },
+    "readonly": {
+      "title": "This folder is empty"
+    },
+    "filter": {
+      "title": "Nothing matches",
+      "hint": "Try a different filter, or clear it to see everything",
+      "clear": "Clear filter"
+    }
+  },
   "move": {
     "title": "Move to",
     "noSubfolder": "No subfolders here",
