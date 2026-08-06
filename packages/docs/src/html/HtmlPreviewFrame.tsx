@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   absolutizeDocAssetUrls,
+  bindAnchorNavigation,
+  buildAbsoluteOctoDocUrl,
   buildOctoDocUrl,
   injectBaseHref,
-  resolveAbsoluteOctoDocBase,
   resolveOctoDocBase,
 } from './htmlDocFrameHelpers.ts'
 import { getWKApp, t } from '../octoweb/index.ts'
@@ -48,6 +49,8 @@ export function HtmlPreviewFrame({
   const [state, setState] = useState<PreviewLoadState>({ status: 'loading' })
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const seq = useRef(0)
+  // Unbind for the parent-side in-page anchor handler; cleared on reload / unmount / slug|version.
+  const unbindAnchors = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const mySeq = ++seq.current
@@ -75,8 +78,12 @@ export function HtmlPreviewFrame({
           ? {
               status: 'ready',
               // Absolutize known asset attrs, then inject <base> as the catch-all (CSS url()/root
-              // resources) — identical to the original HtmlDocView pipeline.
-              html: injectBaseHref(absolutizeDocAssetUrls(raw, url), resolveAbsoluteOctoDocBase()),
+              // resources). Base points at the document's OWN render URL so bare #fragments resolve
+              // to this document (not the directory root) rather than navigating the frame away.
+              html: injectBaseHref(
+                absolutizeDocAssetUrls(raw, url),
+                buildAbsoluteOctoDocUrl(slug, version),
+              ),
               raw,
             }
           : { status: 'empty' }
@@ -104,6 +111,14 @@ export function HtmlPreviewFrame({
     return () => frameRef?.(null)
   }, [frameRef])
 
+  // Any slug/version change (or unmount) must drop the anchor listener bound to the OLD document.
+  useEffect(() => {
+    return () => {
+      unbindAnchors.current?.()
+      unbindAnchors.current = null
+    }
+  }, [slug, version])
+
   if (state.status === 'loading') {
     return (
       <div className="octo-html-doc-state" role="status">
@@ -130,7 +145,20 @@ export function HtmlPreviewFrame({
       sandbox="allow-same-origin"
       title={title}
       srcDoc={state.html}
-      onLoad={() => onFrameLoad?.(iframeRef.current?.contentDocument ?? null, iframeRef.current as HTMLIFrameElement)}
+      onLoad={() => {
+        // Rebind cleanly: unbind the previous document's listener before wiring the fresh one.
+        unbindAnchors.current?.()
+        unbindAnchors.current = null
+        const doc = iframeRef.current?.contentDocument ?? null
+        if (doc) {
+          try {
+            unbindAnchors.current = bindAnchorNavigation(doc, buildOctoDocUrl(slug, version))
+          } catch (err) {
+            console.warn('[HtmlPreviewFrame] unable to bind in-page anchor navigation', err)
+          }
+        }
+        onFrameLoad?.(doc, iframeRef.current as HTMLIFrameElement)
+      }}
     />
   )
 }
