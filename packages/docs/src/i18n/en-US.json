@@ -948,6 +948,8 @@
     "editorComingSoon": "The slides editor is coming soon.",
     "presentComingSoon": "Slides presentation is coming soon.",
     "frameOriginError": "Couldn't load the slides: the source must be same-origin.",
+    "loading": "Loading slides…",
+    "loadError": "Couldn't load the slides. Please try again.",
     "create": {
       "title": "New slides",
       "templateLabel": "Choose a template",

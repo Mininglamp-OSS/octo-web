@@ -21,7 +21,7 @@
 import { t } from '../octoweb/index.ts'
 import { PPT_SOURCE_ENABLED } from '../config.ts'
 import { BentoContainer } from './BentoContainer.tsx'
-import { buildFrameSrc, buildPptBootstrap } from './pptSource.ts'
+import { buildPptBootstrap } from './pptSource.ts'
 import './PptDocView.css'
 
 export interface PptDocViewProps {
@@ -51,13 +51,13 @@ function PptPreviewPlaceholder({ title }: { title?: string }): React.ReactElemen
  * and the same-origin Bento preview container when it is on. Either way it opens no collab socket
  * and mints no Hocuspocus token.
  */
-export function PptDocView({ docId, title }: PptDocViewProps): React.ReactElement {
+export function PptDocView({ docId, space, title }: PptDocViewProps): React.ReactElement {
   return (
     <div className="octo-doc octo-ppt-view octo-theme" role="region" aria-label={t('docs.ppt.viewTitle')}>
       {PPT_SOURCE_ENABLED ? (
         <BentoContainer
           bootstrap={buildPptBootstrap({ docId, mode: 'preview', version: 'latest', canEdit: false })}
-          frameSrc={buildFrameSrc(docId, 'preview', 'latest')}
+          space={space}
           title={title?.trim() || t('docs.ppt.viewTitle')}
         />
       ) : (

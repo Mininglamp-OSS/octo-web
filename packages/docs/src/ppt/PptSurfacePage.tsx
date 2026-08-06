@@ -21,7 +21,7 @@ import { getDoc, HTML_PPT_DOC_TYPE, type DocMeta } from '../pages/docsApi.ts'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { terminalForCreateError } from '../collab/useCollabEditor.ts'
 import { BentoContainer } from './BentoContainer.tsx'
-import { buildFrameSrc, buildPptBootstrap } from './pptSource.ts'
+import { buildPptBootstrap } from './pptSource.ts'
 import type { PptBootstrapMode } from './bootstrapTransfer.ts'
 import './PptSurface.css'
 
@@ -159,7 +159,6 @@ export function PptSurfacePage({ docId, mode, version, onSessionExpired }: PptSu
       <div className="octo-ppt-surface-body">
         <BentoContainer
           bootstrap={buildPptBootstrap({ docId: deckId, mode, version: resolvedVersion, canEdit })}
-          frameSrc={buildFrameSrc(deckId, mode, resolvedVersion)}
           title={meta.title || t('docs.ppt.viewTitle')}
         />
       </div>

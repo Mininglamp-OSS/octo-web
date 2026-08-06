@@ -41,7 +41,7 @@ export interface PptBootstrap {
   docId: string
   /** `'latest'` or a published `version_seq` (>= 1). */
   version: 'latest' | number
-  /** Backend-rendered source URL (same-origin) the frame should load. */
+  /** Backend rendered-source URL (bare-relative on the shared apiClient) the frame should load. */
   sourceUrl: string
   /** Signed short-lived asset bootstrap metadata from R3-B1; opaque to the transfer layer. */
   assets?: Record<string, unknown>

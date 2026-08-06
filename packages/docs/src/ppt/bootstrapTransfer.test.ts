@@ -15,7 +15,7 @@ const SAME = () => window.location.origin
 const CROSS = 'https://evil.example.com'
 
 function bootstrap(docId = 'd_1'): PptBootstrap {
-  return { mode: 'editor', docId, version: 'latest', sourceUrl: `/ppt/frame/${docId}/source`, canEdit: true }
+  return { mode: 'editor', docId, version: 'latest', sourceUrl: `/ppt/docs/${docId}/source?format=bento`, canEdit: true }
 }
 
 function request(docId = 'd_1', mode: BootstrapRequestMessage['mode'] = 'editor'): BootstrapRequestMessage {
