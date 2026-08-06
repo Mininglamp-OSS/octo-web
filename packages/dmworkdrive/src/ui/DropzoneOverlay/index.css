@@ -1,0 +1,55 @@
+/* Full-body overlay that lights up when the user drags OS files over the
+   drive list. Positioned absolutely inside .drive-main__body — the parent
+   sets position: relative for the anchor. Pointer-events are kept off so
+   the underlying drop zone still receives the dragover/drop events. */
+
+.drive-dropzone-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed transparent;
+  border-radius: var(--wk-r-md, 8px);
+  background: transparent;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  z-index: 2;
+}
+
+.drive-dropzone-overlay--active {
+  opacity: 1;
+  background: var(--wk-bg-selected, rgba(127, 59, 245, 0.06));
+  border-color: var(--wk-text-accent, #7f3bf5);
+}
+
+.drive-dropzone-overlay__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 32px;
+  border-radius: var(--wk-r-md, 8px);
+  background: var(--wk-bg-surface, #fff);
+  box-shadow: var(--wk-shadow-md, 0 4px 16px rgba(0, 0, 0, 0.08));
+}
+
+.drive-dropzone-overlay__icon {
+  color: var(--wk-text-accent, #7f3bf5);
+}
+
+.drive-dropzone-overlay__title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--wk-text-primary, #1f2329);
+}
+
+.drive-dropzone-overlay__target {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--wk-text-tertiary, #6b7075);
+}

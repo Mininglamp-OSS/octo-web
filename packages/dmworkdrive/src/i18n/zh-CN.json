@@ -167,7 +167,8 @@
     "done": "已完成",
     "retry": "重试",
     "cancel": "取消",
-    "dismiss": "移除"
+    "dismiss": "移除",
+    "dropTitle": "松开以上传到当前目录"
   },
   "download": {
     "failed": "下载失败"

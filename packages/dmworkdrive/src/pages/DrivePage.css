@@ -143,6 +143,8 @@ body[theme-mode='dark'] .drive-main__actions .drive-btn--primary.semi-button:not
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Anchor for the drag-drop overlay (absolute inset:0 inside). */
+  position: relative;
 }
 
 .drive-main__center {
