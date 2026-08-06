@@ -116,7 +116,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   // ── Modal state ─────────────────────────────────────────────────────────
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DriveEntry | null>(null);
-  const [moveState, setMoveState] = useState<{ entry: DriveEntry; mode: 'move' | 'copy' } | null>(null);
+  const [moveState, setMoveState] = useState<{ entries: DriveEntry[]; mode: 'move' | 'copy' } | null>(null);
   const [mountModalOpen, setMountModalOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<DriveEntry | null>(null);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -354,10 +354,14 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   }, [selectedEntries, buildBatchDeleteContent, ops, reload, selection, reportBatchResult, t]);
 
   const handleBulkMove = useCallback(() => {
-    // MoveModal batch flow lands in the next commit — for now, guard the user
-    // with a hint so the button doesn't silently swallow clicks.
-    Toast.info(t('drive.bulk.move'));
-  }, [t]);
+    if (selectedEntries.length === 0) return;
+    // Batch move uses the same MoveModal as single-row moves; the picker
+    // shows the current space's folder tree, hides every folder in the
+    // batch, and runs a loop of ops.moveEntry() under runBatch on confirm.
+    // Cross-space is backend-rejected (folder/service.go:148,
+    // file/service.go:273) so the picker's same-space scope is a feature.
+    setMoveState({ entries: selectedEntries, mode: 'move' });
+  }, [selectedEntries]);
 
   const handleBulkDownload = useCallback(async () => {
     if (selectedEntries.length === 0) return;
@@ -495,8 +499,8 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             onOpenFolder={openFolder}
             onOpenDoc={handleOpenDoc}
             onRename={setRenameTarget}
-            onMove={(entry) => setMoveState({ entry, mode: 'move' })}
-            onCopy={(entry) => setMoveState({ entry, mode: 'copy' })}
+            onMove={(entry) => setMoveState({ entries: [entry], mode: 'move' })}
+            onCopy={(entry) => setMoveState({ entries: [entry], mode: 'copy' })}
             onDelete={handleDelete}
             onShare={setShareTarget}
             onDownload={handleDownload}
@@ -563,19 +567,47 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
       <MoveModal
         visible={!!moveState}
         mode={moveState?.mode ?? 'move'}
-        entry={moveState?.entry ?? null}
+        entries={moveState?.entries ?? null}
         spaceId={activeSpaceId}
         rootName={activeSpace ? spaceDisplayName(activeSpace, t) : t('drive.file.root')}
         onClose={() => setMoveState(null)}
         onConfirm={async (targetParentId) => {
-          if (!moveState) return false;
-          const { entry, mode } = moveState;
-          const ok =
-            mode === 'move'
-              ? await ops.moveEntry(entry, targetParentId)
-              : await ops.copyEntry(entry, targetParentId, entry.name);
-          if (ok) reload();
-          return ok;
+          if (!moveState || moveState.entries.length === 0) return false;
+          const { entries: targets, mode } = moveState;
+          // Single-item path: preserve legacy behaviour (return whatever
+          // ops.moveEntry / copyEntry returned so a rejected op keeps the
+          // modal open with the picker state intact).
+          if (targets.length === 1) {
+            const [only] = targets;
+            const ok =
+              mode === 'move'
+                ? await ops.moveEntry(only, targetParentId)
+                : await ops.copyEntry(only, targetParentId, only.name);
+            if (ok) {
+              reload();
+              // Clear this single-item selection if the row was batch-checked
+              // (single move via row menu doesn't touch selection at all).
+              if (selection.isSelected(only.id)) selection.clear();
+            }
+            return ok;
+          }
+          // Batch path: loop the single-id endpoints under runBatch and
+          // report a summary. Return true iff ANY item succeeded so the
+          // modal closes on partial success (users can inspect the failed-
+          // list in the reportBatchResult modal).
+          const { succeeded, failed } = await runBatch(targets, async (entry) => {
+            const ok =
+              mode === 'move'
+                ? await ops.moveEntry(entry, targetParentId)
+                : await ops.copyEntry(entry, targetParentId, entry.name);
+            if (!ok) throw new Error(t('drive.toast.opFailed'));
+          });
+          if (succeeded.length > 0) {
+            reload();
+            selection.clear();
+          }
+          reportBatchResult(mode === 'move' ? 'move' : 'move', succeeded, failed);
+          return succeeded.length > 0;
         }}
       />
 

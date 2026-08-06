@@ -60,6 +60,8 @@
   },
   "move": {
     "title": "Move to",
+    "batchTitle": "Move {{count}} items to",
+    "batchSummary": "{{first}} and {{count}} others",
     "noSubfolder": "No subfolders here",
     "sameLocation": "Already in this location"
   },
