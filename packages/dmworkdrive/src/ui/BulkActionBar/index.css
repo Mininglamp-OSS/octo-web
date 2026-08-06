@@ -1,0 +1,93 @@
+/* Batch action bar that replaces the header actions while selection > 0.
+   Height matches the .drive-main__header row (32px control + 4/12 padding)
+   so swapping it in doesn't shift the file list underneath. */
+
+.drive-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 12px;
+  border-bottom: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.05));
+  margin-bottom: 8px;
+  animation: drive-bulk-bar-in 0.14s ease-out;
+}
+
+@keyframes drive-bulk-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.drive-bulk-bar__count {
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--wk-text-secondary, #555b61);
+}
+
+.drive-bulk-bar__count b {
+  color: var(--wk-text-primary, #1f2329);
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.drive-bulk-bar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Bulk buttons: same filter-btn skin as the header .drive-btn, but a hair
+   smaller so the bar reads as a contextual toolbar. */
+.drive-bulk-bar__btn.semi-button {
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
+  border-radius: var(--wk-r-sm, 6px);
+  background: var(--wk-bg-surface, #fff);
+  color: var(--wk-text-primary, #1f2329);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.drive-bulk-bar__btn.semi-button:not(:disabled):hover {
+  background: var(--wk-bg-hover, #dfe0e2);
+  border-color: var(--wk-border-strong, rgba(0, 0, 0, 0.14));
+  color: var(--wk-text-primary, #1f2329);
+}
+
+.drive-bulk-bar__btn.semi-button:focus-visible {
+  outline: 2px solid var(--wk-text-accent, #7f3bf5);
+  outline-offset: 1px;
+}
+
+.drive-bulk-bar__btn.semi-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Danger delete: red text + light red hover, matching Semi's danger-type
+   idiom used elsewhere. Border stays quiet so the button doesn't scream
+   before the user actually presses it. */
+.drive-bulk-bar__btn--danger.semi-button {
+  color: var(--wk-danger, #d64545);
+}
+
+.drive-bulk-bar__btn--danger.semi-button:not(:disabled):hover {
+  background: var(--wk-danger-bg, rgba(214, 69, 69, 0.08));
+  border-color: var(--wk-danger, #d64545);
+  color: var(--wk-danger, #d64545);
+}
+
+/* Dismiss (×) has no label, so it's icon-only and slightly narrower. */
+.drive-bulk-bar__btn--dismiss.semi-button {
+  min-width: 28px;
+  padding: 3px 6px;
+}
