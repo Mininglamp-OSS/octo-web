@@ -35,12 +35,14 @@ let isOsx = process.platform === "darwin";
 let isWin = !isOsx;
 
 const isDevelopment = process.env.NODE_ENV !== "production";
-// dev 模式下渲染层 dev server 地址。端口需与 vite dev server 一致，
-// 默认 3000（对齐旧 dev-ele 脚本）；可用 VITE_DEV_SERVER_URL 覆盖，
-// 避免与机器上其它占用 3000 的进程（如 e2e vite）冲突。
-const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:3000";
 const APP_EXIT_DELAY_MS = 1000;
 const TRAY_FLASH_INTERVAL_MS = 1000;
+
+// Windows toast 通知要求 AppUserModelID 在 app ready 之前设置。
+// 放在 ready 回调里会导致 Notification.show() 成功但系统不显示 toast。
+if (isWin) {
+  app.setAppUserModelId(OCTO_CONFIG.appId);
+}
 
 
 let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
@@ -360,7 +362,7 @@ const createNewWindow = () => {
 
   // 加载相同的页面
   if (NODE_ENV == "development") {
-    newWindow.loadURL(`${DEV_SERVER_URL}?sid=${getRandomSid()}`);
+    newWindow.loadURL("http://localhost:3000?sid=" + getRandomSid());
   } else {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
@@ -399,7 +401,7 @@ const createMainWindow = async () => {
       }
     }
   });
-  if (NODE_ENV === "development") mainWindow.loadURL(DEV_SERVER_URL);
+  if (NODE_ENV === "development") mainWindow.loadURL("http://localhost:3000");
   if (NODE_ENV !== "development") {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
@@ -532,10 +534,6 @@ if (!gotTheLock) {
 app.on("ready", () => {
   regShortcut();
   createMainWindow(); // 创建窗口
-
-  if (isWin) {
-    app.setAppUserModelId(OCTO_CONFIG.appId);
-  }
 
   screenshots = new Screenshots({
     singleWindow: true,

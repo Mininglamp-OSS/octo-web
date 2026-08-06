@@ -14,13 +14,18 @@ declare global {
       show: (options: any) => Promise<boolean>;
       close: (tag: string) => Promise<void>;
       closeAll: () => Promise<void>;
-      onClicked: (callback: (data: any) => void) => void;
+      // preload 实现返回清理函数；本工具按应用生命周期只注册一次，不使用该返回值
+      onClicked: (callback: (data: any) => void) => () => void;
       onActionClicked: (callback: (data: any) => void) => void;
     };
   }
 }
 
 const NOTIFICATION_TIMEOUT_MS = 5000;
+
+// 消息类原生通知的 tag 前缀：按会话 channelKey 隔离，同一会话的新消息
+// 覆盖旧通知（主进程 show 前会先 close 相同 tag），不同会话互不影响。
+const MESSAGE_NOTIFICATION_TAG_PREFIX = "message-";
 
 export interface NotificationOptions {
   title: string;
@@ -39,6 +44,10 @@ export class NotificationUtil {
   private static instance: NotificationUtil;
   private messageNotification?: Notification | null;
   private messageNotificationTimeoutId?: number;
+  // Electron 原生通知点击的全局路由只注册一次。preload 的 onClicked 会先
+  // removeAllListeners 再注册，若每条通知 show 时重复注册会互相清空，
+  // 故用 installed 标记保证单例注册。
+  private electronClickHandlerInstalled = false;
 
   private constructor() {
   }
@@ -90,6 +99,89 @@ export class NotificationUtil {
   }
 
   /**
+   * Electron 原生通知点击的全局路由（应用生命周期内只注册一次）。
+   * 主进程点击后会带回 { tag, title, body, channel }，这里统一解析出
+   * 会话并跳转到该会话。所有走原生通道的通知（消息/通话/通用）共用此路由，
+   * 不在每次 show 时重复注册——preload 的 onClicked 会先清空已有监听。
+   */
+  private ensureElectronNotificationClickHandler(): void {
+    if (this.electronClickHandlerInstalled) return;
+    const api = window.electronNotification;
+    if (!api?.onClicked) return;
+    api.onClicked((data: any) => {
+      const channel = this.resolveClickedChannel(data);
+      if (!channel) return;
+      window.focus();
+      WKApp.endpoints.showConversation(channel);
+    });
+    this.electronClickHandlerInstalled = true;
+  }
+
+  /**
+   * 从点击事件数据解析会话。优先取主进程透传的 channel（结构化克隆后
+   * 只剩数据属性，需重建 Channel 实例）；缺失时退化为从 tag 解析。
+   */
+  private resolveClickedChannel(data: any): Channel | undefined {
+    const raw = data?.channel;
+    if (
+      raw &&
+      typeof raw.channelID === "string" &&
+      typeof raw.channelType === "number"
+    ) {
+      return new Channel(raw.channelID, raw.channelType);
+    }
+    const tag = data?.tag;
+    if (
+      typeof tag === "string" &&
+      tag.startsWith(MESSAGE_NOTIFICATION_TAG_PREFIX)
+    ) {
+      return Channel.fromChannelKey(
+        tag.slice(MESSAGE_NOTIFICATION_TAG_PREFIX.length)
+      );
+    }
+    return undefined;
+  }
+
+  /**
+   * Electron：用原生系统通知展示消息通知。成功返回 true（调用方不再走
+   * Web Notification 回退）。tag 按会话隔离，同会话新消息覆盖旧通知。
+   * 原生通知的展示时长交给系统策略（timeoutType: default），不做 Web
+   * 路径那样的 5s 手动 close。
+   */
+  private async showElectronNativeMessageNotification(
+    message: Message,
+    title: string,
+    description: string
+  ): Promise<boolean> {
+    if (!this.isElectronNativeNotificationAvailable()) {
+      return false;
+    }
+    try {
+      const success = await window.electronNotification!.show({
+        title: title,
+        body: description,
+        tag: MESSAGE_NOTIFICATION_TAG_PREFIX + message.channel.getChannelKey(),
+        channel: message.channel,
+        fromUid: message.fromUID,
+        silent: false,
+        urgency: "normal" as const,
+        timeoutType: "default" as const,
+      });
+      if (!success) {
+        return false;
+      }
+      this.ensureElectronNotificationClickHandler();
+      return true;
+    } catch (error) {
+      console.warn(
+        "Failed to show Electron native message notification, falling back to Web API:",
+        error
+      );
+      return false;
+    }
+  }
+
+  /**
    * Create a notification using the appropriate API
    * Prefers Electron native notifications when available, falls back to Web API
    */
@@ -115,15 +207,9 @@ export class NotificationUtil {
 
         const success = await window.electronNotification!.show(electronOptions);
         if (success) {
-          // Set up click handler for Electron notifications
-          
-          if (options.onClick) {
-            window.electronNotification!.onClicked((data: any) => {
-              if (data.tag === options.tag) {
-                options.onClick!();
-              }
-            });
-          }
+          // 点击统一由全局路由处理（ensureElectronNotificationClickHandler）：
+          // 按主进程回传的 channel 跳转会话，不在每次 show 时重复注册回调。
+          this.ensureElectronNotificationClickHandler();
 
           // Return a mock notification object for compatibility
           return {
@@ -222,22 +308,22 @@ export class NotificationUtil {
     if (message.header.noPersist) {
       return;
     }
-    // Try to use Electron native notifications first if available and registered
-    // if (this.isElectronNativeNotificationAvailable() && this.electronHandlerRegistered) {
-    //   try {
-    //     await window.electronNotification!.showMessageNotification(message, description);
-    //     return; // Successfully handled by Electron native notifications
-    //   } catch (error) {
-    //     console.warn('Failed to show Electron native notification, falling back to web API:', error);
-    //   }
-    // }
+
+    const title =
+      channelInfo?.orgData?.displayName ?? t("base.notification.title");
+
+    // Electron：优先走原生系统通知（按会话 tag 隔离 + 点击跳转会话）。
+    // 原生通道不依赖浏览器 Notification 权限；失败时继续走下方 Web 回退。
+    if (await this.showElectronNativeMessageNotification(message, title, description)) {
+      return;
+    }
 
     // Close any existing notification
     this.closeExistingMessageNotification();
 
     // Create new notification using web API
     this.messageNotification = await this.createNotification({
-      title: channelInfo?.orgData?.displayName ?? t("base.notification.title"),
+      title: title,
       body: description,
       channel: message.channel,
       fromUid: message.fromUID,
