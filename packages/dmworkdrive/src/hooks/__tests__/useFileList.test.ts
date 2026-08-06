@@ -6,7 +6,7 @@ vi.mock('../../api/driveApi', () => ({
 }));
 
 import * as api from '../../api/driveApi';
-import { useFileList } from '../useFileList';
+import { useFileList, PAGE_SIZE } from '../useFileList';
 import type { DriveEntry, FileType, BrowseResponse } from '../../bridge/types';
 
 function entry(id: number, name: string, type: FileType): DriveEntry {
@@ -25,10 +25,10 @@ function entry(id: number, name: string, type: FileType): DriveEntry {
   };
 }
 
-function resp(entries: DriveEntry[]): BrowseResponse {
+function resp(entries: DriveEntry[], total?: number): BrowseResponse {
   return {
     entries,
-    page: { page_size: 200, page_index: 1, total: entries.length, data: entries },
+    page: { page_size: PAGE_SIZE, page_index: 1, total: total ?? entries.length, data: entries },
     filter: { type: 'all', source: 'all' },
   };
 }
@@ -45,14 +45,20 @@ describe('useFileList', () => {
     expect(api.browse).not.toHaveBeenCalled();
   });
 
-  it('loads entries for the space/folder', async () => {
+  it('loads entries for the space/folder with the paginated PAGE_SIZE', async () => {
     vi.mocked(api.browse).mockResolvedValue(resp([entry(1, 'docs', 'folder'), entry(2, 'a.pdf', 'blob')]));
     const { result } = renderHook(() => useFileList('sp', 0));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.entries).toHaveLength(2);
     expect(api.browse).toHaveBeenCalledWith(
-      { space_id: 'sp', parent_id: 0, page_size: 200 },
+      {
+        space_id: 'sp',
+        parent_id: 0,
+        page_index: 1,
+        page_size: PAGE_SIZE,
+        type: undefined,
+      },
       expect.anything(),
     );
   });
@@ -67,7 +73,7 @@ describe('useFileList', () => {
     rerender({ p: 5 });
     await waitFor(() =>
       expect(api.browse).toHaveBeenLastCalledWith(
-        { space_id: 'sp', parent_id: 5, page_size: 200 },
+        expect.objectContaining({ space_id: 'sp', parent_id: 5, page_index: 1 }),
         expect.anything(),
       ),
     );
@@ -105,5 +111,85 @@ describe('useFileList', () => {
       await Promise.resolve();
     });
     expect(result.current.entries).toEqual([]);
+  });
+
+  describe('pagination', () => {
+    it('hasMore is true when the first page is full and total > page', async () => {
+      const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(i + 1, `n${i}`, 'blob'));
+      vi.mocked(api.browse).mockResolvedValue(resp(first, PAGE_SIZE * 3));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.hasMore).toBe(true);
+    });
+
+    it('hasMore is false when the first page is shorter than PAGE_SIZE', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([entry(1, 'a', 'blob')]));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('loadMore appends the next page and increments page_index', async () => {
+      const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(i + 1, `n${i}`, 'blob'));
+      const second = [entry(1000, 'tail', 'blob')];
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(first, PAGE_SIZE + 1))
+        .mockResolvedValueOnce({
+          entries: second,
+          page: { page_size: PAGE_SIZE, page_index: 2, total: PAGE_SIZE + 1, data: second },
+          filter: { type: 'all', source: 'all' },
+        });
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries).toHaveLength(PAGE_SIZE);
+      expect(result.current.hasMore).toBe(true);
+
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(result.current.loadingMore).toBe(false));
+      expect(result.current.entries).toHaveLength(PAGE_SIZE + 1);
+      expect(api.browse).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page_index: 2 }),
+        expect.anything(),
+      );
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('loadMore is a no-op when hasMore is false', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([entry(1, 'a', 'blob')]));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.hasMore).toBe(false);
+      const before = vi.mocked(api.browse).mock.calls.length;
+      act(() => result.current.loadMore());
+      // No additional browse call.
+      expect(vi.mocked(api.browse).mock.calls.length).toBe(before);
+    });
+  });
+
+  describe('type filter', () => {
+    it('starts at "all" and passes type=undefined', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([]));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.filter).toBe('all');
+      expect(api.browse).toHaveBeenLastCalledWith(
+        expect.objectContaining({ type: undefined }),
+        expect.anything(),
+      );
+    });
+
+    it('setFilter triggers a fresh page-1 fetch with the type param', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([]));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      act(() => result.current.setFilter('folder'));
+      await waitFor(() =>
+        expect(api.browse).toHaveBeenLastCalledWith(
+          expect.objectContaining({ type: 'folder', page_index: 1 }),
+          expect.anything(),
+        ),
+      );
+    });
   });
 });
