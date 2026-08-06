@@ -338,7 +338,6 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
     showUpdateUI(manifest: UpdateManifest) {
       const notifyID =  NotificationUI.info({
             className: "wk-octo-notification",
-            theme: "normal",
             icon: <IconInfoCircle className="wk-octo-notification__icon" />,
             title: <span className="wk-octo-notification__title">{t("app.layout.update.newVersion", { values: { version: manifest.version } })}</span>,
             duration: 0,

@@ -199,7 +199,6 @@ function stripInvisibleChars(text: string): string {
 function notifySecretPaste(detectedValue: string): void {
   Notification.warning({
     className: "wk-octo-notification",
-    theme: "normal",
     title: <span className="wk-octo-notification__title">{translate("base.secrets.pasteGuard.title")}</span>,
     content: <span className="wk-octo-notification__body">{translate("base.secrets.pasteGuard.content")}</span>,
     duration: 8,
@@ -932,6 +931,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
       Notification.error({
+        className: "wk-octo-notification",
         content: t("base.messageInput.validation.maxLength", { values: { max: MAX_MESSAGE_LENGTH } }),
       });
       return false;
