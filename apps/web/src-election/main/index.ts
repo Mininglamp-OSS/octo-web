@@ -16,7 +16,8 @@ import Screenshots from "electron-screenshots";
 import { join } from "path";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
-import DMWORK_CONFIG from "./config";
+import OCTO_CONFIG from "./config";
+import { executeUserDataMigration, planUserDataMigration } from "./userDataMigration";
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
@@ -35,16 +36,20 @@ let isOsx = process.platform === "darwin";
 let isWin = !isOsx;
 
 const isDevelopment = process.env.NODE_ENV !== "production";
+// dev 模式下渲染层 dev server 地址。端口需与 vite dev server 一致，
+// 默认 3000（对齐旧 dev-ele 脚本）；可用 VITE_DEV_SERVER_URL 覆盖，
+// 避免与机器上其它占用 3000 的进程（如 e2e vite）冲突。
+const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:3000";
 const APP_EXIT_DELAY_MS = 1000;
 const TRAY_FLASH_INTERVAL_MS = 1000;
 
 
 let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
   {
-    label: "DMWork",
+    label: "OCTO",
     submenu: [
       {
-        label: `关于DMWork`,
+        label: `关于OCTO`,
       },
       { label: "服务", role: "services" },
       { type: "separator" },
@@ -356,7 +361,7 @@ const createNewWindow = () => {
 
   // 加载相同的页面
   if (NODE_ENV == "development") {
-    newWindow.loadURL("http://localhost:3000?sid=" + getRandomSid());
+    newWindow.loadURL(`${DEV_SERVER_URL}?sid=${getRandomSid()}`);
   } else {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
@@ -377,6 +382,7 @@ const createMainWindow = async () => {
   mainWindow = new BrowserWindow(getWindowConfig());
   mainWindow.center();
   mainWindow.once("ready-to-show", () => {
+    mainWindow.setTitle(OCTO_CONFIG.name);
     mainWindow.show(); // 显示窗口
     mainWindow.focus();
   });
@@ -394,7 +400,7 @@ const createMainWindow = async () => {
       }
     }
   });
-  if (NODE_ENV === "development") mainWindow.loadURL("http://localhost:3000");
+  if (NODE_ENV === "development") mainWindow.loadURL(DEV_SERVER_URL);
   if (NODE_ENV !== "development") {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
@@ -494,7 +500,22 @@ function onDeepLink(url: string) {
   mainWindow.webContents.send("deep-link", url);
 }
 
-app.setName(DMWORK_CONFIG.name);
+app.setName(OCTO_CONFIG.name);
+
+// One-time userData migration from the legacy DMWork profile (see
+// userDataMigration.ts for the full design). It must be DECIDED before the
+// single-instance lock: when a legacy DMWork instance is still running (its
+// SingletonLock is held), we point userData at the legacy dir so that
+// requestSingleInstanceLock() below fails against the running instance and
+// this launch simply quits — no live-profile copy, no double writer.
+const userDataMigration = planUserDataMigration(
+  app.getPath("appData"),
+  OCTO_CONFIG.name
+);
+if (userDataMigration.action === "defer-legacy") {
+  app.setPath("userData", userDataMigration.oldDir);
+}
+
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
   onDeepLink(url);
@@ -505,6 +526,19 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
+  // Only the lock holder migrates — any concurrent launch has already quit, so
+  // there is exactly one writer. A failure falls back to the legacy profile
+  // (setUserDataDir) and retries on the next launch.
+  if (userDataMigration.action === "migrate") {
+    executeUserDataMigration(userDataMigration, {
+      setUserDataDir: (dir) => app.setPath("userData", dir),
+      log: {
+        info: (msg) => console.log(msg),
+        warn: (msg) => console.warn(msg),
+        error: (msg, err) => console.error(msg, err),
+      },
+    });
+  }
   app.on("second-instance", (event, argv) => {
     if (mainWindow) {
       mainWindow.show();
@@ -521,7 +555,7 @@ app.on("ready", () => {
   createMainWindow(); // 创建窗口
 
   if (isWin) {
-    app.setAppUserModelId("DMWork");
+    app.setAppUserModelId(OCTO_CONFIG.appId);
   }
 
   screenshots = new Screenshots({

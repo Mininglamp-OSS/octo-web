@@ -15,6 +15,9 @@ patchedDependencies:
   '@excalidraw/excalidraw@0.18.1':
     hash: 5fd160bf71554a5dbaba5c13664244dd7e3b3e8f3daf085aad15367783c879ec
     path: patches/@excalidraw__excalidraw@0.18.1.patch
+  app-builder-lib@26.8.1:
+    hash: f4c5cc1107b3fb4d290bf53ec94722129cbdc4a3e52d5adf2370ff99bec88837
+    path: patches/app-builder-lib@26.8.1.patch
 
 importers:
 
@@ -160,6 +163,25 @@ importers:
 
   apps/web:
     dependencies:
+      electron-log:
+        specifier: ^5.1.2
+        version: 5.4.3
+      electron-screenshots:
+        specifier: ^0.5.26
+        version: 0.5.28(electron@26.0.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      electron-updater:
+        specifier: ^6.1.8
+        version: 6.8.3
+      ms:
+        specifier: ^2.1.3
+        version: 2.1.3
+      tmp:
+        specifier: ^0.2.2
+        version: 0.2.5
+      wukongimjssdk:
+        specifier: ^1.3.5
+        version: 1.3.5
+    devDependencies:
       '@dmwork/appbot':
         specifier: workspace:*
         version: link:../../packages/dmworkappbot
@@ -211,58 +233,6 @@ importers:
       '@react-pdf-viewer/zoom':
         specifier: ^3.12.0
         version: 3.12.0(pdfjs-dist@3.11.174(encoding@0.1.13))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@tauri-apps/api':
-        specifier: ^1.5.0
-        version: 1.6.0
-      '@types/react-syntax-highlighter':
-        specifier: ^15.5.13
-        version: 15.5.13
-      axios:
-        specifier: ^0.25.0
-        version: 0.25.0
-      classnames:
-        specifier: ^2.3.1
-        version: 2.5.1
-      electron-log:
-        specifier: ^5.1.2
-        version: 5.4.3
-      electron-screenshots:
-        specifier: ^0.5.26
-        version: 0.5.28(electron@26.0.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      electron-updater:
-        specifier: ^6.1.8
-        version: 6.8.3
-      lucide-react:
-        specifier: ^0.577.0
-        version: 0.577.0(react@18.3.1)
-      mathlive:
-        specifier: ^0.104.2
-        version: 0.104.2
-      ms:
-        specifier: ^2.1.3
-        version: 2.1.3
-      ogl:
-        specifier: ^1.0.11
-        version: 1.0.11
-      react:
-        specifier: ^18.3.1
-        version: 18.3.1
-      react-syntax-highlighter:
-        specifier: ^15.6.1
-        version: 15.6.6(react@18.3.1)
-      tmp:
-        specifier: ^0.2.2
-        version: 0.2.5
-      web-vitals:
-        specifier: ^2.1.4
-        version: 2.1.4
-      wukongimjssdk:
-        specifier: ^1.3.5
-        version: 1.3.5
-      yjs:
-        specifier: 13.6.21
-        version: 13.6.21
-    devDependencies:
       '@storybook/addon-a11y':
         specifier: ^10.3.3
         version: 10.3.5(storybook@10.3.5(@testing-library/dom@10.4.1)(prettier@2.8.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
@@ -281,6 +251,9 @@ importers:
       '@storybook/react-vite':
         specifier: ^10.3.3
         version: 10.3.5(esbuild@0.27.7)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rollup@4.62.0)(storybook@10.3.5(@testing-library/dom@10.4.1)(prettier@2.8.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.9.3)(vite@8.0.7(@types/node@20.19.39)(esbuild@0.27.7)(jiti@2.6.1))
+      '@tauri-apps/api':
+        specifier: ^1.5.0
+        version: 1.6.0
       '@tauri-apps/cli':
         specifier: ^1.5.0
         version: 1.6.3
@@ -302,17 +275,29 @@ importers:
       '@types/react-dom':
         specifier: ^18.3.7
         version: 18.3.7(@types/react@18.3.28)
+      '@types/react-syntax-highlighter':
+        specifier: ^15.5.13
+        version: 15.5.13
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.1(vite@8.0.7(@types/node@20.19.39)(esbuild@0.27.7)(jiti@2.6.1))
+      axios:
+        specifier: ^0.25.0
+        version: 0.25.0
+      classnames:
+        specifier: ^2.3.1
+        version: 2.5.1
       concurrently:
         specifier: ^8.2.2
         version: 8.2.2
+      cross-env:
+        specifier: ^7.0.3
+        version: 7.0.3
       electron:
         specifier: 26.0.0
         version: 26.0.0
       electron-builder:
-        specifier: ^26.0.12
+        specifier: 26.8.1
         version: 26.8.1(electron-builder-squirrel-windows@26.8.1)
       eslint-config-react-app:
         specifier: ^7.0.1
@@ -320,18 +305,33 @@ importers:
       eslint-plugin-storybook:
         specifier: ^10.3.3
         version: 10.3.5(eslint@7.32.0)(storybook@10.3.5(@testing-library/dom@10.4.1)(prettier@2.8.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.9.3)
+      lucide-react:
+        specifier: ^0.577.0
+        version: 0.577.0(react@18.3.1)
+      mathlive:
+        specifier: ^0.104.2
+        version: 0.104.2
       msw:
         specifier: ^2.15.0
         version: 2.15.0(@types/node@20.19.39)(typescript@5.9.3)
       npm-run-all:
         specifier: ^4.1.5
         version: 4.1.5
+      ogl:
+        specifier: ^1.0.11
+        version: 1.0.11
       postcss-import:
         specifier: ^16.1.1
         version: 16.1.1(postcss@8.5.9)
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
+      react-syntax-highlighter:
+        specifier: ^15.6.1
+        version: 15.6.6(react@18.3.1)
       storybook:
         specifier: ^10.3.3
         version: 10.3.5(@testing-library/dom@10.4.1)(prettier@2.8.8)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -350,6 +350,12 @@ importers:
       vite-tsconfig-paths:
         specifier: ^6.1.1
         version: 6.1.1(typescript@5.9.3)(vite@8.0.7(@types/node@20.19.39)(esbuild@0.27.7)(jiti@2.6.1))
+      web-vitals:
+        specifier: ^2.1.4
+        version: 2.1.4
+      yjs:
+        specifier: 13.6.21
+        version: 13.6.21
 
   packages/dmworkappbot:
     dependencies:
@@ -16096,7 +16102,7 @@ snapshots:
 
   app-builder-bin@5.0.0-alpha.12: {}
 
-  app-builder-lib@26.8.1(dmg-builder@26.8.1)(electron-builder-squirrel-windows@26.8.1):
+  app-builder-lib@26.8.1(patch_hash=f4c5cc1107b3fb4d290bf53ec94722129cbdc4a3e52d5adf2370ff99bec88837)(dmg-builder@26.8.1)(electron-builder-squirrel-windows@26.8.1):
     dependencies:
       '@develar/schema-utils': 2.6.5
       '@electron/asar': 3.4.1
@@ -17350,7 +17356,7 @@ snapshots:
 
   dmg-builder@26.8.1(electron-builder-squirrel-windows@26.8.1):
     dependencies:
-      app-builder-lib: 26.8.1(dmg-builder@26.8.1)(electron-builder-squirrel-windows@26.8.1)
+      app-builder-lib: 26.8.1(patch_hash=f4c5cc1107b3fb4d290bf53ec94722129cbdc4a3e52d5adf2370ff99bec88837)(dmg-builder@26.8.1)(electron-builder-squirrel-windows@26.8.1)
       builder-util: 26.8.1
       fs-extra: 10.1.0
       iconv-lite: 0.6.3
@@ -17463,7 +17469,7 @@ snapshots:
 
   electron-builder-squirrel-windows@26.8.1(dmg-builder@26.8.1):
     dependencies:
-      app-builder-lib: 26.8.1(dmg-builder@26.8.1)(electron-builder-squirrel-windows@26.8.1)
+      app-builder-lib: 26.8.1(patch_hash=f4c5cc1107b3fb4d290bf53ec94722129cbdc4a3e52d5adf2370ff99bec88837)(dmg-builder@26.8.1)(electron-builder-squirrel-windows@26.8.1)
       builder-util: 26.8.1
       electron-winstaller: 5.4.0
     transitivePeerDependencies:
@@ -17472,7 +17478,7 @@ snapshots:
 
   electron-builder@26.8.1(electron-builder-squirrel-windows@26.8.1):
     dependencies:
-      app-builder-lib: 26.8.1(dmg-builder@26.8.1)(electron-builder-squirrel-windows@26.8.1)
+      app-builder-lib: 26.8.1(patch_hash=f4c5cc1107b3fb4d290bf53ec94722129cbdc4a3e52d5adf2370ff99bec88837)(dmg-builder@26.8.1)(electron-builder-squirrel-windows@26.8.1)
       builder-util: 26.8.1
       builder-util-runtime: 9.5.1
       chalk: 4.1.2
