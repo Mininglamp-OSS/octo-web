@@ -110,6 +110,7 @@
   /* ── Legacy chat/message values（light 保持旧视觉，dark 在主题块重映射） ── */
   --wk-bg-legacy-card: rgba(28, 28, 35, 0.04);
   --wk-bg-legacy-card-hover: rgba(28, 28, 35, 0.06);
+  --wk-bg-legacy-surface: #ffffff;
   --wk-bg-legacy-hover-subtle: var(--wk-brand-tint-02);
   --wk-bg-legacy-press: var(--wk-brand-tint-12);
   --wk-border-legacy-default: rgba(46, 50, 56, 0.09);
@@ -147,6 +148,8 @@
   --wk-summary-progress-active: rgba(0, 0, 0, 0.8);
   --wk-summary-danger-hover: #e03a32;
   --wk-summary-dark-button-hover: #333333;
+  --wk-overlay-scrim: var(--wk-black-alpha-30);
+  --wk-chat-selector-shadow: 0 8px 24px var(--wk-black-alpha-12), 0 0 0 1px var(--wk-black-alpha-06);
 
   /* ── Icon & Text opacity（基于主色的不同透明度） ── */
   --wk-icon-muted: rgba(28, 28, 35, 0.4); /* 40% icon/三角 */
@@ -408,6 +411,7 @@ body[theme-mode="dark"] {
   --wk-brand-tint-02: var(--wk-white-alpha-04);
   --wk-bg-legacy-card: var(--wk-bg-elevated);
   --wk-bg-legacy-card-hover: var(--wk-bg-hover);
+  --wk-bg-legacy-surface: var(--wk-bg-elevated);
   --wk-bg-legacy-hover-subtle: var(--wk-white-alpha-04);
   --wk-bg-legacy-press: var(--wk-white-alpha-12);
   --wk-border-legacy-default: var(--wk-border-default);
@@ -440,6 +444,8 @@ body[theme-mode="dark"] {
   --wk-summary-progress-active: var(--wk-text-primary);
   --wk-summary-danger-hover: var(--wk-color-danger-hover);
   --wk-summary-dark-button-hover: var(--wk-brand-primary-hover);
+  --wk-overlay-scrim: var(--wk-black-alpha-50);
+  --wk-chat-selector-shadow: var(--wk-shadow-lg);
   --wk-icon-muted: var(--wk-white-alpha-40);
   --wk-icon-default: var(--wk-white-alpha-80);
   --wk-icon-hover: var(--wk-color-white);
@@ -563,7 +569,9 @@ body[theme-mode="dark"] {
   --wk-code-bg: var(--wk-neutral-900);
   --wk-code-border: var(--wk-white-alpha-07);
 
-  /* Semi Design token 覆盖 */
+}
+
+html body[theme-mode="dark"] {
   --semi-color-bg-0: var(--wk-bg-surface);
   --semi-color-bg-1: var(--wk-bg-elevated);
   --semi-color-text-0: var(--wk-text-primary);

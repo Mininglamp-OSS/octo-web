@@ -6,9 +6,11 @@
   max-width: 280px;
   gap: 12px;
   background: var(--wk-file-card-bg);
+  border: 1px solid transparent;
   border-radius: 8px;
+  box-sizing: border-box;
   cursor: pointer;
-  transition: background-color 0.15s, box-shadow 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 /* 可点击的文件卡片 hover 效果 */
