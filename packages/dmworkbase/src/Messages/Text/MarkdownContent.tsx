@@ -23,8 +23,6 @@ import { t } from "../../i18n";
 import { getMentionRenderState } from "./mentionRenderState";
 import {
   isForwardDocCard,
-  middleEllipsizeUrl,
-  shouldEllipsizeLinkText,
   type ParagraphChildKind,
 } from "./forwardClamp";
 
@@ -370,22 +368,6 @@ const MarkdownCodeBlock: React.FC<{
 
 const baseComponents: any = {
   a: ({ href, children, ...props }: any) => {
-    // AC-13b (feature #511): middle-ellipsize the DISPLAY text only when it is itself a long bare
-    // URL (visible text === href). A normal `[title](link)` keeps its title untouched; the href is
-    // never modified. `title` tooltip carries the full URL so hover/copy still gets the whole link.
-    const text =
-      typeof children === "string"
-        ? children
-        : Array.isArray(children) && children.length === 1 && typeof children[0] === "string"
-          ? (children[0] as string)
-          : null;
-    if (text != null && shouldEllipsizeLinkText(text, href)) {
-      return (
-        <a href={href} target="_blank" rel="noopener noreferrer" title={text} {...props}>
-          {middleEllipsizeUrl(text)}
-        </a>
-      );
-    }
     return (
       <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
         {children}
