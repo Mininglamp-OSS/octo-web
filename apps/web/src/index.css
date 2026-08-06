@@ -46,3 +46,46 @@ body[theme-mode=dark] ::-webkit-scrollbar-thumb {
 body[theme-mode=dark] ::-webkit-scrollbar-thumb:hover {
   background: #424242; /* 更深的灰色 */
 }
+
+/* In-app notifications use Octo's compact, neutral card treatment. */
+.wk-octo-notification {
+  width: 360px;
+  min-width: 360px;
+  padding: var(--wk-sp-4);
+  margin: var(--wk-sp-4);
+  border-radius: var(--wk-r-md);
+  background-color: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  box-shadow: var(--wk-shadow-lg);
+}
+
+.wk-octo-notification__title {
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-lg);
+  font-weight: 600;
+}
+
+.wk-octo-notification__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+}
+
+.wk-octo-notification__body {
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-base);
+}
+
+.wk-octo-notification__actions {
+  display: flex;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-0-5);
+}
+
+.wk-octo-notification__action {
+  min-width: calc(var(--wk-sp-8) + var(--wk-sp-1));
+}
+
+.wk-octo-notification__icon {
+  color: var(--wk-color-info);
+}
