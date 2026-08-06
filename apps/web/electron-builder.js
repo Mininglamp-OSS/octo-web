@@ -21,12 +21,13 @@ module.exports = {
     "resources/**/*",
     "out-election/**/*",
     "build/**/*",
-    // 主进程运行时依赖及其传递依赖。apps/web 的 dependencies 只保留主进程所需
-    // （electron-log/electron-screenshots/electron-updater/tmp/wukongimjssdk/ms），
-    // 渲染层库与 workspace 包已移入 devDependencies、由 Vite 打进 build/，不再进 asar。
-    // 默认 files 不含 node_modules，需显式声明，否则运行时 Cannot find module。
-    // package.json 由 electron-builder 自动附加，无需显式列出。
-    "node_modules/**/*",
+    // electron-builder appends its own node_modules handling; a positive
+    // node_modules glob would force a filesystem walk of apps/web/node_modules
+    // instead of relying on the production dependency graph. The app-builder-lib
+    // collector patch (patches/app-builder-lib@26.8.1.patch) is what makes the
+    // main-process deps resolvable; packaging must fail loudly (see the patch's
+    // throw on unresolvable required deps) rather than be masked by a glob.
+    // package.json is auto-appended by electron-builder, no need to list it.
   ], // 需要打包的文件
   extraMetadata: {
     main: "out-election/main/index.js",
