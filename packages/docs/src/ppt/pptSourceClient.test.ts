@@ -31,13 +31,14 @@ describe('fetchPptSourceHtml — real source endpoint through the shared apiClie
     expect(q.get('format')).toBe('html')
   })
 
-  it('maps editor→live, forwards X-Space-Id, and addresses a numeric version', async () => {
+  it('maps editor→live, forwards X-Space-Id, and omits version (published-only per backend #161)', async () => {
     api.responder = () => ({ data: '<html></html>', status: 200 })
     await fetchPptSourceHtml({ docId: 'd_1', mode: 'editor', version: 4, space: 's_9' })
     const { url, config } = api.calls[0]
     const q = new URL(url, 'http://local').searchParams
     expect(q.get('mode')).toBe('live')
-    expect(q.get('version')).toBe('4')
+    // editor→live must not send `version`; backend #161 400s an explicit version on non-published modes.
+    expect(q.has('version')).toBe(false)
     expect(config?.headers?.['X-Space-Id']).toBe('s_9')
   })
 })

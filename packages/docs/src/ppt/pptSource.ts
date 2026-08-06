@@ -65,9 +65,15 @@ export function backendModeFor(mode: PptBootstrapMode): PptBackendMode {
 /**
  * Build the bare-relative source URL for a deck, addressed on the shared apiClient (`/api/v1/`
  * baseURL → `/api/v1/ppt/docs/:id/source`). Emits the finalized `mode`/`version`/`format` params:
- * `mode` is the backend vocabulary resolved from the FE surface mode, `version` is `latest` or a
- * positive version sequence, `format` is sent explicitly (defaults to `bootstrap`, the container
- * handshake payload; pass `bento`/`html` for rendered source).
+ * `mode` is the backend vocabulary resolved from the FE surface mode, `format` is sent explicitly
+ * (defaults to `bootstrap`, the container handshake payload; pass `bento`/`html` for rendered
+ * source).
+ *
+ * `version` is PUBLISHED-ONLY: octo-docs-backend #161 rejects an explicit `version` unless
+ * `mode==='published'` (`parseVersion()` throws VALIDATION_ERROR/400 otherwise — the R3-B1
+ * "version is published-only" rule). So it is serialized only for the published modes
+ * (FE `preview`/`present`); for `editor`→`live` (and any `draft`) it is omitted entirely, which
+ * is why an enabled editor source fetch no longer 400s.
  */
 export function buildSourceUrl(params: {
   docId: string
@@ -77,11 +83,15 @@ export function buildSourceUrl(params: {
 }): string {
   const { docId, mode, version, format = 'bootstrap' } = params
   const id = encodeURIComponent(docId)
+  const backendMode = backendModeFor(mode)
   const q = new URLSearchParams({
-    mode: backendModeFor(mode),
-    version: version === 'latest' ? 'latest' : String(version),
+    mode: backendMode,
     format,
   })
+  // Only published sources accept a `version`; live/draft must not send it (backend #161).
+  if (backendMode === 'published') {
+    q.set('version', version === 'latest' ? 'latest' : String(version))
+  }
   return `${PPT_SOURCE_BASE}/${id}/source?${q.toString()}`
 }
 

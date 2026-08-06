@@ -31,11 +31,13 @@ describe('buildSourceUrl — real backend source endpoint', () => {
     expect(q.get('format')).toBe('html')
   })
 
-  it('carries the editor→live mapping and a numeric version', () => {
+  it('carries the editor→live mapping but omits version (published-only per backend #161)', () => {
     const q = new URL(buildSourceUrl({ docId: 'd_1', mode: 'editor', version: 7, format: 'bento' }), 'http://local')
       .searchParams
     expect(q.get('mode')).toBe('live')
-    expect(q.get('version')).toBe('7')
+    // Backend #161 rejects an explicit `version` unless mode=published, so editor→live must not send it,
+    // even when a concrete version is passed in.
+    expect(q.has('version')).toBe(false)
     expect(q.get('format')).toBe('bento')
   })
 
@@ -49,6 +51,35 @@ describe('buildSourceUrl — real backend source endpoint', () => {
   it('percent-encodes the docId', () => {
     const url = buildSourceUrl({ docId: 'a/b?c', mode: 'preview', version: 'latest' })
     expect(url).toContain(`${PPT_SOURCE_BASE}/a%2Fb%3Fc/source`)
+  })
+
+  // Backend octo-docs-backend #161 (deployed) rejects any explicit `version` unless mode=published
+  // (parseVersion throws VALIDATION_ERROR/400). So the FE must serialize `version` ONLY for the
+  // published modes (preview/present); editor→live must omit it entirely.
+  describe('version is gated to published mode only (backend #161 "version is published-only")', () => {
+    it('published modes (preview/present) DO carry version', () => {
+      const preview = new URL(buildSourceUrl({ docId: 'd_1', mode: 'preview', version: 'latest' }), 'http://local')
+        .searchParams
+      expect(preview.get('mode')).toBe('published')
+      expect(preview.get('version')).toBe('latest')
+
+      const present = new URL(buildSourceUrl({ docId: 'd_1', mode: 'present', version: 3 }), 'http://local')
+        .searchParams
+      expect(present.get('mode')).toBe('published')
+      expect(present.get('version')).toBe('3')
+    })
+
+    it('editor→live NEVER carries version, regardless of the version passed', () => {
+      const latest = new URL(buildSourceUrl({ docId: 'd_1', mode: 'editor', version: 'latest' }), 'http://local')
+        .searchParams
+      expect(latest.get('mode')).toBe('live')
+      expect(latest.has('version')).toBe(false)
+
+      const numeric = new URL(buildSourceUrl({ docId: 'd_1', mode: 'editor', version: 9 }), 'http://local')
+        .searchParams
+      expect(numeric.get('mode')).toBe('live')
+      expect(numeric.has('version')).toBe(false)
+    })
   })
 })
 
