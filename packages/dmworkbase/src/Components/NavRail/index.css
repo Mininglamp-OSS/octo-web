@@ -37,7 +37,6 @@
 }
 
 .wk-navrail__user-wrap {
-    position: relative;
     cursor: pointer;
     margin-bottom: 0;
 }
@@ -47,6 +46,13 @@
     align-items: center;
     gap: var(--wk-sp-2, 8px);
     min-width: 0;
+}
+
+.wk-navrail__user-avatar-wrap {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
 }
 
 .wk-navrail__user-avatar {

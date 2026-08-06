@@ -22,7 +22,6 @@ export const NAV_RAIL_MAX_WIDTH = NAV_RAIL_EXPANDED_WIDTH
 export const NAV_RAIL_DEFAULT_WIDTH = 56
 export const NAV_RAIL_EXPANDED_THRESHOLD = NAV_RAIL_EXPANDED_WIDTH
 export const NAV_RAIL_STORAGE_KEY = 'wk-layout-navrail-width'
-const NAV_RAIL_LEGACY_MAX_WIDTH = 260
 
 // ── Right panel (thread panel) ──
 export const THREAD_MIN_WIDTH = 432
@@ -79,16 +78,10 @@ export function getNavRailDragWidth(startWidth: number, delta: number): number {
 }
 
 export function restoreNavRailWidth(): number {
-    try {
-        const stored = localStorage.getItem(NAV_RAIL_STORAGE_KEY)
-        if (stored) {
-            const parsed = parseInt(stored, 10)
-            if (!isNaN(parsed) && parsed >= NAV_RAIL_MIN_WIDTH && parsed <= NAV_RAIL_LEGACY_MAX_WIDTH) {
-                return clampNavRailWidth(parsed, Number.POSITIVE_INFINITY)
-            }
-        }
-    } catch (_) {}
-    return NAV_RAIL_DEFAULT_WIDTH
+    return clampNavRailWidth(
+        restoreStoredWidth(NAV_RAIL_STORAGE_KEY, NAV_RAIL_MIN_WIDTH, NAV_RAIL_MAX_WIDTH, NAV_RAIL_DEFAULT_WIDTH),
+        Number.POSITIVE_INFINITY,
+    )
 }
 
 export function persistNavRailWidth(width: number): void {

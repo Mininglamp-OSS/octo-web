@@ -90,11 +90,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
 
     resize = throttle(() => {
         this.updateContainerWidth()
-        const nextNavRailWidth = clampNavRailWidth(this.lastNavRailWidth, this.cachedLayoutWidth)
-        const nextWidth = clampWidth(this.lastWidth, this.cachedContainerWidth)
-        this.lastNavRailWidth = nextNavRailWidth
-        this.lastWidth = nextWidth
-        this.setState({ leftWidth: nextWidth, navRailWidth: nextNavRailWidth })
+        this.setState({})
     }, 100)
 
     private updateContainerWidth() {
@@ -156,7 +152,6 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
             if (layout) {
                 const px = newWidth + 'px'
                 layout.style.setProperty('--wk-width-layout-tab', px)
-                layout.classList.toggle('wk-layout-nav-expanded', newWidth >= NAV_RAIL_EXPANDED_THRESHOLD)
                 const tab = layout.querySelector('.wk-layout-tab') as HTMLElement
                 if (tab) {
                     tab.style.width = px
@@ -204,6 +199,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         }
         // Commit final width to React state (single re-render)
         if (draggingTarget === "nav") {
+            this.updateContainerWidth()
             this.setState({ navRailWidth: this.lastNavRailWidth, isDragging: false, draggingTarget: undefined })
             persistNavRailWidth(this.lastNavRailWidth)
             return
@@ -289,7 +285,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         </div>
 
         return <div
-            className={classNames("wk-layout", isNavRailExpanded && "wk-layout-nav-expanded")}
+            className="wk-layout"
             ref={this.layoutRef}
             style={isSmallScreen ? undefined : { '--wk-width-layout-tab': navRailWidthPx } as React.CSSProperties}
         >

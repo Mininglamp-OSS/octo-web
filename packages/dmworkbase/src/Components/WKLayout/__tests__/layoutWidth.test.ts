@@ -133,16 +133,6 @@ describe('layoutWidth', () => {
                 expect(restoreNavRailWidth()).toBe(NAV_RAIL_EXPANDED_WIDTH)
             })
 
-            it('normalizes legacy intermediate stored values', () => {
-                localStorage.setItem(NAV_RAIL_STORAGE_KEY, '160')
-                expect(restoreNavRailWidth()).toBe(NAV_RAIL_EXPANDED_WIDTH)
-            })
-
-            it('normalizes legacy expanded stored values above the new max width', () => {
-                localStorage.setItem(NAV_RAIL_STORAGE_KEY, '220')
-                expect(restoreNavRailWidth()).toBe(NAV_RAIL_EXPANDED_WIDTH)
-            })
-
             it('returns default for out-of-range stored values', () => {
                 localStorage.setItem(NAV_RAIL_STORAGE_KEY, '9999')
                 expect(restoreNavRailWidth()).toBe(NAV_RAIL_DEFAULT_WIDTH)
