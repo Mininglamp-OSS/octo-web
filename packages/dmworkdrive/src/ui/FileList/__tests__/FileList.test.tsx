@@ -250,4 +250,31 @@ describe('FileList', () => {
       expect(headerCb.indeterminate).toBe(false);
     });
   });
+
+  describe('batch-op transient state', () => {
+    it('applies drive-file-row--pending to ids in pendingIds', () => {
+      const { container } = renderList([entry(1, 'a', 'blob'), entry(2, 'b', 'blob')], false, {
+        pendingIds: new Set<number>([1]),
+      });
+      const rows = container.querySelectorAll('.drive-file-row:not(.drive-file-row--head)');
+      expect(rows[0].classList.contains('drive-file-row--pending')).toBe(true);
+      expect(rows[1].classList.contains('drive-file-row--pending')).toBe(false);
+    });
+
+    it('applies drive-file-row--removing to ids in removingIds', () => {
+      const { container } = renderList([entry(1, 'a', 'blob'), entry(2, 'b', 'blob')], false, {
+        removingIds: new Set<number>([2]),
+      });
+      const rows = container.querySelectorAll('.drive-file-row:not(.drive-file-row--head)');
+      expect(rows[0].classList.contains('drive-file-row--removing')).toBe(false);
+      expect(rows[1].classList.contains('drive-file-row--removing')).toBe(true);
+    });
+
+    it('renders normally when both pendingIds and removingIds are undefined', () => {
+      const { container } = renderList([entry(1, 'a', 'blob')]);
+      const row = container.querySelector('.drive-file-row:not(.drive-file-row--head)')!;
+      expect(row.classList.contains('drive-file-row--pending')).toBe(false);
+      expect(row.classList.contains('drive-file-row--removing')).toBe(false);
+    });
+  });
 });

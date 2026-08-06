@@ -48,6 +48,40 @@
   background: var(--wk-bg-selected, rgba(127, 59, 245, 0.06));
 }
 
+/* Batch-op transient states, driven by the useSelection consumer:
+   pending = op in flight for this row; removing = op succeeded, row
+   fading out before it disappears from the list. Rows with either
+   state ignore hover / click so double-clicks or a hover-tint flash
+   don't compete with the animation. */
+.drive-file-row--pending {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.drive-file-row--removing {
+  animation: drive-file-row-remove 260ms ease-in forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+@keyframes drive-file-row-remove {
+  from {
+    opacity: 0.55;
+    max-height: 60px;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    transform: translateX(-12px);
+  }
+}
+
 /* Checkbox column — always visible (per product decision) so the affordance
    is discoverable. Uses --wk-brand-primary as the accent so the check mark
    matches the primary CTA rather than the accent purple. */

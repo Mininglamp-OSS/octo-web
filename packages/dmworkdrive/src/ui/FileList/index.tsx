@@ -37,6 +37,13 @@ export interface FileListProps {
     isIndeterminate: boolean;
     toggleAll: () => void;
   };
+  /** IDs currently mid-batch-op (spinner-adjacent state) — half opacity, no
+   *  clicks. Optional; omit for no pending rows. */
+  pendingIds?: ReadonlySet<number>;
+  /** IDs that have succeeded a destructive op and are fading out. Left in
+   *  the DOM for one animation frame so the row plays its removal transition
+   *  before the parent removes it from `entries`. */
+  removingIds?: ReadonlySet<number>;
 }
 
 /** Per-kind glyph at docs' 16px row-icon size; colour is uniform (see index.css). */
@@ -95,6 +102,8 @@ export default function FileList({
   canShare,
   highlightFileId,
   selection,
+  pendingIds,
+  removingIds,
 }: FileListProps) {
   const { t } = useI18n();
   const highlightRowRef = useRef<HTMLDivElement | null>(null);
@@ -140,10 +149,14 @@ export default function FileList({
         const isFolder = entry.type === 'folder';
         const isSelected = selection?.isSelected(entry.id) ?? false;
         const isHighlight = highlightFileId != null && entry.id === highlightFileId;
+        const isPending = pendingIds?.has(entry.id) ?? false;
+        const isRemoving = removingIds?.has(entry.id) ?? false;
         const rowClasses =
           'drive-file-row' +
           (isSelected ? ' drive-file-row--selected' : '') +
-          (isHighlight ? ' drive-file-row--flash' : '');
+          (isHighlight ? ' drive-file-row--flash' : '') +
+          (isPending ? ' drive-file-row--pending' : '') +
+          (isRemoving ? ' drive-file-row--removing' : '');
         return (
           <div
             key={entry.id}
