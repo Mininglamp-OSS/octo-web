@@ -11,6 +11,7 @@ import { resolveSameOriginPath } from './StandaloneDocPage.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
 import { CreatePptModal } from '../ppt/CreatePptModal.tsx'
+import { withDeckSpace } from '../ppt/pptLink.ts'
 import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
 import { docsApiBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
 import { isBoardDoc, isBoardIdLocally, persistBoardScene, rememberBoard } from '../board/boardStore.ts'
@@ -1666,11 +1667,18 @@ export function DocsHome() {
   // Ordering (P2-2): navigate FIRST, close AFTER. If assign throws (e.g. a sandboxed embed forbids
   // top-level navigation), the exception propagates into onSubmit's catch and the still-OPEN modal can
   // show it. Closing first would setError on an unmounted modal — a silent no-op / soft-lock.
+  //
+  // Space carrier (P1-1, XIN-1621): the created deck lives in the active DocsHome space, so we stamp
+  // that space onto the forwarded editor link as `?sp=` (withDeckSpace) — the same carrier the PPT
+  // routes read first (resolveDeckSpace). Without it the peer editor link carried no space and a
+  // cross-space cold open fell to the recipient's last-visited space (backend cross-space guard →
+  // not-found). We read spaceRef (the authoritative current space id) so the callback stays deps-free,
+  // exactly like onOpenInNewPage. A backend editorUrl that already carries `?sp=` is left intact.
   const onPptCreated = useCallback((editorUrl: string): boolean => {
     if (typeof window === 'undefined') return false
     const target = resolveSameOriginPath(editorUrl)
     if (target === null) return false
-    window.location.assign(target)
+    window.location.assign(withDeckSpace(target, spaceRef.current))
     setPptModalOpen(false)
     return true
   }, [])

@@ -38,4 +38,22 @@ describe('PptSurfacePage — source gated OFF (default)', () => {
     expect(screen.getByText('docs.ppt.presentComingSoon')).toBeTruthy()
     expect(getDoc).not.toHaveBeenCalled()
   })
+
+  // Branch-order (XIN-1621): a malformed/empty link (docId=null) is a terminal NOT-FOUND in every
+  // build — it must NOT render the "coming soon" gated shell, which is reserved for a well-formed
+  // deck link whose live source is not yet exposed. The null-id branch is checked BEFORE the gate.
+  // Still zero-I/O: the effect returns early when gated, so no preflight fires.
+  it('malformed id (docId=null) renders the not-found shell, not the gated notice, and runs no preflight', () => {
+    render(<PptSurfacePage docId={null} mode="editor" />)
+    expect(screen.getByText('docs.error.permission.notFound')).toBeTruthy()
+    expect(screen.queryByText('docs.ppt.editorComingSoon')).toBeNull()
+    expect(getDoc).not.toHaveBeenCalled()
+  })
+
+  it('malformed id (docId=null) in present mode also renders not-found, not the gated notice', () => {
+    render(<PptSurfacePage docId={null} mode="present" version="latest" />)
+    expect(screen.getByText('docs.error.permission.notFound')).toBeTruthy()
+    expect(screen.queryByText('docs.ppt.presentComingSoon')).toBeNull()
+    expect(getDoc).not.toHaveBeenCalled()
+  })
 })

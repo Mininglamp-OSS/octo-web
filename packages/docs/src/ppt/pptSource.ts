@@ -4,10 +4,16 @@
 // when PPT_SOURCE_ENABLED is on — i.e. on a deployment whose backend carries the R3-B1
 // source/bootstrap layer (octo-docs-backend #161).
 //
-// CONTRACT (finalized against octo-docs-backend #161, NOT yet merged — PR open, mergedAt null; the
-// PPT_SOURCE_ENABLED gate stays OFF until a deployment carries it, see config.ts):
+// CONTRACT — the R3 LIVE path is `format=html` ONLY. Against octo-docs-backend #161 (PR open,
+// mergedAt null; the PPT_SOURCE_ENABLED gate stays OFF until a deployment carries it, see config.ts)
+// the endpoint shape is:
 //   GET /api/v1/ppt/docs/:docId/source?mode=<published|live|draft>&version=<latest|N>&format=<bootstrap|bento|html>
-// The endpoint is addressed BARE-RELATIVE on the shared apiClient (baseURL `/api/v1/`), so it
+// but R3 exercises only `format=html` (self-contained rendered HTML — see pptSourceClient.ts). The
+// `format=bootstrap` + signed short-lived asset half is a DORMANT FORWARD CONTRACT: it is NOT
+// delivered by R3, no live R3 code path requests it, and the backend PR documents it as forward
+// scaffolding for a future separate-origin host page rather than a live origin-checked delivery
+// channel. It stays in the vocabulary (below) so the deferred channel has a name, not because it is
+// wired. The endpoint is addressed BARE-RELATIVE on the shared apiClient (baseURL `/api/v1/`), so it
 // resolves to `/api/v1/ppt/docs/:docId/source` and inherits the app's auth / `X-Space-Id` / language
 // interceptors — the same seam every other docs REST call uses. The backend PPT router mounts only
 // `/docs` and `/docs/:docId/source`; there is NO `/ppt/frame/:id` host page, so the container fetches

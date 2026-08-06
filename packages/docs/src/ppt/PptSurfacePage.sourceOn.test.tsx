@@ -50,6 +50,9 @@ describe('PptSurfacePage — source gated ON', () => {
     await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
     const frame = container.querySelector('iframe')
     expect(frame?.getAttribute('srcdoc')).toContain('deck source')
+    // P1-2: the srcdoc is hardened with a CSP meta that denies outbound connections.
+    expect(frame?.getAttribute('srcdoc')).toContain('Content-Security-Policy')
+    expect(frame?.getAttribute('srcdoc')).toContain("connect-src 'none'")
     // P1: the preflight is space-scoped (getDoc `{ spaceId }`), not a bare id call that pins the bug.
     expect(getDoc).toHaveBeenCalledWith('d_1', { spaceId: 'sp_1' })
     const url = api.calls[0]?.url ?? ''
@@ -107,15 +110,19 @@ describe('PptSurfacePage — source gated ON', () => {
     expect(tokens).not.toContain('allow-same-origin')
   })
 
-  it('present mode also isolates the frame in an opaque origin (keeps allow-fullscreen)', async () => {
+  it('present mode also isolates the frame in an opaque origin', async () => {
     getDoc.mockResolvedValue(meta({ docId: 'd_1', role: 'reader' }))
     const { container } = render(<PptSurfacePage docId="d_1" mode="present" version={2} />)
     await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
-    const sandbox = container.querySelector('iframe')?.getAttribute('sandbox') ?? ''
+    const frame = container.querySelector('iframe')
+    const sandbox = frame?.getAttribute('sandbox') ?? ''
     const tokens = sandbox.split(/\s+/).filter(Boolean)
     expect(tokens).toContain('allow-scripts')
-    expect(tokens).toContain('allow-fullscreen')
     expect(tokens).not.toContain('allow-same-origin')
+    // Fullscreen is granted via the permission-policy `allow` attribute, NOT a sandbox token
+    // (`allow-fullscreen` is not a valid sandbox keyword and would be silently ignored).
+    expect(tokens).not.toContain('allow-fullscreen')
+    expect(frame?.getAttribute('allow') ?? '').toContain('fullscreen')
   })
 
   it('fetches the requested published version in present mode', async () => {

@@ -7,9 +7,14 @@
 // through the shared apiClient here and then injected by the container into a sandboxed opaque-origin
 // `srcdoc` frame, rather than navigating a frame at a bespoke route the backend does not serve.
 //
-// Bento decks are single self-contained HTML files, so `format=html` returns the whole renderable
-// deck; the container hosts it in an isolated (opaque-origin) `srcdoc` document. This module performs
-// the ONLY network I/O of the PPT source path and issues NO Hocuspocus token.
+// R3 supports only SELF-CONTAINED rendered HTML: `format=html` returns a deck whose bytes are already
+// complete at the frame boundary — decorative fonts / assets inlined via `doc.assets`, charts and
+// morph transitions driven by Bento's bundled engine — so the opaque-origin `srcdoc` document needs
+// no further network to render. This is deliberately narrower than Bento's full authoring model, where
+// a media `src` may be a data URI, an `asset:<key>` reference, an external URL, or a relative path;
+// decks that are NOT self-contained (needing signed-asset resolution or external fetches) are a
+// later-round concern and are not delivered by R3. This module performs the ONLY network I/O of the
+// R3 PPT source path and issues NO Hocuspocus token.
 
 import { apiClient } from '../octoweb/index.ts'
 import { buildSourceUrl } from './pptSource.ts'

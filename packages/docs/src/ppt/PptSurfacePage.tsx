@@ -97,10 +97,14 @@ export function resolveDeckSpace(): string {
 
 /**
  * The deck's own space as carried by the deep-link's dedicated `?sp=` query param — the same carrier
- * the standalone doc route reads (StandaloneDocPage.standaloneLinkSpace). buildDocLink embeds the
- * document's REAL space id as `?sp=`, so a cross-space cold deep-link resolves the right
- * `X-Space-Id` before the shell restores currentSpaceId. Returns '' when the link carries no `?sp=`
- * (older links, or SSR); the caller then falls back to live/cached currentSpaceId.
+ * the standalone doc route reads (StandaloneDocPage.standaloneLinkSpace). On the PPT routes this `?sp=`
+ * is minted by the PPT link builders (pptLink.ts): the create flow stamps the deck's space onto the
+ * forwarded editor link (`/ppt/d/:docId?sp=`), and `buildPptPresentLink` stamps it onto a present
+ * link, so a cross-space cold deep-link resolves the right `X-Space-Id` before the shell restores
+ * currentSpaceId. (Note `buildDocLink` mints `?sp=` for the STANDALONE `/d/:docId` route only, a
+ * different route — it does NOT produce these PPT paths.) Returns '' when the link carries no `?sp=`
+ * (an editor link the backend forwarded without one, an older/hand-built link, or SSR); the caller
+ * then falls back to live/cached currentSpaceId.
  */
 function linkSpace(): string {
   if (typeof window === 'undefined') return ''
@@ -149,7 +153,21 @@ export function PptSurfacePage({ docId, mode, version, onSessionExpired }: PptSu
     }
   }, [gated, docId, space, onSessionExpired])
 
-  // Gated shell — the only state that ships until R3-B1 merges.
+  // Null id (route claimed a malformed link): not-found shell, never the app shell / rich editor.
+  // Checked BEFORE the gate so a malformed link is a terminal not-found in every build — the gated
+  // "coming soon" shell is for a WELL-FORMED deck link whose live source is not yet exposed, not for
+  // a broken id. (The effect above already returns early when gated, so this reorder is render-only
+  // and preserves the gated-OFF zero-I/O invariant.)
+  if (!docId) {
+    return (
+      <SurfaceState mode={mode}>
+        <DocTerminal title={t('docs.state.untitled')} kind="not-found" />
+      </SurfaceState>
+    )
+  }
+
+  // Gated (well-formed id, live source not yet exposed): the "not yet available" shell that ships
+  // until R3-B1 merges.
   if (gated) {
     return (
       <SurfaceState mode={mode}>
@@ -157,15 +175,6 @@ export function PptSurfacePage({ docId, mode, version, onSessionExpired }: PptSu
         <p className="octo-ppt-surface-state-hint">
           {mode === 'present' ? t('docs.ppt.presentComingSoon') : t('docs.ppt.editorComingSoon')}
         </p>
-      </SurfaceState>
-    )
-  }
-
-  // Null id (route claimed a malformed link): not-found shell, never the app shell / rich editor.
-  if (!docId) {
-    return (
-      <SurfaceState mode={mode}>
-        <DocTerminal title={t('docs.state.untitled')} kind="not-found" />
       </SurfaceState>
     )
   }

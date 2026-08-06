@@ -17,6 +17,13 @@
 // `packages/docs/src/html/HtmlDocView.tsx` (which isolates its unsanitized fetched HTML) while still
 // letting the engine run.
 //
+// DEFENCE-IN-DEPTH (XIN-1621 P1-2): the opaque origin stops the deck touching the PARENT origin, but
+// not the frame opening OUTBOUND requests. Since an R3 deck is self-contained (needs no network at
+// render time), we inject a CSP `<meta>` into the srcdoc (pptFrameCsp.ts) that denies `connect-src`
+// (and form/base exfil side-channels) while still allowing Bento's inline/eval/`data:`/`blob:`
+// runtime — FE-side only, no global nginx change. The complementary parent-document `frame-src` (in
+// the app's top-level CSP) is deferred to a follow-up because it needs the global nginx config.
+//
 // DELIVERY PATH: the deck's rendered source is delivered by the `srcdoc` injection ITSELF — that is
 // the single, load-bearing delivery path here. There is NO postMessage bootstrap handshake in the
 // live container: an opaque-origin frame's message arrives with `event.origin === 'null'`, which the
@@ -38,6 +45,7 @@ import { useEffect, useState } from 'react'
 import { t } from '../octoweb/index.ts'
 import type { PptBootstrapMode } from './bootstrapTransfer.ts'
 import { fetchPptSourceHtml } from './pptSourceClient.ts'
+import { withFrameCsp } from './pptFrameCsp.ts'
 import './BentoContainer.css'
 
 export interface BentoContainerProps {
@@ -69,13 +77,14 @@ type SourceState =
  * srcdoc document therefore loads in an OPAQUE origin, and its scripts cannot read the parent
  * origin's cookies / localStorage / DOM (XIN-1608 P0 — Option A). Granting both `allow-scripts` and
  * `allow-same-origin` over unsanitized HTML would let the deck execute AS the parent origin, so the
- * two are never combined here. `present` additionally needs `allow-fullscreen`. No
- * `allow-top-navigation` — the deck can never navigate the host away.
+ * two are never combined here. Fullscreen for `present` is granted by the `allow="fullscreen"`
+ * permission-policy attribute on the iframe, NOT a sandbox token — `allow-fullscreen` is not a valid
+ * sandbox keyword and the browser silently ignores it, so it is deliberately absent here. No
+ * `allow-top-navigation` — the deck can never navigate the host away. The sandbox is therefore the
+ * same for every mode today; kept as a function so a future per-mode token has one seam.
  */
-function sandboxForMode(mode: PptBootstrapMode): string {
-  const base = 'allow-scripts'
-  if (mode === 'present') return `${base} allow-fullscreen`
-  return base
+function sandboxForMode(_mode: PptBootstrapMode): string {
+  return 'allow-scripts'
 }
 
 /**
@@ -95,8 +104,9 @@ export function BentoContainer({
 }: BentoContainerProps): React.ReactElement {
   const [source, setSource] = useState<SourceState>({ status: 'loading' })
 
-  // Fetch the rendered single-file source through the shared apiClient (interceptors applied). Bento
-  // decks are self-contained HTML, so `format=html` returns the whole renderable deck.
+  // Fetch the rendered single-file source through the shared apiClient (interceptors applied). R3
+  // supports only self-contained rendered HTML, so `format=html` returns a deck whose bytes are
+  // complete at the frame boundary and the opaque-origin `srcdoc` needs no further network to render.
   useEffect(() => {
     let cancelled = false
     setSource({ status: 'loading' })
@@ -134,11 +144,15 @@ export function BentoContainer({
       // First-party Bento host: the source is fetched through the app's own apiClient and rendered
       // from `srcdoc`. The sandbox grants `allow-scripts` (the engine needs to run) but NOT
       // `allow-same-origin`, so the deck loads in an OPAQUE origin and its scripts cannot touch the
-      // parent origin (XIN-1608 P0); present adds fullscreen. See sandboxForMode.
+      // parent origin (XIN-1608 P0). Fullscreen (for present) comes from the `allow="fullscreen"`
+      // permission-policy attribute below, not a sandbox token. See sandboxForMode.
       sandbox={sandboxForMode(mode)}
       allow="fullscreen"
       title={title}
-      srcDoc={source.html}
+      // Defence-in-depth (P1-2): inject a CSP meta that denies `connect-src` so the opaque frame
+      // cannot exfiltrate over fetch/XHR/WebSocket, while still allowing Bento's inline/blob/data
+      // runtime for the self-contained render. See pptFrameCsp.ts.
+      srcDoc={withFrameCsp(source.html)}
     />
   )
 }

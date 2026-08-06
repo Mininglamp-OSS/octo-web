@@ -90,9 +90,13 @@ export function currentOrigin(): string {
 /**
  * Whether `origin` is this document's own origin — the single trust predicate for both hops.
  *
- * Rejects the empty string explicitly: a `MessageEvent` from a `srcdoc` / sandboxed frame without
- * `allow-same-origin` reports `origin === ''` (an opaque origin), and `file:`/data documents report
- * `'null'`. Neither is our origin, so both fail here; only a byte-for-byte match with a non-empty
+ * Rejects the empty string explicitly AND never trusts the opaque-origin sentinel: per the HTML spec
+ * an opaque origin (a `srcdoc` / sandboxed frame without `allow-same-origin`, or a `file:`/`data:`
+ * document) serializes to the string `'null'` — the same value `BentoContainer.tsx` documents — so a
+ * message from our opaque Bento frame arrives with `event.origin === 'null'`, which is not our origin
+ * and fails here. The empty string is the separate SSR / non-browser case (`currentOrigin()` returns
+ * `''` when `window` is absent). Neither `'null'` nor `''` equals a real origin, so both fail; only a
+ * byte-for-byte match with a non-empty
  * `window.location.origin` is trusted. There is no wildcard and no substring match.
  */
 export function isTrustedOrigin(origin: string | null | undefined): boolean {

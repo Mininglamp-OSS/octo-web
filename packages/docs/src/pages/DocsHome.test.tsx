@@ -1597,7 +1597,7 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
 
-    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/ppt/d/new_deck'))
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/ppt/d/new_deck?sp=demo'))
   })
 
   // ── R2-F1 P2-2: navigate BEFORE closing the picker ─────────────────────────
@@ -1634,7 +1634,7 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
 
     // assign was attempted (navigate-first), but it threw…
-    await waitFor(() => expect(throwingAssign).toHaveBeenCalledWith('/ppt/d/new_deck'))
+    await waitFor(() => expect(throwingAssign).toHaveBeenCalledWith('/ppt/d/new_deck?sp=demo'))
     // …and because the close runs only AFTER a successful assign, the picker is still open and the
     // error is visible + retriable — not a silently-closed soft-lock.
     await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
