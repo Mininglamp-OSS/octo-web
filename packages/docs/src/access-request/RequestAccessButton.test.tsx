@@ -119,7 +119,18 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
   it('still submits a human-only request when the Bot dimension is forbidden (4xx)', async () => {
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url.startsWith('/robot/owned_bots')) {
-        throw { response: { status: 400, data: { error: 'err.shared.auth.forbidden' } } }
+        // The REAL octo-server shape for a non-Space-member: legacy-compat facade pins the wire
+        // status to 400 and carries the true verdict as error.http_status = 403.
+        throw {
+          response: {
+            status: 400,
+            data: {
+              error: { code: 'err.shared.auth.forbidden', http_status: 403 },
+              msg: '无权执行此操作。',
+              status: 400,
+            },
+          },
+        }
       }
       return { data: {}, status: 201 }
     }
@@ -137,20 +148,70 @@ describe('RequestAccessButton — user + Bot access request (task #2/#3)', () =>
     await waitFor(() => expect(screen.getByText('docs.forward.accessRequested')).toBeTruthy())
   })
 
-  it('keeps 403 unavailable but treats 429 and 5xx as retryable', async () => {
-    for (const [status, unavailable] of [[403, true], [429, false], [503, false]] as const) {
+  it('keeps 403 unavailable but treats every other failure as retryable, with a human-only hatch', async () => {
+    // The full failure matrix, so the fail-open/fail-closed boundary is pinned in ONE place instead of
+    // moving each round. `unavailable` = a verdict about the caller (retry cannot help) → submit
+    // enabled, human-only. Anything else = Bot set UNKNOWN → primary blocked, Retry + explicit hatch.
+    const cases: Array<{ label: string; fail: () => never; unavailable: boolean }> = [
+      { label: '401', fail: () => { throw { response: { status: 401 } } }, unavailable: true },
+      { label: '403', fail: () => { throw { response: { status: 403 } } }, unavailable: true },
+      // The legacy-compat envelope: wire 400, real verdict in error.http_status. Classifying on the
+      // wire status alone would block the very requester the unavailable branch exists to unblock.
+      {
+        label: 'wire 400 + error.http_status 403 (legacy facade)',
+        fail: () => { throw { response: { status: 400, data: { error: { http_status: 403 } } } } },
+        unavailable: true,
+      },
+      // A genuine client error that is NOT an authorization verdict must stay unknown, even though the
+      // legacy facade gives it the same wire 400.
+      {
+        label: 'wire 400 + error.http_status 400 (bad request)',
+        fail: () => { throw { response: { status: 400, data: { error: { http_status: 400 } } } } },
+        unavailable: false,
+      },
+      { label: 'bare 400 (no envelope)', fail: () => { throw { response: { status: 400 } } }, unavailable: false },
+      { label: '404 (route not deployed)', fail: () => { throw { response: { status: 404 } } }, unavailable: false },
+      { label: '408', fail: () => { throw { response: { status: 408 } } }, unavailable: false },
+      { label: '425', fail: () => { throw { response: { status: 425 } } }, unavailable: false },
+      { label: '429', fail: () => { throw { response: { status: 429 } } }, unavailable: false },
+      { label: '503', fail: () => { throw { response: { status: 503 } } }, unavailable: false },
+      { label: 'network error (no status)', fail: () => { throw new Error('network down') }, unavailable: false },
+    ]
+    for (const c of cases) {
       wk.apiClient.responder = (method, url) => {
-        if (method === 'get' && url.startsWith('/robot/owned_bots')) throw { response: { status } }
+        if (method === 'get' && url.startsWith('/robot/owned_bots')) c.fail()
         return { data: {}, status: 201 }
       }
       render(<RequestAccessButton docId="d_1" spaceId="s_other" />)
-      const key = unavailable ? 'docs.forward.requestBotsUnavailable' : 'docs.forward.requestBotsError'
-      await waitFor(() => expect(screen.getByText(key)).toBeTruthy())
+      const key = c.unavailable ? 'docs.forward.requestBotsUnavailable' : 'docs.forward.requestBotsError'
+      await waitFor(() => expect(screen.getByText(key), c.label).toBeTruthy())
       const submit = screen.getByText('docs.forward.requestAccess').closest('button') as HTMLButtonElement
-      // Transient failures still block (retry can succeed); an authorization verdict does not.
-      expect(submit.disabled).toBe(!unavailable)
+      expect(submit.disabled, c.label).toBe(!c.unavailable)
+      // Neither state is a dead end: unavailable submits directly, unknown offers Retry + "me only".
+      expect(!!screen.queryByText('docs.forward.requestSelfOnly'), c.label).toBe(!c.unavailable)
+      expect(!!screen.queryByText('docs.forward.requestBotsRetry'), c.label).toBe(!c.unavailable)
       cleanup()
     }
+  })
+
+  // The escape hatch must actually submit — a dead-end page is the failure mode this whole state
+  // exists to avoid, and "request for me only" is the ONLY way out when Retry keeps failing.
+  it('submits a human-only request through the escape hatch when the Bot set stays unknown', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
+        throw { response: { status: 503 } }
+      }
+      return { data: {}, status: 201 }
+    }
+    render(<RequestAccessButton docId="d_1" spaceId="s_1" />)
+    await waitFor(() => expect(screen.getByText('docs.forward.requestBotsError')).toBeTruthy())
+    expect((screen.getByText('docs.forward.requestAccess').closest('button') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByText('docs.forward.requestSelfOnly'))
+    await waitFor(() => expect(screen.getByText('docs.forward.accessRequested')).toBeTruthy())
+    const post = wk.apiClient.calls.find((c) => c.method === 'post')!
+    expect(post.url).toBe('/docs/d_1/access-requests')
+    // Zero Bots → no body, the pre-feature request shape.
+    expect(post.body).toBeUndefined()
   })
 
   it('lets the requester cancel a single Bot before submitting', async () => {

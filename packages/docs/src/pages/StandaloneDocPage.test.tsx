@@ -192,6 +192,10 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // in-shell RequestAccessButton so the receiver can request access without leaving the page.
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url === '/docs/d_forbidden') throw apiError(403)
+      // The owned-Bot lookup must return a LEGAL empty list: this case asserts the requester can ask
+      // for access, which is orthogonal to the Bot dimension. The catch-all `{}` reaches the strict
+      // loader as a malformed body and blocks submission, which would test the wrong thing.
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: [], status: 200 }
       return { data: {}, status: 200 }
     }
 
@@ -200,8 +204,9 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     await waitFor(() =>
       expect(screen.getByText('docs.error.permission.forbidden')).toBeTruthy(),
     )
-    // The reused RequestAccessButton (its hint + action) is present on the forbidden landing.
-    expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy()
+    // The reused RequestAccessButton (its hint + action) is present on the forbidden landing. Awaited
+    // because the button now resolves the owned-Bot lookup before it can offer the action.
+    await waitFor(() => expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy())
     // XIN-505 redesign: the landing shows a non-misleading heading instead of a fake "Untitled
     // document" title, and offers no "back to all documents" link (a share page has no list to
     // return to). The reason line is still shown.

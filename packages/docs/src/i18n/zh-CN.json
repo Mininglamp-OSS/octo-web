@@ -828,6 +828,7 @@
     "requestBotsLoading": "正在加载你的 Bot…",
     "requestBotsError": "无法加载你的 Bot，申请将不包含它们 — 请先重试。",
     "requestBotsUnavailable": "此处无法附带你的 Bot，本次仅为你本人申请访问。",
+    "requestSelfOnly": "仅为我本人申请",
     "requestBotsRetry": "重试",
     "approve": "同意",
     "deny": "拒绝"

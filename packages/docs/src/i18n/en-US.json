@@ -828,6 +828,7 @@
     "requestBotsLoading": "Loading your Bots…",
     "requestBotsError": "Couldn't load your Bots. The request would omit them — retry first.",
     "requestBotsUnavailable": "Your Bots can't be included from here, so this requests access for you only.",
+    "requestSelfOnly": "Request for me only",
     "requestBotsRetry": "Retry",
     "approve": "Approve",
     "deny": "Deny"

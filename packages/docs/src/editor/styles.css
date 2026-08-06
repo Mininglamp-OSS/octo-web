@@ -4232,6 +4232,25 @@ body.octo-row-resizing {
   background: var(--octo-accent, #3370ff);
 }
 
+/* Secondary escape hatch next to Retry when the owned-Bot set is unknown: subordinate to the primary
+   (one primary per action group) but still a real, focusable button. */
+.octo-access-request-self-only {
+  align-self: flex-start;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--octo-accent);
+  background: transparent;
+  border: none;
+}
+.octo-access-request-self-only:hover:not(:disabled) {
+  color: var(--octo-active-fg-hover);
+  text-decoration: underline;
+}
+.octo-access-request-self-only:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* Sheet toolbar: left-align the Univer ribbon toolbar (the icon row) instead of
    centering it. In classic ribbon mode Univer adds `univer-justify-center` to the
    inner flex row carrying `data-u-comp="ribbon-toolbar"`; we override that. We key
