@@ -198,8 +198,10 @@ function stripInvisibleChars(text: string): string {
  */
 function notifySecretPaste(detectedValue: string): void {
   Notification.warning({
-    title: translate("base.secrets.pasteGuard.title"),
-    content: translate("base.secrets.pasteGuard.content"),
+    className: "wk-octo-notification",
+    theme: "normal",
+    title: <span className="wk-octo-notification__title">{translate("base.secrets.pasteGuard.title")}</span>,
+    content: <span className="wk-octo-notification__body">{translate("base.secrets.pasteGuard.content")}</span>,
     duration: 8,
     showClose: true,
     onClick: () => {

@@ -33,11 +33,27 @@ let isFullScreen = false;
 
 let isOsx = process.platform === "darwin";
 let isWin = !isOsx;
+let isWindowFocusHandlerRegistered = false;
 
 const isDevelopment = process.env.NODE_ENV !== "production";
 const APP_EXIT_DELAY_MS = 1000;
 const TRAY_FLASH_INTERVAL_MS = 1000;
 
+const registerWindowFocusHandler = () => {
+  if (isWindowFocusHandlerRegistered) return;
+
+  ipcMain.handle("is-window-focused", (event) => {
+    // Query the window that owns the renderer making the request. This also
+    // keeps focus suppression correct for auxiliary windows.
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const win =
+      (senderWindow && !senderWindow.isDestroyed?.() ? senderWindow : null) ||
+      (mainWindow && !mainWindow.isDestroyed?.() ? mainWindow : null);
+    if (!win) return false;
+    return win.isFocused() && win.isVisible() && !win.isMinimized();
+  });
+  isWindowFocusHandlerRegistered = true;
+};
 
 let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
   {
@@ -301,8 +317,6 @@ function regShortcut() {
     );
     screenshots.startCapture();
   });
-
-
   // 打开所有窗口控制台 (开发环境)
   if (isDevelopment) {
     globalShortcut.register("ctrl+shift+i", () => {
@@ -430,15 +444,13 @@ const createMainWindow = async () => {
     restartApp()
   })
 
-  // Test notification handler for debugging
+  // Test notification handler for debugging (development only)
   ipcMain.handle("test-notification-icon", () => {
-    console.log("Testing notification icon from renderer process");
-    electronNotificationManager.testIconLoading();
-
+    if (!isDevelopment) return false;
     // Show a test notification
     electronNotificationManager.showNotification({
       title: "Icon Test",
-      body: "Testing notification icon display",
+      body: "Testing notification display",
       tag: "icon-test",
       urgency: 'normal',
       timeoutType: 'default',
@@ -451,11 +463,6 @@ const createMainWindow = async () => {
 
   // Set up notification manager with main window
   electronNotificationManager.setMainWindow(mainWindow);
-
-  // Test icon loading (can be removed in production)
-  if (process.env.NODE_ENV === "development") {
-    electronNotificationManager.testIconLoading();
-  }
 
   // 检查更新
   checkUpdate(mainWindow)
@@ -518,6 +525,7 @@ if (!gotTheLock) {
 
 app.on("ready", () => {
   regShortcut();
+  registerWindowFocusHandler();
   createMainWindow(); // 创建窗口
 
   if (isWin) {

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { subscribeDisposable } from "./notificationListeners";
 
 const ALLOWED_SEND_CHANNELS = [
   "check-update",
@@ -15,6 +16,7 @@ const ALLOWED_INVOKE_CHANNELS = [
   "close-native-notification",
   "close-all-native-notifications",
   "test-notification-icon",
+  "is-window-focused",
 ];
 
 const ALLOWED_RECEIVE_CHANNELS = [
@@ -81,25 +83,16 @@ contextBridge.exposeInMainWorld("ipc", {
 
 // Expose native notification API
 contextBridge.exposeInMainWorld("electronNotification", {
-  show: (options: any) => ipcRenderer.invoke('show-native-notification', options),
-  close: (tag: string) => ipcRenderer.invoke('close-native-notification', tag),
-  closeAll: () => ipcRenderer.invoke('close-all-native-notifications'),
-  onClicked: (callback: (data: any) => void) => {
-    // Remove existing listeners to prevent accumulation and memory leaks
-    ipcRenderer.removeAllListeners('notification-clicked');
-    const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('notification-clicked', handler);
-    // Return cleanup function for proper resource management
-    return () => ipcRenderer.removeListener('notification-clicked', handler);
-  },
-  onActionClicked: (callback: (data: any) => void) => {
-    // Remove existing listeners to prevent accumulation and memory leaks
-    ipcRenderer.removeAllListeners('notification-action-clicked');
-    const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
-    ipcRenderer.on('notification-action-clicked', handler);
-    // Return cleanup function for proper resource management
-    return () => ipcRenderer.removeListener('notification-action-clicked', handler);
-  },
+  show: (options: any) =>
+    ipcRenderer.invoke("show-native-notification", options),
+  close: (tag: string) => ipcRenderer.invoke("close-native-notification", tag),
+  closeAll: () => ipcRenderer.invoke("close-all-native-notifications"),
+  onClicked: (callback: (data: any) => void) =>
+    subscribeDisposable(ipcRenderer, "notification-clicked", callback),
+  onActionClicked: (callback: (data: any) => void) =>
+    subscribeDisposable(ipcRenderer, "notification-action-clicked", callback),
   // Test notification icon
-  testNotificationIcon: () => ipcRenderer.invoke('test-notification-icon'),
+  testNotificationIcon: () => ipcRenderer.invoke("test-notification-icon"),
+  // Query real window focus state from main process
+  isWindowFocused: () => ipcRenderer.invoke("is-window-focused"),
 });

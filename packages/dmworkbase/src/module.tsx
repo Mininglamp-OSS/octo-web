@@ -698,6 +698,15 @@ export default class BaseModule implements IModule {
     }
   }
 
+  /**
+   * The synchronous check below only selects the render-delay fast path. The
+   * final suppression decision is made by the async main-process query in
+   * processMessageAttention.
+   */
+  private isElectronEnvironment(): boolean {
+    return !!(window as any).__POWERED_ELECTRON__;
+  }
+
   private scheduleMessageAttention(
     message: Message,
     context: MessageAttentionSessionContext
@@ -709,7 +718,7 @@ export default class BaseModule implements IModule {
     const needsRenderedMessageCheck =
       WKApp.currentMenuId === "chat" &&
       document.visibilityState === "visible" &&
-      document.hasFocus() &&
+      this.isWindowActuallyFocused() &&
       isConversationChannelVisible(viewportScope) &&
       typeof requestAnimationFrame === "function";
     // Wait for the incoming-message render before asking whether this exact message entered
@@ -717,8 +726,8 @@ export default class BaseModule implements IModule {
     // receive attention for a new message below the fold.
     if (needsRenderedMessageCheck) {
       requestAnimationFrame(() =>
-        requestAnimationFrame(() =>
-          void this.processMessageAttention(message, context)
+        requestAnimationFrame(
+          () => void this.processMessageAttention(message, context)
         )
       );
       return;
@@ -740,7 +749,9 @@ export default class BaseModule implements IModule {
       messageId: message.messageID || undefined,
       clientMsgNo: message.clientMsgNo || undefined,
     };
-    if (this.isIncomingMessageVisible(message)) {
+    const initiallyVisible = await this.isIncomingMessageVisible(message);
+    if (!this.isAttentionContextCurrent(context)) return;
+    if (initiallyVisible) {
       // Commit a terminal suppression before any background tab can turn the
       // shared pending record into an alert.
       await coordinator.claimOnly(claim);
@@ -760,9 +771,15 @@ export default class BaseModule implements IModule {
     }
     await coordinator.runOnce({
       ...claim,
-      shouldSuppress: () =>
-        this.isAttentionContextCurrent(context) &&
-        this.isIncomingMessageVisible(message),
+      shouldSuppress: async () => {
+        // If context goes stale before or during the async IPC call, conservatively
+        // suppress to avoid spurious notifications. A stale context means the user
+        // switched session/space — better to miss one notification than fire a wrong one.
+        if (!this.isAttentionContextCurrent(context)) return true;
+        const visible = await this.isIncomingMessageVisible(message);
+        if (!this.isAttentionContextCurrent(context)) return true;
+        return visible;
+      },
       subscribeSuppressionChanges: (listener) =>
         this.subscribeMessageAttentionChanges(listener),
       isStillEligible: () =>
@@ -788,9 +805,7 @@ export default class BaseModule implements IModule {
     });
   }
 
-  private subscribeMessageAttentionChanges(
-    listener: () => void
-  ): () => void {
+  private subscribeMessageAttentionChanges(listener: () => void): () => void {
     let stopped = false;
     const schedule = () => {
       if (stopped) return;
@@ -820,16 +835,33 @@ export default class BaseModule implements IModule {
     };
   }
 
-  private isIncomingMessageVisible(message: Message): boolean {
+  /**
+   * Synchronous heuristic used only to select the render-delay fast path.
+   * The Electron main-process query remains the source of truth for the final
+   * notification suppression decision.
+   */
+  private isWindowActuallyFocused(): boolean {
+    if (this.isElectronEnvironment()) {
+      // In Electron: treat window as unfocused if document is hidden,
+      // regardless of what document.hasFocus() reports.
+      if (document.visibilityState !== "visible") {
+        return false;
+      }
+    }
+    return document.hasFocus();
+  }
+
+  private async isIncomingMessageVisible(message: Message): Promise<boolean> {
     const viewportScope = {
       channelId: message.channel.channelID,
       channelType: message.channel.channelType,
     };
     const currentConversation = isConversationChannelVisible(viewportScope);
+    const windowFocused = await notificationUtil.isWindowFocused();
     return shouldSuppressImmediateAlert({
       chatModuleActive: WKApp.currentMenuId === "chat",
       documentVisible: document.visibilityState === "visible",
-      windowFocused: document.hasFocus(),
+      windowFocused,
       currentConversation,
       newMessageVisible:
         currentConversation &&
