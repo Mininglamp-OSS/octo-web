@@ -377,7 +377,11 @@ export class DefaultEmojiService implements EmojiService {
     }
 
     private localImage(base: string): string {
-        return `./emoji/${base}.png`
+        // 用 BASE_URL 拼接而非写死相对路径 "./"：web 构建 base="/"（绝对路径，
+        // 页面 URL 带任意路径段都正确解析），electron 构建 base="./"（file:// 下
+        // 相对 index.html 不变）。写死 "./" 在页面 URL 带路径段（如 /chat/、/xxx/）
+        // 时会被解析到 /xxx/emoji/...，SPA fallback 返回 HTML → <img> 破图不显示。
+        return `${import.meta.env.BASE_URL}emoji/${base}.png`
     }
 
     // 自定义表情最终图片地址：优先 manifest 下发的 url（绝对 url 原样用，相对 url 拼到 API
