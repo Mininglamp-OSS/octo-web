@@ -1,5 +1,6 @@
 import React from "react";
 import { type Action, type AdaptiveCard } from "adaptivecards";
+import { Channel, MessageText } from "wukongimjssdk";
 import { Toast } from "@douyinfe/semi-ui";
 import WKApp from "../../App";
 import { getMessageRow } from "../../bridge/message/useMessageRow";
@@ -30,9 +31,14 @@ import {
 } from "./denyReasonDialog";
 import { collectCardInputs, validateCardInputs } from "./sdk/cardInputs";
 import {
-  enhanceRenderedOctoCard,
-  renderOctoCard,
-} from "./sdk/renderOctoCard";
+  type ActionMessageEffect,
+  InvalidActionMessageSourceError,
+  resolveActionMessageEffect,
+  resolveActionMessageText,
+  UnsupportedActionMessageEffectError,
+} from "./sdk/actionMessage";
+import { sendActionWithCurrentUserMessage } from "../../Service/ActionMessageSender";
+import { enhanceRenderedOctoCard, renderOctoCard } from "./sdk/renderOctoCard";
 import { classifyCardSender, fetchSenderChannelInfo } from "./senderTrust";
 import "./index.css";
 import "@mlt-org/octo-card-profile-octo-chat/theme.css";
@@ -261,9 +267,7 @@ export class InteractiveCardCell extends MessageCell {
       const url = (action as unknown as { url?: unknown }).url;
       if (classifyCardSender(message.fromUID) === "webhook") {
         const target =
-          typeof url === "string"
-            ? parseWebhookIssuePreviewTarget(url)
-            : null;
+          typeof url === "string" ? parseWebhookIssuePreviewTarget(url) : null;
         if (target) {
           context.openWebhookPreview?.(target);
           return;
@@ -311,7 +315,9 @@ export class InteractiveCardCell extends MessageCell {
     const data = (action as unknown as { data?: Record<string, unknown> }).data;
     if (
       isDocsDenyAction(data) &&
-      card.getAllInputs().some((input) => input.id === DOCS_DENY_REASON_INPUT_ID)
+      card
+        .getAllInputs()
+        .some((input) => input.id === DOCS_DENY_REASON_INPUT_ID)
     ) {
       // isDocsDenyAction is a type guard → data is narrowed to non-null here.
       const asString = (v: unknown) => (typeof v === "string" ? v : undefined);
@@ -325,12 +331,14 @@ export class InteractiveCardCell extends MessageCell {
         if (!this.mounted || this.submitting) return;
         const current = this.computeState().decision;
         if (current.kind !== "card" || !current.interactive) return;
-        this.performSubmit(card, actionId, { [DOCS_DENY_REASON_INPUT_ID]: reason });
+        this.performSubmit(action, card, actionId, {
+          [DOCS_DENY_REASON_INPUT_ID]: reason,
+        });
       });
       return;
     }
 
-    this.performSubmit(card, actionId, null);
+    this.performSubmit(action, card, actionId, null);
   }
 
   /**
@@ -338,6 +346,7 @@ export class InteractiveCardCell extends MessageCell {
    * 提交态/超时/代次判活与原逻辑一致。
    */
   private performSubmit(
+    action: Action,
     card: AdaptiveCard,
     actionId: string,
     extraInputs: Record<string, string> | null
@@ -360,6 +369,24 @@ export class InteractiveCardCell extends MessageCell {
     const channel = message.channel;
     if (!channel) return;
 
+    let actionEffect: ActionMessageEffect | null = null;
+    let actionMessage: string | undefined;
+    try {
+      actionEffect = resolveActionMessageEffect(action, card);
+      if (actionEffect)
+        actionMessage = resolveActionMessageText(actionEffect, action, card);
+    } catch (err) {
+      if (
+        err instanceof UnsupportedActionMessageEffectError ||
+        err instanceof InvalidActionMessageSourceError
+      ) {
+        this.submitError = t("base.message.interactiveCard.submitFailed");
+        this.forceUpdate();
+        return;
+      }
+      throw err;
+    }
+
     // person DM 与系统 bot（notification 等）的 recv 包 channelID 可能塌缩为接收人
     // 自身 uid，直接回传会让服务端 fakeChannel(self,self) miss → 400。回退到权威对端
     // message.fromUID，确保 channel_id 与服务端存储键一致（群/普通 DM 为 no-op）。
@@ -369,6 +396,12 @@ export class InteractiveCardCell extends MessageCell {
       fromUID: message.fromUID,
       selfUID: WKApp.loginInfo.uid,
     });
+    // The received person-DM packet can collapse channelID to selfUID. Use the
+    // same normalized peer channel for the real user message and card action.
+    const sendChannel =
+      channelId === channel.channelID
+        ? channel
+        : new Channel(channelId, channel.channelType);
 
     // 本次提交代次：使此前提交/超时/新帧作废，且异步回调据此判活。
     const gen = ++this.submitGen;
@@ -377,13 +410,29 @@ export class InteractiveCardCell extends MessageCell {
     this.forceUpdate();
     this.armSubmitTimer(gen);
 
-    submitCardAction({
-      messageId: message.messageID,
-      channelId,
-      channelType: channel.channelType,
-      actionId,
-      inputs,
-    })
+    const submit = () =>
+      submitCardAction({
+        messageId: message.messageID,
+        channelId,
+        channelType: channel.channelType,
+        actionId,
+        inputs,
+      });
+    const submitPromise =
+      actionEffect && actionMessage
+        ? sendActionWithCurrentUserMessage({
+            operationKey: `${message.messageID}:${actionId}:${WKApp.loginInfo.uid}`,
+            content: actionMessage,
+            sendMessage: () =>
+              this.props.context.sendMessage(
+                new MessageText(actionMessage!),
+                sendChannel
+              ),
+            submitAction: submit,
+          })
+        : submit();
+
+    submitPromise
       .then(() => {
         // 受理成功（含 replay）：保持 loading 等 bot 重写的新帧到达（syncSdkCard 重置）；
         // 若 bot 迟迟不重写，10s 超时兜底恢复可点。无需在此变更状态。
