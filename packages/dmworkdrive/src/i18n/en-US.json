@@ -44,7 +44,11 @@
   },
   "delete": {
     "title": "Confirm deletion",
-    "content": "Delete"
+    "content": "Delete",
+    "folderTitle": "Confirm folder deletion",
+    "folderConfirmPrefix": "Delete",
+    "folderWord": "folder",
+    "folderConfirmSuffix": "? All contents inside will be removed as well."
   },
   "mount": {
     "title": "Add document",
