@@ -164,6 +164,32 @@ describe('useFileList', () => {
       // No additional browse call.
       expect(vi.mocked(api.browse).mock.calls.length).toBe(before);
     });
+
+    it('hasMore flips false via reachedTotal when total is a clean multiple of PAGE_SIZE', async () => {
+      // Reviewer-caught regression: previously hasMore stayed true after the
+      // last real page when total === N * PAGE_SIZE because the closure
+      // frozen `entries.length` was always 0, so reachedTotal never fired.
+      // With loadedCountRef tracking cumulative progress, the second full
+      // page must correctly report hasMore === false.
+      const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(i + 1, `n${i}`, 'blob'));
+      const second = Array.from({ length: PAGE_SIZE }, (_, i) => entry(1000 + i, `m${i}`, 'blob'));
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(first, PAGE_SIZE * 2))
+        .mockResolvedValueOnce({
+          entries: second,
+          page: { page_size: PAGE_SIZE, page_index: 2, total: PAGE_SIZE * 2, data: second },
+          filter: { type: 'all', source: 'all' },
+        });
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.hasMore).toBe(true);
+
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(result.current.loadingMore).toBe(false));
+      expect(result.current.entries).toHaveLength(PAGE_SIZE * 2);
+      // Cumulative count === total, so reachedTotal trips — no third fetch.
+      expect(result.current.hasMore).toBe(false);
+    });
   });
 
   describe('type filter', () => {

@@ -111,6 +111,7 @@
     "resultOk": "OK",
     "actionDelete": "delete",
     "actionMove": "move",
+    "actionCopy": "copy",
     "actionDownload": "download"
   },
   "mount": {

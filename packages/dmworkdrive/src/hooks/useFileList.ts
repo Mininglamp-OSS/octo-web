@@ -54,14 +54,17 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   const [total, setTotal] = useState<number | null>(null);
   const [pageIndex, setPageIndex] = useState(1);
   const [filter, setFilter] = useState<FileTypeFilter>('all');
+  const [hasMore, setHasMore] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const seqRef = useRef(0);
-  // hasMore is derived from state, but pageIndex + entries change together
-  // so we track it explicitly to avoid recomputing during a partially-loaded
-  // list where the last response returned < PAGE_SIZE (final page).
-  const hasMoreRef = useRef(false);
-  const [, forceRerenderHasMore] = useState(0);
+  // Cumulative loaded count across appended pages. Kept in a ref (not
+  // derived from entries.length inside the runFetch closure) because that
+  // closure is memoized on [spaceId, parentId, filter] and would otherwise
+  // read a frozen 0 after the initial reset. loadedCountRef is written
+  // synchronously alongside setEntries so the next runFetch call sees an
+  // up-to-date total.
+  const loadedCountRef = useRef(0);
 
   const runFetch = useCallback(
     async (opts: { page: number; append: boolean }) => {
@@ -75,8 +78,8 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
       if (!spaceId) {
         setEntries([]);
         setTotal(null);
-        hasMoreRef.current = false;
-        forceRerenderHasMore((n) => n + 1);
+        setHasMore(false);
+        loadedCountRef.current = 0;
         setLoading(false);
         setLoadingMore(false);
         return;
@@ -99,17 +102,28 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
         );
         if (ctrl.signal.aborted || seq !== seqRef.current) return;
         const list = res.entries ?? [];
-        setEntries((prev) => (opts.append ? [...prev, ...list] : list));
+        // Update entries AND the cumulative count in lock-step. Read from
+        // the ref, not from `entries` state — the closure captured the
+        // stale state at deps-change time, so entries.length would be 0
+        // for every appended page (breaks total-reached math).
+        if (opts.append) {
+          setEntries((prev) => [...prev, ...list]);
+          loadedCountRef.current += list.length;
+        } else {
+          setEntries(list);
+          loadedCountRef.current = list.length;
+        }
         const nextTotal = res.page?.total ?? null;
         setTotal(nextTotal);
-        // hasMore: this response returned exactly a full page AND we haven't
-        // exceeded the server total yet. A short page is the terminating
-        // signal (backend paginates deterministically).
-        const loadedAfter = (opts.append ? entries.length : 0) + list.length;
+        // hasMore: this response returned exactly a full page AND we
+        // haven't reached the server-reported total yet. A short page is
+        // the deterministic terminator; the total gate protects against
+        // one wasted round-trip when total is a clean multiple of
+        // PAGE_SIZE.
         const short = list.length < PAGE_SIZE;
-        const reachedTotal = nextTotal !== null && loadedAfter >= nextTotal;
-        hasMoreRef.current = !short && !reachedTotal;
-        forceRerenderHasMore((n) => n + 1);
+        const reachedTotal =
+          nextTotal !== null && loadedCountRef.current >= nextTotal;
+        setHasMore(!short && !reachedTotal);
         setPageIndex(opts.page);
       } catch (err: unknown) {
         if ((err as Error)?.name === 'AbortError' || seq !== seqRef.current) return;
@@ -121,10 +135,6 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
         setLoadingMore(false);
       }
     },
-    // entries.length is intentional: appended fetches need to know how many
-    // rows are already visible to compute hasMore correctly. filter is a
-    // separate effect trigger below (via useEffect on filter change).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [spaceId, parentId, filter],
   );
 
@@ -133,10 +143,10 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   }, [runFetch]);
 
   const loadMore = useCallback(() => {
-    if (!hasMoreRef.current) return;
+    if (!hasMore) return;
     if (loading || loadingMore) return;
     void runFetch({ page: pageIndex + 1, append: true });
-  }, [runFetch, pageIndex, loading, loadingMore]);
+  }, [runFetch, pageIndex, hasMore, loading, loadingMore]);
 
   // Fresh page-1 fetch whenever the space, folder or filter changes.
   useEffect(() => {
@@ -153,13 +163,13 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
       loadingMore,
       error,
       total,
-      hasMore: hasMoreRef.current,
+      hasMore,
       reload,
       loadMore,
       filter,
       setFilter,
     }),
-    [entries, loading, loadingMore, error, total, reload, loadMore, filter],
+    [entries, loading, loadingMore, error, total, hasMore, reload, loadMore, filter],
   );
   return result;
 }
