@@ -17,6 +17,7 @@ import { join } from "path";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
 import OCTO_CONFIG from "./config";
+import { executeUserDataMigration, planUserDataMigration } from "./userDataMigration";
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
@@ -507,19 +508,24 @@ function onDeepLink(url: string) {
 
 app.setName(OCTO_CONFIG.name);
 
-// NOTE: the one-time userData migration from the legacy <appData>/DMWork profile
-// to <appData>/OCTO is intentionally NOT part of this PR. It lives in the
-// separate PR #1265 (feat/octo-userdata-migration) because it is destructive and
-// needs its own failure-mode coverage (staging copy + atomic rename, legacy
-// SingletonLock detection, fallback to the legacy profile on failure).
-//
-// Until that migration PR lands, keep userData on the legacy path: app.setName
-// above would relocate Electron's default userData from <appData>/DMWork to
-// <appData>/OCTO, and shipping that without the migration would strand every
-// existing user's profile (empty profile on upgrade). The setPath override below
-// is removed by #1265, which takes over the path decision (OCTO after a
-// successful migration, legacy on deferral/failure).
-app.setPath("userData", join(app.getPath("appData"), "DMWork"));
+app.setName(OCTO_CONFIG.name);
+
+// One-time userData migration from the legacy DMWork profile (see
+// userDataMigration.ts for the full design). It must be DECIDED before the
+// single-instance lock: when a legacy DMWork instance is still running (its
+// SingletonLock is held), we point userData at the legacy dir so that
+// requestSingleInstanceLock() below fails against the running instance and
+// this launch simply quits — no live-profile copy, no double writer.
+// This supersedes the temporary setPath('userData', <appData>/DMWork) fallback
+// that #1258 carries until this PR lands: the migration now owns the path
+// decision (OCTO after a successful migration, legacy on deferral/failure).
+const userDataMigration = planUserDataMigration(
+  app.getPath("appData"),
+  OCTO_CONFIG.name
+);
+if (userDataMigration.action === "defer-legacy") {
+  app.setPath("userData", userDataMigration.oldDir);
+}
 
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
@@ -531,6 +537,19 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
+  // Only the lock holder migrates — any concurrent launch has already quit, so
+  // there is exactly one writer. A failure falls back to the legacy profile
+  // (setUserDataDir) and retries on the next launch.
+  if (userDataMigration.action === "migrate") {
+    executeUserDataMigration(userDataMigration, {
+      setUserDataDir: (dir) => app.setPath("userData", dir),
+      log: {
+        info: (msg) => console.log(msg),
+        warn: (msg) => console.warn(msg),
+        error: (msg, err) => console.error(msg, err),
+      },
+    });
+  }
   app.on("second-instance", (event, argv) => {
     if (mainWindow) {
       mainWindow.show();
