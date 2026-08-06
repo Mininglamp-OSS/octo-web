@@ -1,8 +1,8 @@
 diff --git a/out/node-module-collector/pnpmNodeModulesCollector.js b/out/node-module-collector/pnpmNodeModulesCollector.js
-index 602599280ab621d078748187bb6b4ae9431c1739..aff0f760566e7d7e07ed96e4361c713f2919ed95 100644
+index 602599280ab621d078748187bb6b4ae9431c1739..d5b177594a78b2146f58bef67a3fb89a037936ac 100644
 --- a/out/node-module-collector/pnpmNodeModulesCollector.js
 +++ b/out/node-module-collector/pnpmNodeModulesCollector.js
-@@ -24,13 +24,18 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+@@ -24,12 +24,22 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
          const { packageJson } = (await this.cache.locatePackageVersion({ pkgName: packageName, parentDir: this.rootDir, requiredRange: tree.version })) || {};
          const all = packageJson ? { ...packageJson.dependencies, ...packageJson.optionalDependencies } : { ...tree.dependencies, ...tree.optionalDependencies };
          const optional = packageJson ? { ...packageJson.optionalDependencies } : {};
@@ -11,19 +11,26 @@ index 602599280ab621d078748187bb6b4ae9431c1739..aff0f760566e7d7e07ed96e4361c713f
 +        const treeDeps = { ...(tree.dependencies || {}), ...(tree.optionalDependencies || {}) };
          this.productionGraph[dependencyId] = { dependencies: [] };
 -        const depPromises = Object.entries(deps).map(async ([packageName, dependency]) => {
+-            // First check if it's in production dependencies
+-            if (!all[packageName]) {
+-                return undefined;
 +        const depPromises = Object.entries(declaredDeps).map(async ([packageName, range]) => {
-             // First check if it's in production dependencies
-             if (!all[packageName]) {
-                 return undefined;
-             }
++            // declaredDeps and all are built from the same expression, so this
++            // filter is always true; it is kept only as a defensive guard.
 +            const dependency = treeDeps[packageName] || (await this.resolveMissingDep(packageName, range));
 +            if (dependency == null) {
-+                return undefined;
-+            }
++                // A required dependency the collector cannot resolve must fail
++                // the build — silently dropping it produces a green package that
++                // dies at runtime with Cannot find module. Only genuine optional
++                // dependencies may be skipped.
++                if (optional[packageName]) {
++                    return undefined;
++                }
++                throw new Error(`[app-builder-lib patch] cannot resolve required dependency "${packageName}" (range "${range}") for packaging`);
+             }
              // Then check if optional dependency path exists (using actual resolved path)
              if (optional[packageName]) {
-                 const pkg = await this.cache.locatePackageVersion({ pkgName: packageName, parentDir: this.rootDir, requiredRange: dependency.version });
-@@ -52,6 +57,35 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+@@ -52,6 +62,35 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
          }
          this.productionGraph[dependencyId] = { dependencies: collectedDependencies };
      }
@@ -52,7 +59,7 @@ index 602599280ab621d078748187bb6b4ae9431c1739..aff0f760566e7d7e07ed96e4361c713f
 +        if (best) {
 +            return { version: best };
 +        }
-+        console.warn(`[app-builder-lib patch] no installed version of "${packageName}" satisfies range "${range}" (candidates: ${candidates.join(", ")}); skipping`);
++        builder_util_1.log.warn({ packageName, range, candidates }, `[app-builder-lib patch] no installed version of "${packageName}" satisfies range "${range}"`);
 +        return null;
 +    }
 +

@@ -497,31 +497,37 @@ function onDeepLink(url: string) {
 
 app.setName(OCTO_CONFIG.name);
 
-// P1-1: one-time userData migration from the legacy DMWork profile dir to OCTO.
+// P1-1/P1-2: one-time userData migration from the legacy DMWork profile dir to OCTO.
 // app.setName() above changes Electron's default userData from <appData>/DMWork
 // to <appData>/OCTO. Without this, anyone who ran a DMWork-branded build would
 // silently get a fresh empty profile (lost session/localStorage/IndexedDB/drafts).
-// Copy the old profile the first time the new dir is absent; skip regenerable caches.
+//
+// Use an atomic rename rather than a copy:
+// - Atomic: renameSync either fully succeeds or fully fails, so <appData>/OCTO
+//   existing implies a COMPLETE migration — no torn/partial profile can be
+//   mistaken for a finished one (a half-copied LevelDB is a corrupt DB).
+// - Racing launches: two concurrent renames can only have one winner; the loser
+//   gets EEXIST which the catch ignores (the profile was already moved).
+// - Legacy instance still running: on Windows a held directory makes rename
+//   fail (EBUSY/EPERM), so we skip instead of copying a live profile under it —
+//   a torn snapshot is impossible because rename never reads file contents.
+// - Retryable: DMWork is never mutated, so a failed attempt just retries on the
+//   next launch.
+// Runs before requestSingleInstanceLock() on purpose: the lock creates files in
+// userData, i.e. it would create <appData>/OCTO and make the rename target exist.
 function migrateUserDataFromDMWork(): void {
   try {
     const appData = app.getPath("appData");
     const oldDir = join(appData, "DMWork");
     const newDir = join(appData, OCTO_CONFIG.name);
     if (!fs.existsSync(oldDir) || fs.existsSync(newDir)) return;
-    const SKIP_DIRS = new Set([
-      "Cache", "CachedData", "GPUCache", "Code Cache", "DawnCache",
-      "blob_storage", "Crashpad", "Service Worker",
-    ]);
-    fs.cpSync(oldDir, newDir, {
-      recursive: true,
-      filter: (src: string) => {
-        const base = src.split(/[\\/]/).pop() || "";
-        return !SKIP_DIRS.has(base);
-      },
-    });
+    fs.renameSync(oldDir, newDir);
     console.log("[userData] migrated DMWork profile to", newDir);
   } catch (err) {
-    console.warn("[userData] DMWork->OCTO migration failed, continuing with fresh profile:", err);
+    console.warn(
+      "[userData] DMWork->OCTO migration failed, continuing with fresh profile (will retry on next launch):",
+      err
+    );
   }
 }
 migrateUserDataFromDMWork();
