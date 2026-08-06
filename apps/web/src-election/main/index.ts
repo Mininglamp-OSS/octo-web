@@ -35,6 +35,10 @@ let isOsx = process.platform === "darwin";
 let isWin = !isOsx;
 
 const isDevelopment = process.env.NODE_ENV !== "production";
+// dev 模式下渲染层 dev server 地址。端口需与 vite dev server 一致，
+// 默认 3000（对齐旧 dev-ele 脚本）；可用 VITE_DEV_SERVER_URL 覆盖，
+// 避免与机器上其它占用 3000 的进程（如 e2e vite）冲突。
+const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:3000";
 const APP_EXIT_DELAY_MS = 1000;
 const TRAY_FLASH_INTERVAL_MS = 1000;
 
@@ -356,7 +360,7 @@ const createNewWindow = () => {
 
   // 加载相同的页面
   if (NODE_ENV == "development") {
-    newWindow.loadURL("http://localhost:3000?sid=" + getRandomSid());
+    newWindow.loadURL(`${DEV_SERVER_URL}?sid=${getRandomSid()}`);
   } else {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
@@ -395,7 +399,7 @@ const createMainWindow = async () => {
       }
     }
   });
-  if (NODE_ENV === "development") mainWindow.loadURL("http://localhost:3000");
+  if (NODE_ENV === "development") mainWindow.loadURL(DEV_SERVER_URL);
   if (NODE_ENV !== "development") {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
@@ -497,40 +501,12 @@ function onDeepLink(url: string) {
 
 app.setName(OCTO_CONFIG.name);
 
-// P1-1/P1-2: one-time userData migration from the legacy DMWork profile dir to OCTO.
-// app.setName() above changes Electron's default userData from <appData>/DMWork
-// to <appData>/OCTO. Without this, anyone who ran a DMWork-branded build would
-// silently get a fresh empty profile (lost session/localStorage/IndexedDB/drafts).
-//
-// Use an atomic rename rather than a copy:
-// - Atomic: renameSync either fully succeeds or fully fails, so <appData>/OCTO
-//   existing implies a COMPLETE migration — no torn/partial profile can be
-//   mistaken for a finished one (a half-copied LevelDB is a corrupt DB).
-// - Racing launches: two concurrent renames can only have one winner; the loser
-//   gets EEXIST which the catch ignores (the profile was already moved).
-// - Legacy instance still running: on Windows a held directory makes rename
-//   fail (EBUSY/EPERM), so we skip instead of copying a live profile under it —
-//   a torn snapshot is impossible because rename never reads file contents.
-// - Retryable: DMWork is never mutated, so a failed attempt just retries on the
-//   next launch.
-// Runs before requestSingleInstanceLock() on purpose: the lock creates files in
-// userData, i.e. it would create <appData>/OCTO and make the rename target exist.
-function migrateUserDataFromDMWork(): void {
-  try {
-    const appData = app.getPath("appData");
-    const oldDir = join(appData, "DMWork");
-    const newDir = join(appData, OCTO_CONFIG.name);
-    if (!fs.existsSync(oldDir) || fs.existsSync(newDir)) return;
-    fs.renameSync(oldDir, newDir);
-    console.log("[userData] migrated DMWork profile to", newDir);
-  } catch (err) {
-    console.warn(
-      "[userData] DMWork->OCTO migration failed, continuing with fresh profile (will retry on next launch):",
-      err
-    );
-  }
-}
-migrateUserDataFromDMWork();
+// NOTE: the one-time userData migration from the legacy <appData>/DMWork profile
+// to <appData>/OCTO is intentionally NOT part of this PR. It lives in the
+// separate PR (feat/octo-userdata-migration) because it is destructive and needs
+// its own failure-mode coverage (staging copy + atomic rename, legacy
+// SingletonLock detection, fallback to the legacy profile on failure). See
+// review discussion on PR #1258.
 
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
