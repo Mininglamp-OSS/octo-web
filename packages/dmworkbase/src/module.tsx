@@ -772,12 +772,11 @@ export default class BaseModule implements IModule {
     await coordinator.runOnce({
       ...claim,
       shouldSuppress: async () => {
-        // If context goes stale before or during the async IPC call, conservatively
-        // suppress to avoid spurious notifications. A stale context means the user
-        // switched session/space — better to miss one notification than fire a wrong one.
-        if (!this.isAttentionContextCurrent(context)) return true;
+        // A stale context must abstain rather than commit a terminal suppression.
+        // Another window may still be active for this account/message claim.
+        if (!this.isAttentionContextCurrent(context)) return false;
         const visible = await this.isIncomingMessageVisible(message);
-        if (!this.isAttentionContextCurrent(context)) return true;
+        if (!this.isAttentionContextCurrent(context)) return false;
         return visible;
       },
       subscribeSuppressionChanges: (listener) =>

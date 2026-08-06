@@ -23,16 +23,15 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-/** Reset the short-lived focus-query memoization between tests. */
-function resetFocusCache() {
+/** Reset the shared in-flight focus query between tests. */
+function resetFocusQuery() {
   const util = notificationUtil as any;
-  util.focusQueryCache = undefined;
   util.focusQueryInFlight = undefined;
 }
 
 describe("NotificationUtil.isWindowFocused", () => {
   beforeEach(() => {
-    resetFocusCache();
+    resetFocusQuery();
     Object.defineProperty(window, "__POWERED_ELECTRON__", {
       configurable: true,
       value: true,
@@ -40,7 +39,7 @@ describe("NotificationUtil.isWindowFocused", () => {
   });
 
   afterEach(() => {
-    resetFocusCache();
+    resetFocusQuery();
     delete (window as any).electronNotification;
     delete (window as any).__POWERED_ELECTRON__;
     vi.restoreAllMocks();
@@ -54,15 +53,14 @@ describe("NotificationUtil.isWindowFocused", () => {
     expect(isWindowFocused).toHaveBeenCalledOnce();
   });
 
-  it("memoizes the focus result within the TTL window", async () => {
+  it("queries the main process again after a completed request", async () => {
     const isWindowFocused = vi.fn().mockResolvedValue(true);
     (window as any).electronNotification = { isWindowFocused };
 
     await expect(notificationUtil.isWindowFocused()).resolves.toBe(true);
     await expect(notificationUtil.isWindowFocused()).resolves.toBe(true);
 
-    // Second call within TTL must reuse the cached value, not re-issue IPC.
-    expect(isWindowFocused).toHaveBeenCalledOnce();
+    expect(isWindowFocused).toHaveBeenCalledTimes(2);
   });
 
   it("shares a single in-flight IPC request across concurrent callers", async () => {

@@ -34,15 +34,6 @@ const NOTIFICATION_TIMEOUT_MS = 5000;
 const MAX_TRACKED_TAGS = 200;
 
 /**
- * Time window during which a main-process focus query result is reused instead
- * of issuing another IPC round-trip. A single incoming message can trigger many
- * focus checks (initial visibility + every suppression re-check driven by
- * focus/visibility/route events); memoizing within a short window keeps IPC
- * pressure bounded without meaningfully staling the decision.
- */
-const FOCUS_QUERY_TTL_MS = 200;
-
-/**
  * Upper bound on generic notifications whose click listeners are tracked for
  * cleanup. Prevents unbounded listener accumulation when callers do not close
  * the returned handle.
@@ -95,8 +86,8 @@ export class NotificationUtil {
   private messageNotificationGenerations = new Map<string, number>();
   private messageNotificationInFlightCounts = new Map<string, number>();
 
-  // Short-lived cache of the last main-process focus query result.
-  private focusQueryCache?: { value: boolean; expiresAt: number };
+  // Share an in-flight query across concurrent callers without caching a
+  // completed result, because focus can change between two messages.
   private focusQueryInFlight?: Promise<boolean>;
 
   // Tracks generic notifications so their click listeners can be released even
@@ -163,29 +154,21 @@ export class NotificationUtil {
    * window state (focused + visible + not minimized).
    * Falls back to document.hasFocus() in non-Electron environments.
    *
-   * Results are memoized for FOCUS_QUERY_TTL_MS and concurrent callers share a
-   * single in-flight IPC request, so a burst of checks for the same decision
-   * window does not fan out into many round-trips.
+   * Concurrent callers share a single in-flight IPC request, but completed
+   * results are not cached: a blur or focus change must be observed by the next
+   * decision immediately.
    */
   public async isWindowFocused(): Promise<boolean> {
     if (
       this.isElectronNativeNotificationAvailable() &&
       window.electronNotification?.isWindowFocused
     ) {
-      const now = Date.now();
-      if (this.focusQueryCache && this.focusQueryCache.expiresAt > now) {
-        return this.focusQueryCache.value;
-      }
       if (this.focusQueryInFlight) {
         return this.focusQueryInFlight;
       }
       this.focusQueryInFlight = (async () => {
         try {
           const value = await window.electronNotification!.isWindowFocused();
-          this.focusQueryCache = {
-            value,
-            expiresAt: Date.now() + FOCUS_QUERY_TTL_MS,
-          };
           return value;
         } catch {
           // IPC failure — fall back to document.hasFocus()
