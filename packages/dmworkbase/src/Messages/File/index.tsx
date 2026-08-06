@@ -350,7 +350,7 @@ interface FileCellState {
   textPreviewContent: string;
   textPreviewName: string;
   textPreviewExt: string;
-  /** 该 IM 文件是否已存进云盘。undefined = 未查过；hover 时首次查询后填入。 */
+  /** 该 IM 文件是否已存进云盘。undefined = 未查过/查询中。挂载时批量查一次。 */
   imTransferred?: { exists: boolean; file_id?: number; space_id?: string; parent_id?: number };
 }
 
@@ -359,8 +359,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
   declare context: React.ContextType<typeof I18nContext>;
 
   private _task?: RestartableTask;
-  /** 200ms hover debounce timer for the "check-if-transferred" query. */
-  private _hoverTimer: ReturnType<typeof setTimeout> | null = null;
+  private _mounted = false;
 
   private _taskListener = (task: Task) => {
     const { message } = this.props;
@@ -385,6 +384,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
 
   componentDidMount() {
     super.componentDidMount();
+    this._mounted = true;
     const { message } = this.props;
     const content = message.content as FileContent;
     // 小文件不显示进度，跳过订阅
@@ -406,15 +406,37 @@ export class FileCell extends MessageCell<any, FileCellState> {
         });
       }
     }
+
+    // 挂载时查询转存状态：多条消息在钩子层 50ms 微批合并成一次批量请求。
+    const check = WKApp.checkDriveTransferred;
+    if (check && WKApp.remoteConfig?.driveOn) {
+      const refId = this.getFileURL(content);
+      if (refId) {
+        check(refId)
+          .then((entry) => {
+            if (!this._mounted) return;
+            this.setState({
+              imTransferred: entry
+                ? {
+                    exists: true,
+                    file_id: entry.file_id,
+                    space_id: entry.space_id,
+                    parent_id: entry.parent_id,
+                  }
+                : { exists: false },
+            });
+          })
+          .catch(() => {
+            /* 查询失败静默，按未存态渲染 */
+          });
+      }
+    }
   }
 
   componentWillUnmount() {
     super.componentWillUnmount();
+    this._mounted = false;
     WKSDK.shared().taskManager.removeListener(this._taskListener);
-    if (this._hoverTimer !== null) {
-      clearTimeout(this._hoverTimer);
-      this._hoverTimer = null;
-    }
   }
 
   getFileURL(content: FileContent): string {
@@ -478,33 +500,6 @@ export class FileCell extends MessageCell<any, FileCellState> {
       Toast.success(t("base.messageFile.saveToDriveSuccess"));
     } catch {
       Toast.error(t("base.messageFile.saveToDriveFailed"));
-    }
-  };
-
-  /** 首次 hover 存云盘图标时(经过 200ms 防抖)查询该 IM 文件是否已转存。 */
-  private scheduleTransferCheck = () => {
-    if (this.state.imTransferred !== undefined) return; // 已查过
-    if (this._hoverTimer !== null) return;
-    const check = WKApp.checkDriveTransferred;
-    if (!check) return; // drive 模块未装 → 保持"存到云盘"
-    const { message } = this.props;
-    const content = message.content as FileContent;
-    const refId = this.getFileURL(content);
-    if (!refId) return;
-    this._hoverTimer = setTimeout(() => {
-      this._hoverTimer = null;
-      check(refId)
-        .then((res) => this.setState({ imTransferred: res }))
-        .catch(() => {
-          /* 查询失败保持未知,下次 hover 会再试;不打扰用户 */
-        });
-    }, 200);
-  };
-
-  private cancelPendingTransferCheck = () => {
-    if (this._hoverTimer !== null) {
-      clearTimeout(this._hoverTimer);
-      this._hoverTimer = null;
     }
   };
 
@@ -759,27 +754,41 @@ export class FileCell extends MessageCell<any, FileCellState> {
                               ? t("base.messageFile.viewInDrive")
                               : t("base.messageFile.saveToDrive")
                           }
-                          onMouseEnter={this.scheduleTransferCheck}
-                          onMouseLeave={this.cancelPendingTransferCheck}
                           onClick={(e) => {
                             e.stopPropagation();
                             this.handleSaveToDrive();
                           }}
                         >
-                          <svg
-                            viewBox="0 0 24 24"
-                            width="16"
-                            height="16"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
-                            <polyline points="16 16 12 12 8 16" />
-                            <line x1="12" y1="12" x2="12" y2="21" />
-                          </svg>
+                          {this.state.imTransferred?.exists ? (
+                            <svg
+                              viewBox="0 0 24 24"
+                              width="16"
+                              height="16"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
+                              <polyline points="9 12 11 14 15 10" />
+                            </svg>
+                          ) : (
+                            <svg
+                              viewBox="0 0 24 24"
+                              width="16"
+                              height="16"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
+                              <polyline points="16 16 12 12 8 16" />
+                              <line x1="12" y1="12" x2="12" y2="21" />
+                            </svg>
+                          )}
                         </div>
                       </Tooltip>
                     )}

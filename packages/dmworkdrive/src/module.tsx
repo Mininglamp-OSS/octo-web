@@ -11,7 +11,8 @@ import { HardDrive } from 'lucide-react';
 import DriveSidebar from './pages/DriveSidebar';
 import DriveContent from './pages/DriveContent';
 import { DriveVM } from './pages/DriveVM';
-import { transferFromIm, checkImTransferred } from './api/driveApi';
+import { transferFromIm, checkImTransferredBatch } from './api/driveApi';
+import type { ImTransferredEntry } from './api/driveApi';
 
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
@@ -119,15 +120,63 @@ export default class DriveModule implements IModule {
       return { file_id: result.id, space_id: result.space_id, parent_id: result.parent_id };
     };
 
-    // Chat file card hover-check: has this IM file already been transferred?
-    WKApp.checkDriveTransferred = (refId: string) => checkImTransferred(refId);
+    // Chat file card mount-time check: has this IM file already been transferred?
+    // Coalesces the calls that fire from every visible file card into a single
+    // batch request. A microtask (not a timer) flushes the batch: React runs a
+    // list's file-card componentDidMounts in one synchronous stack, so every
+    // ref_id is enqueued in the same tick and the microtask fires the instant
+    // that stack unwinds — one backend hit for the whole screen, no perceptible
+    // delay. Returns the drive entry when found, or null when the ref_id wasn't
+    // in the batch response (= not transferred).
+    let pendingBatch: Map<string, Array<{
+      resolve: (v: ImTransferredEntry | null) => void;
+      reject: (err: unknown) => void;
+    }>> | null = null;
+    let flushScheduled = false;
+    const flushBatch = (): void => {
+      const batch = pendingBatch;
+      pendingBatch = null;
+      flushScheduled = false;
+      if (!batch || batch.size === 0) return;
+      const refIds = Array.from(batch.keys());
+      checkImTransferredBatch(refIds)
+        .then((results) => {
+          for (const [refId, waiters] of batch) {
+            const entry = results[refId] ?? null;
+            for (const w of waiters) w.resolve(entry);
+          }
+        })
+        .catch((err) => {
+          for (const waiters of batch.values()) {
+            for (const w of waiters) w.reject(err);
+          }
+        });
+    };
+    WKApp.checkDriveTransferred = (refId: string) =>
+      new Promise<ImTransferredEntry | null>((resolve, reject) => {
+        if (!pendingBatch) pendingBatch = new Map();
+        const existing = pendingBatch.get(refId);
+        if (existing) {
+          existing.push({ resolve, reject });
+        } else {
+          pendingBatch.set(refId, [{ resolve, reject }]);
+        }
+        if (!flushScheduled) {
+          flushScheduled = true;
+          queueMicrotask(flushBatch);
+        }
+      });
 
-    // Chat file card "view in drive": open the drive route, ensure the right
-    // pane is mounted, and let the VM focus/flash the target file.
+    // Chat file card "view in drive": switch the NavRail to the drive menu
+    // (this is what mounts the LEFT space rail + highlights the entry — the
+    // missing piece that left the sidebar on the conversation list), then
+    // mount the RIGHT file view and let the VM focus/flash the target file.
+    // switchToMenuById intentionally does not popToRoot (shared left stack),
+    // and only syncs the route — it does not mount contentRight, so we still
+    // call mountDriveContent explicitly.
     WKApp.openDriveFile = ({ space_id, parent_id, file_id }: { space_id: string; parent_id: number; file_id: number }) => {
-      WKApp.routeLeft.popToRoot();
+      WKApp.switchToMenuById?.('drive');
       mountDriveContent();
-      WKApp.route.syncPath('/drive');
       vm.focusFile(space_id, parent_id, file_id);
     };
 

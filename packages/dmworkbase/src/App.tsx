@@ -775,7 +775,7 @@ export default class WKApp extends ProviderListener {
   // Query whether an IM file (by its message url) is already transferred into
   // the caller's personal drive space. Registered by DriveModule; the chat file
   // card uses it to switch its icon action between "save" and "view".
-  static checkDriveTransferred?: (refId: string) => Promise<{ exists: boolean; file_id?: number; space_id?: string; parent_id?: number }>;
+  static checkDriveTransferred?: (refId: string) => Promise<{ file_id: number; space_id: string; parent_id: number } | null>;
   // Open the drive UI and focus/flash a specific file. Registered by DriveModule.
   static openDriveFile?: (params: { space_id: string; parent_id: number; file_id: number }) => void;
   // Id of the currently active sidebar menu (kept in sync by Main page)
