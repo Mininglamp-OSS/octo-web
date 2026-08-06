@@ -3,6 +3,7 @@ import { t } from '@octo/base';
 import * as api from '../api/driveApi';
 import { DriveApiError } from '../api/driveApi';
 import { Toast } from '../utils/toast';
+import { validateUploads, MAX_UPLOAD_SIZE } from '../utils/uploadValidation';
 
 export type UploadStatus = 'preparing' | 'uploading' | 'confirming' | 'done' | 'error';
 
@@ -332,12 +333,29 @@ export function useUpload(onUploaded: () => void): UseUpload {
 
   const addFiles = useCallback(
     (files: FileList | File[], spaceId: string, parentId: number) => {
-      const created = Array.from(files).map((file) => {
+      // Pre-flight: match the server's hard rules (empty size, MaxFileSize)
+      // so obviously-doomed uploads never leave the browser. Surface every
+      // rejection as its own toast so users don't have to guess which file
+      // was the problem in a mixed drop.
+      const { accepted, rejected } = validateUploads(files);
+      for (const r of rejected) {
+        if (r.reason === 'empty') {
+          Toast.error(t('drive.upload.rejectEmpty', { values: { name: r.file.name } }));
+        } else if (r.reason === 'tooLarge') {
+          Toast.error(
+            t('drive.upload.rejectTooLarge', {
+              values: { name: r.file.name, maxMB: String(MAX_UPLOAD_SIZE / 1024 / 1024) },
+            }),
+          );
+        }
+      }
+      if (accepted.length === 0) return;
+
+      const created = accepted.map((file) => {
         const id = nextId();
         jobs.current.set(id, { file, spaceId, parentId });
         return { id, name: file.name, size: file.size, status: 'preparing' as const, progress: 0 };
       });
-      if (!created.length) return;
       setItems((list) => [...list, ...created]);
       created.forEach((it) => void runItem(it.id));
     },

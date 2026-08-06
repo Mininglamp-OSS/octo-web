@@ -168,7 +168,9 @@
     "retry": "重试",
     "cancel": "取消",
     "dismiss": "移除",
-    "dropTitle": "松开以上传到当前目录"
+    "dropTitle": "松开以上传到当前目录",
+    "rejectEmpty": "跳过空文件：{{name}}",
+    "rejectTooLarge": "文件过大（超过 {{maxMB}}MB）：{{name}}"
   },
   "download": {
     "failed": "下载失败"
