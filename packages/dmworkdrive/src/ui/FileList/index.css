@@ -25,7 +25,7 @@
 
 .drive-file-row {
   display: grid;
-  grid-template-columns: 1fr 120px 180px 48px;
+  grid-template-columns: 28px 1fr 120px 180px 48px;
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
@@ -38,6 +38,35 @@
 
 .drive-file-row:not(.drive-file-row--head):hover {
   background: var(--wk-bg-hover, #dfe0e2);
+}
+
+/* Selection state — a persistent tint on the row so the user can see what
+   they've batched without hovering. Uses docs' shared --wk-bg-selected token
+   for consistency with keyboard focus below. */
+.drive-file-row.drive-file-row--selected,
+.drive-file-row.drive-file-row--selected:hover {
+  background: var(--wk-bg-selected, rgba(127, 59, 245, 0.06));
+}
+
+/* Checkbox column — always visible (per product decision) so the affordance
+   is discoverable. Uses --wk-brand-primary as the accent so the check mark
+   matches the primary CTA rather than the accent purple. */
+.drive-file__check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.drive-file__check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--wk-brand-primary, #1c1c23);
+  cursor: pointer;
+  margin: 0;
+}
+.drive-file__check input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--wk-text-accent, #7f3bf5);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* Drive rows are navigational rather than selectable, so the active treatment

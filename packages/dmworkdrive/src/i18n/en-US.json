@@ -33,7 +33,9 @@
     "colName": "Name",
     "colSize": "Size",
     "colUpdated": "Modified",
-    "truncated": "Large folder — showing the first 200 items only"
+    "truncated": "Large folder — showing the first 200 items only",
+    "selectAll": "Select all",
+    "selectRow": "Select item"
   },
   "move": {
     "title": "Move to",

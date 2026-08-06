@@ -160,4 +160,94 @@ describe('FileList', () => {
       expect(queryByText('drive.file.share')).toBeNull();
     });
   });
+
+  describe('selection', () => {
+    function makeSelection(over: Partial<NonNullable<React.ComponentProps<typeof FileList>['selection']>> = {}) {
+      const state = { ids: new Set<number>() };
+      const toggle = vi.fn((id: number) => {
+        if (state.ids.has(id)) state.ids.delete(id);
+        else state.ids.add(id);
+      });
+      const toggleAll = vi.fn();
+      return {
+        selection: {
+          isSelected: (id: number) => state.ids.has(id),
+          toggle,
+          isAllSelected: false,
+          isIndeterminate: false,
+          toggleAll,
+          ...over,
+        },
+        toggle,
+        toggleAll,
+      };
+    }
+
+    it('renders no checkboxes when selection prop is omitted', () => {
+      const { container } = renderList([entry(1, 'docs', 'folder')]);
+      expect(container.querySelectorAll('input[type="checkbox"]').length).toBe(0);
+    });
+
+    it('renders a header checkbox + one per row when selection is provided', () => {
+      const { selection } = makeSelection();
+      const { container } = renderList([entry(1, 'a', 'blob'), entry(2, 'b', 'blob')], false, {
+        selection,
+      });
+      // 1 header + 2 rows = 3 checkboxes
+      expect(container.querySelectorAll('input[type="checkbox"]').length).toBe(3);
+    });
+
+    it('toggles row selection when a row checkbox is clicked', () => {
+      const { selection, toggle } = makeSelection();
+      const { container, click } = renderList([entry(1, 'a', 'blob')], false, { selection });
+      const [, rowCb] = container.querySelectorAll('input[type="checkbox"]');
+      click(rowCb);
+      expect(toggle).toHaveBeenCalledWith(1);
+    });
+
+    it('reflects isSelected state via the row checkbox `checked` prop', () => {
+      const { selection } = makeSelection({ isSelected: (id: number) => id === 1 });
+      const { container } = renderList([entry(1, 'a', 'blob'), entry(2, 'b', 'blob')], false, {
+        selection,
+      });
+      const rowCbs = container.querySelectorAll<HTMLInputElement>('.drive-file-row:not(.drive-file-row--head) input[type="checkbox"]');
+      expect(rowCbs[0].checked).toBe(true);
+      expect(rowCbs[1].checked).toBe(false);
+    });
+
+    it('applies the --selected row class when the entry is selected', () => {
+      const { selection } = makeSelection({ isSelected: (id: number) => id === 1 });
+      const { container } = renderList([entry(1, 'a', 'blob'), entry(2, 'b', 'blob')], false, {
+        selection,
+      });
+      const rows = container.querySelectorAll('.drive-file-row:not(.drive-file-row--head)');
+      expect(rows[0].classList.contains('drive-file-row--selected')).toBe(true);
+      expect(rows[1].classList.contains('drive-file-row--selected')).toBe(false);
+    });
+
+    it('fires toggleAll from the header checkbox', () => {
+      const { selection, toggleAll } = makeSelection();
+      const { container, click } = renderList([entry(1, 'a', 'blob')], false, { selection });
+      const headerCb = container.querySelector('input[type="checkbox"]')!;
+      click(headerCb);
+      expect(toggleAll).toHaveBeenCalled();
+    });
+
+    it('sets header checkbox to indeterminate when isIndeterminate is true', () => {
+      const { selection } = makeSelection({ isIndeterminate: true });
+      const { container } = renderList([entry(1, 'a', 'blob'), entry(2, 'b', 'blob')], false, {
+        selection,
+      });
+      const headerCb = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+      expect(headerCb.indeterminate).toBe(true);
+    });
+
+    it('sets header checkbox to checked when isAllSelected is true', () => {
+      const { selection } = makeSelection({ isAllSelected: true });
+      const { container } = renderList([entry(1, 'a', 'blob')], false, { selection });
+      const headerCb = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+      expect(headerCb.checked).toBe(true);
+      expect(headerCb.indeterminate).toBe(false);
+    });
+  });
 });
