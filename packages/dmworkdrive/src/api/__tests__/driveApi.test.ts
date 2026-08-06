@@ -474,3 +474,128 @@ describe('putToPresignedUrl — M-3 credential isolation', () => {
     expect(config.validateStatus(200)).toBe(true);
   });
 });
+
+// ─── IM → drive transferred-state wire contract ────────────────────────────
+//
+// Pin the cross-service contract that the "already saved to my drive" check
+// depends on. There is no codegen / OpenAPI between octo-drive and octo-web,
+// so the frontend blind-reconstructs the backend's `source_key` from the IM
+// message triple; any silent drift (delimiter, field order, id-field name,
+// Space-prefix stripping) would fail 100% of lookups with no runtime signal.
+// These tests give the contract CI-time enforcement.
+//
+// Backend anchor: octo-drive
+//   - internal/modules/imtransfer/service.go `buildSourceKey`
+//   - db/migrations/007_add_file_source_key.up.sql
+//   - internal/modules/imtransfer/api.go   POST /blobs/im-transferred/batch
+import {
+  imTransferredSourceKey,
+  normaliseImChannelID,
+  isDriveTransferSupportedChannel,
+} from '../../bridge/types';
+
+describe('IM -> drive transferred-state wire contract (source_key)', () => {
+  it('transferFromIm POSTs /blobs/transfer-from-im with the IM message triple', async () => {
+    inst.post.mockResolvedValue(ok({ id: 42, space_id: 'sp_personal', parent_id: 0 }));
+    const req = {
+      im_group_no: 'group_abc',
+      im_channel_type: 2,
+      im_msg_id: '17012345678901234',
+      target_space_id: '',
+      target_parent_id: 0,
+    };
+    await driveApi.transferFromIm(req);
+    // Full body pin: any field rename / drop / added-required field on either
+    // side must update both — that is the point of this assertion.
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/blobs/transfer-from-im', {
+      im_group_no: 'group_abc',
+      im_channel_type: 2,
+      im_msg_id: '17012345678901234',
+      target_space_id: '',
+      target_parent_id: 0,
+    });
+  });
+
+  it('checkImTransferredBatch POSTs /blobs/im-transferred/batch with items[] triples', async () => {
+    const sourceKeyA = '2#group_abc#111';
+    const sourceKeyB = '1#peer_uid_xyz#222';
+    inst.post.mockResolvedValue(ok({
+      results: {
+        [sourceKeyA]: { file_id: 42, space_id: 'sp_personal', parent_id: 0 },
+        [sourceKeyB]: { file_id: 43, space_id: 'sp_personal', parent_id: 0 },
+      },
+    }));
+    const items = [
+      { im_group_no: 'group_abc',    im_channel_type: 2, im_msg_id: '111' },
+      { im_group_no: 'peer_uid_xyz', im_channel_type: 1, im_msg_id: '222' },
+    ];
+    const res = await driveApi.checkImTransferredBatch(items);
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/blobs/im-transferred/batch', { items });
+    expect(res[sourceKeyA]).toEqual({ file_id: 42, space_id: 'sp_personal', parent_id: 0 });
+    expect(res[sourceKeyB]).toEqual({ file_id: 43, space_id: 'sp_personal', parent_id: 0 });
+  });
+
+  // Direct pin of the `source_key = "${channelType}#${channelID}#${msgID}"`
+  // format. The frontend rebuilds this string in module.tsx
+  // (`checkDriveTransferred` and `flushBatch`) to look up each card's status.
+  // If the backend ever changes the delimiter or field order, that lookup
+  // silently returns null for every card and every saved file shows
+  // "Save to Drive" forever, with no error / warning / failing test —
+  // the silent-total-failure mode the reviewer flagged.
+  it('imTransferredSourceKey pins `${channelType}#${channelID}#${msgID}` format', () => {
+    expect(imTransferredSourceKey({
+      im_channel_type: 2,
+      im_group_no: 'g_abc',
+      im_msg_id: '17012345678901234',
+    })).toBe('2#g_abc#17012345678901234');
+
+    // Sub-thread composite channelID uses '____' as separator, which never
+    // collides with the source_key delimiter '#'.
+    expect(imTransferredSourceKey({
+      im_channel_type: 5,
+      im_group_no: 'group_xyz____2084892300504207360',
+      im_msg_id: '42',
+    })).toBe('5#group_xyz____2084892300504207360#42');
+
+    // Person (DM): channelType=1. The im_group_no here is expected to be
+    // pre-normalised (bare peer uid, no Space prefix); see normaliseImChannelID.
+    expect(imTransferredSourceKey({
+      im_channel_type: 1,
+      im_group_no: 'peer_uid_xyz',
+      im_msg_id: '42',
+    })).toBe('1#peer_uid_xyz#42');
+  });
+
+  it('normaliseImChannelID strips Space prefix only for Person channelType', () => {
+    const prefixed = 's0a1b2c3d4e5f60718293a4b5c6d7e8f9_alice';
+    const bare = 'alice';
+    // Person (channelType=1): strip the s<32-hex>_ Space prefix so backends
+    // that key on the bare uid (octo-server `GetFakeChannelIDWith`,
+    // `AreSpaceMembers`, `IsFriend`) match.
+    expect(normaliseImChannelID(1, prefixed)).toBe(bare);
+    // No prefix -> no-op.
+    expect(normaliseImChannelID(1, bare)).toBe(bare);
+    // Group / CommunityTopic: pass through unchanged (backend accepts prefixed
+    // IDs for those paths per Service/ChannelSettingService.ts).
+    expect(normaliseImChannelID(2, 'group_abc')).toBe('group_abc');
+    expect(normaliseImChannelID(5, 'group_xyz____2084892300504207360')).toBe('group_xyz____2084892300504207360');
+    // Malformed / not-quite-prefix strings are left untouched.
+    expect(normaliseImChannelID(1, 's_alice')).toBe('s_alice');
+    expect(normaliseImChannelID(1, 'salice')).toBe('salice');
+  });
+
+  it('isDriveTransferSupportedChannel gates to Person/Group/CommunityTopic only', () => {
+    // Supported: 1=Person, 2=Group, 5=CommunityTopic.
+    expect(isDriveTransferSupportedChannel(1)).toBe(true);
+    expect(isDriveTransferSupportedChannel(2)).toBe(true);
+    expect(isDriveTransferSupportedChannel(5)).toBe(true);
+    // Unsupported (must not render the icon or fire the query):
+    // 3 = ChannelTypeCustomerService is a live channel type in this repo,
+    // and any future addition must be opted-in explicitly.
+    expect(isDriveTransferSupportedChannel(3)).toBe(false);
+    expect(isDriveTransferSupportedChannel(0)).toBe(false);
+    expect(isDriveTransferSupportedChannel(4)).toBe(false);
+    expect(isDriveTransferSupportedChannel(6)).toBe(false);
+    expect(isDriveTransferSupportedChannel(999)).toBe(false);
+  });
+});

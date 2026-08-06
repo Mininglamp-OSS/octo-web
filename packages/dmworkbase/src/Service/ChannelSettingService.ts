@@ -6,7 +6,7 @@ import {
 
 import APIClient from "./APIClient";
 import { ChannelTypeCommunityTopic } from "./Const";
-import { hasSpacePrefix } from "./SpacePrefix";
+import { hasSpacePrefix, stripSpacePrefix } from "./SpacePrefix";
 import { parseThreadChannelId } from "./Thread";
 
 export type ChannelSettingPayload = Record<string, any>;
@@ -17,13 +17,6 @@ export interface CreateChannelOptions {
   avatarText?: string;
   avatarColor?: number;
   spaceId?: string;
-}
-
-function stripSpacePrefix(uid: string) {
-  if (!hasSpacePrefix(uid)) {
-    return uid;
-  }
-  return uid.substring(uid.indexOf("_") + 1);
 }
 
 function isPersonChannel(channel: Channel) {

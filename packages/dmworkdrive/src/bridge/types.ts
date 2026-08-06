@@ -411,14 +411,56 @@ export interface ImTransferredEntry {
  * Batch item shape sent to POST /blobs/im-transferred/batch. The three fields
  * together form the source_key `${im_channel_type}#${im_group_no}#${im_msg_id}`
  * documented above. im_channel_type is the wukongimjssdk ChannelType numeric
- * enum (Person=1, Group=2, CommunityTopic=5); im_group_no is the IM channelID
- * (peer uid for DM, group_no for group, or "group_no____short_id" for
- * sub-thread); im_msg_id is the octo-server message id as a string.
+ * enum (Person=1, Group=2, CommunityTopic=5); im_group_no is the IM
+ * **normalised** channelID:
+ *   - Person: the bare peer uid, with the `s<32-hex>_` Space prefix stripped
+ *     (see `imTransferredSourceKey` — the Person path always normalises before
+ *     the wire); on non-Space deployments this is a no-op.
+ *   - Group: the raw group_no.
+ *   - CommunityTopic: the raw `group_no____short_id` composite (already using
+ *     `____` as separator for sub-threads).
+ * im_msg_id is the octo-server message id as a string.
+ *
+ * Space-prefix rationale: in Space deployments `Channel.channelID` for Person
+ * is `s<32-hex>_<peer_uid>` (see `Service/SpacePrefix.ts` + `hasSpacePrefix`).
+ * octo-server's `getPersonMessage` (#708 head 06a25707) hashes `peer_uid`
+ * directly via `GetFakeChannelIDWith` and passes it to `IsFriend` /
+ * `AreSpaceMembers` — none of them are prefix-tolerant. Sending the
+ * prefixed form 404s every DM save. Group / thread paths on the backend
+ * accept prefixed IDs (see `Service/ChannelSettingService.ts`), so only
+ * Person needs the strip; #1261 review round 6 P1-1.
  */
 export interface ImTransferredItem {
   im_group_no: string;
   im_channel_type: number;
   im_msg_id: string;
+}
+
+// wukongimjssdk ChannelType numeric enum, duplicated here to avoid dragging
+// the runtime `wukongimjssdk` dependency into a pure-type wire-contract file.
+// Any drift would fail the source_key format test in driveApi.test.ts.
+const CHANNEL_TYPE_PERSON = 1;
+
+// Re-export the drive-transfer supported-channel predicate from @octo/base so
+// dmworkbase (FileCell) and dmworkdrive share one source of truth without
+// creating a base → drive dependency (allowed direction is drive → base).
+export { isDriveTransferSupportedChannel } from "@octo/base";
+
+/**
+ * Normalise `channelID` to the shape octo-drive / octo-server key on. See
+ * `ImTransferredItem` doc block for the per-channelType contract. This is the
+ * ONE authoritative normalisation entry point for the drive-transfer path;
+ * callers must not hand-strip.
+ */
+export function normaliseImChannelID(channelType: number, channelID: string): string {
+  if (channelType === CHANNEL_TYPE_PERSON) {
+    // Person only: strip `s<32-hex>_` Space prefix if present. No-op otherwise.
+    // Inlined against the SpacePrefix regex so `bridge/types.ts` stays free of
+    // runtime imports from `dmworkbase`.
+    const m = channelID.match(/^s[0-9a-f]{32}_(.+)$/);
+    return m ? m[1] : channelID;
+  }
+  return channelID;
 }
 
 /**
@@ -430,6 +472,10 @@ export interface ImTransferredItem {
  * function so any future backend format change is localized to one edit
  * instead of drifting across call sites. Do not inline `${...}#${...}#${...}`
  * elsewhere.
+ *
+ * The Person path expects a **normalised** (unprefixed) `im_group_no`. Callers
+ * building an ImTransferredItem from a `Channel` should use `normaliseImChannelID`
+ * to strip the Space prefix on Person; #1261 review round 6 P1-1.
  *
  * Backend anchor: octo-drive `internal/modules/imtransfer/service.go`
  * `buildSourceKey`, migration `db/migrations/007_add_file_source_key.up.sql`.

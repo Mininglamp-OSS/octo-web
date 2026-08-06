@@ -13,7 +13,7 @@ import DriveContent from './pages/DriveContent';
 import { DriveVM } from './pages/DriveVM';
 import { transferFromIm, checkImTransferredBatch } from './api/driveApi';
 import type { ImTransferredEntry } from './api/driveApi';
-import { imTransferredSourceKey } from './bridge/types';
+import { imTransferredSourceKey, normaliseImChannelID } from './bridge/types';
 
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
@@ -110,10 +110,15 @@ export default class DriveModule implements IModule {
 
     // Bridge for the chat file card's "save to Drive" action. Backend accepts
     // an empty target_space_id and defaults to the caller's personal space,
-    // so we don't pre-resolve it (one fewer round-trip).
+    // so we don't pre-resolve it (one fewer round-trip). Person channelIDs
+    // are Space-prefixed in Space deployments (`s<32-hex>_<peer_uid>`) while
+    // the drive/octo-server keys on the bare uid — `normaliseImChannelID`
+    // strips the prefix for Person and no-ops for Group / CommunityTopic.
+    // Callers hand raw `message.channel.channelID`; this is the single
+    // normalisation point for the drive-transfer path (see bridge/types).
     WKApp.saveMessageToDrive = async ({ im_group_no, im_channel_type, im_msg_id }: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => {
       const result = await transferFromIm({
-        im_group_no,
+        im_group_no: normaliseImChannelID(im_channel_type, im_group_no),
         im_channel_type,
         im_msg_id,
         target_space_id: '',
@@ -172,13 +177,22 @@ export default class DriveModule implements IModule {
           resolve(null);
           return;
         }
+        // Normalise Space-prefixed Person channelIDs to bare peer uid before
+        // building the source_key + sending the wire — the drive backend and
+        // octo-server both key on the unprefixed form. See saveMessageToDrive
+        // comment and bridge/types.ts `normaliseImChannelID`.
+        const item = {
+          im_group_no: normaliseImChannelID(msg.im_channel_type, msg.im_group_no),
+          im_channel_type: msg.im_channel_type,
+          im_msg_id: msg.im_msg_id,
+        };
         if (!pendingBatch) pendingBatch = new Map();
-        const sourceKey = imTransferredSourceKey(msg);
+        const sourceKey = imTransferredSourceKey(item);
         const existing = pendingBatch.get(sourceKey);
         if (existing) {
           existing.waiters.push({ resolve, reject });
         } else {
-          pendingBatch.set(sourceKey, { item: msg, waiters: [{ resolve, reject }] });
+          pendingBatch.set(sourceKey, { item, waiters: [{ resolve, reject }] });
         }
         if (!flushScheduled) {
           flushScheduled = true;

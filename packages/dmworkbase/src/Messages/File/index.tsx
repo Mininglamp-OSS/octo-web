@@ -13,6 +13,7 @@ import MessageRow from "../../ui/message/MessageRow";
 import { getFileMessageUI } from "../../bridge/message/useFileMessageUI";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { isSafeUrl } from "../../Utils/security";
+import { isDriveTransferSupportedChannel } from "../../Service/SpacePrefix";
 import { I18nContext } from "../../i18n";
 
 export { FileContent } from "./FileContent";
@@ -360,6 +361,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
 
   private _task?: RestartableTask;
   private _mounted = false;
+  private _unsubscribeConfig?: () => void;
 
   private _taskListener = (task: Task) => {
     const { message } = this.props;
@@ -414,18 +416,29 @@ export class FileCell extends MessageCell<any, FileCellState> {
     // 服务端还没这条消息，跳过查询避免 empty-msg_id 污染 batch 请求。
     // ack 后 componentDidUpdate 会补一次查询。
     this.runTransferredCheck();
+
+    // drive_on 是异步 appconfig 拉下来的：conversation 打开时可能还没到位，
+    // 此刻 runTransferredCheck 会因 !remoteConfig.driveOn 短路。订阅 config
+    // 变更让 mount 后 driveOn 翻转的那一刻触发一次 forceUpdate → componentDidUpdate
+    // 会看到 imTransferred===undefined 补查询。#1261 review round 6 spec req 3.
+    this._unsubscribeConfig = WKApp.addConfigChangeListener(() => {
+      if (this._mounted) this.forceUpdate();
+    });
   }
 
-  componentDidUpdate(prevProps: { message: any }) {
-    // 处理"自己发的文件从发送中→ack 成功"的过渡：mount 时可能 messageID 为空
-    // 跳过了查询，ack 回来后 message 变 Normal + 拿到 server messageID，此时
-    // 需要补一次查询，否则用户自己刚发的文件的转存状态永远显示不出来。
-    const prev = prevProps.message;
-    const cur = (this.props as { message: any }).message;
-    const becameNormal =
-      cur.messageID && cur.status === MessageStatus.Normal &&
-      (!prev.messageID || prev.status !== MessageStatus.Normal);
-    if (becameNormal) {
+  componentDidUpdate() {
+    // 处理两种"迟到"场景（reviewer 抓的 P1-2 + spec req 3）：
+    //   a) 自己刚发的文件 mount 时 messageID 为空，跳过了查询；ack 落地后需要补一次
+    //   b) drive_on 是异步 appconfig 拉下来的，mount 时 remoteConfig?.driveOn=false
+    //      导致 runTransferredCheck 内部短路了；appconfig 到位后需要补一次
+    // 早先版本用 prevProps 对比状态位来触发，但 vm.ts:updateMessageStatusBySendAck
+    // 是 **in-place mutate 同一 MessageWrap 对象**（clientMsgNo 作 React key、
+    // 引用不换），prevProps.message === this.props.message，所以对比 messageID/status
+    // 永远拿不到"从空到有"的过渡。改成用 state 判定：只要 imTransferred 还是
+    // undefined（= 查询没成功产生结果），每次 update 都试一次；runTransferredCheck
+    // 自带 isMessagePersisted + driveOn 短路，重复调用是安全的（微批合并 + 同一
+    // sourceKey dedupe waiters）。
+    if (this.state.imTransferred === undefined) {
       this.runTransferredCheck();
     }
   }
@@ -440,6 +453,10 @@ export class FileCell extends MessageCell<any, FileCellState> {
   private runTransferredCheck(): void {
     if (!this.isMessagePersisted()) return;
     const { message } = this.props;
+    // 只在支持的 channelType 上查询——防止 CustomerService 等未支持类型
+    // 白发一次 backend 请求命中 404，且与图标 gate 一致（图标不显示时也
+    // 不该查）。#1261 review round 6 P1-3.
+    if (!isDriveTransferSupportedChannel(message.channel.channelType)) return;
     const check = WKApp.checkDriveTransferred;
     if (check && WKApp.remoteConfig?.driveOn) {
       check({
@@ -473,6 +490,10 @@ export class FileCell extends MessageCell<any, FileCellState> {
     super.componentWillUnmount();
     this._mounted = false;
     WKSDK.shared().taskManager.removeListener(this._taskListener);
+    if (this._unsubscribeConfig) {
+      this._unsubscribeConfig();
+      this._unsubscribeConfig = undefined;
+    }
   }
 
   getFileURL(content: FileContent): string {
@@ -781,7 +802,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
                     )}
                   </div>
                   <div className="wk-message-file-actions">
-                    {WKApp.saveMessageToDrive && WKApp.remoteConfig?.driveOn && (
+                    {WKApp.saveMessageToDrive && WKApp.remoteConfig?.driveOn && isDriveTransferSupportedChannel(message.channel.channelType) && (
                       <Tooltip
                         content={
                           !this.isMessagePersisted()
