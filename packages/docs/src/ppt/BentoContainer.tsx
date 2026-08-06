@@ -8,22 +8,22 @@
 // via `srcdoc`.
 //
 // SECURITY (XIN-1608 P0): the deck HTML is user-authored and NOT end-to-end sanitized, so it may
-// carry <script>, on* handlers, or javascript: URLs. A srcdoc document inherits the embedder's
+// carry <script>, on* handlers, or javascript: URLs. A srcdoc document would inherit the embedder's
 // origin, so granting `allow-same-origin` alongside `allow-scripts` would let the deck's scripts run
 // AS the parent origin with full access to parent-origin cookies / localStorage / DOM (a stored-XSS
 // escalation). We therefore run the frame WITHOUT `allow-same-origin` (see sandboxForMode): the
 // srcdoc loads in an OPAQUE origin where Bento's scripts still execute against the frame's own
 // document but can touch nothing in the parent origin. This mirrors the intent of the sibling
 // `packages/docs/src/html/HtmlDocView.tsx` (which isolates its unsanitized fetched HTML) while still
-// letting the engine run. The deck's rendered source is delivered by the `srcdoc` injection itself —
-// that is the load-bearing delivery path.
+// letting the engine run.
 //
-// The origin-checked `postMessage` handshake (bootstrapTransfer.ts) is retained UNCHANGED and stays
-// fail-closed: it only ever trusts an EXACT same-origin match, so an opaque-origin frame's request
-// (`event.origin === 'null'`) is rejected without a reply — the same negative control the acceptance
-// matrix pins. It is forward scaffolding (a future same-origin-served host page) and issues NO
-// Hocuspocus token; the P0 isolation change does not weaken its origin gate (verified by
-// bootstrapTransfer.test.ts, which is sandbox-independent).
+// DELIVERY PATH: the deck's rendered source is delivered by the `srcdoc` injection ITSELF — that is
+// the single, load-bearing delivery path here. There is NO postMessage bootstrap handshake in the
+// live container: an opaque-origin frame's message arrives with `event.origin === 'null'`, which the
+// origin gate (bootstrapTransfer.ts) can never trust, so a handshake is structurally impossible under
+// this sandbox. The origin-gated bootstrap module is retained as DEFERRED scaffolding for a future
+// separate-origin host page (see the P1-A discussion on XIN-1615); it is intentionally NOT wired
+// here, so nothing in this component depends on a channel that cannot run.
 //
 // This component is the peer mount point — it is deliberately NOT wired through EditorShell (a Bento
 // deck has no Yjs/ProseMirror payload and no Hocuspocus room; mounting it through the rich-text host
@@ -34,15 +34,23 @@
 // that has already checked PPT_SOURCE_ENABLED. While the flag is OFF the caller renders the gated
 // shell and this component never mounts (no fetch, no frame, no token).
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { t } from '../octoweb/index.ts'
-import { serveBootstrap, type PptBootstrap } from './bootstrapTransfer.ts'
+import type { PptBootstrapMode } from './bootstrapTransfer.ts'
 import { fetchPptSourceHtml } from './pptSourceClient.ts'
 import './BentoContainer.css'
 
 export interface BentoContainerProps {
-  /** The bootstrap payload served to the frame when it requests it (origin-checked handshake). */
-  bootstrap: PptBootstrap
+  /** Deck id whose rendered source is fetched and hosted. */
+  docId: string
+  /**
+   * Resolved source mode driving the backend `mode` mapping and the sandbox. A reader/commenter is
+   * given a read-only mode (`preview`/`present` → `published`); only a writer/admin editor context
+   * resolves to `editor` (→ `live`). The container never decides this — the caller does.
+   */
+  mode: PptBootstrapMode
+  /** `'latest'` or a published `version_seq`; only serialized for the published modes. */
+  version: 'latest' | number
   /** Owning space, forwarded as `X-Space-Id` on the source fetch (parity with getDoc). */
   space?: string
   /** Accessible frame title (deck title when known). */
@@ -64,29 +72,27 @@ type SourceState =
  * two are never combined here. `present` additionally needs `allow-fullscreen`. No
  * `allow-top-navigation` — the deck can never navigate the host away.
  */
-function sandboxForMode(mode: PptBootstrap['mode']): string {
+function sandboxForMode(mode: PptBootstrapMode): string {
   const base = 'allow-scripts'
   if (mode === 'present') return `${base} allow-fullscreen`
   return base
 }
 
 /**
- * Mount an isolated (opaque-origin) Bento frame (srcdoc) with the deck's fetched source and answer
- * any origin-checked bootstrap request with `bootstrap`.
+ * Mount an isolated (opaque-origin) Bento frame (srcdoc) with the deck's fetched source.
  *
- * The `serveBootstrap` listener is attached for this container's lifetime and only ever replies to an
- * EXACT same-origin request whose docId matches this deck — every other message (including the
- * opaque-origin frame's own `event.origin === 'null'`) is dropped without a reply (see
- * bootstrapTransfer.ts). The handshake is thus fail-closed under the isolated sandbox.
+ * The deck HTML is fetched through the shared apiClient (interceptors applied) and injected via
+ * `srcdoc`; the frame renders entirely from that. No postMessage handshake runs here — see the file
+ * header for why the opaque origin forecloses it.
  */
 export function BentoContainer({
-  bootstrap,
+  docId,
+  mode,
+  version,
   space,
   title,
   className,
 }: BentoContainerProps): React.ReactElement {
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [rejectedCount, setRejectedCount] = useState(0)
   const [source, setSource] = useState<SourceState>({ status: 'loading' })
 
   // Fetch the rendered single-file source through the shared apiClient (interceptors applied). Bento
@@ -94,12 +100,7 @@ export function BentoContainer({
   useEffect(() => {
     let cancelled = false
     setSource({ status: 'loading' })
-    fetchPptSourceHtml({
-      docId: bootstrap.docId,
-      mode: bootstrap.mode,
-      version: bootstrap.version,
-      space,
-    })
+    fetchPptSourceHtml({ docId, mode, version, space })
       .then((html) => {
         if (!cancelled) setSource({ status: 'ready', html })
       })
@@ -109,19 +110,7 @@ export function BentoContainer({
     return () => {
       cancelled = true
     }
-  }, [bootstrap.docId, bootstrap.mode, bootstrap.version, space])
-
-  // Origin-checked handshake: answer only a same-origin request for this deck; drop everything else.
-  // Attached once the frame is on the page (source ready) so the srcdoc frame is present to reply to.
-  useEffect(() => {
-    if (source.status !== 'ready') return
-    const dispose = serveBootstrap({
-      provide: (request) => (request.docId === bootstrap.docId ? bootstrap : null),
-      // Surface cross-origin/malformed attempts for observability; the count is diagnostic only.
-      onReject: () => setRejectedCount((n) => n + 1),
-    })
-    return dispose
-  }, [bootstrap, source.status])
+  }, [docId, mode, version, space])
 
   if (source.status === 'loading') {
     return (
@@ -141,19 +130,15 @@ export function BentoContainer({
 
   return (
     <iframe
-      ref={iframeRef}
       className={className ?? 'octo-ppt-frame'}
       // First-party Bento host: the source is fetched through the app's own apiClient and rendered
       // from `srcdoc`. The sandbox grants `allow-scripts` (the engine needs to run) but NOT
       // `allow-same-origin`, so the deck loads in an OPAQUE origin and its scripts cannot touch the
       // parent origin (XIN-1608 P0); present adds fullscreen. See sandboxForMode.
-      sandbox={sandboxForMode(bootstrap.mode)}
+      sandbox={sandboxForMode(mode)}
       allow="fullscreen"
       title={title}
       srcDoc={source.html}
-      // Diagnostic attribute only (never read by the frame) so a test / debugger can see whether any
-      // cross-origin handshake was rejected during this mount.
-      data-ppt-rejected={rejectedCount}
     />
   )
 }

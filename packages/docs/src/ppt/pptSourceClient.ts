@@ -4,12 +4,12 @@
 // `GET /api/v1/ppt/docs/:docId/source` and mounts NO `/ppt/frame/:id` host page. Because that
 // endpoint sits behind the app's auth / `X-Space-Id` / language interceptors (a header-token auth
 // scheme — an iframe `src` navigation would carry none of them and 401), the source is FETCHED
-// through the shared apiClient here and then mounted same-origin by the container (iframe `srcdoc`),
-// rather than navigating a frame at a bespoke same-origin route the backend does not serve.
+// through the shared apiClient here and then injected by the container into a sandboxed opaque-origin
+// `srcdoc` frame, rather than navigating a frame at a bespoke route the backend does not serve.
 //
 // Bento decks are single self-contained HTML files, so `format=html` returns the whole renderable
-// deck; the container hosts it in a same-origin `srcdoc` document. This module performs the ONLY
-// network I/O of the PPT source path and issues NO Hocuspocus token.
+// deck; the container hosts it in an isolated (opaque-origin) `srcdoc` document. This module performs
+// the ONLY network I/O of the PPT source path and issues NO Hocuspocus token.
 
 import { apiClient } from '../octoweb/index.ts'
 import { buildSourceUrl } from './pptSource.ts'
@@ -26,8 +26,8 @@ export interface FetchPptSourceParams {
 /**
  * Fetch a deck's rendered single-file Bento source (`format=html`) through the shared apiClient, so
  * the app's auth / `X-Space-Id` / language interceptors apply. Returns the HTML string the container
- * mounts same-origin. The backend enforces what source the caller's role may load; this never
- * bypasses that.
+ * injects into its opaque-origin `srcdoc` frame. The backend enforces what source the caller's role
+ * may load; this never bypasses that.
  */
 export async function fetchPptSourceHtml(params: FetchPptSourceParams): Promise<string> {
   const { docId, mode, version, space } = params

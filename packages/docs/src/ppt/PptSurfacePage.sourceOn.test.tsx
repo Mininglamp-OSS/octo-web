@@ -6,8 +6,8 @@ import type { DocMeta } from '../pages/docsApi.ts'
 
 // Flag-ON build (backend R3-B1 present, octo-docs-backend #161): the peer routes run the reader
 // preflight (getDoc) and mount the Bento container for a confirmed html_ppt deck. The container then
-// fetches the deck's rendered source through the shared apiClient and hosts it same-origin (srcdoc).
-// Mock config.ts with PPT_SOURCE_ENABLED ON.
+// fetches the deck's rendered source through the shared apiClient and hosts it in an isolated
+// (opaque-origin) srcdoc frame. Mock config.ts with PPT_SOURCE_ENABLED ON.
 vi.mock('../config.ts', async () => {
   const actual = await vi.importActual<typeof import('../config.ts')>('../config.ts')
   return { ...actual, PPT_SOURCE_ENABLED: true }
@@ -21,7 +21,7 @@ vi.mock('../pages/docsApi.ts', async () => {
   return { ...actual, getDoc }
 })
 
-import { PptSurfacePage } from './PptSurfacePage.tsx'
+import { PptSurfacePage, resolveDeckSpace } from './PptSurfacePage.tsx'
 
 const DECK_HTML = '<html><body>deck source</body></html>'
 let api: MockApiClient
@@ -61,6 +61,36 @@ describe('PptSurfacePage — source gated ON', () => {
     // P1: the source fetch is scoped too — BentoContainer received `space` and forwarded the header.
     const headers = (api.calls[0]?.config?.headers ?? {}) as Record<string, string>
     expect(headers['X-Space-Id']).toBe('sp_1')
+  })
+
+  // P1-3 (XIN-1615): a reader/commenter following the editor link lands on `/ppt/d/:docId` too, but
+  // must NOT fetch the editable `live` source — only a writer/admin does. A non-writer here requests
+  // the `published` source instead (FE preview → published), consistent with the role model. This
+  // asserted red on head 6620f95b (editor mode always mapped to `live`, regardless of role).
+  it('a reader on the editor route requests published, never live (P1-3)', async () => {
+    getDoc.mockResolvedValue(meta({ docId: 'd_1', role: 'reader' }))
+    const { container } = render(<PptSurfacePage docId="d_1" mode="editor" />)
+    await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
+    const q = new URL(api.calls[0]?.url ?? '', 'http://local').searchParams
+    expect(q.get('mode')).toBe('published')
+    expect(q.get('mode')).not.toBe('live')
+    expect(q.get('format')).toBe('html')
+  })
+
+  it('a commenter on the editor route also requests published, never live (P1-3)', async () => {
+    getDoc.mockResolvedValue(meta({ docId: 'd_1', role: 'commenter' }))
+    const { container } = render(<PptSurfacePage docId="d_1" mode="editor" />)
+    await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
+    const q = new URL(api.calls[0]?.url ?? '', 'http://local').searchParams
+    expect(q.get('mode')).toBe('published')
+  })
+
+  it('a writer on the editor route still loads the editable live source', async () => {
+    getDoc.mockResolvedValue(meta({ docId: 'd_1', role: 'admin' }))
+    const { container } = render(<PptSurfacePage docId="d_1" mode="editor" />)
+    await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
+    const q = new URL(api.calls[0]?.url ?? '', 'http://local').searchParams
+    expect(q.get('mode')).toBe('live')
   })
 
   // P0 (XIN-1608): the deck source is user-authored and NOT end-to-end sanitized, so the frame must
@@ -111,5 +141,48 @@ describe('PptSurfacePage — source gated ON', () => {
     const { container } = render(<PptSurfacePage docId={null} mode="present" version="latest" />)
     expect(container.querySelector('iframe')).toBeNull()
     expect(getDoc).not.toHaveBeenCalled()
+  })
+})
+
+// P1-1 (XIN-1615): the PPT deep-link carries the deck's real space in a dedicated `?sp=` query param
+// — the same carrier the standalone doc route reads — so a cross-space COLD deep-link (opened before
+// the shell restores currentSpaceId) resolves the right X-Space-Id instead of an empty/wrong space.
+describe('resolveDeckSpace — cross-space deep-link space carrier', () => {
+  const originalSearch = window.location.search
+
+  beforeEach(() => {
+    const wk = createMockWKApp()
+    // Cold deep-link: shell has not restored currentSpaceId yet, and nothing cached.
+    wk.shared.currentSpaceId = ''
+    setWKApp(wk)
+    try {
+      window.localStorage.removeItem('currentSpaceId')
+    } catch {
+      /* ignore */
+    }
+  })
+  afterEach(() => {
+    window.history.replaceState({}, '', `/${originalSearch}`)
+  })
+
+  it('reads the deck space from the link `?sp=` even when currentSpaceId is empty', () => {
+    window.history.replaceState({}, '', '/ppt/d/d_1?sp=sp_link')
+    expect(resolveDeckSpace()).toBe('sp_link')
+  })
+
+  it('prefers the link `?sp=` over the live currentSpaceId (authoritative for cross-space opens)', () => {
+    const wk = createMockWKApp()
+    wk.shared.currentSpaceId = 'sp_current'
+    setWKApp(wk)
+    window.history.replaceState({}, '', '/ppt/d/d_1?sp=sp_link')
+    expect(resolveDeckSpace()).toBe('sp_link')
+  })
+
+  it('falls back to the live currentSpaceId when the link carries no `?sp=`', () => {
+    const wk = createMockWKApp()
+    wk.shared.currentSpaceId = 'sp_current'
+    setWKApp(wk)
+    window.history.replaceState({}, '', '/ppt/d/d_1')
+    expect(resolveDeckSpace()).toBe('sp_current')
   })
 })

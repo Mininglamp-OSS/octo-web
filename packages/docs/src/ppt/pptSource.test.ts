@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   backendModeFor,
   buildSourceUrl,
-  buildPptBootstrap,
   PPT_SOURCE_BASE,
 } from './pptSource.ts'
 
@@ -41,10 +40,10 @@ describe('buildSourceUrl — real backend source endpoint', () => {
     expect(q.get('format')).toBe('bento')
   })
 
-  it('defaults format to the bootstrap container-handshake payload', () => {
+  it('defaults format to html (the rendered source the live opaque-origin container mounts)', () => {
     const q = new URL(buildSourceUrl({ docId: 'd_1', mode: 'present', version: 'latest' }), 'http://local')
       .searchParams
-    expect(q.get('format')).toBe('bootstrap')
+    expect(q.get('format')).toBe('html')
     expect(q.get('mode')).toBe('published')
   })
 
@@ -80,23 +79,5 @@ describe('buildSourceUrl — real backend source endpoint', () => {
       expect(numeric.get('mode')).toBe('live')
       expect(numeric.has('version')).toBe(false)
     })
-  })
-})
-
-describe('buildPptBootstrap — payload for the origin-checked handshake', () => {
-  it('carries the FE mode and a real backend rendered-source URL (format=bento)', () => {
-    const bootstrap = buildPptBootstrap({ docId: 'd_1', mode: 'editor', version: 'latest', canEdit: true })
-    expect(bootstrap.mode).toBe('editor')
-    expect(bootstrap.docId).toBe('d_1')
-    expect(bootstrap.canEdit).toBe(true)
-    expect(bootstrap.sourceUrl).toContain(`${PPT_SOURCE_BASE}/d_1/source`)
-    expect(bootstrap.sourceUrl).not.toContain('/ppt/frame')
-    const q = new URL(bootstrap.sourceUrl, 'http://local').searchParams
-    expect(q.get('mode')).toBe('live')
-    expect(q.get('format')).toBe('bento')
-  })
-
-  it('defaults canEdit to false for a read-only context', () => {
-    expect(buildPptBootstrap({ docId: 'd_1', mode: 'preview', version: 'latest' }).canEdit).toBe(false)
   })
 })

@@ -5,8 +5,8 @@ import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
 
 // Flag-ON build: a deployment whose backend carries R3-B1 (octo-docs-backend #161) flips
 // PPT_SOURCE_ENABLED on. The preview then fetches the deck's rendered source through the shared
-// apiClient and mounts it in a same-origin Bento container (srcdoc iframe) instead of the
-// coming-soon placeholder. Mock config.ts with the flag ON (every other export real via
+// apiClient and mounts it in an isolated (opaque-origin) Bento container (srcdoc iframe) instead of
+// the coming-soon placeholder. Mock config.ts with the flag ON (every other export real via
 // importActual), mirroring the DocsHome.pptFlagOff.test.tsx pattern.
 vi.mock('../config.ts', async () => {
   const actual = await vi.importActual<typeof import('../config.ts')>('../config.ts')
@@ -32,7 +32,7 @@ describe('PptDocView — source gated ON', () => {
     const { container } = render(<PptDocView docId="d_1" title="Q3 deck" />)
     await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
     const frame = container.querySelector('iframe')
-    // srcdoc-hosted deck source (same-origin by construction); no bespoke /ppt/frame host route.
+    // srcdoc-hosted deck source (opaque origin — no allow-same-origin); no bespoke /ppt/frame route.
     expect(frame?.getAttribute('srcdoc')).toContain('Q3 deck')
     expect(frame?.getAttribute('src')).toBeNull()
     // Fetched the real backend source endpoint with the mapped mode + format.

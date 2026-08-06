@@ -21,7 +21,6 @@ import { getDoc, HTML_PPT_DOC_TYPE, type DocMeta } from '../pages/docsApi.ts'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { terminalForCreateError } from '../collab/useCollabEditor.ts'
 import { BentoContainer } from './BentoContainer.tsx'
-import { buildPptBootstrap } from './pptSource.ts'
 import type { PptBootstrapMode } from './bootstrapTransfer.ts'
 import './PptSurface.css'
 
@@ -67,12 +66,22 @@ function SurfaceState({
  *
  * The PPT surfaces mount via the host Layout's EARLY RETURN, before the app-shell logic that
  * restores `currentSpaceId` from localStorage runs — so on a cross-space cold deep-link the live
- * `WKApp.shared.currentSpaceId` is still empty. Mirror the standalone branches: prefer the live
- * value, else the cached `currentSpaceId` localStorage key the shell persists. Returns '' when there
- * is no signal at all, in which case the caller omits the explicit header and lets the global request
- * interceptor decide (exactly as an in-shell entry does) rather than forcing a wrong space.
+ * `WKApp.shared.currentSpaceId` is still empty. Priority mirrors the standalone doc page
+ * (StandaloneDocPage.standaloneLinkSpace + standaloneFallbackSpace):
+ *
+ *   1. the deep-link's dedicated `?sp=` carrier — the doc's REAL space, embedded by the share/deep
+ *      link (32-hex docs-backend space_id), authoritative for a CROSS-SPACE cold open because it is
+ *      the only signal that survives before the shell restores currentSpaceId;
+ *   2. the live `WKApp.shared.currentSpaceId`;
+ *   3. the cached `currentSpaceId` localStorage key the shell persists.
+ *
+ * Returns '' when there is no signal at all, in which case the caller omits the explicit header and
+ * lets the global request interceptor decide (exactly as an in-shell entry does) rather than forcing
+ * a wrong space.
  */
 export function resolveDeckSpace(): string {
+  const link = linkSpace()
+  if (link) return link
   const live = getWKApp().shared?.currentSpaceId
   if (live) return live
   if (typeof window !== 'undefined') {
@@ -86,14 +95,30 @@ export function resolveDeckSpace(): string {
   return ''
 }
 
+/**
+ * The deck's own space as carried by the deep-link's dedicated `?sp=` query param — the same carrier
+ * the standalone doc route reads (StandaloneDocPage.standaloneLinkSpace). buildDocLink embeds the
+ * document's REAL space id as `?sp=`, so a cross-space cold deep-link resolves the right
+ * `X-Space-Id` before the shell restores currentSpaceId. Returns '' when the link carries no `?sp=`
+ * (older links, or SSR); the caller then falls back to live/cached currentSpaceId.
+ */
+function linkSpace(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    return (new URLSearchParams(window.location.search).get('sp') || '').trim()
+  } catch {
+    return ''
+  }
+}
+
 export function PptSurfacePage({ docId, mode, version, onSessionExpired }: PptSurfacePageProps): ReactElement {
   const gated = !PPT_SOURCE_ENABLED
   // Resolve the owning space for the cross-space cold deep-link. Both PPT routes mount via the
   // Layout EARLY RETURN — before the app shell restores currentSpaceId — so the live value is often
-  // empty on a fresh tab. Mirror the standalone branches (Layout ~L421 / StandaloneDocPage) by
-  // falling back to the cached `currentSpaceId` localStorage key the shell persists, so the by-space
-  // reads below are scoped instead of unscoped (XIN-1608 P1). '' → omit the header and let the global
-  // interceptor decide, exactly as an in-shell entry would.
+  // empty on a fresh tab. resolveDeckSpace reads the link's dedicated `?sp=` carrier first (the same
+  // one the standalone route uses), then falls back to live / cached currentSpaceId, so the by-space
+  // reads below are scoped even on a cross-space cold open (XIN-1608 P1). '' → omit the header and
+  // let the global interceptor decide, exactly as an in-shell entry would.
   const space = resolveDeckSpace()
   const [phase, setPhase] = useState<Phase>({ status: 'loading' })
 
@@ -177,9 +202,15 @@ export function PptSurfacePage({ docId, mode, version, onSessionExpired }: PptSu
 
   const deckId = meta.docId || docId
   const resolvedVersion: 'latest' | number = mode === 'present' ? version ?? 'latest' : 'latest'
-  // Editor edits the live/draft the caller's role permits (backend enforces what that role may load);
-  // present is always read-only published, so canEdit is false there.
+  // Editor edits the live/draft the caller's role permits; present is always read-only published.
   const canEdit = mode === 'editor' ? Boolean(meta.role && roleCanEdit(meta.role)) : false
+  // P1-3 (role model): the editor route `/ppt/d/:docId` is a WRITER surface, but a reader/commenter
+  // following an editor link lands here too — and must NOT fetch the editable `live` source. Only a
+  // writer/admin (canEdit) loads `live` (FE `editor` mode); a non-writer on the editor route loads
+  // the `published` source instead (FE `preview` mode → published), exactly like the read-only
+  // preview surface. `present` is unaffected (always published). The backend still enforces access;
+  // this stops the FE from even ASKING for `live` on behalf of a non-writer.
+  const sourceMode: PptBootstrapMode = mode === 'editor' && !canEdit ? 'preview' : mode
 
   return (
     <div
@@ -189,7 +220,9 @@ export function PptSurfacePage({ docId, mode, version, onSessionExpired }: PptSu
     >
       <div className="octo-ppt-surface-body">
         <BentoContainer
-          bootstrap={buildPptBootstrap({ docId: deckId, mode, version: resolvedVersion, canEdit })}
+          docId={deckId}
+          mode={sourceMode}
+          version={resolvedVersion}
           space={space || undefined}
           title={meta.title || t('docs.ppt.viewTitle')}
         />

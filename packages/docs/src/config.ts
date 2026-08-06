@@ -196,9 +196,9 @@ export const PPT_CREATE_ENABLED = envOr(import.meta.env?.VITE_DOCS_PPT_CREATE, '
  * source (R3-F1, XIN-1495 / XIN-1583).
  *
  * R3-F1 builds the static shell and wires the routes (read-only PptDocView preview, the peer
- * `/ppt/d/:docId` editor route with its same-origin Bento container, and the `/docs/:docId/present`
- * present route), but the payloads those surfaces load — the origin-checked bootstrap and the
- * published/live HTML — are produced by the backend R3-B1 source/bootstrap layer
+ * `/ppt/d/:docId` editor route with its isolated opaque-origin Bento container, and the
+ * `/docs/:docId/present` present route), but the payloads those surfaces load — the rendered
+ * published/live HTML — are produced by the backend R3-B1 source layer
  * (`feature/xin-1495-ppt-r3-source-bootstrap`), which is NOT yet merged to main. Wiring the
  * frontend to consume live source against an unmerged / mock contract would let a reader or
  * commenter reach draft/live HTML before the backend enforces published-only access — the exact

@@ -1,24 +1,36 @@
 // Origin-checked bootstrap transfer for the html_ppt peer surfaces (R3-F1, XIN-1495 / XIN-1583).
 //
-// The PPT editor / preview / present surfaces mount a SAME-ORIGIN Bento container (an iframe served
-// from the page's own origin). Before Bento can render it needs its bootstrap payload — the source
-// mode, the version to load, and the short-lived signed asset metadata the backend R3-B1 layer
-// produces. That payload is handed to the frame over `postMessage`, which is a CROSS-DOCUMENT channel
-// even when both documents share an origin, so every hop MUST be origin-checked:
+// STATUS — DEFERRED SCAFFOLDING (XIN-1615 P1-A, Option 2). The live Bento container isolates the
+// unsanitized deck HTML in an OPAQUE origin (iframe `srcdoc`, `allow-scripts` WITHOUT
+// `allow-same-origin` — see BentoContainer.tsx), and delivers the deck by the srcdoc injection
+// itself. An opaque-origin frame's postMessage arrives with `event.origin === 'null'`, which the
+// origin gate below can never trust (trusting `'null'` would trust EVERY sandboxed frame). So the
+// postMessage handshake and the opaque-origin isolation are mutually exclusive by construction: this
+// module is NOT wired into the live container and no live code path depends on it.
+//
+// It is retained (not deleted) as scaffolding for a FUTURE separate-origin Bento host page — the
+// round-3 reviewer's Option 1 — where the frame is served from a distinct, NAMED origin that CAN be
+// allowlisted in `isTrustedOrigin`, keeping both the postMessage channel and the isolation. Standing
+// up that named origin is a deploy/nginx topology change out of R3 frontend scope, so it is deferred;
+// until it lands, everything here is dormant. The pure origin gate stays unit-tested
+// (bootstrapTransfer.test.ts) so the deferred channel keeps its fail-closed guarantees.
+//
+// When that channel IS built, Bento can be handed its bootstrap payload — the source mode, the
+// version to load, and the short-lived signed asset metadata the backend R3-B1 layer produces — over
+// `postMessage`, which is a CROSS-DOCUMENT channel even when both documents share an origin, so every
+// hop MUST be origin-checked:
 //
 //   1. Host → frame delivery pins an explicit `targetOrigin` and REFUSES to post with the `'*'`
 //      wildcard. A wildcard would let the payload (which may carry signed, if short-lived, asset
 //      access) leak to whatever document happens to occupy the frame if its src is ever navigated
-//      cross-origin. We only ever deliver to `window.location.origin`.
-//   2. Frame → host requests are accepted ONLY when `event.origin === window.location.origin`. A
-//      message from any other origin is dropped without a reply (the negative control): a
-//      cross-origin document embedding or being embedded by this page can neither trigger a
-//      bootstrap delivery nor observe one.
+//      cross-origin. We only ever deliver to a trusted (own) origin.
+//   2. Frame → host requests are accepted ONLY when `event.origin` is the trusted origin. A message
+//      from any other origin is dropped without a reply (the negative control): a cross-origin
+//      document embedding or being embedded by this page can neither trigger a bootstrap delivery nor
+//      observe one.
 //
 // This module is pure and framework-free so the origin gate can be unit-tested directly, including
-// the cross-origin rejection path the acceptance matrix calls out (reject cross-origin handoff —
-// negative-control test). It performs NO network I/O and issues NO Hocuspocus token; the bootstrap
-// object is supplied by the caller (gated behind PPT_SOURCE_ENABLED until R3-B1 merges).
+// the cross-origin rejection path. It performs NO network I/O and issues NO Hocuspocus token.
 
 /**
  * Protocol tag carried on every bootstrap message. Bumped only on a breaking envelope change so a
@@ -31,10 +43,11 @@ export const PPT_BOOTSTRAP_PROTOCOL = 'octo-ppt-bootstrap/1' as const
 export type PptBootstrapMode = 'preview' | 'editor' | 'present'
 
 /**
- * The bootstrap payload delivered to the same-origin Bento frame. Shape mirrors the R3-B1 source
- * contract; it is treated as opaque transport here (this module only guards the ORIGIN of the hop,
- * never interprets the source). `version` is `'latest'` or a positive integer version sequence;
- * `assets` is the signed, short-lived asset bootstrap metadata (no long-lived auth material).
+ * The bootstrap payload for the DEFERRED separate-origin Bento frame (see file header). Shape mirrors
+ * the R3-B1 source contract; it is treated as opaque transport here (this module only guards the
+ * ORIGIN of the hop, never interprets the source). `version` is `'latest'` or a positive integer
+ * version sequence; `assets` is the signed, short-lived asset bootstrap metadata (no long-lived auth
+ * material).
  */
 export interface PptBootstrap {
   mode: PptBootstrapMode
@@ -115,12 +128,12 @@ export function isBootstrapDeliver(data: unknown): data is BootstrapDeliverMessa
 }
 
 /**
- * Deliver a bootstrap payload to the same-origin Bento frame.
+ * Deliver a bootstrap payload to the (deferred) trusted-origin Bento frame.
  *
- * `targetOrigin` MUST be this document's own origin — the call throws otherwise, and it NEVER falls
- * back to the `'*'` wildcard. Passing `'*'` (or any cross-origin value) is a programming error that
- * would defeat the whole gate, so it is rejected loudly rather than silently downgraded. This is the
- * only function that calls `postMessage` toward the frame.
+ * `targetOrigin` MUST be a trusted origin — the call throws otherwise, and it NEVER falls back to the
+ * `'*'` wildcard. Passing `'*'` (or any untrusted value) is a programming error that would defeat the
+ * whole gate, so it is rejected loudly rather than silently downgraded. This is the only function
+ * that calls `postMessage` toward the frame.
  */
 export function deliverBootstrap(
   target: Pick<Window, 'postMessage'>,
@@ -129,8 +142,8 @@ export function deliverBootstrap(
 ): void {
   if (!isTrustedOrigin(targetOrigin)) {
     throw new Error(
-      `refusing to deliver PPT bootstrap to a non-same-origin target (${String(targetOrigin)}); ` +
-        'the Bento container is same-origin and the payload is never posted with a wildcard origin',
+      `refusing to deliver PPT bootstrap to an untrusted target origin (${String(targetOrigin)}); ` +
+        'the payload is never posted with a wildcard origin',
     )
   }
   const message: BootstrapDeliverMessage = {

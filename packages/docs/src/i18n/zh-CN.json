@@ -947,7 +947,6 @@
     "previewComingSoon": "幻灯片预览即将上线。",
     "editorComingSoon": "幻灯片编辑器即将上线。",
     "presentComingSoon": "幻灯片放映即将上线。",
-    "frameOriginError": "无法加载幻灯片：来源必须同源。",
     "loading": "正在加载幻灯片…",
     "loadError": "加载幻灯片失败，请重试。",
     "create": {
