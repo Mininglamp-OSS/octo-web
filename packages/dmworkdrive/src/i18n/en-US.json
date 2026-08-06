@@ -178,7 +178,8 @@
     "done": "Done",
     "retry": "Retry",
     "cancel": "Cancel",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "dropTitle": "Drop to upload here"
   },
   "download": {
     "failed": "Download failed"

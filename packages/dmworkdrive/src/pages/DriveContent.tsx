@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n, buildDocLink } from '@octo/base';
 import { Button, Modal, Spin } from '@douyinfe/semi-ui';
 import { FolderPlus, FilePlus2, UserPlus, Users } from 'lucide-react';
@@ -7,6 +7,7 @@ import { useDriveOps } from '../hooks/useDriveOps';
 import { useUpload } from '../hooks/useUpload';
 import { useMembers } from '../hooks/useMembers';
 import { useSelection } from '../hooks/useSelection';
+import { useDropzone } from '../hooks/useDropzone';
 import { runBatch } from '../hooks/runBatch';
 import type { DriveEntry } from '../bridge/types';
 import * as api from '../api/driveApi';
@@ -16,6 +17,7 @@ import { spaceDisplayName } from '../utils/spaceName';
 import Breadcrumb from '../ui/Breadcrumb';
 import FileList from '../ui/FileList';
 import BulkActionBar from '../ui/BulkActionBar';
+import DropzoneOverlay from '../ui/DropzoneOverlay';
 import NameInputModal from '../ui/NameInputModal';
 import MoveModal from '../ui/MoveModal';
 import UploadButton from '../ui/UploadButton';
@@ -51,6 +53,19 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   const selectionContextKey = activeSpaceId ? `${activeSpaceId}::${currentParentId}` : null;
   const selection = useSelection(entries, selectionContextKey);
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Drag-drop upload target. Reuses useUpload.addFiles so dropped files
+  // flow through the exact same presigned-URL / progress pipeline as
+  // <UploadButton>. Disabled when the current space is missing or the
+  // user lacks upload permission.
+  const canUploadRef = useRef(false);
+  const dropzone = useDropzone({
+    disabled: !activeSpaceId,
+    onDrop: (files) => {
+      if (!canUploadRef.current || !activeSpaceId) return;
+      upload.addFiles(files, activeSpaceId, currentParentId);
+    },
+  });
 
   const handleDownload = useCallback(
     async (entry: DriveEntry) => {
@@ -171,6 +186,14 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   const canDownload = isPersonal || (isShared && m.canDownload);
   const canShare = isPersonal || (isShared && m.canShare);
   const canManage = isShared && m.canManage; // invite + member mgmt: shared-space admin+
+
+  // Keep the drop-target's permission check current — useDropzone only
+  // captured a closure over its initial values, so we sync the ref every
+  // render. This avoids re-registering the whole hook when permissions
+  // change (which would drop the enter counter mid-drag).
+  useEffect(() => {
+    canUploadRef.current = !!canUpload;
+  }, [canUpload]);
 
   // ── Batch ops ────────────────────────────────────────────────────────────
   // Content shape for the batch-delete confirm. Three shapes:
@@ -416,7 +439,13 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
 
       <UploadProgress items={upload.items} onRetry={upload.retry} onDismiss={upload.dismiss} />
 
-      <div className="drive-main__body">
+      <div className="drive-main__body" {...dropzone.bind}>
+        {canUpload && (
+          <DropzoneOverlay
+            active={dropzone.isDraggingOver}
+            targetName={vm.path[vm.path.length - 1]?.name}
+          />
+        )}
         {!hasSpace && vm.spacesLoading ? (
           <div className="drive-main__center">
             <Spin />
