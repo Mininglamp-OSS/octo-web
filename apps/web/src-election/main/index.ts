@@ -377,7 +377,7 @@ const createMainWindow = async () => {
   mainWindow = new BrowserWindow(getWindowConfig());
   mainWindow.center();
   mainWindow.once("ready-to-show", () => {
-    mainWindow.setTitle('OCTO');
+    mainWindow.setTitle(OCTO_CONFIG.name);
     mainWindow.show(); // 显示窗口
     mainWindow.focus();
   });
@@ -496,6 +496,36 @@ function onDeepLink(url: string) {
 }
 
 app.setName(OCTO_CONFIG.name);
+
+// P1-1: one-time userData migration from the legacy DMWork profile dir to OCTO.
+// app.setName() above changes Electron's default userData from <appData>/DMWork
+// to <appData>/OCTO. Without this, anyone who ran a DMWork-branded build would
+// silently get a fresh empty profile (lost session/localStorage/IndexedDB/drafts).
+// Copy the old profile the first time the new dir is absent; skip regenerable caches.
+function migrateUserDataFromDMWork(): void {
+  try {
+    const appData = app.getPath("appData");
+    const oldDir = join(appData, "DMWork");
+    const newDir = join(appData, OCTO_CONFIG.name);
+    if (!fs.existsSync(oldDir) || fs.existsSync(newDir)) return;
+    const SKIP_DIRS = new Set([
+      "Cache", "CachedData", "GPUCache", "Code Cache", "DawnCache",
+      "blob_storage", "Crashpad", "Service Worker",
+    ]);
+    fs.cpSync(oldDir, newDir, {
+      recursive: true,
+      filter: (src: string) => {
+        const base = src.split(/[\\/]/).pop() || "";
+        return !SKIP_DIRS.has(base);
+      },
+    });
+    console.log("[userData] migrated DMWork profile to", newDir);
+  } catch (err) {
+    console.warn("[userData] DMWork->OCTO migration failed, continuing with fresh profile:", err);
+  }
+}
+migrateUserDataFromDMWork();
+
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
   onDeepLink(url);
@@ -522,7 +552,7 @@ app.on("ready", () => {
   createMainWindow(); // 创建窗口
 
   if (isWin) {
-    app.setAppUserModelId("OCTO");
+    app.setAppUserModelId(OCTO_CONFIG.appId);
   }
 
   screenshots = new Screenshots({

@@ -1,5 +1,5 @@
 diff --git a/out/node-module-collector/pnpmNodeModulesCollector.js b/out/node-module-collector/pnpmNodeModulesCollector.js
-index 602599280ab621d078748187bb6b4ae9431c1739..630d2c43206b28913a5a8b2d2a6215d87f09fd58 100644
+index 602599280ab621d078748187bb6b4ae9431c1739..aff0f760566e7d7e07ed96e4361c713f2919ed95 100644
 --- a/out/node-module-collector/pnpmNodeModulesCollector.js
 +++ b/out/node-module-collector/pnpmNodeModulesCollector.js
 @@ -24,13 +24,18 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
@@ -23,7 +23,7 @@ index 602599280ab621d078748187bb6b4ae9431c1739..630d2c43206b28913a5a8b2d2a6215d8
              // Then check if optional dependency path exists (using actual resolved path)
              if (optional[packageName]) {
                  const pkg = await this.cache.locatePackageVersion({ pkgName: packageName, parentDir: this.rootDir, requiredRange: dependency.version });
-@@ -52,6 +57,19 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+@@ -52,6 +57,35 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
          }
          this.productionGraph[dependencyId] = { dependencies: collectedDependencies };
      }
@@ -32,11 +32,27 @@ index 602599280ab621d078748187bb6b4ae9431c1739..630d2c43206b28913a5a8b2d2a6215d8
 +        if (pkg && pkg.packageJson && pkg.packageJson.version) {
 +            return { version: pkg.packageJson.version };
 +        }
++        // Fallback: pnpm list did not expand this dependency. Gather candidate
++        // versions from allDependencies and pick the highest one satisfying
++        // `range`. The previous first-prefix-match ignored `range` and could
++        // silently package the wrong version when the same package exists at
++        // several versions in the monorepo (e.g. debug/ms/semver). If nothing
++        // satisfies the range, skip the dependency rather than guess.
++        const candidates = [];
 +        for (const key of this.allDependencies.keys()) {
 +            if (key.startsWith(packageName + "@")) {
-+                return { version: key.substring(packageName.length + 1) };
++                candidates.push(key.substring(packageName.length + 1));
 +            }
 +        }
++        if (candidates.length === 0) {
++            return null;
++        }
++        const semver = require("semver");
++        const best = semver.maxSatisfying(candidates, range);
++        if (best) {
++            return { version: best };
++        }
++        console.warn(`[app-builder-lib patch] no installed version of "${packageName}" satisfies range "${range}" (candidates: ${candidates.join(", ")}); skipping`);
 +        return null;
 +    }
 +

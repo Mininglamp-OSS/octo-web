@@ -21,10 +21,12 @@ module.exports = {
     "resources/**/*",
     "out-election/**/*",
     "build/**/*",
-    // 主进程运行时依赖及其传递依赖（electron-screenshots -> debug -> ms 等），
+    // 主进程运行时依赖及其传递依赖。apps/web 的 dependencies 只保留主进程所需
+    // （electron-log/electron-screenshots/electron-updater/tmp/wukongimjssdk/ms），
+    // 渲染层库与 workspace 包已移入 devDependencies、由 Vite 打进 build/，不再进 asar。
     // 默认 files 不含 node_modules，需显式声明，否则运行时 Cannot find module。
+    // package.json 由 electron-builder 自动附加，无需显式列出。
     "node_modules/**/*",
-    "package.json",
   ], // 需要打包的文件
   extraMetadata: {
     main: "out-election/main/index.js",
@@ -87,7 +89,7 @@ module.exports = {
   },
   linux: {
     target: ["AppImage", "deb"],
-    icon: "resources/icons/icon.icns",
+    icon: "resources/icons/512x512.png",
     category: "Network;InstantMessaging;",
     // eslint-disable-next-line no-template-curly-in-string
     artifactName: '${productName}-${version}-linux-${arch}.${ext}',
