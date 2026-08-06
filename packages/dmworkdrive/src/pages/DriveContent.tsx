@@ -17,6 +17,7 @@ import { triggerBrowserDownload } from '../utils/download';
 import { spaceDisplayName } from '../utils/spaceName';
 import Breadcrumb from '../ui/Breadcrumb';
 import FileList from '../ui/FileList';
+import EmptyState from '../ui/EmptyState';
 import BulkActionBar from '../ui/BulkActionBar';
 import DropzoneOverlay from '../ui/DropzoneOverlay';
 import FilterChips from '../ui/FilterChips';
@@ -474,6 +475,20 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           <div className="drive-main__center">
             <Spin />
           </div>
+        ) : !filesLoading && entries.length === 0 ? (
+          // Split the empty state into three variants so preview_only users
+          // don't see an upload CTA that would 403, and filter-empty offers
+          // a one-click reset rather than looking like the folder is empty.
+          <EmptyState
+            variant={
+              typeFilter !== 'all'
+                ? 'filter-empty'
+                : canUpload
+                  ? 'folder-empty'
+                  : 'folder-empty-readonly'
+            }
+            onClearFilter={typeFilter !== 'all' ? () => setTypeFilter('all') : undefined}
+          />
         ) : (
           <FileList
             entries={entries}

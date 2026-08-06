@@ -1,0 +1,55 @@
+/* Centered non-load empty state for the drive body. Sits inside the same
+   scroll container so it moves with the list if the layout changes;
+   there is only ever one of these on screen. */
+
+.drive-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--wk-text-secondary, #555b61);
+}
+
+.drive-empty__icon {
+  color: var(--wk-text-tertiary, #6b7075);
+  margin-bottom: 4px;
+}
+
+.drive-empty__title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--wk-text-primary, #1f2329);
+}
+
+.drive-empty__hint {
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 320px;
+  color: var(--wk-text-secondary, #555b61);
+}
+
+.drive-empty__cta {
+  margin-top: 8px;
+  padding: 6px 16px;
+  border: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
+  border-radius: var(--wk-r-sm, 6px);
+  background: var(--wk-bg-surface, #fff);
+  color: var(--wk-text-primary, #1f2329);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.drive-empty__cta:hover {
+  background: var(--wk-bg-hover, #dfe0e2);
+}
+
+.drive-empty__cta:focus-visible {
+  outline: 2px solid var(--wk-text-accent, #7f3bf5);
+  outline-offset: 1px;
+}
