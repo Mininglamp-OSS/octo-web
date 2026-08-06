@@ -110,9 +110,10 @@ export default class DriveModule implements IModule {
     // Bridge for the chat file card's "save to Drive" action. Backend accepts
     // an empty target_space_id and defaults to the caller's personal space,
     // so we don't pre-resolve it (one fewer round-trip).
-    WKApp.saveMessageToDrive = async ({ im_group_no, im_msg_id }: { im_group_no: string; im_msg_id: string }) => {
+    WKApp.saveMessageToDrive = async ({ im_group_no, im_channel_type, im_msg_id }: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => {
       const result = await transferFromIm({
         im_group_no,
+        im_channel_type,
         im_msg_id,
         target_space_id: '',
         target_parent_id: 0,
@@ -124,42 +125,48 @@ export default class DriveModule implements IModule {
     // Coalesces the calls that fire from every visible file card into a single
     // batch request. A microtask (not a timer) flushes the batch: React runs a
     // list's file-card componentDidMounts in one synchronous stack, so every
-    // ref_id is enqueued in the same tick and the microtask fires the instant
+    // triple is enqueued in the same tick and the microtask fires the instant
     // that stack unwinds — one backend hit for the whole screen, no perceptible
-    // delay. Returns the drive entry when found, or null when the ref_id wasn't
-    // in the batch response (= not transferred).
-    let pendingBatch: Map<string, Array<{
-      resolve: (v: ImTransferredEntry | null) => void;
-      reject: (err: unknown) => void;
-    }>> | null = null;
+    // delay. Returns the drive entry when found, or null when the sourceKey
+    // wasn't in the batch response (= not transferred). The sourceKey used to
+    // both dedupe pending waiters and read results back mirrors the backend's
+    // storage key `${channelType}#${channelID}#${msgID}`.
+    let pendingBatch: Map<string, {
+      item: { im_group_no: string; im_channel_type: number; im_msg_id: string };
+      waiters: Array<{
+        resolve: (v: ImTransferredEntry | null) => void;
+        reject: (err: unknown) => void;
+      }>;
+    }> | null = null;
     let flushScheduled = false;
     const flushBatch = (): void => {
       const batch = pendingBatch;
       pendingBatch = null;
       flushScheduled = false;
       if (!batch || batch.size === 0) return;
-      const refIds = Array.from(batch.keys());
-      checkImTransferredBatch(refIds)
+      const items = Array.from(batch.values()).map((e) => e.item);
+      checkImTransferredBatch(items)
         .then((results) => {
-          for (const [refId, waiters] of batch) {
-            const entry = results[refId] ?? null;
-            for (const w of waiters) w.resolve(entry);
+          for (const [key, entry] of batch) {
+            const found = results[key] ?? null;
+            for (const w of entry.waiters) w.resolve(found);
           }
         })
         .catch((err) => {
-          for (const waiters of batch.values()) {
-            for (const w of waiters) w.reject(err);
+          for (const entry of batch.values()) {
+            for (const w of entry.waiters) w.reject(err);
           }
         });
     };
-    WKApp.checkDriveTransferred = (refId: string) =>
+    WKApp.checkDriveTransferred = (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) =>
       new Promise<ImTransferredEntry | null>((resolve, reject) => {
         if (!pendingBatch) pendingBatch = new Map();
-        const existing = pendingBatch.get(refId);
+        const sourceKey = `${msg.im_channel_type}#${msg.im_group_no}#${msg.im_msg_id}`;
+        const existing = pendingBatch.get(sourceKey);
         if (existing) {
-          existing.push({ resolve, reject });
+          existing.waiters.push({ resolve, reject });
         } else {
-          pendingBatch.set(refId, [{ resolve, reject }]);
+          pendingBatch.set(sourceKey, { item: msg, waiters: [{ resolve, reject }] });
         }
         if (!flushScheduled) {
           flushScheduled = true;
@@ -173,11 +180,12 @@ export default class DriveModule implements IModule {
     // mount the RIGHT file view and let the VM focus/flash the target file.
     // switchToMenuById intentionally does not popToRoot (shared left stack),
     // and only syncs the route — it does not mount contentRight, so we still
-    // call mountDriveContent explicitly.
-    WKApp.openDriveFile = ({ space_id, parent_id, file_id }: { space_id: string; parent_id: number; file_id: number }) => {
+    // call mountDriveContent explicitly. IM-transfer callers only produce files
+    // at the personal-space root, so no parent_id is threaded through.
+    WKApp.openDriveFile = ({ space_id, file_id }: { space_id: string; file_id: number }) => {
       WKApp.switchToMenuById?.('drive');
       mountDriveContent();
-      vm.focusFile(space_id, parent_id, file_id);
+      vm.focusFile(space_id, file_id);
     };
 
     // `/drive` renders the space rail into contentLeft. hostShell keeps

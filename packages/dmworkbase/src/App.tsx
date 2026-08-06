@@ -771,13 +771,15 @@ export default class WKApp extends ProviderListener {
   // `drive_on` remote flag is false — callers must guard on presence.
   // Returns the resulting drive file coordinates so the caller can flip its UI
   // state to "view in drive" without a follow-up query.
-  static saveMessageToDrive?: (params: { im_group_no: string; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number }>;
-  // Query whether an IM file (by its message url) is already transferred into
-  // the caller's personal drive space. Registered by DriveModule; the chat file
-  // card uses it to switch its icon action between "save" and "view".
-  static checkDriveTransferred?: (refId: string) => Promise<{ file_id: number; space_id: string; parent_id: number } | null>;
+  static saveMessageToDrive?: (params: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number }>;
+  // Query whether an IM file (identified by the (channelType, channelID, msgID)
+  // triple the backend uses to derive its source_key) is already transferred
+  // into the caller's personal drive space. Registered by DriveModule; the chat
+  // file card uses it to switch its icon action between "save" and "view".
+  static checkDriveTransferred?: (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number } | null>;
   // Open the drive UI and focus/flash a specific file. Registered by DriveModule.
-  static openDriveFile?: (params: { space_id: string; parent_id: number; file_id: number }) => void;
+  // Only the space root is entered — the caller does not thread parent_id.
+  static openDriveFile?: (params: { space_id: string; file_id: number }) => void;
   // Id of the currently active sidebar menu (kept in sync by Main page)
   static currentMenuId?: string;
   static apiClient = APIClient.shared; // api客户端

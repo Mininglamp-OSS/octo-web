@@ -152,10 +152,10 @@ export class DriveVM extends ProviderListener {
     this.notifyListener();
   }
 
-  /** Jump to a file in a space and mark it for flash highlight. Currently the
-   *  IM-transfer callers only produce files at the personal space root, so we
-   *  reset the path to root regardless of parentId. */
-  focusFile(spaceId: string, _parentId: number, fileId: number): void {
+  /** Jump to a file in a space and mark it for flash highlight. IM-transfer
+   *  callers only produce files at the personal-space root, so we reset the
+   *  path to root unconditionally. */
+  focusFile(spaceId: string, fileId: number): void {
     const space = this.spaces.find((s) => s.id === spaceId);
     this.activeSpaceId = spaceId;
     this.path = [{ id: 0, name: space ? spaceDisplayName(space, t) : t('drive.file.root') }];

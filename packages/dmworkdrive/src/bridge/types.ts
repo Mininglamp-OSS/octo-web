@@ -313,6 +313,7 @@ export interface ConfirmUploadReq {
 
 export interface TransferFromImReq {
   im_group_no: string;
+  im_channel_type: number;
   im_msg_id: string;
   target_space_id: string;
   target_parent_id: number;

@@ -5,7 +5,7 @@ import MessageBase from "../Base";
 import WKApp from "../../App";
 import { FileContent } from "./FileContent";
 import { downloadFile } from "../../Utils/download";
-import { WKSDK, Task, TaskStatus } from "wukongimjssdk";
+import { WKSDK, Task, TaskStatus, ChannelTypePerson } from "wukongimjssdk";
 import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import WKModal from "../../Components/WKModal";
 import MarkdownContent from "../Text/MarkdownContent";
@@ -407,29 +407,38 @@ export class FileCell extends MessageCell<any, FileCellState> {
       }
     }
 
-    // 挂载时查询转存状态：多条消息在钩子层 50ms 微批合并成一次批量请求。
+    // 挂载时查询转存状态：多条消息在钩子层微批合并成一次批量请求。
+    // 私聊(ChannelTypePerson=1)本期不支持转存/查询，直接跳过。
     const check = WKApp.checkDriveTransferred;
-    if (check && WKApp.remoteConfig?.driveOn) {
-      const refId = this.getFileURL(content);
-      if (refId) {
-        check(refId)
-          .then((entry) => {
-            if (!this._mounted) return;
-            this.setState({
-              imTransferred: entry
-                ? {
-                    exists: true,
-                    file_id: entry.file_id,
-                    space_id: entry.space_id,
-                    parent_id: entry.parent_id,
-                  }
-                : { exists: false },
-            });
-          })
-          .catch(() => {
-            /* 查询失败静默，按未存态渲染 */
+    if (
+      check &&
+      WKApp.remoteConfig?.driveOn &&
+      message.channel.channelType !== ChannelTypePerson
+    ) {
+      check({
+        im_group_no: message.channel.channelID,
+        im_channel_type: message.channel.channelType,
+        im_msg_id: message.messageID,
+      })
+        .then((entry) => {
+          if (!this._mounted) return;
+          // 竞态守卫：转存/更早的查询若已把状态设为"已存"，不要被这次
+          // mount 时的 in-flight 查询覆盖回未存态。
+          if (this.state.imTransferred?.exists === true) return;
+          this.setState({
+            imTransferred: entry
+              ? {
+                  exists: true,
+                  file_id: entry.file_id,
+                  space_id: entry.space_id,
+                  parent_id: entry.parent_id,
+                }
+              : { exists: false },
           });
-      }
+        })
+        .catch(() => {
+          /* 查询失败静默，按未存态渲染 */
+        });
     }
   }
 
@@ -470,13 +479,12 @@ export class FileCell extends MessageCell<any, FileCellState> {
       Toast.error(t("base.messageFile.saveToDriveFailed"));
       return;
     }
-    // 已存过 → 直接在云盘中查看，不再转存。parent_id 可能是 0（个人空间
-    // 根目录，合法），故只校验 file_id + space_id，parent_id 缺省当 0。
+    // 已存过 → 直接在云盘中查看，不再转存。本期定位到空间根目录，
+    // 只校验 file_id + space_id。
     const known = this.state.imTransferred;
     if (known?.exists && known.file_id && known.space_id) {
       WKApp.openDriveFile?.({
         space_id: known.space_id,
-        parent_id: known.parent_id ?? 0,
         file_id: known.file_id,
       });
       return;
@@ -486,6 +494,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
     try {
       const result = await save({
         im_group_no: message.channel.channelID,
+        im_channel_type: message.channel.channelType,
         im_msg_id: message.messageID,
       });
       // 转存成功：立即把状态切到"已存"，下次点击/hover 直接走查看分支。
@@ -738,7 +747,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
                     )}
                   </div>
                   <div className="wk-message-file-actions">
-                    {WKApp.saveMessageToDrive && WKApp.remoteConfig?.driveOn && (
+                    {WKApp.saveMessageToDrive && WKApp.remoteConfig?.driveOn && message.channel.channelType !== ChannelTypePerson && (
                       <Tooltip
                         content={
                           this.state.imTransferred?.exists

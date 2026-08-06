@@ -419,15 +419,23 @@ export interface ImTransferredEntry {
   parent_id: number;
 }
 
-/** Batch-query whether a set of IM files (identified by their message urls)
- *  have already been transferred into the caller's personal space. Only hit
- *  ref_ids appear in the returned map — missing keys mean "not yet transferred". */
+export interface ImTransferredItem {
+  im_group_no: string;
+  im_channel_type: number;
+  im_msg_id: string;
+}
+
+/** Batch-query whether a set of IM files (identified by
+ *  (channelType, channelID, msgID) triples) have already been transferred into
+ *  the caller's personal space. The backend derives a source_key
+ *  `${channelType}#${channelID}#${msgID}` and returns a map keyed by it; missing
+ *  keys mean "not yet transferred". */
 export async function checkImTransferredBatch(
-  refIds: string[],
+  items: ImTransferredItem[],
 ): Promise<Record<string, ImTransferredEntry>> {
   const resp = await post<{ results: Record<string, ImTransferredEntry> }>(
     '/blobs/im-transferred/batch',
-    { ref_ids: refIds },
+    { items },
   );
   return resp.results ?? {};
 }
