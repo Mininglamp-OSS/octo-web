@@ -88,6 +88,28 @@ describe("card runtime message source", () => {
     );
     target.remove();
   });
+
+  it("falls back to the normal submit path for an optional unsupported version", () => {
+    const { card, action, target } = makeCard();
+    action.data = {
+      effect: "send_current_user_message",
+      effect_version: 2,
+      effect_required: false,
+      message_source: { type: "choice_labels", input_id: "decision_choice" },
+    };
+    expect(resolveActionMessageEffect(action, card)).toBeNull();
+
+    action.data = {
+      effect: "send_current_user_message",
+      effect_version: 2,
+      effect_required: true,
+      message_source: { type: "choice_labels", input_id: "decision_choice" },
+    };
+    expect(() => resolveActionMessageEffect(action, card)).toThrow(
+      "send_current_user_message@2"
+    );
+    target.remove();
+  });
 });
 
 describe("sendActionWithCurrentUserMessage", () => {

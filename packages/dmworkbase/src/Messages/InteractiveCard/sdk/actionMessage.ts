@@ -112,6 +112,7 @@ export function resolveActionMessageEffect(
     );
   }
   if (version > capability.version) {
+    if (data.effect_required === false) return null;
     throw new UnsupportedActionMessageEffectError(`${data.effect}@${version}`);
   }
 
