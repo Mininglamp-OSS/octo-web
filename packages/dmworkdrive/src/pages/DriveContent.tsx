@@ -114,9 +114,27 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
 
   const handleDelete = useCallback(
     (entry: DriveEntry) => {
+      const isFolder = entry.type === 'folder';
+      // Folder deletion is a cascade soft-delete on the backend
+      // (folder/service.go SoftDeleteSubtree), so surface a stronger warning up
+      // front with the word "文件夹" highlighted for scan-ability. Non-folder
+      // entries (blob / doc) keep the lightweight generic confirm.
+      const content = isFolder
+        ? (
+            <span>
+              {t('drive.delete.folderConfirmPrefix')}
+              <span style={{ color: 'var(--wk-danger)', fontWeight: 500 }}>
+                {' '}{t('drive.delete.folderWord')}{' '}
+              </span>
+              {`"${entry.name}" `}
+              {t('drive.delete.folderConfirmSuffix')}
+            </span>
+          )
+        : `${t('drive.delete.content')} "${entry.name}"`;
+
       Modal.confirm({
-        title: t('drive.delete.title'),
-        content: `${t('drive.delete.content')} "${entry.name}"`,
+        title: isFolder ? t('drive.delete.folderTitle') : t('drive.delete.title'),
+        content,
         okText: t('drive.file.delete'),
         cancelText: t('drive.common.cancel'),
         okButtonProps: { type: 'danger' },
