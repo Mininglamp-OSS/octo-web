@@ -367,3 +367,56 @@ export interface OrgSearchResponse {
   candidates: OrgCandidate[];
   total: number;
 }
+
+// ─── IM → drive transferred-state (source_key wire contract) ────────────────
+//
+// The chat file card asks the backend whether a given IM file message has
+// already been transferred into the caller's personal space. The backend keys
+// its `drive_file.source_key` VARCHAR(128) column on the IM message triple:
+//
+//     source_key = `${im_channel_type}#${im_group_no}#${im_msg_id}`
+//
+// Delimiter '#' is unambiguous: `im_channel_type` (uint8) and `im_msg_id`
+// (numeric string) are digits only; `im_group_no` is a hex uid, a Person peer
+// uid, or a sub-thread composite "group_no____short_id" (already using
+// `____`), none of which contain `#`.
+//
+// The response map is keyed by that same source_key string; the frontend
+// rebuilds the key locally to look up each card's status (packages/
+// dmworkdrive/src/module.tsx, `checkDriveTransferred` / batch dedupe /
+// results read-back). The invariant is: write-key === read-key by
+// construction, and both mirror the backend's canonical source_key format.
+//
+// Do not change the delimiter or the field order in isolation — the wire is
+// pinned across octo-drive (drive_file.source_key + POST
+// /blobs/im-transferred/batch handler) and octo-web (this file + module.tsx).
+// The backend contract lives in octo-drive `internal/modules/imtransfer/`
+// (see `buildSourceKey`) and the migration
+// `db/migrations/007_add_file_source_key.up.sql`.
+
+/**
+ * Hit entry returned by POST /blobs/im-transferred/batch.
+ * Present in `results` map when the file exists in the caller's personal
+ * space; missing key means "not transferred yet".
+ * Field names/types mirror octo-drive Go: file_id/parent_id are uint64 →
+ * number; space_id is a string; parent_id === 0 means "space root".
+ */
+export interface ImTransferredEntry {
+  file_id: number;
+  space_id: string;
+  parent_id: number;
+}
+
+/**
+ * Batch item shape sent to POST /blobs/im-transferred/batch. The three fields
+ * together form the source_key `${im_channel_type}#${im_group_no}#${im_msg_id}`
+ * documented above. im_channel_type is the wukongimjssdk ChannelType numeric
+ * enum (Person=1, Group=2, CommunityTopic=5); im_group_no is the IM channelID
+ * (peer uid for DM, group_no for group, or "group_no____short_id" for
+ * sub-thread); im_msg_id is the octo-server message id as a string.
+ */
+export interface ImTransferredItem {
+  im_group_no: string;
+  im_channel_type: number;
+  im_msg_id: string;
+}

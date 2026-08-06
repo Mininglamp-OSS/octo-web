@@ -413,17 +413,12 @@ export async function transferFromIm(req: TransferFromImReq): Promise<TransferRe
   return post<TransferResult>('/blobs/transfer-from-im', req);
 }
 
-export interface ImTransferredEntry {
-  file_id: number;
-  space_id: string;
-  parent_id: number;
-}
-
-export interface ImTransferredItem {
-  im_group_no: string;
-  im_channel_type: number;
-  im_msg_id: string;
-}
+// Wire types for the IM -> drive transferred-state check now live in
+// bridge/types.ts alongside the other octo-drive Go DTO mirrors. Re-exported
+// here so existing importers of driveApi keep working, and so the source_key
+// contract stays visible at the API call-site too.
+export type { ImTransferredEntry, ImTransferredItem } from '../bridge/types';
+import type { ImTransferredEntry, ImTransferredItem } from '../bridge/types';
 
 /** Batch-query whether a set of IM files (identified by
  *  (channelType, channelID, msgID) triples) have already been transferred into
