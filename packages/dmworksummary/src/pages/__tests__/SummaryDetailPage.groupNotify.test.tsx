@@ -222,6 +222,57 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
         expect(sendMock.mock.calls.map((c) => c[1].channelID).sort()).toEqual(['group-a', 'group-b']);
     });
 
+    it('serializes different sources of one completion with a shared Web Lock', async () => {
+        const previousLocks = navigator.locks;
+        const tails = new Map<string, Promise<unknown>>();
+        const request = vi.fn((name: string, action: () => Promise<unknown>): Promise<unknown> => {
+            const previous = tails.get(name) || Promise.resolve();
+            const current = previous.then(action, action);
+            tails.set(name, current.catch(() => undefined));
+            return current;
+        });
+        Object.defineProperty(navigator, 'locks', { configurable: true, value: { request } });
+
+        let releaseFirstSend!: () => void;
+        const firstSendPending = new Promise<void>((resolve) => { releaseFirstSend = resolve; });
+        sendMock.mockImplementation((_msg: any, ch: any) => (
+            ch.channelID === 'group-a' ? firstSendPending : Promise.resolve(undefined)
+        ));
+
+        try {
+            const sendA = newPage().sendGroupSummaryNotify(makeDetail({
+                result_id: 10,
+                sources: [{ source_type: SourceType.GROUP_CHAT, source_id: 'group-a' }],
+            }));
+            await vi.waitFor(() => expect(sendMock).toHaveBeenCalledTimes(1));
+
+            const sendB = newPage().sendGroupSummaryNotify(makeDetail({
+                result_id: 10,
+                sources: [{ source_type: SourceType.GROUP_CHAT, source_id: 'group-b' }],
+            }));
+            await Promise.resolve();
+
+            // group-b must wait behind group-a even though it is a different source.
+            expect(sendMock).toHaveBeenCalledTimes(1);
+            releaseFirstSend();
+            await Promise.all([sendA, sendB]);
+
+            expect(sendMock.mock.calls.map((c) => c[1].channelID)).toEqual(['group-a', 'group-b']);
+            expect(request).toHaveBeenNthCalledWith(
+                1,
+                'octo-summary-notify:completion:1:result:10',
+                expect.any(Function),
+            );
+            expect(request).toHaveBeenNthCalledWith(
+                2,
+                'octo-summary-notify:completion:1:result:10',
+                expect.any(Function),
+            );
+        } finally {
+            Object.defineProperty(navigator, 'locks', { configurable: true, value: previousLocks });
+        }
+    });
+
     it('wires an observed status event transition to the notify path', async () => {
         const page = newPage();
         const detail = makeDetail();

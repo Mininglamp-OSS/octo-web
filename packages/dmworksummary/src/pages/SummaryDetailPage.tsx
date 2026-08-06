@@ -2220,13 +2220,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         for (const sourceId of groupSourceIds) {
             const inFlightKey = `${completionKey || detail.task_id}:${sourceId}`;
+            // marker 存在同一个 localStorage 数组中；同一 completion 的所有 source
+            // 必须共用一把 Web Lock，避免不同 tab 并发 RMW 时覆盖彼此的 marker。
+            const lockKey = completionKey
+                ? `completion:${completionKey}`
+                : inFlightKey;
             if (completionKey && hasSentSummaryNotify(completionKey, sourceId)) continue;
             if (this.summaryNotifyInFlight.has(inFlightKey)) continue; // 本实例正在发
             const ch = new Channel(sourceId, ChannelTypeGroup);
 
             this.summaryNotifyInFlight.add(inFlightKey);
             try {
-                await withSummaryNotifyLock(inFlightKey, async () => {
+                await withSummaryNotifyLock(lockKey, async () => {
                     // 进入跨 tab 锁后必须重读 marker；等待锁期间另一 tab 可能已发送成功。
                     if (completionKey && hasSentSummaryNotify(completionKey, sourceId)) return;
                     // 已解散群不发（保持与既有发送路径一致的只读不变量）。

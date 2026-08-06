@@ -186,8 +186,9 @@ export function markSummaryNotifySent(completionKey: string, sourceId: string): 
 }
 
 /**
- * Web Locks 在支持的浏览器中把同一 completion/source 的检查-发送-落标记串行化，
- * 从而覆盖多 tab 竞态；不支持时退化为 localStorage + 当前实例 in-flight。
+ * Web Locks 在支持的浏览器中把同一 key 的检查-发送-落标记串行化；调用方应让
+ * 同一 completion 的所有 source 共用一把锁，避免不同 source 并发改写共享 marker
+ * 数组。不支持时退化为 localStorage + 当前实例 in-flight。
  */
 export async function withSummaryNotifyLock<T>(key: string, action: () => Promise<T>): Promise<T> {
     const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
