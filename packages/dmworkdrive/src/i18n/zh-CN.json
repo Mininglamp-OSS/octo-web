@@ -100,6 +100,7 @@
     "resultOk": "知道了",
     "actionDelete": "删除",
     "actionMove": "移动",
+    "actionCopy": "复制",
     "actionDownload": "下载"
   },
   "mount": {

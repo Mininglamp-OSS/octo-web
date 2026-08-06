@@ -265,7 +265,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   // Toast; anything with failures uses a Modal so the user can read the list.
   const reportBatchResult = useCallback(
     (
-      action: 'delete' | 'move' | 'download',
+      action: 'delete' | 'move' | 'copy' | 'download',
       succeeded: DriveEntry[],
       failed: Array<{ entry: DriveEntry; error: string }>,
     ) => {
@@ -323,7 +323,6 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     if (selectedEntries.length === 0) return;
     const folders = selectedEntries.filter((e) => e.type === 'folder');
     const files = selectedEntries.filter((e) => e.type !== 'folder');
-    const hasFolder = folders.length > 0;
 
     Modal.confirm({
       title:
@@ -382,9 +381,6 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
         }
       },
     });
-    // hasFolder is destructured for a future 'folder-aware' danger surface;
-    // silence the unused-var lint without changing behaviour.
-    void hasFolder;
   }, [selectedEntries, buildBatchDeleteContent, ops, reload, selection, reportBatchResult, t]);
 
   const handleBulkMove = useCallback(() => {
@@ -642,7 +638,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             reload();
             selection.clear();
           }
-          reportBatchResult(mode === 'move' ? 'move' : 'move', succeeded, failed);
+          reportBatchResult(mode, succeeded, failed);
           return succeeded.length > 0;
         }}
       />
