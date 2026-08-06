@@ -191,6 +191,30 @@ export const LINE_SPACING_ENABLED = envOr(import.meta.env?.VITE_DOCS_LINE_SPACIN
  */
 export const PPT_CREATE_ENABLED = envOr(import.meta.env?.VITE_DOCS_PPT_CREATE, 'true') === 'true'
 
+/**
+ * Exposure gate for the html_ppt viewer / editor / present surfaces that consume LIVE backend
+ * source (R3-F1, XIN-1495 / XIN-1583).
+ *
+ * R3-F1 builds the static shell and wires the routes (read-only PptDocView preview, the peer
+ * `/ppt/d/:docId` editor route with its same-origin Bento container, and the `/docs/:docId/present`
+ * present route), but the payloads those surfaces load — the origin-checked bootstrap and the
+ * published/live HTML — are produced by the backend R3-B1 source/bootstrap layer
+ * (`feature/xin-1495-ppt-r3-source-bootstrap`), which is NOT yet merged to main. Wiring the
+ * frontend to consume live source against an unmerged / mock contract would let a reader or
+ * commenter reach draft/live HTML before the backend enforces published-only access — the exact
+ * thing R3-B1 exists to prevent. So this flag DEFAULTS OFF: every live-source consumer renders a
+ * gated "not yet available" shell (fetching nothing, opening no frame, requesting no token) until a
+ * deployment whose backend carries R3-B1 flips `VITE_DOCS_PPT_SOURCE=true`.
+ *
+ * This gate is deliberately SEPARATE from PPT_CREATE_ENABLED: create (R2, backend merged) is already
+ * live, while source/bootstrap (R3-B1) is not. It never touches the R1 entry / filter /
+ * no-fallthrough routing or the R2 create picker — an OFF build leaves the placeholder behaviour and
+ * the create flow exactly as they are on main, so there is no regression to the shipped rounds. When
+ * OFF, the routes still exist (so a deep link lands on the PPT shell, never the rich-text editor),
+ * they simply show the gated state instead of loading source.
+ */
+export const PPT_SOURCE_ENABLED = envOr(import.meta.env?.VITE_DOCS_PPT_SOURCE, 'false') === 'true'
+
 // ── Default document addressing (frontend-design §7.2) ───────────────────────
 //
 // The docs-backend currently exposes only per-doc endpoints (`/docs/:docId/...`)
