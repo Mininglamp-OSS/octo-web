@@ -59,6 +59,8 @@
   },
   "move": {
     "title": "移动到",
+    "batchTitle": "移动 {{count}} 项到",
+    "batchSummary": "{{first}} 等 {{count}} 项",
     "noSubfolder": "该文件夹下没有子文件夹",
     "sameLocation": "已在当前位置，无需移动"
   },
