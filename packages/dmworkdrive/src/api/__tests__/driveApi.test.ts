@@ -224,21 +224,27 @@ describe('share / invite / org', () => {
     });
   });
 
-  it('accessShareByToken hits the public route, omitting body when no password', async () => {
+  it('accessShareByToken hits the authed share-token route, omitting body when no password', async () => {
     inst.post.mockResolvedValue(ok({ file_id: 1 }));
     await driveApi.accessShareByToken('tok');
-    expect(inst.post).toHaveBeenCalledWith('/v1/drive/public/shares/tok/access', undefined);
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/shares/tok/access', undefined);
     await driveApi.accessShareByToken('tok', 'pw');
-    expect(inst.post).toHaveBeenCalledWith('/v1/drive/public/shares/tok/access', { password: 'pw' });
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/shares/tok/access', { password: 'pw' });
   });
 
-  it('downloadShareByToken POSTs the public download route, omitting body when no password', async () => {
+  it('downloadShareByToken POSTs the authed share-token download route, omitting body when no password', async () => {
     inst.post.mockResolvedValue(ok({ url: 'https://s/dl', filename: 'a.txt', content_type: 'text/plain' }));
     const res = await driveApi.downloadShareByToken('tok');
-    expect(inst.post).toHaveBeenCalledWith('/v1/drive/public/shares/tok/download', undefined);
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/shares/tok/download', undefined);
     expect(res.url).toBe('https://s/dl');
     await driveApi.downloadShareByToken('tok', 'pw');
-    expect(inst.post).toHaveBeenCalledWith('/v1/drive/public/shares/tok/download', { password: 'pw' });
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/shares/tok/download', { password: 'pw' });
+  });
+
+  it('revokeShare DELETEs /shares/:id — the owner-side sibling of the token routes', async () => {
+    inst.delete.mockResolvedValue(ok(undefined));
+    await driveApi.revokeShare('sh1');
+    expect(inst.delete).toHaveBeenCalledWith('/v1/drive/shares/sh1');
   });
 
   it('acceptInvite POSTs /invites/:token/accept', async () => {
@@ -326,15 +332,17 @@ describe('auth-header interceptor', () => {
     logout.mockRestore();
   });
 
-  it('does NOT log out on a share-route 401 carrying a business code (B1)', async () => {
+  it('does NOT log out on a share-token 401 carrying a business code (B1)', async () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
     const onError = responseUse.mock.calls[0][1];
     // Every share business code, on both share endpoints, is left for the page
     // to classify — the share rejected the caller, the octo session is fine.
+    // A query string must not break the path match.
     for (const url of [
-      '/v1/drive/public/shares/tok/access',
-      '/v1/drive/public/shares/tok/download',
+      '/v1/drive/shares/tok/access',
+      '/v1/drive/shares/tok/download',
+      '/v1/drive/shares/tok/access?x=1',
     ]) {
       for (const code of ['password_required', 'wrong_password', 'share_expired', 'not_found']) {
         await expect(
@@ -346,7 +354,36 @@ describe('auth-header interceptor', () => {
     logout.mockRestore();
   });
 
-  it('DOES log out on a share-route 401 that is a session failure, not a share code (B1)', async () => {
+  it('the share-token exemption is anchored — owner-side and near-miss paths still log out', async () => {
+    const logout = vi.spyOn(WKApp.shared, 'logout');
+    const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
+    const onError = responseUse.mock.calls[0][1];
+    // Only `${BASE}/shares/:token/access|download` is exempt. The owner-side
+    // siblings that share the prefix (list/create `/shares`, revoke
+    // `/shares/:id`), a near-miss prefix, a nested extra segment and a
+    // trailing slash are all genuine session 401s → global logout.
+    const notExempt = [
+      '/v1/drive/shares',
+      '/v1/drive/shares?page=1',
+      '/v1/drive/shares/sh1',
+      '/v1/drive/shares/tok/access/',
+      '/v1/drive/shares/tok/access/extra',
+      '/v1/drive/sharesX/tok/access',
+      '/v1/drive/public/shares/tok/access',
+      '/v1/driveX/shares/tok/access',
+      '/other/shares/tok/access',
+      '/v1/drive/shares//access',
+    ];
+    for (const url of notExempt) {
+      await expect(
+        onError({ response: { status: 401, data: { error: 'not_found' } }, config: { url } }),
+      ).rejects.toBeDefined();
+    }
+    expect(logout).toHaveBeenCalledTimes(notExempt.length);
+    logout.mockRestore();
+  });
+
+  it('DOES log out on a share-token 401 that is a session failure, not a share code (B1)', async () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
     const onError = responseUse.mock.calls[0][1];
@@ -356,13 +393,13 @@ describe('auth-header interceptor', () => {
     await expect(
       onError({
         response: { status: 401, data: { error: 'unauthorized' } },
-        config: { url: '/v1/drive/public/shares/tok/access' },
+        config: { url: '/v1/drive/shares/tok/access' },
       }),
     ).rejects.toBeDefined();
     await expect(
       onError({
         response: { status: 401 },
-        config: { url: '/v1/drive/public/shares/tok/download' },
+        config: { url: '/v1/drive/shares/tok/download' },
       }),
     ).rejects.toBeDefined();
     expect(logout).toHaveBeenCalledTimes(2);
@@ -376,7 +413,7 @@ describe('auth-header interceptor', () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     inst.post.mockRejectedValue({
       response: { status: 401, data: { error: 'wrong_password', message: 'bad password' } },
-      config: { url: '/v1/drive/public/shares/tok/access' },
+      config: { url: '/v1/drive/shares/tok/access' },
     });
     await expect(driveApi.accessShareByToken('tok', 'nope')).rejects.toMatchObject({
       code: 'wrong_password',
@@ -384,7 +421,7 @@ describe('auth-header interceptor', () => {
     });
     inst.post.mockRejectedValue({
       response: { status: 401, data: { error: 'share_expired', message: 'expired' } },
-      config: { url: '/v1/drive/public/shares/tok/download' },
+      config: { url: '/v1/drive/shares/tok/download' },
     });
     await expect(driveApi.downloadShareByToken('tok')).rejects.toMatchObject({
       code: 'share_expired',

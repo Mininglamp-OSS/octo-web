@@ -41,9 +41,9 @@ const vm = new DriveVM();
 
 // NOTE: the share (`/drive/s/:token`) and invite (`/drive/invite/:token`)
 // landing pages are intercepted by the host Layout (apps/web) as standalone
-// pages — share renders anonymously (public endpoints, no login), invite
-// bounces through login and back. This module no longer captures/rewrites those
-// deep-links; it owns only the authenticated two-pane `/drive` view. Keeping a
+// pages — both require a signed-in session and bounce through login and back.
+// This module no longer captures/rewrites those deep-links; it owns only the
+// authenticated two-pane `/drive` view. Keeping a
 // single source of truth for the landing routes (the host Layout) avoids the
 // double-routing that the old boot-time URL rewrite created.
 

@@ -4,9 +4,9 @@
 // namespace, mirroring @octo/base buildDocLink (`/d/:docId`) and the docs
 // module's invite link (`/docs/invite/:token`): the octo host's RouteManager
 // re-pushes pathname-only and strips the query, so a `?token=` deep-link would
-// be wiped before the module mounts. The share id doubles as its public-access
-// token (drive backend keys `POST /v1/drive/public/shares/:id/access` on the
-// share id); invites carry their own opaque token.
+// be wiped before the module mounts. The share id doubles as its access token
+// (drive backend keys `POST /v1/drive/shares/:id/access` on the share id);
+// invites carry their own opaque token.
 //
 // The landing routes (`/drive/s/:id`, `/drive/invite/:token`) are registered
 // via the octo host Layout. Both REQUIRE a signed-in Octo session: a logged-out
@@ -59,13 +59,13 @@ export function inviteTokenFromPath(): string {
 }
 
 /**
- * Whether `pathname` is a drive public-share landing link (`/drive/s/:token`).
+ * Whether `pathname` is a drive share landing link (`/drive/s/:token`).
  * The host Layout intercepts this shape and renders ShareLandingPage (which
  * requires a signed-in session; a logged-out visitor is bounced to login and
  * returned here). Anchored to a single token segment, and the token must
  * survive safeDecode — a malformed %-escape or an encoded slash is rejected so
  * Layout never renders the page with an empty/ambiguous token that would POST to
- * `/public/shares//access`. Mirrors isSafeDriveLandingPath in the host allowlist.
+ * `/shares//access`. Mirrors isSafeDriveLandingPath in the host allowlist.
  */
 export function isDriveSharePath(pathname: string): boolean {
   return isLandingToken(pathname, /^\/drive\/s\/([^/?#]+)\/?$/);

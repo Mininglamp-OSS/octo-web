@@ -108,19 +108,31 @@ const SHARE_BUSINESS_CODES = new Set([
 ]);
 
 /**
- * Whether `url` targets the public-share namespace, anchored to the exact drive
- * base path so it never matches a sibling like `/v1/drive/publicshares` or an
- * unrelated `/public/shares/` on another service.
+ * Whether `url` is a recipient-side share-token endpoint
+ * (`${BASE}/shares/:token/access|download`).
+ *
+ * Anchored to the exact drive base path AND to a single token segment followed by
+ * `access`/`download`, so it never matches an owner-side sibling under the same
+ * prefix — `POST|GET ${BASE}/shares`, `DELETE ${BASE}/shares/:id` — nor a
+ * near-miss like `${BASE}/sharesX/...` or an unrelated `/shares/` on another
+ * service. Query strings are ignored.
  */
-function isSharePublicPath(url: string): boolean {
+function isShareTokenPath(url: string): boolean {
   const path = url.split('?')[0];
-  return path.startsWith(`${BASE}/public/shares/`);
+  const prefix = `${BASE}/shares/`;
+  if (!path.startsWith(prefix)) return false;
+  const segments = path.slice(prefix.length).split('/');
+  return (
+    segments.length === 2 &&
+    segments[0] !== '' &&
+    (segments[1] === 'access' || segments[1] === 'download')
+  );
 }
 
 // Mirror APIClient: an expired octo session (401) logs the user out — EXCEPT a
-// 401 from `/v1/drive/public/shares/:token/*` whose envelope carries a share
-// business code, which means the share (not the session) rejected the caller.
-// ShareLandingPage classifies that response by its code. Every other 401 —
+// 401 from `/v1/drive/shares/:token/access|download` whose envelope carries a
+// share business code, which means the share (not the session) rejected the
+// caller. ShareLandingPage classifies that response by its code. Every other 401 —
 // including a share-route `unauthorized`/session-expired 401 — still logs out,
 // preserving the login-then-return-to-landing flow.
 driveAxios.interceptors.response.use(undefined, (err) => {
@@ -128,7 +140,7 @@ driveAxios.interceptors.response.use(undefined, (err) => {
     const url: string = err?.config?.url ?? '';
     const code = extractApiError(err).code;
     const isShareBusinessFailure =
-      isSharePublicPath(url) && !!code && SHARE_BUSINESS_CODES.has(code);
+      isShareTokenPath(url) && !!code && SHARE_BUSINESS_CODES.has(code);
     if (!isShareBusinessFailure) {
       WKApp.shared.logout();
     }
@@ -539,29 +551,32 @@ export async function revokeShare(shareId: string): Promise<void> {
 /**
  * Recipient-side share access. Requires a valid Octo session: any signed-in Octo
  * user may open a share (regardless of whether they belong to the file's Space);
- * external/anonymous visitors cannot. Sent through the authed `driveAxios`, so a
- * genuine session 401 still triggers logout — but a 401 carrying a share business
- * code (password_required / wrong_password / share_expired / not_found) does NOT,
- * so ShareLandingPage can classify it instead of tearing down the session. The
- * path keeps the `/public/shares/...` name for backend-route compatibility, but
- * the request carries the session token.
+ * external/anonymous visitors cannot. The endpoint lives on the authenticated
+ * drive mount (`/v1/drive/shares/:token/access`) — the anonymous
+ * `/v1/drive/public/*` routes were removed backend-side, so authentication is
+ * enforced by the mount while the share token/password still decides share
+ * authorization. Sent through the authed `driveAxios`, so a genuine session 401
+ * still triggers logout — but a 401 carrying a share business code
+ * (password_required / wrong_password / share_expired / not_found) does NOT, so
+ * ShareLandingPage can classify it instead of tearing down the session.
  */
 export async function accessShareByToken(token: string, password?: string): Promise<ShareAccess> {
-  return post<ShareAccess>(`/public/shares/${encodeURIComponent(token)}/access`, password ? { password } : undefined);
+  return post<ShareAccess>(`/shares/${encodeURIComponent(token)}/access`, password ? { password } : undefined);
 }
 
 /**
  * Recipient-side share download. Reuses the same token+password+expiry check as
  * accessShareByToken and returns the object-storage URL. Authed like access —
- * any signed-in Octo user may download; same 401 handling (session 401 logs out,
- * a share-business-code 401 is left for the caller to classify).
+ * any signed-in Octo user may download, a logged-out visitor cannot; same 401
+ * handling (session 401 logs out, a share-business-code 401 is left for the
+ * caller to classify).
  */
 export async function downloadShareByToken(
   token: string,
   password?: string,
 ): Promise<ShareDownload> {
   return post<ShareDownload>(
-    `/public/shares/${encodeURIComponent(token)}/download`,
+    `/shares/${encodeURIComponent(token)}/download`,
     password ? { password } : undefined,
   );
 }
