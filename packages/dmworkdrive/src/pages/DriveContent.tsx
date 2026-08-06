@@ -66,6 +66,11 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   const selectionContextKey = activeSpaceId ? `${activeSpaceId}::${currentParentId}` : null;
   const selection = useSelection(entries, selectionContextKey);
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Per-row transient state for batch ops. Pending = in flight, half-opacity
+  // + non-interactive; removing = op succeeded, row plays the fade-out
+  // animation for one frame before the parent removes it from entries.
+  const [pendingIds, setPendingIds] = useState<Set<number>>(() => new Set());
+  const [removingIds, setRemovingIds] = useState<Set<number>>(() => new Set());
 
   // Drag-drop upload target. Reuses useUpload.addFiles so dropped files
   // flow through the exact same presigned-URL / progress pipeline as
@@ -333,6 +338,10 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
       okButtonProps: { type: 'danger' },
       onOk: async () => {
         setBulkBusy(true);
+        // Mark every row as pending up front so users see the whole batch
+        // dim as work starts.
+        const batchIds = selectedEntries.map((e) => e.id);
+        setPendingIds(new Set(batchIds));
         try {
           const { succeeded, failed } = await runBatch(
             selectedEntries,
@@ -340,8 +349,32 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
               const ok = await ops.deleteEntry(entry);
               if (!ok) throw new Error(t('drive.toast.opFailed'));
             },
+            {
+              // Per-row transition on each item as it settles: successful
+              // rows flip pending → removing (fades out); failed rows just
+              // drop the pending tint so they're back to a normal row.
+              onSettled: (r) => {
+                setPendingIds((prev) => {
+                  const next = new Set(prev);
+                  next.delete(r.entry.id);
+                  return next;
+                });
+                if (r.ok) {
+                  setRemovingIds((prev) => {
+                    const next = new Set(prev);
+                    next.add(r.entry.id);
+                    return next;
+                  });
+                }
+              },
+            },
           );
+          // Give the removal animation (260ms) time to finish before we
+          // reload — otherwise the list re-renders under the transition
+          // and the fade-out looks like a hard cut.
+          await new Promise((r) => setTimeout(r, 280));
           if (succeeded.length > 0) reload();
+          setRemovingIds(new Set());
           selection.clear();
           reportBatchResult('delete', succeeded, failed);
         } finally {
@@ -520,6 +553,8 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
                   }
                 : undefined
             }
+            pendingIds={pendingIds}
+            removingIds={removingIds}
           />
         )}
         {hasMore && (
