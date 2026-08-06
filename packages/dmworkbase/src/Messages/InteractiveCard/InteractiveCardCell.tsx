@@ -1,6 +1,6 @@
 import React from "react";
 import { type Action, type AdaptiveCard } from "adaptivecards";
-import { Channel, MessageText } from "wukongimjssdk";
+import { Channel, Mention, MessageText } from "wukongimjssdk";
 import { Toast } from "@douyinfe/semi-ui";
 import WKApp from "../../App";
 import { getMessageRow } from "../../bridge/message/useMessageRow";
@@ -37,7 +37,10 @@ import {
   resolveActionMessageText,
   UnsupportedActionMessageEffectError,
 } from "./sdk/actionMessage";
-import { sendActionWithCurrentUserMessage } from "../../Service/ActionMessageSender";
+import {
+  ActionMessageSendError,
+  sendActionWithCurrentUserMessage,
+} from "../../Service/ActionMessageSender";
 import { enhanceRenderedOctoCard, renderOctoCard } from "./sdk/renderOctoCard";
 import { classifyCardSender, fetchSenderChannelInfo } from "./senderTrust";
 import "./index.css";
@@ -79,6 +82,21 @@ function renderPlainText(text: string, keyPrefix: string): React.ReactNode {
       {i !== lines.length - 1 ? <br /> : null}
     </span>
   ));
+}
+
+function createActionMessageContent(text: string, action: Action): MessageText {
+  const content = new MessageText(text);
+  const data = (action as unknown as { data?: Record<string, unknown> }).data;
+  const replyTargetUID =
+    typeof data?.reply_target_uid === "string"
+      ? data.reply_target_uid.trim()
+      : "";
+  if (replyTargetUID) {
+    const mention = new Mention();
+    mention.uids = [replyTargetUID];
+    content.mention = mention;
+  }
+  return content;
 }
 
 /**
@@ -374,7 +392,12 @@ export class InteractiveCardCell extends MessageCell {
     try {
       actionEffect = resolveActionMessageEffect(action, card);
       if (actionEffect)
-        actionMessage = resolveActionMessageText(actionEffect, action, card);
+        actionMessage = resolveActionMessageText(
+          actionEffect,
+          action,
+          card,
+          inputs
+        );
     } catch (err) {
       if (
         err instanceof UnsupportedActionMessageEffectError ||
@@ -421,11 +444,13 @@ export class InteractiveCardCell extends MessageCell {
     const submitPromise =
       actionEffect && actionMessage
         ? sendActionWithCurrentUserMessage({
-            operationKey: `${message.messageID}:${actionId}:${WKApp.loginInfo.uid}`,
+            operationKey: `${message.messageID}:${
+              this.renderedKey ?? "current-frame"
+            }:${actionId}:${WKApp.loginInfo.uid}`,
             content: actionMessage,
             sendMessage: () =>
               this.props.context.sendMessage(
-                new MessageText(actionMessage!),
+                createActionMessageContent(actionMessage!, action),
                 sendChannel
               ),
             submitAction: submit,
@@ -434,8 +459,12 @@ export class InteractiveCardCell extends MessageCell {
 
     submitPromise
       .then(() => {
+        if (this.mounted && gen === this.submitGen) {
+          this.submitError = null;
+          this.forceUpdate();
+        }
         // 受理成功（含 replay）：保持 loading 等 bot 重写的新帧到达（syncSdkCard 重置）；
-        // 若 bot 迟迟不重写，10s 超时兜底恢复可点。无需在此变更状态。
+        // 若 bot 迟迟不重写，10s 超时兜底恢复可点。
       })
       .catch((err) => {
         // 已卸载 / 被新提交或新帧取代 → 忽略过期响应，不覆盖当前 UI 态。
@@ -443,7 +472,8 @@ export class InteractiveCardCell extends MessageCell {
         this.clearSubmitTimer();
         this.submitting = false;
         this.submitError = t(
-          isRetryableCardActionError(err)
+          isRetryableCardActionError(err) ||
+            err instanceof ActionMessageSendError
             ? "base.message.interactiveCard.submitRetry"
             : "base.message.interactiveCard.submitFailed"
         );

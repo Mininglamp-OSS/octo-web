@@ -8,6 +8,16 @@ interface SentEntry {
   updatedAt: number;
 }
 
+export class ActionMessageSendError extends Error {
+  readonly cause: unknown;
+
+  constructor(cause: unknown) {
+    super("Failed to send card action user message");
+    this.name = "ActionMessageSendError";
+    this.cause = cause;
+  }
+}
+
 type Stage =
   | "user_message_sending"
   | "user_message_sent"
@@ -65,6 +75,8 @@ export async function sendActionWithCurrentUserMessage(
     }
     try {
       message = await sendPromise;
+    } catch (error) {
+      throw new ActionMessageSendError(error);
     } finally {
       if (inFlightSends.get(sendKey) === sendPromise)
         inFlightSends.delete(sendKey);

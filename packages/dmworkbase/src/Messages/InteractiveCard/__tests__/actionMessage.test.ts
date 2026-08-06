@@ -34,7 +34,10 @@ function makeCard() {
         isMultiSelect: true,
         value: "interaction,mobile",
         choices: [
-          { title: "补全消息交互（推荐）", value: "interaction" },
+          {
+            title: "补全消息交互（推荐）\n这是卡片内的说明",
+            value: "interaction",
+          },
           { title: "完善移动端布局", value: "mobile" },
         ],
       },
@@ -79,7 +82,7 @@ describe("card runtime message source", () => {
 
   it("does not silently fall back when an explicit source is malformed", () => {
     const { card, action, target } = makeCard();
-    action.data = {
+    (action as any).data = {
       effect: "append_user_message",
       message_source: { type: "unknown_source", input_id: "decision_choice" },
     };
@@ -89,9 +92,24 @@ describe("card runtime message source", () => {
     target.remove();
   });
 
+  it("uses dialog values when composing the message", () => {
+    const { card, action, target } = makeCard();
+    (action as any).data = {
+      effect: "send_current_user_message",
+      message_source: { type: "input_text", input_id: "decision_note" },
+    };
+    const effect = resolveActionMessageEffect(action, card);
+    expect(
+      resolveActionMessageText(effect!, action, card, {
+        decision_note: "来自弹窗的原因",
+      })
+    ).toBe("来自弹窗的原因");
+    target.remove();
+  });
+
   it("falls back to the normal submit path for an optional unsupported version", () => {
     const { card, action, target } = makeCard();
-    action.data = {
+    (action as any).data = {
       effect: "send_current_user_message",
       effect_version: 2,
       effect_required: false,
@@ -99,7 +117,7 @@ describe("card runtime message source", () => {
     };
     expect(resolveActionMessageEffect(action, card)).toBeNull();
 
-    action.data = {
+    (action as any).data = {
       effect: "send_current_user_message",
       effect_version: 2,
       effect_required: true,
@@ -136,5 +154,30 @@ describe("sendActionWithCurrentUserMessage", () => {
 
     expect(sendMessage).toHaveBeenCalledTimes(1);
     expect(submitAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends again for a new card frame while reusing the same-frame retry", async () => {
+    const sendMessage = vi.fn().mockResolvedValue({ messageID: "message-1" });
+    const submitAction = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("card action unavailable"))
+      .mockResolvedValue({ accepted: true });
+
+    const retry = {
+      operationKey: "card-1:frame-1:decision_send:user-1",
+      content: "补全消息交互（推荐）",
+      sendMessage,
+      submitAction,
+    };
+    await expect(sendActionWithCurrentUserMessage(retry)).rejects.toThrow();
+    await sendActionWithCurrentUserMessage(retry);
+
+    await sendActionWithCurrentUserMessage({
+      ...retry,
+      operationKey: "card-1:frame-2:decision_send:user-1",
+    });
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(submitAction).toHaveBeenCalledTimes(3);
   });
 });

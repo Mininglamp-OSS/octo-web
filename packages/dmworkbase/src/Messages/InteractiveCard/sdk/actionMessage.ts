@@ -29,16 +29,22 @@ export class InvalidActionMessageSourceError extends Error {
 }
 
 type JsonObject = Record<string, unknown>;
+const MAX_SOURCE_DEPTH = 8;
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || undefined;
 }
 
-function parseSource(value: unknown): ActionMessageSource | undefined {
+function parseSource(
+  value: unknown,
+  depth = 0
+): ActionMessageSource | undefined {
+  if (depth > MAX_SOURCE_DEPTH) return undefined;
   if (!isObject(value) || typeof value.type !== "string") return undefined;
   const inputId = stringValue(value.input_id ?? value.inputId);
   if (value.type === "action.title") return { type: "action.title" };
@@ -55,7 +61,7 @@ function parseSource(value: unknown): ActionMessageSource | undefined {
     return { type: "input_text", inputId };
   }
   if (value.type === "compose" && Array.isArray(value.parts)) {
-    const parts = value.parts.map(parseSource);
+    const parts = value.parts.map((part) => parseSource(part, depth + 1));
     if (
       parts.every((part): part is ActionMessageSource => part !== undefined)
     ) {
@@ -104,6 +110,14 @@ export function resolveActionMessageEffect(
     return null;
   }
 
+  if (
+    data.effect_version !== undefined &&
+    typeof data.effect_version !== "number"
+  ) {
+    throw new InvalidActionMessageSourceError(
+      "Card action effect_version must be a positive integer"
+    );
+  }
   const version =
     typeof data.effect_version === "number" ? data.effect_version : 1;
   if (!Number.isInteger(version) || version < 1) {
@@ -170,7 +184,8 @@ function inputFor(card: AdaptiveCard, inputId: string): CardInputLike {
 function resolveSourceText(
   source: ActionMessageSource,
   card: AdaptiveCard,
-  action: Action
+  action: Action,
+  inputValues?: Record<string, string>
 ): string {
   if (source.type === "action.title") {
     const title = (action as unknown as { title?: unknown }).title;
@@ -180,7 +195,12 @@ function resolveSourceText(
     return title.trim();
   }
   if (source.type === "input_text") {
-    const value = inputFor(card, source.inputId).value;
+    const value = Object.prototype.hasOwnProperty.call(
+      inputValues ?? {},
+      source.inputId
+    )
+      ? inputValues?.[source.inputId]
+      : inputFor(card, source.inputId).value;
     return value == null ? "" : String(value).trim();
   }
   if (source.type === "choice_labels") {
@@ -190,7 +210,14 @@ function resolveSourceText(
         `Input ${source.inputId} is not a ChoiceSet`
       );
     }
-    const rawValue = input.value == null ? "" : String(input.value);
+    const rawValue = Object.prototype.hasOwnProperty.call(
+      inputValues ?? {},
+      source.inputId
+    )
+      ? inputValues?.[source.inputId] ?? ""
+      : input.value == null
+      ? ""
+      : String(input.value);
     const values = rawValue
       .split(",")
       .map((value) => value.trim())
@@ -202,12 +229,12 @@ function resolveSourceText(
           `Choice value is not declared by ${source.inputId}: ${value}`
         );
       }
-      return choice.title.trim();
+      return choice.title.trim().split(/\r?\n/, 1)[0].trim();
     });
     return labels.join(source.separator ?? "\n");
   }
   const parts = source.parts
-    .map((part) => resolveSourceText(part, card, action).trim())
+    .map((part) => resolveSourceText(part, card, action, inputValues).trim())
     .filter(Boolean);
   return parts.join(source.separator ?? "\n");
 }
@@ -215,9 +242,15 @@ function resolveSourceText(
 export function resolveActionMessageText(
   effect: ActionMessageEffect,
   action: Action,
-  card: AdaptiveCard
+  card: AdaptiveCard,
+  inputValues?: Record<string, string>
 ): string {
-  const text = resolveSourceText(effect.source, card, action).trim();
+  const text = resolveSourceText(
+    effect.source,
+    card,
+    action,
+    inputValues
+  ).trim();
   if (!text)
     throw new InvalidActionMessageSourceError("Current-user message is empty");
   return text;
