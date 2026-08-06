@@ -5,7 +5,7 @@ import MessageBase from "../Base";
 import WKApp from "../../App";
 import { FileContent } from "./FileContent";
 import { downloadFile } from "../../Utils/download";
-import { WKSDK, Task, TaskStatus, ChannelTypePerson } from "wukongimjssdk";
+import { WKSDK, Task, TaskStatus } from "wukongimjssdk";
 import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import WKModal from "../../Components/WKModal";
 import MarkdownContent from "../Text/MarkdownContent";
@@ -408,13 +408,9 @@ export class FileCell extends MessageCell<any, FileCellState> {
     }
 
     // 挂载时查询转存状态：多条消息在钩子层微批合并成一次批量请求。
-    // 私聊(ChannelTypePerson=1)本期不支持转存/查询，直接跳过。
+    // 群/子区/私聊统一支持（源码 source_key 已带 channelType 区分）。
     const check = WKApp.checkDriveTransferred;
-    if (
-      check &&
-      WKApp.remoteConfig?.driveOn &&
-      message.channel.channelType !== ChannelTypePerson
-    ) {
+    if (check && WKApp.remoteConfig?.driveOn) {
       check({
         im_group_no: message.channel.channelID,
         im_channel_type: message.channel.channelType,
@@ -474,19 +470,21 @@ export class FileCell extends MessageCell<any, FileCellState> {
     const { message } = this.props;
     const { t } = this.context;
     const content = message.content as FileContent;
-    const url = this.getFileURL(content);
-    if (!url || !isSafeUrl(url)) {
-      Toast.error(t("base.messageFile.saveToDriveFailed"));
-      return;
-    }
-    // 已存过 → 直接在云盘中查看，不再转存。本期定位到空间根目录，
-    // 只校验 file_id + space_id。
+    // 已存过 → 直接在云盘中查看，不再转存。查看只依赖 file_id + space_id，
+    // 与文件 URL 无关，所以放在 URL 安全校验之前——避免 URL 畸形时把
+    // 已转存文件的"在云盘查看"也误拦掉。本期定位到空间根目录。
     const known = this.state.imTransferred;
     if (known?.exists && known.file_id && known.space_id) {
       WKApp.openDriveFile?.({
         space_id: known.space_id,
         file_id: known.file_id,
       });
+      return;
+    }
+    // 未存 → 需要转存，此时才校验 URL（转存依赖消息附件）。
+    const url = this.getFileURL(content);
+    if (!url || !isSafeUrl(url)) {
+      Toast.error(t("base.messageFile.saveToDriveFailed"));
       return;
     }
     const save = WKApp.saveMessageToDrive;
@@ -747,7 +745,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
                     )}
                   </div>
                   <div className="wk-message-file-actions">
-                    {WKApp.saveMessageToDrive && WKApp.remoteConfig?.driveOn && message.channel.channelType !== ChannelTypePerson && (
+                    {WKApp.saveMessageToDrive && WKApp.remoteConfig?.driveOn && (
                       <Tooltip
                         content={
                           this.state.imTransferred?.exists
