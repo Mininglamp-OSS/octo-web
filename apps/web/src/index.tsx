@@ -23,19 +23,24 @@ import appZhCN from './i18n/zh-CN.json';
 // 例如: https://api.example.com (而非 https://api.example.com/v1/)
 
 if((window as any).__TAURI_IPC__ || (window as any)?.__POWERED_ELECTRON__) {
-  // Tauri/Electron 需要完整 API URL
-  const rawApiURL = import.meta.env.VITE_API_URL
-  if (!rawApiURL) {
-    throw new Error('VITE_API_URL is required for Tauri/Electron. Please set it in .env.local (e.g., VITE_API_URL=https://api.example.com)')
+  // Tauri/Electron 需要完整 API URL；dev 模式走 Vite proxy（相对路径），
+  // 避免从 localhost origin 直接跨域请求后端被 CORS 拦截
+  if (import.meta.env.DEV) {
+    WKApp.apiClient.config.apiURL = "/v1/"
+  } else {
+    const rawApiURL = import.meta.env.VITE_API_URL
+    if (!rawApiURL) {
+      throw new Error('VITE_API_URL is required for Tauri/Electron. Please set it in .env.local (e.g., VITE_API_URL=https://api.example.com)')
+    }
+    // 提取 origin，防止旧格式导致双拼路径
+    let apiURL: string
+    try {
+      apiURL = new URL(rawApiURL).origin
+    } catch {
+      throw new Error(`VITE_API_URL format is invalid: "${rawApiURL}". Please use full URL, e.g. https://api.example.com`)
+    }
+    WKApp.apiClient.config.apiURL = apiURL + "/v1/"
   }
-  // 提取 origin，防止旧格式导致双拼路径
-  let apiURL: string
-  try {
-    apiURL = new URL(rawApiURL).origin
-  } catch {
-    throw new Error(`VITE_API_URL format is invalid: "${rawApiURL}". Please use full URL, e.g. https://api.example.com`)
-  }
-  WKApp.apiClient.config.apiURL = apiURL + "/v1/"
 } else {
   // Web 环境（DEV/PROD）统一走相对路径 /api/v1/
   // DEV: 由 Vite proxy 转发到 VITE_API_URL（保留 /api 前缀，后端直连）
