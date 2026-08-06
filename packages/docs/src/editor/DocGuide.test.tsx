@@ -83,7 +83,7 @@ describe('DocGuide content contract (shipped locales)', () => {
     ['zh-CN', zhLocale],
     ['en-US', enLocale],
   ] as const) {
-    it(`${name}: teaches prerequisites, per-surface commands, practice, pitfalls and skill discovery`, () => {
+    it(`${name}: teaches prerequisites, per-surface commands, pitfalls and skill discovery`, () => {
       const g = (locale as { guide: Record<string, unknown> }).guide
       expect(g).toBeTruthy()
 
@@ -109,9 +109,6 @@ describe('DocGuide content contract (shipped locales)', () => {
       for (const k of ['doc', 'sheet', 'board'] as const) {
         expect(cmd[k]).toContain('--base-version')
       }
-
-      // Read-modify-write is stated as the practice, not just implied by the flag.
-      expect(g.practiceBody as string).toContain('base-version')
 
       // The pitfalls are the ones that actually bite, each naming its fix.
       expect(g.pitfallAnchor as string).toContain('--anchorText')

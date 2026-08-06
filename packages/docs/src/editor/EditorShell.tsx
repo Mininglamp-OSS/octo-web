@@ -701,12 +701,11 @@ export function EditorShell(props: EditorShellProps) {
         <div className="octo-doc-header-right">
           {headerRight}
           <PresenceBar provider={instance.provider} connState={connState} synced={ready} names={names} />
-          {/* Usage guide (使用指导): how to drive THIS surface from octo-cli, and where the
-              version-accurate bundled skill docs live. Sits to the LEFT of 评论 among the other doc
-              actions, not ahead of the presence avatars. Unlike 评论 it is NOT role-gated: reading
-              the guide needs no permission. */}
-          <DocGuide kind="doc" space={props.space} docId={docId} title={currentTitle} />
+          {/* Bot 操作指引: how to drive THIS surface from octo-cli, and where the bundled skill
+              docs live. Sits to the LEFT of 评论 with the other document actions — the ≡ menu
+              was too hidden (owner decision 2026-08-05). Not role-gated: reading needs no rights. */}
           {/* Comments are reader+ (everyone with access — "can see → can comment"). */}
+          <DocGuide kind="doc" space={props.space} docId={docId} title={currentTitle} />
           <button
             type="button"
             className={activePanel === 'comments' ? 'octo-tb-btn is-active' : 'octo-tb-btn'}

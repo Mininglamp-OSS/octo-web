@@ -87,9 +87,10 @@ function SectionHead({
 }
 
 /**
- * Length cap for the two identifier fields (`docId`, `space`). Both come straight off the URL query
- * (`resolveDocTarget`, DocsHome.tsx:167-201) with no shape check anywhere in the chain, so they are
- * attacker-controlled strings of unbounded length, not trusted ids.
+ * Length cap for the identifier field (`docId`). It comes straight off the URL query
+ * (`resolveDocTarget`, DocsHome.tsx:167-201) with no shape check anywhere in the chain, so it is an
+ * attacker-controlled string of unbounded length, not a trusted id. (`space` used to be capped here
+ * too; it no longer reaches the prompt — a bot resolves its space server-side from its identity.)
  */
 const DOC_IDENT_IN_PROMPT_MAX = 64
 
@@ -119,9 +120,9 @@ const PROMPT_UNSAFE = /[\p{Zl}\p{Zp}\p{Cc}\u0085]|(?!\u200d)[\p{Cf}]/gu
  * The prompt is an instruction stream a bot executes with the FORWARDER's own octo-cli credentials,
  * so every interpolated field is data, not copy. Three of them are attacker-reachable:
  *
- * - `docId` / `space` come straight off the URL query (`resolveDocTarget`, DocsHome.tsx:167-201)
- *   with no shape check anywhere in the chain — forging through them needs no access to any
- *   document at all, just a crafted `?doc=` link.
+ * - `docId` comes straight off the URL query (`resolveDocTarget`, DocsHome.tsx:167-201) with no
+ *   shape check anywhere in the chain — forging through it needs no access to any document at all,
+ *   just a crafted `?doc=` link.
  * - The title is writable by any `writer` on a shared doc, and the PATCH accepts terminators the
  *   header `<input>` cannot type.
  *
@@ -204,13 +205,15 @@ export function DocGuide({
   // The bot the prompt was last forwarded to, purely for the status line's name.
   const [forwardTarget, setForwardTarget] = useState<{ uid: string; name: string } | null>(null)
   const [sendState, setSendState] = useState<'sending' | 'sent' | 'failed' | null>(null)
+  // Self-contained trigger + dialog: the entry point is a labelled button in the document header,
+  // alongside 评论 / 转发到聊天 / 成员 (owner decision 2026-08-05 — the ≡ menu was too hidden).
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
   const [copied, setCopied] = useState(false)
   // Which section's copy button last succeeded, so only THAT one shows its confirmation.
   const [copiedSection, setCopiedSection] = useState<string | null>(null)
   const sectionTimer = useRef<number | null>(null)
   const copiedTimer = useRef<number | null>(null)
-  const [open, setOpen] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
   const closeRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const pickerRef = useRef<HTMLDivElement | null>(null)
@@ -229,7 +232,7 @@ export function DocGuide({
     setForwardTarget(null)
     setSendState(null)
     setPicking(false)
-    // Return focus to the book trigger so keyboard users are not dropped onto <body>.
+    // Return focus to the trigger so keyboard users are not dropped onto <body>.
     triggerRef.current?.focus()
   }
   closeFnRef.current = close
@@ -324,10 +327,9 @@ export function DocGuide({
   // authoritative continuation of the field; fenced, it is visibly a quoted literal. Same precedent as
   // `encodeUserGoal` (html-create/createHtmlTask.ts:86), which JSON-quotes for exactly this reason.
   const titleForPrompt = forPromptFenced(title, DOC_TITLE_IN_PROMPT_MAX)
-  // Both identifiers are normalized for the SAME reason as the title (see `forPrompt`): they are raw
-  // URL query params, so injecting through them needs no document access at all.
+  // Normalized for the SAME reason as the title (see `forPrompt`): a raw URL query param, so
+  // injecting through it needs no document access at all.
   const docIdForPrompt = forPromptIdent(docId)
-  const spaceForPrompt = forPromptIdent(space)
   const docInfoText = docIdForPrompt
     ? [
         `## ${t('docs.guide.docInfoTitle')}`,
@@ -336,19 +338,18 @@ export function DocGuide({
         `- ${t('docs.guide.docInfoId')}: \`${docIdForPrompt}\``,
         ...(titleForPrompt ? [`- ${t('docs.guide.docInfoTitleField')}: \`${titleForPrompt}\``] : []),
         `- ${t('docs.guide.docInfoKind')}: ${t(`docs.guide.kind.${kind}`)}`,
-        ...(spaceForPrompt ? [`- ${t('docs.guide.docInfoSpace')}: \`${spaceForPrompt}\``] : []),
         t('docs.guide.docInfoHint'),
       ].join('\n')
     : ''
   const prereqText = [`## ${t('docs.guide.prereqTitle')}`, t('docs.guide.prereqBody'), t('docs.guide.prereqCode')].join('\n')
   const cmdText = [`## ${t('docs.guide.cmdTitle')}`, commands].join('\n')
-  const practiceText = [`## ${t('docs.guide.practiceTitle')}`, t('docs.guide.practiceBody')].join('\n')
   const pitfallText = [
     `## ${t('docs.guide.pitfallTitle')}`,
     `- ${t('docs.guide.pitfallAnchor')}`,
     `- ${t('docs.guide.pitfallProfile')}`,
     `- ${t('docs.guide.pitfallBaseUrl')}`,
     `- ${t('docs.guide.pitfallVersion')}`,
+    `- ${t('docs.guide.pitfallPartial')}`,
   ].join('\n')
   const skillText = [
     `## ${t('docs.guide.skillTitle')}`,
@@ -360,7 +361,7 @@ export function DocGuide({
 
   // Assembled from the per-section constants above so a section copy and the forwarded prompt are
   // byte-identical for that block. Empty sections (no docId) drop out rather than leaving a gap.
-  const promptText = [t('docs.guide.promptIntro'), '', docInfoText, prereqText, cmdText, practiceText, pitfallText, skillText]
+  const promptText = [t('docs.guide.promptIntro'), '', docInfoText, prereqText, cmdText, pitfallText, skillText]
     .filter((part) => part !== '')
     .join('\n\n')
 
@@ -460,7 +461,7 @@ export function DocGuide({
           <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2 2 0 0 1 2 2v13a1.5 1.5 0 0 0-1.5-1.5H5.5A1.5 1.5 0 0 1 4 16V5.5Z" />
           <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14a2 2 0 0 0-2 2v13a1.5 1.5 0 0 1 1.5-1.5h5A1.5 1.5 0 0 0 20 16V5.5Z" />
         </svg>
-        {/* Labelled like its siblings (评论 / 转发到聊天 / 成员) — an unlabelled glyph read as
+        {/* Labelled like its siblings (评论 / 转发到聊天 / 成员): an unlabelled glyph read as
             decoration and users did not realise it was an entry point. */}
         <span className="octo-doc-guide-btn-label">{t('docs.guide.open')}</span>
       </button>
@@ -525,12 +526,6 @@ export function DocGuide({
                       )}
                       <dt>{t('docs.guide.docInfoKind')}</dt>
                       <dd>{t(`docs.guide.kind.${kind}`)}</dd>
-                      {spaceForPrompt && (
-                        <>
-                          <dt>{t('docs.guide.docInfoSpace')}</dt>
-                          <dd><code>{spaceForPrompt}</code></dd>
-                        </>
-                      )}
                     </dl>
                     <p>{t('docs.guide.docInfoHint')}</p>
                   </section>
@@ -551,13 +546,12 @@ export function DocGuide({
                   </pre>
                 </section>
 
-                {/* 3. Best practice — the read-modify-write contract that prevents lost updates. */}
-                <section className="octo-doc-guide-section">
-                  <SectionHead id="practice" label={t('docs.guide.practiceTitle')} text={practiceText} ctx={sectionHeadCtx} />
-                  <p>{t('docs.guide.practiceBody')}</p>
-                </section>
-
-                {/* 4. The failures people actually hit, with the fix rather than just the symptom. */}
+                {/* 3. The failures people actually hit, with the fix rather than just the symptom.
+                       The former "best practice" section was dropped as owner-noise, but two of its
+                       rules are NOT recoverable from an error message and so live on as pitfalls:
+                       re-read on a version conflict, and — the one no failure ever teaches, because a
+                       wholesale rewrite SUCCEEDS — send only what you changed, or the bot silently
+                       destroys every comment anchor and live cursor in the document. */}
                 <section className="octo-doc-guide-section">
                   <SectionHead id="pitfall" label={t('docs.guide.pitfallTitle')} text={pitfallText} ctx={sectionHeadCtx} />
                   <ul className="octo-doc-guide-list">
@@ -565,10 +559,11 @@ export function DocGuide({
                     <li>{t('docs.guide.pitfallProfile')}</li>
                     <li>{t('docs.guide.pitfallBaseUrl')}</li>
                     <li>{t('docs.guide.pitfallVersion')}</li>
+                    <li>{t('docs.guide.pitfallPartial')}</li>
                   </ul>
                 </section>
 
-                {/* 5. THE important one: where the skill docs live and how to get them. */}
+                {/* 4. THE important one: where the skill docs live and how to get them. */}
                 <section className="octo-doc-guide-section octo-doc-guide-section-skills">
                   <SectionHead id="skill" label={t('docs.guide.skillTitle')} text={skillText} ctx={sectionHeadCtx} />
                   <p>{t('docs.guide.skillBody')}</p>

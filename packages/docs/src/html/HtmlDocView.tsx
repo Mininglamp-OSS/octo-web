@@ -560,10 +560,9 @@ export function HtmlDocView({
             </button>
           </div>}
           <HtmlPresenceBar displayName={viewerName} />
-          {/* Usage guide (使用指导): how to drive THIS surface from octo-cli, and where the
-              version-accurate bundled skill docs live. Sits to the LEFT of 评论 among the other doc
-              actions, not ahead of the presence avatars. Unlike 评论 it is NOT mode-gated: the guide
-              is reference material that stays reachable in code mode too. */}
+          {/* Bot 操作指引: how to drive THIS surface from octo-cli, and where the bundled skill docs
+              live. Reference material that stays reachable in code mode too, so it is NOT gated on
+              `mode === 'page'` the way the 评论 toggle below is. */}
           <DocGuide kind="html" space={space} docId={docId} title={headerTitle} />
           {/* Comments belong to the rendered page; code mode has no selection anchors, so the toggle
               is hidden there (a switch-back hint sits in the code body instead). */}

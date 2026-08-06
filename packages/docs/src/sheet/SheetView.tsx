@@ -734,10 +734,9 @@ export function SheetView(props: SheetViewProps) {
         />
         <div className="octo-doc-header-right">
           {sheet && <PresenceBar provider={sheet.provider} connState={conn} synced={conn === 'connected'} names={names} />}
-          {/* Usage guide (使用指导): how to drive THIS surface from octo-cli, and where the
-              version-accurate bundled skill docs live. Sits to the LEFT of 评论 among the other doc
-              actions, not ahead of the presence avatars. Unlike 评论 it is NOT role-gated: reading
-              the guide needs no permission. */}
+          {/* Bot 操作指引: how to drive THIS surface from octo-cli, and where the bundled skill docs
+              live. Sits to the LEFT of 评论 with the other document actions (the ≡ menu was tried
+              and rejected as too hidden). Not role-gated: reading the guide needs no rights. */}
           <DocGuide kind="sheet" space={space} docId={docId} title={title} />
           <button type="button" className={tb('comments')} aria-pressed={panel === 'comments'} onClick={() => toggle('comments')}>
             💬 {t('docs.toolbar.comments')}
