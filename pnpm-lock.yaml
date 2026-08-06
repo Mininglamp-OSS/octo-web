@@ -297,7 +297,7 @@ importers:
         specifier: 26.0.0
         version: 26.0.0
       electron-builder:
-        specifier: ^26.0.12
+        specifier: 26.8.1
         version: 26.8.1(electron-builder-squirrel-windows@26.8.1)
       eslint-config-react-app:
         specifier: ^7.0.1
