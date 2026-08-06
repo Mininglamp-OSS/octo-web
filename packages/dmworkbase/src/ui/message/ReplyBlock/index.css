@@ -7,7 +7,7 @@
   display: flex;
   align-items: stretch;
   gap: 8px;
-  background: var(--wk-bg-elevated);
+  background: var(--wk-bg-legacy-card);
   border-radius: 6px;
   padding: 6px 8px;
   cursor: pointer;
@@ -19,7 +19,7 @@
 .wk-reply-block__bar {
   width: 2px;
   border-radius: 1px;
-  background: var(--wk-border-strong);
+  background: var(--wk-border-legacy-medium);
   flex-shrink: 0;
   align-self: stretch;
   min-height: 18px;
@@ -45,7 +45,7 @@
 .wk-reply-block__name {
   font-size: 12px;
   font-weight: 400;
-  color: var(--wk-text-secondary);
+  color: var(--wk-text-legacy-secondary);
   line-height: 18px;
   white-space: nowrap;
   overflow: hidden;
@@ -57,7 +57,7 @@
 .wk-reply-block__space {
   font-size: 12px;
   font-weight: 400;
-  color: var(--wk-text-tertiary);
+  color: var(--wk-text-legacy-tertiary);
   line-height: 18px;
   white-space: nowrap;
   overflow: hidden;
@@ -69,7 +69,7 @@
 .wk-reply-block__digest {
   font-size: 12px;
   font-weight: 400;
-  color: var(--wk-text-secondary);
+  color: var(--wk-text-legacy-secondary);
   line-height: 18px;
   white-space: nowrap;
   overflow: hidden;

@@ -10,7 +10,7 @@
   background-color: var(--wk-bg-elevated);
   border-radius: var(--wk-r-full);
   font-size: var(--wk-text-size-sm);
-  color: var(--wk-text-tertiary);
+  color: var(--wk-text-legacy-tertiary);
   user-select: none;
 }
 
@@ -44,7 +44,7 @@
   margin: 0;
   border: none;
   background: transparent;
-  color: var(--wk-text-secondary);
+  color: var(--wk-text-legacy-secondary);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
@@ -52,5 +52,5 @@
 }
 
 .wk-msg-system-tag-close:hover {
-  color: var(--wk-text-primary);
+  color: var(--wk-text-legacy-title);
 }

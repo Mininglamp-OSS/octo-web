@@ -4,7 +4,7 @@
 
 .wk-msg-text-content {
   font-size: 14px;
-  color: var(--wk-text-primary);
+  color: var(--wk-text-legacy-primary);
   line-height: 22px;
   word-wrap: break-word;
   word-break: break-word;

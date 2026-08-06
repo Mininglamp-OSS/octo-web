@@ -72,10 +72,6 @@
 
 }
 
-body[theme-mode=dark] .wk-channelqrcode-qrcode-mask {
-    background-color: color-mix(in srgb, var(--wk-bg-surface) 98%, transparent);
-}
-
 .wk-channelqrcode-qrcode-mask p {
     font-size: 18px;
     margin-bottom: 0px;

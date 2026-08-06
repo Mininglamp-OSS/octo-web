@@ -5,22 +5,20 @@
   min-width: 200px;
   max-width: 280px;
   gap: 12px;
-  box-sizing: border-box;
-  background: var(--wk-bg-elevated);
-  border: 1px solid var(--wk-border-default);
+  background: var(--wk-file-card-bg);
   border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: background-color 0.15s, box-shadow 0.15s;
 }
 
 /* 可点击的文件卡片 hover 效果 */
 .wk-message-file--clickable:hover {
-  background: var(--wk-bg-hover);
+  background: var(--wk-file-card-hover-bg);
   box-shadow: var(--wk-shadow-sm);
 }
 
 .wk-message-file--clickable:active {
-  background: var(--wk-bg-selected);
+  background: var(--wk-file-card-active-bg);
 }
 
 /* 激活态（正在预览） */
@@ -62,7 +60,7 @@
 .wk-message-file-name {
   font-size: 14px;
   font-weight: 500;
-  color: var(--wk-text-primary);
+  color: var(--wk-text-legacy-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -74,14 +72,14 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--wk-text-tertiary);
+  color: var(--wk-text-legacy-tertiary);
 }
 
 .wk-message-file-ext {
   padding: 0 4px;
   border-radius: 2px;
-  background-color: var(--wk-brand-tint-08);
-  color: var(--wk-brand-primary);
+  background-color: var(--wk-file-ext-bg);
+  color: var(--wk-color-theme);
   font-size: 10px;
   font-weight: 600;
   line-height: 1.6;
@@ -101,12 +99,12 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--wk-brand-primary);
+  color: var(--wk-color-theme);
   transition: background-color 0.2s;
 }
 
 .wk-message-file-action:hover {
-  background-color: var(--wk-brand-tint-08);
+  background-color: var(--wk-file-ext-bg);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-name {
@@ -118,22 +116,22 @@
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-ext {
-  background-color: var(--wk-brand-tint-08);
-  color: var(--wk-brand-primary);
+  background-color: var(--wk-file-send-tint-10);
+  color: var(--wk-color-theme);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-action {
-  color: var(--wk-brand-primary);
+  color: var(--wk-color-theme);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-action:hover {
-  background-color: var(--wk-brand-tint-08);
+  background-color: var(--wk-file-send-tint-08);
 }
 
 .wk-message-file-caption {
   padding: 4px 8px 8px;
   font-size: 14px;
-  color: var(--wk-text-primary);
+  color: var(--wk-text-item);
   word-break: break-word;
   line-height: 1.4;
 }
@@ -150,7 +148,7 @@
 
 .wk-message-file-progress-bar {
   height: 4px;
-  background-color: var(--wk-border-default);
+  background-color: var(--wk-black-alpha-12);
   border-radius: 2px;
   overflow: hidden;
   margin: 6px 0 2px;
@@ -165,15 +163,15 @@
 
 .wk-message-file-progress-text {
   font-size: 11px;
-  color: var(--wk-text-tertiary);
+  color: var(--wk-text-item-second, #999);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-progress-bar {
-  background-color: var(--wk-border-default);
+  background-color: var(--wk-file-send-tint-15);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-progress-fill {
-  background-color: var(--wk-brand-primary);
+  background-color: var(--wk-color-theme);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-progress-text {

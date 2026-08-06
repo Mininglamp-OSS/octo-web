@@ -4,6 +4,6 @@
 
 .wk-msg-timestamp {
   font-size: var(--wk-text-size-sm);
-  color: var(--wk-text-tertiary);
+  color: var(--wk-text-legacy-tertiary);
   user-select: none;
 }
