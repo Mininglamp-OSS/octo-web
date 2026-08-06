@@ -49,6 +49,7 @@ import { installNativePanelExtensions } from './nativePanelInject.tsx'
 import { installBoardTextInputEvidence } from './boardTextInputEvidence.ts'
 import type { NativePanelTextRuntime } from './NativePanelTextControls.tsx'
 import { BoardCanvasColorControl } from './BoardCanvasColorControl.tsx'
+import { BoardDatabaseRimControl } from './BoardDatabaseRimControl.tsx'
 import {
   applyPendingTextMarksToNewElements,
   resetPendingTextDefaults,
@@ -2263,6 +2264,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
             const marker = commentMarkers.items.find((item) => item.id === id)
             if (marker) activateBoardComment({ id: marker.id, anchorStart: marker.anchorStart })
           }}
+        />
+
+        <BoardDatabaseRimControl
+          excalidrawAPI={excalidrawApi}
+          readOnly={readOnly}
+          rootRef={liveCanvasRef}
         />
 
         {selectedCommentTarget && selectedCommentPoint && canComment(role ?? 'reader') && !inlineCommentTarget && (

@@ -75,6 +75,37 @@
   height: 100%;
 }
 
+/* Selected database cylinders expose one app-owned geometry handle. Keeping it outside Excalidraw's
+   transform-handle registry avoids treating this custom parameter as a resize operation while the
+   scene update still follows the normal undo/persistence/collaboration path. */
+.octo-board-database-rim-handle {
+  position: absolute;
+  z-index: 4;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: var(--color-primary, #6965db);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: ns-resize;
+  touch-action: none;
+  transform: translate(-50%, -50%);
+}
+
+.octo-board-database-rim-handle:hover,
+.octo-board-database-rim-handle:focus-visible {
+  width: 16px;
+  height: 16px;
+  outline: none;
+}
+
+body.octo-board-database-rim-dragging,
+body.octo-board-database-rim-dragging * {
+  cursor: ns-resize !important;
+  user-select: none !important;
+}
+
 /* Loading / error placeholder centred in the canvas area. */
 .octo-board-state {
   margin: auto;

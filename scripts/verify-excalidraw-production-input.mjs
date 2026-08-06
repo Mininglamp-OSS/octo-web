@@ -198,6 +198,73 @@ createRoot(document.getElementById('root')).render(<Probe />)
     const x = box.x + box.width * 0.55
     const y = box.y + box.height * 0.55
 
+    await page.locator('[data-testid="toolbar-shapes"]').click({ force: true })
+    const shapeFlyout = page.locator('[data-testid="toolbar-shapes-flyout"]')
+    await shapeFlyout.waitFor({ state: 'visible' })
+    if (await shapeFlyout.locator('[data-testid="toolbar-shapes-expand"]').count()) {
+      throw new Error('production shape flyout still exposes the removed expansion control')
+    }
+    const databaseTool = shapeFlyout.locator('[data-testid="toolbar-database"]')
+    await databaseTool.waitFor({ state: 'visible' })
+    const databasePath = await databaseTool.locator('path').getAttribute('d')
+    const expectedDatabasePath = 'M4 6c0-3 16-3 16 0v12c0 3-16 3-16 0ZM4 6c0 3 16 3 16 0'
+    if (databasePath !== expectedDatabasePath) {
+      throw new Error(`production database toolbar icon differs from canvas geometry: ${JSON.stringify(databasePath)}`)
+    }
+    const allShapeSlots = [
+      'rounded-rectangle', 'ellipse', 'diamond', 'square', 'circle', 'triangle', 'parallelogram',
+      'database', 'notched-dovetail', 'chevron', 'trapezoid', 'speech-bubble', 'speech-bubble-rounded',
+      'right-triangle', 'star', 'hexagon', 'pentagon', 'octagon', 'left-arrow', 'right-arrow',
+      'bidirectional-arrow',
+    ]
+    for (const [index, slot] of allShapeSlots.entries()) {
+      if (index > 0) {
+        // Reload between slots so each case proves its own toolbar activation/finalization path and
+        // cannot inherit React radio state, a prior native preset, or a previously selected element.
+        await page.reload({ waitUntil: 'networkidle' })
+        await page.locator('[data-testid="toolbar-shapes"]').click({ force: true })
+        await shapeFlyout.waitFor({ state: 'visible' })
+      }
+      await shapeFlyout.locator(`[data-testid="toolbar-${slot}"]`).click()
+      const offset = index * 3
+      await page.mouse.move(x - 100 + offset, y - 80 + offset)
+      await page.mouse.down()
+      await page.mouse.move(x + 20 + offset, y + 20 + offset, { steps: 5 })
+      await page.mouse.up()
+      await page.waitForTimeout(50)
+      const oneShotShape = await page.evaluate(() => ({
+        activeTool: window.__probe.api.getAppState().activeTool,
+        elements: window.__probe.api.getSceneElements(),
+      }))
+      const expectedNativeKind = ['rounded-rectangle', 'ellipse', 'diamond'].includes(slot) ? null : slot
+      const created = oneShotShape.elements.at(-1)
+      if (oneShotShape.activeTool.type !== 'selection' || oneShotShape.activeTool.locked) {
+        throw new Error(`production shape ${slot} did not return to unlocked selection: ${JSON.stringify(oneShotShape.activeTool)}`)
+      }
+      if (!created || created.strokeWidth !== 1 || created.strokeStyle !== 'solid' || created.roughness !== 0) {
+        throw new Error(`production shape ${slot} did not use the requested basic style: ${JSON.stringify(created)}`)
+      }
+      if (expectedNativeKind && created.customData?.nativeShapeKind !== expectedNativeKind) {
+        throw new Error(`production slot ${slot} created the wrong native shape: ${JSON.stringify(created.customData)}`)
+      }
+      const countAfterFirstDraw = oneShotShape.elements.length
+      await page.mouse.move(x + 40 + offset, y + 40 + offset)
+      await page.mouse.down()
+      await page.mouse.move(x + 80 + offset, y + 80 + offset, { steps: 3 })
+      await page.mouse.up()
+      await page.waitForTimeout(50)
+      const afterSecondDrag = await page.evaluate(() => ({
+        activeTool: window.__probe.api.getAppState().activeTool,
+        elementCount: window.__probe.api.getSceneElements().length,
+      }))
+      if (afterSecondDrag.activeTool.type !== 'selection' || afterSecondDrag.elementCount !== countAfterFirstDraw) {
+        throw new Error(`production shape ${slot} stayed armed after its first draw: ${JSON.stringify({ countAfterFirstDraw, afterSecondDrag })}`)
+      }
+    }
+    // Keep the remainder of this broad probe independent: shapes span the coordinates used by the
+    // existing text-input checks and would otherwise turn their click into bound-text editing.
+    await page.evaluate(() => window.__probe.api.updateScene({ elements: [] }))
+
     await page.evaluate(() => navigator.clipboard.writeText('Production pasted text'))
     await page.mouse.click(x, y, { button: 'right' })
     const pasteItem = page.getByRole('menuitem', { name: '粘贴' })
@@ -248,7 +315,7 @@ createRoot(document.getElementById('root')).render(<Probe />)
     if (errors.length || consoleErrors.length) {
       throw new Error(`production browser errors: ${JSON.stringify({ errors, consoleErrors })}`)
     }
-    console.log('Excalidraw production context-menu paste success/failure, zh-CN search/help, native Extra Tools geometry, and text editing verified.')
+    console.log('Excalidraw production one-shot basic native shape, database icon, context-menu paste, zh-CN search/help, Extra Tools, and text editing verified.')
   } finally {
     await browser.close()
   }

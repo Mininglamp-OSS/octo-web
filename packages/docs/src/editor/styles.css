@@ -80,21 +80,34 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 16px;
   /* Fixed at the top of the editor column (no longer inside the scroll container), so it needs its
      own horizontal padding — the scroll container's padding used to cover it. */
   flex: 0 0 auto;
+  min-width: 0;
   padding: 24px 32px 0;
 }
 .octo-doc-header-right {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 12px;
+  white-space: nowrap;
+}
+.octo-doc-header-right > * {
+  flex: 0 0 auto;
 }
 .octo-doc-title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
   font-size: 28px;
   font-weight: 600;
   margin: 0 0 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Editable title (BUG3): hint affordance on hover, inline input matches the heading. */
 .octo-doc-title-editable {
@@ -2166,9 +2179,8 @@ body.octo-row-resizing {
   background: #d64545;
 }
 
-/* Header "more" (≡) menu (#512 title-bar tidy-up). A relatively-positioned anchor holds the ≡
-   trigger and an absolutely-positioned dropdown so the panel opens flush under the icon at the
-   far right of the header. */
+/* Header "more" (≡) menu (#512 title-bar tidy-up). The dropdown is portalled to document.body so
+   narrow standalone headers can scroll horizontally without clipping the menu. */
 .octo-doc-more {
   position: relative;
   flex: 0 0 auto;
@@ -2204,16 +2216,15 @@ body.octo-row-resizing {
 }
 /* Dropdown panel: 248px, 8px radius, soft shadow, white — anchored top-right under the trigger. */
 .octo-doc-more-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 20;
+  position: fixed;
+  z-index: 1000;
   width: 248px;
   background: #fff;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   padding: 6px 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 /* Info head: light-grey band with the creator (avatar + name) and the created-on line. */
 .octo-doc-more-head {
@@ -4069,18 +4080,20 @@ body.octo-row-resizing {
   pointer-events: none;
 }
 
-/* Responsive, 3 tiers (prototype v2):
-   ≥1024  — full labels everywhere (default).
-   768–1024 — the built-in secondary buttons collapse to their icons to reclaim width.
-   <1024  — the header may wrap and the toolbar scrolls horizontally rather than overflowing;
-            the prose column stays full-width and the title never collapses to zero width.
-   Back is never hidden. */
+/* On narrow standalone pages the title still truncates first, while the fixed action cluster stays
+   reachable through horizontal scrolling instead of being clipped by the full-window wrapper. */
 @media (max-width: 1024px) {
   .octo-doc-standalone .octo-doc-header {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
   }
   .octo-doc-standalone .octo-doc-title {
-    min-width: 8ch;
+    min-width: 0;
+  }
+  .octo-doc-standalone .octo-doc-header-right {
+    position: sticky;
+    right: 0;
+    background: var(--octo-bg, #fff);
   }
   .octo-doc-standalone .octo-toolbar {
     flex-wrap: nowrap;
