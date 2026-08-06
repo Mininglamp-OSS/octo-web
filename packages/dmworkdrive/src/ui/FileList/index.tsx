@@ -28,6 +28,15 @@ export interface FileListProps {
   canShare: boolean;
   /** When set, the matching entry row is scrolled into view and flashed. */
   highlightFileId?: number | null;
+  /** Bulk-select state — every prop is required together; when omitted, the
+   *  checkbox column simply doesn't render. */
+  selection?: {
+    isSelected: (id: number) => boolean;
+    toggle: (id: number) => void;
+    isAllSelected: boolean;
+    isIndeterminate: boolean;
+    toggleAll: () => void;
+  };
 }
 
 /** Per-kind glyph at docs' 16px row-icon size; colour is uniform (see index.css). */
@@ -35,6 +44,38 @@ function EntryIcon({ entry }: { entry: DriveEntry }) {
   if (entry.type === 'folder') return <Folder size={16} className="drive-file__icon" />;
   if (entry.type === 'doc') return <FileText size={16} className="drive-file__icon" />;
   return <File size={16} className="drive-file__icon" />;
+}
+
+/**
+ * Native indeterminate state can't be set via JSX (React only forwards
+ * checked/defaultChecked to the DOM). Use a ref + effect so the tri-state
+ * "some selected but not all" renders correctly on the header checkbox.
+ */
+function TriStateCheckbox({
+  checked,
+  indeterminate,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: () => void;
+  ariaLabel: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={onChange}
+      onClick={(e) => e.stopPropagation()}
+      aria-label={ariaLabel}
+    />
+  );
 }
 
 /** Mixed listing of folders, Type-1 docs and Type-2 blobs for one folder. */
@@ -53,6 +94,7 @@ export default function FileList({
   canEdit,
   canShare,
   highlightFileId,
+  selection,
 }: FileListProps) {
   const { t } = useI18n();
   const highlightRowRef = useRef<HTMLDivElement | null>(null);
@@ -78,6 +120,16 @@ export default function FileList({
   return (
     <div className="drive-file-list">
       <div className="drive-file-row drive-file-row--head">
+        <span className="drive-file__check">
+          {selection && (
+            <TriStateCheckbox
+              checked={selection.isAllSelected}
+              indeterminate={selection.isIndeterminate}
+              onChange={() => selection.toggleAll()}
+              ariaLabel={t('drive.file.selectAll')}
+            />
+          )}
+        </span>
         <span className="drive-file__name">{t('drive.file.colName')}</span>
         <span className="drive-file__size">{t('drive.file.colSize')}</span>
         <span className="drive-file__time">{t('drive.file.colUpdated')}</span>
@@ -86,13 +138,29 @@ export default function FileList({
 
       {entries.map((entry) => {
         const isFolder = entry.type === 'folder';
+        const isSelected = selection?.isSelected(entry.id) ?? false;
         const isHighlight = highlightFileId != null && entry.id === highlightFileId;
+        const rowClasses =
+          'drive-file-row' +
+          (isSelected ? ' drive-file-row--selected' : '') +
+          (isHighlight ? ' drive-file-row--flash' : '');
         return (
           <div
             key={entry.id}
             ref={isHighlight ? highlightRowRef : undefined}
-            className={`drive-file-row${isHighlight ? ' drive-file-row--flash' : ''}`}
+            className={rowClasses}
           >
+            <span className="drive-file__check">
+              {selection && (
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => selection.toggle(entry.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={t('drive.file.selectRow')}
+                />
+              )}
+            </span>
             <span className="drive-file__name">
               <EntryIcon entry={entry} />
               {isFolder ? (

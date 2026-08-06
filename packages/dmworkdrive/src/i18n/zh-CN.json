@@ -32,7 +32,9 @@
     "colName": "名称",
     "colSize": "大小",
     "colUpdated": "修改时间",
-    "truncated": "列表较大，仅显示前 200 项"
+    "truncated": "列表较大，仅显示前 200 项",
+    "selectAll": "全选",
+    "selectRow": "选择此项"
   },
   "move": {
     "title": "移动到",
