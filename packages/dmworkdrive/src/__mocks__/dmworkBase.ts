@@ -57,6 +57,17 @@ export const buildDocLink = ({ docId, space }: { docId: string; space?: string }
 export const t = (key: string) => key;
 export const useI18n = () => ({ t: (key: string) => key });
 
+// Drive-transfer helpers (real ones live in `@octo/base` `Service/SpacePrefix.ts`);
+// duplicated here as identical minimal impls so vitest can resolve the aliased
+// `@octo/base` import without pulling the full app runtime. Kept in lock-step
+// with the real impl via the dmworkdrive unit tests that assert the returned
+// values directly (#1261 review round 7 P0-3).
+export const hasSpacePrefix = (id: string) => /^s[0-9a-f]{32}_/.test(id);
+export const stripSpacePrefix = (id: string) =>
+  hasSpacePrefix(id) ? id.substring(id.indexOf('_') + 1) : id;
+export const isDriveTransferSupportedChannel = (t: number) =>
+  t === 1 || t === 2 || t === 5;
+
 export class Menus {
   constructor(
     public id: string,

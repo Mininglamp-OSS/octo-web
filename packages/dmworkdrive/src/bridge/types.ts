@@ -441,10 +441,12 @@ export interface ImTransferredItem {
 // Any drift would fail the source_key format test in driveApi.test.ts.
 const CHANNEL_TYPE_PERSON = 1;
 
-// Re-export the drive-transfer supported-channel predicate from @octo/base so
-// dmworkbase (FileCell) and dmworkdrive share one source of truth without
-// creating a base → drive dependency (allowed direction is drive → base).
-export { isDriveTransferSupportedChannel } from "@octo/base";
+// Note: `isDriveTransferSupportedChannel` lives in `@octo/base`
+// (`Service/SpacePrefix.ts`) and is the single source of truth for the
+// supported channel set. Kept out of this file deliberately: bridge/types.ts
+// stays free of runtime imports from `@octo/base`, so the wire-contract tests
+// exercise this module without pulling the base package's mock surface into
+// scope (see #1261 review round 7 P0-3).
 
 /**
  * Normalise `channelID` to the shape octo-drive / octo-server key on. See

@@ -362,6 +362,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
   private _task?: RestartableTask;
   private _mounted = false;
   private _unsubscribeConfig?: () => void;
+  private _checkInFlight = false;
 
   private _taskListener = (task: Task) => {
     const { message } = this.props;
@@ -421,7 +422,11 @@ export class FileCell extends MessageCell<any, FileCellState> {
     // 此刻 runTransferredCheck 会因 !remoteConfig.driveOn 短路。订阅 config
     // 变更让 mount 后 driveOn 翻转的那一刻触发一次 forceUpdate → componentDidUpdate
     // 会看到 imTransferred===undefined 补查询。#1261 review round 6 spec req 3.
-    this._unsubscribeConfig = WKApp.addConfigChangeListener(() => {
+    //
+    // 正确 API 路径是 WKApp.remoteConfig.addConfigChangeListener (类 WKRemoteConfig
+    // 的 instance 方法，见 App.tsx:389)；WKApp 本身没有这个静态方法。round 7 P0-1
+    // 抓到过一次 `WKApp.addConfigChangeListener is not a function`。
+    this._unsubscribeConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
       if (this._mounted) this.forceUpdate();
     });
   }
@@ -451,6 +456,10 @@ export class FileCell extends MessageCell<any, FileCellState> {
   }
 
   private runTransferredCheck(): void {
+    // In-flight guard：多次 render 都可能进 componentDidUpdate 触发这里；
+    // 若前一次查询还在飞就跳过，避免每 re-render 都开一次新 batch，也避免
+    // backend unhealthy 时无 backoff 地无限重试（#1261 review round 7 P1-1）。
+    if (this._checkInFlight) return;
     if (!this.isMessagePersisted()) return;
     const { message } = this.props;
     // 只在支持的 channelType 上查询——防止 CustomerService 等未支持类型
@@ -458,32 +467,42 @@ export class FileCell extends MessageCell<any, FileCellState> {
     // 不该查）。#1261 review round 6 P1-3.
     if (!isDriveTransferSupportedChannel(message.channel.channelType)) return;
     const check = WKApp.checkDriveTransferred;
-    if (check && WKApp.remoteConfig?.driveOn) {
-      check({
-        im_group_no: message.channel.channelID,
-        im_channel_type: message.channel.channelType,
-        im_msg_id: message.messageID,
-      })
-        .then((entry) => {
-          if (!this._mounted) return;
-          // 竞态守卫：转存/更早的查询若已把状态设为"已存"，不要被这次
-          // mount 时的 in-flight 查询覆盖回未存态。
-          if (this.state.imTransferred?.exists === true) return;
-          this.setState({
-            imTransferred: entry
-              ? {
-                  exists: true,
-                  file_id: entry.file_id,
-                  space_id: entry.space_id,
-                  parent_id: entry.parent_id,
-                }
-              : { exists: false },
-          });
-        })
-        .catch(() => {
-          /* 查询失败静默，按未存态渲染 */
+    if (!check || !WKApp.remoteConfig?.driveOn) return;
+
+    this._checkInFlight = true;
+    check({
+      im_group_no: message.channel.channelID,
+      im_channel_type: message.channel.channelType,
+      im_msg_id: message.messageID,
+    })
+      .then((entry) => {
+        if (!this._mounted) return;
+        // 竞态守卫：转存/更早的查询若已把状态设为"已存"，不要被这次
+        // mount 时的 in-flight 查询覆盖回未存态。
+        if (this.state.imTransferred?.exists === true) return;
+        this.setState({
+          imTransferred: entry
+            ? {
+                exists: true,
+                file_id: entry.file_id,
+                space_id: entry.space_id,
+                parent_id: entry.parent_id,
+              }
+            : { exists: false },
         });
-    }
+      })
+      .catch(() => {
+        // 失败也置终止态：componentDidUpdate 通过 `imTransferred===undefined`
+        // 判定要不要重跑，若保持 undefined 会每 re-render 都重试、放大后端
+        // unhealthy 下的抖动。置 `{ exists: false }` 视觉上按"未存"渲染，
+        // 与 backend 明确返回未存等价；#1261 review round 7 P1-1.
+        if (!this._mounted) return;
+        if (this.state.imTransferred?.exists === true) return;
+        this.setState({ imTransferred: { exists: false } });
+      })
+      .finally(() => {
+        this._checkInFlight = false;
+      });
   }
 
   componentWillUnmount() {

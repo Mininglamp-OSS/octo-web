@@ -491,8 +491,8 @@ describe('putToPresignedUrl — M-3 credential isolation', () => {
 import {
   imTransferredSourceKey,
   normaliseImChannelID,
-  isDriveTransferSupportedChannel,
 } from '../../bridge/types';
+import { isDriveTransferSupportedChannel } from '@octo/base';
 
 describe('IM -> drive transferred-state wire contract (source_key)', () => {
   it('transferFromIm POSTs /blobs/transfer-from-im with the IM message triple', async () => {
