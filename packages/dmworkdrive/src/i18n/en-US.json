@@ -179,7 +179,9 @@
     "retry": "Retry",
     "cancel": "Cancel",
     "dismiss": "Dismiss",
-    "dropTitle": "Drop to upload here"
+    "dropTitle": "Drop to upload here",
+    "rejectEmpty": "Skipped empty file: {{name}}",
+    "rejectTooLarge": "File too large (over {{maxMB}}MB): {{name}}"
   },
   "download": {
     "failed": "Download failed"
