@@ -5,7 +5,7 @@ import ReactDOM from "react-dom"
 import { act } from "react-dom/test-utils"
 
 const hoisted = vi.hoisted(() => ({
-  subscribers: new Map<string, Array<{ uid?: string }>>(),
+  subscribers: new Map<string, Array<{ uid?: string; remark?: string; name?: string }>>(),
   syncCurrentImChannelSubscribers: vi.fn(async () => undefined),
   listBots: vi.fn(async (_spaceId: string) => [] as Array<{ uid?: string; name?: string; creator_uid?: string }>),
 }))
@@ -203,6 +203,23 @@ describe("useForwardBotSnapshot", () => {
     // Re-selecting flips it back on.
     act(() => { latest?.toggleBot("b_2") })
     expect(selectedBotUids(latest)).toEqual(["b_1", "b_2"])
+  })
+
+  it("uses the group member display name when the Bot creator is absent from forward candidates", async () => {
+    hoisted.subscribers.set("g_1", [
+      { uid: "u_hidden", remark: "群内备注", name: "成员昵称" },
+    ])
+    hoisted.listBots.mockResolvedValue([
+      { uid: "b_1", name: "Hidden Bot", creator_uid: "u_hidden" },
+    ])
+    await render({
+      selectedIDs: ["g_1"],
+      selectedChannels: [new Channel("g_1", 2)],
+      spaceId: "s_1",
+      enabled: true,
+    })
+
+    expect(latest?.groups[0]).toMatchObject({ uid: "u_hidden", name: "群内备注" })
   })
 
   it("expands group members and de-duplicates people across group + person targets", async () => {
