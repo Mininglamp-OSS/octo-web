@@ -50,6 +50,22 @@ export interface BotManageModalProps {
     onClose: () => void
 }
 
+/**
+ * 已知「没有 robot 记录」的 bot（App Bot 属于这一类）。
+ *
+ * `cardSettingsVM` 会在关闭 / 切 bot 时被丢弃，判定结果跟着一起没了，于是同一个
+ * App Bot 每次打开都要重新闪一次入口。这个表把判定记在模块作用域，让闪现降到
+ * **每个 bot 每会话一次**。
+ *
+ * ⚠️ 消不掉「某个 bot 第一次被打开」那一次：客户端在问服务端之前无从知道一个 bot
+ * 有没有 robot 记录（`users/:uid` 不返回类型字段，整个 dmworkbase 也不认识 App Bot）。
+ * 真正的解法是服务端在 `users/:uid` 上给一个 `is_app_bot` / `bot_type`，那样连探测
+ * 都不需要。
+ *
+ * 只记不支持的 bot，条目数 = 会话里被打开过的 App Bot 数，不会有规模问题。
+ */
+const knownUnsupportedBots = new Set<string>()
+
 export default class BotManageModal extends Component<BotManageModalProps> {
     static contextType = I18nContext
     declare context: React.ContextType<typeof I18nContext>
@@ -135,11 +151,31 @@ export default class BotManageModal extends Component<BotManageModalProps> {
     private ensureCardSettingsVM(): BotCardSettingsVM {
         if (!this.cardSettingsVM) {
             this.cardSettingsVM = new BotCardSettingsVM(this.props.robotId)
-            this.cardSettingsUnsubscribe = this.cardSettingsVM.addListener(() =>
-                this.forceUpdate(),
-            )
+            this.cardSettingsUnsubscribe = this.cardSettingsVM.addListener(() => {
+                // 判定一出来就记住，这样丢掉 VM（关闭 / 切 bot）之后再打开不必
+                // 重新闪一次入口。
+                if (this.cardSettingsVM?.isUnsupported) {
+                    knownUnsupportedBots.add(this.cardSettingsVM.robotId)
+                }
+                this.forceUpdate()
+            })
         }
         return this.cardSettingsVM
+    }
+
+    /**
+     * 这一行菜单要不要渲染。
+     *
+     * 模块级记忆是**粘性否决**，优先于 VM 的实时判定：VM 在 componentDidMount 里就被
+     * 创建，那时判定还没回来（isUnsupported 为 false），若让实时值优先，记忆就只在
+     * 「挂载之前那一帧」有效，等于没用。而一个没有 robot 记录的 bot 不会在会话中途
+     * 长出一条记录，所以否决是安全的 —— VM 的判定只会往记忆里**添加**，不会推翻它。
+     *
+     * 都没有结论时返回 true（fail-open，能力未知时不藏功能入口）。
+     */
+    private shouldShowCardSettings(): boolean {
+        if (knownUnsupportedBots.has(this.props.robotId)) return false
+        return !this.cardSettingsVM?.isUnsupported
     }
 
     private disposeCardSettingsVM(): void {
@@ -174,9 +210,7 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                                 <BotManageView
                                     labels={labels}
                                     // App Bot 等没有 robot 记录的 bot 不渲染这一行。
-                                    showCardSettings={
-                                        !this.cardSettingsVM?.isUnsupported
-                                    }
+                                    showCardSettings={this.shouldShowCardSettings()}
                                     onOpenMentionFree={() => {
                                         context.push(
                                             <MentionFreeListContainer

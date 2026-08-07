@@ -207,8 +207,25 @@ export class BotCardSettingsVM extends ProviderListener {
         // 捕获写序号：见 writeSeq 的说明。读**必须**同时对写作废，否则一个在 PUT
         // 提交之前发出的 GET 落在提交之后时会把已确认的值覆盖回提交前的快照。
         const seq = this.writeSeq
-        const isStale = (): boolean =>
-            this.generation !== gen || this.writeSeq !== seq
+        // 读期间新产生的写错误不能被这次读清掉（见下面清 writeError 的地方）。
+        // 用对象身份比较即可：每次失败都会 new 一个新的 BotSettingError。
+        const writeErrorAtStart = this.writeError
+
+        /**
+         * 「被取代」：有更新的读在飞，或者已经切了 bot。**只有这种情况才该让位**
+         * —— 接管 loading 的是那个更新的请求。
+         */
+        const isSuperseded = (): boolean => this.generation !== gen
+        /**
+         * 「响应不可用」：被取代，或者期间有写入落库 —— 后者意味着我们手上这份
+         * 响应是提交前的快照，不能拿它去覆盖已确认的值。
+         *
+         * 和 isSuperseded 分开是必须的：被写作废时**没有更新的读**，如果 finally
+         * 也用 isStale 判断，`loading` 就永远没人清，而 probeCardSettings 的
+         * `!vm.loading` 守卫会把之后每一次重开的探测全部吞掉 —— 「每次打开一次
+         * 新鲜读取」在整个会话里被废掉，且没有任何可见症状。
+         */
+        const isStale = (): boolean => isSuperseded() || this.writeSeq !== seq
 
         if (!options.silent) {
             this.loading = true
@@ -235,16 +252,23 @@ export class BotCardSettingsVM extends ProviderListener {
             // 重拉整体替换 items，所以要把「尚未被服务端确认」的乐观覆盖重新盖回去，
             // 否则用户刚点的开关会在别的行「取消自定义」触发重拉时被打回原值。
             this.reapplyOptimistic()
-            // 成功读到权威数据，两类错误态都该让位。writeError 尤其要清：它是上一次
-            // 保存失败留下的行内横幅，刷新成功后继续挂着会让用户以为现在还是坏的。
             this.loadError = null
-            this.writeError = null
+            // 只清「比这次读更早」的写错误横幅：读成功说明那次失败的解释已经过时。
+            // 但失败的写**不**自增 writeSeq（什么都没提交，这是对的），所以一个在写
+            // 失败之前发出的读落地时不算过期 —— 无条件清就会把一条比它更新的错误
+            // 抹掉，用户看到开关弹回去却没有任何解释（读屏用户更糟：先被 role="alert"
+            // 播报、然后文字消失）。
+            if (this.writeError === writeErrorAtStart) {
+                this.writeError = null
+            }
         } catch (e) {
             if (isStale()) return
             this.items = new Map()
             this.loadError = classifyBotSettingError(e)
         } finally {
-            if (!isStale()) {
+            // 注意是 isSuperseded 而不是 isStale：被写作废的读也必须清掉自己的
+            // loading，否则没有任何人会清。
+            if (!isSuperseded()) {
                 this.loading = false
                 this.notifyListener()
             }

@@ -745,6 +745,9 @@ describe("BotCardSettingsVM 读写串行化", () => {
         expect(row.overridden).toBe(true)
         expect(row.source).toBe("bot")
         expect(vm.writeError).toBeNull()
+        // 交集断言：被写作废的读也必须清掉自己的 loading。漏了这一条会让
+        // probeCardSettings 的 `!vm.loading` 守卫吞掉之后每一次重开的探测。
+        expect(vm.loading).toBe(false)
     })
 
     it("触发 B：写在飞时发起的读，也不能覆盖随后确认的写", async () => {
@@ -782,8 +785,97 @@ describe("BotCardSettingsVM 读写串行化", () => {
         const row = vm
             .snapshot()
             .rows.find((r) => r.key === BOT_CARD_DISPLAY_KEY)!
+        // 同上：交集断言，被写作废的读必须自己清 loading。
+        expect(vm.loading).toBe(false)
         expect(row.checked).toBe(false)
         expect(row.overridden).toBe(true)
+    })
+
+    it("被写作废的读之后，下一次 loadSettings 仍然会发请求", async () => {
+        hoisted.listSettings.mockResolvedValueOnce(fullCatalog())
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        let releaseRead: (value: unknown) => void = () => undefined
+        hoisted.listSettings.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    releaseRead = resolve
+                }),
+        )
+        void vm.loadSettings()
+        await tick()
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false)
+        await tick()
+        releaseRead(fullCatalog()) // 被 writeSeq 判掉
+        await tick()
+        await tick()
+
+        // 上层的探测守卫是 `if (!vm.loading)`。loading 卡住就等于此后所有重开
+        // 都不再读取 —— 「每次打开一次新鲜读取」在整个会话里失效且无可见症状。
+        expect(vm.loading).toBe(false)
+        hoisted.listSettings.mockResolvedValueOnce(fullCatalog())
+        await vm.loadSettings()
+        expect(hoisted.listSettings).toHaveBeenCalledTimes(3)
+    })
+
+    it("读失败但期间有写落库：不接管错误态，仍要清 loading", async () => {
+        hoisted.listSettings.mockResolvedValueOnce(fullCatalog())
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        let rejectRead: (e: unknown) => void = () => undefined
+        hoisted.listSettings.mockImplementationOnce(
+            () =>
+                new Promise((_resolve, reject) => {
+                    rejectRead = reject
+                }),
+        )
+        void vm.loadSettings()
+        await tick()
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false) // PUT 落库，writeSeq++
+        await tick()
+
+        rejectRead(rejection({ code: "err.server.robot.query_failed", status: 500 }))
+        await tick()
+        await tick()
+
+        // 这次读已被写作废，它的失败也一并丢弃 —— 不该把整页切成「加载失败」，
+        // 因为刚提交的写是有效的、items 里的值就是服务端真值。
+        expect(vm.loadError).toBeNull()
+        expect(vm.snapshot().rows).toHaveLength(3)
+        // 但 loading 必须清（这一格是矩阵里最后一个没被断言的组合）。
+        expect(vm.loading).toBe(false)
+    })
+
+    it("读期间新产生的写错误不被这次读清掉", async () => {
+        hoisted.listSettings.mockResolvedValueOnce(fullCatalog())
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        let releaseRead: (value: unknown) => void = () => undefined
+        hoisted.listSettings.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    releaseRead = resolve
+                }),
+        )
+        void vm.loadSettings() // 读起飞
+        await tick()
+
+        // 读还没回来，写被限流拒了。失败的写不自增 writeSeq（什么都没提交），
+        // 所以这次读落地时**不**算过期 —— 无条件清 writeError 会把这条比它更新的
+        // 错误抹掉，用户看到开关弹回去却没有任何解释。
+        hoisted.putSettings.mockRejectedValue(rejection({ status: 429 }))
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false)
+        await tick()
+        expect(vm.writeError?.kind).toBe("rateLimited")
+
+        releaseRead(fullCatalog())
+        await tick()
+        await tick()
+
+        expect(vm.writeError?.kind).toBe("rateLimited")
     })
 
     it("成功读把待写 key 的回滚快照对齐到新鲜服务端值", async () => {

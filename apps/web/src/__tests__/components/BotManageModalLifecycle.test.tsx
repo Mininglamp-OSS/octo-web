@@ -19,7 +19,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 import BotManageModal from '../../../../../packages/dmworkbase/src/Components/BotManage';
 
 const mocks = vi.hoisted(() => ({
@@ -50,8 +50,17 @@ vi.mock('../../../../../packages/dmworkbase/src/Components/WKModal', async () =>
 });
 
 vi.mock('../../../../../packages/dmworkbase/src/Components/RoutePage', async () => {
-    const RoutePage = ({ render: renderFn }: any) =>
-        renderFn({ push: () => undefined, pop: () => undefined });
+    const ReactMod = await import('react');
+    // 真 RoutePage 的路由栈不在本文件关注点内，但 push 必须真的渲染出来 ——
+    // 否则到不了 L3，也就测不了「在飞探测期间写入」这个交集。
+    const RoutePage = ({ render: renderFn }: any) => {
+        const [pushed, setPushed] = ReactMod.useState<React.ReactNode>(null);
+        const context = {
+            push: (node: React.ReactNode) => setPushed(node),
+            pop: () => setPushed(null),
+        };
+        return pushed ?? renderFn(context);
+    };
     return { default: RoutePage, RoutePage };
 });
 
@@ -219,5 +228,76 @@ describe('BotManageModal 生命周期', () => {
         releaseRead(catalogue());
         await flush();
         expect(warn).not.toHaveBeenCalled();
+    });
+
+    /**
+     * 交集回归：写入落库会让在飞的探测读作废（writeSeq 判据），但那个被作废的读
+     * **必须自己清掉 loading** —— 否则 probeCardSettings 的 `!vm.loading` 守卫会
+     * 吞掉之后每一次重开的探测，「每次打开一次新鲜读取」在整个会话里静默失效。
+     *
+     * 上一轮的测试分别覆盖了两半（VM 侧只查行状态不查 loading；这里只查重开重拉
+     * 但没有在飞的写），bug 恰好活在交集里，所以两边全绿还是漏了。
+     */
+    it('在飞探测期间写入落库后，下一次打开仍然重拉', async () => {
+        const { rerender, getByText, getByTestId } = render(
+            <BotManageModal robotId="bot1" visible onClose={() => undefined} />,
+        );
+        await flush();
+        expect(mocks.listSettings).toHaveBeenCalledTimes(1);
+
+        // 关闭再打开，第二次探测挂在飞。
+        rerender(<BotManageModal robotId="bot1" visible={false} onClose={() => undefined} />);
+        await flush();
+        let releaseProbe: (value: unknown) => void = () => undefined;
+        mocks.listSettings.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    releaseProbe = resolve;
+                }),
+        );
+        rerender(<BotManageModal robotId="bot1" visible onClose={() => undefined} />);
+        await flush();
+        expect(mocks.listSettings).toHaveBeenCalledTimes(2);
+
+        // 进 L3 并点开关（hasData 已为真，所以直接渲染行而不是 spinner），PUT 落库。
+        mocks.putSettings.mockResolvedValue(undefined);
+        fireEvent.click(getByText(CARD_SETTINGS_ROW));
+        fireEvent.click(getByTestId('bot-card-switch-bot.display_enabled'));
+        await flush();
+        expect(mocks.putSettings).toHaveBeenCalledTimes(1);
+
+        // 慢的探测此刻才回来，被 writeSeq 判掉。
+        releaseProbe(catalogue());
+        await flush();
+
+        // 再关再开：必须仍然发出第三个 GET。
+        rerender(<BotManageModal robotId="bot1" visible={false} onClose={() => undefined} />);
+        await flush();
+        rerender(<BotManageModal robotId="bot1" visible onClose={() => undefined} />);
+        await flush();
+        expect(mocks.listSettings).toHaveBeenCalledTimes(3);
+    });
+
+    it('同一个不支持的 bot 第二次打开时入口不再闪现', async () => {
+        mocks.listSettings.mockRejectedValue({
+            code: 'err.server.robot.not_found',
+            status: 404,
+            msg: 'not found',
+        });
+        const { queryByText, unmount } = render(
+            <BotManageModal robotId="appbot2" visible onClose={() => undefined} />,
+        );
+        await flush();
+        expect(queryByText(CARD_SETTINGS_ROW)).toBeNull();
+
+        // 整个组件卸载（切资料卡时的真实路径）→ VM 连判定一起被丢掉。
+        unmount();
+        const second = render(
+            <BotManageModal robotId="appbot2" visible onClose={() => undefined} />,
+        );
+        // 判定记在模块作用域，所以首帧就不该画出这一行。
+        expect(second.queryByText(CARD_SETTINGS_ROW)).toBeNull();
+        await flush();
+        expect(second.queryByText(CARD_SETTINGS_ROW)).toBeNull();
     });
 });
