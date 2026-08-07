@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { AiBadge, titleContextStore } from '@octo/base'
-import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t, useI18n, fetchSpaceBotNames, canForwardToChat, getCurrentUid} from '../octoweb/index.ts'
+import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t, useI18n, fetchSpaceBotNames, canForwardToChat, getCurrentUid } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
@@ -505,6 +505,18 @@ function DocsEmptyState({
 }
 
 /**
+ * Delete-confirm copy per resource kind, so a delete started from the mixed-kind list names what it is
+ * about to destroy — the same keys each editor shell picks for itself (EditorShell.tsx:764 → `doc.*`,
+ * BoardShell.tsx:2186 → `board.*`, SheetView.tsx:829 → `sheet.*`). Spelled out as literal key strings
+ * rather than built by interpolation so the i18n scanner can still see every key it must resolve.
+ */
+const DELETE_CONFIRM_COPY = {
+  doc: { title: 'docs.doc.deleteConfirmTitle', message: 'docs.doc.deleteConfirm' },
+  board: { title: 'docs.board.deleteConfirmTitle', message: 'docs.board.deleteConfirm' },
+  sheet: { title: 'docs.sheet.deleteConfirmTitle', message: 'docs.sheet.deleteConfirm' },
+} as const
+
+/**
  * Document list landing — shown when `/docs` is opened without a specific doc addressed.
  * Lists documents the caller owns or is a member of (GET /api/v1/docs) and offers a
  * "new document" action (POST /api/v1/docs). Selecting/creating navigates to the editor.
@@ -515,6 +527,7 @@ function DocsList({
   uid,
   selectedDocId,
   onSelect,
+  onDocDeleted,
   onCreateHtml,
   onCreatePpt,
   reloadToken,
@@ -526,6 +539,17 @@ function DocsList({
   uid: string
   selectedDocId: string | null
   onSelect: (docId: string, docType?: string, octoDocSlug?: string, title?: string) => void
+  /**
+   * The parent's delete primitive — the SAME callback handed to the four editor shells. It resets the
+   * host pane to the docs empty state (via backToList) when the deleted doc is the open one, and bumps
+   * the list reload token, which arrives back here as `reloadToken`.
+   *
+   * A list delete goes through this rather than clearing the selection itself: `onSelect('')` has no
+   * "deselect" meaning anywhere in openDoc — an empty id misses every known-kind branch, falls into
+   * the unknown-kind path, fetches `getDoc('')` and pushes a shell addressed with an empty docId
+   * instead of the empty state.
+   */
+  onDocDeleted: (docId: string) => void
   /** Open the "new HTML (embedded bot DM)" flow (plan Task 6). Menu-only; never calls createDoc. */
   onCreateHtml: () => void
   /**
@@ -571,20 +595,39 @@ function DocsList({
      * defaulted to, so nothing regresses for them.
      */
     kind?: 'doc' | 'board' | 'sheet'
+    /**
+     * The row's UNnarrowed kind, kept alongside `kind` because the delete gate needs the distinction
+     * `kind` erases: `html` and `html_ppt` fold into `'doc'` above, but their own surfaces do not treat
+     * them as documents. HtmlDocView gates delete on backend-resolved authorship rather than the
+     * docs-backend role (HtmlDocView.tsx:645-656, with a regression test at HtmlDocView.test.tsx:1061
+     * pinning that an admin-not-author sees no delete), and ppt/PptDocView.tsx offers no delete at all.
+     * The list must not hand out a destructive action those surfaces withhold.
+     */
+    listKind: 'doc' | 'board' | 'sheet' | 'html' | 'html_ppt'
     x: number
     y: number
   } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  // The context menu closes the moment an item is clicked, so `menu.docId` is gone by the time the
-  // confirm dialog resolves — the delete target is held separately. `useDocDelete` is the SAME hook
-  // the editor shells use, so a list delete and an in-editor delete hit one code path and one dialog.
-  const [deleteTarget, setDeleteTarget] = useState<{ docId: string; title?: string } | null>(null)
-  const del = useDocDelete(deleteTarget?.docId ?? '', (docId) => {
-    setDeleteTarget(null)
-    // Same contract the shells rely on: drop the doc from view and refresh both tabs.
-    if (selectedDocId === docId) onSelect('')
-    reloadViews()
-  })
+  // The context menu closes the moment an item is clicked, so `menu` is already null by the time the
+  // confirm dialog renders — both the target id AND the kind the dialog's copy depends on are held
+  // here instead. `useDocDelete` is the SAME hook the editor shells use, so a list delete and an
+  // in-editor delete hit one code path and one dialog.
+  const [deleteTarget, setDeleteTarget] = useState<{
+    docId: string
+    kind: 'doc' | 'board' | 'sheet'
+  } | null>(null)
+  const del = useDocDelete(
+    deleteTarget?.docId ?? '',
+    (docId) => {
+      setDeleteTarget(null)
+      // The parent's own primitive: it resets the host pane to the docs empty state when the deleted
+      // doc is the open one and bumps the list reload token, which refetches both tabs through the
+      // `reloadToken` prop — so no separate reloadViews() call (that would double-fetch).
+      onDocDeleted(docId)
+    },
+    // Same as HtmlDocView.tsx:361 — carry the Space so deleteDoc sends X-Space-Id.
+    space ? { spaceId: space } : undefined,
+  )
   // Transient create/import error (distinct from a per-view list-load error). Shown as a state line
   // above the list; cleared on the next successful create/import.
   const [createError, setCreateError] = useState<string | null>(null)
@@ -646,15 +689,16 @@ function DocsList({
     // `?.writeText(...)` on a missing Clipboard API resolves to undefined, so awaiting it would
     // report a copy that never happened.
     if (typeof writeText !== 'function') {
-      setNotice(t('docs.sheet.linkFailed'))
+      setNotice(t('docs.list.copyLinkFailed'))
       window.setTimeout(() => setNotice(null), 2000)
       return
     }
     try {
       await navigator.clipboard.writeText(buildDocLink({ docId: id, space }))
-      setNotice(t('docs.sheet.linkCopied'))
+      // The existing address-copy toast (链接已复制), not the invite flow's 分享链接已复制.
+      setNotice(t('docs.standalone.linkCopied'))
     } catch {
-      setNotice(t('docs.sheet.linkFailed'))
+      setNotice(t('docs.list.copyLinkFailed'))
     }
     window.setTimeout(() => setNotice(null), 2000)
   }
@@ -877,6 +921,8 @@ function DocsList({
               // forwarded sheet/board arrives as a plain-doc share card (the shells pass this
               // explicitly — SheetView.tsx:672 / BoardShell.tsx:963).
               kind: iconKind === 'board' ? 'board' : iconKind === 'sheet' ? 'sheet' : 'doc',
+              // Unnarrowed, for the delete gate — see the `listKind` field comment.
+              listKind: iconKind,
               x: e.clientX,
               y: e.clientY,
             })
@@ -1328,7 +1374,7 @@ function DocsList({
                 setMenu(null)
               }}
             >
-              {t('docs.sheet.copyDocLink')}
+              {t('docs.list.copyDocLink')}
             </div>
             {/* 转发到聊天 — the same entry the document header carries, driven by the same
                 `startDocForward` bridge (host conversation-select + 先授权后发). Gated on
@@ -1357,9 +1403,12 @@ function DocsList({
                 {t('docs.forward.entry')}
               </div>
             )}
-            {/* 删除文件 — owner/admin only, matching the ≡ menu's danger row. Reuses useDocDelete,
-                so the list delete pops the same centered ConfirmModal as the editor's. */}
-            {canManage(menu.role) && (
+            {/* 删除文件 — admin only, matching the ≡ menu's danger row, and only for the three kinds
+                whose own surface offers a role-gated delete. `html` / `html_ppt` are excluded on
+                purpose: HtmlDocView gates delete on authorship, not role, and PptDocView has no delete
+                at all — see the `listKind` field comment. Reuses useDocDelete, so the list delete pops
+                the same centered ConfirmModal as the editor's. */}
+            {canManage(menu.role) && menu.listKind !== 'html' && menu.listKind !== 'html_ppt' && (
               <div
                 role="menuitem"
                 // Danger colour from the shared semantic token (semantic.css:117) rather than a
@@ -1372,7 +1421,9 @@ function DocsList({
                   color: 'var(--wk-badge-danger-text, #f54a45)',
                 }}
                 onClick={() => {
-                  setDeleteTarget({ docId: menu.docId, title: menu.title })
+                  // Carry the kind: the menu unmounts on this click, so the confirm dialog below can
+                  // no longer read `menu` when it picks its copy.
+                  setDeleteTarget({ docId: menu.docId, kind: menu.kind ?? 'doc' })
                   del.requestDelete()
                   setMenu(null)
                 }}
@@ -1383,20 +1434,38 @@ function DocsList({
           </div>
         </>
       )}
-      {/* Delete confirm — the shared centered modal, identical to the dialog the editor shells pop,
-          so a delete started from the list looks and behaves the same as one started in the doc. */}
+      {/* Delete confirm — the shared centered modal, identical to the dialog the editor shells pop, and
+          carrying the copy that matches the row's kind the same way each shell does (EditorShell.tsx:764
+          → doc.*, BoardShell.tsx:2186 → board.*, SheetView.tsx:829 → sheet.*). A mixed-kind list must
+          pick per row: the one dialog whose purpose is to prevent an irreversible mistake cannot call a
+          document a spreadsheet, and the doc/board copy also warns 删除后不可恢复, which sheet's omits. */}
       <ConfirmModal
         open={del.confirming}
-        title={t('docs.sheet.deleteConfirmTitle')}
-        message={t('docs.sheet.deleteConfirm')}
+        title={t(DELETE_CONFIRM_COPY[deleteTarget?.kind ?? 'doc'].title)}
+        message={t(DELETE_CONFIRM_COPY[deleteTarget?.kind ?? 'doc'].message)}
         confirmLabel={t('docs.doc.delete')}
         cancelLabel={t('docs.doc.deleteCancel')}
         danger
         busy={del.deleting}
-        error={del.error}
         onConfirm={() => void del.confirm()}
-        onCancel={del.cancel}
+        onCancel={() => {
+          del.cancel()
+          // Cancel does not run onDeleted, so clear the target here rather than leaving a stale row
+          // identity in state behind a destructive action.
+          setDeleteTarget(null)
+        }}
       />
+      {/* A failed delete must be rendered OUTSIDE the modal, exactly as three of the four shells do
+          (EditorShell.tsx:773-777, BoardShell.tsx:2195-2197, HtmlDocView.tsx:671-675). useDocDelete's
+          confirm() sets `error` in catch and then clears `confirming` in finally, and ConfirmModal
+          returns null as soon as `open` is false — so an error handed to the modal can never paint, and
+          a rejected delete (403/409/500) would close the dialog and say nothing at all.
+          (SheetView.tsx:835 has that gap; it is the wrong call site to pattern-match.) */}
+      {del.error && (
+        <p className="octo-member-error" role="alert">
+          {del.error}
+        </p>
+      )}
       {notice && (
         <div
           style={{
@@ -2265,6 +2334,7 @@ export function DocsHome() {
           uid={uid}
           selectedDocId={selectedDocId}
           onSelect={openDoc}
+          onDocDeleted={onDocDeleted}
           onCreateHtml={() => setHtmlModalOpen(true)}
           onCreatePpt={(opener) => {
             pptOpenerRef.current = opener ?? null
@@ -2294,6 +2364,7 @@ export function DocsHome() {
           uid={uid}
           selectedDocId={selectedDocId}
           onSelect={openDoc}
+          onDocDeleted={onDocDeleted}
           onCreateHtml={() => setHtmlModalOpen(true)}
           onCreatePpt={(opener) => {
             pptOpenerRef.current = opener ?? null

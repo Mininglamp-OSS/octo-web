@@ -27,6 +27,8 @@
     "end": "没有更多了",
     "loadMoreFailed": "加载更多失败",
     "retry": "重试",
+    "copyDocLink": "复制文档链接",
+    "copyLinkFailed": "复制失败，请重试",
     "htmlCreate": {
       "title": "新建 HTML",
       "descLabel": "HTML 描述",
@@ -842,8 +844,7 @@
       "onlyMe": "仅我可以编辑",
       "designatedUsers": "指定用户可以编辑",
       "noMembers": "暂无可指定的成员"
-    },
-    "copyDocLink": "复制文档链接"
+    }
   },
   "error": {
     "permission": {

@@ -3314,12 +3314,14 @@ describe('DocsHome — row context menu: 转发 / 删除', () => {
 
     // 'Beta' is role: 'reader' — the case the old admin gate excluded entirely.
     fireEvent.contextMenu(screen.getByText('Beta').closest('button')!)
-    fireEvent.click(screen.getByText('docs.sheet.copyDocLink'))
+    fireEvent.click(screen.getByText('docs.list.copyDocLink'))
 
     await waitFor(() => expect(writeText).toHaveBeenCalled())
     const copied = writeText.mock.calls[0][0] as string
     // The doc's own address (buildDocLink), not an invite token.
     expect(copied).toContain('/d/d_b')
+    // Pin the Space query too — without this the case would still pass if `space` were dropped.
+    expect(copied).toContain('sp=')
     expect(copied).not.toContain('invite')
     // And no request was made: minting an invite is what the old entry did.
     expect(
@@ -3343,7 +3345,7 @@ describe('DocsHome — row context menu: 转发 / 删除', () => {
     fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
     fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
     // The same centered ConfirmModal the editor shells use — not a native confirm().
-    await waitFor(() => expect(screen.getByText('docs.sheet.deleteConfirm')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('docs.doc.deleteConfirm')).toBeTruthy())
 
     fireEvent.click(screen.getByText('docs.doc.delete'))
     // The menu closes on click, so the target must be remembered separately or this would DELETE
@@ -3361,10 +3363,185 @@ describe('DocsHome — row context menu: 转发 / 删除', () => {
     const wk = await mount()
     fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
     fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
-    await waitFor(() => expect(screen.getByText('docs.sheet.deleteConfirm')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('docs.doc.deleteConfirm')).toBeTruthy())
     fireEvent.click(screen.getByText('docs.doc.deleteCancel'))
     expect(
       wk.apiClient.calls.filter((c: { method: string }) => c.method === 'delete'),
+    ).toHaveLength(0)
+  })
+
+  // P1-3 (yujiawei, PR #1288): the dialog hardcoded docs.sheet.* for a MIXED-kind list, so deleting a
+  // document — the most common row — popped "删除表格 / Delete sheet". The noun was not the only error:
+  // the doc/board copy warns 删除后不可恢复, which the sheet copy never says, so the one dialog whose
+  // job is to prevent an irreversible mistake misdescribed what was about to be destroyed.
+  it('names what it is about to delete: a document row gets the document copy, a sheet row the sheet copy', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 2,
+            items: [
+              { docId: 'd_doc', title: 'Doc row', ownerId: 'u_self', role: 'admin', docType: 'doc' },
+              { docId: 'd_sh', title: 'Sheet row', ownerId: 'u_self', role: 'admin', docType: 'sheet' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Doc row')).toBeTruthy())
+
+    fireEvent.contextMenu(screen.getByText('Doc row').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    await waitFor(() => expect(screen.getByText('docs.doc.deleteConfirmTitle')).toBeTruthy())
+    expect(screen.getByText('docs.doc.deleteConfirm')).toBeTruthy()
+    // Never the sheet copy on a document.
+    expect(screen.queryByText('docs.sheet.deleteConfirm')).toBeNull()
+    fireEvent.click(screen.getByText('docs.doc.deleteCancel'))
+
+    // The kind must survive the menu unmounting: the dialog reads it from the delete target, because
+    // `menu` is already null by the time the dialog renders.
+    fireEvent.contextMenu(screen.getByText('Sheet row').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    await waitFor(() => expect(screen.getByText('docs.sheet.deleteConfirmTitle')).toBeTruthy())
+    expect(screen.queryByText('docs.doc.deleteConfirm')).toBeNull()
+  })
+
+  // P1-2 (yujiawei, PR #1288): `error` was handed to ConfirmModal and nowhere else. useDocDelete sets
+  // it in catch then clears `confirming` in finally, and ConfirmModal returns null once `open` is
+  // false — so a rejected delete closed the dialog and said NOTHING: row still there, no message, no
+  // signal to stop retrying. Three of the four shells render it outside the modal for this reason.
+  it.each([
+    [403, 'docs.doc.deleteForbidden'],
+    [409, 'docs.doc.deleteArchived'],
+    [500, 'docs.doc.deleteFailed'],
+  ])('shows the delete error after the confirm closes on %i, instead of failing silently', async (status, errorKey) => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: ROWS.length, items: ROWS }, status: 200 }
+      }
+      // Same shape HtmlDocView.test.tsx:1037 uses for this hook's rejection paths.
+      if (method === 'delete') throw { response: { status } }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeTruthy())
+
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    await waitFor(() => expect(screen.getByText('docs.doc.deleteConfirm')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.doc.delete'))
+
+    // The localized string reaches the screen in a live region — and it must survive the modal
+    // unmounting, which is exactly what rendering it INSIDE ConfirmModal could never do.
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(errorKey))
+    expect(screen.queryByText('docs.doc.deleteConfirm')).toBeNull()
+    // And the row is still listed — nothing was removed.
+    expect(screen.getByText('Alpha')).toBeTruthy()
+  })
+
+  // P1-4 (yujiawei, PR #1288): the gate was canManage(role) for EVERY kind, but the HTML surface gates
+  // delete on backend-resolved authorship, not the docs role — HtmlDocView.test.tsx:1061 pins that an
+  // admin-not-author sees no delete — and ppt/PptDocView.tsx has no delete affordance at all. Gating
+  // on role alone let the list hand out a destructive action both surfaces deliberately withhold.
+  it('withholds 删除 from html / html_ppt rows, which gate deletion on authorship rather than role', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 3,
+            items: [
+              // role: 'admin' on every row — the exact viewer the old gate admitted. ownerId is
+              // someone else, i.e. NOT the author the HTML surface requires.
+              { docId: 'd_h', title: 'Html row', ownerId: 'u_other', role: 'admin', docType: 'html' },
+              { docId: 'd_p', title: 'Ppt row', ownerId: 'u_other', role: 'admin', docType: 'html_ppt' },
+              { docId: 'd_d', title: 'Doc row', ownerId: 'u_other', role: 'admin', docType: 'doc' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Html row')).toBeTruthy())
+
+    for (const title of ['Html row', 'Ppt row']) {
+      fireEvent.contextMenu(screen.getByText(title).closest('button')!)
+      expect(screen.queryByText('docs.sheet.deleteFile')).toBeNull()
+      // 转发 and 复制文档链接 stay available — only deletion is withheld.
+      expect(screen.getByText('docs.list.copyDocLink')).toBeTruthy()
+      fireEvent.click(document.body)
+    }
+    // A plain doc row with the same role still gets it, so the gate narrowed by kind, not by accident.
+    fireEvent.contextMenu(screen.getByText('Doc row').closest('button')!)
+    expect(screen.getByText('docs.sheet.deleteFile')).toBeTruthy()
+  })
+
+  // P1-1 (yujiawei, PR #1288): deleting the OPEN doc called `onSelect('')`. An empty id has no
+  // "deselect" meaning in openDoc — it misses every known-kind branch, falls into the unknown-kind
+  // path, fetches getDoc('') and then commitOpen('') — so the host pane received a shell addressed
+  // with an EMPTY docId instead of the empty state, plus two spurious requests (GET /docs/ lands on
+  // the list endpoint; POST /docs//view is a malformed double-slash URL). The module already owns the
+  // right primitive: onDocDeleted → backToList, which the four shells are handed.
+  it('returns the host pane to the empty state when the open doc is deleted from the list', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    // Production (resident-list) path — the only one that pushes a shell snapshot into the host pane.
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              { docId: 'd_open', title: 'Open row', ownerId: 'u_self', role: 'admin', docType: 'doc' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Open row')).toBeTruthy())
+
+    // Open it, so the deleted doc IS the open one.
+    fireEvent.click(screen.getByText('Open row'))
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } } | undefined
+      expect(last?.props?.docId).toBe('d_open')
+    })
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_open' })
+    const callsBeforeDelete = wk.apiClient.calls.length
+
+    // Delete it from the LIST (not from inside the editor).
+    fireEvent.contextMenu(screen.getByText('Open row').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    await waitFor(() => expect(screen.getByText('docs.doc.deleteConfirm')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.doc.delete'))
+
+    // Same invariant DocsHome.test.tsx:1932 pins for the in-editor delete: docId undefined, not ''.
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } } | undefined
+      expect(last?.props?.docId).toBeUndefined()
+    })
+    expect(document.querySelector('.octo-docs-list-item-active')).toBeNull()
+    expect(window.sessionStorage.getItem(TARGET_KEY)).toBeNull()
+    // No empty-id round-trips: getDoc('') hits the LIST endpoint and the view ping is double-slashed.
+    const after = wk.apiClient.calls.slice(callsBeforeDelete)
+    expect(after.filter((c: { url: string }) => c.url.includes('//'))).toHaveLength(0)
+    expect(
+      after.filter((c: { method: string; url: string }) => c.method === 'post' && c.url.includes('view')),
     ).toHaveLength(0)
   })
 })

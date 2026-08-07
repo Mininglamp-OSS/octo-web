@@ -27,6 +27,8 @@
     "end": "No more documents",
     "loadMoreFailed": "Couldn't load more",
     "retry": "Retry",
+    "copyDocLink": "Copy document link",
+    "copyLinkFailed": "Copy failed. Try again.",
     "htmlCreate": {
       "title": "New HTML",
       "descLabel": "HTML description",
@@ -842,8 +844,7 @@
       "onlyMe": "Only I can edit",
       "designatedUsers": "Designated users can edit",
       "noMembers": "No members available"
-    },
-    "copyDocLink": "Copy document link"
+    }
   },
   "error": {
     "permission": {
