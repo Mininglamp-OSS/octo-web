@@ -38,6 +38,10 @@ export class LoginVM extends ProviderListener {
     loginStatus: string = LoginStatus.getUUID // 登录状态
     qrcodeLoading: boolean = false // 二维码加载中
     uuid?: string
+    // 轮询密钥：与 uuid 同批由 user/loginuuid 下发，仅存在于本浏览器会话，绝不进二维码。
+    // 服务端凭它判断「轮询方是不是当初申请这个二维码的人」，只有匹配才回 auth_code。
+    // 缺失或不匹配时服务端仍回状态、但剥掉 auth_code —— 页面会停在授权页，刷新即恢复。
+    pollSecret?: string
     qrcode?: string
     expireMaxTryCount: number = 5 // 过期最多次数（超过指定次数则永远显示过期，需要用户手动刷新）
     private _expireTryCount: number = 0 // 过期尝试次数
@@ -178,6 +182,20 @@ export class LoginVM extends ProviderListener {
                 this.pullLoginStatus(this.uuid)
                 break
             case LoginStatus.authed:
+                if (!data?.auth_code) {
+                    // 服务端只把 auth_code 发给持有 poll_secret 的轮询方。走到这里说明
+                    // 本次轮询没能证明自己是二维码的申请方（发布窗口内的旧 bundle、
+                    // 密钥已过期、或 Redis 抖动），auth_code 被剥掉了。
+                    //
+                    // 不能拿 undefined 去调 login_authcode：那会打出
+                    // POST user/login_authcode/undefined 拿个 400，而轮询此刻已经停了
+                    // —— 页面就此静止，手机端却显示"已授权"，用户只能自己刷新。
+                    // 退回重新申请二维码，让流程能自愈。
+                    this.loginStatus = LoginStatus.getUUID
+                    this.notifyListener()
+                    this.advance()
+                    break
+                }
                 this.restCount()
                 this.requestLogin(data.auth_code)
                 break
@@ -421,6 +439,8 @@ export class LoginVM extends ProviderListener {
             param: device,
         }).then((result) => {
             this.uuid = result.uuid
+            // 与 uuid 同生共死：二维码轮换时密钥必须一起换，否则会拿旧密钥去轮询新 uuid。
+            this.pollSecret = result.poll_secret
             this.qrcodeLoading = false
             this.qrcode = result.qrcode
             this.loginStatus = LoginStatus.waitScan
@@ -448,7 +468,11 @@ export class LoginVM extends ProviderListener {
             return
         }
 
-        WKApp.apiClient.get(`user/loginstatus?uuid=${uuid}`).then((result: any) => {
+        // 密钥走请求头而不是 query：明文若进 URL，会被 nginx/ingress access log、CDN/WAF
+        // 日志、APM trace 和浏览器历史逐字记下 —— 那正好抵消了服务端「只存摘要」想防的
+        // 泄露面。uuid !== this.uuid 的请求已在上面挡掉，此处 pollSecret 必与 uuid 同批。
+        const headers = this.pollSecret ? { 'X-Scan-Poll-Secret': this.pollSecret } : undefined
+        WKApp.apiClient.get(`user/loginstatus?uuid=${encodeURIComponent(uuid)}`, { headers }).then((result: any) => {
             this._pullErrCount = 0
             const loginStatus = result.status;
             this.loginStatus = loginStatus
