@@ -341,8 +341,16 @@ export function useUpload(onUploaded: () => void): UseUpload {
 
   // Schedule an upload id: run immediately if under the concurrency cap,
   // otherwise queue it. On completion, drain the queue.
+  //
+  // Dedupe guard: a rapid retry on a prepare-failed row can hit here
+  // before the row shows up in runs.current — without this check the
+  // same id could sit in the queue N times and run N times once slots
+  // free up. Bot-review flagged this on the initial concurrency work.
   const scheduleUpload = useCallback(
     (id: string) => {
+      // If this id is either already running or already queued, ignore.
+      if (uploadQueue.current.includes(id)) return;
+      if (runs.current.has(id)) return;
       const start = (nextId: string) => {
         uploadActiveCount.current += 1;
         // Fire the upload — runItem is async but we intentionally don't

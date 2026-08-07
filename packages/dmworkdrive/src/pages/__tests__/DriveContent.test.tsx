@@ -71,6 +71,7 @@ import { useFileList } from '../../hooks/useFileList';
 import { useDriveOps } from '../../hooks/useDriveOps';
 import { useUpload } from '../../hooks/useUpload';
 import { useMembers } from '../../hooks/useMembers';
+import * as useDropzoneMod from '../../hooks/useDropzone';
 import DriveContent from '../DriveContent';
 import type { Space } from '../../bridge/types';
 
@@ -318,5 +319,41 @@ describe('DriveContent — open doc builds the canonical no-sp link (Phase-1 rem
     expect(url).not.toContain('sp=');
     expect(url).not.toContain('mountSpace');
     openSpy.mockRestore();
+  });
+
+  it('passes disabled=false to useDropzone when the user canUpload (personal space)', () => {
+    // Bot review flagged: `disabled: !canUploadRef.current` left the
+    // dropzone permanently disabled because canUploadRef was seeded false
+    // and the effect that updated it fired AFTER useDropzone snapshotted
+    // its initial disabledRef. Fix hoists canUpload above useDropzone and
+    // passes the real boolean. This test asserts the hook is invoked with
+    // disabled=false on a canUpload user's first render.
+    stubMembers({});
+    const useDropzoneSpy = vi.spyOn(useDropzoneMod, 'useDropzone');
+    render(<DriveContent vm={vmWith(space('sp-personal', 'personal'))} />);
+    expect(useDropzoneSpy).toHaveBeenCalled();
+    // Last invocation (React 18 double-invoke friendly).
+    const lastCall = useDropzoneSpy.mock.calls[useDropzoneSpy.mock.calls.length - 1]!;
+    const opts = lastCall[0] as { disabled?: boolean; onDrop: (f: FileList) => void };
+    expect(opts.disabled).toBe(false);
+
+    // And the onDrop callback, when it does fire, must route to addFiles.
+    const addFiles = vi.mocked(useUpload).mock.results.at(-1)?.value.addFiles;
+    expect(addFiles).toBeDefined();
+    const file = new File(['x'], 'x.txt', { type: 'text/plain' });
+    const fakeList = { length: 1, 0: file, item: () => file } as unknown as FileList;
+    opts.onDrop(fakeList);
+    expect(addFiles).toHaveBeenCalledWith(fakeList, 'sp-personal', 0);
+    useDropzoneSpy.mockRestore();
+  });
+
+  it('passes disabled=true to useDropzone when the user lacks canUpload (preview_only shared)', () => {
+    stubMembers({ canDownload: true }); // no canUpload
+    const useDropzoneSpy = vi.spyOn(useDropzoneMod, 'useDropzone');
+    render(<DriveContent vm={vmWith(space('sp-shared', 'shared'))} />);
+    const lastCall = useDropzoneSpy.mock.calls[useDropzoneSpy.mock.calls.length - 1]!;
+    const opts = lastCall[0] as { disabled?: boolean };
+    expect(opts.disabled).toBe(true);
+    useDropzoneSpy.mockRestore();
   });
 });
