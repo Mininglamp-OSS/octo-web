@@ -13,12 +13,15 @@ import {
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
 import { Channel, MessageText } from "wukongimjssdk";
+import WKSDK, { ChannelTypeGroup } from "wukongimjssdk";
 import {
   I18nContext,
   t,
   ForwardService,
   interpretForwardResult,
   titleContextStore,
+  SummaryNotifyContent,
+  isConversationDisbanded,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -28,6 +31,7 @@ import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
+import { shouldEmitGroupSummaryNotify, collectGroupSourceIds } from "../utils/summaryNotifyHelpers";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -288,6 +292,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private listPageActive = false;
     private lastEventTime = 0;
     private isPersonalPolling = false;
+    // #289 群内总结 tip · in-flight guard: 同一实例的两条触发路径(status 事件 vs
+    // fallback poll)可能几乎同时进入 sendGroupSummaryNotify · 用一个 in-memory Set
+    // 保证同一 (task_id, source_id) 只发一次。故意不带 localStorage / Web Locks —
+    // 参考截屏 tip 的姿势 · multi-tab 罕见重复是 accepted trade-off。
+    private summaryNotifyInFlight = new Set<string>();
     // Blocking 5（跨 task 串台 / async race）：单调递增的「调度加载序列号」。
     // 每次发起一轮 detail+schedule 加载（loadDetail / 状态切换补拉 / 重新加载）都 bump，
     // loadSchedule 在 setState 前用「发起时捕获的 seq」与最新 seq 比对：不一致说明期间
@@ -1004,6 +1013,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         this.loadPersonalResult(seq);
                         this.loadMembers(seq);
                     }
+                    if (newStatus === TaskStatus.COMPLETED) {
+                        // #289 群内总结 tip：仅在 "非终态 → COMPLETED" 迁移触发,
+                        // 抄截屏 tip 的姿势(见 octo-ios WKConversationView.userDidTakeScreenshot):
+                        // creator client 用自己的 IM connection 直接 send · 天然带 group
+                        // send permission(creator 已在群里)。极简 dedup: 仅内存单飞,
+                        // 接受 multi-tab 罕见重复(与截屏 tip 同等 accepted trade-off)。
+                        void this.sendGroupSummaryNotify(detail);
+                    }
                 }
             }
         } catch {
@@ -1079,6 +1096,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         if (detail.schedule_id && detail.schedule_id > 0) {
                             this.loadSchedule(detail.schedule_id, seq);
                         }
+                        if (newStatus === TaskStatus.COMPLETED) {
+                            // #289 群内总结 tip · fallback poll 路径同样触发一次
+                            // (与 status-event 路径二选一 · 由 summaryNotifyInFlight
+                            //  内存单飞保证不双发)。
+                            void this.sendGroupSummaryNotify(detail);
+                        }
                     }
                 } catch {
                     // Don't advance lastKnownStatus — retry on next tick
@@ -1097,6 +1120,63 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (this.fallbackPollTimer) {
             clearInterval(this.fallbackPollTimer);
             this.fallbackPollTimer = null;
+        }
+    }
+
+    /**
+     * 群内总结 tip · 参考截屏 tip(contentType=20)的姿势:
+     *   octo-ios WKConversationView.userDidTakeScreenshot:
+     *     [self.conversationContext sendMessage:WKScreenshotContent.new];
+     *   —— client 用自己的 IM connection 直接投 · 天然带 group send permission。
+     *
+     * 只由 status 事件 / fallback poll 检测到的 "非终态 → COMPLETED" 迁移触发
+     * (真正「刚完成」)· 刻意不在 loadDetail「首次载入即 COMPLETED」补发:那条
+     * 无迁移语义 · 会把「打开历史 / 跨端已完成总结」误当成刚完成而误发过时 tip。
+     *
+     * 极简 dedup:
+     *   1. Creator gate — 只有发起人自己 send · 非 creator 视角不触发
+     *   2. Non-COMPLETED skip
+     *   3. Group-source filter — 仅 SourceType=GROUP_CHAT
+     *   4. summaryNotifyInFlight 内存单飞 — 防同一实例的两条触发路径(status 事件 +
+     *      fallback poll)几乎同时进入这里 · 保证同一 (task_id, source_id) 只发一次
+     *   5. Disbanded group skip — 沿用 isConversationDisbanded 既有不变量
+     *
+     * 故意不带 localStorage / Web Locks / completion-run key(见 PR #1234 round-6
+     * @yujiawei 的 "retire the persistent dedup" 建议):multi-tab 场景下每个 tab
+     * 的 creator 客户端各发一次 tip · 是 accepted trade-off · 与截屏 tip 同等
+     * best-effort 姿势。exactly-once 需要 server 侧兜底 · 那是后续独立追踪的架构变更,
+     * 不在本 PR 范围。
+     *
+     * Per-group failure isolation: 单群 send 抛错只 console.warn · 不影响后续群。
+     */
+    private async sendGroupSummaryNotify(detail: SummaryDetail) {
+        const myUid = WKApp.loginInfo.uid;
+        if (!shouldEmitGroupSummaryNotify(detail, myUid, TaskStatus.COMPLETED)) return;
+
+        const groupSourceIds = collectGroupSourceIds(detail.sources);
+        if (groupSourceIds.length === 0) return;
+
+        for (const sourceId of groupSourceIds) {
+            const inFlightKey = `${detail.task_id}:${sourceId}`;
+            if (this.summaryNotifyInFlight.has(inFlightKey)) continue;
+
+            const ch = new Channel(sourceId, ChannelTypeGroup);
+            // 已解散群不发(与既有发送不变量一致)。
+            if (isConversationDisbanded(ch)) continue;
+
+            this.summaryNotifyInFlight.add(inFlightKey);
+            try {
+                const msg = new SummaryNotifyContent();
+                msg.fromUID = myUid;
+                msg.fromName = WKApp.loginInfo.selfDisplayName();
+                await WKSDK.shared().chatManager.send(msg, ch);
+            } catch (error) {
+                // 单群失败不影响其他群 · 但保留 channel + error 的可观测性
+                // (调试线上问题时能立刻定位是哪个 source 出问题)。
+                console.warn("[summaryNotify] send failed", { channelId: sourceId, error });
+            } finally {
+                this.summaryNotifyInFlight.delete(inFlightKey);
+            }
         }
     }
 

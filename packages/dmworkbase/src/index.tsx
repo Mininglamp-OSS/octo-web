@@ -75,6 +75,10 @@ export * from "./Messages/File"
 export * from "./Messages/Base"
 export * from "./Messages/SummaryNotify"
 
+// #289 群内总结 tip · sendGroupSummaryNotify(SummaryDetailPage)复用这个既有
+// disbanded-group guard · 保持"send 前必查群是否已解散"这条既有发送不变量。
+export { isConversationDisbanded } from "./Utils/groupDisband"
+
 export * from "./Messages/MessageCell"
 
 export * from "./Service/Section";
