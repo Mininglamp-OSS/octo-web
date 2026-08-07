@@ -104,6 +104,29 @@ export class BotCardSettingsVM extends ProviderListener {
      */
     private epoch: number = 0
 
+    /**
+     * 已确认写入的序号，**每次 PUT / DELETE 被服务端确认后自增**。
+     *
+     * `items` 有两个独立写入者 —— GET 的整体替换、以及逐 key 的乐观覆盖 —— 而只有
+     * 写侧串行走 `chain`。`loadSettings` 是唯一不上链的请求路径，光靠 `generation`
+     * （只有读会自增）无法发现「这个读比某次已提交的写更旧」：
+     *
+     *   probe GET 发出 → 用户点开关 → PUT 提交（服务端已改） → GET 才落地
+     *
+     * 此时 GET 带回的是提交前的快照，而 `reapplyOptimistic` 只重放 `sending ∪ queued`
+     * —— 已确认的写两个集合都不在（成功分支已清），于是那次写被静默回退：开关显示
+     * 「开」而服务端是关、副标题谎称「未自定义」、`overridden` 变 false 连「取消自定义」
+     * 都没了，且 `writeError` 为 null 什么都不提示。
+     *
+     * 所以读要同时对写作废：发起前捕获 writeSeq，落地时若已变化就整段丢弃。丢弃是安全的
+     * —— 被丢的只是一次刷新，`items` 里留着的是刚被确认的值（对那些 key 就是服务端真值），
+     * 其余 key 保持上一次读到的值，下次打开会重新拉。
+     *
+     * 用 writeSeq 而不是把 loadSettings 也挂上 `chain`：探测请求不该被排在写入队列后面
+     * 等着，而且 `chain` 无超时（见 setRobotId 对 chain 的重置）。
+     */
+    private writeSeq: number = 0
+
     constructor(robotId: string, options: BotCardSettingsVMOptions = {}) {
         super()
         this.robotId = robotId
@@ -130,6 +153,11 @@ export class BotCardSettingsVM extends ProviderListener {
         this.baseline = new Map()
         this.busy = new Set()
         this.flushing = false
+        // 重置串行链。链上没有超时，一个永不 settle 的请求会队头阻塞**后续所有 bot**
+        // 的所有写入，并让 resetToDefault 的 finally 永远不执行、那一行永久禁用。
+        // 换掉链就把新 bot 从旧 bot 的卡死里解脱出来（旧请求本身无法取消 ——
+        // BotManageService 没有 AbortController —— 但它的结果会被 epoch 判掉）。
+        this.chain = Promise.resolve()
         this.loading = false
         this.loadError = null
         this.writeError = null
@@ -166,8 +194,8 @@ export class BotCardSettingsVM extends ProviderListener {
     /**
      * 拉取配置项目录。
      *
-     * 响应带 `Cache-Control: private, no-store`，本地也不做任何缓存：每次进入 L3
-     * 都会重拉，改完配置立刻重读必须看到新值。
+     * 响应带 `Cache-Control: private, no-store`，本地也不做任何缓存：每次打开都会
+     * 重拉，改完配置立刻重读必须看到新值。
      *
      * @param silent true = 不翻转 loading（「取消自定义」后的重拉走这条，避免整页
      *   spinner 闪一下）。
@@ -176,12 +204,15 @@ export class BotCardSettingsVM extends ProviderListener {
         const requestedUid = this.robotId
         if (!requestedUid) return
         const gen = ++this.generation
-        const isStale = (): boolean => this.generation !== gen
+        // 捕获写序号：见 writeSeq 的说明。读**必须**同时对写作废，否则一个在 PUT
+        // 提交之前发出的 GET 落在提交之后时会把已确认的值覆盖回提交前的快照。
+        const seq = this.writeSeq
+        const isStale = (): boolean =>
+            this.generation !== gen || this.writeSeq !== seq
 
         if (!options.silent) {
             this.loading = true
         }
-        this.loadError = null
         this.notifyListener()
         try {
             const res = await this.withRetry(() =>
@@ -197,9 +228,17 @@ export class BotCardSettingsVM extends ProviderListener {
                     `[BotCardSettings] ${BOT_CARD_MASTER_KEY} missing from settings response; assuming enabled`,
                 )
             }
+            // 把待写 key 的回滚快照对齐到刚读到的服务端值。不对齐的话，后续写失败会
+            // 回滚到「这次读之前」的值 —— 那个值服务端和最新一次读都不认（比如别的
+            // 客户端 / 别的设备刚改过）。
+            this.reconcileBaseline()
             // 重拉整体替换 items，所以要把「尚未被服务端确认」的乐观覆盖重新盖回去，
             // 否则用户刚点的开关会在别的行「取消自定义」触发重拉时被打回原值。
             this.reapplyOptimistic()
+            // 成功读到权威数据，两类错误态都该让位。writeError 尤其要清：它是上一次
+            // 保存失败留下的行内横幅，刷新成功后继续挂着会让用户以为现在还是坏的。
+            this.loadError = null
+            this.writeError = null
         } catch (e) {
             if (isStale()) return
             this.items = new Map()
@@ -249,7 +288,11 @@ export class BotCardSettingsVM extends ProviderListener {
         // row.disabled 已涵盖只读 / 总闸关闭 / 该行正在取消自定义三种情况。总闸关闭
         // 时也拒绝：此刻这一项的生效值反正是 false，删覆盖没有任何可观察效果，而
         // 界面已经把整组开关置灰了 —— 再留一个能生效的删除动作等于自相矛盾。
-        if (!row || !row.overridden || row.disabled) {
+        //
+        // 还要挡 pending（视图的 disabled 里有、VM 这边原先漏了，等于只靠一个渲染
+        // 属性守卫）。有在飞写入时删除会排出 PUT#1 → DELETE+重拉 → PUT#2 的顺序，
+        // 于是重置报成功后立刻被 PUT#2 重建的覆盖顶掉。
+        if (!row || !row.overridden || row.disabled || row.pending) {
             return false
         }
         // 同 flush：过期判据是 epoch。用 generation 会让「连点两行取消自定义」的第二次
@@ -269,6 +312,9 @@ export class BotCardSettingsVM extends ProviderListener {
                 // 该 key 的覆盖已不存在，针对它的乐观状态 / 回滚快照一并作废。
                 this.queued.delete(key)
                 this.baseline.delete(key)
+                // 服务端状态已改：让任何在飞的读作废（见 writeSeq）。必须在下面
+                // 的重拉之前自增，否则那次重拉自己就会被判过期。
+                this.writeSeq++
                 await this.loadSettings({ silent: true })
                 // 删除成功但重拉失败时 loadError 已被置上，整页会切到「加载失败 +
                 // 重试」—— 那种情况不算成功，否则调用方会以为界面已是权威状态。
@@ -317,15 +363,20 @@ export class BotCardSettingsVM extends ProviderListener {
                 if (this.epoch !== myEpoch) return
                 this.sending = this.queued
                 this.queued = new Map()
-                const items = this.buildWriteItems(this.sending)
-                if (items.length === 0) {
-                    // 整批被 buildWriteItems 过滤空（例如 editable 在点击与 flush
-                    // 之间翻成 false）。必须回滚这批的乐观覆盖 —— 否则屏幕上留着一个
-                    // 从未发送的「已自定义」，又是个骗人的控件。只回滚这批的 key，
-                    // 不碰 queued 里其它合法的改动。
-                    this.rollbackKeys(this.sending.keys())
-                    this.sending = new Map()
+                const { items, dropped } = this.buildWriteItems(this.sending)
+                if (dropped.length > 0) {
+                    // 这些 key 在点击与 flush 之间变成了只读（例如中途的重拉带回
+                    // editable:false），永远不会被发送。必须立刻回滚它们的乐观覆盖并
+                    // 移出 sending —— 否则下面的成功分支会把它们当作「已确认」走
+                    // baseline.delete，销毁一个从未发送过的覆盖的回滚快照。那样留在
+                    // 屏幕上的是：服务端从未接受过的「已自定义」，而只读行既点不动、
+                    // 又因 overridden && editable 为假而没有重置按钮 —— 页内零恢复。
+                    this.rollbackKeys(dropped)
+                    for (const key of dropped) this.sending.delete(key)
                     this.notifyListener()
+                }
+                if (items.length === 0) {
+                    this.sending = new Map()
                     continue
                 }
                 try {
@@ -338,6 +389,8 @@ export class BotCardSettingsVM extends ProviderListener {
                     // 早已重置过它们，此刻里面装的是新 bot 的批次，清掉会让新 bot
                     // 的失败回滚失效。
                     if (this.epoch !== myEpoch) return
+                    // 服务端状态已改：让任何在飞的读作废（见 writeSeq）。
+                    this.writeSeq++
                     // 这一批已被服务端确认，逐 key 处理它的回滚快照：
                     //   - 该 key 没有新的排队 → 快照可以丢；
                     //   - 该 key 又被排队了（在飞期间用户再点了同一行）→ **必须把
@@ -393,15 +446,27 @@ export class BotCardSettingsVM extends ProviderListener {
         return run
     }
 
-    /** 构造 PUT payload。防御性排除只读键（写只读键会 400 并拖垮整批）。 */
-    private buildWriteItems(source: Map<string, boolean>): BotSettingWriteItem[] {
+    /**
+     * 构造 PUT payload，同时报告被丢弃的 key。
+     *
+     * 丢弃只读键（写只读键会 400 并拖垮整批）。调用方必须把 `dropped` 回滚掉 ——
+     * 它们的乐观覆盖不会有任何请求去落实。
+     */
+    private buildWriteItems(source: Map<string, boolean>): {
+        items: BotSettingWriteItem[]
+        dropped: string[]
+    } {
         const items: BotSettingWriteItem[] = []
+        const dropped: string[] = []
         for (const [key, value] of source) {
             const item = this.items.get(key)
-            if (item && item.editable === false) continue
+            if (item && item.editable === false) {
+                dropped.push(key)
+                continue
+            }
             items.push({ key, value })
         }
-        return items
+        return { items, dropped }
     }
 
     /** 把给定 key 回滚到 baseline 并丢弃它们的快照。 */
@@ -425,6 +490,17 @@ export class BotCardSettingsVM extends ProviderListener {
         )
         this.sending = new Map()
         this.queued = new Map()
+    }
+
+    /**
+     * 把待写 key 的回滚快照对齐到 `items` 里刚读到的服务端值。
+     *
+     * 必须在 reapplyOptimistic **之前**调用 —— 那之后 items 里是乐观值，不是服务端值。
+     */
+    private reconcileBaseline(): void {
+        for (const key of Array.from(this.baseline.keys())) {
+            this.baseline.set(key, this.items.get(key))
+        }
     }
 
     /** 重拉后把未确认的乐观覆盖重新盖回 items。 */

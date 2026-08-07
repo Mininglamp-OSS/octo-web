@@ -81,6 +81,12 @@ export default class BotManageModal extends Component<BotManageModalProps> {
         if (robotChanged) {
             // bot 切换：复用同一 modal 实例时（BotStore 列表里点不同 bot），
             // 必须把 VM 切到新 robotId 并重拉，否则会看到上一个 bot 的群。
+            //
+            // MentionFreeVM 这一行**没有** visible 门控，和下面卡片设置的处理不一致。
+            // 这是既有行为（merge base 起就如此）：它的 VM 由 Provider 持有、从不清空，
+            // 而 MentionFreeListContainer 只在群列表为空时才补拉，所以不同步就会在
+            // 打开时显示上一个 bot 的群。代价是每翻一张资料卡一个被丢弃的 GET。
+            // 要修得连带改 container 的补拉条件，不在本次范围内。
             if (this.vm) this.vm.setRobotId(this.props.robotId)
             if (this.props.visible) {
                 if (this.cardSettingsVM) {
@@ -90,9 +96,9 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                     this.probeCardSettings()
                 }
             } else {
-                // 不可见时**不能**顺手 setRobotId —— 它会无条件重拉，于是「翻一张
-                // 资料卡就发一个限流 GET」，正是下面那句注释想避免的事。直接丢掉 VM，
-                // 下次打开重新创建 + 探测，天然拿到新 bot 的数据。
+                // 卡片设置的 VM 不可见时**不** setRobotId —— 它会无条件重拉，于是
+                // 「翻一张资料卡就发一个限流 GET」。直接丢掉 VM，下次打开重新创建
+                // + 探测，天然拿到新 bot 的数据，一个请求都不浪费。
                 this.disposeCardSettingsVM()
             }
             return

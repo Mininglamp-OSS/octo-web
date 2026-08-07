@@ -203,9 +203,14 @@ export function MentionFreeListView({
       <div className="wk-bot-manage-mention">
         <div className="wk-bot-manage-error">
           {labels.loadFailed}
-          <div className="wk-bot-manage-error-retry" onClick={onReload}>
+          {/* 用 button 而不是 div onClick：div 无法用键盘触达，也不进 tab 序。 */}
+          <button
+            type="button"
+            className="wk-bot-manage-error-retry"
+            onClick={onReload}
+          >
             {labels.reload}
-          </div>
+          </button>
         </div>
       </div>
     );

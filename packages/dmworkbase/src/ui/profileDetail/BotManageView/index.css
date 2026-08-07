@@ -277,7 +277,13 @@ button.wk-bot-manage-menu-row .wk-bot-manage-menu-right {
 }
 
 .wk-bot-manage-error-retry {
-    margin-top: var(--wk-sp-2);
+    display: block;
+    margin: var(--wk-sp-2) auto 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-family: inherit;
+    font-size: inherit;
     color: var(--wk-color-accent);
     cursor: pointer;
     text-decoration: underline;

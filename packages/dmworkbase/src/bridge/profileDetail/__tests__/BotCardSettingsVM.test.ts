@@ -699,6 +699,267 @@ describe("BotCardSettingsVM 防串台", () => {
  * 写路径的过期判据必须是 epoch（bot 是否换了），不能是 generation（数据是否重拉过）。
  * 下面两条都是 code review 里实际复现出来的回归。
  */
+/**
+ * `items` 有两个独立写入者：GET 的整体替换、逐 key 的乐观覆盖。只有写侧串行走 chain，
+ * 所以读必须靠 writeSeq 对「已确认的写」作废，否则一个提交前发出的 GET 落地时会把
+ * 已确认的写静默回退（PR #1282 第二轮 review P1，两条触发路径都在下面）。
+ */
+describe("BotCardSettingsVM 读写串行化", () => {
+    const overrideOn = {
+        value: true,
+        effective_value: true,
+        source: "bot",
+    }
+
+    it("触发 A：读在飞时提交的写，不能被后落地的读覆盖", async () => {
+        hoisted.listSettings.mockResolvedValueOnce(fullCatalog())
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        // 第二次读（重开时的探测）在飞。
+        let releaseRead: (value: unknown) => void = () => undefined
+        hoisted.listSettings.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    releaseRead = resolve
+                }),
+        )
+        void vm.loadSettings()
+        await tick()
+
+        // 读还没回来，用户点了开关，PUT 提交成功。
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false)
+        await tick()
+        expect(hoisted.putSettings).toHaveBeenCalledTimes(1)
+
+        // 慢的读此刻才落地，带回的是提交前的目录。
+        releaseRead(fullCatalog())
+        await tick()
+        await tick()
+
+        const row = vm
+            .snapshot()
+            .rows.find((r) => r.key === BOT_CARD_DISPLAY_KEY)!
+        // 服务端真值 = 刚提交的显式覆盖 false。读必须被判过期整段丢弃。
+        expect(row.checked).toBe(false)
+        expect(row.overridden).toBe(true)
+        expect(row.source).toBe("bot")
+        expect(vm.writeError).toBeNull()
+    })
+
+    it("触发 B：写在飞时发起的读，也不能覆盖随后确认的写", async () => {
+        hoisted.listSettings.mockResolvedValueOnce(fullCatalog())
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        let releasePut: () => void = () => undefined
+        hoisted.putSettings.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    releasePut = resolve
+                }),
+        )
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false) // PUT 起飞
+        await tick()
+
+        // 关闭再打开 → 探测读起飞（此时 PUT 还没落地）。
+        let releaseRead: (value: unknown) => void = () => undefined
+        hoisted.listSettings.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    releaseRead = resolve
+                }),
+        )
+        void vm.loadSettings()
+        await tick()
+
+        releasePut() // PUT 先确认
+        await tick()
+        releaseRead(fullCatalog()) // 读后落地，带回提交前的目录
+        await tick()
+        await tick()
+
+        const row = vm
+            .snapshot()
+            .rows.find((r) => r.key === BOT_CARD_DISPLAY_KEY)!
+        expect(row.checked).toBe(false)
+        expect(row.overridden).toBe(true)
+    })
+
+    it("成功读把待写 key 的回滚快照对齐到新鲜服务端值", async () => {
+        hoisted.listSettings.mockResolvedValueOnce(fullCatalog())
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        const writeFailure = rejection({
+            code: "err.server.robot.store_failed",
+            status: 500,
+        })
+        let rejectPut: (e: unknown) => void = () => undefined
+        hoisted.putSettings.mockImplementationOnce(
+            () =>
+                new Promise<void>((_resolve, reject) => {
+                    rejectPut = reject
+                }),
+        )
+        // 有界重试的第二发也要失败。
+        hoisted.putSettings.mockRejectedValue(writeFailure)
+
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false) // baseline 记的是「未覆盖 + true」
+        await tick()
+
+        // 别的客户端把这一项改成了显式 true，我们的重拉拿到了这个新值。
+        hoisted.listSettings.mockResolvedValueOnce(
+            fullCatalog({ [BOT_CARD_DISPLAY_KEY]: overrideOn }),
+        )
+        await vm.loadSettings()
+
+        // 我们自己的写随后失败 → 必须回滚到「刚读到的」显式 true，
+        // 而不是这次读之前的「未覆盖 + 继承默认」。
+        rejectPut(writeFailure)
+        await tick()
+        await tick()
+
+        const row = vm
+            .snapshot()
+            .rows.find((r) => r.key === BOT_CARD_DISPLAY_KEY)!
+        expect(row.checked).toBe(true)
+        expect(row.overridden).toBe(true)
+        expect(row.source).toBe("bot")
+        expect(vm.writeError?.kind).toBe("retryable")
+    })
+
+    it("成功读清掉上一次的写错误横幅", async () => {
+        hoisted.listSettings.mockResolvedValue(fullCatalog())
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+        hoisted.putSettings.mockRejectedValue(
+            rejection({ code: "err.server.robot.store_failed", status: 500 }),
+        )
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false)
+        await tick()
+        await tick()
+        expect(vm.writeError?.kind).toBe("retryable")
+
+        await vm.loadSettings()
+        // 刷新成功后横幅还挂着会让用户以为现在仍是坏的。
+        expect(vm.writeError).toBeNull()
+    })
+
+    it("读失败前不清 loadError，不支持的 bot 重开时菜单行不会闪现", async () => {
+        hoisted.listSettings.mockRejectedValue(
+            rejection({ code: "err.server.robot.not_found", status: 404 }),
+        )
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+        expect(vm.isUnsupported).toBe(true)
+
+        // 重开触发的重拉：在 await 之前若清掉 loadError，isUnsupported 会瞬间变 false，
+        // 上层的 showCardSettings 就会把那一行画出来（还可点）再撤掉。
+        const pending = vm.loadSettings()
+        expect(vm.isUnsupported).toBe(true)
+        await pending
+        expect(vm.isUnsupported).toBe(true)
+    })
+})
+
+describe("BotCardSettingsVM 写入过滤与串行链", () => {
+    it("批次被部分过滤时，被丢弃的 key 回滚且不进 payload", async () => {
+        hoisted.listSettings.mockResolvedValueOnce(fullCatalog())
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        let releaseFirst: () => void = () => undefined
+        hoisted.putSettings.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    releaseFirst = resolve
+                }),
+        )
+        vm.toggle(BOT_CARD_INTERACTION_KEY, false) // 批次 1 起飞
+        await tick()
+        // 这两个排队进批次 2。
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false)
+        vm.toggle(BOT_CARD_REASONING_KEY, false)
+
+        // 中途的重拉把 reasoning 变成只读 —— 它永远不会被发送。
+        hoisted.listSettings.mockResolvedValueOnce(
+            fullCatalog({
+                [BOT_CARD_REASONING_KEY]: { editable: false, source: "env" },
+            }),
+        )
+        await vm.loadSettings()
+
+        releaseFirst()
+        await tick()
+        await tick()
+
+        // 批次 2 只带 display。
+        expect(hoisted.putSettings).toHaveBeenCalledTimes(2)
+        expect(hoisted.putSettings.mock.calls[1][1]).toEqual([
+            { key: BOT_CARD_DISPLAY_KEY, value: false },
+        ])
+
+        const reasoning = vm
+            .snapshot()
+            .rows.find((r) => r.key === BOT_CARD_REASONING_KEY)!
+        // 曾经的缺陷：被过滤的 key 留在 sending 里，成功分支按「已确认」销毁其快照，
+        // 屏幕上就留下一个服务端从未接受过的「已自定义」—— 而只读行既点不动、
+        // 又没有重置按钮，页内零恢复。
+        expect(reasoning.overridden).toBe(false)
+        expect(reasoning.effectiveValue).toBe(true)
+    })
+
+    it("有在飞写入时拒绝取消自定义（否则重置会被随后的 PUT 顶掉）", async () => {
+        hoisted.listSettings.mockResolvedValueOnce(
+            fullCatalog({
+                [BOT_CARD_DISPLAY_KEY]: {
+                    value: true,
+                    effective_value: true,
+                    source: "bot",
+                },
+            }),
+        )
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        hoisted.putSettings.mockImplementationOnce(
+            () => new Promise<void>(() => undefined),
+        )
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false) // PUT 悬着不落地
+        await tick()
+
+        expect(await vm.resetToDefault(BOT_CARD_DISPLAY_KEY)).toBe(false)
+        expect(hoisted.deleteSetting).not.toHaveBeenCalled()
+    })
+
+    it("切 bot 会换掉串行链，旧 bot 的挂死请求不阻塞新 bot 的写入", async () => {
+        hoisted.listSettings.mockResolvedValue(fullCatalog())
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        // bot1 上一个永不 settle 的 PUT。
+        hoisted.putSettings.mockImplementationOnce(
+            () => new Promise<void>(() => undefined),
+        )
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false)
+        await tick()
+        expect(hoisted.putSettings).toHaveBeenCalledTimes(1)
+
+        vm.setRobotId("bot2")
+        await tick()
+        await tick()
+
+        hoisted.putSettings.mockResolvedValue(undefined)
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false)
+        await tick()
+
+        // 链没换的话这一发会永远排在 bot1 那个挂死请求后面。
+        expect(hoisted.putSettings).toHaveBeenCalledTimes(2)
+        expect(hoisted.putSettings.mock.calls[1][0]).toBe("bot2")
+    })
+})
+
 describe("BotCardSettingsVM 写路径过期判据", () => {
     it("连点两行「取消自定义」：第二次不能被第一次的重拉误判成过期", async () => {
         const overridden = {

@@ -301,9 +301,12 @@ export function classifyBotSettingError(err: unknown): BotSettingError {
     if (status === 404 && !code) {
         return { kind: "backendMissing", message, code }
     }
-    // 无 code 的 403 兜底（网关、代理、将来服务端换码）。落到 unknown 会渲染带
-    // 重试按钮的「加载失败」，等于请用户对着一个永久拒绝反复打限流端点。
-    // 401 不在这里处理：APIClient 的拦截器已按 auth 码统一触发登出。
+    // 403 兜底。这里刻意**不**像上面 404 那样加 `!code` —— 403 不管带不带 code 都是
+    // 拒绝，没有「另一种 403」需要区分；而 404 必须区分（无 code = 后端未部署，会上线；
+    // 带 not_found = 该 bot 没有 robot 记录，不会上线）。
+    // 兜这一层是因为落到 unknown 会渲染带重试按钮的「加载失败」，等于请用户对着一个
+    // 永久拒绝反复打限流端点。401 不在这里处理：APIClient 的拦截器已按 auth 码统一
+    // 触发登出。
     if (status === 403) {
         return { kind: "forbidden", message, code }
     }
