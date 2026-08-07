@@ -5,6 +5,8 @@ import "./index.css";
 export interface BotManageViewLabels {
   mentionFree: string;
   mentionFreeHint: string;
+  cardSettings: string;
+  cardSettingsHint: string;
   autoApprove: string;
   autoApproveHint: string;
   profileCommands: string;
@@ -35,6 +37,7 @@ export interface BotManageGroupItem {
 export interface BotManageViewProps {
   labels: BotManageViewLabels;
   onOpenMentionFree: () => void;
+  onOpenCardSettings: () => void;
 }
 
 export interface MentionFreeListViewProps {
@@ -59,6 +62,7 @@ export interface MentionFreeListViewProps {
 export default function BotManageView({
   labels,
   onOpenMentionFree,
+  onOpenCardSettings,
 }: BotManageViewProps) {
   return (
     <div className="wk-bot-manage-page">
@@ -68,6 +72,12 @@ export default function BotManageView({
           title={labels.mentionFree}
           description={labels.mentionFreeHint}
           onClick={onOpenMentionFree}
+        />
+        <BotManageMenuItem
+          icon="▣"
+          title={labels.cardSettings}
+          description={labels.cardSettingsHint}
+          onClick={onOpenCardSettings}
         />
         <BotManageMenuItem
           icon="✓"
@@ -322,3 +332,8 @@ function MentionFreeRow({
 }
 
 export { BotManageView };
+export {
+  CardSettingsView,
+  type BotCardSettingsLabels,
+  type CardSettingsViewProps,
+} from "./CardSettings";

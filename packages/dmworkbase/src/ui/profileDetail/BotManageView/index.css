@@ -282,3 +282,52 @@ button.wk-bot-manage-menu-row .wk-bot-manage-menu-right {
     cursor: pointer;
     text-decoration: underline;
 }
+
+/* ── 卡片消息能力（L3 CardSettingsView） ───────────────────────────────── */
+
+/* 整页提示条：部署级总闸关闭 / 写入失败。 */
+.wk-bot-manage-notice {
+    margin: var(--wk-sp-3) 0 var(--wk-sp-1);
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border: 1px solid var(--wk-border-subtle);
+    border-radius: var(--wk-r-md);
+    background: var(--wk-bg-elevated);
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+    line-height: 1.5;
+}
+
+.wk-bot-manage-notice-error {
+    color: var(--wk-color-danger);
+}
+
+/* 行右侧：恢复默认 + 开关。 */
+.wk-bot-manage-row-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--wk-sp-3);
+    flex-shrink: 0;
+}
+
+.wk-bot-manage-reset {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--wk-color-accent);
+    font-family: inherit;
+    font-size: var(--wk-text-size-xs);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.wk-bot-manage-reset:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+/* 交互型卡片依赖展示型卡片的行内提示。 */
+.wk-bot-manage-row-warn {
+    color: var(--wk-color-warning);
+    font-size: var(--wk-text-size-xs);
+    line-height: 1.35;
+}

@@ -5,9 +5,17 @@ import Provider, { IProviderListener } from "../../Service/Provider"
 import WKModal from "../WKModal"
 import RoutePage from "../RoutePage"
 import { MentionFreeVM } from "../../bridge/profileDetail/BotManageVM"
+import { BotCardSettingsVM } from "../../bridge/profileDetail/BotCardSettingsVM"
+import {
+    BOT_CARD_DISPLAY_KEY,
+    BOT_CARD_INTERACTION_KEY,
+    BOT_CARD_REASONING_KEY,
+} from "../../bridge/profileDetail/botCardSettings"
 import { I18nContext } from "../../i18n"
 import BotManageView, {
+    CardSettingsView,
     MentionFreeListView,
+    type BotCardSettingsLabels,
     type BotManageGroupItem,
     type BotManageViewLabels,
 } from "../../ui/profileDetail/BotManageView"
@@ -49,12 +57,32 @@ export default class BotManageModal extends Component<BotManageModalProps> {
     /** 持有 VM 引用以便在 robotId 变化时调用 setRobotId（防串台）。 */
     private vm?: MentionFreeVM
 
+    /**
+     * L3「卡片消息能力」的 VM。
+     *
+     * 不走 Provider（Provider 只托管一个 listener，已被 MentionFreeVM 占用），
+     * 而是在这里持有 + 由 CardSettingsContainer 通过 addListener 订阅。副作用是
+     * VM 的 didMount 不会被自动调用，改由容器 componentDidMount 触发首拉 ——
+     * 这正好满足「响应 no-store，每次进入 L3 都必须重读」的要求。
+     */
+    private cardSettingsVM?: BotCardSettingsVM
+
     componentDidUpdate(prevProps: BotManageModalProps): void {
         // bot 切换：复用同一 modal 实例时（BotStore 列表里点不同 bot），
         // 必须把 VM 切到新 robotId 并重拉，否则会看到上一个 bot 的群。
-        if (prevProps.robotId !== this.props.robotId && this.vm) {
-            this.vm.setRobotId(this.props.robotId)
+        if (prevProps.robotId !== this.props.robotId) {
+            if (this.vm) this.vm.setRobotId(this.props.robotId)
+            if (this.cardSettingsVM) {
+                this.cardSettingsVM.setRobotId(this.props.robotId)
+            }
         }
+    }
+
+    private ensureCardSettingsVM(): BotCardSettingsVM {
+        if (!this.cardSettingsVM) {
+            this.cardSettingsVM = new BotCardSettingsVM(this.props.robotId)
+        }
+        return this.cardSettingsVM
     }
 
     render(): ReactNode {
@@ -98,6 +126,19 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                                             }),
                                         )
                                     }}
+                                    onOpenCardSettings={() => {
+                                        context.push(
+                                            <CardSettingsContainer
+                                                vm={this.ensureCardSettingsVM()}
+                                                labels={this.createCardLabels()}
+                                            />,
+                                            new RouteContextConfig({
+                                                title: t(
+                                                    "base.botManage.cardSettings.title",
+                                                ),
+                                            }),
+                                        )
+                                    }}
                                 />
                             )}
                         />
@@ -112,6 +153,8 @@ export default class BotManageModal extends Component<BotManageModalProps> {
         return {
             mentionFree: t("base.botManage.menu.mentionFree"),
             mentionFreeHint: t("base.botManage.menu.mentionFreeHint"),
+            cardSettings: t("base.botManage.menu.cardSettings"),
+            cardSettingsHint: t("base.botManage.menu.cardSettingsHint"),
             autoApprove: t("base.botManage.menu.autoApprove"),
             autoApproveHint: t("base.botManage.menu.autoApproveHint"),
             profileCommands: t("base.botManage.menu.profileCommands"),
@@ -135,11 +178,102 @@ export default class BotManageModal extends Component<BotManageModalProps> {
             rowBlocked: t("base.botManage.mentionFree.rowBlocked"),
         }
     }
+
+    private createCardLabels(): BotCardSettingsLabels {
+        const { t } = this.context
+        return {
+            rowTitle: {
+                [BOT_CARD_DISPLAY_KEY]: t("base.botManage.cardSettings.display"),
+                [BOT_CARD_INTERACTION_KEY]: t(
+                    "base.botManage.cardSettings.interaction",
+                ),
+                [BOT_CARD_REASONING_KEY]: t(
+                    "base.botManage.cardSettings.reasoning",
+                ),
+            },
+            rowDesc: {
+                [BOT_CARD_DISPLAY_KEY]: t(
+                    "base.botManage.cardSettings.displayHint",
+                ),
+                [BOT_CARD_INTERACTION_KEY]: t(
+                    "base.botManage.cardSettings.interactionHint",
+                ),
+                [BOT_CARD_REASONING_KEY]: t(
+                    "base.botManage.cardSettings.reasoningHint",
+                ),
+            },
+            masterOffNotice: t("base.botManage.cardSettings.masterOff"),
+            needsDisplayNotice: t("base.botManage.cardSettings.needsDisplay"),
+            sourceBot: t("base.botManage.cardSettings.sourceBot"),
+            sourceGlobal: t("base.botManage.cardSettings.sourceGlobal"),
+            sourceDefault: t("base.botManage.cardSettings.sourceDefault"),
+            sourceEnv: t("base.botManage.cardSettings.sourceEnv"),
+            reset: t("base.botManage.cardSettings.reset"),
+            loading: t("base.botManage.loading"),
+            loadFailed: t("base.botManage.loadFailed"),
+            reload: t("base.botManage.reload"),
+            backendComingSoon: t("base.botManage.backendComingSoon"),
+            stayTuned: t("base.botManage.stayTuned"),
+            unsupported: t("base.botManage.cardSettings.unsupported"),
+            forbidden: t("base.botManage.cardSettings.forbidden"),
+            empty: t("base.botManage.cardSettings.empty"),
+            saveFailed: t("base.botManage.cardSettings.saveFailed"),
+            saveFailedRetryable: t(
+                "base.botManage.cardSettings.saveFailedRetryable",
+            ),
+            rateLimited: t("base.botManage.cardSettings.rateLimited"),
+        }
+    }
 }
 
 export { BotManageModal }
 export { MentionFreeVM } from "../../bridge/profileDetail/BotManageVM"
 export type { BotGroupItem } from "../../bridge/profileDetail/BotManageVM"
+export { BotCardSettingsVM } from "../../bridge/profileDetail/BotCardSettingsVM"
+
+interface CardSettingsContainerProps {
+    vm: BotCardSettingsVM
+    labels: BotCardSettingsLabels
+}
+
+/**
+ * L3「卡片消息能力」容器。
+ *
+ * 每次挂载都重拉：owner 读接口下发 `Cache-Control: private, no-store`，本地也不做
+ * 任何缓存 —— 改完配置立刻重进这一页必须看到新值。
+ */
+class CardSettingsContainer extends Component<CardSettingsContainerProps> {
+    private unsubscribe?: () => void
+
+    componentDidMount(): void {
+        const { vm } = this.props
+        this.unsubscribe = vm.addListener(() => this.forceUpdate())
+        if (!vm.loading) void vm.loadSettings()
+    }
+
+    componentWillUnmount(): void {
+        if (this.unsubscribe) this.unsubscribe()
+    }
+
+    render(): ReactNode {
+        const { vm, labels } = this.props
+        const { rows, masterEnabled } = vm.snapshot()
+        return (
+            <CardSettingsView
+                labels={labels}
+                rows={rows}
+                masterEnabled={masterEnabled}
+                loading={vm.loading}
+                hasData={vm.hasData}
+                loadErrorKind={vm.loadError?.kind}
+                writeErrorKind={vm.writeError?.kind}
+                onToggle={(key, next) => vm.toggle(key, next)}
+                onReset={(key) => void vm.resetToDefault(key)}
+                onReload={() => vm.reload()}
+            />
+        )
+    }
+}
 
 interface MentionFreeListContainerProps {
     vm: MentionFreeVM
