@@ -3222,3 +3222,149 @@ describe('DocsHome — "?" agent CLI onboarding help (Mininglamp-OSS/octo-docs-b
     expect(document.activeElement).toBe(screen.getByTestId('onboarding-help-btn'))
   })
 })
+
+// 转发 / 删除 in the row context menu (owner request 2026-08-06). Both REUSE the existing units —
+// `startDocForward` (the same bridge the document header uses) and `useDocDelete` + `ConfirmModal`
+// (the same hook and dialog the editor shells use) — so these cases assert the wiring reaches those
+// units with the right payload, not a reimplementation.
+describe('DocsHome — row context menu: 转发 / 删除', () => {
+  const ROWS = [
+    { docId: 'd_a', title: 'Alpha', ownerId: 'u_self', role: 'admin', updatedAt: '2026-08-01T00:00:00Z' },
+    { docId: 'd_b', title: 'Beta', ownerId: 'u_other', role: 'reader', updatedAt: '2026-08-02T00:00:00Z' },
+  ]
+  const mount = async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: ROWS.length, items: ROWS }, status: 200 }
+      }
+      if (method === 'delete') return { data: {}, status: 200 }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeTruthy())
+    return wk
+  }
+
+  it('forwards through the same bridge the document header uses, with this row’s payload', async () => {
+    const wk = await mount()
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    fireEvent.click(screen.getByText('docs.forward.entry'))
+    // startDocForward → openDocForward: assert the payload the host receives.
+    expect(wk.openDocForwardCalls).toHaveLength(1)
+    const call = wk.openDocForwardCalls[0]
+    expect(call.docId).toBe('d_a')
+    expect(call.title).toBe('Alpha')
+    // admin on own doc ⇒ may grant, exactly as the header entry computes it.
+    expect(call.canGrant).toBe(true)
+  })
+
+  it('carries each row’s own kind, so a sheet/board forwards as a sheet/board card', async () => {
+    // Regression (Jerry-Xin, PR #1288): the call omitted `kind`, which startDocForward defaults to
+    // 'doc' — so forwarding a sheet or board row produced a wrong-kind DocumentShareCard (the card
+    // keys its icon and preview off `kind`). The doc-row case above cannot catch this: 'doc' is the
+    // very default that hid the bug.
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 3,
+            items: [
+              { docId: 'd_sheet', title: 'Sheet row', ownerId: 'u_self', role: 'admin', docType: 'sheet' },
+              { docId: 'd_board', title: 'Board row', ownerId: 'u_self', role: 'admin', docType: 'board' },
+              { docId: 'd_html', title: 'Html row', ownerId: 'u_self', role: 'admin', docType: 'html' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Sheet row')).toBeTruthy())
+
+    const forwardRow = (title: string) => {
+      fireEvent.contextMenu(screen.getByText(title).closest('button')!)
+      fireEvent.click(screen.getByText('docs.forward.entry'))
+    }
+
+    forwardRow('Sheet row')
+    expect(wk.openDocForwardCalls.at(-1)!.kind).toBe('sheet')
+
+    forwardRow('Board row')
+    expect(wk.openDocForwardCalls.at(-1)!.kind).toBe('board')
+
+    // `html` has no counterpart in StartDocForwardInput.kind, so it falls back to 'doc' — the same
+    // value the omitted-kind path used, so those rows are unchanged by this fix.
+    forwardRow('Html row')
+    expect(wk.openDocForwardCalls.at(-1)!.kind).toBe('doc')
+  })
+
+  it('copies the document address for ANY role, without minting an invite', async () => {
+    // Owner decision 2026-08-07: 复制链接 now means the address. It replaced an invite-minting entry
+    // that was admin-only (createInvite → backend requires admin), which left a reader — the person
+    // most likely to want to point a colleague at a doc — with no way to copy it at all, and handed
+    // admins a link that silently GRANTED reader access instead of the address they asked for.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const wk = await mount()
+
+    // 'Beta' is role: 'reader' — the case the old admin gate excluded entirely.
+    fireEvent.contextMenu(screen.getByText('Beta').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.copyDocLink'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    const copied = writeText.mock.calls[0][0] as string
+    // The doc's own address (buildDocLink), not an invite token.
+    expect(copied).toContain('/d/d_b')
+    expect(copied).not.toContain('invite')
+    // And no request was made: minting an invite is what the old entry did.
+    expect(
+      wk.apiClient.calls.filter((c: { url: string }) => c.url.includes('invite')),
+    ).toHaveLength(0)
+  })
+
+  it('offers 删除 only to owner/admin', async () => {
+    await mount()
+    fireEvent.contextMenu(screen.getByText('Beta').closest('button')!)
+    // reader ⇒ no delete row (matches the ≡ menu's danger-row gate).
+    expect(screen.queryByText('docs.sheet.deleteFile')).toBeNull()
+    fireEvent.click(document.body)
+
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    expect(screen.getByText('docs.sheet.deleteFile')).toBeTruthy()
+  })
+
+  it('pops the shared confirm dialog and deletes the row that was right-clicked', async () => {
+    const wk = await mount()
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    // The same centered ConfirmModal the editor shells use — not a native confirm().
+    await waitFor(() => expect(screen.getByText('docs.sheet.deleteConfirm')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('docs.doc.delete'))
+    // The menu closes on click, so the target must be remembered separately or this would DELETE
+    // NOTHING (or the wrong doc). Assert the request carries the right-clicked docId.
+    await waitFor(() =>
+      expect(
+        wk.apiClient.calls.some(
+          (c: { method: string; url: string }) => c.method === 'delete' && c.url.includes('d_a'),
+        ),
+      ).toBe(true),
+    )
+  })
+
+  it('does not delete anything when the confirm dialog is cancelled', async () => {
+    const wk = await mount()
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    await waitFor(() => expect(screen.getByText('docs.sheet.deleteConfirm')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.doc.deleteCancel'))
+    expect(
+      wk.apiClient.calls.filter((c: { method: string }) => c.method === 'delete'),
+    ).toHaveLength(0)
+  })
+})
