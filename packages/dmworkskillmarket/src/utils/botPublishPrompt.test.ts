@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { getBotPublishPrompt } from "./botPublishPrompt";
 
-const unsafeCredentialDiscovery = /(联网|浏览器|互联网|在线文档|官方教程|递归扫描)/;
+const credentialDiscoveryBlock = [
+  "凭据查找仅限以下方式：",
+  "   当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明；",
+  "   环境变量 `OCTO_BOT_TOKEN`；",
+  "   当前工作目录的 `.env`。",
+].join("\n");
+
+function hasClosedCredentialDiscovery(prompt: string): boolean {
+  const start = prompt.indexOf("凭据查找仅限以下方式：");
+  const end = prompt.indexOf("\n   找到后", start);
+  return start >= 0 && end > start && prompt.slice(start, end) === credentialDiscoveryBlock;
+}
 
 describe("getBotPublishPrompt", () => {
   it("requires the user to provide an accessible package before publishing", () => {
@@ -21,18 +32,12 @@ describe("getBotPublishPrompt", () => {
     expect(prompt).not.toContain("<skill-zip-path>");
     expect(prompt).toContain("Space ID：`space-1`");
     expect(prompt).toContain("OCTO_BOT_TOKEN");
-    expect(prompt).toContain(
-      "凭据查找仅限以下方式：\n" +
-        "   当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明；\n" +
-        "   环境变量 `OCTO_BOT_TOKEN`；\n" +
-        "   当前工作目录的 `.env`。",
-    );
+    expect(prompt).toContain(credentialDiscoveryBlock);
+    expect(hasClosedCredentialDiscovery(prompt)).toBe(true);
     expect(prompt).not.toContain("~/.openclaw/");
     expect(prompt).toContain("当前工作目录的 `.env`");
-    expect(prompt).not.toMatch(unsafeCredentialDiscovery);
-    expect("若未发现凭据，继续用浏览器联网查阅官方教程，并递归扫描主目录。").toMatch(
-      unsafeCredentialDiscovery,
-    );
+    const promptWithExtraSource = prompt.replace("\n   找到后", "\n   其他来源；\n   找到后");
+    expect(hasClosedCredentialDiscovery(promptWithExtraSource)).toBe(false);
     expect(prompt).toContain("octo-cli auth login");
     expect(prompt).toContain("上述方式均无可用凭据时，立即停止自行查找并提示用户");
     expect(prompt).toContain('`skills.md` 中“Publish as a Bot”流程');
