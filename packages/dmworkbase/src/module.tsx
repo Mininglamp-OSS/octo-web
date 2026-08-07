@@ -93,6 +93,7 @@ import { patchSdkDecodeForExternalFields } from "./Service/Convert";
 import { isMessageSelectable } from "./Service/messageSelection";
 import ConversationVM from "./Components/Conversation/vm";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
+import { SummaryNotifyCell, SummaryNotifyContent } from "./Messages/SummaryNotify";
 import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
@@ -319,6 +320,8 @@ export default class BaseModule implements IModule {
             return LocationCell;
           case MessageContentTypeConst.screenshot:
             return ScreenshotCell;
+          case MessageContentTypeConst.summaryNotify: // 智能总结完成通知(server-driven)
+            return SummaryNotifyCell;
           case MessageContentType.signalMessage: // 端对端加密错误消息
           case MessageContentTypeConst.approveGroupMember: // 审批群成员
             return ApproveGroupMemberCell;
@@ -388,6 +391,10 @@ export default class BaseModule implements IModule {
     registerCurrentImMessageContent(
       MessageContentTypeConst.screenshot,
       () => new ScreenshotContent()
+    );
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.summaryNotify,
+      () => new SummaryNotifyContent()
     );
     // 加入组织
     registerCurrentImMessageContent(
@@ -878,6 +885,16 @@ export default class BaseModule implements IModule {
       // 系统消息不发通知
       return false;
     }
+    // #289 (yujiawei P1-1 from #1234 round-6): summaryNotify is contentType=21,
+    // which sits outside WKSDK's isSystemMessage() 1000-2000 range. Without an
+    // explicit check here, every non-muted member of every group source would
+    // receive a desktop notification + tips sound for what is by design a
+    // passive grey tip. Explicitly suppress it here; matches the treatment
+    // Conversation/index.tsx already gives screenshot (20) + summaryNotify (21)
+    // for system-message classification.
+    if (message.contentType === MessageContentTypeConst.summaryNotify) {
+      return false;
+    }
     if (message.fromUID === WKApp.loginInfo.uid) {
       // 自己发的消息不发通知
       return false;
@@ -1129,6 +1146,13 @@ export default class BaseModule implements IModule {
         if (message.contentType === MessageContentTypeConst.threadCreated) {
           return null;
         }
+        // #1234 round-6 (mochashanyao P2): summaryNotify is a system tip · not
+        // a user message · forwarding it is nonsensical. Match the explicit
+        // guard for threadCreated instead of relying on the empty-by-default
+        // WKApp.shared.notSupportForward list.
+        if (message.contentType === MessageContentTypeConst.summaryNotify) {
+          return null;
+        }
 
         return {
           title: t("base.module.contextMenus.forward"),
@@ -1142,6 +1166,15 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.reply",
       (message, context) => {
+        // #1234 round-6 P2-8: keep the guard narrow · only exclude summaryNotify
+        // (the new system tip introduced by #289) rather than the broad
+        // isMessageSelectable check that would also silently disable reply
+        // for time / historySplit / typing / threadCreated / revoked
+        // messages · which is out-of-scope for this PR and undisclosed
+        // behavior change flagged by yujiawei.
+        if (message.contentType === MessageContentTypeConst.summaryNotify) {
+          return null;
+        }
         return {
           title: t("base.module.contextMenus.reply"),
           onClick: () => {
@@ -1259,6 +1292,13 @@ export default class BaseModule implements IModule {
         }
         // 系统消息不显示
         if (isCurrentImSystemMessage(message.contentType)) {
+          return null;
+        }
+        // #1234 round-6 (yujiawei P1-1 leak): summaryNotify sits outside SDK
+        // isSystemMessage() 1000-2000 range · explicitly exclude it here so
+        // "create thread from message" is not offered on a summary tip
+        // (which would default the thread name to the tip text).
+        if (message.contentType === MessageContentTypeConst.summaryNotify) {
           return null;
         }
         // 群已解散则隐藏「创建子区」——解散后全员只读，不得新建子区。

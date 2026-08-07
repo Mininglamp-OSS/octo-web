@@ -10,6 +10,7 @@ const UNSELECTABLE_MESSAGE_TYPES = new Set<number>([
   MessageContentTypeConst.historySplit,
   MessageContentTypeConst.typing,
   MessageContentTypeConst.threadCreated,
+  MessageContentTypeConst.summaryNotify,
 ])
 
 export function isMessageSelectable(message?: SelectableMessageLike | null): boolean {
