@@ -65,6 +65,8 @@ interface SummaryCreatePageProps {
     onClose?: () => void;
     /** 面板模式创建成功回调（替代 routeRight.push 详情页）。 */
     onSubmit?: (taskId: number) => void;
+    /** 打开总结创建的来源入口(埋点 source/entry_point,枚举值,非正文)。 */
+    source?: string;
 }
 
 interface SummaryCreatePageState {
@@ -1365,6 +1367,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             loading={submitting}
                             disabled={!this.canSubmit() || submitting}
                             onClick={this.handlePrimaryClick}
+                            data-track="smart_summary_started"
+                            data-object-id={this.props.channel?.channelID}
+                            data-track-source={this.props.source}
+                            data-track-entry-point={this.props.source}
+                            data-track-trigger-mode={this.state.mode}
                         >
                             <Sparkles size={16} />
                             {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
@@ -1467,6 +1474,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             loading={savingTemplate}
                             disabled={!editingTemplateLabel.trim() || !editingTemplateDescription.trim() || savingTemplate}
                             onClick={this.handleTemplateSave}
+                            data-track={this.state.creatingCustomTemplate ? "template_created" : undefined}
+                            data-track-template-type="summary_topic"
                         >
                             {translate("summary.common.save")}
                         </Button>

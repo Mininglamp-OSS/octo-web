@@ -14,6 +14,17 @@
  */
 import { Tracker } from './Tracker'
 
+/** channelType → chat_type 枚举(§ Const.ts:ChannelTypePerson=1/Group=2/CommunityTopic=5/CustomerService=3) */
+function chatTypeOf(channelType: number): string {
+    switch (channelType) {
+        case 1: return 'personal'
+        case 2: return 'group'
+        case 5: return 'thread'
+        case 3: return 'customer_service'
+        default: return 'unknown'
+    }
+}
+
 interface SendIntent {
     /** 会话标识(join 用,非正文)。DM 为对端 id、群为群 id、botfather 为 "botfather" */
     channelId: string
@@ -21,6 +32,8 @@ interface SendIntent {
     mentionAis: boolean
     /** 命中 botfather /newbot 时置为入口枚举 'botfather_im',否则 undefined */
     botCreateEntry?: string
+    /** 被 @ 的 AI bot 列表(供 ai_mentioned 补 bot_id/bot_type;type ∈ 'system'|'custom') */
+    mentionedBots?: Array<{ id: string; type: string }>
 }
 
 /** 按 clientSeq 暂存发送意图,sendack 时消费。带上限防泄漏。 */
@@ -43,15 +56,28 @@ export function trackMessageSent(clientSeq: number | undefined): void {
     if (!intent) return // 无意图(非本 vm 发送路径,如转发)不补点,避免歧义
     intents.delete(clientSeq)
 
+    const chatType = chatTypeOf(intent.channelType)
     const base = {
         channel_id: intent.channelId,
         channel_type: intent.channelType,
+        chat_type: chatType,
         object_id: String(clientSeq), // client_seq 作 object_id
     }
     Tracker.shared.track('message_sent', base)
-    if (intent.mentionAis) {
-        // 消息真发出后才报(§5.2):与 input_mention_ai_selected 不同名
-        Tracker.shared.track('ai_mentioned', { channel_id: intent.channelId, object_id: base.object_id })
+    const bots = intent.mentionedBots || []
+    if (intent.mentionAis || bots.length > 0) {
+        if (bots.length > 0) {
+            // 每个被 @ 的 AI bot 一条,带 bot_id/bot_type(§B: 多AI协作/系统内置 vs 自建分布)
+            for (const b of bots) {
+                Tracker.shared.track('ai_mentioned', {
+                    channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id,
+                    bot_id: b.id, bot_type: b.type,
+                })
+            }
+        } else {
+            // @所有AI 但订阅列表未解析出具体 bot:退化为一条无 bot_id 的
+            Tracker.shared.track('ai_mentioned', { channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id })
+        }
     }
     if (intent.botCreateEntry) {
         // §5.4:started 语义,quality=submitted;进不了「创建成功」分母

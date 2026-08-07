@@ -143,6 +143,8 @@ class TrackerImpl {
     private flushTimer: ReturnType<typeof setInterval> | null = null
     private lastPage: { pageId: string; enteredAt: number } | null = null
     private pageBootObserver: MutationObserver | null = null
+    /** 曝光去重:每个元素实例只触发一次 data-track-view */
+    private seenViews = new WeakSet<Element>()
     /** 内部计数:上报最终失败丢弃数,只自增不外抛 */
     private droppedCount = 0
 
@@ -156,6 +158,7 @@ class TrackerImpl {
         this.safe(() => {
             this.installClickDelegation()
             this.installPageObserver()
+            this.installExposureObserver()
             this.installHttpWrap()
             this.installUnloadFlush()
             this.flushTimer = setInterval(() => this.safe(() => this.flush()), FLUSH_INTERVAL_MS)
@@ -372,6 +375,7 @@ class TrackerImpl {
         const ds = el.dataset
         for (const key of Object.keys(ds)) {
             if (key === 'track') continue
+            if (key === 'trackView') continue // 曝光标记键(data-track-view),只用于触发曝光,不进 props
             if (key === 'objectId') {
                 out.object_id = ds[key]
                 continue
@@ -423,8 +427,39 @@ class TrackerImpl {
         this.pageBootObserver.observe(document.body, { childList: true, subtree: true })
     }
 
-    // ----------------------------------------------- 机制③ fetch / XHR 包裹
+    // ----------------------------------------------- 机制②b MutationObserver(曝光)
 
+    /**
+     * 曝光观测器:新挂载(或初始已存在)的元素若带 `data-track-view`,触发一次曝光事件。
+     * 每个元素实例只触发一次(WeakSet 去重)。props 复用 collectDatasetProps(已跳过 trackView 键)。
+     */
+    private installExposureObserver(): void {
+        const fire = (el: HTMLElement) => {
+            if (!el.dataset || !el.dataset.trackView) return
+            if (this.seenViews.has(el)) return
+            this.seenViews.add(el)
+            this.track(el.dataset.trackView, this.collectDatasetProps(el))
+        }
+        const scan = (node: Element) => {
+            if ((node as HTMLElement).dataset && (node as HTMLElement).dataset.trackView) fire(node as HTMLElement)
+            if (typeof node.querySelectorAll === 'function') {
+                node.querySelectorAll<HTMLElement>('[data-track-view]').forEach(fire)
+            }
+        }
+        const obs = new MutationObserver((mutations) => {
+            this.safe(() => {
+                for (const m of mutations) {
+                    m.addedNodes.forEach((n) => {
+                        if (n.nodeType === 1) scan(n as Element)
+                    })
+                }
+            })
+        })
+        obs.observe(document.body, { childList: true, subtree: true })
+        scan(document.body)
+    }
+
+    // ----------------------------------------------- 机制③ fetch / XHR 包裹
     private installHttpWrap(): void {
         const emit = (rawUrl: string, method: string, status: number, durationMs: number) => {
             this.safe(() => {

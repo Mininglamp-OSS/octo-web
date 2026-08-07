@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo } from "@octo/base"
+import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo, Tracker } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
@@ -602,6 +602,12 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private handleContactClick = (uid: string, isBot: boolean) => {
+        // contact_opened:补 is_bot / bot_type(system=botfather,余 custom;非 bot 为 null)
+        Tracker.shared.track('contact_opened', {
+            object_id: uid,
+            is_bot: isBot,
+            bot_type: isBot ? (uid === 'botfather' ? 'system' : 'custom') : null,
+        })
         if (isBot && uid !== 'botfather') {
             this.setState({ botDetailUid: uid, botDetailVisible: true })
             return

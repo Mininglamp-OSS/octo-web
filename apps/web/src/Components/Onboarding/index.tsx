@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import { useI18n } from "@octo/base";
+import { Tracker } from "@octo/base";
 import {
   defaultOnboardingConfig,
   markOnboardingSeen,
@@ -186,6 +187,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     [config, t]
   );
   const [activeId, setActiveId] = useState<OnboardingSectionId>("workspace");
+  // 逐章埋点:记录进入当前章的时刻与上一章 id,用于算停留时长并在切章时结算上一章
+  const chapterEnterAtRef = useRef<number>(0);
+  const prevChapterRef = useRef<string | null>(null);
   const [completionOrigin, setCompletionOrigin] = useState<{
     x: number;
     y: number;
@@ -254,6 +258,29 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     return () => window.clearTimeout(preloadTimer);
   }, [activeSection, onboardingSections, showIntro, visible]);
 
+  // 逐章事件:进入章节视图后,activeId 变化时给上一章 emit completed(带停留时长)。
+  // 组件全程不 remount,用 ref 记进入时刻;同 id 不触发,天然去重。
+  useEffect(() => {
+    // 仍在 intro 或不可见:不处于「章节视图」,不处理
+    if (!visible || showIntro) return;
+    // 首次进入章节视图:只记录进入时刻与当前章,不 emit
+    if (prevChapterRef.current === null) {
+      prevChapterRef.current = activeId;
+      chapterEnterAtRef.current = Date.now();
+      return;
+    }
+    // activeId 变了:给上一章 emit completed,再翻到当前章
+    if (prevChapterRef.current !== activeId) {
+      Tracker.shared.track("onboarding_chapter", {
+        chapter_id: prevChapterRef.current,
+        outcome: "completed",
+        duration_ms: Date.now() - chapterEnterAtRef.current,
+      });
+      prevChapterRef.current = activeId;
+      chapterEnterAtRef.current = Date.now();
+    }
+  }, [activeId, showIntro, visible]);
+
   const persistDismissed = () => {
     try {
       markOnboardingSeen(window.localStorage);
@@ -275,6 +302,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       return;
     }
 
+    // 非 final 分支关闭:当前章视为「退出」
+    Tracker.shared.track("onboarding_chapter", {
+      chapter_id: activeId,
+      outcome: "exited",
+      duration_ms: Date.now() - chapterEnterAtRef.current,
+    });
     persistDismissed();
     hideOnboarding();
   };
@@ -283,6 +316,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     if (completionStartedRef.current) return;
 
     completionStartedRef.current = true;
+    // 完成:当前(最后一)章视为 completed
+    Tracker.shared.track("onboarding_chapter", {
+      chapter_id: activeId,
+      outcome: "completed",
+      duration_ms: Date.now() - chapterEnterAtRef.current,
+    });
     setCompletionOrigin(getCompletionOrigin(event, finishButtonRef.current));
     persistDismissed();
     setIsCompleting(true);

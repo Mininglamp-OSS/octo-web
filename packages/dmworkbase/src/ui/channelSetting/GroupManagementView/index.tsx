@@ -243,11 +243,18 @@ export default function GroupManagementView({
                   {labels.allowNoMentionLabel}
                 </span>
                 <span className="wk-group-management-switch-control">
-                  <Switch
-                    checked={allowNoMention}
-                    loading={allowNoMentionSaving}
-                    onChange={onToggleAllowNoMention}
-                  />
+                  <span
+                    style={{ display: "contents" }}
+                    data-track="group_setting_toggled"
+                    data-track-setting-key="allow_no_mention"
+                    data-track-state={allowNoMention ? "off" : "on"}
+                  >
+                    <Switch
+                      checked={allowNoMention}
+                      loading={allowNoMentionSaving}
+                      onChange={onToggleAllowNoMention}
+                    />
+                  </span>
                 </span>
               </span>
               <span className="wk-group-management-setting-desc">

@@ -103,6 +103,9 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
       role="button"
       tabIndex={0}
       onClick={() => onClick(item)}
+      data-track="market_card_viewed"
+      data-object-id={item.id}
+      data-track-item-type="mcp"
       onKeyDown={(e) => {
         // Don't hijack Enter/Space when the focused element is one of the
         // inner action buttons (pencil / trash) — those buttons handle the

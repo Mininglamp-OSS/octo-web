@@ -2449,11 +2449,25 @@ export default class ConversationVM extends ProviderListener {
                     botCreateEntry = "botfather_im"
                 }
             }
+            // 被 @ 的 AI bot 列表(供 ai_mentioned 补 bot_id/bot_type;system 判据仅 SYSTEM_BOTS,余为 custom)
+            let mentionedBots: Array<{ id: string; type: string }> | undefined
+            const mentionUids: string[] = Array.isArray(mentionAny && mentionAny.uids) ? mentionAny.uids : []
+            if (mentionUids.length > 0) {
+                const bots: Array<{ id: string; type: string }> = []
+                for (const uid of mentionUids) {
+                    const sub = this.subscribers?.find((s: any) => s.uid === uid)
+                    if (sub && sub.orgData && sub.orgData.robot === 1) {
+                        bots.push({ id: uid, type: SYSTEM_BOTS.has(uid) ? "system" : "custom" })
+                    }
+                }
+                if (bots.length > 0) mentionedBots = bots
+            }
             rememberSendIntent(message.clientSeq, {
                 channelId: channel.channelID,
                 channelType: channel.channelType,
                 mentionAis: !!(mentionAny && mentionAny.ais),
                 botCreateEntry,
+                mentionedBots,
             })
         }
         const messageWrap = new MessageWrap(message)

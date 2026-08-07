@@ -441,7 +441,11 @@ function DocsEmptyState({
 }): React.ReactElement {
   const kw = query.trim()
   return (
-    <div className="octo-docs-list-state octo-docs-list-empty">
+    <div
+      className="octo-docs-list-state octo-docs-list-empty"
+      data-track-view={kind === 'A' || kind === 'B' ? 'doc_empty_state_viewed' : undefined}
+      data-track-empty-kind={kind}
+    >
       {kind === 'A' && (
         <>
           <p className="octo-docs-empty-title">{t('docs.empty.recentNone')}</p>

@@ -39,6 +39,7 @@ export function buildChannelPreferenceSection(
         cell: ChannelSettingToggleRow,
         properties: {
           title: t("base.module.channelSettings.mute"),
+          settingKey: "mute",
           checked: channelInfo?.mute,
           onChange: (value: boolean, row: ListItemSwitchContext) => {
             row.loading = true;
@@ -59,6 +60,7 @@ export function buildChannelPreferenceSection(
       cell: ChannelSettingToggleRow,
       properties: {
         title: t("base.module.channelSettings.pin"),
+        settingKey: "pin",
         checked: channelInfo?.top,
         onChange: (value: boolean, row: ListItemSwitchContext) => {
           row.loading = true;
@@ -79,6 +81,7 @@ export function buildChannelPreferenceSection(
         cell: ChannelSettingToggleRow,
         properties: {
           title: t("base.module.channelSettings.saveToContacts"),
+          settingKey: "save",
           checked: channelInfo?.orgData.save === 1,
           onChange: (value: boolean, row: ListItemSwitchContext) => {
             row.loading = true;

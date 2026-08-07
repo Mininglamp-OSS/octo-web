@@ -1823,6 +1823,7 @@ class ChatMenusPopover extends Component<
             return (
               <li
                 key={i}
+                data-track={c.key === "start-group" ? "channel_created" : undefined}
                 onClick={() => {
                   if (c.onClick) {
                     c.onClick();

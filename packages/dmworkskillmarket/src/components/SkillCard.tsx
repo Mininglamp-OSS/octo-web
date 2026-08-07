@@ -177,6 +177,9 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
       aria-label={ariaLabel}
       onClick={() => onOpen(skill)}
       onKeyDown={handleKeyDown}
+      data-track="market_card_viewed"
+      data-object-id={skill.id}
+      data-track-item-type="skill"
     >
       <div className="skill-market-card__top">
         <span className="skill-market-card__icon">
@@ -290,6 +293,9 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
                 hideDescriptionTooltip();
                 onInstall(skill);
               }}
+              data-track="skill_install_clicked"
+              data-object-id={skill.id}
+              data-track-item-type="skill"
             >
               {t("skillMarket.card.install")}
             </button>
