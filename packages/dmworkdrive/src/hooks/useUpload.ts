@@ -351,18 +351,31 @@ export function useUpload(onUploaded: () => void): UseUpload {
   // Schedule an upload id: run immediately if under the concurrency cap,
   // otherwise queue it. On completion, drain the queue.
   //
-  // Dedup: only skip if a run is already live for this id. In the current
-  // callers no path enqueues the same id twice — addFiles hands out
-  // fresh ids, retryRun's own retriesInFlight guard blocks concurrent
-  // retries before they can reach here. If a future path (a fresh
-  // 'retry-all' button, background auto-retry, etc.) can double-schedule
-  // a given id, that path is responsible for its own dedup — this
-  // scheduler is not the boundary that guarantees it.
+  // Two dedup checks, each guarding a distinct scenario:
+  //
+  //   1. `runs.current.has(id)` — a run is already in flight for this
+  //      id. Concurrent double-start protection. runItem also has this
+  //      check as a final safety net (line ~274), but stopping here
+  //      avoids an unnecessary microtask.
+  //
+  //   2. `uploadQueue.current.includes(id)` — the id is already queued
+  //      but not yet started. Guards the prepare-failure retry path:
+  //      when the original run failed at prepareUpload, retryRun takes
+  //      the `stalePending === undefined` branch (useUpload.ts:449),
+  //      does NOT await anything, and reaches scheduleUpload in the
+  //      SAME tick. retryRun's retriesInFlight guard clears in the
+  //      finally of that same tick — so a second synchronous Retry
+  //      click on a prepare-failed row hits retriesInFlight after it
+  //      was cleared and reaches scheduleUpload with the id already
+  //      queued from the first click. Without this check the id sits
+  //      in uploadQueue twice, and sequential draining (finally #1
+  //      deletes runs[id], THEN finally #1's shift() pulls the second
+  //      copy and start()s it) uploads the same file twice.
+  //
+  // Verified by bot reviews Jerry-Xin/yujiawei/lml2468 rounds 5 & 6.
   const scheduleUpload = useCallback(
     (id: string) => {
-      // If a run is already live for this id, skip (concurrent double-
-      // start). runItem's own re-entry guard at line ~268 is the ultimate
-      // safety net for a race we miss here.
+      if (uploadQueue.current.includes(id)) return;
       if (runs.current.has(id)) return;
       const start = (nextId: string) => {
         uploadActiveCount.current += 1;
