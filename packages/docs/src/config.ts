@@ -192,6 +192,23 @@ export const LINE_SPACING_ENABLED = envOr(import.meta.env?.VITE_DOCS_LINE_SPACIN
 export const PPT_CREATE_ENABLED = envOr(import.meta.env?.VITE_DOCS_PPT_CREATE, 'true') === 'true'
 
 /**
+ * Exposure gate for the caret-menu "New slides" ENTRY itself.
+ *
+ * The html_ppt create flow is still incomplete end to end (the R3 source/bootstrap layer is gated
+ * OFF by default — see PPT_SOURCE_ENABLED), so a user who creates a deck from the dropdown lands on
+ * a surface that cannot load its own content yet. Until that round ships, the entry is not offered:
+ * this flag DEFAULTS OFF and the "New slides" item is not rendered at all in the "+ 新建文档"
+ * dropdown (invisible and unreachable, so no deck can be minted from the docs list).
+ *
+ * This gate is deliberately SEPARATE from PPT_CREATE_ENABLED (which picks WHICH dialog the entry
+ * opens — the live template picker or the R1 coming-soon notice): removing the entry must not delete
+ * the create wiring, so a deployment that wants it back only needs `VITE_DOCS_PPT_ENTRY=true`. It
+ * touches nothing else — html_ppt routing, the read-only PptDocView, the type filter and existing
+ * decks are unaffected; only the create entry point in the dropdown disappears.
+ */
+export const PPT_ENTRY_ENABLED = envOr(import.meta.env?.VITE_DOCS_PPT_ENTRY, 'false') === 'true'
+
+/**
  * Exposure gate for the html_ppt viewer / editor / present surfaces that consume LIVE backend
  * source (R3-F1, XIN-1495 / XIN-1583).
  *

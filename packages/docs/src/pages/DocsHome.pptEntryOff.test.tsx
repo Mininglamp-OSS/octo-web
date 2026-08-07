@@ -3,22 +3,14 @@ import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/re
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 
-// ── R2-F1 P2-4: the PPT_CREATE_ENABLED rollback branch has coverage ──────────
-// The flag is read once at module scope in config.ts. With it OFF, DocsHome must fall back to the R1
-// "coming soon" notice (an acceptance item) and must NOT mount the live four-template picker — that
-// is the emergency rollback path, and it was previously untested. This file mocks config.ts with the
-// flag OFF (keeping every other config export real via importActual) so the whole file exercises the
-// OFF build without disturbing the flag-ON assertions in DocsHome.test.tsx.
-vi.mock('../config.ts', async () => {
-  const actual = await vi.importActual<typeof import('../config.ts')>('../config.ts')
-  // PPT_ENTRY_ENABLED is pinned ON so the caret-menu entry exists to click; this file is about the
-  // PPT_CREATE_ENABLED rollback branch, which is a different gate (see config.ts).
-  return { ...actual, PPT_CREATE_ENABLED: false, PPT_ENTRY_ENABLED: true }
-})
+// ── "New slides" entry hidden by default (PPT_ENTRY_ENABLED default OFF) ─────
+// The html_ppt create entry is no longer offered in the "+ 新建文档" dropdown: it is not rendered at
+// all, so it cannot be clicked and no deck can be minted from the docs list. This file exercises the
+// SHIPPED default (no config mock override) — DocsHome.test.tsx pins the entry ON to keep covering
+// the create wiring that stays in the codebase behind the flag.
+import { DocsHome } from './DocsHome.tsx'
 
-// Heavy child boundaries replaced with markers (same rationale as DocsHome.test.tsx): the editor /
-// board / sheet / html / ppt shells pull Tiptap/Yjs/Univer/WebSocket runtimes we do not need for a
-// list-only render.
+// Heavy child boundaries replaced with markers (same rationale as DocsHome.test.tsx).
 vi.mock('../editor/EditorShell.tsx', () => ({
   EditorShell: (props: { docId: string }) => <div data-testid="editor-shell">{props.docId}</div>,
 }))
@@ -38,19 +30,16 @@ vi.mock('../html-create/DocsBotConversation.tsx', () => ({
   DocsBotConversation: () => <div data-testid="bot-chat" />,
 }))
 
-// Imported AFTER the config mock is registered so DocsHome closes over the OFF flag.
-import { DocsHome } from './DocsHome.tsx'
-
 const realLocation = window.location
 
-describe('DocsHome — PPT_CREATE_ENABLED OFF (R1 coming-soon rollback, P2-4)', () => {
+describe('DocsHome — "New slides" entry hidden (PPT_ENTRY_ENABLED default OFF)', () => {
   beforeEach(() => {
     window.sessionStorage.clear()
     window.localStorage.clear()
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
-      value: { search: '', assign: vi.fn() },
+      value: { origin: 'https://app.example.com', search: '', assign: vi.fn() },
     })
     vi.spyOn(window.history, 'replaceState').mockImplementation(() => {})
     vi.spyOn(window.history, 'pushState').mockImplementation(() => {})
@@ -67,7 +56,7 @@ describe('DocsHome — PPT_CREATE_ENABLED OFF (R1 coming-soon rollback, P2-4)', 
     window.sessionStorage.clear()
   })
 
-  it('opens the R1 "coming soon" notice — never the live template picker — when the flag is OFF', async () => {
+  it('does not render the "New slides" item in the new-document dropdown', async () => {
     const wk = createMockWKApp()
     wk.apiClient.responder = (method: string, url: string) => {
       if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
@@ -77,16 +66,18 @@ describe('DocsHome — PPT_CREATE_ENABLED OFF (R1 coming-soon rollback, P2-4)', 
 
     render(<DocsHome />)
 
-    // Open the split "New" dropdown and choose "New slides".
     fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
-    fireEvent.click(screen.getByText('docs.list.newPpt'))
 
-    // Flag OFF → the coming-soon notice shows and the create endpoint is never hit.
-    await waitFor(() => expect(screen.getByText('docs.ppt.createComingSoon')).toBeTruthy())
-    // The live picker (radiogroup of four template cards) must NOT render.
+    // The peer entries stay exactly as they are — only the slides entry is gone.
+    await waitFor(() => expect(screen.getByText('docs.list.newBoard')).toBeTruthy())
+    expect(screen.getByText('docs.sheet.new')).toBeTruthy()
+    expect(screen.getByText('docs.list.newHtml')).toBeTruthy()
+    expect(screen.queryByText('docs.list.newPpt')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'docs.list.newPpt' })).toBeNull()
+
+    // Nothing PPT-related can be opened or created from the list.
     expect(screen.queryByRole('radiogroup')).toBeNull()
-    expect(screen.queryAllByRole('radio')).toHaveLength(0)
-    // Nothing is created server-side either.
+    expect(screen.queryByText('docs.ppt.createComingSoon')).toBeNull()
     expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(false)
   })
 })

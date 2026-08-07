@@ -24,6 +24,7 @@ import {
   DEFAULT_DOC_ID,
   DOC_TARGET_STORAGE_KEY,
   PPT_CREATE_ENABLED,
+  PPT_ENTRY_ENABLED,
 } from '../config.ts'
 import { createDoc, deleteDoc, getDoc, recordDocView, type DocListItem } from './docsApi.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
@@ -1068,21 +1069,25 @@ function DocsList({
             {/* New slides (html_ppt). Independent peer AFTER "HTML" — opens the four-template
                 picker (POST /api/v1/ppt/docs) behind the R2 flag, or the R1 coming-soon notice when
                 off. Like the HTML entry it only closes the menu + calls onCreatePpt; it NEVER
-                calls createDoc, so no empty deck is precreated. */}
-            <button
-              type="button"
-              className="octo-docs-new-menu-item"
-              disabled={creating}
-              onClick={() => {
-                setNewMenuAt(null)
-                // Hand the picker the PERSISTENT caret (not this menu item, which unmounts as the menu
-                // closes on the line above) as its focus-restore target — R2-F1.
-                onCreatePpt(caretRef.current)
-              }}
-            >
-              <span className="octo-docs-new-menu-icon" aria-hidden="true"><PptRowIcon /></span>
-              {t('docs.list.newPpt')}
-            </button>
+                calls createDoc, so no empty deck is precreated.
+                Hidden by default (PPT_ENTRY_ENABLED, default OFF) while the html_ppt round is still
+                incomplete: the create wiring stays intact, only the entry is not offered here. */}
+            {PPT_ENTRY_ENABLED && (
+              <button
+                type="button"
+                className="octo-docs-new-menu-item"
+                disabled={creating}
+                onClick={() => {
+                  setNewMenuAt(null)
+                  // Hand the picker the PERSISTENT caret (not this menu item, which unmounts as the menu
+                  // closes on the line above) as its focus-restore target — R2-F1.
+                  onCreatePpt(caretRef.current)
+                }}
+              >
+                <span className="octo-docs-new-menu-icon" aria-hidden="true"><PptRowIcon /></span>
+                {t('docs.list.newPpt')}
+              </button>
+            )}
             {/* Import entries merged into the "New" dropdown (was a standalone "Import" button).
                 Flag ON; formal owner sign-off still PENDING, gated by needs-human-review (was hidden
                 in #583). Toggle via IMPORT_ENABLED. Handlers unchanged — this only moves the entry. */}
