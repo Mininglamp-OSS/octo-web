@@ -141,6 +141,10 @@ export class LoginVM extends ProviderListener {
             this._registerCountdownTimer = undefined
         }
         this._clearOidcLoadingResetTimer()
+        // 二维码轮询是 promise 链 + setTimeout，didUnMount 不动它就会在组件销毁后继续跑、
+        // 继续改 VM、继续把 pollSecret 带在请求上。清掉 uuid 即可让下一次 pullLoginStatus
+        // 在发射前的守卫处自然终止（uuid !== this.uuid），不需要额外的取消机制。
+        this.resetQRCodeState()
     }
 
     set loginType(v: LoginType) {
@@ -191,6 +195,12 @@ export class LoginVM extends ProviderListener {
                     // POST user/login_authcode/undefined 拿个 400，而轮询此刻已经停了
                     // —— 页面就此静止，手机端却显示"已授权"，用户只能自己刷新。
                     // 退回重新申请二维码，让流程能自愈。
+                    //
+                    // 这条分支静默触发时唯一可诊断的地方就是这里：如果 poll_secret 在生产
+                    // 被中途丢掉（代理剥参数、Redis 抖动），症状是二维码悄悄自我重建而手机
+                    // 显示"已授权"，在日志和监控里和正常过期完全无法区分。
+                    console.warn('[login] scan-login status=authed without auth_code; poll_secret was not accepted, re-minting QR')
+                    this.resetQRCodeState()
                     this.loginStatus = LoginStatus.getUUID
                     this.notifyListener()
                     this.advance()
@@ -370,6 +380,10 @@ export class LoginVM extends ProviderListener {
         this.registerEmailPassword = ''
         this.registerEmailCode = ''
         this.forgetNewPassword = ''
+        // pollSecret 是本文件自己标注为凭据的字段，登录完成后没有理由继续挂在 VM 上。
+        // 服务端在兑换时已经吊销它，所以影响有限；但既然这个函数的职责就是清凭据，
+        // 漏掉它只是不一致。
+        this.pollSecret = undefined
     }
 
     loginSuccess(data:any, provider: string = 'local') {
@@ -447,9 +461,31 @@ export class LoginVM extends ProviderListener {
             this.notifyListener()
             this.advance()
         }).catch(() => {
+            // 铸码失败必须交出一个可恢复的出口。此前只清 spinner：loginStatus 停在
+            // getUUID、没有任何后续调度，而 login.tsx 只要 qrcode 非空就照渲染 —— 用户
+            // 盯着一张已经被消费掉、永远完不成的二维码，没有报错也没有刷新入口，只能手动
+            // 刷页面。#715 给 loginuuid 加了 StrictIPRateLimitMiddleware，共享出口 IP 下
+            // 重铸可能吃 429，这条路会比以前更常走到。
+            //
+            // 关掉 autoRefresh 即可复用既有的 qr.expired 覆盖层（"二维码已过期，点击刷新"）
+            // 及其 reStartAdvance 处理器 —— 不需要新文案，i18n:check 保持绿色。
+            this.resetQRCodeState()
             this.qrcodeLoading = false
-            this.notifyListener()
+            this.autoRefresh = false
         })
+    }
+
+    /**
+     * 丢弃当前二维码会话的全部状态。
+     *
+     * uuid / qrcode / pollSecret 必须一起清：留着任意一个都会让 UI 渲染出一张与当前状态
+     * 不符的二维码，或者让轮询拿旧密钥去问新 uuid。也顺带消除了「转到 getUUID 到
+     * requestUUID 把 qrcodeLoading 置位」之间那一帧的过期二维码。
+     */
+    private resetQRCodeState() {
+        this.uuid = undefined
+        this.qrcode = undefined
+        this.pollSecret = undefined
     }
 
     // 轮训登录状态
@@ -479,6 +515,11 @@ export class LoginVM extends ProviderListener {
             ? `&poll_secret=${encodeURIComponent(this.pollSecret)}`
             : ''
         WKApp.apiClient.get(`user/loginstatus?uuid=${encodeURIComponent(uuid)}${secretQuery}`).then((result: any) => {
+            // 请求发出后 uuid 可能已经换掉（手动刷新走 reStartAdvance、切登录方式走
+            // loginType setter）。发射前的守卫拦不到在途响应，落地时不复核就会用旧 uuid 的
+            // 数据驱动状态机 —— 接受一个已被取代的 authed，或者反过来把刚铸好的二维码
+            // 顶掉。2s 重试那条路是安全的（会重入本函数命中发射前的守卫），只有这里缺。
+            if (uuid !== this.uuid) return
             this._pullErrCount = 0
             const loginStatus = result.status;
             this.loginStatus = loginStatus
