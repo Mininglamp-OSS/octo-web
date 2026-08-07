@@ -552,7 +552,7 @@
     padding: var(--wk-sp-1) var(--wk-sp-0-5);
 }
 
-.wk-navrail__bottom .wk-navrail__item-label {
+.wk-navrail__bottom .wk-navrail__item > .wk-navrail__item-label {
     display: none;
 }
 
