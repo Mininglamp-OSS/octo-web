@@ -640,11 +640,17 @@ describe('sanitizeDocHtml', () => {
 })
 
 describe('injectBaseHref', () => {
-  it('inserts <base> at the START of an existing <head> with a trailing-slash href', () => {
-    const out = injectBaseHref('<html><head><title>t</title></head><body>x</body></html>', 'https://od.test')
-    expect(out).toContain('<head><base href="https://od.test/">')
+  it('inserts <base> at the START of an existing <head> using the href verbatim (no forced slash)', () => {
+    const out = injectBaseHref('<html><head><title>t</title></head><body>x</body></html>', 'https://od.test/d/s/v/3')
+    expect(out).toContain('<head><base href="https://od.test/d/s/v/3">')
     // Only one base, and it precedes the original head content.
     expect(out.indexOf('<base')).toBeLessThan(out.indexOf('<title>'))
+  })
+
+  it('does NOT force a trailing slash on a file-style base (would shift relative resolution)', () => {
+    const out = injectBaseHref('<html><head></head><body>x</body></html>', 'https://od.test/d/s/v/3')
+    expect(out).toContain('<base href="https://od.test/d/s/v/3">')
+    expect(out).not.toContain('v/3/">')
   })
 
   it('preserves an already-trailing slash and prepends <base> when there is no <head>', () => {
@@ -654,6 +660,52 @@ describe('injectBaseHref', () => {
 
   it('is a no-op when baseUrl is empty', () => {
     expect(injectBaseHref('<p>x</p>', '')).toBe('<p>x</p>')
+  })
+})
+
+describe('file-style <base> relative resolution (regression guard for srcset/source/CSS url())', () => {
+  // The <base> is the document's own render URL (…/d/{slug}/v/{ver}) — a FILE, not a directory.
+  // Relative refs therefore resolve against the doc's directory (…/d/{slug}/v/), and root-relative
+  // signed-asset refs (/d/{slug}/assets/{sha}) must stay untouched. These assert the browser URL
+  // algorithm the <base> relies on, with no new deps.
+  const base = buildOctoDocUrl('slug', '3') // e.g. /docs-html/d/slug/v/3
+  const abs = 'https://od.test/d/slug/v/3'
+
+  it('root-relative signed asset (/d/<slug>/assets/<sha>) is UNAFFECTED by the file-style base', () => {
+    // octo-doc emits root-relative signed refs; these resolve against origin, ignoring the base path.
+    expect(new URL('/d/slug/assets/abc123?sig=s', abs).href).toBe('https://od.test/d/slug/assets/abc123?sig=s')
+  })
+
+  it('document-level relative ./x and ../x resolve to the doc directory, not one level too deep', () => {
+    // ./img.png sits beside the doc (…/v/img.png); ../img.png climbs to …/d/slug/img.png.
+    expect(new URL('./img.png', abs).href).toBe('https://od.test/d/slug/v/img.png')
+    expect(new URL('../img.png', abs).href).toBe('https://od.test/d/slug/img.png')
+  })
+
+  it('srcset candidate URLs resolve against the file-style base the same way', () => {
+    // A parser splits srcset into candidates; each relative candidate resolves like a plain src.
+    for (const candidate of ['a.png', './a.png', '../a.png']) {
+      expect(() => new URL(candidate, abs)).not.toThrow()
+    }
+    expect(new URL('a.png', abs).href).toBe('https://od.test/d/slug/v/a.png')
+    expect(new URL('../a.png', abs).href).toBe('https://od.test/d/slug/a.png')
+  })
+
+  it('<source src> (video/audio) relative refs resolve to the doc directory', () => {
+    expect(new URL('clip.mp4', abs).href).toBe('https://od.test/d/slug/v/clip.mp4')
+    expect(new URL('media/clip.webm', abs).href).toBe('https://od.test/d/slug/v/media/clip.webm')
+  })
+
+  it('inline <style> url() relative refs resolve to the doc directory (base drives CSS too)', () => {
+    // A bare url(bg.png) in an inline stylesheet resolves against the document base URL.
+    const cssUrlRef = 'bg.png'
+    expect(new URL(cssUrlRef, abs).href).toBe('https://od.test/d/slug/v/bg.png')
+    expect(new URL('../shared/bg.png', abs).href).toBe('https://od.test/d/slug/shared/bg.png')
+  })
+
+  it('buildOctoDocUrl stays file-style (no trailing slash) so the base does not shift one level', () => {
+    expect(base).not.toMatch(/\/$/)
+    expect(base).toContain('/d/slug/v/3')
   })
 })
 
@@ -1079,11 +1131,14 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(screen.getByText('docs.standalone.openInNewPage')).toBeTruthy()
   })
 
-  it('injects a <base> into the iframe srcdoc so CSS/relative assets resolve to the doc origin', async () => {
+  it('injects a <base> pointing at the doc\'s own render URL (not the directory root) so relative/CSS assets resolve and bare #fragments stay in-page', async () => {
     serveDoc('<html><head></head><body><p>body</p></body></html>')
     const { container } = render(<HtmlDocView docId="d1" space="sp" />)
     const frame = await waitForFrame(container)
-    expect(frame.getAttribute('srcdoc')).toContain('<base href="https://od.test/">')
+    // Base is the document's own URL (…/d/d1/v/latest), NOT the directory root — this keeps a bare
+    // #fragment resolving to THIS document instead of navigating the frame to the docs home.
+    expect(frame.getAttribute('srcdoc')).toContain('<base href="https://od.test/d/d1/v/latest">')
+    expect(frame.getAttribute('srcdoc')).not.toContain('<base href="https://od.test/">')
   })
 })
 
