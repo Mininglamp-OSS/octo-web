@@ -282,6 +282,36 @@ describe("classifyBotSettingError", () => {
         )
     })
 
+    it("429 带出 retry_after 秒数，非法值退化为 undefined", () => {
+        const limited = classifyBotSettingError(
+            rejection({ status: 429, details: { retry_after: 7 } }),
+        )
+        expect(limited.kind).toBe("rateLimited")
+        expect(limited.retryAfterSeconds).toBe(7)
+
+        // 字符串也接受（服务端说是整数秒，但不赌它一定是 number）。
+        expect(
+            classifyBotSettingError(
+                rejection({ status: 429, details: { retry_after: "3" } }),
+            ).retryAfterSeconds,
+        ).toBe(3)
+
+        // 缺失 / 非法 / 非正数 → undefined，由文案退化成不带秒数的那句。
+        expect(
+            classifyBotSettingError(rejection({ status: 429 })).retryAfterSeconds,
+        ).toBeUndefined()
+        expect(
+            classifyBotSettingError(
+                rejection({ status: 429, details: { retry_after: 0 } }),
+            ).retryAfterSeconds,
+        ).toBeUndefined()
+        expect(
+            classifyBotSettingError(
+                rejection({ status: 429, details: { retry_after: "nope" } }),
+            ).retryAfterSeconds,
+        ).toBeUndefined()
+    })
+
     it("无 code 的 403 也归为 forbidden，不给重试按钮", () => {
         // 网关 / 代理 / 将来服务端换码都可能给出无 code 的 403。落到 unknown 会渲染
         // 带重试按钮的「加载失败」，等于请用户对着永久拒绝反复打限流端点。

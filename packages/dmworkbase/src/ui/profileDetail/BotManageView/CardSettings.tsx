@@ -40,7 +40,15 @@ export interface BotCardSettingsLabels {
   empty: string;
   saveFailed: string;
   saveFailedRetryable: string;
-  rateLimited: string;
+  /**
+   * 限流提示。
+   *
+   * 是函数而不是常量字符串，因为服务端在 429 上会给 `retry_after`（秒），有就报出
+   * 具体等待时间。而且**文案不能把成因归给本页** —— 服务端确认这个令牌桶是整个进程
+   * 所有认证路由共用的（约 60 个挂载点：发消息、会话同步、搜索、上传……），不是这三个
+   * 端点专属，所以这里收到 429 时起因很可能压根不在这个页面。
+   */
+  rateLimited: (retryAfterSeconds?: number) => string;
 }
 
 export interface CardSettingsViewProps {
@@ -52,6 +60,8 @@ export interface CardSettingsViewProps {
   hasData: boolean;
   loadErrorKind?: string;
   writeErrorKind?: string;
+  /** 429 时服务端给的等待秒数，透传给限流文案。 */
+  writeErrorRetryAfterSeconds?: number;
   onToggle: (key: string, next: boolean) => void;
   onReset: (key: string) => void;
   onReload: () => void;
@@ -65,6 +75,7 @@ export function CardSettingsView({
   hasData,
   loadErrorKind,
   writeErrorKind,
+  writeErrorRetryAfterSeconds,
   onToggle,
   onReset,
   onReload,
@@ -110,7 +121,11 @@ export function CardSettingsView({
             aria-live="assertive"
             data-testid="bot-card-settings-write-error"
           >
-            {writeErrorMessage(writeErrorKind, labels)}
+            {writeErrorMessage(
+              writeErrorKind,
+              labels,
+              writeErrorRetryAfterSeconds,
+            )}
           </div>
         )}
         <div className="wk-bot-manage-group-list">
@@ -174,8 +189,12 @@ function MasterStatus({
   );
 }
 
-function writeErrorMessage(kind: string, labels: BotCardSettingsLabels): string {
-  if (kind === "rateLimited") return labels.rateLimited;
+function writeErrorMessage(
+  kind: string,
+  labels: BotCardSettingsLabels,
+  retryAfterSeconds?: number,
+): string {
+  if (kind === "rateLimited") return labels.rateLimited(retryAfterSeconds);
   // retryable = 服务端错误（真实 500，线路状态码可能是 400）。文案必须提示重试，
   // 不能说「参数有误」引导用户去改输入。
   if (kind === "retryable") return labels.saveFailedRetryable;
@@ -201,8 +220,11 @@ function CardSettingsFallback({
       </div>
     );
   }
-  // err.server.robot.not_found —— 该 bot 没有 robot 记录（含 App Bot），
-  // 不是「还没上线」，给不同文案且不给重试按钮。
+  // err.server.robot.not_found —— 该 bot 没有可用的 robot 记录（App Bot、被禁用的
+  // 普通 Bot 都属于这一类）。**正常情况下到不了这里**：`bot_creator_uid` 与属主守卫
+  // 读同一张表同一个 status 谓词，缺失时 isOwner 为假、整个 Bot 管理入口就不渲染。
+  // 保留这条分支是纵深防御 —— 万一 `users/:uid` 失败而走了 channelInfo 兜底、拿到
+  // 语义不同的 creator，至少给一句能读懂的话而不是「加载失败 + 重试」。
   if (kind === "unsupported") {
     return (
       <div className="wk-bot-manage-empty" data-testid="bot-card-settings-unsupported">

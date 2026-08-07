@@ -192,6 +192,7 @@
   "botManage.cardSettings.saveFailed": "Could not save, please try again",
   "botManage.cardSettings.saveFailedRetryable": "Service temporarily unavailable, please retry later",
   "botManage.cardSettings.rateLimited": "Too many requests, please try again shortly",
+  "botManage.cardSettings.rateLimitedIn": "Too many requests, please retry in {{seconds}}s",
   "botManage.menu.autoApprove": "Auto-approve friend requests",
   "botManage.menu.autoApproveHint": "Automatically handle friend requests in a future update",
   "botManage.menu.profileCommands": "Profile & commands",

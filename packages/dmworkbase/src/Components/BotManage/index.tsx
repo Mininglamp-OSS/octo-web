@@ -50,22 +50,6 @@ export interface BotManageModalProps {
     onClose: () => void
 }
 
-/**
- * 已知「没有 robot 记录」的 bot（App Bot 属于这一类）。
- *
- * `cardSettingsVM` 会在关闭 / 切 bot 时被丢弃，判定结果跟着一起没了，于是同一个
- * App Bot 每次打开都要重新闪一次入口。这个表把判定记在模块作用域，让闪现降到
- * **每个 bot 每会话一次**。
- *
- * ⚠️ 消不掉「某个 bot 第一次被打开」那一次：客户端在问服务端之前无从知道一个 bot
- * 有没有 robot 记录（`users/:uid` 不返回类型字段，整个 dmworkbase 也不认识 App Bot）。
- * 真正的解法是服务端在 `users/:uid` 上给一个 `is_app_bot` / `bot_type`，那样连探测
- * 都不需要。
- *
- * 只记不支持的 bot，条目数 = 会话里被打开过的 App Bot 数，不会有规模问题。
- */
-const knownUnsupportedBots = new Set<string>()
-
 export default class BotManageModal extends Component<BotManageModalProps> {
     static contextType = I18nContext
     declare context: React.ContextType<typeof I18nContext>
@@ -74,115 +58,52 @@ export default class BotManageModal extends Component<BotManageModalProps> {
     private vm?: MentionFreeVM
 
     /**
-     * L3「卡片消息设置」的 VM。
+     * L3「卡片消息设置」的 VM。**只在进入 L3 时惰性创建**，L2 不为它发任何请求。
      *
      * 不走 Provider（Provider 只托管一个 listener，已被 MentionFreeVM 占用），
      * 而是在这里持有 + 由 CardSettingsContainer 通过 addListener 订阅。
      *
-     * 它在 L2 就被创建并拉一次目录（见 probeCardSettings）：这次请求既是「该 bot
-     * 支不支持卡片设置」的能力探测（决定 L2 菜单要不要渲染这一行），也是 L3 首屏
-     * 要用的数据，所以不是额外开销 —— L3 进页时若已有数据就不再重复请求。
+     * 曾经在 L2 打开时就拉一次目录，用来判断这个 bot 支不支持卡片设置（App Bot
+     * 在独立表里、没有 robot 记录，三个端点都 404）。**这套探测已经删掉了**：
+     * 服务端确认 `users/:uid` 的 `bot_creator_uid` 与属主守卫读同一张表、同一个
+     * `status=1` 谓词，缺失/空 ⟺ 没有可用的 robot 记录 ⟺ 三个动词都 404。而
+     * `BotDetailVM.isOwner()` 已经要求该字段非空且等于当前用户，`BotDetailModal`
+     * 又只在 `isOwner` 时才渲染本组件 —— 所以 App Bot 和被禁用的普通 Bot（同样
+     * 没有可用记录）根本到不了这里。已有的门控就是精确的能力判据，不需要探测、
+     * 不需要记忆判定、也不需要为此发请求。
      */
     private cardSettingsVM?: BotCardSettingsVM
 
-    /** L2 菜单需要在能力探测出结果后重渲染，这里持有取消订阅句柄。 */
-    private cardSettingsUnsubscribe?: () => void
-
-    componentDidMount(): void {
-        if (this.props.visible) this.probeCardSettings()
-    }
-
     componentDidUpdate(prevProps: BotManageModalProps): void {
-        const robotChanged = prevProps.robotId !== this.props.robotId
-        if (robotChanged) {
-            // bot 切换：复用同一 modal 实例时（BotStore 列表里点不同 bot），
-            // 必须把 VM 切到新 robotId 并重拉，否则会看到上一个 bot 的群。
-            //
-            // MentionFreeVM 这一行**没有** visible 门控，和下面卡片设置的处理不一致。
-            // 这是既有行为（merge base 起就如此）：它的 VM 由 Provider 持有、从不清空，
-            // 而 MentionFreeListContainer 只在群列表为空时才补拉，所以不同步就会在
-            // 打开时显示上一个 bot 的群。代价是每翻一张资料卡一个被丢弃的 GET。
-            // 要修得连带改 container 的补拉条件，不在本次范围内。
-            if (this.vm) this.vm.setRobotId(this.props.robotId)
-            if (this.props.visible) {
-                if (this.cardSettingsVM) {
-                    // setRobotId 内部会重拉，等价于对新 bot 重新探测。
-                    this.cardSettingsVM.setRobotId(this.props.robotId)
-                } else {
-                    this.probeCardSettings()
-                }
-            } else {
-                // 卡片设置的 VM 不可见时**不** setRobotId —— 它会无条件重拉，于是
-                // 「翻一张资料卡就发一个限流 GET」。直接丢掉 VM，下次打开重新创建
-                // + 探测，天然拿到新 bot 的数据，一个请求都不浪费。
-                this.disposeCardSettingsVM()
-            }
-            return
-        }
-        // 本组件跟着资料卡一起挂载（不是打开时才挂载），所以探测挂在 visible
-        // 由假转真上，避免只是看了眼资料卡就发请求。
-        if (!prevProps.visible && this.props.visible) {
-            this.probeCardSettings()
-        }
+        if (prevProps.robotId === this.props.robotId) return
+        // bot 切换：复用同一 modal 实例时（BotStore 列表里点不同 bot），
+        // 必须把 VM 切到新 robotId 并重拉，否则会看到上一个 bot 的群。
+        //
+        // MentionFreeVM 这一行没有 visible 门控：它的 VM 由 Provider 持有、从不
+        // 清空，而 MentionFreeListContainer 只在群列表为空时才补拉，所以不同步就会
+        // 在打开时显示上一个 bot 的群。代价是每翻一张资料卡一个被丢弃的 GET。这是
+        // 既有行为（merge base 起就如此），要修得连带改 container 的补拉条件。
+        if (this.vm) this.vm.setRobotId(this.props.robotId)
+        // 卡片设置的 VM 直接丢弃而不是 setRobotId：它只在进入 L3 时创建，丢掉之后
+        // 下次进入会为新 bot 重建 —— 翻资料卡一个请求都不发。
+        this.disposeCardSettingsVM()
     }
 
     componentWillUnmount(): void {
         this.disposeCardSettingsVM()
     }
 
-    /**
-     * 每次打开都重新拉一次卡片设置目录：既判断这一行菜单要不要出现，也作为 L3 首屏
-     * 的数据。
-     *
-     * **不能用 `hasData` 做守卫。** 本组件是常驻挂载、`visible` 切换的（`BotDetailModal`
-     * 又是 BotStore / GlobalSearch 的常驻子组件），VM 会跨开关存活；用 `hasData`
-     * 守卫会导致第二次打开一个请求都不发，等于把读接口的 `Cache-Control: private,
-     * no-store` 缓存掉 —— 别处改的覆盖、别的设备改的、翻转过的部署总闸都会一直陈旧。
-     *
-     * 只有拿到 `err.server.robot.not_found`（该 bot 没有 robot 记录，App Bot 属于
-     * 这一类）才隐藏菜单行。其余错误一律保持显示 —— 服务端抖动 / 限流 / 后端未部署
-     * 都不代表这个 bot 永久不支持，藏掉入口会让用户以为功能消失了。
-     */
-    private probeCardSettings(): void {
-        const vm = this.ensureCardSettingsVM()
-        if (!vm.loading) void vm.loadSettings()
-    }
-
     private ensureCardSettingsVM(): BotCardSettingsVM {
         if (!this.cardSettingsVM) {
             this.cardSettingsVM = new BotCardSettingsVM(this.props.robotId)
-            this.cardSettingsUnsubscribe = this.cardSettingsVM.addListener(() => {
-                // 判定一出来就记住，这样丢掉 VM（关闭 / 切 bot）之后再打开不必
-                // 重新闪一次入口。
-                if (this.cardSettingsVM?.isUnsupported) {
-                    knownUnsupportedBots.add(this.cardSettingsVM.robotId)
-                }
-                this.forceUpdate()
-            })
         }
         return this.cardSettingsVM
     }
 
-    /**
-     * 这一行菜单要不要渲染。
-     *
-     * 模块级记忆是**粘性否决**，优先于 VM 的实时判定：VM 在 componentDidMount 里就被
-     * 创建，那时判定还没回来（isUnsupported 为 false），若让实时值优先，记忆就只在
-     * 「挂载之前那一帧」有效，等于没用。而一个没有 robot 记录的 bot 不会在会话中途
-     * 长出一条记录，所以否决是安全的 —— VM 的判定只会往记忆里**添加**，不会推翻它。
-     *
-     * 都没有结论时返回 true（fail-open，能力未知时不藏功能入口）。
-     */
-    private shouldShowCardSettings(): boolean {
-        if (knownUnsupportedBots.has(this.props.robotId)) return false
-        return !this.cardSettingsVM?.isUnsupported
-    }
-
     private disposeCardSettingsVM(): void {
-        if (this.cardSettingsUnsubscribe) this.cardSettingsUnsubscribe()
-        this.cardSettingsUnsubscribe = undefined
         this.cardSettingsVM = undefined
     }
+
 
     render(): ReactNode {
         const { robotId, visible, onClose } = this.props
@@ -209,8 +130,6 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                             render={(context: RouteContext<any>): ReactNode => (
                                 <BotManageView
                                     labels={labels}
-                                    // App Bot 等没有 robot 记录的 bot 不渲染这一行。
-                                    showCardSettings={this.shouldShowCardSettings()}
                                     onOpenMentionFree={() => {
                                         context.push(
                                             <MentionFreeListContainer
@@ -330,7 +249,12 @@ export default class BotManageModal extends Component<BotManageModalProps> {
             saveFailedRetryable: t(
                 "base.botManage.cardSettings.saveFailedRetryable",
             ),
-            rateLimited: t("base.botManage.cardSettings.rateLimited"),
+            rateLimited: (retryAfterSeconds?: number) =>
+                retryAfterSeconds === undefined
+                    ? t("base.botManage.cardSettings.rateLimited")
+                    : t("base.botManage.cardSettings.rateLimitedIn", {
+                          values: { seconds: retryAfterSeconds },
+                      }),
         }
     }
 }
@@ -348,10 +272,13 @@ interface CardSettingsContainerProps {
 /**
  * L3「卡片消息设置」容器。
  *
- * 打开 Bot 管理时（probeCardSettings）已经拉过一次目录，所以这里只在还没有数据时
- * 补拉：同一次打开里不发两个请求（这几个端点带按登录用户的限流），而"每次打开一次
- * 新鲜读取"由 probeCardSettings 保证。探测失败时 hasData 为 false，进这一页会顺带
- * 重试一次。
+ * **每次进入这一页都重拉。** 读接口下发 `Cache-Control: private, no-store`，而 VM
+ * 由上层 BotManageModal 持有、会跨 L2↔L3 往返存活，所以守卫只看「是否已有在飞的
+ * 请求」，不看 `hasData` —— 看 hasData 就等于把 no-store 的响应缓存到了 VM 生命周期，
+ * 别处改的覆盖、别的设备改的、翻转过的部署总闸都会一直陈旧。
+ *
+ * L2 打开时不再有任何预拉取（能力探测已删除，见 BotManageModal.cardSettingsVM 的
+ * 说明），所以这是本功能唯一的读取点，一次进入一个 GET。
  */
 class CardSettingsContainer extends Component<CardSettingsContainerProps> {
     private unsubscribe?: () => void
@@ -359,7 +286,7 @@ class CardSettingsContainer extends Component<CardSettingsContainerProps> {
     componentDidMount(): void {
         const { vm } = this.props
         this.unsubscribe = vm.addListener(() => this.forceUpdate())
-        if (!vm.hasData && !vm.loading) void vm.loadSettings()
+        if (!vm.loading) void vm.loadSettings()
     }
 
     componentWillUnmount(): void {
@@ -378,6 +305,9 @@ class CardSettingsContainer extends Component<CardSettingsContainerProps> {
                 hasData={vm.hasData}
                 loadErrorKind={vm.loadError?.kind}
                 writeErrorKind={vm.writeError?.kind}
+                writeErrorRetryAfterSeconds={
+                    vm.writeError?.retryAfterSeconds
+                }
                 onToggle={(key, next) => vm.toggle(key, next)}
                 onReset={(key) => void vm.resetToDefault(key)}
                 onReload={() => vm.reload()}

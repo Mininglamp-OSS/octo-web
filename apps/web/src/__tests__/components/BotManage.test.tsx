@@ -112,7 +112,10 @@ const cardLabels: BotCardSettingsLabels = {
     empty: 'Nothing to configure',
     saveFailed: 'Could not save, please try again',
     saveFailedRetryable: 'Service temporarily unavailable, please retry later',
-    rateLimited: 'Too many requests',
+    rateLimited: (seconds?: number) =>
+        seconds === undefined
+            ? 'Too many requests'
+            : `Too many requests, retry in ${seconds}s`,
 };
 
 beforeEach(() => {
@@ -147,33 +150,6 @@ describe('BotManageView (L2 menu)', () => {
         fireEvent.click(screen.getByText('Profile & commands'));
         expect(onMentionFree).toHaveBeenCalledTimes(1);
         expect(onCardSettings).toHaveBeenCalledTimes(1);
-    });
-
-    it('hides the card settings row for bots without a robot record (App Bot)', () => {
-        render(
-            <BotManageView
-                labels={labels}
-                showCardSettings={false}
-                onOpenMentionFree={() => undefined}
-                onOpenCardSettings={() => undefined}
-            />,
-        );
-        // 整行不出现，而不是让用户点进去看一句「不支持」。
-        expect(screen.queryByText('Card messages')).toBeNull();
-        // 其余入口不受影响。
-        expect(screen.getByText('Reply without @')).toBeInTheDocument();
-    });
-
-    it('keeps the card settings row when capability is unknown (fail open)', () => {
-        render(
-            <BotManageView
-                labels={labels}
-                onOpenMentionFree={() => undefined}
-                onOpenCardSettings={() => undefined}
-            />,
-        );
-        // 默认 true：一次请求失败 / 还没探测出结果时不能藏掉功能入口。
-        expect(screen.getByText('Card messages')).toBeInTheDocument();
     });
 });
 

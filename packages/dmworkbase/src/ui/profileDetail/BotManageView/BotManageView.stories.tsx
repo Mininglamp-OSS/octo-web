@@ -110,7 +110,10 @@ const cardLabels: BotCardSettingsLabels = {
   empty: "没有可设置的项目",
   saveFailed: "保存失败，请重试",
   saveFailedRetryable: "服务暂时不可用，请稍后重试",
-  rateLimited: "操作过于频繁，请稍后再试",
+  rateLimited: (seconds?: number) =>
+    seconds === undefined
+      ? "请求过于频繁，请稍后再试"
+      : `请求过于频繁，请 ${seconds} 秒后重试`,
 };
 
 /**
@@ -125,6 +128,7 @@ function CardSettingsStory(args: {
   displayOff?: boolean;
   loadErrorKind?: string;
   writeErrorKind?: string;
+  writeErrorRetryAfterSeconds?: number;
 } = {}) {
   const masterEnabled = args.masterEnabled ?? true;
   const [values, setValues] = useState<Record<string, boolean>>({
@@ -172,6 +176,7 @@ function CardSettingsStory(args: {
         hasData
         loadErrorKind={args.loadErrorKind}
         writeErrorKind={args.writeErrorKind}
+        writeErrorRetryAfterSeconds={args.writeErrorRetryAfterSeconds}
         onToggle={(key, next) => {
           setValues((prev) => ({ ...prev, [key]: next }));
           setOverridden((prev) => ({ ...prev, [key]: true }));
@@ -251,20 +256,6 @@ export const Menu: Story = {
   ),
 };
 
-/** App Bot 等没有 robot 记录的 bot：卡片设置整行不渲染。 */
-export const MenuWithoutCardSettings: Story = {
-  render: () => (
-    <StoryFrame>
-      <BotManageView
-        labels={labels}
-        showCardSettings={false}
-        onOpenMentionFree={() => undefined}
-        onOpenCardSettings={() => undefined}
-      />
-    </StoryFrame>
-  ),
-};
-
 /** 卡片消息设置：正常三行（display 显式覆盖 / interaction 继承全局 / reasoning 继承代码默认）。 */
 export const CardSettings: StoryObj<typeof CardSettingsStory> = {
   render: () => <CardSettingsStory />,
@@ -288,6 +279,13 @@ export const CardSettingsNeedsDisplay: StoryObj<typeof CardSettingsStory> = {
 /** err.server.robot.not_found：该 bot 无 robot 记录（含 App Bot），不给重试。 */
 export const CardSettingsUnsupported: StoryObj<typeof CardSettingsStory> = {
   render: () => <CardSettingsStory loadErrorKind="unsupported" />,
+};
+
+/** 限流：服务端给了 retry_after 时报出具体秒数。桶是进程级共享，文案不归因本页。 */
+export const CardSettingsRateLimited: StoryObj<typeof CardSettingsStory> = {
+  render: () => (
+    <CardSettingsStory writeErrorKind="rateLimited" writeErrorRetryAfterSeconds={7} />
+  ),
 };
 
 /** 服务端错误（真实 500，线路状态码可能是 400）→ 提示重试而不是「参数有误」。 */

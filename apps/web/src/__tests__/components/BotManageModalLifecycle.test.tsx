@@ -1,20 +1,23 @@
 /**
- * BotManageModal 生命周期测试（PR #1282 第二轮 review P2.7）。
+ * BotManageModal 生命周期测试。
  *
  * 单开一个文件而不是塞进 BotManage.test.tsx：这里要 stub 掉 WKModal / RoutePage /
  * i18n 才能挂载真实的 modal，而那个文件刻意只喂纯视图 props，两种 mock 策略混在
  * 一个文件里会互相干扰。
  *
- * 为什么必须挂载真组件：`c1bad240` 改动的三个行为 —— 重开必须重拉（读接口是
- * `no-store`）、翻资料卡不能发请求、卸载时 dispose —— 全在 `componentDidUpdate`
- * 的分支里，纯视图测试和直接驱动 VM 都碰不到。上一轮的 P2.5（不支持的 bot 菜单行
- * 闪现）就是被这个盲区藏住的。
+ * 断言的是「什么时候发请求」这条不变量。它反复过三轮：
+ *   - 起初 L3 进页才拉，L2 零请求；
+ *   - 中间为了判断「这个 bot 支不支持卡片设置」改成 L2 打开就探测一次，于是带出了
+ *     首帧闪现、翻资料卡发请求、以及一个只写不清的模块级判定表；
+ *   - 最后服务端确认 `users/:uid` 的 `bot_creator_uid` 就是精确的能力判据（与属主
+ *     守卫同表、同 `status=1` 谓词），而 BotDetailModal 早就只在 isOwner 时渲染本
+ *     组件 —— 探测整套删掉，回到 L2 零请求。
+ * 所以「打开 Bot 管理不发任何请求」是要钉住的不变量，不是实现细节。
  *
  * stub 说明：
  *   - WKModal → 只在 visible 时渲染 children。真 WKModal 走 semi Modal 的进出场
  *     动画，jsdom 里 `animationend` 不触发，children 永远不卸载，测不出关闭语义。
- *   - RoutePage → 直接调 props.render(假 context)，跳过路由栈（L3 的 push 不在本文件
- *     的关注点内）。
+ *   - RoutePage → 把 push 进来的节点真的渲染出来，否则到不了 L3。
  */
 
 import React from 'react';
@@ -51,8 +54,6 @@ vi.mock('../../../../../packages/dmworkbase/src/Components/WKModal', async () =>
 
 vi.mock('../../../../../packages/dmworkbase/src/Components/RoutePage', async () => {
     const ReactMod = await import('react');
-    // 真 RoutePage 的路由栈不在本文件关注点内，但 push 必须真的渲染出来 ——
-    // 否则到不了 L3，也就测不了「在飞探测期间写入」这个交集。
     const RoutePage = ({ render: renderFn }: any) => {
         const [pushed, setPushed] = ReactMod.useState<React.ReactNode>(null);
         const context = {
@@ -103,6 +104,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     mocks.listGroups.mockResolvedValue({ list: [], next_cursor: null, has_more: false });
     mocks.listSettings.mockResolvedValue(catalogue());
+    mocks.putSettings.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -114,102 +116,109 @@ const flush = (): Promise<void> =>
         setTimeout(resolve, 0);
     });
 
+const open = (robotId = 'bot1'): React.ReactElement => (
+    <BotManageModal robotId={robotId} visible onClose={() => undefined} />
+);
+const closed = (robotId = 'bot1'): React.ReactElement => (
+    <BotManageModal robotId={robotId} visible={false} onClose={() => undefined} />
+);
+
 describe('BotManageModal 生命周期', () => {
-    it('关闭状态下不拉卡片设置', async () => {
-        render(<BotManageModal robotId="bot1" visible={false} onClose={() => undefined} />);
+    it('关闭状态下不发任何请求', async () => {
+        render(closed());
         await flush();
         expect(mocks.listSettings).not.toHaveBeenCalled();
     });
 
-    it('每次打开都重拉一次（读接口 no-store，不能靠 hasData 守卫）', async () => {
-        const { rerender } = render(
-            <BotManageModal robotId="bot1" visible={false} onClose={() => undefined} />,
-        );
+    it('打开 Bot 管理本身不拉卡片设置 —— 入口渲染不依赖任何请求', async () => {
+        const { getByText } = render(open());
         await flush();
+        // 能力判据来自 users/:uid 的 bot_creator_uid（BotDetailModal 的 isOwner
+        // 门控），不需要探测请求。
+        expect(mocks.listSettings).not.toHaveBeenCalled();
+        expect(getByText(CARD_SETTINGS_ROW)).toBeInTheDocument();
+    });
 
-        rerender(<BotManageModal robotId="bot1" visible onClose={() => undefined} />);
+    it('翻资料卡（关闭态切 bot）不发请求', async () => {
+        const { rerender } = render(closed('bot1'));
+        await flush();
+        rerender(closed('bot2'));
+        rerender(closed('bot3'));
+        await flush();
+        expect(mocks.listSettings).not.toHaveBeenCalled();
+    });
+
+    it('进入卡片设置才拉，拉的是当前 bot', async () => {
+        const { getByText, getByTestId } = render(open());
+        await flush();
+        expect(mocks.listSettings).not.toHaveBeenCalled();
+
+        fireEvent.click(getByText(CARD_SETTINGS_ROW));
         await flush();
         expect(mocks.listSettings).toHaveBeenCalledTimes(1);
         expect(mocks.listSettings).toHaveBeenLastCalledWith('bot1');
+        expect(getByTestId('bot-card-settings-list')).toBeInTheDocument();
+    });
 
-        // 关闭再打开：VM 跨开关存活（本组件跟资料卡一起常驻挂载），若用 hasData
-        // 守卫这里一个请求都不会发，等于把 no-store 的响应缓存掉。
-        rerender(<BotManageModal robotId="bot1" visible={false} onClose={() => undefined} />);
+    it('关闭再打开后重新进入会再拉一次，而不是复用 VM 里的旧数据', async () => {
+        const { rerender, getByText } = render(open());
         await flush();
-        rerender(<BotManageModal robotId="bot1" visible onClose={() => undefined} />);
+        fireEvent.click(getByText(CARD_SETTINGS_ROW));
+        await flush();
+        expect(mocks.listSettings).toHaveBeenCalledTimes(1);
+
+        rerender(closed());
+        await flush();
+        rerender(open());
+        await flush();
+        // 关闭时 L3 随 modal 内容一起卸载，但 VM 仍被 modal 持有；再进入必须重拉，
+        // 否则等于把 no-store 的响应缓存到 VM 生命周期。
+        fireEvent.click(getByText(CARD_SETTINGS_ROW));
         await flush();
         expect(mocks.listSettings).toHaveBeenCalledTimes(2);
     });
 
-    it('关闭状态下切 bot 不发请求，下次打开才拉且拉的是新 bot', async () => {
-        const { rerender } = render(
-            <BotManageModal robotId="bot1" visible onClose={() => undefined} />,
-        );
+    it('切 bot 后再进入卡片设置，拉的是新 bot（旧 VM 被丢弃）', async () => {
+        const { rerender, getByText } = render(open('bot1'));
         await flush();
+        fireEvent.click(getByText(CARD_SETTINGS_ROW));
+        await flush();
+        expect(mocks.listSettings).toHaveBeenLastCalledWith('bot1');
+
+        // 真实路径是先关闭再切（L3 随 modal 内容卸载，回到 L2 菜单）。
+        rerender(closed('bot1'));
+        await flush();
+        rerender(closed('bot2'));
+        await flush();
+        // 关闭态切 bot 依然零请求，只是把旧 VM 丢掉。
         expect(mocks.listSettings).toHaveBeenCalledTimes(1);
 
-        rerender(<BotManageModal robotId="bot1" visible={false} onClose={() => undefined} />);
+        rerender(open('bot2'));
         await flush();
-
-        // 翻资料卡（robotId 变、但面板是关的）：一个限流 GET 都不该发。
-        rerender(<BotManageModal robotId="bot2" visible={false} onClose={() => undefined} />);
-        rerender(<BotManageModal robotId="bot3" visible={false} onClose={() => undefined} />);
-        await flush();
-        expect(mocks.listSettings).toHaveBeenCalledTimes(1);
-
-        rerender(<BotManageModal robotId="bot3" visible onClose={() => undefined} />);
-        await flush();
-        expect(mocks.listSettings).toHaveBeenCalledTimes(2);
-        expect(mocks.listSettings).toHaveBeenLastCalledWith('bot3');
-    });
-
-    it('打开状态下切 bot 会重拉新 bot', async () => {
-        const { rerender } = render(
-            <BotManageModal robotId="bot1" visible onClose={() => undefined} />,
-        );
-        await flush();
-        rerender(<BotManageModal robotId="bot2" visible onClose={() => undefined} />);
+        fireEvent.click(getByText(CARD_SETTINGS_ROW));
         await flush();
         expect(mocks.listSettings).toHaveBeenCalledTimes(2);
         expect(mocks.listSettings).toHaveBeenLastCalledWith('bot2');
     });
 
-    it('不支持的 bot 不渲染卡片设置入口，且重开时不会闪现', async () => {
-        mocks.listSettings.mockRejectedValue({
-            code: 'err.server.robot.not_found',
-            status: 404,
-            msg: 'not found',
-        });
-        const { rerender, queryByText } = render(
-            <BotManageModal robotId="appbot1" visible onClose={() => undefined} />,
-        );
+    /**
+     * 交集回归：写入落库会让在飞的读作废（writeSeq 判据），而那个被作废的读**必须
+     * 自己清掉 loading** —— 否则「是否已有在飞请求」这个守卫会把之后每一次进入的
+     * 读取全部吞掉，「每次进入一次新鲜读取」静默失效且没有可见症状。
+     */
+    it('在飞读取期间写入落库后，下一次进入仍然重拉', async () => {
+        const { rerender, getByText, getByTestId } = render(open());
         await flush();
-        expect(queryByText(CARD_SETTINGS_ROW)).toBeNull();
+        fireEvent.click(getByText(CARD_SETTINGS_ROW));
+        await flush();
+        expect(mocks.listSettings).toHaveBeenCalledTimes(1);
 
-        // 重开会再拉一次；loadSettings 若在 await 之前清 loadError，isUnsupported
-        // 会瞬间变 false，这一行就会画出来（还可点）再撤掉。
-        rerender(<BotManageModal robotId="appbot1" visible={false} onClose={() => undefined} />);
+        // 第二次进入：读挂在飞，此时点开关让 PUT 落库。页面因为 VM 已有数据而直接
+        // 渲染行（不是 spinner），所以开关可点。
+        rerender(closed());
         await flush();
-        rerender(<BotManageModal robotId="appbot1" visible onClose={() => undefined} />);
-        expect(queryByText(CARD_SETTINGS_ROW)).toBeNull(); // 同步帧：不能闪现
+        rerender(open());
         await flush();
-        expect(queryByText(CARD_SETTINGS_ROW)).toBeNull();
-    });
-
-    it('能力未知（服务端错误）时保留入口，不藏掉功能', async () => {
-        mocks.listSettings.mockRejectedValue({
-            code: 'err.server.robot.query_failed',
-            status: 500,
-            msg: 'boom',
-        });
-        const { queryByText } = render(
-            <BotManageModal robotId="bot1" visible onClose={() => undefined} />,
-        );
-        await flush();
-        expect(queryByText(CARD_SETTINGS_ROW)).not.toBeNull();
-    });
-
-    it('卸载后不再因 VM 通知而渲染（订阅已解除）', async () => {
         let releaseRead: (value: unknown) => void = () => undefined;
         mocks.listSettings.mockImplementationOnce(
             () =>
@@ -217,87 +226,42 @@ describe('BotManageModal 生命周期', () => {
                     releaseRead = resolve;
                 }),
         );
-        const { unmount } = render(
-            <BotManageModal robotId="bot1" visible onClose={() => undefined} />,
-        );
-        await flush();
-        unmount();
-
-        // 卸载后请求才回来：不能因为 forceUpdate 打到已卸载组件而报错。
-        const warn = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        releaseRead(catalogue());
-        await flush();
-        expect(warn).not.toHaveBeenCalled();
-    });
-
-    /**
-     * 交集回归：写入落库会让在飞的探测读作废（writeSeq 判据），但那个被作废的读
-     * **必须自己清掉 loading** —— 否则 probeCardSettings 的 `!vm.loading` 守卫会
-     * 吞掉之后每一次重开的探测，「每次打开一次新鲜读取」在整个会话里静默失效。
-     *
-     * 上一轮的测试分别覆盖了两半（VM 侧只查行状态不查 loading；这里只查重开重拉
-     * 但没有在飞的写），bug 恰好活在交集里，所以两边全绿还是漏了。
-     */
-    it('在飞探测期间写入落库后，下一次打开仍然重拉', async () => {
-        const { rerender, getByText, getByTestId } = render(
-            <BotManageModal robotId="bot1" visible onClose={() => undefined} />,
-        );
-        await flush();
-        expect(mocks.listSettings).toHaveBeenCalledTimes(1);
-
-        // 关闭再打开，第二次探测挂在飞。
-        rerender(<BotManageModal robotId="bot1" visible={false} onClose={() => undefined} />);
-        await flush();
-        let releaseProbe: (value: unknown) => void = () => undefined;
-        mocks.listSettings.mockImplementationOnce(
-            () =>
-                new Promise((resolve) => {
-                    releaseProbe = resolve;
-                }),
-        );
-        rerender(<BotManageModal robotId="bot1" visible onClose={() => undefined} />);
-        await flush();
-        expect(mocks.listSettings).toHaveBeenCalledTimes(2);
-
-        // 进 L3 并点开关（hasData 已为真，所以直接渲染行而不是 spinner），PUT 落库。
-        mocks.putSettings.mockResolvedValue(undefined);
         fireEvent.click(getByText(CARD_SETTINGS_ROW));
+        await flush();
         fireEvent.click(getByTestId('bot-card-switch-bot.display_enabled'));
         await flush();
         expect(mocks.putSettings).toHaveBeenCalledTimes(1);
 
-        // 慢的探测此刻才回来，被 writeSeq 判掉。
-        releaseProbe(catalogue());
+        releaseRead(catalogue()); // 落地时已被 writeSeq 判掉
         await flush();
 
-        // 再关再开：必须仍然发出第三个 GET。
-        rerender(<BotManageModal robotId="bot1" visible={false} onClose={() => undefined} />);
+        // 第三次进入必须仍然发出请求。
+        rerender(closed());
         await flush();
-        rerender(<BotManageModal robotId="bot1" visible onClose={() => undefined} />);
+        rerender(open());
+        await flush();
+        fireEvent.click(getByText(CARD_SETTINGS_ROW));
         await flush();
         expect(mocks.listSettings).toHaveBeenCalledTimes(3);
     });
 
-    it('同一个不支持的 bot 第二次打开时入口不再闪现', async () => {
-        mocks.listSettings.mockRejectedValue({
-            code: 'err.server.robot.not_found',
-            status: 404,
-            msg: 'not found',
-        });
-        const { queryByText, unmount } = render(
-            <BotManageModal robotId="appbot2" visible onClose={() => undefined} />,
+    it('卸载后请求才回来，不因通知已卸载组件而报错', async () => {
+        let releaseRead: (value: unknown) => void = () => undefined;
+        mocks.listSettings.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    releaseRead = resolve;
+                }),
         );
+        const { getByText, unmount } = render(open());
         await flush();
-        expect(queryByText(CARD_SETTINGS_ROW)).toBeNull();
-
-        // 整个组件卸载（切资料卡时的真实路径）→ VM 连判定一起被丢掉。
+        fireEvent.click(getByText(CARD_SETTINGS_ROW));
+        await flush();
         unmount();
-        const second = render(
-            <BotManageModal robotId="appbot2" visible onClose={() => undefined} />,
-        );
-        // 判定记在模块作用域，所以首帧就不该画出这一行。
-        expect(second.queryByText(CARD_SETTINGS_ROW)).toBeNull();
+
+        const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        releaseRead(catalogue());
         await flush();
-        expect(second.queryByText(CARD_SETTINGS_ROW)).toBeNull();
+        expect(error).not.toHaveBeenCalled();
     });
 });

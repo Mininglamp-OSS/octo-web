@@ -98,6 +98,19 @@ function asBool(value: unknown): boolean | undefined {
     return typeof value === "boolean" ? value : undefined
 }
 
+/** 取正整数秒（`retry_after`）。非法 / 缺失一律返回 undefined，由文案退化处理。 */
+function asPositiveInt(value: unknown): number | undefined {
+    const n =
+        typeof value === "number"
+            ? value
+            : typeof value === "string"
+              ? Number(value)
+              : NaN
+    if (!Number.isFinite(n)) return undefined
+    const rounded = Math.ceil(n)
+    return rounded > 0 ? rounded : undefined
+}
+
 /**
  * 把响应 list 收成 key → item 的索引，顺带丢掉形状不合法的元素。
  * 未知 key 不在这里过滤（索引全收），由 buildRows 按白名单取用。
@@ -252,6 +265,11 @@ export interface BotSettingError {
     code?: string
     /** request_invalid 时服务端给的出错字段（items / key / value），仅用于日志。 */
     field?: string
+    /**
+     * 429 时服务端给的可重试等待秒数（`error.details.retry_after`，与 `Retry-After`
+     * 响应头同值，整数、最小 1）。只在 kind === "rateLimited" 时有值。
+     */
+    retryAfterSeconds?: number
 }
 
 const RETRYABLE_CODES = new Set([
@@ -294,7 +312,12 @@ export function classifyBotSettingError(err: unknown): BotSettingError {
         return { kind: "retryable", message, code }
     }
     if (status === 429) {
-        return { kind: "rateLimited", message, code }
+        return {
+            kind: "rateLimited",
+            message,
+            code,
+            retryAfterSeconds: asPositiveInt(details?.retry_after),
+        }
     }
     // 无 code 的 404 = 路由不存在（后端未部署）。带 code 的 404 已在上面被
     // not_found 分支接掉，两者不能混：前者会上线，后者（App Bot）不会。
