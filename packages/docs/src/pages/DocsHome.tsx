@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { AiBadge, titleContextStore } from '@octo/base'
-import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t, useI18n, fetchSpaceBotNames } from '../octoweb/index.ts'
+import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t, useI18n, fetchSpaceBotNames, canForwardToChat, getCurrentUid} from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
@@ -9,6 +9,8 @@ import { HtmlDocView } from '../html/HtmlDocView.tsx'
 import { PptDocView } from '../ppt/PptDocView.tsx'
 import { resolveSameOriginPath } from './StandaloneDocPage.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
+import { useDocDelete } from '../editor/useDocDelete.ts'
+import { startDocForward } from '../forward/startDocForward.ts'
 import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
 import { CreatePptModal } from '../ppt/CreatePptModal.tsx'
 import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
@@ -557,8 +559,32 @@ function DocsList({
     }
   })
   // Right-click context menu anchor (like 企业微信's list menu): { docId, role, x, y } | null.
-  const [menu, setMenu] = useState<{ docId: string; role: Role; x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{
+    docId: string
+    role: Role
+    title?: string
+    ownerId?: string
+    /**
+     * Resource kind for the forwarded DocumentShareCard, which keys its icon and preview off it.
+     * Narrowed to the three values `StartDocForwardInput.kind` accepts: the row also knows `html` /
+     * `html_ppt`, and those fall back to `'doc'` — the same value startDocForward would have
+     * defaulted to, so nothing regresses for them.
+     */
+    kind?: 'doc' | 'board' | 'sheet'
+    x: number
+    y: number
+  } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // The context menu closes the moment an item is clicked, so `menu.docId` is gone by the time the
+  // confirm dialog resolves — the delete target is held separately. `useDocDelete` is the SAME hook
+  // the editor shells use, so a list delete and an in-editor delete hit one code path and one dialog.
+  const [deleteTarget, setDeleteTarget] = useState<{ docId: string; title?: string } | null>(null)
+  const del = useDocDelete(deleteTarget?.docId ?? '', (docId) => {
+    setDeleteTarget(null)
+    // Same contract the shells rely on: drop the doc from view and refresh both tabs.
+    if (selectedDocId === docId) onSelect('')
+    reloadViews()
+  })
   // Transient create/import error (distinct from a per-view list-load error). Shown as a state line
   // above the list; cleared on the next successful create/import.
   const [createError, setCreateError] = useState<string | null>(null)
@@ -832,7 +858,18 @@ function DocsList({
           className="octo-docs-list-row"
           onContextMenu={(e) => {
             e.preventDefault()
-            setMenu({ docId: d.docId, role: d.role, x: e.clientX, y: e.clientY })
+            setMenu({
+              docId: d.docId,
+              role: d.role,
+              title: d.title,
+              ownerId: d.ownerId,
+              // Carry the row's own kind: without it startDocForward defaults to 'doc' and a
+              // forwarded sheet/board arrives as a plain-doc share card (the shells pass this
+              // explicitly — SheetView.tsx:672 / BoardShell.tsx:963).
+              kind: iconKind === 'board' ? 'board' : iconKind === 'sheet' ? 'sheet' : 'doc',
+              x: e.clientX,
+              y: e.clientY,
+            })
           }}
           onClick={() => onSelect(d.docId, knownKind, d.octoDocSlug, d.title)}
           aria-current={active ? 'true' : undefined}
@@ -1283,9 +1320,73 @@ function DocsList({
                 {t('docs.sheet.copyLink')}
               </div>
             )}
+            {/* 转发到聊天 — the same entry the document header carries, driven by the same
+                `startDocForward` bridge (host conversation-select + 先授权后发). Gated on
+                canForwardToChat() exactly as the shells are, so it hides where the host surface is
+                absent instead of becoming a dead row. */}
+            {canForwardToChat() && (
+              <div
+                role="menuitem"
+                style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 6 }}
+                onClick={() => {
+                  startDocForward({
+                    docId: menu.docId,
+                    // startDocForward already falls back to docs.state.untitled for a blank title
+                    // (startDocForward.ts:54), so pass it through rather than re-implementing that.
+                    title: menu.title ?? '',
+                    role: menu.role,
+                    currentUid: getCurrentUid(),
+                    ownerId: menu.ownerId,
+                    space,
+                    folder,
+                    kind: menu.kind,
+                  })
+                  setMenu(null)
+                }}
+              >
+                {t('docs.forward.entry')}
+              </div>
+            )}
+            {/* 删除文件 — owner/admin only, matching the ≡ menu's danger row. Reuses useDocDelete,
+                so the list delete pops the same centered ConfirmModal as the editor's. */}
+            {canManage(menu.role) && (
+              <div
+                role="menuitem"
+                // Danger colour from the shared semantic token (semantic.css:117) rather than a
+                // literal. Note .octo-confirm-go-danger still hardcodes #eb5757 — that predates this
+                // change and is left alone; this row just does not add another literal.
+                style={{
+                  padding: '8px 12px',
+                  cursor: 'pointer',
+                  borderRadius: 6,
+                  color: 'var(--wk-badge-danger-text, #f54a45)',
+                }}
+                onClick={() => {
+                  setDeleteTarget({ docId: menu.docId, title: menu.title })
+                  del.requestDelete()
+                  setMenu(null)
+                }}
+              >
+                {t('docs.sheet.deleteFile')}
+              </div>
+            )}
           </div>
         </>
       )}
+      {/* Delete confirm — the shared centered modal, identical to the dialog the editor shells pop,
+          so a delete started from the list looks and behaves the same as one started in the doc. */}
+      <ConfirmModal
+        open={del.confirming}
+        title={t('docs.sheet.deleteConfirmTitle')}
+        message={t('docs.sheet.deleteConfirm')}
+        confirmLabel={t('docs.doc.delete')}
+        cancelLabel={t('docs.doc.deleteCancel')}
+        danger
+        busy={del.deleting}
+        error={del.error}
+        onConfirm={() => void del.confirm()}
+        onCancel={del.cancel}
+      />
       {notice && (
         <div
           style={{
