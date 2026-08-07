@@ -1071,6 +1071,7 @@
   "message.screenshot.text": "{{name}} took a screenshot in the chat",
   "message.screenshot.you": "You",
   "message.summaryNotify.text": "{{name}} summarized the chat",
+  "message.summaryNotify.action": "summarized the chat",
   "message.summaryNotify.you": "You",
   "message.summaryNotify.unknown": "Someone",
   "message.signal.unavailable": "This message uses end-to-end encryption and cannot be decrypted on web. View it on mobile.",

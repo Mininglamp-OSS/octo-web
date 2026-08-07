@@ -1071,6 +1071,7 @@
   "message.screenshot.text": "{{name}}在聊天中截屏了",
   "message.screenshot.you": "你",
   "message.summaryNotify.text": "{{name}}总结了群聊内容",
+  "message.summaryNotify.action": "总结了群聊内容",
   "message.summaryNotify.you": "你",
   "message.summaryNotify.unknown": "某用户",
   "message.signal.unavailable": "此消息已采用端对端加密，web端无法解密，请在手机端查看",

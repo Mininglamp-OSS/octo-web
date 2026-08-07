@@ -292,10 +292,27 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private listPageActive = false;
     private lastEventTime = 0;
     private isPersonalPolling = false;
-    // #289 群内总结 tip · in-flight guard: 同一实例的两条触发路径(status 事件 vs
-    // fallback poll)可能几乎同时进入 sendGroupSummaryNotify · 用一个 in-memory Set
-    // 保证同一 (task_id, source_id) 只发一次。故意不带 localStorage / Web Locks —
-    // 参考截屏 tip 的姿势 · multi-tab 罕见重复是 accepted trade-off。
+    // #289 群内总结 tip · same-tab "already sent" marker.
+    //
+    // Semantics: a `(task_id, source_id)` key is inserted before the send and
+    // ONLY removed on failure. A successful send keeps the key for the whole
+    // component lifetime, so the two trigger paths (status-event handler at
+    // handleStatusChangeEvent + fallback poll at doFallbackPollOnce) can never
+    // both post to the same group even if they both observe the
+    // "PROCESSING → COMPLETED" edge on independent detail-fetches.
+    //
+    // Round-7 correction: earlier revisions deleted the key in `finally`, which
+    // only coalesced overlap — once a send resolved, a later trigger reading a
+    // stale `lastKnownStatus` would send again. That was raised by
+    // @Jerry-Xin / @lml2468 / @yujiawei on `e48611fa`. Same-tab dedup is the
+    // property the tip's doc block promises; multi-tab remains an explicitly
+    // accepted trade-off (parity with the screenshot tip, no persistent
+    // localStorage per @yujiawei round-6 "retire the persistent dedup").
+    //
+    // On failure the key is removed so the next trigger (regenerate,
+    // fallback-poll after transient IM error) can retry. The tip is
+    // best-effort by design; a lost transient error must not become a
+    // permanent silent hole for THIS run.
     private summaryNotifyInFlight = new Set<string>();
     // Blocking 5（跨 task 串台 / async race）：单调递增的「调度加载序列号」。
     // 每次发起一轮 detail+schedule 加载（loadDetail / 状态切换补拉 / 重新加载）都 bump，
@@ -1136,10 +1153,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * 极简 dedup:
      *   1. Creator gate — 只有发起人自己 send · 非 creator 视角不触发
      *   2. Non-COMPLETED skip
-     *   3. Group-source filter — 仅 SourceType=GROUP_CHAT
-     *   4. summaryNotifyInFlight 内存单飞 — 防同一实例的两条触发路径(status 事件 +
-     *      fallback poll)几乎同时进入这里 · 保证同一 (task_id, source_id) 只发一次
-     *   5. Disbanded group skip — 沿用 isConversationDisbanded 既有不变量
+     *   3. **BY_GROUP-only** — BY_PERSON 是按人产出个人总结,没有群级"总结"可宣告,
+     *      对群发 tip 是 scope violation (#1283 round-7 P1)。positive check
+     *      SummaryMode.BY_GROUP,future 新模式默认不宣告。
+     *   4. Group-source filter — 仅 SourceType=GROUP_CHAT
+     *   5. summaryNotifyInFlight "already sent" marker — 成功后保留 key
+     *      到 component 生命周期,只在 catch 里 delete。防同一实例的两条触发路径
+     *      (status 事件 + fallback poll)先后进入这里各自发一遍
+     *      (round-7 correction · 见字段声明处的详解)。
+     *   6. Disbanded group skip — 沿用 isConversationDisbanded 既有不变量
      *
      * 故意不带 localStorage / Web Locks / completion-run key(见 PR #1234 round-6
      * @yujiawei 的 "retire the persistent dedup" 建议):multi-tab 场景下每个 tab
@@ -1147,17 +1169,25 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * best-effort 姿势。exactly-once 需要 server 侧兜底 · 那是后续独立追踪的架构变更,
      * 不在本 PR 范围。
      *
-     * Per-group failure isolation: 单群 send 抛错只 console.warn · 不影响后续群。
+     * Regenerate 语义: **每次 PROCESSING → COMPLETED transition 都发一次**,与截屏 tip
+     * 每次截屏都发对齐 — regenerate 是 user 显式意图 (点了"重新生成" 按钮),等同于
+     * 一次新的完成事件。key 用 (task_id, source_id) 而不是 (result_id, source_id) 就
+     * 是为了让 regenerate 后再触发到达时 inFlight 已不含该 key,继续 send。
+     *
+     * Per-group failure isolation: 单群 send 抛错只 console.warn + 从 inFlight 删除
+     * (下次 trigger 可重试) · 不影响后续群。
      */
     private async sendGroupSummaryNotify(detail: SummaryDetail) {
         const myUid = WKApp.loginInfo.uid;
-        if (!shouldEmitGroupSummaryNotify(detail, myUid, TaskStatus.COMPLETED)) return;
+        if (!shouldEmitGroupSummaryNotify(detail, myUid, TaskStatus.COMPLETED, SummaryMode.BY_GROUP)) return;
 
         const groupSourceIds = collectGroupSourceIds(detail.sources);
         if (groupSourceIds.length === 0) return;
 
         for (const sourceId of groupSourceIds) {
             const inFlightKey = `${detail.task_id}:${sourceId}`;
+            // Component-lifetime "already sent" marker: presence means EITHER
+            // "send in flight" OR "already succeeded". Either way we skip.
             if (this.summaryNotifyInFlight.has(inFlightKey)) continue;
 
             const ch = new Channel(sourceId, ChannelTypeGroup);
@@ -1169,12 +1199,27 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 const msg = new SummaryNotifyContent();
                 msg.fromUID = myUid;
                 msg.fromName = WKApp.loginInfo.selfDisplayName();
+                // Deliberately calls chatManager.send directly rather than
+                // ConversationVM.sendMessage: for this system tip we do NOT want
+                // the wrapper's space_id injection (group destination, so it
+                // no-ops anyway), receipt-request (a system tip shouldn't
+                // request read receipts), or external-source-badge fallback
+                // (this is not an external forward). If future changes to the
+                // shared wrapper add machinery that IS relevant here (e.g.
+                // outbound rate-limit / auditing), audit this call site.
                 await WKSDK.shared().chatManager.send(msg, ch);
+                // Success: intentionally do NOT delete the in-flight key.
+                // Presence-means-either-in-flight-or-sent is the property
+                // that makes the two trigger paths (status event + fallback
+                // poll) safe to co-exist for the component's lifetime.
             } catch (error) {
                 // 单群失败不影响其他群 · 但保留 channel + error 的可观测性
                 // (调试线上问题时能立刻定位是哪个 source 出问题)。
                 console.warn("[summaryNotify] send failed", { channelId: sourceId, error });
-            } finally {
+                // Delete on failure so the next trigger (regenerate,
+                // fallback-poll after transient IM error) can retry this
+                // source. Best-effort tip must not become a permanent silent
+                // hole because of one transient IM 5xx.
                 this.summaryNotifyInFlight.delete(inFlightKey);
             }
         }

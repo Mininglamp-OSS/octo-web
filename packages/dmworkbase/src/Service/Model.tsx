@@ -49,9 +49,17 @@ export class ConversationWrap {
     public get channelInfo() {
         return this.conversation.channelInfo
     }
-    // System/event message content types that should not contribute to unread count
+    // System/event message content types that should not contribute to unread count.
+    // Types 20 (screenshot) and 21 (summaryNotify) sit OUTSIDE the SDK's isSystemMessage()
+    // 1000-2000 range and are structurally passive grey tips — their presence in a
+    // conversation should never light up an unread badge. #1283 round-7 P1 raised
+    // independently by @Jerry-Xin / @lml2468 / @yujiawei; the type-20 addition is
+    // @Jerry-Xin's incidental note about parity, added here so screenshot tips get
+    // the same passive treatment they have always deserved.
     private static systemContentTypes: Set<number> = new Set([
-        MessageContentTypeConst.addMembers,       // 1002 添加群成员
+        MessageContentTypeConst.screenshot,        // 20   截屏通知 · 已 shipped passive tip
+        MessageContentTypeConst.summaryNotify,     // 21   总结完成通知 · #289 passive tip
+        MessageContentTypeConst.addMembers,        // 1002 添加群成员
         MessageContentTypeConst.removeMembers,     // 1003 删除群成员
         MessageContentTypeConst.channelUpdate,     // 1005 频道更新
         MessageContentTypeConst.newGroupOwner,     // 1008 新的管理员

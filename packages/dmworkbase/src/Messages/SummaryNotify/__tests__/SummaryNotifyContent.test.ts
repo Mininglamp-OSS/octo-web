@@ -41,11 +41,20 @@ vi.mock("../../../i18n", () => ({
   t: (key: string, opts?: any) => {
     if (key === "base.message.summaryNotify.you") return "你";
     if (key === "base.message.summaryNotify.unknown") return "某用户";
+    if (key === "base.message.summaryNotify.action") return "总结了群聊内容";
     if (key === "base.message.summaryNotify.text") {
       return `${opts?.values?.name}总结了群聊内容`;
     }
     return key;
   },
+}));
+
+// Track fetchImChannelInfo calls so tests can assert the round-7 cache-miss
+// kick behaviour (SummaryNotify renderer P2: yujiawei).
+const fetchImChannelInfoMock = vi.hoisted(() => vi.fn());
+vi.mock("../../../im-runtime/channelRuntime", () => ({
+  getImChannelInfo: (sdk: any, channel: any) => sdk.channelManager.getChannelInfo(channel),
+  fetchImChannelInfo: fetchImChannelInfoMock,
 }));
 
 import { MessageContentTypeConst } from "../../../Service/Const";
@@ -88,7 +97,7 @@ describe("SummaryNotifyContent", () => {
     content.fromUID = "me";
     content.fromName = "Me";
     expect(content.tipForSender("me")).toBe("你总结了群聊内容");
-    expect(content.conversationDigest).toBe("某用户总结了群聊内容");
+    expect(content.conversationDigest).toBe("总结了群聊内容");
   });
 
   it("does not trust payload fromName when the remote sender profile is not cached", () => {
@@ -149,7 +158,45 @@ describe("SummaryNotifyContent", () => {
     const content = new SummaryNotifyContent();
     content.fromUID = "victim";
     content.fromName = "Victim";
-    expect(content.conversationDigest).toBe("某用户总结了群聊内容");
+    expect(content.conversationDigest).toBe("总结了群聊内容");
     expect(channelManager.getChannelInfo).not.toHaveBeenCalled();
+  });
+
+  // #1283 round-7 P2 (yujiawei): "cache miss shows 某用户 permanently".
+  // The fix is: on cache miss, kick `fetchImChannelInfo` so the profile is
+  // fetched — a later render (triggered by the SDK's channel-info listener
+  // when the fetch resolves) sees the populated cache and renders the real
+  // name. The current render still falls back to the neutral label so this
+  // paint is not blocked on I/O.
+  it("kicks fetchImChannelInfo on cache miss for a remote sender", () => {
+    channelManager.getChannelInfo.mockReturnValue(undefined);
+    const content = new SummaryNotifyContent();
+    content.fromUID = "alice";
+    content.fromName = "Ignored payload name";
+    // First render: cache miss → neutral label AND a fetch kicked.
+    expect(content.tipForSender("alice")).toBe("某用户总结了群聊内容");
+    expect(fetchImChannelInfoMock).toHaveBeenCalledTimes(1);
+    expect(fetchImChannelInfoMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ channelID: "alice" }),
+    );
+  });
+
+  it("does not kick fetchImChannelInfo when the sender is the current user", () => {
+    const content = new SummaryNotifyContent();
+    content.fromUID = "me";
+    content.fromName = "Me";
+    expect(content.tipForSender("me")).toBe("你总结了群聊内容");
+    expect(fetchImChannelInfoMock).not.toHaveBeenCalled();
+  });
+
+  it("does not kick fetchImChannelInfo when the profile is already cached", () => {
+    channelManager.getChannelInfo.mockReturnValue({
+      orgData: { displayName: "Alice" },
+    });
+    const content = new SummaryNotifyContent();
+    content.fromUID = "alice";
+    expect(content.tipForSender("alice")).toBe("Alice总结了群聊内容");
+    expect(fetchImChannelInfoMock).not.toHaveBeenCalled();
   });
 });

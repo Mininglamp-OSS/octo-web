@@ -43,16 +43,29 @@ const GROUP_CHAT_SOURCE_TYPE = 1 as const;
  *     invariant that the actor is always the authenticated sender);
  *   - the task is in a settled COMPLETED state (FAILED / CANCELLED / mid-flight
  *     never announce);
+ *   - the task is BY_GROUP mode (positive check — a future third mode will
+ *     default to *not* announcing, which is the safer default for a passive
+ *     public tip. BY_PERSON summaries are per-participant and never produce
+ *     the group-level "group summary" this tip announces, so announcing one
+ *     into the group would be a scope violation. #1283 round-7 P1 raised
+ *     independently by @Jerry-Xin / @lml2468 / @yujiawei.);
  *   - myUid is non-empty (logged-out fallback would render as "someone…" and
  *     defeat the point of the tip);
  *   - creator_id is non-empty (defensive: a task with no creator cannot have
  *     an authenticated announcement path).
  */
-export function shouldEmitGroupSummaryNotify(detail: Pick<SummaryDetail, 'status' | 'creator_id'>, myUid: string, completedStatus: number): boolean {
+export function shouldEmitGroupSummaryNotify(
+    detail: Pick<SummaryDetail, 'status' | 'creator_id' | 'summary_mode'>,
+    myUid: string,
+    completedStatus: number,
+    byGroupMode: number,
+): boolean {
     if (!myUid) return false;
     if (!detail.creator_id) return false;
     if (detail.creator_id !== myUid) return false;
     if (detail.status !== completedStatus) return false;
+    // Positive BY_GROUP gate — a future third mode defaults to no announcement.
+    if (detail.summary_mode !== byGroupMode) return false;
     return true;
 }
 

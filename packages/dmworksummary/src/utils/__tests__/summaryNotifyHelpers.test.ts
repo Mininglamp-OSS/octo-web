@@ -3,51 +3,71 @@ import { shouldEmitGroupSummaryNotify, collectGroupSourceIds } from '../summaryN
 import type { SummaryDetail } from '../../types/summary';
 
 // Constants mirror packages/dmworksummary/src/types/summary.ts (TaskStatus /
-// SourceType) but kept literal here so the test does not drag the enum module
-// or its imports into the pure-helper unit scope.
+// SourceType / SummaryMode) but kept literal here so the test does not drag
+// the enum module or its imports into the pure-helper unit scope.
 const COMPLETED = 3;
 const PROCESSING = 2;
 const FAILED = 4;
 const CANCELLED = 5;
+// SourceType canonical layout: GROUP_CHAT = 1, THREAD = 2, DIRECT_MESSAGE = 3
+// (fix for round-7 nit — three reviewers spotted the earlier swap).
 const GROUP = 1;
-const DM = 2;
-const THREAD = 3;
+const THREAD = 2;
+const DM = 3;
+// SummaryMode: BY_GROUP = 1, BY_PERSON = 2.
+const BY_GROUP = 1;
+const BY_PERSON = 2;
 
-function minimalDetail(overrides: Partial<Pick<SummaryDetail, 'status' | 'creator_id'>> = {}) {
+function minimalDetail(overrides: Partial<Pick<SummaryDetail, 'status' | 'creator_id' | 'summary_mode'>> = {}) {
     return {
         status: COMPLETED,
         creator_id: 'creator-uid',
+        summary_mode: BY_GROUP,
         ...overrides,
-    } as unknown as Pick<SummaryDetail, 'status' | 'creator_id'>;
+    } as unknown as Pick<SummaryDetail, 'status' | 'creator_id' | 'summary_mode'>;
 }
 
 describe('shouldEmitGroupSummaryNotify', () => {
-    it('returns true when creator viewing own COMPLETED task', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail(), 'creator-uid', COMPLETED)).toBe(true);
+    it('returns true when creator viewing own COMPLETED BY_GROUP task', () => {
+        expect(shouldEmitGroupSummaryNotify(minimalDetail(), 'creator-uid', COMPLETED, BY_GROUP)).toBe(true);
     });
 
     it('returns false when viewer is not the creator', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail(), 'other-uid', COMPLETED)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail(), 'other-uid', COMPLETED, BY_GROUP)).toBe(false);
     });
 
     it('returns false when task is not COMPLETED (PROCESSING)', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: PROCESSING }), 'creator-uid', COMPLETED)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: PROCESSING as any }), 'creator-uid', COMPLETED, BY_GROUP)).toBe(false);
     });
 
     it('returns false when task is FAILED (never announce failure to group)', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: FAILED }), 'creator-uid', COMPLETED)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: FAILED as any }), 'creator-uid', COMPLETED, BY_GROUP)).toBe(false);
     });
 
     it('returns false when task is CANCELLED', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: CANCELLED }), 'creator-uid', COMPLETED)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: CANCELLED as any }), 'creator-uid', COMPLETED, BY_GROUP)).toBe(false);
     });
 
     it('returns false when logged-out (empty myUid)', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail(), '', COMPLETED)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail(), '', COMPLETED, BY_GROUP)).toBe(false);
     });
 
     it('returns false when task has no creator_id (defensive)', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail({ creator_id: '' }), 'anyone', COMPLETED)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ creator_id: '' }), 'anyone', COMPLETED, BY_GROUP)).toBe(false);
+    });
+
+    // #1283 round-7 P1 (Jerry-Xin / lml2468 / yujiawei): BY_PERSON summaries
+    // produce per-participant DM content, not a group summary — announcing
+    // "总结了群聊内容" into every group source is a scope violation.
+    it('returns false for BY_PERSON mode (positive BY_GROUP gate)', () => {
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ summary_mode: BY_PERSON as any }), 'creator-uid', COMPLETED, BY_GROUP)).toBe(false);
+    });
+
+    // Positive check guards a hypothetical future mode value (e.g. 3) from
+    // silently emitting a group announcement it was never designed for.
+    it('returns false for an unknown future summary_mode value', () => {
+        const futureMode = 99;
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ summary_mode: futureMode as any }), 'creator-uid', COMPLETED, BY_GROUP)).toBe(false);
     });
 });
 
