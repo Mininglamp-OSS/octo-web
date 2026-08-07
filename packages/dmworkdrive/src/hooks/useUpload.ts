@@ -351,22 +351,18 @@ export function useUpload(onUploaded: () => void): UseUpload {
   // Schedule an upload id: run immediately if under the concurrency cap,
   // otherwise queue it. On completion, drain the queue.
   //
-  // Two-layer dedup:
-  //   1. Here (scheduleUpload): if the id is already queued OR already
-  //      running, skip. Rapid retry-click on a saturated queue would
-  //      otherwise push the same id twice; while runItem's own re-entry
-  //      guard (line ~268) picks up any competing start(), leaving a
-  //      duplicate in the queue wastes a slot and burns one microtask
-  //      per drain firing prepareUpload only to bail. Direct check.
-  //   2. Inside runItem (line ~268): synchronous `runs.current.has(id)`
-  //      guard as the final safety net for any race we miss here.
-  //
-  // Both layers are needed; keeping the includes-check reduces observable
-  // waste (one prepareUpload dispatched-then-bailed vs zero).
+  // Dedup: only skip if a run is already live for this id. In the current
+  // callers no path enqueues the same id twice — addFiles hands out
+  // fresh ids, retryRun's own retriesInFlight guard blocks concurrent
+  // retries before they can reach here. If a future path (a fresh
+  // 'retry-all' button, background auto-retry, etc.) can double-schedule
+  // a given id, that path is responsible for its own dedup — this
+  // scheduler is not the boundary that guarantees it.
   const scheduleUpload = useCallback(
     (id: string) => {
-      // If this id is either already running or already queued, ignore.
-      if (uploadQueue.current.includes(id)) return;
+      // If a run is already live for this id, skip (concurrent double-
+      // start). runItem's own re-entry guard at line ~268 is the ultimate
+      // safety net for a race we miss here.
       if (runs.current.has(id)) return;
       const start = (nextId: string) => {
         uploadActiveCount.current += 1;
