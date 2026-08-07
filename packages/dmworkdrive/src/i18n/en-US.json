@@ -109,6 +109,10 @@
     "resultSummarySuccess": "{{count}} succeeded",
     "resultSummaryFailed": "{{count}} failed",
     "resultOk": "OK",
+    "downloadBlockedTitle": "Cannot download",
+    "downloadBlockedFolder": "Selection contains {{count}} folder(s). Folder download isn't supported yet — uncheck folders and try again.",
+    "downloadBlockedDoc": "Selection contains {{count}} online doc(s). Direct download isn't supported yet — uncheck online docs and try again.",
+    "downloadBlockedMixed": "Selection contains {{folders}} folder(s) and {{docs}} online doc(s). Direct download isn't supported yet — uncheck them and try again.",
     "actionDelete": "delete",
     "actionMove": "move",
     "actionCopy": "copy",
@@ -140,6 +144,7 @@
     "expiresAt": "Expires",
     "copyLink": "Copy link",
     "copied": "Link copied",
+    "copyFailed": "Copy failed — please select the link and copy manually",
     "revoke": "Revoke"
   },
   "invite": {
@@ -159,6 +164,7 @@
     "none": "No invite links yet",
     "copyLink": "Copy link",
     "copied": "Link copied",
+    "copyFailed": "Copy failed — please select the link and copy manually",
     "revoke": "Revoke",
     "byOrgHint": "Pick members from the organization to add them directly (no approval).",
     "pickMembers": "Pick members"

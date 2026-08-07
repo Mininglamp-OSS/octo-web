@@ -344,8 +344,8 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           const { succeeded, failed } = await runBatch(
             selectedEntries,
             async (entry) => {
-              const ok = await ops.deleteEntry(entry);
-              if (!ok) throw new Error(t('drive.toast.opFailed'));
+              // silent: batch summary handles user-facing feedback in one Modal.
+              await ops.deleteEntry(entry, { silent: true });
             },
             {
               // Per-row transition on each item as it settles: successful
@@ -394,13 +394,33 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
 
   const handleBulkDownload = useCallback(async () => {
     if (selectedEntries.length === 0) return;
-    // Backend has no zip endpoint; loop signed-URL downloads. Skip folders —
-    // getDownloadUrl only serves blobs.
-    const blobs = selectedEntries.filter((e) => e.type === 'blob');
-    if (blobs.length === 0) {
-      Toast.info(t('drive.bulk.download'));
+    // Backend has no zip endpoint; loop signed-URL downloads. Folders and
+    // Type-1 docs are ineligible (getDownloadUrl only serves blobs). Per
+    // product decision the entire batch is REJECTED whenever any un-
+    // downloadable item is included — no silent "we skipped 2 folders and
+    // downloaded the rest" behaviour. User must uncheck the folders/docs
+    // first and retry, which is unambiguous.
+    const folderCount = selectedEntries.filter((e) => e.type === 'folder').length;
+    const docCount = selectedEntries.filter((e) => e.type === 'doc').length;
+
+    if (folderCount > 0 || docCount > 0) {
+      Modal.warning({
+        title: t('drive.bulk.downloadBlockedTitle'),
+        content:
+          folderCount > 0 && docCount > 0
+            ? t('drive.bulk.downloadBlockedMixed', {
+                values: { folders: String(folderCount), docs: String(docCount) },
+              })
+            : folderCount > 0
+              ? t('drive.bulk.downloadBlockedFolder', { values: { count: String(folderCount) } })
+              : t('drive.bulk.downloadBlockedDoc', { values: { count: String(docCount) } }),
+        okText: t('drive.bulk.resultOk'),
+        hasCancel: false,
+      });
       return;
     }
+
+    const blobs = selectedEntries; // guaranteed all-blob past the gate above.
     setBulkBusy(true);
     try {
       const { succeeded, failed } = await runBatch(blobs, async (entry) => {
@@ -627,11 +647,12 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           // modal closes on partial success (users can inspect the failed-
           // list in the reportBatchResult modal).
           const { succeeded, failed } = await runBatch(targets, async (entry) => {
-            const ok =
-              mode === 'move'
-                ? await ops.moveEntry(entry, targetParentId)
-                : await ops.copyEntry(entry, targetParentId, entry.name);
-            if (!ok) throw new Error(t('drive.toast.opFailed'));
+            // silent: aggregated batch result rendered in one Modal below.
+            if (mode === 'move') {
+              await ops.moveEntry(entry, targetParentId, { silent: true });
+            } else {
+              await ops.copyEntry(entry, targetParentId, entry.name, { silent: true });
+            }
           });
           if (succeeded.length > 0) {
             reload();

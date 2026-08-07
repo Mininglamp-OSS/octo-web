@@ -56,6 +56,9 @@ beforeEach(() => {
     revoke,
   });
   Object.assign(navigator, { clipboard: { writeText } });
+  // writeToClipboard prefers navigator.clipboard only in a secure context;
+  // jsdom defaults to false, so pin it true to exercise the modern-API path.
+  Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
 });
 
 describe('ShareModal (WeCom one-shot)', () => {
