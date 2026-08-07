@@ -190,6 +190,80 @@ describe('useFileList', () => {
       // Cumulative count === total, so reachedTotal trips — no third fetch.
       expect(result.current.hasMore).toBe(false);
     });
+
+    it('latches loadMoreError on append failure and stops loadMore from re-firing', async () => {
+      // Bot-review Critical: without a latched error, a failed page-N request
+      // would loop forever — IntersectionObserver rebuilds the moment
+      // loadingMore flips false and the still-visible sentinel re-triggers
+      // onLoadMore, hammering the same broken request and spamming toast.
+      //
+      // Contract now:
+      //   1. Page-1 succeeds with hasMore=true (server total > current load).
+      //   2. Page-2 fetch REJECTS -> loadMoreError latches, hasMore stays
+      //      true (retry is still possible), pageIndex stays at 1.
+      //   3. A subsequent loadMore() is a no-op (does NOT hit the network).
+      //   4. Only retryLoadMore() clears the error and re-issues the fetch.
+      const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(i + 1, `n${i}`, 'blob'));
+      const second = Array.from({ length: PAGE_SIZE }, (_, i) => entry(1000 + i, `m${i}`, 'blob'));
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(first, PAGE_SIZE * 3))
+        .mockRejectedValueOnce(new Error('network kaboom'))
+        .mockResolvedValueOnce({
+          entries: second,
+          page: { page_size: PAGE_SIZE, page_index: 2, total: PAGE_SIZE * 3, data: second },
+          filter: { type: 'all', source: 'all' },
+        });
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.hasMore).toBe(true);
+      expect(result.current.loadMoreError).toBeNull();
+
+      // Failing loadMore latches the error.
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(result.current.loadingMore).toBe(false));
+      expect(result.current.loadMoreError).not.toBeNull();
+      // hasMore is intentionally still true so retryLoadMore has something to
+      // pull; the sentinel + observer are gated on !loadMoreError in the
+      // caller (DriveContent), so this doesn't cause a UI loop.
+      expect(result.current.hasMore).toBe(true);
+      expect(result.current.entries).toHaveLength(PAGE_SIZE);
+
+      // Bare loadMore() must NOT retry — the retry path is explicit.
+      const callsAfterFail = vi.mocked(api.browse).mock.calls.length;
+      act(() => result.current.loadMore());
+      // Still-latched error blocks the call. Wait a tick to confirm nothing
+      // fires asynchronously.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(vi.mocked(api.browse).mock.calls.length).toBe(callsAfterFail);
+
+      // retryLoadMore() clears the error and issues the retry, which now
+      // succeeds and appends.
+      act(() => result.current.retryLoadMore());
+      await waitFor(() => expect(result.current.loadingMore).toBe(false));
+      expect(result.current.loadMoreError).toBeNull();
+      expect(result.current.entries).toHaveLength(PAGE_SIZE * 2);
+    });
+
+    it('reload() clears a latched loadMoreError so paging is re-armed', async () => {
+      const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(i + 1, `n${i}`, 'blob'));
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(first, PAGE_SIZE * 3))
+        .mockRejectedValueOnce(new Error('network kaboom'))
+        .mockResolvedValueOnce(resp(first, PAGE_SIZE * 3));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // Trigger the failure so the error latches.
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(result.current.loadMoreError).not.toBeNull());
+
+      // A fresh page-1 reload MUST reset the latched error — otherwise the
+      // user is stuck showing the error banner even after navigating away
+      // and back (which internally issues a page-1 fetch).
+      act(() => result.current.reload());
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.loadMoreError).toBeNull();
+    });
   });
 
   describe('type filter', () => {

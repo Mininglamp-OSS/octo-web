@@ -33,6 +33,8 @@
     "colSize": "大小",
     "colUpdated": "修改时间",
     "truncated": "列表较大，仅显示前 200 项",
+    "loadMoreFailed": "加载更多失败",
+    "loadMoreRetry": "重试",
     "selectAll": "全选",
     "selectRow": "选择此项"
   },

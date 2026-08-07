@@ -133,6 +133,8 @@ beforeEach(() => {
     hasMore: false,
     reload: vi.fn(),
     loadMore: vi.fn(),
+    loadMoreError: null,
+    retryLoadMore: vi.fn(),
     filter: 'all',
     setFilter: vi.fn(),
   });
@@ -264,6 +266,8 @@ describe('DriveContent — open doc carries the doc\'s real space (Round-12)', (
       hasMore: false,
       reload: vi.fn(),
       loadMore: vi.fn(),
+      loadMoreError: null,
+      retryLoadMore: vi.fn(),
       filter: 'all',
       setFilter: vi.fn(),
     });
@@ -293,6 +297,8 @@ describe('DriveContent — open doc carries the doc\'s real space (Round-12)', (
       hasMore: false,
       reload: vi.fn(),
       loadMore: vi.fn(),
+      loadMoreError: null,
+      retryLoadMore: vi.fn(),
       filter: 'all',
       setFilter: vi.fn(),
     });
