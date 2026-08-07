@@ -400,6 +400,14 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     setMoveState({ entries: selectedEntries, mode: 'move' });
   }, [selectedEntries]);
 
+  // Threshold above which the batch download prompts a confirm — Chromium/
+  // Edge/Firefox all intercept "automatic downloads" past ~10 in a short
+  // window and silently drop the excess (or bury them under a permission
+  // prompt at best). Below this we go straight through; at/above we warn
+  // the user because we cannot observe the browser's verdict from an
+  // `<a>.click()` — see the "triggered vs succeeded" comment below.
+  const MAX_UNSAFE_BATCH_DOWNLOAD = 10;
+
   const handleBulkDownload = useCallback(async () => {
     if (selectedEntries.length === 0) return;
     // Backend has no zip endpoint; loop signed-URL downloads. Folders and
@@ -429,14 +437,52 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     }
 
     const blobs = selectedEntries; // guaranteed all-blob past the gate above.
+
+    // Browsers cap "automatic downloads" per site/session (Chromium ~10 in a
+    // short window, others similar). Ask before firing more than that so the
+    // user knows they may see a permission prompt or silent drop.
+    if (blobs.length > MAX_UNSAFE_BATCH_DOWNLOAD) {
+      const proceed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: t('drive.bulk.downloadManyWarnTitle'),
+          content: t('drive.bulk.downloadManyWarnContent', {
+            values: { count: String(blobs.length), limit: String(MAX_UNSAFE_BATCH_DOWNLOAD) },
+          }),
+          okText: t('drive.bulk.downloadManyWarnProceed'),
+          cancelText: t('drive.bulk.resultCancel'),
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!proceed) return;
+    }
+
     setBulkBusy(true);
     try {
+      // NOTE on success semantics: we can only observe up to `<a>.click()`
+      // dispatch. Whether Chromium actually accepted the download, blocked
+      // it (multi-download interception), or the user cancelled at the
+      // save-as prompt is invisible to us. So a "succeeded" here means
+      // "trigger dispatched successfully", NOT "file saved". Failures are
+      // limited to the getDownloadUrl / assertSafePresignedURL layer — a
+      // trigger that got past that point counts as triggered.
       const { succeeded, failed } = await runBatch(blobs, async (entry) => {
         const { url, filename } = await api.getDownloadUrl(entry.id);
         api.assertSafePresignedURL(url);
         triggerBrowserDownload(url, filename || entry.name);
       });
-      reportBatchResult('download', succeeded, failed);
+      if (failed.length === 0) {
+        // No API/URL failures. Message is deliberately "triggered", not
+        // "succeeded", so the user knows to check their browser download
+        // shelf and doesn't blame the app if a save was intercepted.
+        Toast.info(
+          t('drive.bulk.downloadTriggered', { values: { count: String(succeeded.length) } }),
+        );
+      } else {
+        // Some getDownloadUrl / URL-safety failures. Route through the
+        // shared summary Modal so the user sees the failed names inline.
+        reportBatchResult('download', succeeded, failed);
+      }
     } finally {
       setBulkBusy(false);
     }
@@ -608,7 +654,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
         )}
         {total !== null && !hasMore && entries.length > 0 && total > entries.length && (
           <p className="drive-main__truncated">
-            {t('drive.file.truncated')} ({entries.length}/{total})
+            {t('drive.file.truncated', { values: { loaded: String(entries.length), total: String(total) } })}
           </p>
         )}
       </div>

@@ -106,9 +106,22 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
       if (opts.append) setLoadingMore(true);
       else setLoading(true);
       setError(null);
-      // A fresh page-1 fetch clears any prior loadMore-error so paging is
-      // re-armed on navigation/filter change or explicit reload().
-      if (!opts.append) setLoadMoreError(null);
+      // On a fresh page-1 fetch (space/folder/filter change or explicit
+      // reload), clear the previous view synchronously — do NOT leave the
+      // old entries on screen while the new context is loading. Bot review
+      // caught: filter="all" success → switch to "folder" → 2nd browse
+      // rejects → filter="folder" but entries still holds the "all" blob.
+      // An editor could then select/delete/move rows that belong to the
+      // previous context, believing they belong to the new one. Clearing
+      // upfront makes the failure surface as an empty listing + error toast
+      // rather than a phantom listing under the wrong context.
+      if (!opts.append) {
+        setEntries([]);
+        setTotal(null);
+        setHasMore(false);
+        loadedCountRef.current = 0;
+        setLoadMoreError(null);
+      }
       try {
         const res = await api.browse(
           {
