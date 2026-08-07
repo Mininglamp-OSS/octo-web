@@ -22,6 +22,7 @@ import { WKApp, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace 
  */
 export function getElectronUnreadMessageCount(): number {
   let total = 0
+  const currentSpaceId = WKApp.shared.currentSpaceId
 
   for (const conversation of WKSDK.shared().conversationManager.conversations) {
     const channelInfo = WKSDK.shared().channelManager.getChannelInfo(conversation.channel)
@@ -29,7 +30,6 @@ export function getElectronUnreadMessageCount(): number {
     if (shouldSkipChannelForSpace(conversation.channel)) continue
     if (shouldSkipPersonConversationForSpace(conversation)) continue
 
-    const currentSpaceId = WKApp.shared.currentSpaceId
     const rawUnread =
       currentSpaceId &&
       conversation.channel.channelType === ChannelTypePerson &&

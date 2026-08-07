@@ -231,6 +231,21 @@ let trayMenu: Electron.MenuItemConstructorOptions[] = [
  * @returns
  */
 let flashTimer: any = null;
+
+function createMacTrayIcon(iconPath: string) {
+  const source = nativeImage.createFromPath(iconPath);
+  const trayImage = nativeImage.createEmpty();
+
+  for (const [scaleFactor, size] of [[1, 22], [2, 44], [3, 66]] as const) {
+    trayImage.addRepresentation({
+      scaleFactor,
+      buffer: source.resize({ width: size, height: size }).toPNG(),
+    });
+  }
+
+  return trayImage;
+}
+
 function updateTray(unread = 0, isFlash= false): any {
   settings.showOnTray = true;
 
@@ -251,10 +266,7 @@ function updateTray(unread = 0, isFlash= false): any {
     if (!trayIcon) {
       const trayIconPath = getNoMessageTrayIcon();
       trayIcon = isOsx
-        ? nativeImage.createFromPath(trayIconPath).resize({
-            width: 22,
-            height: 22,
-          })
+        ? createMacTrayIcon(trayIconPath)
         : trayIconPath;
     }
 

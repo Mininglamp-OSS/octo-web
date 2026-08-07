@@ -43,38 +43,6 @@ vi.mock('@octo/base', () => ({
 
 const { getElectronUnreadMessageCount } = await import('../electronUnreadCount')
 
-// ─── Test helpers ─────────────────────────────────────────────────────────────
-
-function conv(unread: any, opts: {
-  mute?: boolean
-  skipChannel?: boolean
-  skipPerson?: boolean
-  channelType?: number
-  spaceUnread?: number
-} = {}): any {
-  const channel = { channelType: opts.channelType ?? 0 }
-
-  mockGetChannelInfo.mockImplementation((ch: any) =>
-    ch === channel ? (opts.mute !== undefined ? { mute: opts.mute } : undefined) : undefined
-  )
-  if (opts.skipChannel !== undefined) {
-    mockShouldSkipChannel.mockImplementation((ch: any) =>
-      ch === channel ? opts.skipChannel : false
-    )
-  }
-  if (opts.skipPerson !== undefined) {
-    mockShouldSkipPerson.mockImplementation((c: any) =>
-      c.channel === channel ? opts.skipPerson : false
-    )
-  }
-
-  return {
-    channel,
-    unread,
-    extra: opts.spaceUnread !== undefined ? { spaceUnread: opts.spaceUnread } : undefined,
-  }
-}
-
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {

@@ -1,4 +1,4 @@
-import { ChatPage, EndpointCategory, WKApp, Menus, t } from '@octo/base';
+import { addImChannelInfoListener, ChatPage, EndpointCategory, WKApp, Menus, t } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
@@ -108,8 +108,8 @@ async function registerMenus() {
     WKApp.menus.refresh()
     syncElectronUnreadMessageCount()
   })
+  addImChannelInfoListener(WKSDK.shared(), syncElectronUnreadMessageCount)
   WKApp.mittBus.on("conversation-list-refreshed", syncElectronUnreadMessageCount)
-  WKApp.mittBus.on("space-changed", syncElectronUnreadMessageCount)
 
   // The conversation list can be restored after registration; the listener
   // above will send the subsequent snapshot in that case.
