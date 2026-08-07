@@ -9,7 +9,7 @@ const credentialDiscoveryBlock = [
   "凭据查找仅限以下方式：",
   "   当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明；",
   "   环境变量 `OCTO_BOT_TOKEN`；",
-  "   当前工作目录的 `.env`。",
+  "   当前工作目录 `.env` 中的 `OCTO_BOT_TOKEN`，且只读取该项。",
 ].join("\n");
 
 function hasClosedCredentialDiscovery(prompt: string): boolean {
@@ -104,7 +104,8 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain(credentialDiscoveryBlock);
     expect(hasClosedCredentialDiscovery(p)).toBe(true);
     expect(p).not.toContain("~/.openclaw/");
-    expect(p).toContain("当前工作目录的 `.env`");
+    expect(p).toContain("当前工作目录 `.env` 中的 `OCTO_BOT_TOKEN`，且只读取该项");
+    expect(p).toContain("或把该项以外的内容传入 stdin");
     const promptWithExtraSource = p.replace("\n   找到后", "\n   其他来源；\n   找到后");
     expect(hasClosedCredentialDiscovery(promptWithExtraSource)).toBe(false);
     expect(p).toContain("octo-cli auth login");
