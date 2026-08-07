@@ -217,3 +217,74 @@ describe('credential lifetime', () => {
     expect(apiGet).not.toHaveBeenCalled()
   })
 })
+
+describe('unmount race', () => {
+  it('an in-flight requestUUID that resolves after didUnMount installs nothing', async () => {
+    const vm = newQRCodeVM()
+    let resolveMint: (v: unknown) => void = () => {}
+    apiGet.mockReturnValue(new Promise((res) => { resolveMint = res }))
+
+    vm.requestUUID()
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
+    const callsAfterMint = apiGet.mock.calls.length
+
+    vm.didUnMount()
+    // The mint lands after teardown. Without a session guard its `then` writes
+    // uuid/pollSecret/qrcode, flips to waitScan and calls advance() — resurrecting
+    // hidden polling on an unmounted VM that keeps putting the secret on the wire,
+    // and could even complete scan-login off-screen.
+    resolveMint({ uuid: 'uuid-late', poll_secret: 'secret-late', qrcode: 'qr-late' })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(vm.uuid).toBeUndefined()
+    expect(vm.pollSecret).toBeUndefined()
+    expect(vm.qrcode).toBeUndefined()
+    expect(vm.loginStatus).not.toBe(LoginStatus.waitScan)
+    // No follow-up poll was issued.
+    expect(apiGet.mock.calls.length).toBe(callsAfterMint)
+  })
+
+  it('an in-flight requestUUID that rejects after didUnMount does not touch state', async () => {
+    const vm = newQRCodeVM()
+    let rejectMint: (e: unknown) => void = () => {}
+    apiGet.mockReturnValue(new Promise((_res, rej) => { rejectMint = rej }))
+
+    vm.requestUUID()
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
+
+    vm.didUnMount()
+    rejectMint(new Error('network'))
+    await Promise.resolve()
+    await Promise.resolve()
+
+    // The catch would otherwise flip autoRefresh on a torn-down VM, and the
+    // autoRefresh setter calls reStartAdvance() — restarting the whole flow.
+    expect(vm.autoRefresh).toBe(true)
+    expect(vm.uuid).toBeUndefined()
+    expect(vm.pollSecret).toBeUndefined()
+  })
+
+  it('a superseded mint does not clobber the QR that replaced it', async () => {
+    const vm = newQRCodeVM()
+    let resolveFirst: (v: unknown) => void = () => {}
+    apiGet.mockReturnValueOnce(new Promise((res) => { resolveFirst = res }))
+
+    vm.requestUUID()
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
+
+    // A manual refresh discards the pending session and mints again.
+    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
+    vm.qrcodeLoading = false
+    ;(vm as unknown as { resetQRCodeState(): void }).resetQRCodeState()
+    vm.requestUUID()
+    await vi.waitFor(() => expect(vm.uuid).toBe('uuid-2'))
+
+    resolveFirst({ uuid: 'uuid-1', poll_secret: 'secret-1', qrcode: 'qr-1' })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(vm.uuid).toBe('uuid-2')
+    expect(vm.pollSecret).toBe('secret-2')
+  })
+})

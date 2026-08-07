@@ -53,6 +53,9 @@ export class LoginVM extends ProviderListener {
     private _pullErrCount: number = 0 // 当前pull发生错误请求次数
 
     private _autoRefresh: boolean = true // 是否自动刷新二维码
+    // 二维码会话代号：每次丢弃当前二维码会话（重铸、卸载）时递增，用于让在途的
+    // loginuuid 响应识别自己已被取代。见 requestUUID / resetQRCodeState。
+    private _qrSession: number = 0
      loginLoading: boolean = false // 登录中
 
     // ---------- 手机登录方式 ----------
@@ -449,9 +452,18 @@ export class LoginVM extends ProviderListener {
         this.qrcodeLoading = true
         this.notifyListener()
         const device = this.getDevice()
+        // 捕获当前二维码会话代号。resetQRCodeState() 会递增它，didUnMount 也会 ——
+        // 于是任何在那之后才落地的 loginuuid 响应都能认出自己已经被取代。
+        //
+        // 没有这道闸时：组件卸载 → didUnMount 清掉 uuid/pollSecret → 在途请求随后返回
+        // → then 无条件把 uuid/pollSecret/qrcode 全部装回去、置 waitScan 并 advance()，
+        // 于是一个已经卸载的 VM 重新开始隐藏轮询、继续把密钥挂在 query 上，甚至可能在
+        // 用户看不见的地方走完扫码登录。清状态本身挡不住它，必须让在途响应自己作废。
+        const session = this._qrSession
         WKApp.apiClient.get('user/loginuuid',{
             param: device,
         }).then((result) => {
+            if (session !== this._qrSession) return
             this.uuid = result.uuid
             // 与 uuid 同生共死：二维码轮换时密钥必须一起换，否则会拿旧密钥去轮询新 uuid。
             this.pollSecret = result.poll_secret
@@ -461,6 +473,7 @@ export class LoginVM extends ProviderListener {
             this.notifyListener()
             this.advance()
         }).catch(() => {
+            if (session !== this._qrSession) return
             // 铸码失败必须交出一个可恢复的出口。此前只清 spinner：loginStatus 停在
             // getUUID、没有任何后续调度，而 login.tsx 只要 qrcode 非空就照渲染 —— 用户
             // 盯着一张已经被消费掉、永远完不成的二维码，没有报错也没有刷新入口，只能手动
@@ -483,6 +496,9 @@ export class LoginVM extends ProviderListener {
      * requestUUID 把 qrcodeLoading 置位」之间那一帧的过期二维码。
      */
     private resetQRCodeState() {
+        // 递增会话代号，让任何在途的 loginuuid 响应在落地时认出自己已过期（见
+        // requestUUID）。清字段只能处理已经到手的状态，处理不了还在路上的那一份。
+        this._qrSession++
         this.uuid = undefined
         this.qrcode = undefined
         this.pollSecret = undefined
