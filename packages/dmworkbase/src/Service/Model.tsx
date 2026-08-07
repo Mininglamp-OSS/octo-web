@@ -49,18 +49,19 @@ export class ConversationWrap {
     public get channelInfo() {
         return this.conversation.channelInfo
     }
-    // System/event message content types that should not contribute to unread count
-    private static systemContentTypes: Set<number> = new Set([
-        MessageContentTypeConst.addMembers,       // 1002 添加群成员
-        MessageContentTypeConst.removeMembers,     // 1003 删除群成员
-        MessageContentTypeConst.channelUpdate,     // 1005 频道更新
-        MessageContentTypeConst.newGroupOwner,     // 1008 新的管理员
-        MessageContentTypeConst.approveGroupMember,// 1009 审批群成员
-    ])
+    // System/event message content types that should not contribute to unread count.
+    // 使用 1000-2000 区间判断，与 SDK `WKSDK.isSystemMessage` 以及 Message 列表的
+    // 系统消息 UI 渲染逻辑（Conversation/index.tsx）保持一致，避免未来新增系统消息类型
+    // （如 1004 退群、1006 频道禁言变更等）因白名单遗漏而在最近 Tab 留下消不掉的未读。
+    // threadCreated(1100) 例外：子区创建通知属于可导航事件，保留未读提示。
+    private static isSystemContentType(contentType: number | undefined): boolean {
+        if (contentType === undefined || contentType === null) return false
+        return contentType >= 1000 && contentType <= 2000 && contentType !== MessageContentTypeConst.threadCreated
+    }
 
     private isSystemMessage(message: Message | undefined): boolean {
         if (!message) return false
-        return ConversationWrap.systemContentTypes.has(message.contentType)
+        return ConversationWrap.isSystemContentType(message.contentType)
     }
 
     public get unread() {
