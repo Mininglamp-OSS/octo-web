@@ -9,6 +9,7 @@ import { ROLE_LABEL_KEY } from '../../utils/roleLabel';
 import { buildInviteLink } from '../../utils/links';
 import { formatTime } from '../../utils/format';
 import { Toast } from '../../utils/toast';
+import { writeToClipboard } from '../../utils/clipboard';
 import './index.css';
 
 export interface InviteModalProps {
@@ -19,13 +20,10 @@ export interface InviteModalProps {
 
 const DAY = 86400;
 
-async function copy(text: string, okMsg: string) {
-  try {
-    await navigator.clipboard?.writeText(text);
-    Toast.success(okMsg);
-  } catch {
-    Toast.error(text);
-  }
+async function copy(text: string, okMsg: string, failMsg: string) {
+  const ok = await writeToClipboard(text);
+  if (ok) Toast.success(okMsg);
+  else Toast.error(failMsg);
 }
 
 /**
@@ -134,7 +132,9 @@ export default function InviteModal({ visible, spaceId, onClose }: InviteModalPr
                       size="small"
                       icon={<Copy size={16} />}
                       aria-label={t('drive.invite.copyLink')}
-                      onClick={() => copy(buildInviteLink(inv.token), t('drive.invite.copied'))}
+                      onClick={() =>
+                        copy(buildInviteLink(inv.token), t('drive.invite.copied'), t('drive.invite.copyFailed'))
+                      }
                     />
                     <Button
                       theme="borderless"

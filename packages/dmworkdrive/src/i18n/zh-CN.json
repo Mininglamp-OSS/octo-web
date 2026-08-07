@@ -98,6 +98,10 @@
     "resultSummarySuccess": "成功 {{count}} 项",
     "resultSummaryFailed": "失败 {{count}} 项",
     "resultOk": "知道了",
+    "downloadBlockedTitle": "无法下载",
+    "downloadBlockedFolder": "已选包含 {{count}} 项文件夹，暂不支持直接下载。请取消勾选文件夹后再试。",
+    "downloadBlockedDoc": "已选包含 {{count}} 项在线文档，暂不支持直接下载。请取消勾选在线文档后再试。",
+    "downloadBlockedMixed": "已选包含 {{folders}} 项文件夹和 {{docs}} 项在线文档，暂不支持直接下载。请取消勾选后再试。",
     "actionDelete": "删除",
     "actionMove": "移动",
     "actionCopy": "复制",
@@ -129,6 +133,7 @@
     "expiresAt": "到期",
     "copyLink": "复制链接",
     "copied": "链接已复制",
+    "copyFailed": "复制失败，请手动选中链接复制",
     "revoke": "取消分享"
   },
   "invite": {
@@ -148,6 +153,7 @@
     "none": "暂无邀请链接",
     "copyLink": "复制链接",
     "copied": "链接已复制",
+    "copyFailed": "复制失败，请手动选中链接复制",
     "revoke": "撤销",
     "byOrgHint": "从组织架构中选择成员，直接加入空间（无需审批）。",
     "pickMembers": "选择成员"
