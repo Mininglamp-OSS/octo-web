@@ -468,11 +468,25 @@ export class LoginVM extends ProviderListener {
             return
         }
 
-        // 密钥走请求头而不是 query：明文若进 URL，会被 nginx/ingress access log、CDN/WAF
-        // 日志、APM trace 和浏览器历史逐字记下 —— 那正好抵消了服务端「只存摘要」想防的
-        // 泄露面。uuid !== this.uuid 的请求已在上面挡掉，此处 pollSecret 必与 uuid 同批。
+        // 密钥首选请求头：明文若进 URL，会被 nginx/ingress access log、CDN/WAF 日志、
+        // APM trace 和浏览器历史逐字记下 —— 那正好抵消服务端「只存摘要」想防的泄露面。
+        //
+        // 但自定义头会让轮询变成非简单请求，跨源时浏览器要先发 OPTIONS 预检；octo-lib 的
+        // CORSMiddleware 把 Access-Control-Allow-Headers 写死且不含本头，预检被拒后**真正
+        // 的 GET 根本发不出去**——不是降级，是扫码登录彻底不可用。Web 走相对路径 /api/v1/
+        // 同源不受影响，Tauri/Electron 正式包走绝对地址（见 apps/web/src/apiURL.ts）会中招。
+        // 所以跨源时把密钥补进 query 兜底，服务端两个通道都认（请求头优先）。
+        //
+        // SUNSET：octo-lib PR #116 合并、octo-server bump 依赖之后，删掉 isCrossOrigin
+        // 分支与服务端对应的 query 分支，只留请求头。
+        // uuid !== this.uuid 的请求已在上面挡掉，此处 pollSecret 必与 uuid 同批下发。
+        const apiURL = WKApp.apiClient.config.apiURL || ''
+        const isCrossOrigin = /^https?:\/\//i.test(apiURL)
         const headers = this.pollSecret ? { 'X-Scan-Poll-Secret': this.pollSecret } : undefined
-        WKApp.apiClient.get(`user/loginstatus?uuid=${encodeURIComponent(uuid)}`, { headers }).then((result: any) => {
+        const secretQuery = this.pollSecret && isCrossOrigin
+            ? `&poll_secret=${encodeURIComponent(this.pollSecret)}`
+            : ''
+        WKApp.apiClient.get(`user/loginstatus?uuid=${encodeURIComponent(uuid)}${secretQuery}`, { headers }).then((result: any) => {
             this._pullErrCount = 0
             const loginStatus = result.status;
             this.loginStatus = loginStatus
