@@ -456,6 +456,14 @@ const createMainWindow = async () => {
   })
   // 会话未读消息消息数量托盘提醒
   ipcMain.on(IPC_CONVERSATION_UNREAD_COUNT, (event, num) => {
+    // The tray is global to the app, so only the main window may update it.
+    // Auxiliary windows have independent renderer/session state and can start
+    // with an empty conversation cache, which would otherwise clear the main
+    // window's correct unread count.
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+      return;
+    }
+
     // const isFlag = num > 0 && isWin ? true : false;
     updateTray(num, false); // 不需要闪烁，闪烁很消耗性能
   });
