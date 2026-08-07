@@ -260,7 +260,11 @@ function CardSettingRow({
               <button
                 type="button"
                 className="wk-bot-manage-reset"
-                disabled={row.pending}
+                // row.disabled 涵盖总闸关闭 / 只读 / 正在取消自定义。总闸关闭时
+                // 一并禁用：整组开关都灰了、状态条也说了「下方设置都不生效」，
+                // 旁边留一个能点的删除动作会让页面对「能不能编辑」给出两个说法。
+                // 按钮保留可见（而不是隐藏），因为「这里有个覆盖」本身是信息。
+                disabled={row.pending || row.disabled}
                 onClick={() => onReset(row.key)}
                 data-testid={`bot-card-reset-${row.key}`}
               >

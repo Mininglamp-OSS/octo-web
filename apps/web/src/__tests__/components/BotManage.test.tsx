@@ -424,6 +424,26 @@ describe('CardSettingsView (L3)', () => {
         await waitFor(() => expect(mocks.putSettings).not.toHaveBeenCalled());
     });
 
+    it('disables remove-customization while the master gate is off', async () => {
+        const vm = await seedVM({
+            'bot.card_enabled': { effective_value: false },
+            'bot.display_enabled': {
+                value: false,
+                effective_value: false,
+                source: 'bot',
+            },
+        });
+        render(<CardSettingsHarness vm={vm} />);
+
+        // 按钮保留可见（「这里有个覆盖」是信息），但不可点 —— 整组开关都灰了、
+        // 状态条也说了不生效，旁边留个能生效的删除动作会自相矛盾。
+        const reset = screen.getByTestId('bot-card-reset-bot.display_enabled');
+        expect(reset).toBeInTheDocument();
+        expect(reset).toBeDisabled();
+        fireEvent.click(reset);
+        await waitFor(() => expect(mocks.deleteSetting).not.toHaveBeenCalled());
+    });
+
     it('toggling writes the override and reflects it optimistically', async () => {
         const vm = await seedVM();
         render(<CardSettingsHarness vm={vm} />);

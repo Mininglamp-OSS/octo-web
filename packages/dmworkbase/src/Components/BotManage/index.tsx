@@ -77,16 +77,25 @@ export default class BotManageModal extends Component<BotManageModalProps> {
     }
 
     componentDidUpdate(prevProps: BotManageModalProps): void {
-        // bot 切换：复用同一 modal 实例时（BotStore 列表里点不同 bot），
-        // 必须把 VM 切到新 robotId 并重拉，否则会看到上一个 bot 的群。
-        if (prevProps.robotId !== this.props.robotId) {
+        const robotChanged = prevProps.robotId !== this.props.robotId
+        if (robotChanged) {
+            // bot 切换：复用同一 modal 实例时（BotStore 列表里点不同 bot），
+            // 必须把 VM 切到新 robotId 并重拉，否则会看到上一个 bot 的群。
             if (this.vm) this.vm.setRobotId(this.props.robotId)
-            if (this.cardSettingsVM) {
-                // setRobotId 内部会重拉，等价于对新 bot 重新探测。
-                this.cardSettingsVM.setRobotId(this.props.robotId)
-            } else if (this.props.visible) {
-                this.probeCardSettings()
+            if (this.props.visible) {
+                if (this.cardSettingsVM) {
+                    // setRobotId 内部会重拉，等价于对新 bot 重新探测。
+                    this.cardSettingsVM.setRobotId(this.props.robotId)
+                } else {
+                    this.probeCardSettings()
+                }
+            } else {
+                // 不可见时**不能**顺手 setRobotId —— 它会无条件重拉，于是「翻一张
+                // 资料卡就发一个限流 GET」，正是下面那句注释想避免的事。直接丢掉 VM，
+                // 下次打开重新创建 + 探测，天然拿到新 bot 的数据。
+                this.disposeCardSettingsVM()
             }
+            return
         }
         // 本组件跟着资料卡一起挂载（不是打开时才挂载），所以探测挂在 visible
         // 由假转真上，避免只是看了眼资料卡就发请求。
@@ -96,11 +105,17 @@ export default class BotManageModal extends Component<BotManageModalProps> {
     }
 
     componentWillUnmount(): void {
-        if (this.cardSettingsUnsubscribe) this.cardSettingsUnsubscribe()
+        this.disposeCardSettingsVM()
     }
 
     /**
-     * 拉一次卡片设置目录，用于判断这一行菜单要不要出现。
+     * 每次打开都重新拉一次卡片设置目录：既判断这一行菜单要不要出现，也作为 L3 首屏
+     * 的数据。
+     *
+     * **不能用 `hasData` 做守卫。** 本组件是常驻挂载、`visible` 切换的（`BotDetailModal`
+     * 又是 BotStore / GlobalSearch 的常驻子组件），VM 会跨开关存活；用 `hasData`
+     * 守卫会导致第二次打开一个请求都不发，等于把读接口的 `Cache-Control: private,
+     * no-store` 缓存掉 —— 别处改的覆盖、别的设备改的、翻转过的部署总闸都会一直陈旧。
      *
      * 只有拿到 `err.server.robot.not_found`（该 bot 没有 robot 记录，App Bot 属于
      * 这一类）才隐藏菜单行。其余错误一律保持显示 —— 服务端抖动 / 限流 / 后端未部署
@@ -108,7 +123,7 @@ export default class BotManageModal extends Component<BotManageModalProps> {
      */
     private probeCardSettings(): void {
         const vm = this.ensureCardSettingsVM()
-        if (!vm.hasData && !vm.loading) void vm.loadSettings()
+        if (!vm.loading) void vm.loadSettings()
     }
 
     private ensureCardSettingsVM(): BotCardSettingsVM {
@@ -119,6 +134,12 @@ export default class BotManageModal extends Component<BotManageModalProps> {
             )
         }
         return this.cardSettingsVM
+    }
+
+    private disposeCardSettingsVM(): void {
+        if (this.cardSettingsUnsubscribe) this.cardSettingsUnsubscribe()
+        this.cardSettingsUnsubscribe = undefined
+        this.cardSettingsVM = undefined
     }
 
     render(): ReactNode {
@@ -287,9 +308,10 @@ interface CardSettingsContainerProps {
 /**
  * L3「卡片消息设置」容器。
  *
- * L2 打开时已经拉过一次目录（能力探测），所以这里只在还没有数据时补拉，避免同一次
- * 打开里发两个请求 —— 这几个端点带按登录用户的限流。跨次打开不会复用：modal 关闭
- * 后再开会重新探测，符合读接口 `Cache-Control: private, no-store` 的要求。
+ * 打开 Bot 管理时（probeCardSettings）已经拉过一次目录，所以这里只在还没有数据时
+ * 补拉：同一次打开里不发两个请求（这几个端点带按登录用户的限流），而"每次打开一次
+ * 新鲜读取"由 probeCardSettings 保证。探测失败时 hasData 为 false，进这一页会顺带
+ * 重试一次。
  */
 class CardSettingsContainer extends Component<CardSettingsContainerProps> {
     private unsubscribe?: () => void

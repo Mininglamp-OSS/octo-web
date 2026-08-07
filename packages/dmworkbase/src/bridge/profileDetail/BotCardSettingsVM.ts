@@ -110,11 +110,15 @@ export class BotCardSettingsVM extends ProviderListener {
         this.retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS
     }
 
-    didMount(): void {
-        void this.loadSettings()
-    }
-
-    /** 切换到另一个 bot：清空全部状态并重拉。 */
+    /**
+     * 切换到另一个 bot：清空全部状态并重拉。
+     *
+     * 刻意丢弃 `queued` 里尚未发出的写入。这些是用户已经在旧 bot 上看到"生效"的
+     * 点击，理论上应该补发，但补发意味着往一个用户已经离开的 bot 上写入，而此刻
+     * 界面已经切走、失败也无处提示 —— 静默写比静默丢更糟。窗口本身也极窄：`queued`
+     * 只在真有 PUT 在飞时才有内容，而 L3 是覆盖在资料卡上的模态，从 L3 直接切 bot
+     * 很难触达。这是个明确的取舍，不是疏漏。
+     */
     setRobotId(robotId: string): void {
         if (this.robotId === robotId) return
         this.robotId = robotId
@@ -242,7 +246,10 @@ export class BotCardSettingsVM extends ProviderListener {
         const requestedUid = this.robotId
         if (!requestedUid) return false
         const row = this.snapshot().rows.find((item) => item.key === key)
-        if (!row || !row.editable || !row.overridden || this.busy.has(key)) {
+        // row.disabled 已涵盖只读 / 总闸关闭 / 该行正在取消自定义三种情况。总闸关闭
+        // 时也拒绝：此刻这一项的生效值反正是 false，删覆盖没有任何可观察效果，而
+        // 界面已经把整组开关置灰了 —— 再留一个能生效的删除动作等于自相矛盾。
+        if (!row || !row.overridden || row.disabled) {
             return false
         }
         // 同 flush：过期判据是 epoch。用 generation 会让「连点两行取消自定义」的第二次
@@ -275,11 +282,16 @@ export class BotCardSettingsVM extends ProviderListener {
             }
             return false
         } finally {
-            // busy 不是世代作用域的状态：无论是否已切 bot 都必须清理，否则这一行
-            // 会永久禁用（注意 loadSettings 自身会自增 generation，所以这里绝不能
-            // 套过期守卫）。
-            this.busy.delete(key)
-            this.notifyListener()
+            // busy 的清理必须按 epoch 隔离。`setRobotId` 会把 busy 整个换成新 Set，
+            // 此时旧 bot 的 reset 回来若无条件 delete，删掉的是**新 bot** 的键 ——
+            // 新 bot 自己的 DELETE 还在飞就被解除禁用，串行化白做了。
+            //
+            // epoch 未变时则必须清理，否则这一行永久禁用。注意判据只能是 epoch：
+            // loadSettings 会自增 generation，用它会让正常的删后重拉跳过清理。
+            if (this.epoch === myEpoch) {
+                this.busy.delete(key)
+                this.notifyListener()
+            }
         }
     }
 
@@ -307,7 +319,13 @@ export class BotCardSettingsVM extends ProviderListener {
                 this.queued = new Map()
                 const items = this.buildWriteItems(this.sending)
                 if (items.length === 0) {
+                    // 整批被 buildWriteItems 过滤空（例如 editable 在点击与 flush
+                    // 之间翻成 false）。必须回滚这批的乐观覆盖 —— 否则屏幕上留着一个
+                    // 从未发送的「已自定义」，又是个骗人的控件。只回滚这批的 key，
+                    // 不碰 queued 里其它合法的改动。
+                    this.rollbackKeys(this.sending.keys())
                     this.sending = new Map()
+                    this.notifyListener()
                     continue
                 }
                 try {
@@ -320,10 +338,29 @@ export class BotCardSettingsVM extends ProviderListener {
                     // 早已重置过它们，此刻里面装的是新 bot 的批次，清掉会让新 bot
                     // 的失败回滚失效。
                     if (this.epoch !== myEpoch) return
-                    // 这一批已被服务端确认。仍在 queued 里的同 key 保留其 baseline
-                    // 作为后续回滚目标，其余 key 的快照可以丢。
-                    for (const key of this.sending.keys()) {
-                        if (!this.queued.has(key)) this.baseline.delete(key)
+                    // 这一批已被服务端确认，逐 key 处理它的回滚快照：
+                    //   - 该 key 没有新的排队 → 快照可以丢；
+                    //   - 该 key 又被排队了（在飞期间用户再点了同一行）→ **必须把
+                    //     快照推进到刚被确认的状态**，不能留着「第一次写入之前」的。
+                    //
+                    // 留旧快照会回滚过头：PUT#1 成功、同 key 的 PUT#2 失败时，
+                    // rollbackPending 会把 UI 退回未覆盖状态，而服务端已经有了
+                    // PUT#1 写进去的显式覆盖。更糟的是 overridden 随之变回 false，
+                    // 「取消自定义」按钮消失 —— 用户在界面上再没有任何途径清掉那个
+                    // 刚被创建的覆盖，且写失败不触发重拉，错状态会一直留着。
+                    for (const [key, confirmed] of this.sending) {
+                        if (this.queued.has(key)) {
+                            this.baseline.set(
+                                key,
+                                applyOverride(
+                                    this.baseline.get(key),
+                                    key,
+                                    confirmed,
+                                ),
+                            )
+                        } else {
+                            this.baseline.delete(key)
+                        }
                     }
                     this.sending = new Map()
                     this.notifyListener()
@@ -367,12 +404,8 @@ export class BotCardSettingsVM extends ProviderListener {
         return items
     }
 
-    /** 把 sending + queued 全部回滚到 baseline 并清空待写状态。 */
-    private rollbackPending(): void {
-        const keys = new Set<string>([
-            ...this.sending.keys(),
-            ...this.queued.keys(),
-        ])
+    /** 把给定 key 回滚到 baseline 并丢弃它们的快照。 */
+    private rollbackKeys(keys: Iterable<string>): void {
         for (const key of keys) {
             if (!this.baseline.has(key)) continue
             const original = this.baseline.get(key)
@@ -383,6 +416,13 @@ export class BotCardSettingsVM extends ProviderListener {
             }
             this.baseline.delete(key)
         }
+    }
+
+    /** 把 sending + queued 全部回滚到 baseline 并清空待写状态。 */
+    private rollbackPending(): void {
+        this.rollbackKeys(
+            new Set<string>([...this.sending.keys(), ...this.queued.keys()]),
+        )
         this.sending = new Map()
         this.queued = new Map()
     }
@@ -440,6 +480,8 @@ export class BotCardSettingsVM extends ProviderListener {
             field: error.field,
             key,
             code: error.code,
+            // 服务端消息只落日志，不进 DOM（见 BotSettingError.message）。
+            message: error.message,
         })
     }
 }

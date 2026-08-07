@@ -242,7 +242,12 @@ export type BotSettingErrorKind =
 
 export interface BotSettingError {
     kind: BotSettingErrorKind
-    /** 已本地化的用户可见文案（APIClient 归一化后的 msg），可能为空。 */
+    /**
+     * 服务端已本地化的消息（APIClient 归一化后的 msg）。
+     *
+     * **刻意只用于日志，不渲染。** 用户可见文案全部走本地 labels：一是服务端消息的
+     * 措辞和这一页的语境未必对得上，二是不让服务端控制的字符串进 DOM。
+     */
     message: string
     code?: string
     /** request_invalid 时服务端给的出错字段（items / key / value），仅用于日志。 */
@@ -295,6 +300,12 @@ export function classifyBotSettingError(err: unknown): BotSettingError {
     // not_found 分支接掉，两者不能混：前者会上线，后者（App Bot）不会。
     if (status === 404 && !code) {
         return { kind: "backendMissing", message, code }
+    }
+    // 无 code 的 403 兜底（网关、代理、将来服务端换码）。落到 unknown 会渲染带
+    // 重试按钮的「加载失败」，等于请用户对着一个永久拒绝反复打限流端点。
+    // 401 不在这里处理：APIClient 的拦截器已按 auth 码统一触发登出。
+    if (status === 403) {
+        return { kind: "forbidden", message, code }
     }
     if (status !== undefined && status >= 500) {
         return { kind: "retryable", message, code }

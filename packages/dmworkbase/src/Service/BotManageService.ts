@@ -82,6 +82,10 @@ const BotManageService = {
    *
    * 响应带 `Cache-Control: private, no-store` —— 不要在任何层缓存，改完配置
    * 立刻重读必须看到新值。
+   *
+   * 注：`robotId` 未做 encode，与本文件既有的群相关方法保持一致（robotId 是服务端
+   * 下发的 uid，不含路径分隔符）。下面 deleteSetting 的 `key` 则做了 encode，因为
+   * 它是代码里拼出来的带点号常量，编码一下更稳妥。这个不对称是既有约定，不是笔误。
    */
   listSettings(robotId: string): Promise<BotSettingsListResponse> {
     return APIClient.shared.get(`robot/${robotId}/settings`)

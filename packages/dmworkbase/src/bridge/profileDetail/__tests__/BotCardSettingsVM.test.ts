@@ -281,6 +281,14 @@ describe("classifyBotSettingError", () => {
             "rateLimited",
         )
     })
+
+    it("无 code 的 403 也归为 forbidden，不给重试按钮", () => {
+        // 网关 / 代理 / 将来服务端换码都可能给出无 code 的 403。落到 unknown 会渲染
+        // 带重试按钮的「加载失败」，等于请用户对着永久拒绝反复打限流端点。
+        expect(classifyBotSettingError(rejection({ status: 403 })).kind).toBe(
+            "forbidden",
+        )
+    })
 })
 
 // ── VM 层 ──────────────────────────────────────────────────────────────────
@@ -403,7 +411,7 @@ describe("BotCardSettingsVM.toggle", () => {
         ])
     })
 
-    it("写入失败整批回滚（全批原子），并记下可重试的写错误", async () => {
+    it("单发写入失败 → 回滚该行并记下可重试的写错误", async () => {
         const vm = await loaded()
         hoisted.putSettings.mockRejectedValue(
             rejection({ code: "err.server.robot.store_failed", status: 500 }),
@@ -416,6 +424,90 @@ describe("BotCardSettingsVM.toggle", () => {
         expect(row.checked).toBe(true) // 弹回服务端真实状态
         expect(row.overridden).toBe(false)
         expect(row.pending).toBe(false)
+        expect(vm.writeError?.kind).toBe("retryable")
+    })
+
+    it("多 key 批次失败 → 整批一起回滚（全批原子）", async () => {
+        const vm = await loaded()
+        let releaseFirst: () => void = () => undefined
+        hoisted.putSettings.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    releaseFirst = resolve
+                }),
+        )
+        // 先让一个写入占住在飞位，把后面两个 key 挤进同一批。
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false)
+        await tick()
+        vm.toggle(BOT_CARD_INTERACTION_KEY, false)
+        vm.toggle(BOT_CARD_REASONING_KEY, false)
+        hoisted.putSettings.mockRejectedValue(
+            rejection({ code: "err.server.robot.store_failed", status: 500 }),
+        )
+        releaseFirst()
+        await tick()
+        await tick()
+
+        const rows = vm.snapshot().rows
+        for (const key of [BOT_CARD_INTERACTION_KEY, BOT_CARD_REASONING_KEY]) {
+            const row = rows.find((r) => r.key === key)!
+            expect(row.checked).toBe(true)
+            expect(row.overridden).toBe(false)
+            expect(row.pending).toBe(false)
+        }
+        expect(vm.writeError?.kind).toBe("retryable")
+    })
+
+    /**
+     * 回归：同一行在飞期间被再次点击，第一批成功、第二批失败时，**不能**回滚到
+     * 「第一次写入之前」—— 服务端此刻已经有了第一批写进去的显式覆盖。
+     *
+     * 旧实现留着最初的快照，于是回滚后 UI 显示「未自定义 + 开」，而服务端是显式
+     * 关；更糟的是 overridden 变回 false 让「取消自定义」消失，用户再没有任何途径
+     * 清掉那个覆盖（PR #1282 review P1）。
+     */
+    it("同 key 连点：先成功后失败只回滚到已确认值，不越过已提交的写入", async () => {
+        const vm = await loaded()
+        let releaseFirst: () => void = () => undefined
+        hoisted.putSettings.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    releaseFirst = resolve
+                }),
+        )
+
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false) // PUT#1 起飞
+        await tick()
+        vm.toggle(BOT_CARD_DISPLAY_KEY, true) // 在飞期间再点，合入下一批
+
+        hoisted.putSettings.mockRejectedValue(
+            rejection({ code: "err.server.robot.store_failed", status: 500 }),
+        )
+        releaseFirst() // PUT#1 成功 → PUT#2(true) 发出并失败
+        await tick()
+        await tick()
+
+        // 3 次：PUT#1(false) + PUT#2(true) 的首发与那一次有界重试。
+        expect(hoisted.putSettings).toHaveBeenCalledTimes(3)
+        expect(hoisted.putSettings.mock.calls[0][1]).toEqual([
+            { key: BOT_CARD_DISPLAY_KEY, value: false },
+        ])
+        expect(hoisted.putSettings.mock.calls[1][1]).toEqual([
+            { key: BOT_CARD_DISPLAY_KEY, value: true },
+        ])
+        expect(hoisted.putSettings.mock.calls[2][1]).toEqual(
+            hoisted.putSettings.mock.calls[1][1],
+        )
+
+        const row = vm
+            .snapshot()
+            .rows.find((r) => r.key === BOT_CARD_DISPLAY_KEY)!
+        // 服务端真实状态 = PUT#1 写入的显式覆盖 false。UI 必须与之一致。
+        expect(row.checked).toBe(false)
+        expect(row.overridden).toBe(true)
+        expect(row.source).toBe("bot")
+        // 覆盖存在 → 用户仍有「取消自定义」这条出路。
+        expect(row.editable).toBe(true)
         expect(vm.writeError?.kind).toBe("retryable")
     })
 
@@ -498,6 +590,70 @@ describe("BotCardSettingsVM.resetToDefault", () => {
             .rows.find((r) => r.key === BOT_CARD_DISPLAY_KEY)!
         expect(row.disabled).toBe(false)
         expect(row.overridden).toBe(true)
+    })
+
+    it("总闸关闭时拒绝取消自定义（与整组开关置灰的信号保持一致）", async () => {
+        hoisted.listSettings.mockResolvedValueOnce(
+            fullCatalog({
+                [BOT_CARD_MASTER_KEY]: { effective_value: false },
+                [BOT_CARD_DISPLAY_KEY]: { value: false, effective_value: false, source: "bot" },
+            }),
+        )
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        expect(await vm.resetToDefault(BOT_CARD_DISPLAY_KEY)).toBe(false)
+        expect(hoisted.deleteSetting).not.toHaveBeenCalled()
+        // 覆盖仍在（信息保留），只是此刻不能删。
+        const row = vm
+            .snapshot()
+            .rows.find((r) => r.key === BOT_CARD_DISPLAY_KEY)!
+        expect(row.overridden).toBe(true)
+        expect(row.disabled).toBe(true)
+    })
+
+    it("切 bot 后旧 bot 的 DELETE 回来不解除新 bot 的行禁用", async () => {
+        hoisted.listSettings.mockResolvedValue(
+            fullCatalog({
+                [BOT_CARD_DISPLAY_KEY]: { value: false, effective_value: false, source: "bot" },
+            }),
+        )
+        let releaseDelete: () => void = () => undefined
+        hoisted.deleteSetting.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    releaseDelete = resolve
+                }),
+        )
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        const pending = vm.resetToDefault(BOT_CARD_DISPLAY_KEY) // bot1 的 DELETE 起飞
+        await tick()
+        vm.setRobotId("bot2")
+        await tick()
+
+        // bot2 上对同一 key 也起一个 DELETE，让它保持 busy。
+        hoisted.deleteSetting.mockImplementationOnce(
+            () => new Promise<void>(() => undefined),
+        )
+        void vm.resetToDefault(BOT_CARD_DISPLAY_KEY)
+        await tick()
+        expect(
+            vm.snapshot().rows.find((r) => r.key === BOT_CARD_DISPLAY_KEY)!
+                .disabled,
+        ).toBe(true)
+
+        releaseDelete() // bot1 的 DELETE 此刻才回来
+        await pending
+        await tick()
+
+        // 曾经的缺陷：finally 无条件 delete，删掉的是 bot2 的键 —— bot2 自己的
+        // DELETE 还在飞就被解除禁用，串行化白做。
+        expect(
+            vm.snapshot().rows.find((r) => r.key === BOT_CARD_DISPLAY_KEY)!
+                .disabled,
+        ).toBe(true)
     })
 })
 
