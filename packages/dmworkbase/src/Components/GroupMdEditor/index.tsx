@@ -347,7 +347,7 @@ export class GroupMdEditor extends Component<
           <div className="wk-groupmd-preview">
             {content ? (
               <div className="wk-groupmd-preview-content">
-                <MarkdownContent content={content} enableMath />
+                <MarkdownContent content={content} enableMath allowSingleDollarMath />
               </div>
             ) : (
               <div className="wk-groupmd-empty">{t("base.groupMd.empty")}</div>
