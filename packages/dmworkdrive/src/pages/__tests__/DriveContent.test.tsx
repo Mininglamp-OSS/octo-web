@@ -333,7 +333,10 @@ describe('DriveContent — open doc carries the doc\'s real space (Round-12)', (
     expect(opts.disabled).toBe(false);
 
     // And the onDrop callback, when it does fire, must route to addFiles.
-    const addFiles = vi.mocked(useUpload).mock.results.at(-1)?.value.addFiles;
+    // Array.at(-1) needs es2020; this tsconfig targets es2019. Use the
+    // length-index idiom that works everywhere.
+    const results = vi.mocked(useUpload).mock.results;
+    const addFiles = results[results.length - 1]?.value.addFiles;
     expect(addFiles).toBeDefined();
     const file = new File(['x'], 'x.txt', { type: 'text/plain' });
     const fakeList = { length: 1, 0: file, item: () => file } as unknown as FileList;
