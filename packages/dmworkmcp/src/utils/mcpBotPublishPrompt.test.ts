@@ -87,16 +87,15 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
 
   it("states runtime-neutral token lookup guidance", () => {
     const p = getMcpBotPublishPrompt({ spaceId: goodId });
-    expect(p).toContain("当前 Agent Runtime 中配置的 Octo Bot Token");
     expect(p).toContain("OCTO_BOT_TOKEN");
-    expect(p).toContain("当前 Agent Runtime 自身管理的 Octo 凭据或本地配置");
-    expect(p).toContain("随 Runtime 分发的本地文档");
+    expect(p).toContain("可通过当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明");
+    expect(p).toContain("查找已配置的 Octo Bot Token");
     expect(p).not.toContain("~/.openclaw/");
     expect(p).toContain("当前工作目录的 `.env`");
-    expect(p).toContain("不要为获取 Token 搜索网络或访问外部文档");
-    expect(p).not.toContain("可搜索当前 Runtime");
+    expect(p).not.toContain("搜索网络");
+    expect(p).not.toContain("外部文档");
     expect(p).toContain("octo-cli auth login");
-    expect(p).toContain("以上来源都找不到时，不要继续自行查找");
+    expect(p).toContain("找不到可用凭据时，停止查找并提示用户");
     expect(p).toContain("用户提供前不要为查找 MCP 配置信息搜索磁盘或猜测路径");
   });
 
