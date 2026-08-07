@@ -16,6 +16,7 @@ import Screenshots from "electron-screenshots";
 import { join } from "path";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
+import { IPC_CONVERSATION_UNREAD_COUNT } from "../shared/ipc-channels";
 import DMWORK_CONFIG from "./config";
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
@@ -32,7 +33,7 @@ let screenShotWindowId = 0;
 let isFullScreen = false;
 
 let isOsx = process.platform === "darwin";
-let isWin = !isOsx;
+let isWin = process.platform === "win32";
 let isWindowFocusHandlerRegistered = false;
 
 const isDevelopment = process.env.NODE_ENV !== "production";
@@ -233,6 +234,12 @@ let flashTimer: any = null;
 function updateTray(unread = 0, isFlash= false): any {
   settings.showOnTray = true;
 
+  // IPC arguments are untrusted renderer data. Normalize them here so a
+  // transient undefined/string value cannot produce a malformed title.
+  const unreadCount = Number.isFinite(Number(unread))
+    ? Math.max(0, Math.floor(Number(unread)))
+    : 0;
+
   // linux 系统不支持 tray
   if (process.platform === "linux") {
     return;
@@ -242,7 +249,13 @@ function updateTray(unread = 0, isFlash= false): any {
     let contextmenu = Menu.buildFromTemplate(trayMenu);
 
     if (!trayIcon) {
-      trayIcon = getNoMessageTrayIcon();
+      const trayIconPath = getNoMessageTrayIcon();
+      trayIcon = isOsx
+        ? nativeImage.createFromPath(trayIconPath).resize({
+            width: 22,
+            height: 22,
+          })
+        : trayIconPath;
     }
 
     setTimeout(() => {
@@ -263,7 +276,11 @@ function updateTray(unread = 0, isFlash= false): any {
       }
 
       if (isOsx) {
-        tray.setTitle(unread > 0 ? " " + unread : "");
+        // Re-apply the purple logo so an already-created Tray cannot retain
+        // the previous template icon after the renderer is refreshed.
+        tray.setImage(trayIcon);
+        // Let macOS render the count as plain text to the right of the logo.
+        tray.setTitle(unreadCount > 0 ? ` ${unreadCount}` : "");
       }
 
       mainWindow.flashFrame(isFlash);
@@ -281,7 +298,10 @@ function updateTray(unread = 0, isFlash= false): any {
           }
       }, TRAY_FLASH_INTERVAL_MS);
       }else{
-        tray.setImage(trayIcon);
+        if (!isOsx) {
+          // Windows/Linux: directly use the path icon.
+          tray.setImage(trayIcon);
+        }
         clearInterval(flashTimer);
       }
     });
@@ -435,7 +455,7 @@ const createMainWindow = async () => {
     return getMediaAccessStatus;
   })
   // 会话未读消息消息数量托盘提醒
-  ipcMain.on("conversation-anager-unread-count", (event, num) => {
+  ipcMain.on(IPC_CONVERSATION_UNREAD_COUNT, (event, num) => {
     // const isFlag = num > 0 && isWin ? true : false;
     updateTray(num, false); // 不需要闪烁，闪烁很消耗性能
   });

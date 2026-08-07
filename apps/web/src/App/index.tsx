@@ -1,16 +1,18 @@
-import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, t } from '@octo/base';
+import { ChatPage, EndpointCategory, WKApp, Menus, t } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
 import './index.css';
 import AppLayout from '../Layout';
-import { WKSDK, ChannelTypePerson } from 'wukongimjssdk';
+import { WKSDK } from 'wukongimjssdk';
 import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
 import { createOctoDocumentTitleController } from '../features/documentTitle/octoDocumentTitle';
+import { IPC_CONVERSATION_UNREAD_COUNT } from '../../src-election/shared/ipc-channels';
+import { getElectronUnreadMessageCount } from './electronUnreadCount';
 
 /**
  * 全局 ?verified=1 处理：CAS 实名认证完成后 verify-service 会 302 回
@@ -88,6 +90,15 @@ function useDeprecatedFriendApplyReddotCleanup() {
   }, [isLogined, uid])
 }
 
+function syncElectronUnreadMessageCount() {
+  if ((window as any).__POWERED_ELECTRON__) {
+    (window as any).ipc.send(
+      IPC_CONVERSATION_UNREAD_COUNT,
+      getElectronUnreadMessageCount(),
+    )
+  }
+}
+
 let _menusRegistered = false
 async function registerMenus() {
   if (_menusRegistered) return
@@ -95,7 +106,14 @@ async function registerMenus() {
 
   WKSDK.shared().conversationManager.addConversationListener(() => {
     WKApp.menus.refresh()
+    syncElectronUnreadMessageCount()
   })
+  WKApp.mittBus.on("conversation-list-refreshed", syncElectronUnreadMessageCount)
+  WKApp.mittBus.on("space-changed", syncElectronUnreadMessageCount)
+
+  // The conversation list can be restored after registration; the listener
+  // above will send the subsequent snapshot in that case.
+  syncElectronUnreadMessageCount()
 
   WKApp.endpointManager.setMethod("menus.friendapply.change", () => {
     WKApp.menus.refresh()
@@ -105,35 +123,6 @@ async function registerMenus() {
 
   WKApp.menus.register("chat", (_context) => {
     const m = new Menus("chat", "/", t("app.nav.chat"), <ChatIcon />, <ChatIcon />)
-    // Electron's existing tray/taskbar contract intentionally remains the unread MESSAGE total.
-    // The Web document title uses a separate unread-CONVERSATION selector.
-    let electronUnreadMessageCount = 0
-
-    for (const conversation of WKSDK.shared().conversationManager.conversations) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(conversation.channel)
-      if (channelInfo?.mute) {
-        continue
-      }
-      // Space 过滤：复用 shouldSkipChannelForSpace 完整逻辑（含 channelSpaceMap 缓存）
-      if (shouldSkipChannelForSpace(conversation.channel)) {
-        continue
-      }
-      if (shouldSkipPersonConversationForSpace(conversation)) continue
-      // Person 频道在 Space 模式下优先使用 per-Space 未读计数
-      const currentSpaceId = WKApp.shared.currentSpaceId
-      if (currentSpaceId
-          && conversation.channel.channelType === ChannelTypePerson
-          && conversation.extra?.spaceUnread !== undefined) {
-        electronUnreadMessageCount += conversation.extra.spaceUnread
-      } else {
-        electronUnreadMessageCount += conversation.unread
-      }
-    }
-
-    // favicon 数字角标已下线；Electron 的既有托盘语义保持不变。
-    if ((window as any).__POWERED_ELECTRON__) {
-      (window as any).ipc.send("conversation-anager-unread-count", electronUnreadMessageCount);
-    }
 
     return m
   }, 1000)
