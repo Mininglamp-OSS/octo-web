@@ -20,12 +20,13 @@ describe("getBotPublishPrompt", () => {
     expect(prompt).toContain("Space ID：`space-1`");
     expect(prompt).toContain("当前 Agent Runtime 中配置的 Octo Bot Token");
     expect(prompt).toContain("OCTO_BOT_TOKEN");
-    expect(prompt).toContain("~/.openclaw/");
+    expect(prompt).toContain("当前 Agent Runtime 自身管理的 Octo 凭据或本地配置");
+    expect(prompt).not.toContain("~/.openclaw/");
     expect(prompt).toContain("当前工作目录的 `.env`");
+    expect(prompt).toContain("可搜索当前 Runtime 的官方文档或教程");
+    expect(prompt).toContain("仅查找凭据读取方式");
     expect(prompt).toContain("octo-cli auth login");
-    expect(prompt).toContain("Profile `space-space-1` 的 `space_id` 等于 `space-1`");
-    expect(prompt).not.toContain("可搜索网络");
-    expect(prompt).not.toContain("Runtime 官方文档");
+    expect(prompt).toContain("找不到可用凭据时");
     expect(prompt).toContain('`skills.md` 中“Publish as a Bot”流程');
     expect(prompt).toContain("使用用户提供的附件、Skill 包路径或");
     expect(prompt).toContain("以上 Space ID、API 地址和可见范围是本次操作的权威输入");

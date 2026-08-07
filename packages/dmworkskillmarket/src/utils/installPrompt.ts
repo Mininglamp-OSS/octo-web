@@ -27,8 +27,8 @@ export function buildInstallPrompt(skillId: string, spaceId: string, apiBaseURL:
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${safeSpaceId}\` 的唯一 Profile。
    如果不存在或无法唯一确定，按顺序查找当前 Agent Runtime 中配置的 Octo Bot Token：
    环境变量 \`OCTO_BOT_TOKEN\`；
-   OpenClaw 配置（如 \`~/.openclaw/\` 下的配置文件）；
-   当前工作目录的 \`.env\`。不要为获取 Token 搜索网络或访问外部文档。
+   当前 Agent Runtime 自身管理的 Octo 凭据或本地配置，可使用 Runtime 已安装的 Skills、工具或本地文档定位；
+   当前工作目录的 \`.env\`。不了解读取方式时，可搜索当前 Runtime 的官方文档或教程，仅查找凭据读取方式。
    找到后，通过 stdin 登录或更新固定 Profile \`space-${safeSpaceId}\`：
 
    \`\`\`bash
@@ -36,8 +36,7 @@ export function buildInstallPrompt(skillId: string, spaceId: string, apiBaseURL:
    \`\`\`
 
    不得输出 Token 或把 Token 放入命令参数。
-   登录后再次运行 \`octo-cli auth list\`，确认 Profile \`space-${safeSpaceId}\` 的 \`space_id\` 等于 \`${safeSpaceId}\`。
-   三处都找不到时，不要继续自行查找，提示用户运行 \`octo-cli auth login\` 或为当前 Runtime 配置 Bot Token。
+   找不到可用凭据时，提示用户运行 \`octo-cli auth login\` 或为当前 Runtime 配置 Bot Token。
 
 3. 使用选定的 Profile 运行以下命令，读取并遵循最新的 \`octo-marketplace\` Skill：
 
