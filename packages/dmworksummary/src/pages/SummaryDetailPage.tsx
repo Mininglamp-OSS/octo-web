@@ -3872,6 +3872,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {displayTitle}
                     </OverflowTooltip>
                     {this.renderScheduleSummary()}
+                    {detail && (detail.trigger_type === TriggerType.BOT || !!detail.creator_bot_name) && (
+                        <div className="summary-detail-bot-created">
+                            {t("summary.detail.botCreatedByFor", {
+                                values: {
+                                    bot: detail.creator_bot_name || t("summary.common.unknown"),
+                                    owner: detail.creator_name || t("summary.common.unknown"),
+                                },
+                            })}
+                        </div>
+                    )}
                 </div>
                 <div className="summary-detail-header-actions">
                     {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (

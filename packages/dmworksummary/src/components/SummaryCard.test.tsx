@@ -90,6 +90,23 @@ const noop = () => {};
 
 afterEach(cleanup);
 
+describe('SummaryCard bot-created marker', () => {
+    it('bot 创建时显示 Bot 小标与「由 <bot> 创建」', () => {
+        render(
+            <SummaryCard task={makeItem({ trigger_type: 4, creator_bot_name: '周报助手' }) as any} onClick={noop} onDelete={noop} />,
+        );
+        expect(screen.getByText('Bot')).toBeInTheDocument();
+        expect(screen.getByText(/由 周报助手 创建/)).toBeInTheDocument();
+    });
+
+    it('人发起的总结不显示 Bot 小标', () => {
+        render(
+            <SummaryCard task={makeItem({ trigger_type: 1 }) as any} onClick={noop} onDelete={noop} />,
+        );
+        expect(screen.queryByText('Bot')).not.toBeInTheDocument();
+    });
+});
+
 describe('SummaryCard attention dot', () => {
     it('needs_attention=true 时显示关注红点', () => {
         const { container } = render(

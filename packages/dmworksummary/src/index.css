@@ -4373,3 +4373,30 @@ body.summary-version-detail-open .summary-schedule-page {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ============================================================
+   Bot 创建标记(卡片 Bot 小标 + 详情"由 bot 代 owner 创建")
+   ============================================================ */
+.summary-card-bot-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex: none;
+    padding: 1px 7px 1px 5px;
+    border-radius: var(--wk-r-full, 999px);
+    background: var(--wk-bg-selected, rgba(127, 59, 245, 0.06));
+    color: var(--wk-color-accent, #7f3bf5);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 16px;
+}
+.summary-card-bot-tag svg {
+    flex: none;
+}
+
+.summary-detail-bot-created {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.5));
+}
