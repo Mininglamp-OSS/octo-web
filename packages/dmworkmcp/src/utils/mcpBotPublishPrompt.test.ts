@@ -90,12 +90,13 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain("当前 Agent Runtime 中配置的 Octo Bot Token");
     expect(p).toContain("OCTO_BOT_TOKEN");
     expect(p).toContain("当前 Agent Runtime 自身管理的 Octo 凭据或本地配置");
+    expect(p).toContain("随 Runtime 分发的本地文档");
     expect(p).not.toContain("~/.openclaw/");
     expect(p).toContain("当前工作目录的 `.env`");
-    expect(p).toContain("可搜索当前 Runtime 的官方文档或教程");
-    expect(p).toContain("仅查找凭据读取方式");
+    expect(p).toContain("不要为获取 Token 搜索网络或访问外部文档");
+    expect(p).not.toContain("可搜索当前 Runtime");
     expect(p).toContain("octo-cli auth login");
-    expect(p).toContain("找不到可用凭据时");
+    expect(p).toContain("以上来源都找不到时，不要继续自行查找");
     expect(p).toContain("用户提供前不要为查找 MCP 配置信息搜索磁盘或猜测路径");
   });
 
