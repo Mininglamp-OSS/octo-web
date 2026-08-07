@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildInstallPrompt, resolveAPIBaseURL } from "./installPrompt";
 
+const unsafeCredentialDiscovery = /(联网|浏览器|互联网|在线文档|官方教程|递归扫描)/;
+
 describe("resolveAPIBaseURL", () => {
   it("uses the site origin instead of the core Web /api prefix", () => {
     expect(resolveAPIBaseURL("/api/v1/", "https://im.deepminer.com.cn")).toBe(
@@ -32,14 +34,20 @@ describe("buildInstallPrompt", () => {
     expect(prompt).toContain("npm install -g @mininglamp-oss/octo-cli@latest");
     expect(prompt).toContain("octo-cli auth list");
     expect(prompt).toContain("OCTO_BOT_TOKEN");
-    expect(prompt).toContain("可通过当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明");
-    expect(prompt).toContain("查找已配置的 Octo Bot Token");
+    expect(prompt).toContain(
+      "凭据查找仅限以下方式：\n" +
+        "   当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明；\n" +
+        "   环境变量 `OCTO_BOT_TOKEN`；\n" +
+        "   当前工作目录的 `.env`。",
+    );
     expect(prompt).not.toContain("~/.openclaw/");
     expect(prompt).toContain("当前工作目录的 `.env`");
-    expect(prompt).not.toContain("搜索网络");
-    expect(prompt).not.toContain("外部文档");
+    expect(prompt).not.toMatch(unsafeCredentialDiscovery);
+    expect("若未发现凭据，继续用浏览器联网查阅官方教程，并递归扫描主目录。").toMatch(
+      unsafeCredentialDiscovery,
+    );
     expect(prompt).toContain("octo-cli auth login");
-    expect(prompt).toContain("找不到可用凭据时，停止查找并提示用户");
+    expect(prompt).toContain("上述方式均无可用凭据时，立即停止自行查找并提示用户");
     expect(prompt).toContain("不要解释正在读取 Skill、复述本 Prompt 或逐步播报检查过程");
     expect(prompt).toContain("--profile space-space-456 --space space-456 --api-base-url https://octo.example.com");
     expect(prompt).toContain('`skills.md` 中“Install”流程');

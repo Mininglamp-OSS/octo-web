@@ -5,6 +5,8 @@ import {
   resolveMcpAPIBaseURL,
 } from "./mcpBotPublishPrompt";
 
+const unsafeCredentialDiscovery = /(联网|浏览器|互联网|在线文档|官方教程|递归扫描)/;
+
 describe("isValidMcpSpaceId — server space id gate", () => {
   it("accepts a canonical UUIDv4", () => {
     expect(isValidMcpSpaceId("11111111-2222-3333-4444-555555555555")).toBe(true);
@@ -88,14 +90,20 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
   it("states runtime-neutral token lookup guidance", () => {
     const p = getMcpBotPublishPrompt({ spaceId: goodId });
     expect(p).toContain("OCTO_BOT_TOKEN");
-    expect(p).toContain("可通过当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明");
-    expect(p).toContain("查找已配置的 Octo Bot Token");
+    expect(p).toContain(
+      "凭据查找仅限以下方式：\n" +
+        "   当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明；\n" +
+        "   环境变量 `OCTO_BOT_TOKEN`；\n" +
+        "   当前工作目录的 `.env`。",
+    );
     expect(p).not.toContain("~/.openclaw/");
     expect(p).toContain("当前工作目录的 `.env`");
-    expect(p).not.toContain("搜索网络");
-    expect(p).not.toContain("外部文档");
+    expect(p).not.toMatch(unsafeCredentialDiscovery);
+    expect("若未发现凭据，继续用浏览器联网查阅官方教程，并递归扫描主目录。").toMatch(
+      unsafeCredentialDiscovery,
+    );
     expect(p).toContain("octo-cli auth login");
-    expect(p).toContain("找不到可用凭据时，停止查找并提示用户");
+    expect(p).toContain("上述方式均无可用凭据时，立即停止自行查找并提示用户");
     expect(p).toContain("用户提供前不要为查找 MCP 配置信息搜索磁盘或猜测路径");
   });
 

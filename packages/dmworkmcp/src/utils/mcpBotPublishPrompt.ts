@@ -60,8 +60,10 @@ export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): 
    \`npm install -g @mininglamp-oss/octo-cli@latest\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
-   如果不存在或无法唯一确定，可通过当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明，
-   查找已配置的 Octo Bot Token；也可检查环境变量 \`OCTO_BOT_TOKEN\` 和当前工作目录的 \`.env\`。
+   如果不存在或无法唯一确定，凭据查找仅限以下方式：
+   当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明；
+   环境变量 \`OCTO_BOT_TOKEN\`；
+   当前工作目录的 \`.env\`。
    找到后，通过 stdin 登录或更新固定 Profile \`space-${spaceId}\`：
 
    \`\`\`bash
@@ -69,7 +71,7 @@ export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): 
    \`\`\`
 
    不得输出 Token 或把 Token 放入命令参数。
-   找不到可用凭据时，停止查找并提示用户运行 \`octo-cli auth login\` 或为当前 Runtime 配置 Bot Token。
+   上述方式均无可用凭据时，立即停止自行查找并提示用户运行 \`octo-cli auth login\` 或为当前 Runtime 配置 Bot Token。
 
 3. 读取并遵循最新的 \`octo-marketplace\` Skill 中的 \`mcp.md\`：
 
