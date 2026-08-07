@@ -26,8 +26,16 @@ export class SummaryNotifyContent extends MessageContent {
             // this render. The listener that repopulates the cache will
             // trigger a re-render in the cell — same pattern
             // Components/ConversationList/index.tsx:622 uses for the
-            // preview's sender resolution. #1283 round-7 P2 (yujiawei).
-            if (!displayName?.trim() && senderUID) {
+            // preview's sender resolution.
+            //
+            // #1283 round-8 P2 (@yujiawei): gate on `!channelInfo` (true cache
+            // miss), NOT `!displayName`. A cached-but-nameless entry — e.g.
+            // one populated from `channels/{uid}/{type}` 404 with `orgData:
+            // {}` — would otherwise re-fetch on every render, relying on the
+            // SDK's notify-before-in-flight-release ordering to avoid a
+            // render/fetch loop. That's a fragile coupling to internal SDK
+            // ordering; gate on real absence instead.
+            if (!channelInfo && senderUID) {
                 void fetchImChannelInfo(WKSDK.shared(), senderCh)
             }
             name = displayName?.trim() || t("base.message.summaryNotify.unknown")
@@ -48,7 +56,15 @@ export class SummaryNotifyContent extends MessageContent {
     }
 
     encodeJSON(): any {
-        return { from_uid: this.fromUID || "", from_name: this.fromName || "" }
+        // Only from_uid — payload.from_name is deliberately not emitted.
+        // The renderer resolves display names from the authenticated envelope
+        // + local channel-info cache, never trusting sender-controlled
+        // payload (spoofing resistance). Emitting a from_name we ignore is
+        // dead wire weight and misleads readers into thinking it is
+        // load-bearing. If a future server-side sender needs a name field
+        // (bypass local cache in a system context), reintroduce with a
+        // comment explaining who reads it. #1283 round-8 P2 (@yujiawei).
+        return { from_uid: this.fromUID || "" }
     }
 
     get contentType() {

@@ -882,17 +882,11 @@ export default class BaseModule implements IModule {
       return false;
     }
     if (isCurrentImSystemMessage(message.contentType)) {
-      // 系统消息不发通知
-      return false;
-    }
-    // #289 (yujiawei P1-1 from #1234 round-6): summaryNotify is contentType=21,
-    // which sits outside WKSDK's isSystemMessage() 1000-2000 range. Without an
-    // explicit check here, every non-muted member of every group source would
-    // receive a desktop notification + tips sound for what is by design a
-    // passive grey tip. Explicitly suppress it here; matches the treatment
-    // Conversation/index.tsx already gives screenshot (20) + summaryNotify (21)
-    // for system-message classification.
-    if (message.contentType === MessageContentTypeConst.summaryNotify) {
+      // 系统消息不发通知 — includes summaryNotify (21) via the classifier's
+      // explicit override, which also suppresses tipsAudio() at :798-799.
+      // #1283 round-8 P2 (@yujiawei): the previous "if (contentType === 21)
+      // return false" here was dead code once the classifier gained the 21
+      // override; keeping one mechanism.
       return false;
     }
     if (message.fromUID === WKApp.loginInfo.uid) {
@@ -1290,15 +1284,12 @@ export default class BaseModule implements IModule {
         if (message.channel.channelType !== ChannelTypeGroup) {
           return null;
         }
-        // 系统消息不显示
+        // 系统消息不显示 — includes summaryNotify (21) via the classifier's
+        // explicit override. #1283 round-8 P2 (@yujiawei): the previous
+        // "if (contentType === summaryNotify) return null" here was dead
+        // code once the classifier gained the 21 override; keeping one
+        // mechanism.
         if (isCurrentImSystemMessage(message.contentType)) {
-          return null;
-        }
-        // #1234 round-6 (yujiawei P1-1 leak): summaryNotify sits outside SDK
-        // isSystemMessage() 1000-2000 range · explicitly exclude it here so
-        // "create thread from message" is not offered on a summary tip
-        // (which would default the thread name to the tip text).
-        if (message.contentType === MessageContentTypeConst.summaryNotify) {
           return null;
         }
         // 群已解散则隐藏「创建子区」——解散后全员只读，不得新建子区。

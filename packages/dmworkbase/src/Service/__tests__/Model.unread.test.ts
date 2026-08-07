@@ -62,13 +62,12 @@ describe("ConversationWrap unread by Space", () => {
   });
 });
 
-// #1283 round-7 P1 (Jerry-Xin / lml2468 / yujiawei): passive-tip content
-// types 21 (summaryNotify) and 20 (screenshot) sit OUTSIDE the SDK's
-// isSystemMessage() 1000-2000 range. Without an explicit entry in
-// systemContentTypes the existing "raw unread = 1 && last message is system"
-// suppression at Model.tsx never fires for them, so the sidebar lights an
-// unread badge on a message that is by design a silent grey tip.
-describe("ConversationWrap unread — passive-tip content types (types 20, 21)", () => {
+// #1283 round-8 P1-B (@yujiawei): screenshot (20) reclassification was
+// deliberately withdrawn from this PR — its "counts as a system message"
+// posture is a shipped product decision (removing its desktop notification
+// is a privacy signal). Only summaryNotify (21) is added to systemContentTypes.
+// Regression coverage stays focused on 21.
+describe("ConversationWrap unread — summaryNotify passive tip (type 21)", () => {
   beforeEach(() => {
     state.currentSpaceId = "";
   });
@@ -79,16 +78,19 @@ describe("ConversationWrap unread — passive-tip content types (types 20, 21)",
     ).toBe(0);
   });
 
-  it("does not increment unread when the sole unread message is a screenshot (20)", () => {
+  // Explicit assertion that screenshot behaviour is UNCHANGED by this PR —
+  // if a future PR reclassifies type 20 as a system message, this test must
+  // update deliberately (and its comment should track the product owner
+  // who signed off on the reclassification).
+  it("preserves shipped screenshot (20) unread behaviour — NOT reclassified in this PR", () => {
     expect(
       groupConversationWithLastMessageType(1, MessageContentTypeConst.screenshot).unread,
-    ).toBe(0);
+    ).toBe(1);
   });
 
-  // Mixed unread — the "raw=1 && system" suppression deliberately fires only
-  // when rawUnread === 1 so a passive tip does NOT hide a real backlog of
-  // unread user messages. If the last message happens to be a passive tip but
-  // rawUnread > 1, the badge should still show the raw count.
+  // "Sole unread" scope check — reflected in the Service/Model.tsx comment:
+  // the suppression only zeroes when rawUnread === 1. Multiple accumulated
+  // tips or a tip on top of real unread traffic still increment the badge.
   it("still reports rawUnread when raw > 1 (mixed unread with tip last)", () => {
     expect(
       groupConversationWithLastMessageType(5, MessageContentTypeConst.summaryNotify).unread,

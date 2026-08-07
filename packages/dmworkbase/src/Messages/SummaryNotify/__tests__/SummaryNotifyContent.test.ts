@@ -72,15 +72,23 @@ describe("SummaryNotifyContent", () => {
     expect(content.contentType).toBe(MessageContentTypeConst.summaryNotify);
   });
 
-  it("round-trips fromUID/fromName through encodeJSON/decodeJSON", () => {
+  it("encodeJSON emits only from_uid (round-8 P2: from_name is dead wire weight)", () => {
     const content = new SummaryNotifyContent();
     content.fromUID = "alice";
-    content.fromName = "Alice";
+    content.fromName = "Alice";  // Set but not emitted.
     const encoded = content.encodeJSON();
-    expect(encoded).toEqual({ from_uid: "alice", from_name: "Alice" });
+    // Only from_uid — the renderer resolves display name from the
+    // authenticated envelope, never from payload from_name.
+    expect(encoded).toEqual({ from_uid: "alice" });
+    expect(encoded).not.toHaveProperty("from_name");
+  });
 
+  it("decodeJSON still tolerates a legacy from_name field for backwards compat", () => {
     const decoded = new SummaryNotifyContent();
-    decoded.decodeJSON(encoded);
+    decoded.decodeJSON({ from_uid: "alice", from_name: "Alice" });
+    // Legacy payloads on the wire from older senders (or a future
+    // server-side sender that reintroduces the field) round-trip cleanly,
+    // even though we no longer emit or display from_name.
     expect(decoded.fromUID).toBe("alice");
     expect(decoded.fromName).toBe("Alice");
   });

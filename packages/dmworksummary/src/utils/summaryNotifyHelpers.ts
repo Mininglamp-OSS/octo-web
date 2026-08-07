@@ -56,7 +56,7 @@ const GROUP_CHAT_SOURCE_TYPE = 1 as const;
  */
 export function shouldEmitGroupSummaryNotify(
     detail: Pick<SummaryDetail, 'status' | 'creator_id' | 'summary_mode'>,
-    myUid: string,
+    myUid: string | undefined,
     completedStatus: number,
     byGroupMode: number,
 ): boolean {
@@ -93,4 +93,81 @@ export function collectGroupSourceIds(sources: SummaryDetail['sources'] | undefi
         out.push(src.source_id);
     }
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// First-completion-only persistence — #1283 round-8 P1-A (Jerry-Xin + yujiawei)
+// ---------------------------------------------------------------------------
+//
+// Product decision (this PR): a summary-notify tip fires ONCE PER TASK, not
+// once per completion transition. Regenerate is an internal quality tuning
+// step by the creator and must not spam the group. Screenshot-tip parity is
+// intentionally rejected here — the two features have different UX contracts:
+// screenshot is a discrete action that repeats, "summarize the chat" is a
+// single event about one task.
+//
+// Without persistent state the in-page instance's Set can guarantee this only
+// until unmount. A reload / navigation between the first completion and the
+// regenerate re-observes the → COMPLETED edge with an empty Set and posts a
+// second tip. yujiawei's round-8 P1-A pinned this precisely: whether N
+// regenerations produced N tips or 1 was a function of the creator's
+// navigation history, which is the defect.
+//
+// The persistence layer is deliberately narrow — one localStorage key per
+// (task_id, source_id) recording "tip sent to this group for this task,
+// ever". No Web Locks, no completion-run version, no cross-completion
+// bookkeeping. This is smaller in surface than the localStorage design
+// yujiawei asked to retire in round-6 (which stored a whole runs array with
+// generation counters for exactly-once semantics); this version records a
+// single boolean per group, which is what the "once per task" contract
+// actually needs.
+
+/** Storage key for the sent-set of one task. See summaryNotifyHelpers header. */
+export function summaryNotifySentKey(taskId: number | string): string {
+    return `summary-notify-sent:${taskId}`;
+}
+
+/**
+ * Read the set of source_ids that have already received a tip for this task.
+ *
+ * Failure modes (private-mode / quota / malformed JSON / non-array payload)
+ * degrade to "no known sends" — the same-instance in-flight Set will still
+ * coalesce concurrent triggers, and worst case is one duplicate rather than a
+ * permanent silent hole. That fail-open bias is intentional: a tip that
+ * silently never fires is a worse product failure than a rare duplicate.
+ */
+export function readSummaryNotifySentSources(taskId: number | string): Set<string> {
+    try {
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(summaryNotifySentKey(taskId)) : null;
+        if (!raw) return new Set();
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return new Set();
+        return new Set(arr.filter((x): x is string => typeof x === 'string' && x.length > 0));
+    } catch {
+        return new Set();
+    }
+}
+
+/**
+ * Record that `sourceId` has now received a tip for `taskId`. Read-modify-write
+ * merges the current set from storage so a concurrent tab that added a
+ * different sourceId in between our read and write does not lose its entry.
+ *
+ * ONLY called after the SDK send resolves — a transient IM error must not
+ * poison the record and turn "retry on next observed → COMPLETED" into a
+ * permanent silent hole.
+ */
+export function markSummaryNotifySent(taskId: number | string, sourceId: string): void {
+    if (!sourceId) return;
+    if (typeof localStorage === 'undefined') return;
+    try {
+        // Re-read to merge concurrent tab writes rather than clobber them.
+        const set = readSummaryNotifySentSources(taskId);
+        if (set.has(sourceId)) return;
+        set.add(sourceId);
+        localStorage.setItem(summaryNotifySentKey(taskId), JSON.stringify([...set]));
+    } catch {
+        // localStorage unavailable (private-mode / quota) — accept a possible
+        // duplicate on a future load rather than fail the current send.
+    }
 }
