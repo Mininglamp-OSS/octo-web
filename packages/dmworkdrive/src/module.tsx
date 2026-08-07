@@ -7,7 +7,6 @@ import {
   t as translate,
 } from '@octo/base';
 import type { IModule } from '@octo/base';
-import { HardDrive } from 'lucide-react';
 import DriveSidebar from './pages/DriveSidebar';
 import DriveContent from './pages/DriveContent';
 import { DriveVM } from './pages/DriveVM';
@@ -83,9 +82,12 @@ const ChatShell = ChatPage as unknown as React.ComponentType;
 const driveHostShell = () => <ChatShell />;
 
 /** NavRail drive icon — brand color when active, currentColor otherwise. */
-function DriveIcon({ active }: { active?: boolean }) {
-  const color = active ? 'var(--wk-brand-primary, #7C5CFC)' : 'currentColor';
-  return <HardDrive size={22} color={color} />;
+function DriveIcon(_props: { active?: boolean }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M16.2341 16.9681H3.76571C3.07886 16.9681 2.51942 16.3275 2.51942 15.5411C2.51942 14.7547 3.07803 14.1141 3.76571 14.1141H16.2341C16.9219 14.1141 17.4813 14.7547 17.4813 15.5411C17.4813 16.3275 16.9218 16.9681 16.2333 16.9681M8.44641 7.50987C8.44646 6.47702 9.28384 5.63975 10.3168 5.63975C11.3496 5.63975 12.187 6.47702 12.187 7.50987C12.8756 7.50987 13.4339 8.06811 13.4339 8.75669C13.4339 9.44518 12.8756 10.0034 12.187 10.0034H8.44553C7.77919 9.97285 7.2546 9.42369 7.2546 8.75669C7.2546 8.08962 7.77919 7.54045 8.44553 7.50987M18.5941 15.1667L16.4715 4.27982C16.3564 3.60427 15.7236 3.08755 14.9468 3.05879H5.05568C4.265 3.08755 3.62086 3.62083 3.52227 4.3121L1.40667 15.1667C1.32636 15.3849 1.27227 15.6135 1.27227 15.8554C1.27227 17.0842 2.38851 18.0809 3.76573 18.0809H16.2341C17.6105 18.0809 18.7277 17.0842 18.7277 15.8554C18.7276 15.6127 18.6736 15.3849 18.5941 15.1667Z" fill="currentColor" />
+    </svg>
+  );
 }
 
 /**

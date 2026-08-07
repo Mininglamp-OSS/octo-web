@@ -49,6 +49,19 @@ export interface NavRailVMProps {
 
 export interface NavRailProps extends NavRailVMProps {}
 
+function LoopMenuIcon() {
+    return (
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M10 1C14.9706 1 19 5.02944 19 10C19 14.9706 14.9706 19 10 19C5.02944 19 1 14.9706 1 10C1 5.02944 5.02944 1 10 1ZM13.3242 6.90625C11.919 6.90625 10.925 7.91522 10.6885 8.14648C10.3554 8.47221 10.3492 9.00666 10.6748 9.33984C11.0005 9.67294 11.535 9.67911 11.8682 9.35352C12.1432 9.08455 12.6842 8.59375 13.3242 8.59375C14.0266 8.59392 14.7812 9.09961 14.7812 10C14.7812 10.9004 14.0266 11.4061 13.3242 11.4062C12.2571 11.4062 11.7379 10.7913 10.6533 9.46582C9.69251 8.29152 8.67686 6.90625 6.67578 6.90625C5.33284 6.90642 3.53125 7.90074 3.53125 10C3.53125 12.0993 5.33284 13.0936 6.67578 13.0938C8.06201 13.0938 8.78862 12.3648 9.31152 11.8535C9.64463 11.5278 9.65078 10.9933 9.3252 10.6602C8.99947 10.327 8.46503 10.3209 8.13184 10.6465C7.63207 11.1352 7.33493 11.4062 6.67578 11.4062C5.97342 11.4061 5.21875 10.9004 5.21875 10C5.21875 9.09961 5.97342 8.59392 6.67578 8.59375C7.74286 8.59375 8.26214 9.20866 9.34668 10.5342C10.3075 11.7085 11.3231 13.0938 13.3242 13.0938C14.6671 13.0936 16.4688 12.0993 16.4688 10C16.4688 7.90074 14.6671 6.90642 13.3242 6.90625Z" fill="currentColor" />
+        </svg>
+    );
+}
+
+function getNavMenuIcon(menus: Menus, active: boolean) {
+    if (menus.id === "loop" || menus.id === "dmloop") return <LoopMenuIcon />;
+    return active ? menus.selectedIcon : menus.icon;
+}
+
 export default class NavRail extends Component<NavRailProps> {
     private settingsButtonRef = React.createRef<HTMLButtonElement>();
 
@@ -113,7 +126,7 @@ export default class NavRail extends Component<NavRailProps> {
                         {(menusList ?? []).map((menus) => (
                             <NavItem
                                 key={menus.id}
-                                icon={menus.id === currentMenus?.id ? menus.selectedIcon : menus.icon}
+                                icon={getNavMenuIcon(menus, menus.id === currentMenus?.id)}
                                 label={menus.title}
                                 active={menus.id === currentMenus?.id}
                                 badge={menus.badge && menus.badge > 0 ? menus.badge : undefined}

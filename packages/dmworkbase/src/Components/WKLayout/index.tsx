@@ -50,6 +50,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     private dragStartWidth = 0
     private lastWidth = SPLITTER_DEFAULT_WIDTH
     private lastNavRailWidth = NAV_RAIL_DEFAULT_WIDTH
+    private activeDraggingTarget?: "nav" | "content"
     private cachedContainerWidth = 1200  // updated in mount + resize
     private cachedLayoutWidth = 1200
 
@@ -112,6 +113,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         e.preventDefault()
         this.dragStartX = e.clientX
         this.dragStartWidth = this.lastWidth
+        this.activeDraggingTarget = "content"
         this.setState({ isDragging: true, draggingTarget: "content" })
         document.addEventListener('mousemove', this.onDragMove)
         document.addEventListener('mouseup', this.onDragEnd)
@@ -132,6 +134,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         e.preventDefault()
         this.dragStartX = e.clientX
         this.dragStartWidth = this.lastNavRailWidth
+        this.activeDraggingTarget = "nav"
         this.setState({ isDragging: true, draggingTarget: "nav" })
         document.addEventListener('mousemove', this.onDragMove)
         document.addEventListener('mouseup', this.onDragEnd)
@@ -144,7 +147,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
 
     private onDragMove = (e: MouseEvent) => {
         const delta = e.clientX - this.dragStartX
-        if (this.state.draggingTarget === "nav") {
+        if (this.activeDraggingTarget === "nav") {
             const newWidth = clampNavRailWidth(getNavRailDragWidth(this.dragStartWidth, delta), this.cachedLayoutWidth)
             this.lastNavRailWidth = newWidth
 
@@ -192,7 +195,8 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         window.removeEventListener('blur', this.onDragEnd)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
-        const { draggingTarget } = this.state
+        const draggingTarget = this.activeDraggingTarget
+        this.activeDraggingTarget = undefined
         if (!draggingTarget) {
             this.setState({ isDragging: false })
             return
