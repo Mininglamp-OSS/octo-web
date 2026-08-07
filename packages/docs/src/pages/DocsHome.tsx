@@ -15,7 +15,14 @@ import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
 import { CreatePptModal } from '../ppt/CreatePptModal.tsx'
 import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
 import { docsApiBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
-import { isBoardDoc, isBoardIdLocally, persistBoardScene, rememberBoard } from '../board/boardStore.ts'
+import {
+  clearBoardScene,
+  forgetBoard,
+  isBoardDoc,
+  isBoardIdLocally,
+  persistBoardScene,
+  rememberBoard,
+} from '../board/boardStore.ts'
 import { BoardImportSchemaError, BoardImportStorageError, importBoardScene } from '../board/boardImport.ts'
 import { runMarkdownImport, runDocxImport, ImportContentCorruptError } from '../editor/importFlow.ts'
 import '../editor/styles.css'
@@ -626,6 +633,29 @@ function DocsList({
     docId: string
     kind: 'doc' | 'board' | 'sheet'
   } | null>(null)
+  /**
+   * A just-deleted docId whose board-local artefacts still need dropping. Deferred to an effect
+   * rather than done inline in the delete callback because of ORDERING: when the deleted doc is the
+   * open one, `onDocDeleted` unmounts its shell, and BoardShell's unmount cleanup calls `flush()`
+   * (BoardShell.tsx:1802-1811), which re-persists `latestScene` through `persistBoardScene`. Clearing
+   * inline would therefore be undone by that final flush — React runs an unmounting child's cleanup
+   * before the parent's effects, so an effect lands after it.
+   */
+  const [boardCleanup, setBoardCleanup] = useState<string | null>(null)
+  useEffect(() => {
+    if (!boardCleanup) return
+    // Same pair BoardShell.handleDeleted runs (BoardShell.tsx:1813-1823): the scene mirror AND the
+    // board-kind registry, or the registry keeps a "this docId is a board" record for a deleted board
+    // and can mislabel a later reused id.
+    //
+    // Called unconditionally rather than only for `kind === 'board'`: both are documented best-effort
+    // (clearBoardScene removes a key that a non-board never wrote; forgetBoard early-returns unless
+    // the id is in the registry), so an unconditional call needs no kind guess — which also covers a
+    // board row whose docType the list API omitted, the case a kind check would miss.
+    clearBoardScene(boardCleanup, uid)
+    forgetBoard(boardCleanup, uid)
+    setBoardCleanup(null)
+  }, [boardCleanup, uid])
   const del = useDocDelete(
     deleteTarget?.docId ?? '',
     (docId) => {
@@ -634,6 +664,7 @@ function DocsList({
       // doc is the open one and bumps the list reload token, which refetches both tabs through the
       // `reloadToken` prop — so no separate reloadViews() call (that would double-fetch).
       onDocDeleted(docId)
+      setBoardCleanup(docId)
     },
     // Same as HtmlDocView.tsx:361 — carry the Space so deleteDoc sends X-Space-Id.
     space ? { spaceId: space } : undefined,

@@ -56,13 +56,24 @@ vi.mock('../editor/EditorShell.tsx', () => ({
 // Replace the whole board session boundary, not only BoardShell. BoardSession owns the
 // HocuspocusProvider, so mocking the leaf still opens a real undici WebSocket before rendering the
 // marker and leaves asynchronous Event errors after the assertions finish.
-vi.mock('../board/BoardSession.tsx', () => ({
-  BoardSession: (props: { docId: string }) => (
-    <div data-testid="board-shell">
-      <span data-testid="board-doc">{props.docId}</span>
-    </div>
-  ),
-}))
+// The real BoardShell flushes a pending scene save on unmount (BoardShell.tsx:1802-1811). The marker
+// can stand in for that when a test needs it: set `boardUnmount.onUnmount` to simulate the flush, so a
+// delete-while-open case can prove the cleanup still wins the race against it. Null by default, so
+// every other test sees the same inert marker as before.
+const boardUnmount = vi.hoisted(() => ({ onUnmount: null as null | (() => void) }))
+vi.mock('../board/BoardSession.tsx', async () => {
+  const React = await import('react')
+  return {
+    BoardSession: (props: { docId: string }) => {
+      React.useEffect(() => () => boardUnmount.onUnmount?.(), [])
+      return (
+        <div data-testid="board-shell">
+          <span data-testid="board-doc">{props.docId}</span>
+        </div>
+      )
+    },
+  }
+})
 
 // Replace the collaborative spreadsheet shell (Univer + Yjs) with a marker so the sheet-open
 // flows are testable in jsdom without mounting the heavy Univer runtime. The marker surfaces the
@@ -3554,5 +3565,138 @@ describe('DocsHome — row context menu: 转发 / 删除', () => {
     expect(
       after.filter((c: { method: string; url: string }) => c.method === 'post' && c.url.includes('view')),
     ).toHaveLength(0)
+  })
+
+  // lml2468, PR #1288: a list delete only cleared `deleteTarget` and called the parent's back/reload
+  // callback, so deleting a board left its uid-scoped scene mirror and its board-kind registry entry
+  // behind — BoardShell.handleDeleted (BoardShell.tsx:1813-1823) drops both. A stale registry entry is
+  // not inert: it records "this docId is a board", so a later reused id can be mislabelled.
+  describe('board-local cleanup', () => {
+    const SCENE = (docId: string) => `octo.board.scene.u_self.${docId}`
+    const REGISTRY = 'octo.board.ids.u_self'
+
+    const mountBoard = async (open: boolean) => {
+      const wk = createMockWKApp()
+      const replaceToRoot = vi.fn()
+      ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+      setWKApp(wk)
+      wk.apiClient.responder = (method: string, url: string) => {
+        if (method === 'get' && url.startsWith('/docs')) {
+          return {
+            data: {
+              total: 1,
+              items: [
+                { docId: 'b_x', title: 'Board row', ownerId: 'u_self', role: 'admin', docType: 'board' },
+              ],
+            },
+            status: 200,
+          }
+        }
+        return { data: {}, status: 200 }
+      }
+      render(<DocsHome />)
+      await waitFor(() => expect(screen.getByText('Board row')).toBeTruthy())
+      if (open) {
+        fireEvent.click(screen.getByText('Board row'))
+        await waitFor(() => {
+          const last = replaceToRoot.mock.calls.at(-1)?.[0] as
+            | { props?: { docId?: string } }
+            | undefined
+          expect(last?.props?.docId).toBe('b_x')
+        })
+      }
+      // The two artefacts an opened-and-edited board leaves behind.
+      window.localStorage.setItem(SCENE('b_x'), JSON.stringify({ elements: [{ id: 'e1' }] }))
+      window.localStorage.setItem(REGISTRY, JSON.stringify(['b_x']))
+      return wk
+    }
+
+    const deleteRow = async (wk: { apiClient: { calls: Array<{ method: string }> } }) => {
+      fireEvent.contextMenu(screen.getByText('Board row').closest('button')!)
+      fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+      await waitFor(() => expect(screen.getByText('docs.board.deleteConfirm')).toBeTruthy())
+      fireEvent.click(screen.getByText('docs.doc.delete'))
+      await waitFor(() =>
+        expect(wk.apiClient.calls.some((c) => c.method === 'delete')).toBe(true),
+      )
+    }
+
+    // `true` covers the ordering hazard: onDocDeleted unmounts the shell, and BoardShell's unmount
+    // cleanup calls flush() → persistBoardScene (BoardShell.tsx:1802-1811), which would re-persist the
+    // scene if the clear ran inline in the delete callback instead of in an effect.
+    it.each([[false], [true]])(
+      'drops the board scene and registry entry after a list delete (open=%s)',
+      async (open) => {
+        const wk = await mountBoard(open)
+        await deleteRow(wk)
+
+        await waitFor(() => expect(window.localStorage.getItem(SCENE('b_x'))).toBeNull())
+        expect(JSON.parse(window.localStorage.getItem(REGISTRY) ?? '[]')).not.toContain('b_x')
+      },
+    )
+
+    it('leaves another board’s artefacts alone', async () => {
+      const wk = await mountBoard(false)
+      // A different board that was NOT deleted — the cleanup is per-docId, not a wipe.
+      window.localStorage.setItem(SCENE('b_other'), JSON.stringify({ elements: [] }))
+      window.localStorage.setItem(REGISTRY, JSON.stringify(['b_x', 'b_other']))
+
+      await deleteRow(wk)
+
+      await waitFor(() => expect(window.localStorage.getItem(SCENE('b_x'))).toBeNull())
+      expect(window.localStorage.getItem(SCENE('b_other'))).not.toBeNull()
+      expect(JSON.parse(window.localStorage.getItem(REGISTRY) ?? '[]')).toEqual(['b_other'])
+    })
+
+    // Pins the ORDERING, which is the reason the cleanup lives in an effect rather than inline in the
+    // delete callback. The real BoardShell flushes a pending scene save on unmount
+    // (BoardShell.tsx:1802-1811 → persistBoardScene); the marker simulates exactly that. Clearing
+    // inline runs BEFORE React commits the unmount, so the flush would write the deleted scene back
+    // and the artefact would survive the delete.
+    it('still wins when the open board re-persists its scene on unmount', async () => {
+      // The split-pane path, NOT routeRight: there the shell is handed to the host as an element
+      // snapshot and never actually mounts, so it can neither unmount nor flush. Here it really
+      // renders, so the simulated flush fires on the unmount the delete triggers.
+      const wk = createMockWKApp()
+      setWKApp(wk)
+      wk.apiClient.responder = (method: string, url: string) => {
+        if (method === 'get' && url.startsWith('/docs')) {
+          return {
+            data: {
+              total: 1,
+              items: [
+                { docId: 'b_x', title: 'Board row', ownerId: 'u_self', role: 'admin', docType: 'board' },
+              ],
+            },
+            status: 200,
+          }
+        }
+        return { data: {}, status: 200 }
+      }
+      render(<DocsHome />)
+      await waitFor(() => expect(screen.getByText('Board row')).toBeTruthy())
+      fireEvent.click(screen.getByText('Board row'))
+      await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+
+      window.localStorage.setItem(SCENE('b_x'), JSON.stringify({ elements: [{ id: 'e1' }] }))
+      window.localStorage.setItem(REGISTRY, JSON.stringify(['b_x']))
+      let flushed = false
+      boardUnmount.onUnmount = () => {
+        flushed = true
+        window.localStorage.setItem(SCENE('b_x'), JSON.stringify({ elements: [{ id: 'flushed' }] }))
+      }
+
+      await deleteRow(wk)
+
+      // The flush really ran — so the race exists — and the cleanup still landed after it.
+      await waitFor(() => expect(screen.queryByTestId('board-shell')).toBeNull())
+      expect(flushed).toBe(true)
+      await waitFor(() => expect(window.localStorage.getItem(SCENE('b_x'))).toBeNull())
+    })
+
+    afterEach(() => {
+      // Reset the simulated flush so it cannot leak into any other case.
+      boardUnmount.onUnmount = null
+    })
   })
 })
