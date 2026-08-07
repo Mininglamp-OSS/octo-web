@@ -842,7 +842,8 @@
       "onlyMe": "仅我可以编辑",
       "designatedUsers": "指定用户可以编辑",
       "noMembers": "暂无可指定的成员"
-    }
+    },
+    "copyDocLink": "复制文档链接"
   },
   "error": {
     "permission": {

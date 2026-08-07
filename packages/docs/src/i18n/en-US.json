@@ -842,7 +842,8 @@
       "onlyMe": "Only I can edit",
       "designatedUsers": "Designated users can edit",
       "noMembers": "No members available"
-    }
+    },
+    "copyDocLink": "Copy document link"
   },
   "error": {
     "permission": {

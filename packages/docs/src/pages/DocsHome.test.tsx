@@ -3303,6 +3303,30 @@ describe('DocsHome — row context menu: 转发 / 删除', () => {
     expect(wk.openDocForwardCalls.at(-1)!.kind).toBe('doc')
   })
 
+  it('copies the document address for ANY role, without minting an invite', async () => {
+    // Owner decision 2026-08-07: 复制链接 now means the address. It replaced an invite-minting entry
+    // that was admin-only (createInvite → backend requires admin), which left a reader — the person
+    // most likely to want to point a colleague at a doc — with no way to copy it at all, and handed
+    // admins a link that silently GRANTED reader access instead of the address they asked for.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const wk = await mount()
+
+    // 'Beta' is role: 'reader' — the case the old admin gate excluded entirely.
+    fireEvent.contextMenu(screen.getByText('Beta').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.copyDocLink'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    const copied = writeText.mock.calls[0][0] as string
+    // The doc's own address (buildDocLink), not an invite token.
+    expect(copied).toContain('/d/d_b')
+    expect(copied).not.toContain('invite')
+    // And no request was made: minting an invite is what the old entry did.
+    expect(
+      wk.apiClient.calls.filter((c: { url: string }) => c.url.includes('invite')),
+    ).toHaveLength(0)
+  })
+
   it('offers 删除 only to owner/admin', async () => {
     await mount()
     fireEvent.contextMenu(screen.getByText('Beta').closest('button')!)

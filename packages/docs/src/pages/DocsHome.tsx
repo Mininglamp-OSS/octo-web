@@ -28,8 +28,8 @@ import {
 } from '../config.ts'
 import { createDoc, deleteDoc, getDoc, recordDocView, type DocListItem } from './docsApi.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
-import { createInvite, buildInviteUrl } from '../invite/api.ts'
 import { canManage, type Role } from '../auth/roles.ts'
+import { buildDocLink } from '../forward/link.ts'
 import { formatRelative, formatAbsolute } from '../versions/format.ts'
 import { PortalMenu } from './PortalMenu.tsx'
 import { DocsTabs } from './DocsTabs.tsx'
@@ -631,22 +631,32 @@ function DocsList({
     })
   }
 
-  // Share link = an invite link that GRANTS access (a bare /docs?doc= URL only works
-  // for existing members). Create one and copy it to the clipboard. The link grants
-  // READER access — a "copy link" must never silently hand out write access; elevating
-  // a share to writer is a deliberate action, not the default. (Backend also requires
-  // admin to create invites; the menu entry is gated on canManage below to match.)
-  const copyShareLink = async (id: string) => {
-    try {
-      const inv = await createInvite(id, { role: 'reader' })
-      const url = buildInviteUrl(inv.inviteToken)
-      await navigator.clipboard?.writeText(url)
-      setNotice(t('docs.sheet.linkCopied'))
-      window.setTimeout(() => setNotice(null), 2000)
-    } catch {
+  // Copy the document's own address — `${origin}/d/<docId>?sp=<space>` via buildDocLink, a pure
+  // string builder with no request behind it.
+  //
+  // This REPLACES an earlier "复制链接" that called createInvite() and copied an invite token
+  // (#537). That entry was gated on canManage because the backend only lets an admin mint an
+  // invite, which meant everyone else — the people most likely to want to point a colleague at a
+  // doc — had no way to copy its address at all, and the ones who did got a link that silently
+  // GRANTED reader access rather than the address they asked for. Owner decision 2026-08-07:
+  // "复制链接" should mean the address. Granting access stays a deliberate act, reachable through
+  // 转发到聊天 (which authorizes explicitly) and the members panel.
+  const copyDocLink = async (id: string) => {
+    const writeText = navigator.clipboard?.writeText
+    // `?.writeText(...)` on a missing Clipboard API resolves to undefined, so awaiting it would
+    // report a copy that never happened.
+    if (typeof writeText !== 'function') {
       setNotice(t('docs.sheet.linkFailed'))
       window.setTimeout(() => setNotice(null), 2000)
+      return
     }
+    try {
+      await navigator.clipboard.writeText(buildDocLink({ docId: id, space }))
+      setNotice(t('docs.sheet.linkCopied'))
+    } catch {
+      setNotice(t('docs.sheet.linkFailed'))
+    }
+    window.setTimeout(() => setNotice(null), 2000)
   }
 
   const onCreate = async (docType?: string) => {
@@ -1308,18 +1318,18 @@ function DocsList({
                 {pinned.has(menu.docId) ? t('docs.sheet.unpin') : t('docs.sheet.pin')}
               </div>
             )}
-            {canManage(menu.role) && (
-              <div
-                role="menuitem"
-                style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 6 }}
-                onClick={() => {
-                  void copyShareLink(menu.docId)
-                  setMenu(null)
-                }}
-              >
-                {t('docs.sheet.copyLink')}
-              </div>
-            )}
+            {/* Copying the address needs no permission — if you can see the row you can copy where
+                it lives. (The previous invite-minting entry was admin-only; see copyDocLink.) */}
+            <div
+              role="menuitem"
+              style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 6 }}
+              onClick={() => {
+                void copyDocLink(menu.docId)
+                setMenu(null)
+              }}
+            >
+              {t('docs.sheet.copyDocLink')}
+            </div>
             {/* 转发到聊天 — the same entry the document header carries, driven by the same
                 `startDocForward` bridge (host conversation-select + 先授权后发). Gated on
                 canForwardToChat() exactly as the shells are, so it hides where the host surface is
