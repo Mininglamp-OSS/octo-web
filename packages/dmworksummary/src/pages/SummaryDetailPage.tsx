@@ -2201,7 +2201,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * - 已解散的群跳过（沿用 isConversationDisbanded 这条既有发送不变量）；
      * - 发送走 chatManager.send，与 handleForwardToChat 一致；群频道无需注入 space_id。
      *
-     * 只由状态事件 / 兜底轮询检测到的 PROCESSING→COMPLETED 迁移触发（真正「刚完成」）。
+     * 由状态事件 / 兜底轮询检测到的 "非终态 → COMPLETED" 迁移触发（真正「刚完成」）。
+     * 这包含 PROCESSING → COMPLETED、以及 FAILED/PENDING → COMPLETED（重试成功）等场景。
      * 刻意不在 loadDetail「首次载入即 COMPLETED」补发：那条无迁移语义，会把「打开历史 /
      * 跨端已完成总结」误当成刚完成而误发过时 tip（localStorage 去重挡不住无标记的那两类）。
      */
@@ -2241,6 +2242,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         msg.fromUID = myUid;
                         msg.fromName = WKApp.loginInfo.selfDisplayName();
                         await WKSDK.shared().chatManager.send(msg, ch);
+                        // NOTE (yujiawei P2-2): this marker records LOCAL ENQUEUE, not delivery.
+                        // wukongimjssdk's ChatManager.sendWithOptions resolves on packet-queue
+                        // push (not on server sendack) for non-media content types. The transport
+                        // retries via CONNACK flush, but a tab-close before reconnect drops the
+                        // packet AND leaves the localStorage marker → tip permanently suppressed
+                        // for this (completion, source). This lands inside the "creator client
+                        // must stay alive to observe COMPLETED" trade-off explicitly accepted in
+                        // #289 (comment 5192345057); the backend-driven form tracked separately
+                        // would move exactly-once to the server side where it actually belongs.
                         if (completionKey) markSummaryNotifySent(completionKey, sourceId);
                     } catch (error) {
                         // AC4：单群失败不影响其余群，但必须保留 channel + error 的可观测性。

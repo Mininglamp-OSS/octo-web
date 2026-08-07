@@ -156,7 +156,30 @@ export function summaryNotifyCompletionKey(detail: {
         : detail.updated_at
             ? `updated:${detail.updated_at}`
             : null;
-    return run ? `${detail.task_id}:${run}` : null;
+    if (!run) {
+        // NOTE (yujiawei P2-5): both result_id and updated_at absent → we
+        // cannot derive a persistent completion key. hasSentSummaryNotify /
+        // markSummaryNotifySent are completionKey-gated in the caller, so
+        // dedup degrades to in-memory summaryNotifyInFlight only for the
+        // duration of this tab's lifetime. Surface this so a malformed /
+        // legacy backend response is visible in dev tools rather than
+        // silently degrading.
+        try {
+            // Guard against non-browser environments (Node harness, SSR).
+            if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+                console.warn(
+                    '[summaryNotify] completion key unavailable for task_id=' +
+                    detail.task_id +
+                    ' (neither result_id nor updated_at present); ' +
+                    'cross-tab dedup marker will be skipped for this send.'
+                );
+            }
+        } catch {
+            /* console.warn should never break the send path */
+        }
+        return null;
+    }
+    return `${detail.task_id}:${run}`;
 }
 
 function readSummaryNotifyRuns(): string[] {

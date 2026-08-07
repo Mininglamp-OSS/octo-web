@@ -1105,6 +1105,13 @@ export default class BaseModule implements IModule {
         if (message.contentType === MessageContentTypeConst.threadCreated) {
           return null;
         }
+        // #1234 (mochashanyao P2): summaryNotify is a system tip, not a
+        // user message — forwarding it is nonsensical. Match the explicit
+        // guard we already have for threadCreated rather than relying on
+        // WKApp.shared.notSupportForward (empty by default in App.tsx).
+        if (message.contentType === MessageContentTypeConst.summaryNotify) {
+          return null;
+        }
 
         return {
           title: t("base.module.contextMenus.forward"),

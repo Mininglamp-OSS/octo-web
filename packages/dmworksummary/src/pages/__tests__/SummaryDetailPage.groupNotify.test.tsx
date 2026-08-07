@@ -268,6 +268,21 @@ describe('SummaryDetailPage.sendGroupSummaryNotify (octo-web#289)', () => {
                 'octo-summary-notify:completion:1:result:10',
                 expect.any(Function),
             );
+
+            // #1234 P2-4 (yujiawei): the lock-name assertions above pin the
+            // *mechanism*, but the *invariant* the lock exists to protect is
+            // that both markers survive concurrent RMW. Assert the final
+            // localStorage state directly, so a regression in
+            // markSummaryNotifySent (e.g. dropping the write, overwriting
+            // group-a with group-b) fails this test even if the lock names
+            // stay correct.
+            const runsRaw = localStorage.getItem('summary-notify-runs:v1');
+            expect(runsRaw).not.toBeNull();
+            const runs = JSON.parse(runsRaw as string) as string[];
+            expect(runs).toEqual(expect.arrayContaining([
+                '1:result:10:group-a',
+                '1:result:10:group-b',
+            ]));
         } finally {
             Object.defineProperty(navigator, 'locks', { configurable: true, value: previousLocks });
         }
