@@ -323,5 +323,40 @@ describe('useFileList', () => {
       expect(result.current.hasMore).toBe(false);
       expect(result.current.error).not.toBeNull();
     });
+
+    it('reload() preserves entries during the fetch (no spinner flash)', async () => {
+      // Bot-review P2-3: previously the page-1 clear fired unconditionally
+      // for both context changes AND reload(), so every delete/rename/
+      // upload landed with a full-list spinner flash before the new rows
+      // arrived. A 20-file drag-drop replaced the list with a spinner
+      // four times as batches settled. Fix: only clear on context change
+      // (resetView: true), not on reload() (same-context refresh).
+      const initial = [entry(1, 'a.pdf', 'blob'), entry(2, 'b.pdf', 'blob')];
+      const refreshed = [entry(1, 'a.pdf', 'blob'), entry(3, 'c.pdf', 'blob')];
+      let resolveRefresh: (v: ReturnType<typeof resp>) => void = () => {};
+      const refreshPromise = new Promise<ReturnType<typeof resp>>((r) => {
+        resolveRefresh = r;
+      });
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(initial))
+        .mockReturnValueOnce(refreshPromise);
+
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries).toHaveLength(2);
+
+      // Reload — kicks off the second browse. loading flips true but
+      // entries MUST remain visible until the response lands.
+      act(() => result.current.reload());
+      // Synchronously after reload() the entries should NOT be blanked.
+      expect(result.current.entries).toHaveLength(2);
+      expect(result.current.entries[0].id).toBe(1);
+
+      // Now resolve the fetch — entries update to the fresh list.
+      resolveRefresh(resp(refreshed));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries).toHaveLength(2);
+      expect(result.current.entries.map((e) => e.id)).toEqual([1, 3]);
+    });
   });
 });

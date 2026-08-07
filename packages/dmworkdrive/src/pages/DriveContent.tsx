@@ -77,6 +77,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     reload,
     loadMore,
     loadMoreError,
+    error: filesError,
     retryLoadMore,
     filter: typeFilter,
     setFilter: setTypeFilter,
@@ -308,9 +309,16 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
       failed: Array<{ entry: DriveEntry; error: string }>,
     ) => {
       const actionLabel = t(`drive.bulk.action${action.charAt(0).toUpperCase()}${action.slice(1)}`);
+      // Downloads can only observe `<a>.click()` dispatch — not the actual
+      // save (Chromium's multi-download gate is invisible to us). So the
+      // success wording is "triggered", not "succeeded". Bot review P2-10
+      // caught the all-success Toast fixed the wording but the partial-
+      // failure Modal here still said "succeeded" for the good half.
+      const successKey =
+        action === 'download' ? 'drive.bulk.resultSummaryTriggered' : 'drive.bulk.resultSummarySuccess';
       if (failed.length === 0) {
         Toast.success(
-          `${t('drive.bulk.resultTitleAllOk')} · ${t('drive.bulk.resultSummarySuccess', {
+          `${t('drive.bulk.resultTitleAllOk')} · ${t(successKey, {
             values: { count: String(succeeded.length) },
           })}`,
         );
@@ -328,7 +336,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           <div>
             {succeeded.length > 0 && (
               <div style={{ color: 'var(--wk-ok)', marginBottom: 8 }}>
-                ✓ {t('drive.bulk.resultSummarySuccess', { values: { count: String(succeeded.length) } })}
+                ✓ {t(successKey, { values: { count: String(succeeded.length) } })}
               </div>
             )}
             <div style={{ color: 'var(--wk-danger)', marginBottom: 6, fontWeight: 500 }}>
@@ -478,7 +486,10 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     // Browsers cap "automatic downloads" per site/session (Chromium ~10 in a
     // short window, others similar). Ask before firing more than that so the
     // user knows they may see a permission prompt or silent drop.
-    if (blobs.length > MAX_UNSAFE_BATCH_DOWNLOAD) {
+    // Threshold match: `>=` (was `>`, off-by-one caught in bot review P2-9).
+    // 10 downloads is already the documented browser cap, so we must warn
+    // at exactly 10, not at 11.
+    if (blobs.length >= MAX_UNSAFE_BATCH_DOWNLOAD) {
       const proceed = await new Promise<boolean>((resolve) => {
         Modal.confirm({
           title: t('drive.bulk.downloadManyWarnTitle'),
@@ -617,6 +628,20 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
         {!hasSpace && vm.spacesLoading ? (
           <div className="drive-main__center">
             <Spin />
+          </div>
+        ) : !filesLoading && filesError && entries.length === 0 ? (
+          // Terminal error state for a failed page-1 fetch (context change
+          // or reload() where the browse rejected). We MUST NOT fall through
+          // to EmptyState — telling the user "This folder is empty. Click
+          // Upload." after a 500 response is actively misleading (they may
+          // re-upload duplicates, or think their files were deleted). See
+          // bot review P1-2: users read the empty-state as ground truth,
+          // not "we couldn't load", because the toast has already faded.
+          <div className="drive-main__load-error" role="alert">
+            <span>{t('drive.file.loadFailed')}</span>
+            <Button theme="borderless" type="primary" size="small" onClick={reload}>
+              {t('drive.file.loadMoreRetry')}
+            </Button>
           </div>
         ) : !filesLoading && entries.length === 0 ? (
           // Split the empty state into three variants so preview_only users
