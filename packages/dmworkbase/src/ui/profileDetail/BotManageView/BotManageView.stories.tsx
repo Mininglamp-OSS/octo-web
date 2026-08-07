@@ -97,9 +97,8 @@ const cardLabels: BotCardSettingsLabels = {
     "总开关关闭期间，下方设置都不生效，这个 Bot 无法发送任何卡片消息",
   needsDisplayNotice: "展示型卡片关闭时，这项不生效",
   sourceBot: "已自定义",
-  sourceGlobal: "跟随全局设置",
-  sourceDefault: "跟随系统默认",
-  sourceEnv: "由服务端部署配置决定",
+  sourceDefault: "未自定义，跟随默认设置",
+  sourceEnv: "由服务端配置决定",
   reset: "取消自定义",
   loading: "加载中...",
   loadFailed: "加载失败",
@@ -245,6 +244,20 @@ export const Menu: Story = {
     <StoryFrame>
       <BotManageView
         labels={labels}
+        onOpenMentionFree={() => undefined}
+        onOpenCardSettings={() => undefined}
+      />
+    </StoryFrame>
+  ),
+};
+
+/** App Bot 等没有 robot 记录的 bot：卡片设置整行不渲染。 */
+export const MenuWithoutCardSettings: Story = {
+  render: () => (
+    <StoryFrame>
+      <BotManageView
+        labels={labels}
+        showCardSettings={false}
         onOpenMentionFree={() => undefined}
         onOpenCardSettings={() => undefined}
       />

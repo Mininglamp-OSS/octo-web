@@ -98,9 +98,8 @@ const cardLabels: BotCardSettingsLabels = {
     masterOffNotice: 'None of the settings below take effect',
     needsDisplayNotice: 'Has no effect while display cards are off',
     sourceBot: 'Customized',
-    sourceGlobal: 'Following the global setting',
-    sourceDefault: 'Following the system default',
-    sourceEnv: 'Set by the server deployment',
+    sourceDefault: 'Not customized, following the default',
+    sourceEnv: 'Set by the server',
     reset: 'Remove customization',
     loading: 'Loading...',
     loadFailed: 'Failed to load',
@@ -148,6 +147,33 @@ describe('BotManageView (L2 menu)', () => {
         fireEvent.click(screen.getByText('Profile & commands'));
         expect(onMentionFree).toHaveBeenCalledTimes(1);
         expect(onCardSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('hides the card settings row for bots without a robot record (App Bot)', () => {
+        render(
+            <BotManageView
+                labels={labels}
+                showCardSettings={false}
+                onOpenMentionFree={() => undefined}
+                onOpenCardSettings={() => undefined}
+            />,
+        );
+        // 整行不出现，而不是让用户点进去看一句「不支持」。
+        expect(screen.queryByText('Card messages')).toBeNull();
+        // 其余入口不受影响。
+        expect(screen.getByText('Reply without @')).toBeInTheDocument();
+    });
+
+    it('keeps the card settings row when capability is unknown (fail open)', () => {
+        render(
+            <BotManageView
+                labels={labels}
+                onOpenMentionFree={() => undefined}
+                onOpenCardSettings={() => undefined}
+            />,
+        );
+        // 默认 true：一次请求失败 / 还没探测出结果时不能藏掉功能入口。
+        expect(screen.getByText('Card messages')).toBeInTheDocument();
     });
 });
 
@@ -345,9 +371,11 @@ describe('CardSettingsView (L3)', () => {
         expect(screen.getByText('Interactive cards')).toBeInTheDocument();
         expect(screen.getByText('Reasoning cards')).toBeInTheDocument();
         expect(screen.getByText('Customized')).toBeInTheDocument();
+        // source=global（interaction）和 source=default（reasoning）刻意收敛到同一句：
+        // 两者对属主没有可操作性差异，分开写只会引出「这俩有啥区别」。
         expect(
-            screen.getByText('Following the global setting'),
-        ).toBeInTheDocument();
+            screen.getAllByText('Not customized, following the default'),
+        ).toHaveLength(2);
         // 总闸自身不作为一行开关渲染。
         expect(screen.queryByTestId('bot-card-row-bot.card_enabled')).toBeNull();
     });

@@ -61,11 +61,20 @@ export default class BotManageModal extends Component<BotManageModalProps> {
      * L3「卡片消息设置」的 VM。
      *
      * 不走 Provider（Provider 只托管一个 listener，已被 MentionFreeVM 占用），
-     * 而是在这里持有 + 由 CardSettingsContainer 通过 addListener 订阅。副作用是
-     * VM 的 didMount 不会被自动调用，改由容器 componentDidMount 触发首拉 ——
-     * 这正好满足「响应 no-store，每次进入 L3 都必须重读」的要求。
+     * 而是在这里持有 + 由 CardSettingsContainer 通过 addListener 订阅。
+     *
+     * 它在 L2 就被创建并拉一次目录（见 probeCardSettings）：这次请求既是「该 bot
+     * 支不支持卡片设置」的能力探测（决定 L2 菜单要不要渲染这一行），也是 L3 首屏
+     * 要用的数据，所以不是额外开销 —— L3 进页时若已有数据就不再重复请求。
      */
     private cardSettingsVM?: BotCardSettingsVM
+
+    /** L2 菜单需要在能力探测出结果后重渲染，这里持有取消订阅句柄。 */
+    private cardSettingsUnsubscribe?: () => void
+
+    componentDidMount(): void {
+        if (this.props.visible) this.probeCardSettings()
+    }
 
     componentDidUpdate(prevProps: BotManageModalProps): void {
         // bot 切换：复用同一 modal 实例时（BotStore 列表里点不同 bot），
@@ -73,14 +82,41 @@ export default class BotManageModal extends Component<BotManageModalProps> {
         if (prevProps.robotId !== this.props.robotId) {
             if (this.vm) this.vm.setRobotId(this.props.robotId)
             if (this.cardSettingsVM) {
+                // setRobotId 内部会重拉，等价于对新 bot 重新探测。
                 this.cardSettingsVM.setRobotId(this.props.robotId)
+            } else if (this.props.visible) {
+                this.probeCardSettings()
             }
         }
+        // 本组件跟着资料卡一起挂载（不是打开时才挂载），所以探测挂在 visible
+        // 由假转真上，避免只是看了眼资料卡就发请求。
+        if (!prevProps.visible && this.props.visible) {
+            this.probeCardSettings()
+        }
+    }
+
+    componentWillUnmount(): void {
+        if (this.cardSettingsUnsubscribe) this.cardSettingsUnsubscribe()
+    }
+
+    /**
+     * 拉一次卡片设置目录，用于判断这一行菜单要不要出现。
+     *
+     * 只有拿到 `err.server.robot.not_found`（该 bot 没有 robot 记录，App Bot 属于
+     * 这一类）才隐藏菜单行。其余错误一律保持显示 —— 服务端抖动 / 限流 / 后端未部署
+     * 都不代表这个 bot 永久不支持，藏掉入口会让用户以为功能消失了。
+     */
+    private probeCardSettings(): void {
+        const vm = this.ensureCardSettingsVM()
+        if (!vm.hasData && !vm.loading) void vm.loadSettings()
     }
 
     private ensureCardSettingsVM(): BotCardSettingsVM {
         if (!this.cardSettingsVM) {
             this.cardSettingsVM = new BotCardSettingsVM(this.props.robotId)
+            this.cardSettingsUnsubscribe = this.cardSettingsVM.addListener(() =>
+                this.forceUpdate(),
+            )
         }
         return this.cardSettingsVM
     }
@@ -110,6 +146,10 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                             render={(context: RouteContext<any>): ReactNode => (
                                 <BotManageView
                                     labels={labels}
+                                    // App Bot 等没有 robot 记录的 bot 不渲染这一行。
+                                    showCardSettings={
+                                        !this.cardSettingsVM?.isUnsupported
+                                    }
                                     onOpenMentionFree={() => {
                                         context.push(
                                             <MentionFreeListContainer
@@ -209,7 +249,6 @@ export default class BotManageModal extends Component<BotManageModalProps> {
             masterOffNotice: t("base.botManage.cardSettings.masterOff"),
             needsDisplayNotice: t("base.botManage.cardSettings.needsDisplay"),
             sourceBot: t("base.botManage.cardSettings.sourceBot"),
-            sourceGlobal: t("base.botManage.cardSettings.sourceGlobal"),
             sourceDefault: t("base.botManage.cardSettings.sourceDefault"),
             sourceEnv: t("base.botManage.cardSettings.sourceEnv"),
             reset: t("base.botManage.cardSettings.reset"),
@@ -248,8 +287,9 @@ interface CardSettingsContainerProps {
 /**
  * L3「卡片消息设置」容器。
  *
- * 每次挂载都重拉：owner 读接口下发 `Cache-Control: private, no-store`，本地也不做
- * 任何缓存 —— 改完配置立刻重进这一页必须看到新值。
+ * L2 打开时已经拉过一次目录（能力探测），所以这里只在还没有数据时补拉，避免同一次
+ * 打开里发两个请求 —— 这几个端点带按登录用户的限流。跨次打开不会复用：modal 关闭
+ * 后再开会重新探测，符合读接口 `Cache-Control: private, no-store` 的要求。
  */
 class CardSettingsContainer extends Component<CardSettingsContainerProps> {
     private unsubscribe?: () => void
@@ -257,7 +297,7 @@ class CardSettingsContainer extends Component<CardSettingsContainerProps> {
     componentDidMount(): void {
         const { vm } = this.props
         this.unsubscribe = vm.addListener(() => this.forceUpdate())
-        if (!vm.loading) void vm.loadSettings()
+        if (!vm.hasData && !vm.loading) void vm.loadSettings()
     }
 
     componentWillUnmount(): void {

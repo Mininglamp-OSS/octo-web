@@ -36,6 +36,13 @@ export interface BotManageGroupItem {
 
 export interface BotManageViewProps {
   labels: BotManageViewLabels;
+  /**
+   * 是否渲染「卡片消息设置」入口。false = 该 bot 没有 robot 记录（App Bot 属于
+   * 这一类，服务端对它的 settings 端点只会返回 404），入口整行不出现，而不是让
+   * 用户点进去看一句"不支持"。默认 true —— 能力未知时保持显示，不因一次请求失败
+   * 就藏掉功能入口。
+   */
+  showCardSettings?: boolean;
   onOpenMentionFree: () => void;
   onOpenCardSettings: () => void;
 }
@@ -61,6 +68,7 @@ export interface MentionFreeListViewProps {
 
 export default function BotManageView({
   labels,
+  showCardSettings = true,
   onOpenMentionFree,
   onOpenCardSettings,
 }: BotManageViewProps) {
@@ -73,12 +81,14 @@ export default function BotManageView({
           description={labels.mentionFreeHint}
           onClick={onOpenMentionFree}
         />
-        <BotManageMenuItem
-          icon="▣"
-          title={labels.cardSettings}
-          description={labels.cardSettingsHint}
-          onClick={onOpenCardSettings}
-        />
+        {showCardSettings && (
+          <BotManageMenuItem
+            icon="▣"
+            title={labels.cardSettings}
+            description={labels.cardSettingsHint}
+            onClick={onOpenCardSettings}
+          />
+        )}
         <BotManageMenuItem
           icon="✓"
           title={labels.autoApprove}

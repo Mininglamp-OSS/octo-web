@@ -22,9 +22,11 @@ export interface BotCardSettingsLabels {
   masterOffNotice: string;
   /** 交互型卡片依赖展示型卡片的行内提示。 */
   needsDisplayNotice: string;
-  /** source → 副标题文案。 */
+  /**
+   * source → 副标题文案。`global` 与 `default` 共用 sourceDefault，
+   * 见 sourceLabel 的说明。
+   */
   sourceBot: string;
-  sourceGlobal: string;
   sourceDefault: string;
   sourceEnv: string;
   reset: string;
@@ -299,12 +301,22 @@ function CardSettingRow({
   );
 }
 
+/**
+ * source → 副标题文案。
+ *
+ * `global`（服务端全局默认）和 `default`（代码默认）**刻意合并成同一句文案**。
+ * 两者对属主没有任何可操作性差异 —— 都是「这项我没设过，跟着上层走」，而"全局设置"
+ * 和"系统默认"的区别是服务端的分层实现细节，摊到用户面前只会引出"这俩有啥区别"。
+ * 需要额外解释才能懂的文案就是失败的文案。
+ *
+ * 分层信息没有丢：VM 仍原样保留 `source`，将来若真要区分（比如显示"取消自定义后会
+ * 变成 X"）随时能拿到。
+ */
 function sourceLabel(source: string, labels: BotCardSettingsLabels): string {
   switch (source) {
     case "bot":
       return labels.sourceBot;
     case "global":
-      return labels.sourceGlobal;
     case "default":
       return labels.sourceDefault;
     case "env":
