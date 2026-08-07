@@ -1,7 +1,7 @@
 import type { BotSettingItem } from "../../Service/BotManageService"
 
 /**
- * Bot 卡片消息能力配置 —— 纯函数层（key 注册表 / 目录解析 / 错误归类）。
+ * Bot 卡片消息设置 —— 纯函数层（key 注册表 / 目录解析 / 错误归类）。
  *
  * 配套后端：`/v1/robot/:robot_id/settings` 三端点（GET 目录 / PUT 批量覆盖 /
  * DELETE 删覆盖回落）。逻辑放在这里而不是 VM 里，是为了让「三态解析 + 总闸 AND +
@@ -24,13 +24,19 @@ export const BOT_CARD_REASONING_KEY = "bot.reasoning_enabled"
 /**
  * 已知子开关白名单 + 渲染顺序。
  *
+ * 顺序即 UI 顺序：推理过程卡片最常被调整，放第一位；展示型在交互型之前，因为
+ * `octo/v2` 是 `octo/v1` 的严格超集，展示能力是交互能力的下限，依赖项在前更好读。
+ *
  * 服务端加新键时客户端不发版就能在响应里看到它 —— **遇到不认识的 key 必须跳过，
  * 不能阻塞整页渲染**，所以这里用白名单而不是直接遍历响应。
+ *
+ * 注意总闸 `bot.card_enabled` **不在这个列表里**：它不可写，不作为开关行渲染，
+ * 只由视图层单独渲染成一条只读状态条（见 CardSettingsView 的 MasterStatus）。
  */
 export const BOT_CARD_SETTING_KEYS: readonly string[] = [
+    BOT_CARD_REASONING_KEY,
     BOT_CARD_DISPLAY_KEY,
     BOT_CARD_INTERACTION_KEY,
-    BOT_CARD_REASONING_KEY,
 ]
 
 /** 视图层要用的一行开关的完整状态。 */
@@ -49,7 +55,7 @@ export interface BotCardSettingRow {
     checked: boolean
     /** 该项自身的生效值（未 AND 总闸），用于判断依赖提示。 */
     effectiveValue: boolean
-    /** 是否存在显式覆盖（`value !== null`）—— 决定「恢复默认」是否出现。 */
+    /** 是否存在显式覆盖（`value !== null`）—— 决定「取消自定义」是否出现。 */
     overridden: boolean
     /** 生效值来自哪一层：bot / global / default / env。 */
     source: string
@@ -58,7 +64,7 @@ export interface BotCardSettingRow {
     /** 写入在飞（乐观更新已应用，等服务端确认）。 */
     pending: boolean
     /**
-     * 开关是否禁用：只读 / 总闸关闭 / 该项正在做不可本地推导的操作（恢复默认）。
+     * 开关是否禁用：只读 / 总闸关闭 / 该项正在做不可本地推导的操作（取消自定义）。
      *
      * 注意「写入在飞」**不禁用**开关：乐观更新已经把新状态显示出来了，此时禁用会
      * 让用户在网络慢时连点第二下无效，也让写入合批失去意义（合批的前提是在飞期间
@@ -145,7 +151,7 @@ export function buildRows(
     options: {
         /** 有乐观更新在飞 / 排队中的 key（视觉上标 pending，但不禁用）。 */
         pendingKeys?: ReadonlySet<string>
-        /** 正在执行「恢复默认」的 key（值不可本地推导，必须禁用直到重拉完成）。 */
+        /** 正在执行「取消自定义」的 key（值不可本地推导，必须禁用直到重拉完成）。 */
         busyKeys?: ReadonlySet<string>
     } = {},
 ): BotCardSettingsSnapshot {
@@ -163,7 +169,7 @@ export function buildRows(
 
         // `value !== null` 是「存在覆盖」的唯一判据。不看 source —— 若出现
         // source:"bot" 但 value:null 这种矛盾形状，以 value 为准，否则
-        //「恢复默认」按钮会亮在没有覆盖可删的行上。
+        //「取消自定义」按钮会亮在没有覆盖可删的行上。
         const overridden =
             item.value !== null && item.value !== undefined
         const editable = item.editable !== false

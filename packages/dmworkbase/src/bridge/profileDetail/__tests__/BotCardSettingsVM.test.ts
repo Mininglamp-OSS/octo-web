@@ -153,7 +153,7 @@ describe("buildRows 总闸 AND", () => {
 })
 
 describe("buildRows 目录解析", () => {
-    it("跳过未知 key，不影响已知行渲染", () => {
+    it("跳过未知 key，不影响已知行渲染，且顺序固定为推理→展示→交互", () => {
         const list = [
             ...fullCatalog().list,
             item("bot.some_future_key"),
@@ -161,10 +161,12 @@ describe("buildRows 目录解析", () => {
         ]
         const { rows } = buildRows(indexSettingItems(list))
         expect(rows.map((row) => row.key)).toEqual([
+            BOT_CARD_REASONING_KEY,
             BOT_CARD_DISPLAY_KEY,
             BOT_CARD_INTERACTION_KEY,
-            BOT_CARD_REASONING_KEY,
         ])
+        // 总闸不作为开关行渲染（不可写，由视图单独渲染成只读状态条）。
+        expect(rows.some((row) => row.key === BOT_CARD_MASTER_KEY)).toBe(false)
     })
 
     it("跳过 type 非 bool 或 effective_value 非 bool 的行", () => {
@@ -534,5 +536,86 @@ describe("BotCardSettingsVM 防串台", () => {
         expect(rows.find((r) => r.key === BOT_CARD_REASONING_KEY)!.checked).toBe(
             false,
         )
+    })
+})
+
+/**
+ * 写路径的过期判据必须是 epoch（bot 是否换了），不能是 generation（数据是否重拉过）。
+ * 下面两条都是 code review 里实际复现出来的回归。
+ */
+describe("BotCardSettingsVM 写路径过期判据", () => {
+    it("连点两行「取消自定义」：第二次不能被第一次的重拉误判成过期", async () => {
+        const overridden = {
+            value: true,
+            effective_value: true,
+            source: "bot",
+        }
+        hoisted.listSettings.mockResolvedValue(
+            fullCatalog({
+                [BOT_CARD_DISPLAY_KEY]: overridden,
+                [BOT_CARD_REASONING_KEY]: overridden,
+            }),
+        )
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        // 两次删除后服务端的目录里两项覆盖都没了。
+        hoisted.listSettings.mockResolvedValue(fullCatalog())
+
+        const [ok1, ok2] = await Promise.all([
+            vm.resetToDefault(BOT_CARD_DISPLAY_KEY),
+            vm.resetToDefault(BOT_CARD_REASONING_KEY),
+        ])
+
+        expect(hoisted.deleteSetting).toHaveBeenCalledTimes(2)
+        expect(ok1).toBe(true)
+        // 曾经的缺陷：第一次的删后重拉推进了 generation，第二次的 DELETE 明明成功
+        // 却被判过期 → 跳过重拉，UI 继续显示已被删掉的覆盖。
+        expect(ok2).toBe(true)
+        const reasoning = vm
+            .snapshot()
+            .rows.find((r) => r.key === BOT_CARD_REASONING_KEY)!
+        expect(reasoning.overridden).toBe(false)
+    })
+
+    it("切 bot 时旧 PUT 回来，不能清掉新 bot 批次导致回滚失效", async () => {
+        hoisted.listSettings.mockResolvedValue(fullCatalog())
+        const vm = new BotCardSettingsVM("bot1", { retryDelayMs: 0 })
+        await vm.loadSettings()
+
+        let releaseOldPut: () => void = () => undefined
+        hoisted.putSettings.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    releaseOldPut = resolve
+                }),
+        )
+        vm.toggle(BOT_CARD_DISPLAY_KEY, false) // bot1 的写入起飞
+        await tick()
+        expect(hoisted.putSettings).toHaveBeenCalledTimes(1)
+
+        vm.setRobotId("bot2")
+        await tick()
+
+        // bot2 上的写入失败，必须能回滚。
+        hoisted.putSettings.mockRejectedValue(
+            rejection({ code: "err.server.robot.store_failed", status: 500 }),
+        )
+        vm.toggle(BOT_CARD_REASONING_KEY, false)
+        await tick()
+
+        releaseOldPut() // bot1 的旧 PUT 此刻才回来
+        await tick()
+        await tick()
+
+        const row = vm
+            .snapshot()
+            .rows.find((r) => r.key === BOT_CARD_REASONING_KEY)!
+        // 曾经的缺陷：旧 flush 按 generation 判过期时顺手清空了 sending，而那时
+        // sending 已属于 bot2 的批次 → rollbackPending 找不到 key，开关停在从未
+        // 落库的值上。
+        expect(row.checked).toBe(true)
+        expect(row.overridden).toBe(false)
+        expect(vm.writeError?.kind).toBe("retryable")
     })
 })

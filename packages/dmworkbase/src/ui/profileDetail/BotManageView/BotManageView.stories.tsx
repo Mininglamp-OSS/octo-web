@@ -9,12 +9,13 @@ import BotManageView, {
   type MentionFreeListViewProps,
 } from "./index";
 import type { BotCardSettingRow } from "../../../bridge/profileDetail/botCardSettings";
+import { BOT_CARD_SETTING_KEYS } from "../../../bridge/profileDetail/botCardSettings";
 
 const labels: BotManageViewLabels = {
   mentionFree: "免@回答",
   mentionFreeHint: "选择哪些群里 Bot 不需要 @ 也会回答",
-  cardSettings: "卡片消息能力",
-  cardSettingsHint: "控制 Bot 能发哪些类型的卡片消息",
+  cardSettings: "卡片消息设置",
+  cardSettingsHint: "选择这个 Bot 可以发送哪些类型的卡片",
   autoApprove: "自动通过",
   autoApproveHint: "后续支持自动处理好友申请",
   profileCommands: "简介指令",
@@ -84,36 +85,41 @@ const cardLabels: BotCardSettingsLabels = {
     "bot.reasoning_enabled": "推理过程卡片",
   },
   rowDesc: {
-    "bot.display_enabled": "允许 Bot 发送纯展示的卡片消息",
-    "bot.interaction_enabled": "允许 Bot 发送带按钮、表单等交互组件的卡片",
-    "bot.reasoning_enabled": "允许 Bot 发送展示思考过程的卡片",
+    "bot.display_enabled": "图文排版，用户只能查看",
+    "bot.interaction_enabled": "带按钮、表单等控件，用户可以直接操作",
+    "bot.reasoning_enabled": "展示 Bot 的思考步骤",
   },
-  masterOffNotice: "当前部署已关闭 Bot 卡片消息，以下开关暂不生效",
-  needsDisplayNotice: "需先开启展示型卡片才会生效",
-  sourceBot: "已为该 Bot 自定义",
-  sourceGlobal: "继承全局默认",
-  sourceDefault: "继承系统默认",
-  sourceEnv: "由部署环境决定",
-  reset: "恢复默认",
+  masterLabel: "卡片消息总开关",
+  masterOn: "已开启",
+  masterOffValue: "已关闭",
+  masterReadonly: "由服务端部署配置决定，客户端无法修改",
+  masterOffNotice:
+    "总开关关闭期间，下方设置都不生效，这个 Bot 无法发送任何卡片消息",
+  needsDisplayNotice: "展示型卡片关闭时，这项不生效",
+  sourceBot: "已自定义",
+  sourceGlobal: "跟随全局设置",
+  sourceDefault: "跟随系统默认",
+  sourceEnv: "由服务端部署配置决定",
+  reset: "取消自定义",
   loading: "加载中...",
   loadFailed: "加载失败",
   reload: "重新加载",
-  backendComingSoon: "功能即将上线",
+  backendComingSoon: "卡片消息设置即将上线",
   stayTuned: "敬请期待",
-  unsupported: "该 Bot 类型暂不支持自定义，沿用系统默认设置",
-  forbidden: "仅 Bot 创建者可修改此设置",
-  empty: "暂无可配置项",
-  saveFailed: "设置失败，请稍后再试",
+  unsupported: "这类 Bot 暂不支持单独设置，沿用系统默认",
+  forbidden: "只有 Bot 的创建者可以修改这些设置",
+  empty: "没有可设置的项目",
+  saveFailed: "保存失败，请重试",
   saveFailedRetryable: "服务暂时不可用，请稍后重试",
   rateLimited: "操作过于频繁，请稍后再试",
 };
 
 /**
- * 卡片消息能力 story 的本地状态机。
+ * 卡片消息设置 story 的本地状态机。
  *
  * 刻意复刻 buildRows 的核心规则，好让 story 能直观体现两条最容易踩的坑：
  *   - `checked` = 该项 effectiveValue **AND** 总闸，不是裸 effectiveValue；
- *   - `overridden`（value !== null）才出现「恢复默认」。
+ *   - `overridden`（value !== null）才出现「取消自定义」。
  */
 function CardSettingsStory(args: {
   masterEnabled?: boolean;
@@ -143,7 +149,8 @@ function CardSettingsStory(args: {
       : "default",
   };
 
-  const rows: BotCardSettingRow[] = Object.keys(values).map((key) => ({
+  // 直接用真实的白名单常量决定顺序，story 不再和 UI 顺序各写一份。
+  const rows: BotCardSettingRow[] = BOT_CARD_SETTING_KEYS.map((key) => ({
     key,
     effectiveValue: values[key],
     checked: values[key] && masterEnabled,
@@ -245,7 +252,7 @@ export const Menu: Story = {
   ),
 };
 
-/** 卡片消息能力：正常三行（display 显式覆盖 / interaction 继承全局 / reasoning 继承代码默认）。 */
+/** 卡片消息设置：正常三行（display 显式覆盖 / interaction 继承全局 / reasoning 继承代码默认）。 */
 export const CardSettings: StoryObj<typeof CardSettingsStory> = {
   render: () => <CardSettingsStory />,
 };

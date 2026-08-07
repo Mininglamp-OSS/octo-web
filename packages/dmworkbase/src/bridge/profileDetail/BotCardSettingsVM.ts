@@ -15,7 +15,7 @@ import {
 } from "./botCardSettings"
 
 /**
- * BotCardSettingsVM —— L3「卡片消息能力」ViewModel。
+ * BotCardSettingsVM —— L3「卡片消息设置」ViewModel。
  *
  * 配套后端：`/v1/robot/:robot_id/settings`
  *   GET    读配置项目录（value / effective_value / source / editable）
@@ -60,7 +60,7 @@ export class BotCardSettingsVM extends ProviderListener {
     loading: boolean = false
     /** 首屏终态错误（决定整页渲染哪种兜底）。 */
     loadError: BotSettingError | null = null
-    /** 写入 / 恢复默认的错误（行内提示，不接管整页）。 */
+    /** 写入 / 取消自定义的错误（行内提示，不接管整页）。 */
     writeError: BotSettingError | null = null
 
     private items: Map<string, BotSettingItem> = new Map()
@@ -70,7 +70,7 @@ export class BotCardSettingsVM extends ProviderListener {
     private sending: Map<string, boolean> = new Map()
     /** 回滚快照：key → 进入待写状态前最后一次被服务端确认的 item。 */
     private baseline: Map<string, BotSettingItem | undefined> = new Map()
-    /** 正在「恢复默认」的 key（DELETE + 重拉期间禁用该行）。 */
+    /** 正在「取消自定义」的 key（DELETE + 重拉期间禁用该行）。 */
     private busy: Set<string> = new Set()
     private flushing: boolean = false
     /** 写操作串行链。 */
@@ -81,8 +81,28 @@ export class BotCardSettingsVM extends ProviderListener {
      * 单调递增的请求世代号。每次 setRobotId / loadSettings 自增，异步回来后比对，
      * 不等则整段丢弃。用 generation 而不是裸比 robotId 是为了消除 A→B→A 的 ABA
      * 误判（与 MentionFreeVM 同款，见 BotManageVM.ts:64-72）。
+     *
+     * ⚠️ 只用于「GET 响应是否过期」。写路径**不能**用它 —— 见 epoch。
      */
     private generation: number = 0
+
+    /**
+     * bot 身份世代号，**只在 setRobotId 时**自增。
+     *
+     * 写路径（flush / resetToDefault）的过期判据必须是「bot 换了吗」，而不是
+     * 「数据重拉过吗」。早先两者共用 generation，因为 loadSettings 也自增它，
+     * 导致两个真实缺陷：
+     *
+     *   1. 连续点两行的「取消自定义」：第一次的删后重拉推进了 generation，第二次的
+     *      DELETE 明明成功了却被判成过期 → 跳过重拉，UI 继续显示已被删掉的覆盖。
+     *   2. 切 bot 时旧 bot 的 PUT 还在飞：它回来后按 generation 判过期并顺手清空
+     *      了 `sending`，而那时 `sending` 已经属于新 bot 的批次 → 新 bot 写入失败时
+     *      rollbackPending 找不到 key，乐观状态回滚不掉，开关停在从未落库的值上。
+     *
+     * 两者都有回归测试兜着（见 __tests__/BotCardSettingsVM.test.ts 的
+     *「写路径过期判据」一节）。
+     */
+    private epoch: number = 0
 
     constructor(robotId: string, options: BotCardSettingsVMOptions = {}) {
         super()
@@ -99,6 +119,7 @@ export class BotCardSettingsVM extends ProviderListener {
         if (this.robotId === robotId) return
         this.robotId = robotId
         this.generation++
+        this.epoch++
         this.items = new Map()
         this.queued = new Map()
         this.sending = new Map()
@@ -144,7 +165,7 @@ export class BotCardSettingsVM extends ProviderListener {
      * 响应带 `Cache-Control: private, no-store`，本地也不做任何缓存：每次进入 L3
      * 都会重拉，改完配置立刻重读必须看到新值。
      *
-     * @param silent true = 不翻转 loading（「恢复默认」后的重拉走这条，避免整页
+     * @param silent true = 不翻转 loading（「取消自定义」后的重拉走这条，避免整页
      *   spinner 闪一下）。
      */
     async loadSettings(options: { silent?: boolean } = {}): Promise<void> {
@@ -173,7 +194,7 @@ export class BotCardSettingsVM extends ProviderListener {
                 )
             }
             // 重拉整体替换 items，所以要把「尚未被服务端确认」的乐观覆盖重新盖回去，
-            // 否则用户刚点的开关会在别的行「恢复默认」触发重拉时被打回原值。
+            // 否则用户刚点的开关会在别的行「取消自定义」触发重拉时被打回原值。
             this.reapplyOptimistic()
         } catch (e) {
             if (isStale()) return
@@ -191,7 +212,7 @@ export class BotCardSettingsVM extends ProviderListener {
      * 切换某项开关。立刻本地乐观更新（bot 覆盖是最顶层，写入后的三元组可完整
      * 推导），然后进入合批队列。
      *
-     * 返回是否已受理（只读 / 总闸关闭 / 该行正在恢复默认 → false）。
+     * 返回是否已受理（只读 / 总闸关闭 / 该行正在取消自定义 → false）。
      *
      * 不做「目标态 == 当前生效值就短路」：用户可能就是想把「继承默认恰好为 true」
      * 固化成显式覆盖 true（这样上层全局默认改动后本 bot 不受影响），那是一次
@@ -212,7 +233,7 @@ export class BotCardSettingsVM extends ProviderListener {
     }
 
     /**
-     * 恢复默认 = DELETE 覆盖，回落到上一层（全局默认 / 代码默认），**不是设为 false**。
+     * 取消自定义 = DELETE 覆盖，回落到上一层（全局默认 / 代码默认），**不是设为 false**。
      *
      * 删完必须重拉：回落目标是哪一层、回落后的值是什么，前端无法本地推导 ——
      * 这正是 value / effective_value / source 三个字段不能合并的另一面。
@@ -224,7 +245,9 @@ export class BotCardSettingsVM extends ProviderListener {
         if (!row || !row.editable || !row.overridden || this.busy.has(key)) {
             return false
         }
-        const gen = this.generation
+        // 同 flush：过期判据是 epoch。用 generation 会让「连点两行取消自定义」的第二次
+        // 被第一次的删后重拉误判成过期，从而跳过重拉、UI 停在已删掉的覆盖上。
+        const myEpoch = this.epoch
 
         this.busy.add(key)
         this.writeError = null
@@ -235,16 +258,18 @@ export class BotCardSettingsVM extends ProviderListener {
                 await this.withRetry(() =>
                     BotManageService.deleteSetting(requestedUid, key),
                 )
-                if (this.generation !== gen) return
+                if (this.epoch !== myEpoch) return
                 // 该 key 的覆盖已不存在，针对它的乐观状态 / 回滚快照一并作废。
                 this.queued.delete(key)
                 this.baseline.delete(key)
                 await this.loadSettings({ silent: true })
-                ok = true
+                // 删除成功但重拉失败时 loadError 已被置上，整页会切到「加载失败 +
+                // 重试」—— 那种情况不算成功，否则调用方会以为界面已是权威状态。
+                ok = this.loadError === null
             })
             return ok
         } catch (e) {
-            if (this.generation === gen) {
+            if (this.epoch === myEpoch) {
                 this.writeError = classifyBotSettingError(e)
                 this.logIfInvalid(this.writeError, "deleteSetting", key)
             }
@@ -252,7 +277,7 @@ export class BotCardSettingsVM extends ProviderListener {
         } finally {
             // busy 不是世代作用域的状态：无论是否已切 bot 都必须清理，否则这一行
             // 会永久禁用（注意 loadSettings 自身会自增 generation，所以这里绝不能
-            // 套 isStale 守卫）。
+            // 套过期守卫）。
             this.busy.delete(key)
             this.notifyListener()
         }
@@ -271,10 +296,13 @@ export class BotCardSettingsVM extends ProviderListener {
         if (this.flushing) return
         const requestedUid = this.robotId
         if (!requestedUid) return
+        // 过期判据是 epoch（bot 是否换了），不是 generation —— 中途的重拉不能让这一
+        // 轮写入作废，否则 baseline 清理会被跳过，后续失败会回滚到过期值。
+        const myEpoch = this.epoch
         this.flushing = true
         try {
             while (this.queued.size > 0) {
-                const gen = this.generation
+                if (this.epoch !== myEpoch) return
                 this.sending = this.queued
                 this.queued = new Map()
                 const items = this.buildWriteItems(this.sending)
@@ -288,10 +316,10 @@ export class BotCardSettingsVM extends ProviderListener {
                             BotManageService.putSettings(requestedUid, items),
                         ),
                     )
-                    if (this.generation !== gen) {
-                        this.sending = new Map()
-                        return
-                    }
+                    // 已切 bot：直接退出，**不要**碰 sending / queued —— setRobotId
+                    // 早已重置过它们，此刻里面装的是新 bot 的批次，清掉会让新 bot
+                    // 的失败回滚失效。
+                    if (this.epoch !== myEpoch) return
                     // 这一批已被服务端确认。仍在 queued 里的同 key 保留其 baseline
                     // 作为后续回滚目标，其余 key 的快照可以丢。
                     for (const key of this.sending.keys()) {
@@ -300,10 +328,7 @@ export class BotCardSettingsVM extends ProviderListener {
                     this.sending = new Map()
                     this.notifyListener()
                 } catch (e) {
-                    if (this.generation !== gen) {
-                        this.sending = new Map()
-                        return
-                    }
+                    if (this.epoch !== myEpoch) return
                     const error = classifyBotSettingError(e)
                     this.writeError = error
                     this.logIfInvalid(error, "putSettings")
@@ -315,7 +340,9 @@ export class BotCardSettingsVM extends ProviderListener {
                 }
             }
         } finally {
-            this.flushing = false
+            // 已切 bot 时不复位：setRobotId 已经把 flushing 置回 false，而那之后
+            // 可能已有属于新 epoch 的 flush 在跑，这里再写一次会误清它的标记。
+            if (this.epoch === myEpoch) this.flushing = false
         }
     }
 

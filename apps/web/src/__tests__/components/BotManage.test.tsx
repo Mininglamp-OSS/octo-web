@@ -16,10 +16,10 @@
  *     不再 mock App。
  *
  * 覆盖：
- *   - L2 菜单：免@回答 / 卡片消息能力可点，两个占位行不触发；
+ *   - L2 菜单：免@回答 / 卡片消息设置可点，两个占位行不触发；
  *   - L3 免@回答：分区渲染、搜索、开关回调、群管理员禁用、三种终态；
- *   - L3 卡片消息能力：总闸 AND 置灰、乐观更新 + PUT、恢复默认走 DELETE + 重拉、
- *     未覆盖行不显示恢复默认、App Bot（not_found）终态。
+ *   - L3 卡片消息设置：总闸 AND 置灰、乐观更新 + PUT、取消自定义走 DELETE + 重拉、
+ *     未覆盖行不显示取消自定义、App Bot（not_found）终态。
  */
 
 import React, { useEffect, useState } from 'react';
@@ -58,8 +58,8 @@ vi.mock('../../../../../packages/dmworkbase/src/Service/BotManageService', () =>
 const labels: BotManageViewLabels = {
     mentionFree: 'Reply without @',
     mentionFreeHint: 'Choose groups where the bot can reply without @',
-    cardSettings: 'Card message capabilities',
-    cardSettingsHint: 'Control which card message types this bot can send',
+    cardSettings: 'Card messages',
+    cardSettingsHint: 'Choose which card types this bot can send',
     autoApprove: 'Auto-approve friend requests',
     autoApproveHint: 'Later',
     profileCommands: 'Profile & commands',
@@ -87,27 +87,32 @@ const cardLabels: BotCardSettingsLabels = {
         'bot.reasoning_enabled': 'Reasoning cards',
     },
     rowDesc: {
-        'bot.display_enabled': 'Allow display-only cards',
-        'bot.interaction_enabled': 'Allow interactive cards',
-        'bot.reasoning_enabled': 'Allow reasoning cards',
+        'bot.display_enabled': 'Text and images, view only',
+        'bot.interaction_enabled': 'Buttons, forms and other interactive controls',
+        'bot.reasoning_enabled': "Shows the bot's thinking steps",
     },
-    masterOffNotice: 'Card messages are turned off for this deployment',
-    needsDisplayNotice: 'Enable display cards first',
-    sourceBot: 'Customized for this bot',
-    sourceGlobal: 'Inherited from the global default',
-    sourceDefault: 'Inherited from the system default',
-    sourceEnv: 'Determined by the deployment environment',
-    reset: 'Restore default',
+    masterLabel: 'Card message master switch',
+    masterOn: 'Enabled',
+    masterOffValue: 'Disabled',
+    masterReadonly: 'Set by the server deployment; not editable here',
+    masterOffNotice: 'None of the settings below take effect',
+    needsDisplayNotice: 'Has no effect while display cards are off',
+    sourceBot: 'Customized',
+    sourceGlobal: 'Following the global setting',
+    sourceDefault: 'Following the system default',
+    sourceEnv: 'Set by the server deployment',
+    reset: 'Remove customization',
     loading: 'Loading...',
     loadFailed: 'Failed to load',
     reload: 'Reload',
-    backendComingSoon: 'Bot management is coming soon',
+    // 页面自己的文案，不复用 Bot 管理那条 —— 复用会让用户以为整个 Bot 管理没上线。
+    backendComingSoon: 'Card message settings are coming soon',
     stayTuned: 'Stay tuned',
-    unsupported: 'This bot type does not support customization yet',
-    forbidden: 'Only the bot creator can change these settings',
-    empty: 'No configurable options',
-    saveFailed: 'Failed to update',
-    saveFailedRetryable: 'Service temporarily unavailable, please retry',
+    unsupported: 'This kind of bot cannot be configured individually yet',
+    forbidden: "Only the bot's creator can change these settings",
+    empty: 'Nothing to configure',
+    saveFailed: 'Could not save, please try again',
+    saveFailedRetryable: 'Service temporarily unavailable, please retry later',
     rateLimited: 'Too many requests',
 };
 
@@ -136,7 +141,7 @@ describe('BotManageView (L2 menu)', () => {
         fireEvent.click(screen.getByText('Reply without @'));
         expect(onMentionFree).toHaveBeenCalledTimes(1);
 
-        fireEvent.click(screen.getByText('Card message capabilities'));
+        fireEvent.click(screen.getByText('Card messages'));
         expect(onCardSettings).toHaveBeenCalledTimes(1);
 
         fireEvent.click(screen.getByText('Auto-approve friend requests'));
@@ -263,7 +268,7 @@ describe('MentionFreeListView (L3)', () => {
 });
 
 /**
- * 卡片消息能力用真实 VM + mock Service 跑，覆盖「VM snapshot → 视图 props」这段接线。
+ * 卡片消息设置用真实 VM + mock Service 跑，覆盖「VM snapshot → 视图 props」这段接线。
  *
  * 这里的 harness 复刻 Components/BotManage 里 CardSettingsContainer 的订阅逻辑
  * （addListener + forceUpdate）—— 那个容器是模块内部实现，没有导出。
@@ -339,19 +344,50 @@ describe('CardSettingsView (L3)', () => {
         expect(screen.getByText('Display cards')).toBeInTheDocument();
         expect(screen.getByText('Interactive cards')).toBeInTheDocument();
         expect(screen.getByText('Reasoning cards')).toBeInTheDocument();
-        expect(screen.getByText('Customized for this bot')).toBeInTheDocument();
+        expect(screen.getByText('Customized')).toBeInTheDocument();
         expect(
-            screen.getByText('Inherited from the global default'),
+            screen.getByText('Following the global setting'),
         ).toBeInTheDocument();
         // 总闸自身不作为一行开关渲染。
         expect(screen.queryByTestId('bot-card-row-bot.card_enabled')).toBeNull();
+    });
+
+    it('orders rows reasoning → display → interaction', async () => {
+        const vm = await seedVM();
+        render(<CardSettingsHarness vm={vm} />);
+        const rendered = Array.from(
+            screen
+                .getByTestId('bot-card-settings-list')
+                .querySelectorAll('[data-testid^="bot-card-row-"]'),
+        ).map((el) => el.getAttribute('data-testid'));
+        expect(rendered).toEqual([
+            'bot-card-row-bot.reasoning_enabled',
+            'bot-card-row-bot.display_enabled',
+            'bot-card-row-bot.interaction_enabled',
+        ]);
+    });
+
+    it('shows the deployment master gate as a read-only status bar when enabled', async () => {
+        const vm = await seedVM();
+        render(<CardSettingsHarness vm={vm} />);
+
+        // 总闸开启时也要常显：藏起来用户无从确认卡片能力整体可用，关闭时也没有
+        // 锚点解释「我的开关为什么是灰的」。
+        const bar = screen.getByTestId('bot-card-settings-master-on');
+        expect(bar).toHaveTextContent('Card message master switch');
+        expect(bar).toHaveTextContent('Enabled');
+        expect(bar).toHaveTextContent('Set by the server deployment');
+        // 刻意不是开关：该项服务端 editable:false，写它会 400。
+        expect(bar.querySelector('[role="switch"]')).toBeNull();
     });
 
     it('master switch off greys out every sub-switch even when effective_value is true', async () => {
         const vm = await seedVM({ 'bot.card_enabled': { effective_value: false } });
         render(<CardSettingsHarness vm={vm} />);
 
-        expect(screen.getByTestId('bot-card-settings-master-off')).toBeInTheDocument();
+        const bar = screen.getByTestId('bot-card-settings-master-off');
+        expect(bar).toHaveTextContent('Disabled');
+        expect(bar).toHaveTextContent('None of the settings below take effect');
         const display = screen.getByTestId('bot-card-switch-bot.display_enabled');
         // 服务端下发的 effective_value 仍是 true —— UI 必须自己 AND 总闸后显示为关。
         expect(display).toBeDisabled();
@@ -418,7 +454,36 @@ describe('CardSettingsView (L3)', () => {
     it('rows without an explicit override offer no restore-default button', async () => {
         const vm = await seedVM();
         render(<CardSettingsHarness vm={vm} />);
-        expect(screen.queryByText('Restore default')).toBeNull();
+        expect(screen.queryByText('Remove customization')).toBeNull();
+    });
+
+    it('keeps long descriptions wrappable and the reset action off the switch row', async () => {
+        const vm = await seedVM({
+            'bot.interaction_enabled': {
+                value: true,
+                effective_value: true,
+                source: 'bot',
+            },
+        });
+        render(<CardSettingsHarness vm={vm} />);
+        const row = screen.getByTestId('bot-card-row-bot.interaction_enabled');
+
+        // 描述不能复用 .wk-bot-manage-group-status —— 那个类是为群名设计的
+        // nowrap + ellipsis，英文长句会被截在词中间（"…other con…"）。
+        expect(row.querySelector('.wk-bot-manage-card-desc')).not.toBeNull();
+        expect(row.querySelector('.wk-bot-manage-group-status')).toBeNull();
+
+        // 「取消自定义」不能和开关同行：英文标签比中文长一倍，抢宽度会把开关
+        // 顶到容器边缘。
+        const actions = row.querySelector('.wk-bot-manage-row-actions');
+        expect(
+            actions?.querySelector('[data-testid^="bot-card-reset-"]'),
+        ).toBeFalsy();
+        expect(
+            row.querySelector(
+                '.wk-bot-manage-card-meta [data-testid^="bot-card-reset-"]',
+            ),
+        ).not.toBeNull();
     });
 
     it('flags the interaction row when display cards are off, but keeps it writable', async () => {
@@ -429,7 +494,7 @@ describe('CardSettingsView (L3)', () => {
 
         expect(
             screen.getByTestId('bot-card-needs-display-bot.interaction_enabled'),
-        ).toHaveTextContent('Enable display cards first');
+        ).toHaveTextContent('Has no effect while display cards are off');
         expect(
             screen.getByTestId('bot-card-switch-bot.interaction_enabled'),
         ).not.toBeDisabled();
@@ -448,7 +513,7 @@ describe('CardSettingsView (L3)', () => {
         await waitFor(() =>
             expect(
                 screen.getByTestId('bot-card-settings-write-error'),
-            ).toHaveTextContent('Service temporarily unavailable, please retry'),
+            ).toHaveTextContent('Service temporarily unavailable, please retry later'),
         );
         // 整批回滚 → 开关弹回服务端真实状态。
         expect(
@@ -468,7 +533,7 @@ describe('CardSettingsView (L3)', () => {
 
         expect(
             screen.getByTestId('bot-card-settings-unsupported'),
-        ).toHaveTextContent('This bot type does not support customization yet');
+        ).toHaveTextContent('This kind of bot cannot be configured individually yet');
         expect(screen.queryByText('Reload')).toBeNull();
     });
 
@@ -483,11 +548,14 @@ describe('CardSettingsView (L3)', () => {
                 Boolean(
                     el?.className === 'wk-bot-manage-empty' &&
                         (el.textContent || '').includes(
-                            'Bot management is coming soon',
+                            'Card message settings are coming soon',
                         ),
                 ),
             ),
         ).toBeInTheDocument();
+        // 必须是这一页自己的文案：显示「Bot management is coming soon」会让用户
+        // 以为整个 Bot 管理都没上线，而其实只有卡片设置这组端点缺失。
+        expect(screen.queryByText(/Bot management is coming soon/)).toBeNull();
     });
 });
 

@@ -2,7 +2,7 @@ import React from "react";
 import type { BotCardSettingRow } from "../../../bridge/profileDetail/botCardSettings";
 
 /**
- * CardSettingsView —— L3「卡片消息能力」纯受控视图。
+ * CardSettingsView —— L3「卡片消息设置」纯受控视图。
  *
  * 所有文案由 labels 注入（与 MentionFreeListView 同款），组件本身不碰 i18n，
  * 便于在 stories / 测试里直接喂假数据。
@@ -12,7 +12,13 @@ export interface BotCardSettingsLabels {
   /** 行标题 / 说明，按 key 索引；未知 key 不会渲染所以无需兜底。 */
   rowTitle: Record<string, string>;
   rowDesc: Record<string, string>;
-  /** 总闸关闭时的整页提示条。 */
+  /** 部署级总闸的只读状态条文案。 */
+  masterLabel: string;
+  masterOn: string;
+  masterOffValue: string;
+  /** 说明总闸为何不可点。 */
+  masterReadonly: string;
+  /** 总闸关闭时补充的影响说明。 */
   masterOffNotice: string;
   /** 交互型卡片依赖展示型卡片的行内提示。 */
   needsDisplayNotice: string;
@@ -92,17 +98,14 @@ export function CardSettingsView({
   return (
     <div className="wk-bot-manage-mention">
       <div className="wk-bot-manage-list" data-testid="bot-card-settings-list">
-        {!masterEnabled && (
-          <div
-            className="wk-bot-manage-notice"
-            data-testid="bot-card-settings-master-off"
-          >
-            {labels.masterOffNotice}
-          </div>
-        )}
+        <MasterStatus labels={labels} masterEnabled={masterEnabled} />
         {writeErrorKind && (
           <div
             className="wk-bot-manage-notice wk-bot-manage-notice-error"
+            // 写入失败是异步出现的，没有 live region 的话读屏用户不会被告知
+            // ——「点了开关、静默弹回」对他们完全不可感知。
+            role="alert"
+            aria-live="assertive"
             data-testid="bot-card-settings-write-error"
           >
             {writeErrorMessage(writeErrorKind, labels)}
@@ -120,6 +123,51 @@ export function CardSettingsView({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 部署级总闸的只读状态条。
+ *
+ * 常显（不只在关闭时出现）：它是三个子开关的上游门禁，藏起来的话用户没法自解释
+ * 「我的开关为什么是灰的」，开启时也无从确认卡片能力整体可用。
+ *
+ * 刻意**不做成开关**：`bot.card_enabled` 派生自部署环境变量，服务端 `editable:false`
+ * 且写它会 400（做成只读是为了防止库里写着「开」而环境是「关」，让清单和发卡门禁
+ * 互相矛盾）。渲染成一个永远点不动的 switch 会是个骗人的控件，所以用状态条 + 一句
+ * 「由服务端部署配置决定」说明。
+ */
+function MasterStatus({
+  labels,
+  masterEnabled,
+}: {
+  labels: BotCardSettingsLabels;
+  masterEnabled: boolean;
+}) {
+  return (
+    <div
+      className={`wk-bot-manage-master ${
+        masterEnabled ? "" : "wk-bot-manage-master-off"
+      }`}
+      data-testid={
+        masterEnabled
+          ? "bot-card-settings-master-on"
+          : "bot-card-settings-master-off"
+      }
+    >
+      <div className="wk-bot-manage-master-head">
+        <span className="wk-bot-manage-master-label">{labels.masterLabel}</span>
+        <span className="wk-bot-manage-master-value">
+          {masterEnabled ? labels.masterOn : labels.masterOffValue}
+        </span>
+      </div>
+      <div className="wk-bot-manage-master-hint">{labels.masterReadonly}</div>
+      {/* 分成两个节点而不是拼字符串：句读在中英文里不同，拼接会出现半角句点混进
+          中文文案的情况。 */}
+      {!masterEnabled && (
+        <div className="wk-bot-manage-master-warn">{labels.masterOffNotice}</div>
+      )}
     </div>
   );
 }
@@ -187,13 +235,38 @@ function CardSettingRow({
   const title = labels.rowTitle[row.key] ?? row.key;
   const desc = labels.rowDesc[row.key] ?? "";
   const meta = sourceLabel(row.source, labels);
+  // 「取消自定义」只在存在显式覆盖（value !== null）且可写时出现。
+  const showReset = row.overridden && row.editable;
 
   return (
-    <div className="wk-bot-manage-group-row" data-testid={`bot-card-row-${row.key}`}>
+    <div
+      className="wk-bot-manage-group-row wk-bot-manage-card-row"
+      data-testid={`bot-card-row-${row.key}`}
+    >
       <div className="wk-bot-manage-group-main">
-        <div className="wk-bot-manage-group-name">{title}</div>
-        {desc && <div className="wk-bot-manage-group-status">{desc}</div>}
-        {meta && <div className="wk-bot-manage-group-status">{meta}</div>}
+        <div className="wk-bot-manage-card-title">{title}</div>
+        {/* 描述 / 状态用可换行的专用类，不复用 group-status —— 那个类是为群名设计的
+            单行 + ellipsis，英文长句会被截在词中间（"…other con…"）。 */}
+        {desc && <div className="wk-bot-manage-card-desc">{desc}</div>}
+        {(meta || showReset) && (
+          <div className="wk-bot-manage-card-meta">
+            {meta && <span>{meta}</span>}
+            {/* 「取消自定义」放在状态文字旁而不是右侧和开关同行：英文标签
+                （Remove customization）比中文长一倍，和开关抢宽度会把开关顶到边缘；
+                而且它作用的对象就是前面那句「已自定义」，放一起语义也更连贯。 */}
+            {showReset && (
+              <button
+                type="button"
+                className="wk-bot-manage-reset"
+                disabled={row.pending}
+                onClick={() => onReset(row.key)}
+                data-testid={`bot-card-reset-${row.key}`}
+              >
+                {labels.reset}
+              </button>
+            )}
+          </div>
+        )}
         {row.needsDisplay && (
           <div
             className="wk-bot-manage-row-warn"
@@ -204,19 +277,6 @@ function CardSettingRow({
         )}
       </div>
       <div className="wk-bot-manage-row-actions">
-        {/* 恢复默认 = DELETE 覆盖回落上一层，不是设为 false。只有存在显式覆盖
-            （value !== null）且可写时才出现。 */}
-        {row.overridden && row.editable && (
-          <button
-            type="button"
-            className="wk-bot-manage-reset"
-            disabled={row.pending}
-            onClick={() => onReset(row.key)}
-            data-testid={`bot-card-reset-${row.key}`}
-          >
-            {labels.reset}
-          </button>
-        )}
         <button
           type="button"
           role="switch"

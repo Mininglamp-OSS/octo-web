@@ -283,9 +283,58 @@ button.wk-bot-manage-menu-row .wk-bot-manage-menu-right {
     text-decoration: underline;
 }
 
-/* ── 卡片消息能力（L3 CardSettingsView） ───────────────────────────────── */
+/* ── 卡片消息设置（L3 CardSettingsView） ───────────────────────────────── */
 
-/* 整页提示条：部署级总闸关闭 / 写入失败。 */
+/* 部署级总闸的只读状态条（常显；不是开关，因为该项服务端不可写）。 */
+.wk-bot-manage-master {
+    margin: var(--wk-sp-3) 0 var(--wk-sp-2);
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border: 1px solid var(--wk-border-subtle);
+    border-radius: var(--wk-r-md);
+    background: var(--wk-bg-elevated);
+    box-sizing: border-box;
+}
+
+.wk-bot-manage-master-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--wk-sp-2);
+}
+
+.wk-bot-manage-master-label {
+    flex: 1;
+    min-width: 0;
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+    font-weight: var(--wk-font-medium);
+}
+
+.wk-bot-manage-master-value {
+    flex-shrink: 0;
+    color: var(--wk-color-success);
+    font-size: var(--wk-text-size-sm);
+    font-weight: var(--wk-font-medium);
+}
+
+.wk-bot-manage-master-off .wk-bot-manage-master-value {
+    color: var(--wk-color-warning);
+}
+
+.wk-bot-manage-master-hint {
+    margin-top: var(--wk-sp-1);
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-xs);
+    line-height: 1.4;
+}
+
+.wk-bot-manage-master-warn {
+    margin-top: var(--wk-sp-1);
+    color: var(--wk-color-warning);
+    font-size: var(--wk-text-size-xs);
+    line-height: 1.4;
+}
+
+/* 整页提示条：写入失败。 */
 .wk-bot-manage-notice {
     margin: var(--wk-sp-3) 0 var(--wk-sp-1);
     padding: var(--wk-sp-2) var(--wk-sp-3);
@@ -301,12 +350,54 @@ button.wk-bot-manage-menu-row .wk-bot-manage-menu-right {
     color: var(--wk-color-danger);
 }
 
-/* 行右侧：恢复默认 + 开关。 */
+/* 行右侧：只放开关。 */
 .wk-bot-manage-row-actions {
     display: flex;
     align-items: center;
     gap: var(--wk-sp-3);
     flex-shrink: 0;
+}
+
+/* 卡片设置的行比免@回答的行内容多（标题 + 描述 + 状态 + 可选警示），
+   所以顶部对齐而不是垂直居中 —— 居中会让开关浮在四行文字的中间。 */
+.wk-bot-manage-card-row {
+    align-items: flex-start;
+    padding-top: var(--wk-sp-3);
+    padding-bottom: var(--wk-sp-3);
+}
+
+.wk-bot-manage-card-row .wk-bot-manage-row-actions {
+    /* 和标题行的视觉中线对齐。 */
+    margin-top: var(--wk-sp-0-5);
+}
+
+/* 标题：允许换行。不复用 group-name（那个是单行 + ellipsis）。 */
+.wk-bot-manage-card-title {
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-base);
+    line-height: 1.35;
+    overflow-wrap: break-word;
+}
+
+/* 描述 / 状态：**必须允许换行**。此前复用了 group-status（为群名设计的
+   nowrap + ellipsis），英文长句会被截在词中间，例如
+   "Buttons, forms and other con…"。 */
+.wk-bot-manage-card-desc {
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-xs);
+    line-height: 1.4;
+    overflow-wrap: break-word;
+}
+
+/* 状态文字 +「取消自定义」同一行，窄容器下可换行不挤压。 */
+.wk-bot-manage-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--wk-sp-1) var(--wk-sp-2);
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-xs);
+    line-height: 1.4;
 }
 
 .wk-bot-manage-reset {
@@ -316,8 +407,8 @@ button.wk-bot-manage-menu-row .wk-bot-manage-menu-right {
     color: var(--wk-color-accent);
     font-family: inherit;
     font-size: var(--wk-text-size-xs);
+    line-height: 1.4;
     cursor: pointer;
-    white-space: nowrap;
 }
 
 .wk-bot-manage-reset:disabled {

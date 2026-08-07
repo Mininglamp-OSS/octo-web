@@ -58,7 +58,7 @@ export default class BotManageModal extends Component<BotManageModalProps> {
     private vm?: MentionFreeVM
 
     /**
-     * L3「卡片消息能力」的 VM。
+     * L3「卡片消息设置」的 VM。
      *
      * 不走 Provider（Provider 只托管一个 listener，已被 MentionFreeVM 占用），
      * 而是在这里持有 + 由 CardSettingsContainer 通过 addListener 订阅。副作用是
@@ -202,6 +202,10 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                     "base.botManage.cardSettings.reasoningHint",
                 ),
             },
+            masterLabel: t("base.botManage.cardSettings.masterLabel"),
+            masterOn: t("base.botManage.cardSettings.masterOn"),
+            masterOffValue: t("base.botManage.cardSettings.masterOffValue"),
+            masterReadonly: t("base.botManage.cardSettings.masterReadonly"),
             masterOffNotice: t("base.botManage.cardSettings.masterOff"),
             needsDisplayNotice: t("base.botManage.cardSettings.needsDisplay"),
             sourceBot: t("base.botManage.cardSettings.sourceBot"),
@@ -212,7 +216,12 @@ export default class BotManageModal extends Component<BotManageModalProps> {
             loading: t("base.botManage.loading"),
             loadFailed: t("base.botManage.loadFailed"),
             reload: t("base.botManage.reload"),
-            backendComingSoon: t("base.botManage.backendComingSoon"),
+            // 用卡片设置自己的「即将上线」文案，而不是复用 botManage 那条 ——
+            // 复用会在这一页显示「Bot 管理功能即将上线」，让用户以为整个 Bot 管理
+            // 都没上线，而其实只有卡片设置这组端点缺失（免@回答仍然可用）。
+            backendComingSoon: t(
+                "base.botManage.cardSettings.backendComingSoon",
+            ),
             stayTuned: t("base.botManage.stayTuned"),
             unsupported: t("base.botManage.cardSettings.unsupported"),
             forbidden: t("base.botManage.cardSettings.forbidden"),
@@ -237,7 +246,7 @@ interface CardSettingsContainerProps {
 }
 
 /**
- * L3「卡片消息能力」容器。
+ * L3「卡片消息设置」容器。
  *
  * 每次挂载都重拉：owner 读接口下发 `Cache-Control: private, no-store`，本地也不做
  * 任何缓存 —— 改完配置立刻重进这一页必须看到新值。
