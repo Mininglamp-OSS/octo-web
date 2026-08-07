@@ -55,6 +55,8 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     hasMore,
     reload,
     loadMore,
+    loadMoreError,
+    retryLoadMore,
     filter: typeFilter,
     setFilter: setTypeFilter,
   } = useFileList(activeSpaceId, currentParentId);
@@ -217,8 +219,13 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   // the next page is landing as the user approaches the bottom), fire
   // loadMore(). loadMore() itself is a no-op when !hasMore or already
   // loading, so double-triggers are cheap.
+  //
+  // Loading gate ALSO covers loadMoreError: if the last append failed we
+  // hide the sentinel below AND keep the observer suppressed here, so a
+  // still-visible sentinel can't retrigger onLoadMore in a tight loop. The
+  // user recovers via the explicit "重试" button (retryLoadMore()).
   const sentinelRef = useInfiniteScroll<HTMLDivElement>({
-    hasMore,
+    hasMore: hasMore && !loadMoreError,
     loading: filesLoading || loadingMore,
     onLoadMore: loadMore,
   });
@@ -572,7 +579,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             removingIds={removingIds}
           />
         )}
-        {hasMore && (
+        {hasMore && !loadMoreError && (
           <>
             {loadingMore && (
               <div className="drive-main__loading-more">
@@ -581,6 +588,22 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             )}
             <div ref={sentinelRef} className="drive-main__sentinel" aria-hidden="true" />
           </>
+        )}
+        {hasMore && loadMoreError && (
+          // Latched error: the observer is suppressed above, sentinel is
+          // gone — user needs to explicitly retry. Styled as a banner so it
+          // reads as a stopped-state, not "still loading".
+          <div className="drive-main__load-more-error" role="alert">
+            <span>{t('drive.file.loadMoreFailed')}</span>
+            <Button
+              theme="borderless"
+              type="primary"
+              size="small"
+              onClick={retryLoadMore}
+            >
+              {t('drive.file.loadMoreRetry')}
+            </Button>
+          </div>
         )}
         {total !== null && !hasMore && entries.length > 0 && total > entries.length && (
           <p className="drive-main__truncated">

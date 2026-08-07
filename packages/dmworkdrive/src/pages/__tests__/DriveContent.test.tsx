@@ -133,6 +133,8 @@ beforeEach(() => {
     hasMore: false,
     reload: vi.fn(),
     loadMore: vi.fn(),
+    loadMoreError: null,
+    retryLoadMore: vi.fn(),
     filter: 'all',
     setFilter: vi.fn(),
   });
@@ -264,6 +266,8 @@ describe('DriveContent — open doc builds the canonical no-sp link (Phase-1 rem
       hasMore: false,
       reload: vi.fn(),
       loadMore: vi.fn(),
+      loadMoreError: null,
+      retryLoadMore: vi.fn(),
       filter: 'all',
       setFilter: vi.fn(),
     });
@@ -298,6 +302,8 @@ describe('DriveContent — open doc builds the canonical no-sp link (Phase-1 rem
       hasMore: false,
       reload: vi.fn(),
       loadMore: vi.fn(),
+      loadMoreError: null,
+      retryLoadMore: vi.fn(),
       filter: 'all',
       setFilter: vi.fn(),
     });

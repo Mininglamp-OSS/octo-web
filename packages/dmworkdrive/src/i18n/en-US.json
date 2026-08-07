@@ -34,6 +34,8 @@
     "colSize": "Size",
     "colUpdated": "Modified",
     "truncated": "Large folder — showing the first 200 items only",
+    "loadMoreFailed": "Failed to load more",
+    "loadMoreRetry": "Retry",
     "selectAll": "Select all",
     "selectRow": "Select item"
   },

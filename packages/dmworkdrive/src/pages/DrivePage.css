@@ -163,6 +163,20 @@ body[theme-mode='dark'] .drive-main__actions .drive-btn--primary.semi-button:not
   color: var(--wk-text-tertiary, #6b7075);
 }
 
+/* Latched-error banner for a failed loadMore. The sentinel + spinner are
+   both hidden while this is shown so IntersectionObserver can't re-fire
+   in a tight loop against a broken page-N request; the user pushes the
+   retry Button to clear the error and try again. */
+.drive-main__load-more-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 0;
+  font-size: 13px;
+  color: var(--wk-text-tertiary, #6b7075);
+}
+
 .drive-main__center {
   display: flex;
   align-items: center;

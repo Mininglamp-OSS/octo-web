@@ -22,6 +22,15 @@ export interface UseFileListResult {
   /** loadingMore is true while a subsequent page is being appended. */
   loadingMore: boolean;
   error: string | null;
+  /**
+   * Error captured during the last appended fetch (loadMore). While this is
+   * non-null the sentinel is expected to hide and `loadMore()` is a no-op —
+   * a bare failure would otherwise loop with IntersectionObserver as it re-
+   * fires the moment loadingMore flips false and the still-visible sentinel
+   * intersects. The user recovers via retryLoadMore() (or a fresh navigation
+   * that triggers reload()).
+   */
+  loadMoreError: string | null;
   /** Total count reported by the last browse response, or null when unknown. */
   total: number | null;
   /** True when more pages are available for the current filter. */
@@ -30,6 +39,13 @@ export interface UseFileListResult {
   reload: () => void;
   /** Fetches and appends the next page. No-op when !hasMore or already loading. */
   loadMore: () => void;
+  /**
+   * Explicit user-triggered retry after a loadMore failure. Clears the
+   * error state and re-tries the SAME page (pageIndex+1) — a bare
+   * `loadMore()` won't run while loadMoreError is set, so the retry has
+   * to go through this path.
+   */
+  retryLoadMore: () => void;
   /** Current filter; changing it triggers a fresh page-1 fetch. */
   filter: FileTypeFilter;
   setFilter: (next: FileTypeFilter) => void;
@@ -51,6 +67,7 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [pageIndex, setPageIndex] = useState(1);
   const [filter, setFilter] = useState<FileTypeFilter>('all');
@@ -89,6 +106,9 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
       if (opts.append) setLoadingMore(true);
       else setLoading(true);
       setError(null);
+      // A fresh page-1 fetch clears any prior loadMore-error so paging is
+      // re-armed on navigation/filter change or explicit reload().
+      if (!opts.append) setLoadMoreError(null);
       try {
         const res = await api.browse(
           {
@@ -127,7 +147,13 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
         setPageIndex(opts.page);
       } catch (err: unknown) {
         if ((err as Error)?.name === 'AbortError' || seq !== seqRef.current) return;
-        setError((err as Error)?.message ?? 'load failed');
+        const msg = (err as Error)?.message ?? 'load failed';
+        setError(msg);
+        // For an APPEND (loadMore) failure, latch the error so the sentinel
+        // hides and loadMore() short-circuits until retryLoadMore() clears
+        // it. Without this the IntersectionObserver keeps refiring and
+        // spamming toast — a broken page-N request loops indefinitely.
+        if (opts.append) setLoadMoreError(msg);
         Toast.error(t('drive.toast.loadFailed'));
       } finally {
         if (ctrl.signal.aborted || seq !== seqRef.current) return;
@@ -145,6 +171,22 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   const loadMore = useCallback(() => {
     if (!hasMore) return;
     if (loading || loadingMore) return;
+    // Latched-error gate: a failed loadMore MUST be recovered via
+    // retryLoadMore() (or a page-1 reload) — otherwise the still-visible
+    // sentinel re-triggers the observer the moment loadingMore flips false.
+    if (loadMoreError) return;
+    void runFetch({ page: pageIndex + 1, append: true });
+  }, [runFetch, pageIndex, hasMore, loading, loadingMore, loadMoreError]);
+
+  const retryLoadMore = useCallback(() => {
+    if (!hasMore) return;
+    if (loading || loadingMore) return;
+    // Clear before the fetch so the state is consistent if the retry
+    // succeeds; runFetch's finally does NOT touch loadMoreError on the
+    // success path (the append-failure catch sets it, page-1 clears it,
+    // append-success just leaves the old value which we've already
+    // cleared here).
+    setLoadMoreError(null);
     void runFetch({ page: pageIndex + 1, append: true });
   }, [runFetch, pageIndex, hasMore, loading, loadingMore]);
 
@@ -162,14 +204,16 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
       loading,
       loadingMore,
       error,
+      loadMoreError,
       total,
       hasMore,
       reload,
       loadMore,
+      retryLoadMore,
       filter,
       setFilter,
     }),
-    [entries, loading, loadingMore, error, total, hasMore, reload, loadMore, filter],
+    [entries, loading, loadingMore, error, loadMoreError, total, hasMore, reload, loadMore, retryLoadMore, filter],
   );
   return result;
 }
