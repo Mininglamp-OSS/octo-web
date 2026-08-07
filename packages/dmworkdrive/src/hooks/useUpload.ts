@@ -100,6 +100,14 @@ interface RunCtl {
 export function useUpload(onUploaded: () => void): UseUpload {
   const [items, setItems] = useState<UploadItem[]>([]);
   const jobs = useRef<Map<string, Job>>(new Map());
+  // Bounded-concurrency queue. Drag-drop lets a user land 100 files in one
+  // gesture; without a cap that's 100 simultaneous presign+PUT+confirm
+  // chains + 100 reload() calls when they settle. MAX_CONCURRENT matches
+  // the batch-op runBatch default (also 4) so delete/move/download and
+  // upload all behave alike; queue holds ids waiting for a slot.
+  const uploadQueue = useRef<string[]>([]);
+  const uploadActiveCount = useRef(0);
+  const MAX_CONCURRENT_UPLOADS = 4;
   // Live run-control records, keyed by item id (see RunCtl). Presence means a
   // run is still in flight; a settled/errored run removes its own entry.
   const runs = useRef<Map<string, RunCtl>>(new Map());
@@ -331,6 +339,29 @@ export function useUpload(onUploaded: () => void): UseUpload {
     [patch, scheduleAutoDismiss, bestEffortCancel, refreshOnce],
   );
 
+  // Schedule an upload id: run immediately if under the concurrency cap,
+  // otherwise queue it. On completion, drain the queue.
+  const scheduleUpload = useCallback(
+    (id: string) => {
+      const start = (nextId: string) => {
+        uploadActiveCount.current += 1;
+        // Fire the upload — runItem is async but we intentionally don't
+        // await it here; the .finally hook drives the queue forward.
+        void runItem(nextId).finally(() => {
+          uploadActiveCount.current = Math.max(0, uploadActiveCount.current - 1);
+          const next = uploadQueue.current.shift();
+          if (next !== undefined) start(next);
+        });
+      };
+      if (uploadActiveCount.current < MAX_CONCURRENT_UPLOADS) {
+        start(id);
+      } else {
+        uploadQueue.current.push(id);
+      }
+    },
+    [runItem],
+  );
+
   const addFiles = useCallback(
     (files: FileList | File[], spaceId: string, parentId: number) => {
       // Pre-flight: match the server's hard rules (empty size, MaxFileSize)
@@ -357,9 +388,9 @@ export function useUpload(onUploaded: () => void): UseUpload {
         return { id, name: file.name, size: file.size, status: 'preparing' as const, progress: 0 };
       });
       setItems((list) => [...list, ...created]);
-      created.forEach((it) => void runItem(it.id));
+      created.forEach((it) => scheduleUpload(it.id));
     },
-    [runItem],
+    [scheduleUpload],
   );
 
   // Restart a failed item. Before the fresh prepare, best-effort reclaim the
@@ -400,9 +431,12 @@ export function useUpload(onUploaded: () => void): UseUpload {
           return;
         }
       }
-      void runItem(id);
+      // Route the retry through the same bounded-concurrency queue as
+      // addFiles so a stuck failure + rapid retry-all doesn't blow the
+      // concurrency cap.
+      scheduleUpload(id);
     },
-    [bestEffortCancel, patch, runItem],
+    [bestEffortCancel, patch, scheduleUpload],
   );
 
   const retry = useCallback((id: string) => void retryRun(id), [retryRun]);

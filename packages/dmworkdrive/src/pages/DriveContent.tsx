@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n, buildDocLink } from '@octo/base';
 import { Button, Modal, Spin } from '@douyinfe/semi-ui';
-import { FolderPlus, FilePlus2, UserPlus, Users } from 'lucide-react';
+import { FolderPlus, FilePlus2, UserPlus, Users, AlertTriangle } from 'lucide-react';
 import { useFileList } from '../hooks/useFileList';
 import { useDriveOps } from '../hooks/useDriveOps';
 import { useUpload } from '../hooks/useUpload';
@@ -74,13 +74,45 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   const [pendingIds, setPendingIds] = useState<Set<number>>(() => new Set());
   const [removingIds, setRemovingIds] = useState<Set<number>>(() => new Set());
 
+  // Prune any removingIds that no longer exist in entries (the reload after a
+  // batch delete landed and dropped those rows). Doing this from an effect
+  // keyed on `entries` — instead of synchronously clearing right after
+  // reload() — avoids flashing the doomed rows back to full opacity for one
+  // paint while the browse response is still in flight.
+  useEffect(() => {
+    if (removingIds.size === 0) return;
+    const stillHere = new Set(entries.map((e) => e.id));
+    let changed = false;
+    const next = new Set<number>();
+    for (const id of removingIds) {
+      if (stillHere.has(id)) next.add(id);
+      else changed = true;
+    }
+    if (changed) setRemovingIds(next);
+    // Depend on `entries` so this fires on every list refresh (reload result
+    // landing, filter change, etc.). Depending on `removingIds` too would
+    // loop infinitely as the effect would re-fire on its own setState.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries]);
+
   // Drag-drop upload target. Reuses useUpload.addFiles so dropped files
   // flow through the exact same presigned-URL / progress pipeline as
   // <UploadButton>. Disabled when the current space is missing or the
   // user lacks upload permission.
+  // useDropzone captures its options in a closure at mount; the two refs
+  // below are kept in sync every render so a) permission-gate the drop
+  // target and b) route the drop through the up-to-date activeSpaceId.
+  //
+  // Both dropzone.disabled (window-level dragover suppression) AND the
+  // onDrop callback consult canUploadRef so a preview_only user gets no
+  // enter-counter increment and no silent drop — the browser's default
+  // "open file" navigation runs, and files never get intercepted only to
+  // be discarded. Previously only onDrop checked, so read-only users had
+  // their drag intercepted (overlay never showed, but dragover was
+  // blocked) and the drop was then silently swallowed.
   const canUploadRef = useRef(false);
   const dropzone = useDropzone({
-    disabled: !activeSpaceId,
+    disabled: !activeSpaceId || !canUploadRef.current,
     onDrop: (files) => {
       if (!canUploadRef.current || !activeSpaceId) return;
       upload.addFiles(files, activeSpaceId, currentParentId);
@@ -165,12 +197,17 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
       // entries (blob / doc) keep the lightweight generic confirm.
       const content = isFolder
         ? (
+            // Composed structure: prefix + " " + danger(folderWord) + " \"name\"? " + suffix
+            // The trailing "?" is glued to the name (no space between them) so
+            // the English rendering doesn't produce "\"foo\" ? All contents".
+            // The zh-CN key's suffix uses the full-width "吗？" so it also
+            // reads naturally in both locales.
             <span>
               {t('drive.delete.folderConfirmPrefix')}
               <span style={{ color: 'var(--wk-danger)', fontWeight: 500 }}>
                 {' '}{t('drive.delete.folderWord')}{' '}
               </span>
-              {`"${entry.name}" `}
+              {`"${entry.name}"`}
               {t('drive.delete.folderConfirmSuffix')}
             </span>
           )
@@ -179,6 +216,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
       Modal.confirm({
         title: isFolder ? t('drive.delete.folderTitle') : t('drive.delete.title'),
         content,
+        icon: <AlertTriangle size={20} color="var(--wk-danger, #f5222d)" />,
         okText: t('drive.file.delete'),
         cancelText: t('drive.common.cancel'),
         okButtonProps: { type: 'danger' },
@@ -246,11 +284,13 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
       );
       if (files.length === 0) {
         return (
+          // Same "trailing ?" gluing as the single-row folder confirm above,
+          // so we don't render "Delete the selected 3 folders ? All contents..."
+          // in English. The i18n Suffix owns the "? ..." punctuation.
           <span>
             {t('drive.bulk.deleteContentFoldersPrefix')}
             {' '}
             {danger(t('drive.bulk.deleteContentFoldersWord', { values: { count: String(total) } }))}
-            {' '}
             {t('drive.bulk.deleteContentFoldersSuffix')}
           </span>
         );
@@ -338,6 +378,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             ? t('drive.bulk.deleteTitleFolders')
             : t('drive.bulk.deleteTitleFiles'),
       content: buildBatchDeleteContent(files, folders),
+      icon: <AlertTriangle size={20} color="var(--wk-danger, #f5222d)" />,
       okText: t('drive.file.delete'),
       cancelText: t('drive.common.cancel'),
       okButtonProps: { type: 'danger' },
@@ -378,8 +419,13 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           // reload — otherwise the list re-renders under the transition
           // and the fade-out looks like a hard cut.
           await new Promise((r) => setTimeout(r, 280));
+          // reload() is fire-and-forget: kick off the refetch, but do NOT
+          // clear removingIds here — the entries state won't update until
+          // the browse response lands, and a synchronous clear would flash
+          // the still-present-but-doomed rows back to full opacity for one
+          // paint before they finally vanish. The removingIds effect below
+          // clears these ids once entries actually changes (rows gone).
           if (succeeded.length > 0) reload();
-          setRemovingIds(new Set());
           selection.clear();
           reportBatchResult('delete', succeeded, failed);
         } finally {

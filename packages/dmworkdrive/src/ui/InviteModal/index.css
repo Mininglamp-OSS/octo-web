@@ -46,10 +46,18 @@
 }
 
 .drive-invite__expiry {
-  flex: 1;
   min-width: 0;
   font-size: 12px;
   color: var(--semi-color-text-2);
+  white-space: nowrap;
+}
+
+/* Read-only invite URL inline in the row so a clipboard failure leaves the
+   user something to select. flex:1 lets it stretch across the remaining
+   space; a click on the Input selects the full URL for one-key copy. */
+.drive-invite__link {
+  flex: 1;
+  min-width: 0;
 }
 
 .drive-invite__orgpane {
