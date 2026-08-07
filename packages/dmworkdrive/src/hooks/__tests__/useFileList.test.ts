@@ -291,5 +291,37 @@ describe('useFileList', () => {
         ),
       );
     });
+
+    it('clears stale entries synchronously on context change even when the new fetch rejects', async () => {
+      // Bot-review P1: filter=all success (1 blob) → switch to filter=folder,
+      // that browse rejects → filter is now 'folder' but entries USED TO
+      // still hold the 'all' blob, so an editor could act on rows that
+      // belong to the previous context. Fix: page-1 fetch must clear
+      // entries/total/hasMore synchronously BEFORE awaiting, so a failed
+      // context switch surfaces as an empty listing + error, not a phantom
+      // listing under the wrong filter.
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp([entry(1, 'a.pdf', 'blob')]))
+        .mockRejectedValueOnce(new Error('network kaboom'));
+
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries).toHaveLength(1);
+      expect(result.current.filter).toBe('all');
+
+      // Switch filter — this triggers a new page-1 fetch that will reject.
+      act(() => result.current.setFilter('folder'));
+
+      // Wait for the failed fetch to resolve (setLoading back to false).
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // Filter is now 'folder' but the failed fetch left an empty listing —
+      // NOT the stale [{a.pdf}] from the previous 'all' context.
+      expect(result.current.filter).toBe('folder');
+      expect(result.current.entries).toHaveLength(0);
+      expect(result.current.total).toBeNull();
+      expect(result.current.hasMore).toBe(false);
+      expect(result.current.error).not.toBeNull();
+    });
   });
 });
