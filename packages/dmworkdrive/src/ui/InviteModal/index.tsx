@@ -136,7 +136,10 @@ export default function InviteModal({ visible, spaceId, onClose }: InviteModalPr
                       size="small"
                       value={buildInviteLink(inv.token)}
                       className="drive-invite__link"
-                      onClick={(_, e) => (e?.currentTarget as HTMLInputElement | undefined)?.select?.()}
+                      // Semi's Input onClick is a single-arg MouseEventHandler
+                      // (bot review P2-4: passing `(_, e) => e?.currentTarget?
+                      // .select()` was silently a no-op because e was undefined).
+                      onClick={(e) => (e.currentTarget as HTMLInputElement).select()}
                     />
                     <Button
                       theme="borderless"

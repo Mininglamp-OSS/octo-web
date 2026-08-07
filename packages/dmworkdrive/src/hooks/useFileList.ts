@@ -84,7 +84,7 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   const loadedCountRef = useRef(0);
 
   const runFetch = useCallback(
-    async (opts: { page: number; append: boolean }) => {
+    async (opts: { page: number; append: boolean; resetView?: boolean }) => {
       // Abort any in-flight browse FIRST — including on the transition to
       // no-space (DriveVM.reset() sets spaceId null). If we cleared +
       // returned before aborting, the previous space's browse could resolve
@@ -106,20 +106,28 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
       if (opts.append) setLoadingMore(true);
       else setLoading(true);
       setError(null);
-      // On a fresh page-1 fetch (space/folder/filter change or explicit
-      // reload), clear the previous view synchronously — do NOT leave the
-      // old entries on screen while the new context is loading. Bot review
-      // caught: filter="all" success → switch to "folder" → 2nd browse
-      // rejects → filter="folder" but entries still holds the "all" blob.
-      // An editor could then select/delete/move rows that belong to the
-      // previous context, believing they belong to the new one. Clearing
-      // upfront makes the failure surface as an empty listing + error toast
-      // rather than a phantom listing under the wrong context.
-      if (!opts.append) {
+      // On a fresh page-1 fetch that ALSO changes context (space/folder/
+      // filter change), clear the previous view synchronously — do NOT
+      // leave the old entries on screen while the new context is loading.
+      // Bot review caught: filter="all" success → switch to "folder" → 2nd
+      // browse rejects → filter="folder" but entries still holds the "all"
+      // blob. An editor could then select/delete/move rows that belong to
+      // the previous context, believing they belong to the new one.
+      //
+      // But NOT on a same-context reload() (delete/rename/upload/etc):
+      // blanking the whole list to a spinner every time an upload lands is
+      // a bad UX regression — a 20-file drop would replace the list with a
+      // spinner four times as batches complete. Same-context reloads keep
+      // the current entries visible until the fresh response lands.
+      if (!opts.append && opts.resetView) {
         setEntries([]);
         setTotal(null);
         setHasMore(false);
         loadedCountRef.current = 0;
+        setLoadMoreError(null);
+      } else if (!opts.append) {
+        // Same-context reload: still clear the latched loadMore error so
+        // paging is re-armed, but keep entries visible during the fetch.
         setLoadMoreError(null);
       }
       try {
@@ -178,6 +186,8 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   );
 
   const reload = useCallback(() => {
+    // Same-context refresh — keep entries visible until the fresh
+    // response lands. resetView is only set on context changes below.
     void runFetch({ page: 1, append: false });
   }, [runFetch]);
 
@@ -204,8 +214,12 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   }, [runFetch, pageIndex, hasMore, loading, loadingMore]);
 
   // Fresh page-1 fetch whenever the space, folder or filter changes.
+  // This is the ONLY caller that passes resetView: true, because it's the
+  // only path where the previous view no longer represents the current
+  // context. reload() (delete/rename/upload/etc) is same-context and
+  // preserves entries during the fetch.
   useEffect(() => {
-    void runFetch({ page: 1, append: false });
+    void runFetch({ page: 1, append: false, resetView: true });
     return () => {
       abortRef.current?.abort();
     };
