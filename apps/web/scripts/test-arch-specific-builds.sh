@@ -33,7 +33,7 @@ verify_dmg_architecture() {
     if hdiutil attach "$dmg_file" -mountpoint "$mount_point" -quiet 2>/dev/null; then
         local app_bundle=$(find "$mount_point" -name "*.app" -type d | head -1)
         if [[ -n "$app_bundle" ]]; then
-            local binary="$app_bundle/Contents/MacOS/DMWork"
+            local binary="$app_bundle/Contents/MacOS/OCTO"
             if [[ -f "$binary" ]]; then
                 local arch_info=$(lipo -info "$binary" 2>/dev/null)
                 echo "  Architecture: $arch_info"

@@ -2,6 +2,7 @@ import React, { Component } from "react";
 import { I18nContext, WKApp, apiFetchJson, computeAndSaveJoinSuccess, setSessionSid, t, toJoinApprovalStatus } from "@octo/base";
 import type { JoinSpaceStatus } from "@octo/base";
 import { Button, Spin, Toast } from "@douyinfe/semi-ui";
+import { buildPostLoginRedirectUrl } from "../../Layout/postLoginRedirect";
 import "./index.css";
 
 interface InviteLandingProps {
@@ -285,7 +286,14 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
             if (sid) setSessionSid(sid);
             // 使用安全的 basePath，避免当 pathname 为 /api/ 时跳到后端 API 路径（#1006）
             const basePath = this.getAppBasePath();
-            window.location.href = `${window.location.origin}${basePath}/`;
+            // file:// (Electron 桌面端) 下不能跳到 ${origin}${basePath}/（该路径不存在会白屏），
+            // 复用 buildPostLoginRedirectUrl 保留当前 index.html 路径、只改 query。
+            window.location.href = buildPostLoginRedirectUrl(
+                window.location.href,
+                window.location.origin,
+                basePath,
+                ""
+            );
         } catch (e: any) {
             const body = this.getApiErrorData(e);
             if (this.isNeedSpaceResponse(this.getApiErrorStatus(e), body)) {
@@ -318,7 +326,13 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
         // 使用安全的 basePath，避免硬编码 /web 导致部署路径不匹配，
         // 同时剥离 /api 前缀防止登录页被错误托管在后端 API 路径下（#1006）
         const basePath = this.getAppBasePath();
-        window.location.href = `${window.location.origin}${basePath}/?invite=${encodeURIComponent(this.props.inviteCode)}&action=login`;
+        // file:// (Electron 桌面端) 下复用 buildPostLoginRedirectUrl 保留当前 index.html 路径、只改 query。
+        window.location.href = buildPostLoginRedirectUrl(
+            window.location.href,
+            window.location.origin,
+            basePath,
+            `?invite=${encodeURIComponent(this.props.inviteCode)}&action=login`
+        );
     }
 
     /**

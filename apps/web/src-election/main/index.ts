@@ -16,7 +16,7 @@ import Screenshots from "electron-screenshots";
 import { join } from "path";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
-import DMWORK_CONFIG from "./config";
+import OCTO_CONFIG from "./config";
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
@@ -36,6 +36,10 @@ let isWin = !isOsx;
 let isWindowFocusHandlerRegistered = false;
 
 const isDevelopment = process.env.NODE_ENV !== "production";
+// dev 模式下渲染层 dev server 地址。端口需与 vite dev server 一致，
+// 默认 3000（对齐旧 dev-ele 脚本）；可用 VITE_DEV_SERVER_URL 覆盖，
+// 避免与机器上其它占用 3000 的进程（如 e2e vite）冲突。
+const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:3000";
 const APP_EXIT_DELAY_MS = 1000;
 const TRAY_FLASH_INTERVAL_MS = 1000;
 
@@ -57,10 +61,10 @@ const registerWindowFocusHandler = () => {
 
 let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
   {
-    label: "DMWork",
+    label: "OCTO",
     submenu: [
       {
-        label: `关于DMWork`,
+        label: `关于OCTO`,
       },
       { label: "服务", role: "services" },
       { type: "separator" },
@@ -370,7 +374,7 @@ const createNewWindow = () => {
 
   // 加载相同的页面
   if (NODE_ENV == "development") {
-    newWindow.loadURL("http://localhost:3000?sid=" + getRandomSid());
+    newWindow.loadURL(`${DEV_SERVER_URL}?sid=${getRandomSid()}`);
   } else {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
@@ -391,6 +395,7 @@ const createMainWindow = async () => {
   mainWindow = new BrowserWindow(getWindowConfig());
   mainWindow.center();
   mainWindow.once("ready-to-show", () => {
+    mainWindow.setTitle(OCTO_CONFIG.name);
     mainWindow.show(); // 显示窗口
     mainWindow.focus();
   });
@@ -408,7 +413,7 @@ const createMainWindow = async () => {
       }
     }
   });
-  if (NODE_ENV === "development") mainWindow.loadURL("http://localhost:3000");
+  if (NODE_ENV === "development") mainWindow.loadURL(DEV_SERVER_URL);
   if (NODE_ENV !== "development") {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
@@ -501,7 +506,22 @@ function onDeepLink(url: string) {
   mainWindow.webContents.send("deep-link", url);
 }
 
-app.setName(DMWORK_CONFIG.name);
+app.setName(OCTO_CONFIG.name);
+
+// NOTE: the one-time userData migration from the legacy <appData>/DMWork profile
+// to <appData>/OCTO is intentionally NOT part of this PR. It lives in the
+// separate PR #1265 (feat/octo-userdata-migration) because it is destructive and
+// needs its own failure-mode coverage (staging copy + atomic rename, legacy
+// SingletonLock detection, fallback to the legacy profile on failure).
+//
+// Until that migration PR lands, keep userData on the legacy path: app.setName
+// above would relocate Electron's default userData from <appData>/DMWork to
+// <appData>/OCTO, and shipping that without the migration would strand every
+// existing user's profile (empty profile on upgrade). The setPath override below
+// is removed by #1265, which takes over the path decision (OCTO after a
+// successful migration, legacy on deferral/failure).
+app.setPath("userData", join(app.getPath("appData"), "DMWork"));
+
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
   onDeepLink(url);
@@ -529,7 +549,7 @@ app.on("ready", () => {
   createMainWindow(); // 创建窗口
 
   if (isWin) {
-    app.setAppUserModelId("DMWork");
+    app.setAppUserModelId(OCTO_CONFIG.appId);
   }
 
   screenshots = new Screenshots({
