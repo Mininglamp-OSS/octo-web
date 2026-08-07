@@ -596,14 +596,24 @@ function DocsList({
      */
     kind?: 'doc' | 'board' | 'sheet'
     /**
-     * The row's UNnarrowed kind, kept alongside `kind` because the delete gate needs the distinction
-     * `kind` erases: `html` and `html_ppt` fold into `'doc'` above, but their own surfaces do not treat
-     * them as documents. HtmlDocView gates delete on backend-resolved authorship rather than the
-     * docs-backend role (HtmlDocView.tsx:645-656, with a regression test at HtmlDocView.test.tsx:1061
-     * pinning that an admin-not-author sees no delete), and ppt/PptDocView.tsx offers no delete at all.
-     * The list must not hand out a destructive action those surfaces withhold.
+     * Whether this row may be an html doc, which is what the delete gate turns on: `html` and
+     * `html_ppt` fold into `kind: 'doc'` above, but their own surfaces do not treat them as documents.
+     * HtmlDocView gates delete on backend-resolved authorship rather than the docs-backend role
+     * (HtmlDocView.tsx:645-656, with a regression test at HtmlDocView.test.tsx:1061 pinning that an
+     * admin-not-author sees no delete), and ppt/PptDocView.tsx offers no delete at all. The list must
+     * not hand out a destructive action those surfaces withhold.
+     *
+     * Set from the row's kind OR the presence of `octoDocSlug`, which docsApi.ts:59 documents as
+     * "Present only for html docs". The kind alone is not enough: `docType` is OPTIONAL
+     * (docsApi.ts:52-57 — "older records and backends that predate a given kind omit it; a missing
+     * value is treated as a plain document"), so a legacy html row falls through iconKind to `'doc'`
+     * and a kind-only gate would fail OPEN on it — the permissive direction, for a destructive action.
+     *
+     * Best-effort by construction: a row carrying NEITHER signal is indistinguishable from a plain doc
+     * in the list payload, so no client-side gate can catch it. That is why the durable fix is
+     * server-side authorization on DELETE /docs/:id, which this cannot substitute for.
      */
-    listKind: 'doc' | 'board' | 'sheet' | 'html' | 'html_ppt'
+    maybeHtml: boolean
     x: number
     y: number
   } | null>(null)
@@ -921,8 +931,11 @@ function DocsList({
               // forwarded sheet/board arrives as a plain-doc share card (the shells pass this
               // explicitly — SheetView.tsx:672 / BoardShell.tsx:963).
               kind: iconKind === 'board' ? 'board' : iconKind === 'sheet' ? 'sheet' : 'doc',
-              // Unnarrowed, for the delete gate — see the `listKind` field comment.
-              listKind: iconKind,
+              // Unnarrowed, for the delete gate — see the `maybeHtml` field comment. `octoDocSlug` is
+              // the second signal because docType is optional and a legacy html row would otherwise
+              // reach the gate looking like a plain doc.
+              maybeHtml:
+                iconKind === 'html' || iconKind === 'html_ppt' || Boolean(d.octoDocSlug),
               x: e.clientX,
               y: e.clientY,
             })
@@ -1403,12 +1416,11 @@ function DocsList({
                 {t('docs.forward.entry')}
               </div>
             )}
-            {/* 删除文件 — admin only, matching the ≡ menu's danger row, and only for the three kinds
-                whose own surface offers a role-gated delete. `html` / `html_ppt` are excluded on
-                purpose: HtmlDocView gates delete on authorship, not role, and PptDocView has no delete
-                at all — see the `listKind` field comment. Reuses useDocDelete, so the list delete pops
-                the same centered ConfirmModal as the editor's. */}
-            {canManage(menu.role) && menu.listKind !== 'html' && menu.listKind !== 'html_ppt' && (
+            {/* 删除文件 — admin only, matching the ≡ menu's danger row, and never on a row that may be
+                an html doc, whose own surface offers no role-gated delete. See the `maybeHtml` field
+                comment for why the row's kind alone is not a sufficient signal. Reuses useDocDelete, so
+                the list delete pops the same centered ConfirmModal as the editor's. */}
+            {canManage(menu.role) && !menu.maybeHtml && (
               <div
                 role="menuitem"
                 // Danger colour from the shared semantic token (semantic.css:117) rather than a

@@ -3457,12 +3457,23 @@ describe('DocsHome — row context menu: 转发 / 删除', () => {
       if (method === 'get' && url.startsWith('/docs')) {
         return {
           data: {
-            total: 3,
+            total: 4,
             items: [
               // role: 'admin' on every row — the exact viewer the old gate admitted. ownerId is
               // someone else, i.e. NOT the author the HTML surface requires.
               { docId: 'd_h', title: 'Html row', ownerId: 'u_other', role: 'admin', docType: 'html' },
               { docId: 'd_p', title: 'Ppt row', ownerId: 'u_other', role: 'admin', docType: 'html_ppt' },
+              // An html row whose docType the API omitted — docsApi.ts:52-57 declares docType optional
+              // ("older records and backends that predate a given kind omit it") and iconKind folds a
+              // missing value to 'doc', so a kind-only gate fails OPEN here. octoDocSlug is the second
+              // signal: docsApi.ts:59 documents it as "Present only for html docs".
+              {
+                docId: 'd_legacy',
+                title: 'Legacy html row',
+                ownerId: 'u_other',
+                role: 'admin',
+                octoDocSlug: 'slug-x',
+              },
               { docId: 'd_d', title: 'Doc row', ownerId: 'u_other', role: 'admin', docType: 'doc' },
             ],
           },
@@ -3474,7 +3485,7 @@ describe('DocsHome — row context menu: 转发 / 删除', () => {
     render(<DocsHome />)
     await waitFor(() => expect(screen.getByText('Html row')).toBeTruthy())
 
-    for (const title of ['Html row', 'Ppt row']) {
+    for (const title of ['Html row', 'Ppt row', 'Legacy html row']) {
       fireEvent.contextMenu(screen.getByText(title).closest('button')!)
       expect(screen.queryByText('docs.sheet.deleteFile')).toBeNull()
       // 转发 and 复制文档链接 stay available — only deletion is withheld.
