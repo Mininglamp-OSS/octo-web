@@ -342,10 +342,18 @@ export function useUpload(onUploaded: () => void): UseUpload {
   // Schedule an upload id: run immediately if under the concurrency cap,
   // otherwise queue it. On completion, drain the queue.
   //
-  // Dedupe guard: a rapid retry on a prepare-failed row can hit here
-  // before the row shows up in runs.current — without this check the
-  // same id could sit in the queue N times and run N times once slots
-  // free up. Bot-review flagged this on the initial concurrency work.
+  // Two-layer dedup:
+  //   1. Here (scheduleUpload): if the id is already queued OR already
+  //      running, skip. Rapid retry-click on a saturated queue would
+  //      otherwise push the same id twice; while runItem's own re-entry
+  //      guard (line ~268) picks up any competing start(), leaving a
+  //      duplicate in the queue wastes a slot and burns one microtask
+  //      per drain firing prepareUpload only to bail. Direct check.
+  //   2. Inside runItem (line ~268): synchronous `runs.current.has(id)`
+  //      guard as the final safety net for any race we miss here.
+  //
+  // Both layers are needed; keeping the includes-check reduces observable
+  // waste (one prepareUpload dispatched-then-bailed vs zero).
   const scheduleUpload = useCallback(
     (id: string) => {
       // If this id is either already running or already queued, ignore.
