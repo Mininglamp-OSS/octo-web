@@ -6,6 +6,7 @@ import {
   syncCurrentImChannelSubscribers,
 } from "../../../im-runtime/currentChannelRuntime"
 import SpaceBotService from "../../../Service/SpaceBotService"
+import { subscriberDisplayName } from "../../../Utils/displayName"
 import type { ForwardBotCreatorGroup, ForwardBotSnapshot } from "../grant"
 
 /** Injectable name lookup so the panel can show a display name instead of a raw uid. */
@@ -124,8 +125,12 @@ export function useForwardBotSnapshot(
         for (const s of subs) {
           if (typeof s?.uid !== "string" || !s.uid) continue
           people.add(s.uid)
-          const name = s.remark || s.name
-          if (typeof name === "string" && name.trim()) peopleNames.set(s.uid, name)
+          const name = subscriberDisplayName({
+            name: s.name,
+            remark: s.remark,
+            orgData: s.orgData,
+          }).trim()
+          if (name && !peopleNames.has(s.uid)) peopleNames.set(s.uid, name)
         }
       }
 
@@ -205,7 +210,7 @@ export function useForwardBotSnapshot(
       })
       groups.push({
         uid: creatorUid,
-        name: resolved.peopleNames.get(creatorUid) || resolveName?.(creatorUid) || creatorUid,
+        name: resolveName?.(creatorUid) || resolved.peopleNames.get(creatorUid) || creatorUid,
         bots,
       })
     }
