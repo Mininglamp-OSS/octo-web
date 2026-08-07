@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '../../__tests__/harness';
 import { useInfiniteScroll } from '../useInfiniteScroll';
@@ -6,7 +5,14 @@ import { useInfiniteScroll } from '../useInfiniteScroll';
 // Capture the observer's callback so tests can trigger intersections
 // manually — jsdom doesn't run a real layout engine.
 type Cb = (entries: IntersectionObserverEntry[]) => void;
-let observers: Array<{ cb: Cb; disconnect: ReturnType<typeof vi.fn> }>;
+interface CapturedObserver {
+  cb: Cb;
+  observedEl: HTMLElement | null;
+  disconnect: ReturnType<typeof vi.fn>;
+  observe: ReturnType<typeof vi.fn>;
+  unobserve: ReturnType<typeof vi.fn>;
+}
+let observers: CapturedObserver[];
 let originalIO: typeof IntersectionObserver | undefined;
 
 beforeEach(() => {
@@ -15,10 +21,16 @@ beforeEach(() => {
     .IntersectionObserver;
   // Constructor-shaped stub — vi.fn() alone is not `new`-able.
   function FakeIO(cb: Cb) {
-    const entry = { cb, disconnect: vi.fn(), observe: vi.fn(), unobserve: vi.fn() };
+    const entry: CapturedObserver = {
+      cb,
+      observedEl: null,
+      disconnect: vi.fn(),
+      observe: vi.fn((el: HTMLElement) => {
+        entry.observedEl = el;
+      }),
+      unobserve: vi.fn(),
+    };
     observers.push(entry);
-    // We return `entry` from a constructor call, so `new FakeIO(...)` yields
-    // an object that has disconnect / observe on it directly.
     return entry as unknown as IntersectionObserver;
   }
   (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver =
@@ -33,79 +45,151 @@ function fakeEntry(isIntersecting: boolean): IntersectionObserverEntry {
   return { isIntersecting } as IntersectionObserverEntry;
 }
 
-describe('useInfiniteScroll', () => {
-  it('does nothing when hasMore is false', () => {
-    const onLoadMore = vi.fn();
-    const { result } = renderHook(() => useInfiniteScroll({ hasMore: false, loading: false, onLoadMore }));
-    // Attach a dummy element and rerender to give the effect something to observe.
-    const el = document.createElement('div');
-    (result.current as { current: HTMLElement | null }).current = el;
-    expect(observers).toHaveLength(0);
-    expect(onLoadMore).not.toHaveBeenCalled();
-  });
+/**
+ * Attach an element to the returned sentinel ref BEFORE the effect runs.
+ * Used with rerender() so the second render's useEffect sees the attached
+ * element — the whole reason the earlier tests silently passed was that
+ * the ref was still null when the effect ran, so `sentinelRef.current`
+ * check bailed and no observer was ever created.
+ */
+function attachEl(
+  ref: React.MutableRefObject<HTMLElement | null>,
+): HTMLElement {
+  const el = document.createElement('div');
+  ref.current = el;
+  return el;
+}
 
-  it('creates an observer once hasMore = true and the sentinel is attached', () => {
+describe('useInfiniteScroll', () => {
+  it('does not create an observer when hasMore is false', () => {
     const onLoadMore = vi.fn();
-    // Wrapper that lets us attach the element to the returned ref BEFORE
-    // the effect runs on a subsequent render.
     const { result, rerender } = renderHook(
       ({ hasMore }: { hasMore: boolean }) =>
         useInfiniteScroll({ hasMore, loading: false, onLoadMore }),
       { hasMore: false },
     );
-    // Sim: caller sets ref.current to the sentinel, then hasMore flips true.
-    const el = document.createElement('div');
-    (result.current as { current: HTMLElement | null }).current = el;
+    attachEl(result.current as React.MutableRefObject<HTMLElement | null>);
+    rerender({ hasMore: false });
+    // Firm: with hasMore=false and an attached sentinel, still zero
+    // observers were created.
+    expect(observers).toHaveLength(0);
+    expect(onLoadMore).not.toHaveBeenCalled();
+  });
+
+  it('creates exactly one observer when hasMore = true and the sentinel is attached', () => {
+    const onLoadMore = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ hasMore }: { hasMore: boolean }) =>
+        useInfiniteScroll({ hasMore, loading: false, onLoadMore }),
+      { hasMore: false },
+    );
+    const el = attachEl(result.current as React.MutableRefObject<HTMLElement | null>);
     rerender({ hasMore: true });
+    // Firm: exactly one observer created, observing the attached element.
     expect(observers).toHaveLength(1);
+    expect(observers[0].observedEl).toBe(el);
   });
 
   it('fires onLoadMore when the sentinel intersects', () => {
     const onLoadMore = vi.fn();
-    const { result } = renderHook(() => useInfiniteScroll({ hasMore: true, loading: false, onLoadMore }));
-    const el = document.createElement('div');
-    (result.current as { current: HTMLElement | null }).current = el;
-    // Force a re-run of the effect by rerendering with the same shape
-    // (React does that once useEffect ran; here we just trigger the observer
-    // callback manually since observe(el) is deferred to a real IO which we mocked).
+    const { result, rerender } = renderHook(
+      ({ hasMore }: { hasMore: boolean }) =>
+        useInfiniteScroll({ hasMore, loading: false, onLoadMore }),
+      { hasMore: false },
+    );
+    attachEl(result.current as React.MutableRefObject<HTMLElement | null>);
+    rerender({ hasMore: true });
+    // Firm: an observer must exist by now (asserted in the previous test);
+    // without a fallback guard, so the test will fail loudly if the hook
+    // ever regresses to not-creating an observer here.
+    expect(observers).toHaveLength(1);
     act(() => {
-      // The initial render already created an observer while ref was null-safe;
-      // Call whatever observer got created — if none, we simulate none-fired.
-      if (observers.length === 0) return;
       observers[0].cb([fakeEntry(true)]);
     });
-    if (observers.length > 0) {
-      expect(onLoadMore).toHaveBeenCalledTimes(1);
-    }
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
   });
 
   it('does not fire onLoadMore for a non-intersecting entry', () => {
     const onLoadMore = vi.fn();
-    renderHook(() => useInfiniteScroll({ hasMore: true, loading: false, onLoadMore }));
-    if (observers.length === 0) return;
-    act(() => observers[0].cb([fakeEntry(false)]));
+    const { result, rerender } = renderHook(
+      ({ hasMore }: { hasMore: boolean }) =>
+        useInfiniteScroll({ hasMore, loading: false, onLoadMore }),
+      { hasMore: false },
+    );
+    attachEl(result.current as React.MutableRefObject<HTMLElement | null>);
+    rerender({ hasMore: true });
+    expect(observers).toHaveLength(1);
+    act(() => {
+      observers[0].cb([fakeEntry(false)]);
+    });
     expect(onLoadMore).not.toHaveBeenCalled();
   });
 
   it('disconnects the observer on unmount', () => {
-    const { unmount } = renderHook(() => useInfiniteScroll({ hasMore: true, loading: false, onLoadMore: () => {} }));
+    const { result, rerender, unmount } = renderHook(
+      ({ hasMore }: { hasMore: boolean }) =>
+        useInfiniteScroll({ hasMore, loading: false, onLoadMore: () => {} }),
+      { hasMore: false },
+    );
+    attachEl(result.current as React.MutableRefObject<HTMLElement | null>);
+    rerender({ hasMore: true });
+    expect(observers).toHaveLength(1);
     unmount();
-    if (observers.length > 0) {
-      expect(observers[0].disconnect).toHaveBeenCalled();
-    }
+    // Firm: disconnect MUST fire on unmount.
+    expect(observers[0].disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('skips creating an observer while loading', () => {
-    const { rerender } = renderHook(
+  it('tears down and rebuilds when loading flips true then false', () => {
+    // Regression for the retry-loop bug: the observer teardown/rebuild
+    // cycle when loading flips is exactly what re-arms onLoadMore against
+    // a still-intersecting sentinel. This test verifies the cycle happens
+    // and, coupled with the loadMoreError latch tested in useFileList, is
+    // WHY that latch is required.
+    const onLoadMore = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ hasMore, loading }: { hasMore: boolean; loading: boolean }) =>
+        useInfiniteScroll({ hasMore, loading, onLoadMore }),
+      { hasMore: false, loading: false },
+    );
+    attachEl(result.current as React.MutableRefObject<HTMLElement | null>);
+
+    // Turn on: one observer.
+    rerender({ hasMore: true, loading: false });
+    expect(observers).toHaveLength(1);
+    const firstDisconnect = observers[0].disconnect;
+
+    // Flip loading -> teardown, no new observer (loading gate).
+    rerender({ hasMore: true, loading: true });
+    expect(firstDisconnect).toHaveBeenCalledTimes(1);
+    expect(observers).toHaveLength(1);
+
+    // Flip loading back -> a brand-new observer is created (rebuild).
+    rerender({ hasMore: true, loading: false });
+    expect(observers).toHaveLength(2);
+    // The two observers are distinct instances (different disconnect fns).
+    expect(observers[1].disconnect).not.toBe(observers[0].disconnect);
+  });
+
+  it('does not create an observer when hasMore is true but loading is true', () => {
+    const onLoadMore = vi.fn();
+    const { result, rerender } = renderHook(
       ({ loading }: { loading: boolean }) =>
-        useInfiniteScroll({ hasMore: true, loading, onLoadMore: () => {} }),
+        useInfiniteScroll({ hasMore: true, loading, onLoadMore }),
       { loading: true },
     );
-    const observersDuringLoading = observers.length;
-    // While loading = true the effect shouldn't create an observer.
-    // Once loading flips false it should.
+    attachEl(result.current as React.MutableRefObject<HTMLElement | null>);
+    // First render (loading=true) skipped observer creation entirely.
+    // Rerender with loading=true again — same deps, same effect state,
+    // still no observer.
+    rerender({ loading: true });
+    expect(observers).toHaveLength(0);
+
+    // Flip loading true -> false: NOW an observer must be created
+    // (this is the exact rebuild that also happens after a failed
+    // loadMore's loadingMore flips back down, and is why
+    // loadMoreError must gate the sentinel — see the retry-loop test
+    // in useFileList).
     rerender({ loading: false });
-    // At most one observer was created after the transition.
-    expect(observers.length).toBeGreaterThanOrEqual(observersDuringLoading);
+    expect(observers).toHaveLength(1);
   });
 });

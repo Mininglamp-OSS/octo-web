@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '@octo/base';
-import { Modal, Select, Button, Spin, Tag, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Modal, Select, Button, Spin, Tag, Tabs, TabPane, Input } from '@douyinfe/semi-ui';
 import { Copy, Trash2, Link2, UserPlus } from 'lucide-react';
 import { useInvite } from '../../hooks/useInvite';
 import OrgPickerModal from '../OrgPickerModal';
@@ -126,6 +126,18 @@ export default function InviteModal({ visible, spaceId, onClose }: InviteModalPr
                     <span className="drive-invite__expiry">
                       {inv.expires_at ? `${t('drive.share.expiresAt')} ${formatTime(inv.expires_at)}` : ''}
                     </span>
+                    {/* Show the invite URL inline so a copy-to-clipboard
+                        failure (LAN HTTP + browser blocks both APIs) leaves
+                        the user something to select and copy by hand.
+                        Previously the "copyFailed" toast pointed them at a
+                        link the modal never rendered. */}
+                    <Input
+                      readonly
+                      size="small"
+                      value={buildInviteLink(inv.token)}
+                      className="drive-invite__link"
+                      onClick={(_, e) => (e?.currentTarget as HTMLInputElement | undefined)?.select?.()}
+                    />
                     <Button
                       theme="borderless"
                       type="tertiary"
