@@ -47,6 +47,27 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   const currentParentId = vm.currentParentId;
   const activeSpace = vm.activeSpace;
 
+  // Space-derived flags + per-role gates — hoisted above useDropzone so its
+  // `disabled` prop can consult a real boolean instead of a ref that only
+  // gets synced in an effect (Jerry-Xin PR review found that hooking dropzone
+  // on a ref left it permanently disabled: the first render set
+  // disabledRef.current = true and nothing re-rendered to overwrite it).
+  const hasSpace = !!activeSpaceId;
+  const isShared = activeSpace?.type === 'shared';
+  const isPersonal = activeSpace?.type === 'personal';
+
+  // Per-role button gating (backend rank order, see ROLE_RANK). In a shared
+  // space the capabilities come from the current user's membership role; in a
+  // personal space the owner has full rights (useMembers isn't fetched there,
+  // so grant directly). Hiding actions the backend would reject with 403 keeps
+  // the UI honest — e.g. a downloader sees only download + share.
+  const m = useMembers(activeSpaceId, isShared);
+  const canUpload = isPersonal || (isShared && m.canUpload);
+  const canEdit = isPersonal || (isShared && m.canEdit);
+  const canDownload = isPersonal || (isShared && m.canDownload);
+  const canShare = isPersonal || (isShared && m.canShare);
+  const canManage = isShared && m.canManage; // invite + member mgmt: shared-space admin+
+
   const {
     entries,
     loading: filesLoading,
@@ -99,22 +120,16 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   // flow through the exact same presigned-URL / progress pipeline as
   // <UploadButton>. Disabled when the current space is missing or the
   // user lacks upload permission.
-  // useDropzone captures its options in a closure at mount; the two refs
-  // below are kept in sync every render so a) permission-gate the drop
-  // target and b) route the drop through the up-to-date activeSpaceId.
   //
-  // Both dropzone.disabled (window-level dragover suppression) AND the
-  // onDrop callback consult canUploadRef so a preview_only user gets no
-  // enter-counter increment and no silent drop — the browser's default
-  // "open file" navigation runs, and files never get intercepted only to
-  // be discarded. Previously only onDrop checked, so read-only users had
-  // their drag intercepted (overlay never showed, but dragover was
-  // blocked) and the drop was then silently swallowed.
-  const canUploadRef = useRef(false);
+  // `disabled` is a real boolean (canUpload was hoisted above); useDropzone
+  // internally re-syncs disabledRef on every render, so a permission flip
+  // from useMembers landing takes effect on that render — no stale-ref bug.
+  // onDrop consults `canUpload` via the callback closure, which is fresh
+  // per render for the same reason.
   const dropzone = useDropzone({
-    disabled: !activeSpaceId || !canUploadRef.current,
+    disabled: !activeSpaceId || !canUpload,
     onDrop: (files) => {
-      if (!canUploadRef.current || !activeSpaceId) return;
+      if (!canUpload || !activeSpaceId) return;
       upload.addFiles(files, activeSpaceId, currentParentId);
     },
   });
@@ -229,30 +244,6 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     },
     [ops, reload, t],
   );
-
-  const hasSpace = !!activeSpaceId;
-  const isShared = activeSpace?.type === 'shared';
-  const isPersonal = activeSpace?.type === 'personal';
-
-  // Per-role button gating (backend rank order, see ROLE_RANK). In a shared
-  // space the capabilities come from the current user's membership role; in a
-  // personal space the owner has full rights (useMembers isn't fetched there,
-  // so grant directly). Hiding actions the backend would reject with 403 keeps
-  // the UI honest — e.g. a downloader sees only download + share.
-  const m = useMembers(activeSpaceId, isShared);
-  const canUpload = isPersonal || (isShared && m.canUpload);
-  const canEdit = isPersonal || (isShared && m.canEdit);
-  const canDownload = isPersonal || (isShared && m.canDownload);
-  const canShare = isPersonal || (isShared && m.canShare);
-  const canManage = isShared && m.canManage; // invite + member mgmt: shared-space admin+
-
-  // Keep the drop-target's permission check current — useDropzone only
-  // captured a closure over its initial values, so we sync the ref every
-  // render. This avoids re-registering the whole hook when permissions
-  // change (which would drop the enter counter mid-drag).
-  useEffect(() => {
-    canUploadRef.current = !!canUpload;
-  }, [canUpload]);
 
   // Infinite scroll: as the sentinel scrolls into view (200px rootMargin so
   // the next page is landing as the user approaches the bottom), fire
