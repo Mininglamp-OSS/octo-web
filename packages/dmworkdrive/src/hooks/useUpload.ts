@@ -111,6 +111,15 @@ export function useUpload(onUploaded: () => void): UseUpload {
   // Live run-control records, keyed by item id (see RunCtl). Presence means a
   // run is still in flight; a settled/errored run removes its own entry.
   const runs = useRef<Map<string, RunCtl>>(new Map());
+  // Ids currently in retryRun's cancel-await window. Blocks a second
+  // rapid retry from starting a competing new run before the first's
+  // cleanup resolves — critical for the cancel-409 race (bot review
+  // lml2468 round-6): if cleanup returns 409 (old id already confirmed),
+  // the first retry deletes the row while a concurrent second retry has
+  // already prepared+PUT+confirmed a REPLACEMENT id, silently doubling
+  // the file on the server. This ref makes the second retry a no-op
+  // until cleanup settles.
+  const retriesInFlight = useRef<Set<string>>(new Set());
   // Pending auto-dismiss timers, keyed by item id, so we can cancel them on
   // manual dismiss and on unmount (avoids setState-on-unmounted + double free).
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -421,36 +430,51 @@ export function useUpload(onUploaded: () => void): UseUpload {
     async (id: string) => {
       // A run is already in flight for this id — don't start a competing one.
       if (runs.current.has(id)) return;
+      // A retry is already awaiting cleanup for this id — don't start a
+      // competing one. Bot review lml2468 round-6 caught: two synchronous
+      // retries with the first's cleanup returning 409 confirms the
+      // replacement id (99) via the second retry BEFORE the first retry
+      // observes the 409 and deletes the row. Net effect: two confirmed
+      // files on the server, one row on screen. Gating on this Set means
+      // the second retry no-ops until cleanup settles, at which point the
+      // first retry has already either continued to schedule or bailed
+      // (confirmWon or unmount).
+      if (retriesInFlight.current.has(id)) return;
       const job = jobs.current.get(id);
       if (!job) return;
-      // Take the stale id out and clear it BEFORE awaiting, so an interleaving
-      // unmount cleanup won't also try to cancel it. Cancel is idempotent, but
-      // one request is enough — this keeps a given stale id cancelled at most
-      // once across the retry-await + unmount paths.
-      const stalePending = job.pendingFileId;
-      job.pendingFileId = undefined;
-      if (stalePending !== undefined) {
-        // Reflect the cleanup immediately: hide the error/retry affordance.
-        patch(id, { status: 'preparing', progress: 0, error: undefined });
-        let confirmWon = false;
-        await bestEffortCancel(stalePending, () => {
-          confirmWon = true;
-        });
-        // The await yielded: the component may have unmounted or the row may
-        // have been dismissed. Bail before any new prepare/PUT/confirm or
-        // setState so nothing runs against a dead component / removed item.
-        if (!mounted.current || !jobs.current.has(id)) return;
-        if (confirmWon) {
-          jobs.current.delete(id);
-          setItems((list) => list.filter((it) => it.id !== id));
-          onUploadedRef.current();
-          return;
+      retriesInFlight.current.add(id);
+      try {
+        // Take the stale id out and clear it BEFORE awaiting, so an interleaving
+        // unmount cleanup won't also try to cancel it. Cancel is idempotent, but
+        // one request is enough — this keeps a given stale id cancelled at most
+        // once across the retry-await + unmount paths.
+        const stalePending = job.pendingFileId;
+        job.pendingFileId = undefined;
+        if (stalePending !== undefined) {
+          // Reflect the cleanup immediately: hide the error/retry affordance.
+          patch(id, { status: 'preparing', progress: 0, error: undefined });
+          let confirmWon = false;
+          await bestEffortCancel(stalePending, () => {
+            confirmWon = true;
+          });
+          // The await yielded: the component may have unmounted or the row may
+          // have been dismissed. Bail before any new prepare/PUT/confirm or
+          // setState so nothing runs against a dead component / removed item.
+          if (!mounted.current || !jobs.current.has(id)) return;
+          if (confirmWon) {
+            jobs.current.delete(id);
+            setItems((list) => list.filter((it) => it.id !== id));
+            onUploadedRef.current();
+            return;
+          }
         }
+        // Route the retry through the same bounded-concurrency queue as
+        // addFiles so a stuck failure + rapid retry-all doesn't blow the
+        // concurrency cap.
+        scheduleUpload(id);
+      } finally {
+        retriesInFlight.current.delete(id);
       }
-      // Route the retry through the same bounded-concurrency queue as
-      // addFiles so a stuck failure + rapid retry-all doesn't blow the
-      // concurrency cap.
-      scheduleUpload(id);
     },
     [bestEffortCancel, patch, scheduleUpload],
   );
