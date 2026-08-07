@@ -23,7 +23,15 @@ import { resolveApiURL } from './apiURL';
 // VITE_API_URL 只填 origin（协议+域名+端口），不要带路径
 // 例如: https://api.example.com (而非 https://api.example.com/v1/)
 
-if((window as any).__TAURI_IPC__ || (window as any)?.__POWERED_ELECTRON__) {
+// 正式 Electron 包通过 VITE_ELECTRON_BUILD 在编译期标记桌面运行时。
+// preload 标记仍然保留，用于开发环境和 IPC 能力；但不能只依赖 preload 判断 API
+// 环境，否则 preload 加载异常时会误走 Web 分支，把 `/api/v1/` 解析成 `file:///api/v1/`。
+const isDesktopRuntime =
+  Boolean((window as any).__TAURI_IPC__ || (window as any).__POWERED_ELECTRON__) ||
+  import.meta.env.VITE_ELECTRON_BUILD === "true" ||
+  window.location.protocol === "file:"
+
+if(isDesktopRuntime) {
   // 开发环境的 Tauri/Electron 页面运行在 localhost:3000，走 Vite 同源代理，
   // 避免直接请求远程 API 时被浏览器 CORS 拦截。正式桌面包没有 Vite 代理，
   // 仍然使用 VITE_API_URL 直连后端。
