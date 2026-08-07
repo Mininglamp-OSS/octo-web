@@ -732,6 +732,12 @@ describe('useUpload', () => {
   });
 
   it('concurrent (double-click) retry starts only one new run (P1-4)', async () => {
+    // Two synchronous Retry clicks on a prepare-failed row. The first
+    // reclaims id 42 and awaits cancel. The second is BLOCKED by the
+    // retriesInFlight guard (added in round-6 to fix the cancel-409
+    // double-confirm race — see the 'rapid retry + cancel-409' test
+    // below). Only the first click drives the fresh run once cancel
+    // resolves. Net: exactly one new run, one confirm on id 99.
     let resolveCancel: () => void = () => {};
     let resolveConfirm: (b: unknown) => void = () => {};
     vi.mocked(api.prepareUpload)
@@ -743,8 +749,8 @@ describe('useUpload', () => {
     vi.mocked(api.confirmUpload).mockImplementation(
       () => new Promise((res) => { resolveConfirm = res; }) as never,
     );
-    // Deferred so the reclaim of the first click stays in flight while the
-    // second click's fresh run reaches confirming.
+    // Deferred so the reclaim of the first click stays in flight while
+    // the second click hits the retriesInFlight guard and no-ops.
     vi.mocked(api.cancelUpload).mockImplementation(
       () => new Promise<void>((res) => { resolveCancel = res; }),
     );
@@ -754,34 +760,108 @@ describe('useUpload', () => {
     await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
 
     const { id } = result.current.items[0];
-    // Two synchronous clicks: the first reclaims id 42 (suspends at cancel),
-    // the second sees the stale id already cleared and starts the fresh run.
+    // Two synchronous clicks: the first reclaims id 42 (suspends at
+    // cancel), the second is no-op due to retriesInFlight guard.
     act(() => {
       result.current.retry(id);
       result.current.retry(id);
     });
-    // The fresh run prepares 99 and reaches confirming (still in flight).
-    await waitFor(() => expect(result.current.items[0]?.status).toBe('confirming'));
-    expect(api.prepareUpload).toHaveBeenCalledTimes(2);
+    // No new run yet — first click is still awaiting cancel, second is
+    // gated. Only prepare 42 has been called (the initial failed run).
+    expect(api.prepareUpload).toHaveBeenCalledTimes(1);
+    // Row is 'preparing' because retryRun patched it before awaiting.
+    expect(result.current.items[0]?.status).toBe('preparing');
 
-    // Now the first click's cancel resolves; its runItem must hit the re-entry
-    // guard (a run is already live) and NOT start a competing third prepare.
+    // Cancel resolves successfully (no confirmWon). First click continues
+    // and calls scheduleUpload → prepare 99 → PUT → confirm.
     await act(async () => {
       resolveCancel();
       await Promise.resolve();
       await Promise.resolve();
     });
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('confirming'));
+    expect(api.prepareUpload).toHaveBeenCalledTimes(2);
+
     await act(async () => {
       resolveConfirm({});
       await Promise.resolve();
     });
     await waitFor(() => expect(result.current.items[0].status).toBe('done'));
 
-    // Exactly one new run: prepare called twice total (42 + 99), never a third,
-    // and confirm targets only the single fresh id.
+    // Exactly one new run: prepare called twice total (42 + 99), never a
+    // third, and confirm targets only the single fresh id.
     expect(api.prepareUpload).toHaveBeenCalledTimes(2);
     expect(api.confirmUpload).toHaveBeenCalledTimes(1);
     expect(api.confirmUpload).toHaveBeenCalledWith(99, { actual_size: 5 });
+  });
+
+  it('rapid retry + cancel-409 must not double-confirm (P1 · silent double-write)', async () => {
+    // Bot review lml2468 round-6: two synchronous Retry clicks where the
+    // FIRST cleanup returns 409 (old id already confirmed on server) would
+    // silently upload the file TWICE. The first Retry cleared pendingFileId,
+    // yielded on await cancelUpload(42). The second Retry saw runs empty
+    // and pendingFileId undefined → straight to scheduleUpload → prepare
+    // 99 + PUT + confirm 99. Then cancel(42) resolves with 409, first
+    // Retry runs confirmWon branch: deletes the row and refreshes. Net:
+    // server has 42 AND 99 confirmed but only one row was ever on screen.
+    //
+    // Fix: retriesInFlight Set ref guards retryRun so a rapid second call
+    // for the same id no-ops while cleanup is still awaited.
+    let resolveCancel: (v: unknown) => void = () => {};
+    vi.mocked(api.prepareUpload)
+      .mockResolvedValueOnce(prepResp({ file_id: 42 }))
+      .mockResolvedValue(prepResp({ file_id: 99 }));
+    vi.mocked(api.putToPresignedUrl)
+      .mockRejectedValueOnce(new Error('put boom'))
+      .mockResolvedValue(undefined);
+    vi.mocked(api.confirmUpload).mockResolvedValue({} as never);
+    // Deferred so we can control 409 arrival timing.
+    vi.mocked(api.cancelUpload).mockImplementation(
+      () =>
+        new Promise((_res, rej) => {
+          resolveCancel = rej;
+        }),
+    );
+    const onUploaded = vi.fn();
+
+    const { result } = renderHook(() => useUpload(onUploaded));
+    act(() => result.current.addFiles([makeFile()], 'sp', 0));
+    await waitFor(() => expect(result.current.items[0]?.status).toBe('error'));
+    const { id } = result.current.items[0];
+
+    // Two synchronous Retry clicks. First reclaims id 42 (suspends at
+    // cancel await). WITHOUT the fix, second click bypasses the retry
+    // gate (runs.has=false, pendingFileId=undefined) and starts a fresh
+    // run → prepares 99 → PUT succeeds → confirms 99.
+    // WITH the fix, second click hits retriesInFlight.has(id) === true
+    // and no-ops.
+    act(() => {
+      result.current.retry(id);
+      result.current.retry(id);
+    });
+
+    // Now resolve the first click's cancel with 409 (confirm won on
+    // server). First click sees confirmWon → delete row + refresh.
+    await act(async () => {
+      resolveCancel(new DriveApiError('conflict', 'conflict', 409));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Row was removed by first click's confirmWon branch.
+    await waitFor(() => expect(result.current.items).toHaveLength(0));
+    // Exactly one refresh (the confirmWon branch), NOT a second one from
+    // a competing run.
+    expect(onUploaded).toHaveBeenCalledTimes(1);
+
+    // Critical invariant: confirmUpload must NEVER have been called.
+    // Under the bug it would have been called with (99). With the fix,
+    // the second Retry never started a fresh run, so no confirm at all.
+    expect(api.confirmUpload).not.toHaveBeenCalled();
+    // And prepareUpload was called exactly once (the initial addFiles
+    // attempt), not twice.
+    expect(api.prepareUpload).toHaveBeenCalledTimes(1);
   });
 
   it('saturated-queue rapid retry enqueues the same id only once (P2 dedup guard)', async () => {
