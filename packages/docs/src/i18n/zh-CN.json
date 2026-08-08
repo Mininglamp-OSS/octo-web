@@ -27,6 +27,8 @@
     "end": "没有更多了",
     "loadMoreFailed": "加载更多失败",
     "retry": "重试",
+    "copyDocLink": "复制文档链接",
+    "copyLinkFailed": "复制失败，请重试",
     "htmlCreate": {
       "title": "新建 HTML",
       "descLabel": "HTML 描述",

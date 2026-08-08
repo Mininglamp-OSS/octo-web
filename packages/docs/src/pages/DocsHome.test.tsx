@@ -66,13 +66,24 @@ vi.mock('../editor/EditorShell.tsx', () => ({
 // Replace the whole board session boundary, not only BoardShell. BoardSession owns the
 // HocuspocusProvider, so mocking the leaf still opens a real undici WebSocket before rendering the
 // marker and leaves asynchronous Event errors after the assertions finish.
-vi.mock('../board/BoardSession.tsx', () => ({
-  BoardSession: (props: { docId: string }) => (
-    <div data-testid="board-shell">
-      <span data-testid="board-doc">{props.docId}</span>
-    </div>
-  ),
-}))
+// The real BoardShell flushes a pending scene save on unmount (BoardShell.tsx:1802-1811). The marker
+// can stand in for that when a test needs it: set `boardUnmount.onUnmount` to simulate the flush, so a
+// delete-while-open case can prove the cleanup still wins the race against it. Null by default, so
+// every other test sees the same inert marker as before.
+const boardUnmount = vi.hoisted(() => ({ onUnmount: null as null | (() => void) }))
+vi.mock('../board/BoardSession.tsx', async () => {
+  const React = await import('react')
+  return {
+    BoardSession: (props: { docId: string }) => {
+      React.useEffect(() => () => boardUnmount.onUnmount?.(), [])
+      return (
+        <div data-testid="board-shell">
+          <span data-testid="board-doc">{props.docId}</span>
+        </div>
+      )
+    },
+  }
+})
 
 // Replace the collaborative spreadsheet shell (Univer + Yjs) with a marker so the sheet-open
 // flows are testable in jsdom without mounting the heavy Univer runtime. The marker surfaces the
@@ -3230,5 +3241,472 @@ describe('DocsHome — "?" agent CLI onboarding help (Mininglamp-OSS/octo-docs-b
     // Dialog closes and focus is restored to the trigger (no keyboard dead-end).
     expect(screen.queryByTestId('onboarding-help-prompt')).toBeNull()
     expect(document.activeElement).toBe(screen.getByTestId('onboarding-help-btn'))
+  })
+})
+
+// 转发 / 删除 in the row context menu (owner request 2026-08-06). Both REUSE the existing units —
+// `startDocForward` (the same bridge the document header uses) and `useDocDelete` + `ConfirmModal`
+// (the same hook and dialog the editor shells use) — so these cases assert the wiring reaches those
+// units with the right payload, not a reimplementation.
+describe('DocsHome — row context menu: 转发 / 删除', () => {
+  const ROWS = [
+    { docId: 'd_a', title: 'Alpha', ownerId: 'u_self', role: 'admin', updatedAt: '2026-08-01T00:00:00Z' },
+    { docId: 'd_b', title: 'Beta', ownerId: 'u_other', role: 'reader', updatedAt: '2026-08-02T00:00:00Z' },
+  ]
+  const mount = async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: ROWS.length, items: ROWS }, status: 200 }
+      }
+      if (method === 'delete') return { data: {}, status: 200 }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeTruthy())
+    return wk
+  }
+
+  it('forwards through the same bridge the document header uses, with this row’s payload', async () => {
+    const wk = await mount()
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    fireEvent.click(screen.getByText('docs.forward.entry'))
+    // startDocForward → openDocForward: assert the payload the host receives.
+    expect(wk.openDocForwardCalls).toHaveLength(1)
+    const call = wk.openDocForwardCalls[0]
+    expect(call.docId).toBe('d_a')
+    expect(call.title).toBe('Alpha')
+    // admin on own doc ⇒ may grant, exactly as the header entry computes it.
+    expect(call.canGrant).toBe(true)
+  })
+
+  it('carries each row’s own kind, so a sheet/board forwards as a sheet/board card', async () => {
+    // Regression (Jerry-Xin, PR #1288): the call omitted `kind`, which startDocForward defaults to
+    // 'doc' — so forwarding a sheet or board row produced a wrong-kind DocumentShareCard (the card
+    // keys its icon and preview off `kind`). The doc-row case above cannot catch this: 'doc' is the
+    // very default that hid the bug.
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 3,
+            items: [
+              { docId: 'd_sheet', title: 'Sheet row', ownerId: 'u_self', role: 'admin', docType: 'sheet' },
+              { docId: 'd_board', title: 'Board row', ownerId: 'u_self', role: 'admin', docType: 'board' },
+              { docId: 'd_html', title: 'Html row', ownerId: 'u_self', role: 'admin', docType: 'html' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Sheet row')).toBeTruthy())
+
+    const forwardRow = (title: string) => {
+      fireEvent.contextMenu(screen.getByText(title).closest('button')!)
+      fireEvent.click(screen.getByText('docs.forward.entry'))
+    }
+
+    forwardRow('Sheet row')
+    expect(wk.openDocForwardCalls.at(-1)!.kind).toBe('sheet')
+
+    forwardRow('Board row')
+    expect(wk.openDocForwardCalls.at(-1)!.kind).toBe('board')
+
+    // `html` has no counterpart in StartDocForwardInput.kind, so it falls back to 'doc' — the same
+    // value the omitted-kind path used, so those rows are unchanged by this fix.
+    forwardRow('Html row')
+    expect(wk.openDocForwardCalls.at(-1)!.kind).toBe('doc')
+  })
+
+  it('copies the document address for ANY role, without minting an invite', async () => {
+    // Owner decision 2026-08-07: 复制链接 now means the address. It replaced an invite-minting entry
+    // that was admin-only (createInvite → backend requires admin), which left a reader — the person
+    // most likely to want to point a colleague at a doc — with no way to copy it at all, and handed
+    // admins a link that silently GRANTED reader access instead of the address they asked for.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const wk = await mount()
+
+    // 'Beta' is role: 'reader' — the case the old admin gate excluded entirely.
+    fireEvent.contextMenu(screen.getByText('Beta').closest('button')!)
+    fireEvent.click(screen.getByText('docs.list.copyDocLink'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    const copied = writeText.mock.calls[0][0] as string
+    // The doc's own address (buildDocLink), not an invite token.
+    expect(copied).toContain('/d/d_b')
+    // Pin the Space query too — without this the case would still pass if `space` were dropped.
+    expect(copied).toContain('sp=')
+    expect(copied).not.toContain('invite')
+    // And no request was made: minting an invite is what the old entry did.
+    expect(
+      wk.apiClient.calls.filter((c: { url: string }) => c.url.includes('invite')),
+    ).toHaveLength(0)
+  })
+
+  it('offers 删除 only to owner/admin', async () => {
+    await mount()
+    fireEvent.contextMenu(screen.getByText('Beta').closest('button')!)
+    // reader ⇒ no delete row (matches the ≡ menu's danger-row gate).
+    expect(screen.queryByText('docs.sheet.deleteFile')).toBeNull()
+    fireEvent.click(document.body)
+
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    expect(screen.getByText('docs.sheet.deleteFile')).toBeTruthy()
+  })
+
+  it('pops the shared confirm dialog and deletes the row that was right-clicked', async () => {
+    const wk = await mount()
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    // The same centered ConfirmModal the editor shells use — not a native confirm().
+    await waitFor(() => expect(screen.getByText('docs.doc.deleteConfirm')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('docs.doc.delete'))
+    // The menu closes on click, so the target must be remembered separately or this would DELETE
+    // NOTHING (or the wrong doc). Assert the request carries the right-clicked docId.
+    await waitFor(() =>
+      expect(
+        wk.apiClient.calls.some(
+          (c: { method: string; url: string }) => c.method === 'delete' && c.url.includes('d_a'),
+        ),
+      ).toBe(true),
+    )
+  })
+
+  it('does not delete anything when the confirm dialog is cancelled', async () => {
+    const wk = await mount()
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    await waitFor(() => expect(screen.getByText('docs.doc.deleteConfirm')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.doc.deleteCancel'))
+    expect(
+      wk.apiClient.calls.filter((c: { method: string }) => c.method === 'delete'),
+    ).toHaveLength(0)
+  })
+
+  // P1-3 (yujiawei, PR #1288): the dialog hardcoded docs.sheet.* for a MIXED-kind list, so deleting a
+  // document — the most common row — popped "删除表格 / Delete sheet". The noun was not the only error:
+  // the doc/board copy warns 删除后不可恢复, which the sheet copy never says, so the one dialog whose
+  // job is to prevent an irreversible mistake misdescribed what was about to be destroyed.
+  it('names what it is about to delete: a document row gets the document copy, a sheet row the sheet copy', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 2,
+            items: [
+              { docId: 'd_doc', title: 'Doc row', ownerId: 'u_self', role: 'admin', docType: 'doc' },
+              { docId: 'd_sh', title: 'Sheet row', ownerId: 'u_self', role: 'admin', docType: 'sheet' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Doc row')).toBeTruthy())
+
+    fireEvent.contextMenu(screen.getByText('Doc row').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    await waitFor(() => expect(screen.getByText('docs.doc.deleteConfirmTitle')).toBeTruthy())
+    expect(screen.getByText('docs.doc.deleteConfirm')).toBeTruthy()
+    // Never the sheet copy on a document.
+    expect(screen.queryByText('docs.sheet.deleteConfirm')).toBeNull()
+    fireEvent.click(screen.getByText('docs.doc.deleteCancel'))
+
+    // The kind must survive the menu unmounting: the dialog reads it from the delete target, because
+    // `menu` is already null by the time the dialog renders.
+    fireEvent.contextMenu(screen.getByText('Sheet row').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    await waitFor(() => expect(screen.getByText('docs.sheet.deleteConfirmTitle')).toBeTruthy())
+    expect(screen.queryByText('docs.doc.deleteConfirm')).toBeNull()
+  })
+
+  // P1-2 (yujiawei, PR #1288): `error` was handed to ConfirmModal and nowhere else. useDocDelete sets
+  // it in catch then clears `confirming` in finally, and ConfirmModal returns null once `open` is
+  // false — so a rejected delete closed the dialog and said NOTHING: row still there, no message, no
+  // signal to stop retrying. Three of the four shells render it outside the modal for this reason.
+  it.each([
+    [403, 'docs.doc.deleteForbidden'],
+    [409, 'docs.doc.deleteArchived'],
+    [500, 'docs.doc.deleteFailed'],
+  ])('shows the delete error after the confirm closes on %i, instead of failing silently', async (status, errorKey) => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: ROWS.length, items: ROWS }, status: 200 }
+      }
+      // Same shape HtmlDocView.test.tsx:1037 uses for this hook's rejection paths.
+      if (method === 'delete') throw { response: { status } }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeTruthy())
+
+    fireEvent.contextMenu(screen.getByText('Alpha').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    await waitFor(() => expect(screen.getByText('docs.doc.deleteConfirm')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.doc.delete'))
+
+    // The localized string reaches the screen in a live region — and it must survive the modal
+    // unmounting, which is exactly what rendering it INSIDE ConfirmModal could never do.
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(errorKey))
+    expect(screen.queryByText('docs.doc.deleteConfirm')).toBeNull()
+    // And the row is still listed — nothing was removed.
+    expect(screen.getByText('Alpha')).toBeTruthy()
+  })
+
+  // P1-4 (yujiawei, PR #1288): the gate was canManage(role) for EVERY kind, but the HTML surface gates
+  // delete on backend-resolved authorship, not the docs role — HtmlDocView.test.tsx:1061 pins that an
+  // admin-not-author sees no delete — and ppt/PptDocView.tsx has no delete affordance at all. Gating
+  // on role alone let the list hand out a destructive action both surfaces deliberately withhold.
+  it('withholds 删除 from html / html_ppt rows, which gate deletion on authorship rather than role', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 4,
+            items: [
+              // role: 'admin' on every row — the exact viewer the old gate admitted. ownerId is
+              // someone else, i.e. NOT the author the HTML surface requires.
+              { docId: 'd_h', title: 'Html row', ownerId: 'u_other', role: 'admin', docType: 'html' },
+              { docId: 'd_p', title: 'Ppt row', ownerId: 'u_other', role: 'admin', docType: 'html_ppt' },
+              // An html row whose docType the API omitted — docsApi.ts:52-57 declares docType optional
+              // ("older records and backends that predate a given kind omit it") and iconKind folds a
+              // missing value to 'doc', so a kind-only gate fails OPEN here. octoDocSlug is the second
+              // signal: docsApi.ts:59 documents it as "Present only for html docs".
+              {
+                docId: 'd_legacy',
+                title: 'Legacy html row',
+                ownerId: 'u_other',
+                role: 'admin',
+                octoDocSlug: 'slug-x',
+              },
+              { docId: 'd_d', title: 'Doc row', ownerId: 'u_other', role: 'admin', docType: 'doc' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Html row')).toBeTruthy())
+
+    for (const title of ['Html row', 'Ppt row', 'Legacy html row']) {
+      fireEvent.contextMenu(screen.getByText(title).closest('button')!)
+      expect(screen.queryByText('docs.sheet.deleteFile')).toBeNull()
+      // 转发 and 复制文档链接 stay available — only deletion is withheld.
+      expect(screen.getByText('docs.list.copyDocLink')).toBeTruthy()
+      fireEvent.click(document.body)
+    }
+    // A plain doc row with the same role still gets it, so the gate narrowed by kind, not by accident.
+    fireEvent.contextMenu(screen.getByText('Doc row').closest('button')!)
+    expect(screen.getByText('docs.sheet.deleteFile')).toBeTruthy()
+  })
+
+  // P1-1 (yujiawei, PR #1288): deleting the OPEN doc called `onSelect('')`. An empty id has no
+  // "deselect" meaning in openDoc — it misses every known-kind branch, falls into the unknown-kind
+  // path, fetches getDoc('') and then commitOpen('') — so the host pane received a shell addressed
+  // with an EMPTY docId instead of the empty state, plus two spurious requests (GET /docs/ lands on
+  // the list endpoint; POST /docs//view is a malformed double-slash URL). The module already owns the
+  // right primitive: onDocDeleted → backToList, which the four shells are handed.
+  it('returns the host pane to the empty state when the open doc is deleted from the list', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    // Production (resident-list) path — the only one that pushes a shell snapshot into the host pane.
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              { docId: 'd_open', title: 'Open row', ownerId: 'u_self', role: 'admin', docType: 'doc' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Open row')).toBeTruthy())
+
+    // Open it, so the deleted doc IS the open one.
+    fireEvent.click(screen.getByText('Open row'))
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } } | undefined
+      expect(last?.props?.docId).toBe('d_open')
+    })
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_open' })
+    const callsBeforeDelete = wk.apiClient.calls.length
+
+    // Delete it from the LIST (not from inside the editor).
+    fireEvent.contextMenu(screen.getByText('Open row').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+    await waitFor(() => expect(screen.getByText('docs.doc.deleteConfirm')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.doc.delete'))
+
+    // Same invariant DocsHome.test.tsx:1932 pins for the in-editor delete: docId undefined, not ''.
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } } | undefined
+      expect(last?.props?.docId).toBeUndefined()
+    })
+    expect(document.querySelector('.octo-docs-list-item-active')).toBeNull()
+    expect(window.sessionStorage.getItem(TARGET_KEY)).toBeNull()
+    // No empty-id round-trips: getDoc('') hits the LIST endpoint and the view ping is double-slashed.
+    const after = wk.apiClient.calls.slice(callsBeforeDelete)
+    expect(after.filter((c: { url: string }) => c.url.includes('//'))).toHaveLength(0)
+    expect(
+      after.filter((c: { method: string; url: string }) => c.method === 'post' && c.url.includes('view')),
+    ).toHaveLength(0)
+  })
+
+  // lml2468, PR #1288: a list delete only cleared `deleteTarget` and called the parent's back/reload
+  // callback, so deleting a board left its uid-scoped scene mirror and its board-kind registry entry
+  // behind — BoardShell.handleDeleted (BoardShell.tsx:1813-1823) drops both. A stale registry entry is
+  // not inert: it records "this docId is a board", so a later reused id can be mislabelled.
+  describe('board-local cleanup', () => {
+    const SCENE = (docId: string) => `octo.board.scene.u_self.${docId}`
+    const REGISTRY = 'octo.board.ids.u_self'
+
+    const mountBoard = async (open: boolean) => {
+      const wk = createMockWKApp()
+      const replaceToRoot = vi.fn()
+      ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+      setWKApp(wk)
+      wk.apiClient.responder = (method: string, url: string) => {
+        if (method === 'get' && url.startsWith('/docs')) {
+          return {
+            data: {
+              total: 1,
+              items: [
+                { docId: 'b_x', title: 'Board row', ownerId: 'u_self', role: 'admin', docType: 'board' },
+              ],
+            },
+            status: 200,
+          }
+        }
+        return { data: {}, status: 200 }
+      }
+      render(<DocsHome />)
+      await waitFor(() => expect(screen.getByText('Board row')).toBeTruthy())
+      if (open) {
+        fireEvent.click(screen.getByText('Board row'))
+        await waitFor(() => {
+          const last = replaceToRoot.mock.calls.at(-1)?.[0] as
+            | { props?: { docId?: string } }
+            | undefined
+          expect(last?.props?.docId).toBe('b_x')
+        })
+      }
+      // The two artefacts an opened-and-edited board leaves behind.
+      window.localStorage.setItem(SCENE('b_x'), JSON.stringify({ elements: [{ id: 'e1' }] }))
+      window.localStorage.setItem(REGISTRY, JSON.stringify(['b_x']))
+      return wk
+    }
+
+    const deleteRow = async (wk: { apiClient: { calls: Array<{ method: string }> } }) => {
+      fireEvent.contextMenu(screen.getByText('Board row').closest('button')!)
+      fireEvent.click(screen.getByText('docs.sheet.deleteFile'))
+      await waitFor(() => expect(screen.getByText('docs.board.deleteConfirm')).toBeTruthy())
+      fireEvent.click(screen.getByText('docs.doc.delete'))
+      await waitFor(() =>
+        expect(wk.apiClient.calls.some((c) => c.method === 'delete')).toBe(true),
+      )
+    }
+
+    // `true` covers the ordering hazard: onDocDeleted unmounts the shell, and BoardShell's unmount
+    // cleanup calls flush() → persistBoardScene (BoardShell.tsx:1802-1811), which would re-persist the
+    // scene if the clear ran inline in the delete callback instead of in an effect.
+    it.each([[false], [true]])(
+      'drops the board scene and registry entry after a list delete (open=%s)',
+      async (open) => {
+        const wk = await mountBoard(open)
+        await deleteRow(wk)
+
+        await waitFor(() => expect(window.localStorage.getItem(SCENE('b_x'))).toBeNull())
+        expect(JSON.parse(window.localStorage.getItem(REGISTRY) ?? '[]')).not.toContain('b_x')
+      },
+    )
+
+    it('leaves another board’s artefacts alone', async () => {
+      const wk = await mountBoard(false)
+      // A different board that was NOT deleted — the cleanup is per-docId, not a wipe.
+      window.localStorage.setItem(SCENE('b_other'), JSON.stringify({ elements: [] }))
+      window.localStorage.setItem(REGISTRY, JSON.stringify(['b_x', 'b_other']))
+
+      await deleteRow(wk)
+
+      await waitFor(() => expect(window.localStorage.getItem(SCENE('b_x'))).toBeNull())
+      expect(window.localStorage.getItem(SCENE('b_other'))).not.toBeNull()
+      expect(JSON.parse(window.localStorage.getItem(REGISTRY) ?? '[]')).toEqual(['b_other'])
+    })
+
+    // Pins the ORDERING, which is the reason the cleanup lives in an effect rather than inline in the
+    // delete callback. The real BoardShell flushes a pending scene save on unmount
+    // (BoardShell.tsx:1802-1811 → persistBoardScene); the marker simulates exactly that. Clearing
+    // inline runs BEFORE React commits the unmount, so the flush would write the deleted scene back
+    // and the artefact would survive the delete.
+    it('still wins when the open board re-persists its scene on unmount', async () => {
+      // The split-pane path, NOT routeRight: there the shell is handed to the host as an element
+      // snapshot and never actually mounts, so it can neither unmount nor flush. Here it really
+      // renders, so the simulated flush fires on the unmount the delete triggers.
+      const wk = createMockWKApp()
+      setWKApp(wk)
+      wk.apiClient.responder = (method: string, url: string) => {
+        if (method === 'get' && url.startsWith('/docs')) {
+          return {
+            data: {
+              total: 1,
+              items: [
+                { docId: 'b_x', title: 'Board row', ownerId: 'u_self', role: 'admin', docType: 'board' },
+              ],
+            },
+            status: 200,
+          }
+        }
+        return { data: {}, status: 200 }
+      }
+      render(<DocsHome />)
+      await waitFor(() => expect(screen.getByText('Board row')).toBeTruthy())
+      fireEvent.click(screen.getByText('Board row'))
+      await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+
+      window.localStorage.setItem(SCENE('b_x'), JSON.stringify({ elements: [{ id: 'e1' }] }))
+      window.localStorage.setItem(REGISTRY, JSON.stringify(['b_x']))
+      let flushed = false
+      boardUnmount.onUnmount = () => {
+        flushed = true
+        window.localStorage.setItem(SCENE('b_x'), JSON.stringify({ elements: [{ id: 'flushed' }] }))
+      }
+
+      await deleteRow(wk)
+
+      // The flush really ran — so the race exists — and the cleanup still landed after it.
+      await waitFor(() => expect(screen.queryByTestId('board-shell')).toBeNull())
+      expect(flushed).toBe(true)
+      await waitFor(() => expect(window.localStorage.getItem(SCENE('b_x'))).toBeNull())
+    })
+
+    afterEach(() => {
+      // Reset the simulated flush so it cannot leak into any other case.
+      boardUnmount.onUnmount = null
+    })
   })
 })
