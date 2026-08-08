@@ -20,7 +20,13 @@ import { isSafeInlineImageDataUrl } from "./inlineImageUrl";
  * **不动 `Action.OpenUrl.url`**：那是导航面，契约允许 http/https，且已由 validateCardForOcto
  * + 点击期 openUrl 双重 isSafeUrl 守卫。
  *
+ * **图片面清单是穷举的，不是通配的**：本函数按键名识别 `url`(Image) / `iconUrl` / `backgroundImage`
+ * 三个键。SDK 还有别的取图键（如 `Media.poster` → `posterImageElement.src`），今天不可达
+ * ——`Media` 不在 validateElement 的白名单里，整卡会先降级——但谁若放宽元素白名单，
+ * **必须在同一个 commit 里把对应的取图键补进下面的分支**，否则新元素的图片面就是裸的。
+ *
  * 纯函数、不可变克隆：绝不改动传入的（可能被缓存/共享的）解码卡树。
+ * 唯一的例外是 DEV 下的 `console.warn`（见 warnRejectedImageUrl），生产构建会被剔除。
  */
 
 /** 图片面放行判定：https 或受限内联 SVG data URL。 */
@@ -28,23 +34,46 @@ function isRenderableImageUrl(url: string): boolean {
   return isHttpsUrl(url) || isSafeInlineImageDataUrl(url);
 }
 
+/**
+ * DEV 下报告被剥除的图片 URL。
+ *
+ * 剥键本身是静默的，而这正是本模块修复的那个 bug 难查的原因：整卡不降级、文字照渲、
+ * 只有图标凭空消失。图片面的白名单比服务端严（见 inlineImageUrl 的生产者契约），
+ * 所以模板一旦产出不合规的编码，需要一眼能看出是被这里拒的。
+ *
+ * 生产构建里 `import.meta.env.DEV` 为常量 false，整个调用被 tree-shake 掉。
+ */
+function warnRejectedImageUrl(surface: string, value: unknown): void {
+  if (!import.meta.env.DEV) return;
+  const shown = typeof value === "string" ? value.slice(0, 160) : value;
+  console.warn(
+    `[octo-card] ${surface} rejected by the image URL allowlist ` +
+      `(needs https or a fully-encoded data:image/svg+xml):`,
+    shown
+  );
+}
+
 /** 仅保留可渲染的图片 URL，否则返回 undefined（调用方据此剥除该键）。 */
-function keepImageUrl(value: unknown): string | undefined {
-  return typeof value === "string" && isRenderableImageUrl(value)
-    ? value
-    : undefined;
+function keepImageUrl(value: unknown, surface: string): string | undefined {
+  if (typeof value === "string" && isRenderableImageUrl(value)) return value;
+  warnRejectedImageUrl(surface, value);
+  return undefined;
 }
 
 /** backgroundImage 可为字符串或 `{url, ...}` 对象；不可渲染一律剥除。 */
 function sanitizeBackgroundImage(value: unknown): unknown | undefined {
   if (typeof value === "string") {
-    return isRenderableImageUrl(value) ? value : undefined;
+    if (isRenderableImageUrl(value)) return value;
+    warnRejectedImageUrl("backgroundImage", value);
+    return undefined;
   }
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
     const obj = value as Record<string, unknown>;
     if (typeof obj.url === "string" && isRenderableImageUrl(obj.url)) {
       return { ...obj };
     }
+    warnRejectedImageUrl("backgroundImage.url", obj.url);
+    return undefined;
   }
   return undefined; // 非法/不可渲染 → 不渲背景图
 }
@@ -64,15 +93,23 @@ function sanitizeNode(node: unknown): unknown {
     if (key === "fallback" || key === "requires") {
       continue;
     }
+    // `__proto__`：`out[key] = …` 会命中原型 setter，把被剥掉的键从原型链上「复活」
+    // ——消毒后的节点会暴露输入里并不存在的 url。SDK 当前用 hasOwnProperty 取属性所以
+    // 读不到，但不能依赖第三方实现细节。改用 Object.create(null) 反而更糟：SDK 的
+    // internalParse 调 `source.hasOwnProperty(...)`，无原型对象上该方法不存在会抛。
+    // 与 fallback/requires 一样直接跳过，零风险。
+    if (key === "__proto__") {
+      continue;
+    }
     // Image.url：图片面白名单（不误伤 Action.OpenUrl.url 等其它 url）。
     if (key === "url" && obj.type === "Image") {
-      const safe = keepImageUrl(value);
+      const safe = keepImageUrl(value, "Image.url");
       if (safe !== undefined) out[key] = safe;
       continue;
     }
     // 动作 iconUrl：图片面白名单。
     if (key === "iconUrl" && isActionType(obj.type)) {
-      const safe = keepImageUrl(value);
+      const safe = keepImageUrl(value, `${obj.type}.iconUrl`);
       if (safe !== undefined) out[key] = safe;
       continue;
     }

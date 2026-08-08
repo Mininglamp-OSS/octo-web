@@ -1,6 +1,6 @@
 // sanitizeCardTree：图片面 URL 白名单消毒（喂 SDK 前）。不可变、不动 Action.OpenUrl.url。
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sanitizeCardTree } from "../sdk/sanitizeCardTree";
 
 /** 模板内联图标（受限 data URL 白名单，详见 inlineImageUrl.test.ts）。 */
@@ -124,6 +124,65 @@ describe("sanitizeCardTree — 图片面白名单（https + 内联 SVG）", () =
     const snapshot = JSON.stringify(input);
     sanitizeCardTree(input);
     expect(JSON.stringify(input)).toBe(snapshot); // 原对象未被修改
+  });
+
+  it("被剥除的图片 URL 在 DEV 下有 console.warn（避免又一次静默丢图标）", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      sanitizeCardTree({
+        type: "AdaptiveCard",
+        body: [{ type: "Image", url: "http://evil/track.png" }],
+      });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain("Image.url");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("合规 URL 不产生噪音", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      sanitizeCardTree({
+        type: "AdaptiveCard",
+        body: [
+          { type: "Image", url: "https://cdn/a.png" },
+          { type: "Image", url: SAFE_SVG_DATA_URL },
+        ],
+      });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe("sanitizeCardTree — __proto__ 不得复活被剥除的键", () => {
+  it("输入里 __proto__ 携带的 url 不出现在输出上", () => {
+    // out[key] = … 会命中原型 setter，把 url 从原型链上「复活」：消毒后的节点
+    // 会暴露输入里并不存在的键。内层对象没有 type:"Image"，url 门根本不会作用于它。
+    const input = JSON.parse(
+      '{"type":"AdaptiveCard","body":[{"type":"Image","altText":"x","__proto__":{"url":"javascript:alert(1)"}}]}'
+    );
+    expect(input.body[0].url).toBeUndefined(); // 前提：输入上读不到 url
+
+    const out = sanitizeCardTree(input) as any;
+    expect(out.body[0].url).toBeUndefined(); // 输出同样读不到
+    expect(out.body[0].altText).toBe("x"); // 其余字段不受影响
+    // 全局原型未被污染
+    expect(({} as any).url).toBeUndefined();
+  });
+
+  it("输出对象仍保有正常原型（SDK internalParse 依赖 hasOwnProperty）", () => {
+    // 这也是不能用 Object.create(null) 修上一条的原因：无原型对象上
+    // source.hasOwnProperty(...) 不存在，SDK 解析会直接抛。
+    const out = sanitizeCardTree({
+      type: "AdaptiveCard",
+      body: [{ type: "Image", url: "https://cdn/a.png" }],
+    }) as any;
+    expect(typeof out.hasOwnProperty).toBe("function");
+    expect(typeof out.body[0].hasOwnProperty).toBe("function");
+    expect(out.body[0].hasOwnProperty("url")).toBe(true);
   });
 });
 
