@@ -93,6 +93,7 @@ import { patchSdkDecodeForExternalFields } from "./Service/Convert";
 import { isMessageSelectable } from "./Service/messageSelection";
 import ConversationVM from "./Components/Conversation/vm";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
+import { SummaryNotifyCell, SummaryNotifyContent } from "./Messages/SummaryNotify";
 import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
@@ -319,6 +320,8 @@ export default class BaseModule implements IModule {
             return LocationCell;
           case MessageContentTypeConst.screenshot:
             return ScreenshotCell;
+          case MessageContentTypeConst.summaryNotify: // 智能总结完成通知(server-driven)
+            return SummaryNotifyCell;
           case MessageContentType.signalMessage: // 端对端加密错误消息
           case MessageContentTypeConst.approveGroupMember: // 审批群成员
             return ApproveGroupMemberCell;
@@ -388,6 +391,10 @@ export default class BaseModule implements IModule {
     registerCurrentImMessageContent(
       MessageContentTypeConst.screenshot,
       () => new ScreenshotContent()
+    );
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.summaryNotify,
+      () => new SummaryNotifyContent()
     );
     // 加入组织
     registerCurrentImMessageContent(
@@ -875,7 +882,11 @@ export default class BaseModule implements IModule {
       return false;
     }
     if (isCurrentImSystemMessage(message.contentType)) {
-      // 系统消息不发通知
+      // 系统消息不发通知 — includes summaryNotify (21) via the classifier's
+      // explicit override, which also suppresses tipsAudio() at :798-799.
+      // #1283 round-8 P2 (@yujiawei): the previous "if (contentType === 21)
+      // return false" here was dead code once the classifier gained the 21
+      // override; keeping one mechanism.
       return false;
     }
     if (message.fromUID === WKApp.loginInfo.uid) {
@@ -1129,6 +1140,13 @@ export default class BaseModule implements IModule {
         if (message.contentType === MessageContentTypeConst.threadCreated) {
           return null;
         }
+        // #1234 round-6 (mochashanyao P2): summaryNotify is a system tip · not
+        // a user message · forwarding it is nonsensical. Match the explicit
+        // guard for threadCreated instead of relying on the empty-by-default
+        // WKApp.shared.notSupportForward list.
+        if (message.contentType === MessageContentTypeConst.summaryNotify) {
+          return null;
+        }
 
         return {
           title: t("base.module.contextMenus.forward"),
@@ -1142,6 +1160,15 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.reply",
       (message, context) => {
+        // #1234 round-6 P2-8: keep the guard narrow · only exclude summaryNotify
+        // (the new system tip introduced by #289) rather than the broad
+        // isMessageSelectable check that would also silently disable reply
+        // for time / historySplit / typing / threadCreated / revoked
+        // messages · which is out-of-scope for this PR and undisclosed
+        // behavior change flagged by yujiawei.
+        if (message.contentType === MessageContentTypeConst.summaryNotify) {
+          return null;
+        }
         return {
           title: t("base.module.contextMenus.reply"),
           onClick: () => {
@@ -1257,7 +1284,11 @@ export default class BaseModule implements IModule {
         if (message.channel.channelType !== ChannelTypeGroup) {
           return null;
         }
-        // 系统消息不显示
+        // 系统消息不显示 — includes summaryNotify (21) via the classifier's
+        // explicit override. #1283 round-8 P2 (@yujiawei): the previous
+        // "if (contentType === summaryNotify) return null" here was dead
+        // code once the classifier gained the 21 override; keeping one
+        // mechanism.
         if (isCurrentImSystemMessage(message.contentType)) {
           return null;
         }

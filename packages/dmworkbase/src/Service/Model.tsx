@@ -49,9 +49,23 @@ export class ConversationWrap {
     public get channelInfo() {
         return this.conversation.channelInfo
     }
-    // System/event message content types that should not contribute to unread count
+    // System/event message content types that should not contribute to unread
+    // count when they are the SOLE unread message.
+    //
+    // Note the "sole unread" scope: the `unread` getter only zeroes when
+    // `rawUnread === 1 && isSystemMessage(last)`. Multiple system tips or a
+    // system tip on top of real unread traffic still increment the badge —
+    // wire-level `reddot=false` would be the only way to fully suppress
+    // that path but is unavailable in `wukongimjssdk@1.3.5` (ChatManager
+    // hardcodes `packet.reddot = true`).
+    //
+    // #1283 round-8 P1-B (@yujiawei): only summaryNotify (21) is added here.
+    // Screenshot (20) reclassification is a shipped-feature product change
+    // (privacy signal on screenshot notifications) and is deliberately NOT
+    // done in this PR — track it in its own PR with product sign-off.
     private static systemContentTypes: Set<number> = new Set([
-        MessageContentTypeConst.addMembers,       // 1002 添加群成员
+        MessageContentTypeConst.summaryNotify,     // 21   总结完成通知 · #289 passive tip
+        MessageContentTypeConst.addMembers,        // 1002 添加群成员
         MessageContentTypeConst.removeMembers,     // 1003 删除群成员
         MessageContentTypeConst.channelUpdate,     // 1005 频道更新
         MessageContentTypeConst.newGroupOwner,     // 1008 新的管理员
