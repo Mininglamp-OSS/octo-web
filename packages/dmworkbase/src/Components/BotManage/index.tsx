@@ -340,6 +340,7 @@ class MentionFreeListContainer extends Component<MentionFreeListContainerProps> 
 
     componentWillUnmount(): void {
         if (this.unsubscribe) this.unsubscribe()
+        this.props.vm.dispose()
     }
 
     render(): ReactNode {
@@ -349,6 +350,7 @@ class MentionFreeListContainer extends Component<MentionFreeListContainerProps> 
             <MentionFreeListView
                 labels={labels}
                 loading={vm.loading}
+                searching={vm.searching}
                 backendMissing={vm.isBackendMissing}
                 loadError={vm.loadError}
                 searchKeyword={vm.searchKeyword}

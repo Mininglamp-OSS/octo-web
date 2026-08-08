@@ -43,6 +43,7 @@ export interface BotManageViewProps {
 export interface MentionFreeListViewProps {
   labels: BotManageViewLabels;
   loading: boolean;
+  searching: boolean;
   backendMissing: boolean;
   loadError: boolean;
   searchKeyword: string;
@@ -146,6 +147,7 @@ function BotManageMenuItem({
 export function MentionFreeListView({
   labels,
   loading,
+  searching,
   backendMissing,
   loadError,
   searchKeyword,
@@ -219,6 +221,13 @@ export function MentionFreeListView({
           onChange={(e) => onSearchKeywordChange(e.target.value)}
           data-testid="bot-manage-mention-search"
         />
+        {searching && (
+          <span
+            className="wk-bot-manage-search-spinner"
+            data-testid="bot-manage-mention-searching"
+            aria-hidden="true"
+          />
+        )}
       </div>
       <div
         className="wk-bot-manage-list"
@@ -226,7 +235,7 @@ export function MentionFreeListView({
         onScroll={handleScroll}
         data-testid="bot-manage-mention-list"
       >
-        {isEmpty && (
+        {isEmpty && !searching && (
           <div className="wk-bot-manage-empty">
             {searchKeyword.trim() ? labels.noSearchResult : labels.empty}
           </div>
