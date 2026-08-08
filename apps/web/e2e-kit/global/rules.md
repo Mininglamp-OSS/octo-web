@@ -24,6 +24,29 @@ kit 强制的**跨项目通用铁律**。接入方 e2e case 必须遵守。
 
 **例外**: 反例段验"未发生某请求"是允许的（如 debounce 期间不该发请求, 用同步 `count() === 0`）。
 
+## Node / browser context 边界铁律
+
+`page.evaluate` 和 `locator.evaluate` 的回调运行在浏览器上下文，不能直接引用 spec、handler 或其它 Node 模块的变量。
+
+**规则**:
+
+- 回调内部只使用显式传入的参数和浏览器全局变量；
+- 所有外部值通过 `evaluate` 的第二参数传入；
+- 不把 token、task ID、handler state 等通过闭包隐式带入浏览器上下文。
+
+```ts
+export const TASK_ID = 19019;
+
+await page.evaluate(
+  ({ taskId }) => {
+    fetch(`/summaries/${taskId}`);
+  },
+  { taskId: TASK_ID },
+);
+```
+
+这样既明确跨上下文的数据边界，也避免在 Node 中能运行、在真实浏览器里却因变量未定义而失败。
+
 ## 稳定性铁律: 3x 才算稳
 
 **规则**: 每个新增 / 修改的 case 必须 `--repeat-each=3` 跑 3 次全绿才算稳定, 才能 commit。
@@ -46,7 +69,7 @@ pnpm exec playwright test --grep "@C7" --repeat-each=3 --workers=1
 
 ## Selector 铁律
 
-优先级: `getByRole` + name > `getByPlaceholder` > `getByText` > `getByTestId`。**禁 CSS class** selector。
+优先级: `getByTestId` > `getByRole` + name > `getByLabel` / `getByPlaceholder` > `getByText`。**禁 CSS class** selector。
 
 同名元素消歧用 scoping: `page.locator("aside").getByRole(...)` / `dialog.getByRole(...)`, 不用 `.first()` 兜底 (fragile)。
 

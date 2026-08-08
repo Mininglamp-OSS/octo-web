@@ -23,8 +23,8 @@
  *   "check:spec-format": "node e2e-kit/_lib/lint-spec-format.mjs"
  *   "check:spec-format:diff": "node e2e-kit/_lib/lint-spec-format.mjs --diff-mode"
  *
- * CI: quality stage, MR 里 case-specs/ 有变更时触发 --diff-mode
- * pre-commit: .husky/pre-commit 里 staged 涉及 case-specs/ 时跑一次 --files
+ * CI: quality stage, MR 里 e2e-kit/case-specs/ 有变更时触发 --diff-mode
+ * pre-commit: .husky/pre-commit 里 staged 涉及 e2e-kit/case-specs/ 时跑一次 --files
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -134,15 +134,20 @@ function diffModeFiles() {
     }
   }
   if (!base) return null;
-  // diff-filter=AM: A 新加 / M 修改, 不含 deleted
+  const repoRoot = execSync("git rev-parse --show-toplevel", {
+    stdio: ["ignore", "pipe", "ignore"],
+  })
+    .toString()
+    .trim();
   const out = execSync(`git diff --name-only --diff-filter=AM ${base}...HEAD`, {
+    cwd: repoRoot,
     stdio: ["ignore", "pipe", "ignore"],
   }).toString();
   return out
     .split("\n")
-    .filter((f) => f && f.endsWith(".md") && f.includes("case-specs/"))
+    .filter((f) => f && f.endsWith(".md") && f.includes("apps/web/e2e-kit/case-specs/"))
     .filter((f) => !EXCLUDE_FILENAMES.has(f.split("/").pop() || f))
-    .map((f) => join(REPO_ROOT, f));
+    .map((f) => join(repoRoot, f));
 }
 
 // ---------- CLI ----------
@@ -172,9 +177,9 @@ if (args.includes("--diff-mode")) {
     files = args
       .slice(filesIdx + 1)
       .filter((f) => f.endsWith(".md") && !EXCLUDE_FILENAMES.has(f.split("/").pop() || f))
-      .filter((f) => f.includes("case-specs/"));
+      .filter((f) => f.includes("e2e-kit/case-specs/"));
     if (files.length === 0) {
-      console.log("[lint-spec-format] ✔ 无 case-specs/ 下的 spec 文件, skip");
+      console.log("[lint-spec-format] ✔ 无 e2e-kit/case-specs/ 下的 spec 文件, skip");
       process.exit(0);
     }
   } else {
