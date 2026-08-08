@@ -15,7 +15,6 @@ export default function NavItem({ icon, label, active, badge, onClick }: NavItem
         <button
             type="button"
             className={`wk-navrail__item${active ? " wk-navrail__item--active" : ""}`}
-            title={label}
             aria-label={label}
             aria-current={active ? "page" : undefined}
             onClick={onClick}

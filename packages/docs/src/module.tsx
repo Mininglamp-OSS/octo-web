@@ -25,24 +25,10 @@ function DocsLoadingFallback(): ReactElement {
 }
 
 /** NavRail icon for the Docs entry (document-with-lines glyph). */
-function DocsIcon({ active }: { active?: boolean }): ReactElement {
-  const color = active ? 'var(--wk-brand-primary, #7C5CFC)' : 'currentColor'
+function DocsIcon(_props: { active?: boolean }): ReactElement {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-      <path d="M14 2v6h6" />
-      <line x1="8" y1="13" x2="16" y2="13" />
-      <line x1="8" y1="17" x2="16" y2="17" />
-      <line x1="8" y1="9" x2="10" y2="9" />
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M15.92 1.36C16.28 1.69333 16.5667 1.97 16.78 2.19C16.9933 2.41 17.1567 2.59667 17.27 2.75C17.3833 2.90333 17.4533 3.03333 17.48 3.14C17.5067 3.24667 17.52 3.34 17.52 3.42V3.74H14.56C14.4267 3.74 14.31 3.69 14.21 3.59C14.11 3.49 14.0267 3.37333 13.96 3.24C13.8933 3.10667 13.8433 2.97 13.81 2.83C13.7767 2.69 13.76 2.58 13.76 2.5V.02H13.82C14.2467.02 14.9467.466667 15.92 1.36ZM12.5 2.52C12.5 3.30667 12.7 3.92 13.1 4.36C13.5 4.78667 14 5 14.6 5H17.52V16.28C17.52 17.6667 16.66 18.78 14.94 18.78H5.1C3.66 18.78 2.52 17.6 2.52 16.2V2.6C2.52 1.16 3.56.02 4.86.02H12.5V2.52ZM13.76 15C14.4533 15 15 14.44 15 13.74C15 13.0467 14.4533 12.5 13.76 12.5H6.26C5.56667 12.5 5.02 13.0467 5.02 13.74C5.02 14.44 5.56667 15 6.26 15H13.76ZM15 8.76C15 8.06 14.4533 7.5 13.76 7.5H6.26C5.56667 7.5 5.02 8.06 5.02 8.76C5.02 9.45333 5.56667 10 6.26 10H13.76C14.4533 10 15 9.45333 15 8.76Z" fill="currentColor" />
     </svg>
   )
 }

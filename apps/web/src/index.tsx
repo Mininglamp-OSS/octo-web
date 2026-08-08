@@ -19,6 +19,7 @@ import { version as pkgVersion } from '../package.json';
 import appEnUS from './i18n/en-US.json';
 import appZhCN from './i18n/zh-CN.json';
 import { resolveApiURL } from './apiURL';
+import { LoopIcon } from './Components/Icons/LoopIcon';
 
 // VITE_API_URL 只填 origin（协议+域名+端口），不要带路径
 // 例如: https://api.example.com (而非 https://api.example.com/v1/)
@@ -90,6 +91,11 @@ if (import.meta.env.VITE_DISABLE_BUILTIN_DOCS !== "1") {
 registerEnterpriseModules({
   registerModule: (module) => WKApp.shared.registerModule(module),
 });
+// Loop is supplied through the enterprise module slot, outside this OSS tree.
+// Keep its approved host artwork at the app composition boundary instead of
+// branching on enterprise business ids inside the shared NavRail renderer.
+WKApp.menus.registerIconOverride("loop", <LoopIcon />);
+WKApp.menus.registerIconOverride("dmloop", <LoopIcon />);
 WKApp.shared.registerModule(new DriveModule()); // 网盘模块
 
 // e2e mock: 仅在 VITE_E2E_MOCK=1 时启动 MSW Service Worker.
