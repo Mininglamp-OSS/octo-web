@@ -249,11 +249,17 @@ function Thread({
   return (
     <li ref={ref} className={`octo-comment-thread${active ? ' is-selected' : ''}`}>
       <button type="button" className="octo-comment-anchor" onClick={scrollToHighlight}>
-        {orphaned ? (
-          <span className="octo-comment-orphan">{t('docs.comment.orphaned')}</span>
-        ) : (
-          <span className="octo-comment-quote">“{thread.anchorText || '…'}”</span>
-        )}
+        {/* Orphaned threads show the status label ALONGSIDE the quote, not instead of it: the
+            anchorText snapshot exists for exactly this case (see the anchorText doc comment and
+            the `ORPHAN (collapsed)` branch in comments/anchor.ts). Replacing the quote threw that
+            away, leaving the reader no way to tell WHAT was commented on once the anchored text is
+            gone. The snapshot is display-only — never a location source (see the doc_comment
+            anchor_text column in the octo-docs-backend schema). title= is there because an
+            orphan's snapshot is the only surviving record and the row ellipsizes it. */}
+        {orphaned && <span className="octo-comment-orphan">{t('docs.comment.orphaned')}</span>}
+        <span className={`octo-comment-quote${orphaned ? ' is-orphaned' : ''}`} title={thread.anchorText || undefined}>
+          “{thread.anchorText || '…'}”
+        </span>
         {thread.resolved && <span className="octo-comment-resolved-badge">{t('docs.comment.resolvedBadge')}</span>}
       </button>
 

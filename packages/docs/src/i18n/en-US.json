@@ -763,7 +763,8 @@
       "placeholder": "Select a cell, then comment here…",
       "current": "Comment on current cell",
       "add": "Add a comment…",
-      "viewBadge": "View comments"
+      "viewBadge": "View comments",
+      "anchorNotice": "Sheet comments are anchored by row and column position. After rows or columns are inserted or removed, a comment may no longer point at its original cell — verify before relying on it."
     },
     "version": {
       "title": "Version history",
