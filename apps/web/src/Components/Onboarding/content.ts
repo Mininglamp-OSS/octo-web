@@ -1,12 +1,12 @@
-const workspaceImage = new URL(
+const spaceImage = new URL(
   "./assets/onboarding-workspace.png",
   import.meta.url
 ).href;
-const subspacesImage = new URL(
+const threadsImage = new URL(
   "./assets/onboarding-subspaces.png",
   import.meta.url
 ).href;
-const favoritesImage = new URL(
+const followingImage = new URL(
   "./assets/onboarding-favorites.png",
   import.meta.url
 ).href;
@@ -33,9 +33,9 @@ export const ONBOARDING_STORAGE_NAMESPACE = "octo:onboarding:seen";
 export const ONBOARDING_SEEN_STORAGE_KEY = ONBOARDING_STORAGE_NAMESPACE;
 
 export type OnboardingSectionId =
-  | "workspace"
-  | "subspaces"
-  | "favorites"
+  | "space"
+  | "threads"
+  | "following"
   | "group-md"
   | "smart-summary"
   | "webhook"
@@ -107,28 +107,28 @@ export const defaultOnboardingConfig: OnboardingConfig = {
   },
   sections: [
     {
-      id: "workspace",
-      labelKey: "app.onboarding.sections.workspace.label",
-      titleKey: "app.onboarding.sections.workspace.title",
-      descriptionKey: "app.onboarding.sections.workspace.description",
-      visualTitleKey: "app.onboarding.sections.workspace.visualTitle",
-      image: workspaceImage,
+      id: "space",
+      labelKey: "app.onboarding.sections.space.label",
+      titleKey: "app.onboarding.sections.space.title",
+      descriptionKey: "app.onboarding.sections.space.description",
+      visualTitleKey: "app.onboarding.sections.space.visualTitle",
+      image: spaceImage,
     },
     {
-      id: "subspaces",
-      labelKey: "app.onboarding.sections.subspaces.label",
-      titleKey: "app.onboarding.sections.subspaces.title",
-      descriptionKey: "app.onboarding.sections.subspaces.description",
-      visualTitleKey: "app.onboarding.sections.subspaces.visualTitle",
-      image: subspacesImage,
+      id: "threads",
+      labelKey: "app.onboarding.sections.threads.label",
+      titleKey: "app.onboarding.sections.threads.title",
+      descriptionKey: "app.onboarding.sections.threads.description",
+      visualTitleKey: "app.onboarding.sections.threads.visualTitle",
+      image: threadsImage,
     },
     {
-      id: "favorites",
-      labelKey: "app.onboarding.sections.favorites.label",
-      titleKey: "app.onboarding.sections.favorites.title",
-      descriptionKey: "app.onboarding.sections.favorites.description",
-      visualTitleKey: "app.onboarding.sections.favorites.visualTitle",
-      image: favoritesImage,
+      id: "following",
+      labelKey: "app.onboarding.sections.following.label",
+      titleKey: "app.onboarding.sections.following.title",
+      descriptionKey: "app.onboarding.sections.following.description",
+      visualTitleKey: "app.onboarding.sections.following.visualTitle",
+      image: followingImage,
     },
     {
       id: "group-md",

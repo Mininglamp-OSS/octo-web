@@ -45,13 +45,18 @@ describe("disable_user_create_space web integration", () => {
     expect(source).toContain('variant="create"');
   });
 
-  it("hides the no-space create-team button and modal behind remote config", () => {
+  it("hides the no-space Create Space button and modal behind remote config", () => {
     const source = readRepoFile("apps/web/src/Components/SpaceGate/index.tsx");
+    const zh = JSON.parse(readRepoFile("apps/web/src/i18n/zh-CN.json"));
+    const en = JSON.parse(readRepoFile("apps/web/src/i18n/en-US.json"));
 
     expect(source).toContain("WKApp.remoteConfig.disableUserCreateSpace");
     expect(source).toContain("addConfigChangeListener");
     expect(source).toMatch(/\{canCreateSpace\s*&&\s*\(/);
     expect(source).toMatch(/visible=\{canCreateSpace\s*&&\s*showCreate\}/);
+    expect(source).toContain('t("app.spaceGate.createSpace")');
+    expect(zh["spaceGate.createSpace"]).toBe("创建新 Space");
+    expect(en["spaceGate.createSpace"]).toBe("Create new Space");
   });
 
   it("keeps a logout path on the no-space welcome page", () => {
@@ -73,6 +78,7 @@ describe("disable_user_create_space web integration", () => {
     expect(source).toContain("addConfigChangeListener");
     expect(source).toMatch(/\{canCreateSpace\s*&&\s*\(/);
     expect(source).toMatch(/visible=\{canCreateSpace\s*&&\s*showCreate\}/);
+    expect(source).toContain('t("app.spaceGate.createSpace")');
   });
 
   it("keeps a logout path on the no-space join page", () => {
