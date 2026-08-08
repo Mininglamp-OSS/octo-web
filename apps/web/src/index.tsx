@@ -9,6 +9,7 @@ import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
 import { SummaryModule } from '@dmwork/summary';
+import { MeetingModule } from '@dmwork/meeting';
 import { McpMarketModule } from '@dmwork/mcp';
 import { SkillMarketModule } from '@dmwork/skillmarket';
 import { AppBotModule } from '@dmwork/appbot';
@@ -81,6 +82,7 @@ WKApp.shared.registerModule(new LoginModule()); // 登录模块
 WKApp.shared.registerModule(new BindModule()); // OIDC 自助绑定页 (/oidc/bind)
 WKApp.shared.registerModule(new ContactsModule()); // 联系模块
 WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
+WKApp.shared.registerModule(new MeetingModule()); // 会议模块
 WKApp.shared.registerModule(new McpMarketModule()); // MCP 市场模块
 WKApp.shared.registerModule(new SkillMarketModule()); // Skill 市场模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块

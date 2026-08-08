@@ -1,0 +1,82 @@
+{
+  "menu": { "title": "Meeting" },
+  "home": {
+    "title": "Meetings",
+    "quick": "Start now",
+    "schedule": "Schedule",
+    "join": "Join",
+    "upcoming": "Upcoming",
+    "history": "History",
+    "empty": "No meetings yet"
+  },
+  "join": {
+    "numberLabel": "Meeting number or link",
+    "numberPlaceholder": "Enter meeting number",
+    "submit": "Continue"
+  },
+  "challenge": {
+    "title": "Enter meeting password",
+    "inputLabel": "6-digit password",
+    "placeholder": "6 digits",
+    "submit": "Verify",
+    "attemptsRemaining": "{{count}} attempts remaining",
+    "cooldown": "Too many attempts. Try again in {{seconds}}s."
+  },
+  "prejoin": {
+    "title": "Ready to join",
+    "camera": "Camera",
+    "microphone": "Microphone",
+    "join": "Join now",
+    "retry": "Media temporarily unavailable, retrying in {{seconds}}s"
+  },
+  "room": {
+    "leave": "Leave",
+    "muteAll": "Mute all",
+    "share": "Share screen",
+    "stopShare": "Stop sharing",
+    "reconnecting": "Reconnecting…",
+    "participants": "Participants"
+  },
+  "terminal": {
+    "ended": "This meeting has ended",
+    "cancelled": "This meeting was cancelled",
+    "removed": "You were removed from the meeting",
+    "superseded": "You joined from another device",
+    "left": "You left the meeting",
+    "noShow": "The meeting ended because no one joined",
+    "emptyTimeout": "The meeting ended after being empty",
+    "backHome": "Back to meetings"
+  },
+  "service": {
+    "unavailable": "Meeting service is temporarily unavailable",
+    "notEnabled": "Meeting is not enabled",
+    "retry": "Retry"
+  },
+  "history": { "passwordEnabled": "Password protection: enabled", "passwordDisabled": "Password protection: disabled" },
+  "error": {
+    "authRequired": "Please sign in again",
+    "credentialInvalid": "Invalid meeting number or link",
+    "ended": "This meeting has ended",
+    "cancelled": "This meeting was cancelled",
+    "tooEarly": "You can join from {{earliestJoinAt}}",
+    "locked": "This meeting is locked",
+    "full": "This meeting is full",
+    "removed": "You were removed from the meeting",
+    "notSameSpace": "Switch to the correct space to access this meeting",
+    "passwordRequired": "This meeting requires a password",
+    "passwordFormatInvalid": "Please enter a 6-digit password",
+    "passwordInvalid": "Incorrect password",
+    "passwordCooldown": "Too many attempts. Please wait before retrying.",
+    "passwordPassExpired": "Verification expired, please re-enter the password",
+    "passwordImmutable": "Password cannot be changed after the meeting starts",
+    "forbidden": "You do not have permission for this action",
+    "versionConflict": "This meeting changed, refreshing…",
+    "idempotencyConflict": "Duplicate request detected",
+    "shareConflict": "Someone is already sharing",
+    "livekitUnavailable": "Media is temporarily unavailable",
+    "notificationDeferred": "Notifications will be delivered shortly",
+    "timeInvalid": "Please choose a valid time",
+    "rateLimited": "Too many requests, please wait",
+    "internal": "Something went wrong, please retry"
+  }
+}

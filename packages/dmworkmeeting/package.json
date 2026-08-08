@@ -1,0 +1,24 @@
+{
+  "name": "@dmwork/meeting",
+  "version": "1.0.0",
+  "main": "src/index.tsx",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@douyinfe/semi-icons": "^2.93.0",
+    "@douyinfe/semi-ui": "^2.93.0",
+    "@octo/base": "workspace:*",
+    "axios": "^0.25.0",
+    "classnames": "^2.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^13.4.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2"
+  }
+}
