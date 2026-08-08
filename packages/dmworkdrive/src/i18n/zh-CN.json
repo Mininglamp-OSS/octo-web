@@ -32,10 +32,38 @@
     "colName": "名称",
     "colSize": "大小",
     "colUpdated": "修改时间",
-    "truncated": "列表较大，仅显示前 200 项"
+    "truncated": "已显示 {{loaded}}/{{total}} 项",
+    "loadFailed": "加载失败",
+    "loadMoreFailed": "加载更多失败",
+    "loadMoreRetry": "重试",
+    "selectAll": "全选",
+    "selectRow": "选择此项"
+  },
+  "filter": {
+    "aria": "按类型筛选",
+    "all": "全部",
+    "folder": "文件夹",
+    "doc": "文档",
+    "blob": "文件"
+  },
+  "empty": {
+    "folder": {
+      "title": "此文件夹为空",
+      "hint": "点击「上传」，或直接把文件拖到这里"
+    },
+    "readonly": {
+      "title": "此文件夹为空"
+    },
+    "filter": {
+      "title": "没有匹配的内容",
+      "hint": "尝试切换筛选，或清除筛选查看全部",
+      "clear": "查看全部"
+    }
   },
   "move": {
     "title": "移动到",
+    "batchTitle": "移动 {{count}} 项到",
+    "batchSummary": "{{first}} 等 {{count}} 项",
     "noSubfolder": "该文件夹下没有子文件夹",
     "sameLocation": "已在当前位置，无需移动"
   },
@@ -44,7 +72,49 @@
   },
   "delete": {
     "title": "确认删除",
-    "content": "确定删除"
+    "content": "确定删除",
+    "folderTitle": "确认删除文件夹",
+    "folderConfirmPrefix": "确定要删除",
+    "folderWord": "文件夹",
+    "folderConfirmSuffix": "吗？其中所有内容将被一并删除。"
+  },
+  "bulk": {
+    "title": "批量操作",
+    "selected": "已选 {{count}} 项",
+    "delete": "删除",
+    "move": "移动到",
+    "download": "下载",
+    "clear": "取消选择",
+    "deleteTitleFiles": "删除文件",
+    "deleteTitleFolders": "删除文件夹",
+    "deleteTitleMixed": "删除已选",
+    "deleteContentFiles": "确定要删除已选的 {{count}} 项吗？",
+    "deleteContentFoldersPrefix": "确定要删除已选的",
+    "deleteContentFoldersWord": "{{count}} 项文件夹",
+    "deleteContentFoldersSuffix": "吗？其中所有内容将被一并删除。",
+    "deleteContentMixedPrefix": "确定要删除已选的 {{count}} 项吗？其中包含",
+    "deleteContentMixedWord": "{{folderCount}} 项文件夹",
+    "deleteContentMixedSuffix": "，内部内容将一并删除！",
+    "resultTitleAllOk": "全部完成",
+    "resultTitlePartial": "部分失败",
+    "resultTitleAllFailed": "操作失败",
+    "resultSummarySuccess": "成功 {{count}} 项",
+    "resultSummaryTriggered": "已触发 {{count}} 项",
+    "resultSummaryFailed": "失败 {{count}} 项",
+    "resultOk": "知道了",
+    "resultCancel": "取消",
+    "downloadBlockedTitle": "无法下载",
+    "downloadBlockedFolder": "已选包含 {{count}} 项文件夹，暂不支持直接下载。请取消勾选文件夹后再试。",
+    "downloadBlockedDoc": "已选包含 {{count}} 项在线文档，暂不支持直接下载。请取消勾选在线文档后再试。",
+    "downloadBlockedMixed": "已选包含 {{folders}} 项文件夹和 {{docs}} 项在线文档，暂不支持直接下载。请取消勾选后再试。",
+    "downloadManyWarnTitle": "即将下载多个文件",
+    "downloadManyWarnContent": "已选 {{count}} 项，浏览器一般每次最多允许自动下载 {{limit}} 项，超出可能需要在浏览器地址栏点“允许”，或直接被拦截。要继续吗？",
+    "downloadManyWarnProceed": "继续下载",
+    "downloadTriggered": "已触发 {{count}} 项下载，请在浏览器下载栏查看",
+    "actionDelete": "删除",
+    "actionMove": "移动",
+    "actionCopy": "复制",
+    "actionDownload": "下载"
   },
   "mount": {
     "title": "添加在线文档",
@@ -72,6 +142,7 @@
     "expiresAt": "到期",
     "copyLink": "复制链接",
     "copied": "链接已复制",
+    "copyFailed": "复制失败，请手动选中链接复制",
     "revoke": "取消分享"
   },
   "invite": {
@@ -91,6 +162,7 @@
     "none": "暂无邀请链接",
     "copyLink": "复制链接",
     "copied": "链接已复制",
+    "copyFailed": "复制失败，请手动选中链接复制",
     "revoke": "撤销",
     "byOrgHint": "从组织架构中选择成员，直接加入空间（无需审批）。",
     "pickMembers": "选择成员"
@@ -134,7 +206,10 @@
     "done": "已完成",
     "retry": "重试",
     "cancel": "取消",
-    "dismiss": "移除"
+    "dismiss": "移除",
+    "dropTitle": "松开以上传到当前目录",
+    "rejectEmpty": "跳过空文件：{{name}}",
+    "rejectTooLarge": "文件过大（超过 {{maxMB}}MB）：{{name}}"
   },
   "download": {
     "failed": "下载失败"

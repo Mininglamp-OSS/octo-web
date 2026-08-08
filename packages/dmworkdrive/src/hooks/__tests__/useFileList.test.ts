@@ -6,7 +6,7 @@ vi.mock('../../api/driveApi', () => ({
 }));
 
 import * as api from '../../api/driveApi';
-import { useFileList } from '../useFileList';
+import { useFileList, PAGE_SIZE } from '../useFileList';
 import type { DriveEntry, FileType, BrowseResponse } from '../../bridge/types';
 
 function entry(id: number, name: string, type: FileType): DriveEntry {
@@ -25,10 +25,10 @@ function entry(id: number, name: string, type: FileType): DriveEntry {
   };
 }
 
-function resp(entries: DriveEntry[]): BrowseResponse {
+function resp(entries: DriveEntry[], total?: number): BrowseResponse {
   return {
     entries,
-    page: { page_size: 200, page_index: 1, total: entries.length, data: entries },
+    page: { page_size: PAGE_SIZE, page_index: 1, total: total ?? entries.length, data: entries },
     filter: { type: 'all', source: 'all' },
   };
 }
@@ -45,14 +45,20 @@ describe('useFileList', () => {
     expect(api.browse).not.toHaveBeenCalled();
   });
 
-  it('loads entries for the space/folder', async () => {
+  it('loads entries for the space/folder with the paginated PAGE_SIZE', async () => {
     vi.mocked(api.browse).mockResolvedValue(resp([entry(1, 'docs', 'folder'), entry(2, 'a.pdf', 'blob')]));
     const { result } = renderHook(() => useFileList('sp', 0));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.entries).toHaveLength(2);
     expect(api.browse).toHaveBeenCalledWith(
-      { space_id: 'sp', parent_id: 0, page_size: 200 },
+      {
+        space_id: 'sp',
+        parent_id: 0,
+        page_index: 1,
+        page_size: PAGE_SIZE,
+        type: undefined,
+      },
       expect.anything(),
     );
   });
@@ -67,7 +73,7 @@ describe('useFileList', () => {
     rerender({ p: 5 });
     await waitFor(() =>
       expect(api.browse).toHaveBeenLastCalledWith(
-        { space_id: 'sp', parent_id: 5, page_size: 200 },
+        expect.objectContaining({ space_id: 'sp', parent_id: 5, page_index: 1 }),
         expect.anything(),
       ),
     );
@@ -105,5 +111,252 @@ describe('useFileList', () => {
       await Promise.resolve();
     });
     expect(result.current.entries).toEqual([]);
+  });
+
+  describe('pagination', () => {
+    it('hasMore is true when the first page is full and total > page', async () => {
+      const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(i + 1, `n${i}`, 'blob'));
+      vi.mocked(api.browse).mockResolvedValue(resp(first, PAGE_SIZE * 3));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.hasMore).toBe(true);
+    });
+
+    it('hasMore is false when the first page is shorter than PAGE_SIZE', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([entry(1, 'a', 'blob')]));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('loadMore appends the next page and increments page_index', async () => {
+      const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(i + 1, `n${i}`, 'blob'));
+      const second = [entry(1000, 'tail', 'blob')];
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(first, PAGE_SIZE + 1))
+        .mockResolvedValueOnce({
+          entries: second,
+          page: { page_size: PAGE_SIZE, page_index: 2, total: PAGE_SIZE + 1, data: second },
+          filter: { type: 'all', source: 'all' },
+        });
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries).toHaveLength(PAGE_SIZE);
+      expect(result.current.hasMore).toBe(true);
+
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(result.current.loadingMore).toBe(false));
+      expect(result.current.entries).toHaveLength(PAGE_SIZE + 1);
+      expect(api.browse).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page_index: 2 }),
+        expect.anything(),
+      );
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('loadMore is a no-op when hasMore is false', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([entry(1, 'a', 'blob')]));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.hasMore).toBe(false);
+      const before = vi.mocked(api.browse).mock.calls.length;
+      act(() => result.current.loadMore());
+      // No additional browse call.
+      expect(vi.mocked(api.browse).mock.calls.length).toBe(before);
+    });
+
+    it('hasMore flips false via reachedTotal when total is a clean multiple of PAGE_SIZE', async () => {
+      // Reviewer-caught regression: previously hasMore stayed true after the
+      // last real page when total === N * PAGE_SIZE because the closure
+      // frozen `entries.length` was always 0, so reachedTotal never fired.
+      // With loadedCountRef tracking cumulative progress, the second full
+      // page must correctly report hasMore === false.
+      const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(i + 1, `n${i}`, 'blob'));
+      const second = Array.from({ length: PAGE_SIZE }, (_, i) => entry(1000 + i, `m${i}`, 'blob'));
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(first, PAGE_SIZE * 2))
+        .mockResolvedValueOnce({
+          entries: second,
+          page: { page_size: PAGE_SIZE, page_index: 2, total: PAGE_SIZE * 2, data: second },
+          filter: { type: 'all', source: 'all' },
+        });
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.hasMore).toBe(true);
+
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(result.current.loadingMore).toBe(false));
+      expect(result.current.entries).toHaveLength(PAGE_SIZE * 2);
+      // Cumulative count === total, so reachedTotal trips — no third fetch.
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('latches loadMoreError on append failure and stops loadMore from re-firing', async () => {
+      // Bot-review Critical: without a latched error, a failed page-N request
+      // would loop forever — IntersectionObserver rebuilds the moment
+      // loadingMore flips false and the still-visible sentinel re-triggers
+      // onLoadMore, hammering the same broken request and spamming toast.
+      //
+      // Contract now:
+      //   1. Page-1 succeeds with hasMore=true (server total > current load).
+      //   2. Page-2 fetch REJECTS -> loadMoreError latches, hasMore stays
+      //      true (retry is still possible), pageIndex stays at 1.
+      //   3. A subsequent loadMore() is a no-op (does NOT hit the network).
+      //   4. Only retryLoadMore() clears the error and re-issues the fetch.
+      const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(i + 1, `n${i}`, 'blob'));
+      const second = Array.from({ length: PAGE_SIZE }, (_, i) => entry(1000 + i, `m${i}`, 'blob'));
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(first, PAGE_SIZE * 3))
+        .mockRejectedValueOnce(new Error('network kaboom'))
+        .mockResolvedValueOnce({
+          entries: second,
+          page: { page_size: PAGE_SIZE, page_index: 2, total: PAGE_SIZE * 3, data: second },
+          filter: { type: 'all', source: 'all' },
+        });
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.hasMore).toBe(true);
+      expect(result.current.loadMoreError).toBeNull();
+
+      // Failing loadMore latches the error.
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(result.current.loadingMore).toBe(false));
+      expect(result.current.loadMoreError).not.toBeNull();
+      // hasMore is intentionally still true so retryLoadMore has something to
+      // pull; the sentinel + observer are gated on !loadMoreError in the
+      // caller (DriveContent), so this doesn't cause a UI loop.
+      expect(result.current.hasMore).toBe(true);
+      expect(result.current.entries).toHaveLength(PAGE_SIZE);
+
+      // Bare loadMore() must NOT retry — the retry path is explicit.
+      const callsAfterFail = vi.mocked(api.browse).mock.calls.length;
+      act(() => result.current.loadMore());
+      // Still-latched error blocks the call. Wait a tick to confirm nothing
+      // fires asynchronously.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(vi.mocked(api.browse).mock.calls.length).toBe(callsAfterFail);
+
+      // retryLoadMore() clears the error and issues the retry, which now
+      // succeeds and appends.
+      act(() => result.current.retryLoadMore());
+      await waitFor(() => expect(result.current.loadingMore).toBe(false));
+      expect(result.current.loadMoreError).toBeNull();
+      expect(result.current.entries).toHaveLength(PAGE_SIZE * 2);
+    });
+
+    it('reload() clears a latched loadMoreError so paging is re-armed', async () => {
+      const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(i + 1, `n${i}`, 'blob'));
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(first, PAGE_SIZE * 3))
+        .mockRejectedValueOnce(new Error('network kaboom'))
+        .mockResolvedValueOnce(resp(first, PAGE_SIZE * 3));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // Trigger the failure so the error latches.
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(result.current.loadMoreError).not.toBeNull());
+
+      // A fresh page-1 reload MUST reset the latched error — otherwise the
+      // user is stuck showing the error banner even after navigating away
+      // and back (which internally issues a page-1 fetch).
+      act(() => result.current.reload());
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.loadMoreError).toBeNull();
+    });
+  });
+
+  describe('type filter', () => {
+    it('starts at "all" and passes type=undefined', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([]));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.filter).toBe('all');
+      expect(api.browse).toHaveBeenLastCalledWith(
+        expect.objectContaining({ type: undefined }),
+        expect.anything(),
+      );
+    });
+
+    it('setFilter triggers a fresh page-1 fetch with the type param', async () => {
+      vi.mocked(api.browse).mockResolvedValue(resp([]));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      act(() => result.current.setFilter('folder'));
+      await waitFor(() =>
+        expect(api.browse).toHaveBeenLastCalledWith(
+          expect.objectContaining({ type: 'folder', page_index: 1 }),
+          expect.anything(),
+        ),
+      );
+    });
+
+    it('clears stale entries synchronously on context change even when the new fetch rejects', async () => {
+      // Bot-review P1: filter=all success (1 blob) → switch to filter=folder,
+      // that browse rejects → filter is now 'folder' but entries USED TO
+      // still hold the 'all' blob, so an editor could act on rows that
+      // belong to the previous context. Fix: page-1 fetch must clear
+      // entries/total/hasMore synchronously BEFORE awaiting, so a failed
+      // context switch surfaces as an empty listing + error, not a phantom
+      // listing under the wrong filter.
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp([entry(1, 'a.pdf', 'blob')]))
+        .mockRejectedValueOnce(new Error('network kaboom'));
+
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries).toHaveLength(1);
+      expect(result.current.filter).toBe('all');
+
+      // Switch filter — this triggers a new page-1 fetch that will reject.
+      act(() => result.current.setFilter('folder'));
+
+      // Wait for the failed fetch to resolve (setLoading back to false).
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // Filter is now 'folder' but the failed fetch left an empty listing —
+      // NOT the stale [{a.pdf}] from the previous 'all' context.
+      expect(result.current.filter).toBe('folder');
+      expect(result.current.entries).toHaveLength(0);
+      expect(result.current.total).toBeNull();
+      expect(result.current.hasMore).toBe(false);
+      expect(result.current.error).not.toBeNull();
+    });
+
+    it('reload() preserves entries during the fetch (no spinner flash)', async () => {
+      // Bot-review P2-3: previously the page-1 clear fired unconditionally
+      // for both context changes AND reload(), so every delete/rename/
+      // upload landed with a full-list spinner flash before the new rows
+      // arrived. A 20-file drag-drop replaced the list with a spinner
+      // four times as batches settled. Fix: only clear on context change
+      // (resetView: true), not on reload() (same-context refresh).
+      const initial = [entry(1, 'a.pdf', 'blob'), entry(2, 'b.pdf', 'blob')];
+      const refreshed = [entry(1, 'a.pdf', 'blob'), entry(3, 'c.pdf', 'blob')];
+      let resolveRefresh: (v: ReturnType<typeof resp>) => void = () => {};
+      const refreshPromise = new Promise<ReturnType<typeof resp>>((r) => {
+        resolveRefresh = r;
+      });
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(initial))
+        .mockReturnValueOnce(refreshPromise);
+
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries).toHaveLength(2);
+
+      // Reload — kicks off the second browse. loading flips true but
+      // entries MUST remain visible until the response lands.
+      act(() => result.current.reload());
+      // Synchronously after reload() the entries should NOT be blanked.
+      expect(result.current.entries).toHaveLength(2);
+      expect(result.current.entries[0].id).toBe(1);
+
+      // Now resolve the fetch — entries update to the fresh list.
+      resolveRefresh(resp(refreshed));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries).toHaveLength(2);
+      expect(result.current.entries.map((e) => e.id)).toEqual([1, 3]);
+    });
   });
 });

@@ -32,10 +32,38 @@
     "colName": "Name",
     "colSize": "Size",
     "colUpdated": "Modified",
-    "truncated": "Large folder — showing the first 200 items only"
+    "truncated": "Showing {{loaded}} of {{total}}",
+    "loadFailed": "Failed to load",
+    "loadMoreFailed": "Failed to load more",
+    "loadMoreRetry": "Retry",
+    "selectAll": "Select all",
+    "selectRow": "Select item"
+  },
+  "filter": {
+    "aria": "Filter by type",
+    "all": "All",
+    "folder": "Folders",
+    "doc": "Docs",
+    "blob": "Files"
+  },
+  "empty": {
+    "folder": {
+      "title": "This folder is empty",
+      "hint": "Click Upload, or drop files anywhere here"
+    },
+    "readonly": {
+      "title": "This folder is empty"
+    },
+    "filter": {
+      "title": "Nothing matches",
+      "hint": "Try a different filter, or clear it to see everything",
+      "clear": "Clear filter"
+    }
   },
   "move": {
     "title": "Move to",
+    "batchTitle": "Move {{count}} items to",
+    "batchSummary": "{{first}} and {{count}} others",
     "noSubfolder": "No subfolders here",
     "sameLocation": "Already in this location"
   },
@@ -44,7 +72,49 @@
   },
   "delete": {
     "title": "Confirm deletion",
-    "content": "Delete"
+    "content": "Delete",
+    "folderTitle": "Confirm folder deletion",
+    "folderConfirmPrefix": "Delete",
+    "folderWord": "folder",
+    "folderConfirmSuffix": "? All contents inside will be removed as well."
+  },
+  "bulk": {
+    "title": "Batch operations",
+    "selected": "{{count}} selected",
+    "delete": "Delete",
+    "move": "Move to",
+    "download": "Download",
+    "clear": "Clear selection",
+    "deleteTitleFiles": "Delete files",
+    "deleteTitleFolders": "Delete folders",
+    "deleteTitleMixed": "Delete selected",
+    "deleteContentFiles": "Delete the {{count}} selected items?",
+    "deleteContentFoldersPrefix": "Delete the selected",
+    "deleteContentFoldersWord": "{{count}} folders",
+    "deleteContentFoldersSuffix": "? All contents inside will be removed as well.",
+    "deleteContentMixedPrefix": "Delete the {{count}} selected items? This includes",
+    "deleteContentMixedWord": "{{folderCount}} folders",
+    "deleteContentMixedSuffix": "; their contents will also be removed!",
+    "resultTitleAllOk": "All done",
+    "resultTitlePartial": "Some items failed",
+    "resultTitleAllFailed": "Operation failed",
+    "resultSummarySuccess": "{{count}} succeeded",
+    "resultSummaryTriggered": "{{count}} triggered",
+    "resultSummaryFailed": "{{count}} failed",
+    "resultOk": "OK",
+    "resultCancel": "Cancel",
+    "downloadBlockedTitle": "Cannot download",
+    "downloadBlockedFolder": "Selection contains {{count}} folder(s). Folder download isn't supported yet — uncheck folders and try again.",
+    "downloadBlockedDoc": "Selection contains {{count}} online doc(s). Direct download isn't supported yet — uncheck online docs and try again.",
+    "downloadBlockedMixed": "Selection contains {{folders}} folder(s) and {{docs}} online doc(s). Direct download isn't supported yet — uncheck them and try again.",
+    "downloadManyWarnTitle": "Downloading many files",
+    "downloadManyWarnContent": "{{count}} files selected. Browsers typically cap automatic downloads at {{limit}} per session; extras may be silently dropped or require an explicit \"Allow\" prompt in the address bar. Continue?",
+    "downloadManyWarnProceed": "Continue",
+    "downloadTriggered": "Triggered download for {{count}} file(s). Check your browser's download shelf.",
+    "actionDelete": "delete",
+    "actionMove": "move",
+    "actionCopy": "copy",
+    "actionDownload": "download"
   },
   "mount": {
     "title": "Add document",
@@ -72,6 +142,7 @@
     "expiresAt": "Expires",
     "copyLink": "Copy link",
     "copied": "Link copied",
+    "copyFailed": "Copy failed — please select the link and copy manually",
     "revoke": "Revoke"
   },
   "invite": {
@@ -91,6 +162,7 @@
     "none": "No invite links yet",
     "copyLink": "Copy link",
     "copied": "Link copied",
+    "copyFailed": "Copy failed — please select the link and copy manually",
     "revoke": "Revoke",
     "byOrgHint": "Pick members from the organization to add them directly (no approval).",
     "pickMembers": "Pick members"
@@ -134,7 +206,10 @@
     "done": "Done",
     "retry": "Retry",
     "cancel": "Cancel",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "dropTitle": "Drop to upload here",
+    "rejectEmpty": "Skipped empty file: {{name}}",
+    "rejectTooLarge": "File too large (over {{maxMB}}MB): {{name}}"
   },
   "download": {
     "failed": "Download failed"

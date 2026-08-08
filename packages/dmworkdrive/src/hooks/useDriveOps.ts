@@ -8,9 +8,20 @@ export interface DriveOps {
   busy: boolean;
   createFolder: (spaceId: string, parentId: number, name: string) => Promise<boolean>;
   renameEntry: (entry: DriveEntry, name: string) => Promise<boolean>;
-  moveEntry: (entry: DriveEntry, targetParentId: number) => Promise<boolean>;
-  copyEntry: (entry: DriveEntry, targetParentId: number, name: string) => Promise<boolean>;
-  deleteEntry: (entry: DriveEntry) => Promise<boolean>;
+  moveEntry: (entry: DriveEntry, targetParentId: number, opts?: OpOptions) => Promise<boolean>;
+  copyEntry: (entry: DriveEntry, targetParentId: number, name: string, opts?: OpOptions) => Promise<boolean>;
+  deleteEntry: (entry: DriveEntry, opts?: OpOptions) => Promise<boolean>;
+}
+
+/**
+ * Per-op options. `silent: true` suppresses the per-op success/error toast so
+ * batch callers can aggregate results into a single summary — they still get
+ * a boolean return, they just don't spam N toasts for an N-item batch.
+ * Default behaviour (silent unset / false) is unchanged: single-row menus
+ * still see individual toasts.
+ */
+export interface OpOptions {
+  silent?: boolean;
 }
 
 /**
@@ -25,19 +36,26 @@ export interface DriveOps {
 export function useDriveOps(): DriveOps {
   const [busy, setBusy] = useState(false);
 
-  const run = useCallback(async (fn: () => Promise<unknown>, successKey: string): Promise<boolean> => {
-    setBusy(true);
-    try {
-      await fn();
-      Toast.success(t(successKey));
-      return true;
-    } catch (err: unknown) {
-      Toast.error((err as Error)?.message || t('drive.toast.opFailed'));
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const run = useCallback(
+    async (fn: () => Promise<unknown>, successKey: string, opts?: OpOptions): Promise<boolean> => {
+      setBusy(true);
+      try {
+        await fn();
+        if (!opts?.silent) Toast.success(t(successKey));
+        return true;
+      } catch (err: unknown) {
+        if (!opts?.silent) Toast.error((err as Error)?.message || t('drive.toast.opFailed'));
+        // Rethrow when silent so the batch caller (runBatch) can capture the
+        // real error message for its aggregated failure list — the caller
+        // suppresses per-op toasts precisely to render a single summary.
+        if (opts?.silent) throw err;
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
 
   const createFolder = useCallback(
     (spaceId: string, parentId: number, name: string) =>
@@ -55,30 +73,35 @@ export function useDriveOps(): DriveOps {
   );
 
   const moveEntry = useCallback(
-    (entry: DriveEntry, targetParentId: number) =>
+    (entry: DriveEntry, targetParentId: number, opts?: OpOptions) =>
       run(
         () =>
           entry.type === 'folder'
             ? api.moveFolder(entry.id, { parent_id: targetParentId })
             : api.moveFile(entry.id, { parent_id: targetParentId }),
         'drive.toast.moved',
+        opts,
       ),
     [run],
   );
 
   const copyEntry = useCallback(
-    (entry: DriveEntry, targetParentId: number, name: string) =>
-      run(() => api.copyFile(entry.id, { parent_id: targetParentId, name }), 'drive.toast.copied'),
+    (entry: DriveEntry, targetParentId: number, name: string, opts?: OpOptions) =>
+      run(() => api.copyFile(entry.id, { parent_id: targetParentId, name }), 'drive.toast.copied', opts),
     [run],
   );
 
   const deleteEntry = useCallback(
-    (entry: DriveEntry) =>
-      run(() => {
-        if (entry.type === 'folder') return api.deleteFolder(entry.id);
-        if (entry.type === 'doc') return api.unmountDoc(entry.id);
-        return api.deleteBlob(entry.id);
-      }, 'drive.toast.deleted'),
+    (entry: DriveEntry, opts?: OpOptions) =>
+      run(
+        () => {
+          if (entry.type === 'folder') return api.deleteFolder(entry.id);
+          if (entry.type === 'doc') return api.unmountDoc(entry.id);
+          return api.deleteBlob(entry.id);
+        },
+        'drive.toast.deleted',
+        opts,
+      ),
     [run],
   );
 

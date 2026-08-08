@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '@octo/base';
-import { Modal, Select, Button, Spin, Tag, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Modal, Select, Button, Spin, Tag, Tabs, TabPane, Input } from '@douyinfe/semi-ui';
 import { Copy, Trash2, Link2, UserPlus } from 'lucide-react';
 import { useInvite } from '../../hooks/useInvite';
 import OrgPickerModal from '../OrgPickerModal';
@@ -9,6 +9,7 @@ import { ROLE_LABEL_KEY } from '../../utils/roleLabel';
 import { buildInviteLink } from '../../utils/links';
 import { formatTime } from '../../utils/format';
 import { Toast } from '../../utils/toast';
+import { writeToClipboard } from '../../utils/clipboard';
 import './index.css';
 
 export interface InviteModalProps {
@@ -19,13 +20,10 @@ export interface InviteModalProps {
 
 const DAY = 86400;
 
-async function copy(text: string, okMsg: string) {
-  try {
-    await navigator.clipboard?.writeText(text);
-    Toast.success(okMsg);
-  } catch {
-    Toast.error(text);
-  }
+async function copy(text: string, okMsg: string, failMsg: string) {
+  const ok = await writeToClipboard(text);
+  if (ok) Toast.success(okMsg);
+  else Toast.error(failMsg);
 }
 
 /**
@@ -128,13 +126,30 @@ export default function InviteModal({ visible, spaceId, onClose }: InviteModalPr
                     <span className="drive-invite__expiry">
                       {inv.expires_at ? `${t('drive.share.expiresAt')} ${formatTime(inv.expires_at)}` : ''}
                     </span>
+                    {/* Show the invite URL inline so a copy-to-clipboard
+                        failure (LAN HTTP + browser blocks both APIs) leaves
+                        the user something to select and copy by hand.
+                        Previously the "copyFailed" toast pointed them at a
+                        link the modal never rendered. */}
+                    <Input
+                      readonly
+                      size="small"
+                      value={buildInviteLink(inv.token)}
+                      className="drive-invite__link"
+                      // Semi's Input onClick is a single-arg MouseEventHandler
+                      // (bot review P2-4: passing `(_, e) => e?.currentTarget?
+                      // .select()` was silently a no-op because e was undefined).
+                      onClick={(e) => (e.currentTarget as HTMLInputElement).select()}
+                    />
                     <Button
                       theme="borderless"
                       type="tertiary"
                       size="small"
                       icon={<Copy size={16} />}
                       aria-label={t('drive.invite.copyLink')}
-                      onClick={() => copy(buildInviteLink(inv.token), t('drive.invite.copied'))}
+                      onClick={() =>
+                        copy(buildInviteLink(inv.token), t('drive.invite.copied'), t('drive.invite.copyFailed'))
+                      }
                     />
                     <Button
                       theme="borderless"

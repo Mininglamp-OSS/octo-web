@@ -71,6 +71,7 @@ import { useFileList } from '../../hooks/useFileList';
 import { useDriveOps } from '../../hooks/useDriveOps';
 import { useUpload } from '../../hooks/useUpload';
 import { useMembers } from '../../hooks/useMembers';
+import * as useDropzoneMod from '../../hooks/useDropzone';
 import DriveContent from '../DriveContent';
 import type { Space } from '../../bridge/types';
 
@@ -124,7 +125,20 @@ function stubMembers(caps: Caps = {}) {
 
 beforeEach(() => {
   vi.mocked(useMembers).mockReset();
-  vi.mocked(useFileList).mockReturnValue({ entries: [], loading: false, error: null, truncatedTotal: null, reload: vi.fn() });
+  vi.mocked(useFileList).mockReturnValue({
+    entries: [],
+    loading: false,
+    loadingMore: false,
+    error: null,
+    total: null,
+    hasMore: false,
+    reload: vi.fn(),
+    loadMore: vi.fn(),
+    loadMoreError: null,
+    retryLoadMore: vi.fn(),
+    filter: 'all',
+    setFilter: vi.fn(),
+  });
   vi.mocked(useDriveOps).mockReturnValue({
     busy: false,
     createFolder: vi.fn(),
@@ -242,6 +256,22 @@ describe('DriveContent — open doc carries the doc\'s real space (Round-12)', (
 
   it('opens /d/:docId?sp=<doc_space_id> when the doc carries its real space', async () => {
     stubMembers({ canDownload: true });
+    // FileList only renders when entries is non-empty (empty → EmptyState),
+    // so seed one entry to give the FileList ref something to capture.
+    vi.mocked(useFileList).mockReturnValue({
+      entries: [{ id: 999 } as unknown as never],
+      loading: false,
+      loadingMore: false,
+      error: null,
+      total: 1,
+      hasMore: false,
+      reload: vi.fn(),
+      loadMore: vi.fn(),
+      loadMoreError: null,
+      retryLoadMore: vi.fn(),
+      filter: 'all',
+      setFilter: vi.fn(),
+    });
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     render(<DriveContent vm={vmWith(space('mountSpace', 'shared'))} />);
     await waitFor(() => expect(fileListRef.current).not.toBeNull());
@@ -258,6 +288,21 @@ describe('DriveContent — open doc carries the doc\'s real space (Round-12)', (
 
   it('omits sp and never falls back to the drive mount space when doc_space_id is absent', async () => {
     stubMembers({ canDownload: true });
+    // See note above — seed one entry so FileList (not EmptyState) renders.
+    vi.mocked(useFileList).mockReturnValue({
+      entries: [{ id: 999 } as unknown as never],
+      loading: false,
+      loadingMore: false,
+      error: null,
+      total: 1,
+      hasMore: false,
+      reload: vi.fn(),
+      loadMore: vi.fn(),
+      loadMoreError: null,
+      retryLoadMore: vi.fn(),
+      filter: 'all',
+      setFilter: vi.fn(),
+    });
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     render(<DriveContent vm={vmWith(space('mountSpace', 'shared'))} />);
     await waitFor(() => expect(fileListRef.current).not.toBeNull());
@@ -269,5 +314,44 @@ describe('DriveContent — open doc carries the doc\'s real space (Round-12)', (
     expect(url).not.toContain('sp=');
     expect(url).not.toContain('mountSpace');
     openSpy.mockRestore();
+  });
+
+  it('passes disabled=false to useDropzone when the user canUpload (personal space)', () => {
+    // Bot review flagged: `disabled: !canUploadRef.current` left the
+    // dropzone permanently disabled because canUploadRef was seeded false
+    // and the effect that updated it fired AFTER useDropzone snapshotted
+    // its initial disabledRef. Fix hoists canUpload above useDropzone and
+    // passes the real boolean. This test asserts the hook is invoked with
+    // disabled=false on a canUpload user's first render.
+    stubMembers({});
+    const useDropzoneSpy = vi.spyOn(useDropzoneMod, 'useDropzone');
+    render(<DriveContent vm={vmWith(space('sp-personal', 'personal'))} />);
+    expect(useDropzoneSpy).toHaveBeenCalled();
+    // Last invocation (React 18 double-invoke friendly).
+    const lastCall = useDropzoneSpy.mock.calls[useDropzoneSpy.mock.calls.length - 1]!;
+    const opts = lastCall[0] as { disabled?: boolean; onDrop: (f: FileList) => void };
+    expect(opts.disabled).toBe(false);
+
+    // And the onDrop callback, when it does fire, must route to addFiles.
+    // Array.at(-1) needs es2020; this tsconfig targets es2019. Use the
+    // length-index idiom that works everywhere.
+    const results = vi.mocked(useUpload).mock.results;
+    const addFiles = results[results.length - 1]?.value.addFiles;
+    expect(addFiles).toBeDefined();
+    const file = new File(['x'], 'x.txt', { type: 'text/plain' });
+    const fakeList = { length: 1, 0: file, item: () => file } as unknown as FileList;
+    opts.onDrop(fakeList);
+    expect(addFiles).toHaveBeenCalledWith(fakeList, 'sp-personal', 0);
+    useDropzoneSpy.mockRestore();
+  });
+
+  it('passes disabled=true to useDropzone when the user lacks canUpload (preview_only shared)', () => {
+    stubMembers({ canDownload: true }); // no canUpload
+    const useDropzoneSpy = vi.spyOn(useDropzoneMod, 'useDropzone');
+    render(<DriveContent vm={vmWith(space('sp-shared', 'shared'))} />);
+    const lastCall = useDropzoneSpy.mock.calls[useDropzoneSpy.mock.calls.length - 1]!;
+    const opts = lastCall[0] as { disabled?: boolean };
+    expect(opts.disabled).toBe(true);
+    useDropzoneSpy.mockRestore();
   });
 });

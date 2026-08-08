@@ -3,6 +3,7 @@ import { t } from '@octo/base';
 import * as api from '../api/driveApi';
 import { DriveApiError } from '../api/driveApi';
 import { Toast } from '../utils/toast';
+import { validateUploads, MAX_UPLOAD_SIZE } from '../utils/uploadValidation';
 
 export type UploadStatus = 'preparing' | 'uploading' | 'confirming' | 'done' | 'error';
 
@@ -99,9 +100,26 @@ interface RunCtl {
 export function useUpload(onUploaded: () => void): UseUpload {
   const [items, setItems] = useState<UploadItem[]>([]);
   const jobs = useRef<Map<string, Job>>(new Map());
+  // Bounded-concurrency queue. Drag-drop lets a user land 100 files in one
+  // gesture; without a cap that's 100 simultaneous presign+PUT+confirm
+  // chains + 100 reload() calls when they settle. MAX_CONCURRENT matches
+  // the batch-op runBatch default (also 4) so delete/move/download and
+  // upload all behave alike; queue holds ids waiting for a slot.
+  const uploadQueue = useRef<string[]>([]);
+  const uploadActiveCount = useRef(0);
+  const MAX_CONCURRENT_UPLOADS = 4;
   // Live run-control records, keyed by item id (see RunCtl). Presence means a
   // run is still in flight; a settled/errored run removes its own entry.
   const runs = useRef<Map<string, RunCtl>>(new Map());
+  // Ids currently in retryRun's cancel-await window. Blocks a second
+  // rapid retry from starting a competing new run before the first's
+  // cleanup resolves — critical for the cancel-409 race (bot review
+  // lml2468 round-6): if cleanup returns 409 (old id already confirmed),
+  // the first retry deletes the row while a concurrent second retry has
+  // already prepared+PUT+confirmed a REPLACEMENT id, silently doubling
+  // the file on the server. This ref makes the second retry a no-op
+  // until cleanup settles.
+  const retriesInFlight = useRef<Set<string>>(new Set());
   // Pending auto-dismiss timers, keyed by item id, so we can cancel them on
   // manual dismiss and on unmount (avoids setState-on-unmounted + double free).
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -330,18 +348,83 @@ export function useUpload(onUploaded: () => void): UseUpload {
     [patch, scheduleAutoDismiss, bestEffortCancel, refreshOnce],
   );
 
+  // Schedule an upload id: run immediately if under the concurrency cap,
+  // otherwise queue it. On completion, drain the queue.
+  //
+  // Two dedup checks, each guarding a distinct scenario:
+  //
+  //   1. `runs.current.has(id)` — a run is already in flight for this
+  //      id. Concurrent double-start protection. runItem also has this
+  //      check as a final safety net (line ~274), but stopping here
+  //      avoids an unnecessary microtask.
+  //
+  //   2. `uploadQueue.current.includes(id)` — the id is already queued
+  //      but not yet started. Guards the prepare-failure retry path:
+  //      when the original run failed at prepareUpload, retryRun takes
+  //      the `stalePending === undefined` branch (useUpload.ts:449),
+  //      does NOT await anything, and reaches scheduleUpload in the
+  //      SAME tick. retryRun's retriesInFlight guard clears in the
+  //      finally of that same tick — so a second synchronous Retry
+  //      click on a prepare-failed row hits retriesInFlight after it
+  //      was cleared and reaches scheduleUpload with the id already
+  //      queued from the first click. Without this check the id sits
+  //      in uploadQueue twice, and sequential draining (finally #1
+  //      deletes runs[id], THEN finally #1's shift() pulls the second
+  //      copy and start()s it) uploads the same file twice.
+  //
+  // Verified by bot reviews Jerry-Xin/yujiawei/lml2468 rounds 5 & 6.
+  const scheduleUpload = useCallback(
+    (id: string) => {
+      if (uploadQueue.current.includes(id)) return;
+      if (runs.current.has(id)) return;
+      const start = (nextId: string) => {
+        uploadActiveCount.current += 1;
+        // Fire the upload — runItem is async but we intentionally don't
+        // await it here; the .finally hook drives the queue forward.
+        void runItem(nextId).finally(() => {
+          uploadActiveCount.current = Math.max(0, uploadActiveCount.current - 1);
+          const next = uploadQueue.current.shift();
+          if (next !== undefined) start(next);
+        });
+      };
+      if (uploadActiveCount.current < MAX_CONCURRENT_UPLOADS) {
+        start(id);
+      } else {
+        uploadQueue.current.push(id);
+      }
+    },
+    [runItem],
+  );
+
   const addFiles = useCallback(
     (files: FileList | File[], spaceId: string, parentId: number) => {
-      const created = Array.from(files).map((file) => {
+      // Pre-flight: match the server's hard rules (empty size, MaxFileSize)
+      // so obviously-doomed uploads never leave the browser. Surface every
+      // rejection as its own toast so users don't have to guess which file
+      // was the problem in a mixed drop.
+      const { accepted, rejected } = validateUploads(files);
+      for (const r of rejected) {
+        if (r.reason === 'empty') {
+          Toast.error(t('drive.upload.rejectEmpty', { values: { name: r.file.name } }));
+        } else if (r.reason === 'tooLarge') {
+          Toast.error(
+            t('drive.upload.rejectTooLarge', {
+              values: { name: r.file.name, maxMB: String(MAX_UPLOAD_SIZE / 1024 / 1024) },
+            }),
+          );
+        }
+      }
+      if (accepted.length === 0) return;
+
+      const created = accepted.map((file) => {
         const id = nextId();
         jobs.current.set(id, { file, spaceId, parentId });
         return { id, name: file.name, size: file.size, status: 'preparing' as const, progress: 0 };
       });
-      if (!created.length) return;
       setItems((list) => [...list, ...created]);
-      created.forEach((it) => void runItem(it.id));
+      created.forEach((it) => scheduleUpload(it.id));
     },
-    [runItem],
+    [scheduleUpload],
   );
 
   // Restart a failed item. Before the fresh prepare, best-effort reclaim the
@@ -356,35 +439,53 @@ export function useUpload(onUploaded: () => void): UseUpload {
     async (id: string) => {
       // A run is already in flight for this id — don't start a competing one.
       if (runs.current.has(id)) return;
+      // A retry is already awaiting cleanup for this id — don't start a
+      // competing one. Bot review lml2468 round-6 caught: two synchronous
+      // retries with the first's cleanup returning 409 confirms the
+      // replacement id (99) via the second retry BEFORE the first retry
+      // observes the 409 and deletes the row. Net effect: two confirmed
+      // files on the server, one row on screen. Gating on this Set means
+      // the second retry no-ops until cleanup settles, at which point the
+      // first retry has already either continued to schedule or bailed
+      // (confirmWon or unmount).
+      if (retriesInFlight.current.has(id)) return;
       const job = jobs.current.get(id);
       if (!job) return;
-      // Take the stale id out and clear it BEFORE awaiting, so an interleaving
-      // unmount cleanup won't also try to cancel it. Cancel is idempotent, but
-      // one request is enough — this keeps a given stale id cancelled at most
-      // once across the retry-await + unmount paths.
-      const stalePending = job.pendingFileId;
-      job.pendingFileId = undefined;
-      if (stalePending !== undefined) {
-        // Reflect the cleanup immediately: hide the error/retry affordance.
-        patch(id, { status: 'preparing', progress: 0, error: undefined });
-        let confirmWon = false;
-        await bestEffortCancel(stalePending, () => {
-          confirmWon = true;
-        });
-        // The await yielded: the component may have unmounted or the row may
-        // have been dismissed. Bail before any new prepare/PUT/confirm or
-        // setState so nothing runs against a dead component / removed item.
-        if (!mounted.current || !jobs.current.has(id)) return;
-        if (confirmWon) {
-          jobs.current.delete(id);
-          setItems((list) => list.filter((it) => it.id !== id));
-          onUploadedRef.current();
-          return;
+      retriesInFlight.current.add(id);
+      try {
+        // Take the stale id out and clear it BEFORE awaiting, so an interleaving
+        // unmount cleanup won't also try to cancel it. Cancel is idempotent, but
+        // one request is enough — this keeps a given stale id cancelled at most
+        // once across the retry-await + unmount paths.
+        const stalePending = job.pendingFileId;
+        job.pendingFileId = undefined;
+        if (stalePending !== undefined) {
+          // Reflect the cleanup immediately: hide the error/retry affordance.
+          patch(id, { status: 'preparing', progress: 0, error: undefined });
+          let confirmWon = false;
+          await bestEffortCancel(stalePending, () => {
+            confirmWon = true;
+          });
+          // The await yielded: the component may have unmounted or the row may
+          // have been dismissed. Bail before any new prepare/PUT/confirm or
+          // setState so nothing runs against a dead component / removed item.
+          if (!mounted.current || !jobs.current.has(id)) return;
+          if (confirmWon) {
+            jobs.current.delete(id);
+            setItems((list) => list.filter((it) => it.id !== id));
+            onUploadedRef.current();
+            return;
+          }
         }
+        // Route the retry through the same bounded-concurrency queue as
+        // addFiles so a stuck failure + rapid retry-all doesn't blow the
+        // concurrency cap.
+        scheduleUpload(id);
+      } finally {
+        retriesInFlight.current.delete(id);
       }
-      void runItem(id);
     },
-    [bestEffortCancel, patch, runItem],
+    [bestEffortCancel, patch, scheduleUpload],
   );
 
   const retry = useCallback((id: string) => void retryRun(id), [retryRun]);
