@@ -159,6 +159,94 @@ describe('absolutizeDocAssetUrls', () => {
   })
 })
 
+describe('absolutizeDocAssetUrls — in-page fragment hrefs (srcdoc same-document identity)', () => {
+  // srcDoc renders at about:srcdoc while the injected <base> is an http URL, so a bare `#frag`
+  // resolves cross-document and the browser replaces the whole frame. Re-spelling it as
+  // about:srcdoc#frag restores same-document identity. Verified in Chromium 141 + Firefox 153.
+  const DOC = 'https://od.test/d/slug/v/3'
+
+  it('rewrites a bare #fragment href to about:srcdoc#fragment', () => {
+    const out = absolutizeDocAssetUrls('<html><body><a href="#intro">go</a></body></html>', DOC)
+    expect(out).toContain('href="about:srcdoc#intro"')
+    expect(out).not.toContain('href="#intro"')
+  })
+
+  it('rewrites an empty #fragment (scroll-to-top link)', () => {
+    const out = absolutizeDocAssetUrls('<html><body><a href="#">top</a></body></html>', DOC)
+    expect(out).toContain('href="about:srcdoc#"')
+  })
+
+  it('rewrites <area href> image-map fragments too', () => {
+    const out = absolutizeDocAssetUrls(
+      '<html><body><map name="m"><area shape="rect" coords="0,0,9,9" href="#intro"></map></body></html>',
+      DOC
+    )
+    expect(out).toContain('href="about:srcdoc#intro"')
+  })
+
+  it('preserves percent-encoding in the fragment verbatim', () => {
+    const out = absolutizeDocAssetUrls('<html><body><a href="#%E4%B8%AD%E6%96%87">cn</a></body></html>', DOC)
+    expect(out).toContain('href="about:srcdoc#%E4%B8%AD%E6%96%87"')
+  })
+
+  it('rewrites a fully-qualified self-link with a fragment (same document)', () => {
+    const out = absolutizeDocAssetUrls(`<html><body><a href="${DOC}#intro">go</a></body></html>`, DOC)
+    expect(out).toContain('href="about:srcdoc#intro"')
+  })
+
+  it('leaves a fully-qualified link to a DIFFERENT doc alone', () => {
+    const out = absolutizeDocAssetUrls(
+      '<html><body><a href="https://od.test/d/other/v/1#intro">go</a></body></html>',
+      DOC
+    )
+    expect(out).toContain('href="https://od.test/d/other/v/1#intro"')
+    expect(out).not.toContain('about:srcdoc')
+  })
+
+  it('leaves an external link with no fragment alone', () => {
+    const out = absolutizeDocAssetUrls('<html><body><a href="https://example.com/">x</a></body></html>', DOC)
+    expect(out).toContain('href="https://example.com/"')
+    expect(out).not.toContain('about:srcdoc')
+  })
+
+  it('leaves relative hrefs alone (they resolve against the injected <base>, not the doc URL)', () => {
+    const out = absolutizeDocAssetUrls('<html><body><a href="chapter.html#intro">x</a></body></html>', DOC)
+    expect(out).toContain('href="chapter.html#intro"')
+    expect(out).not.toContain('about:srcdoc')
+  })
+
+  it('skips a fragment link that carries its own target (author wants a new context)', () => {
+    const out = absolutizeDocAssetUrls(
+      '<html><body><a target="_blank" href="#intro">x</a></body></html>',
+      DOC
+    )
+    expect(out).toContain('href="#intro"')
+    expect(out).not.toContain('about:srcdoc')
+  })
+
+  it('skips ALL fragment links when the document declares <base target> (inherited target)', () => {
+    // Browser-verified: under <base target="_blank"> the rewritten href does not scroll in place,
+    // so rewriting would swallow the author's intent instead of fixing navigation.
+    const out = absolutizeDocAssetUrls(
+      '<html><head><base target="_blank"></head><body><a href="#intro">x</a></body></html>',
+      DOC
+    )
+    expect(out).toContain('href="#intro"')
+    expect(out).not.toContain('about:srcdoc#')
+  })
+
+  it('does not disturb asset rewriting or control neutralization in the same pass', () => {
+    const out = absolutizeDocAssetUrls(
+      '<html><head><link rel="stylesheet" href="assets/doc.css"></head><body><a href="#intro">go</a><img src="assets/a.png"><div contenteditable="true">e</div></body></html>',
+      DOC
+    )
+    expect(out).toContain('href="about:srcdoc#intro"')
+    expect(out).toContain('href="https://od.test/d/slug/v/assets/doc.css"')
+    expect(out).toContain('src="https://od.test/d/slug/v/assets/a.png"')
+    expect(out).toContain('contenteditable="false"')
+  })
+})
+
 describe('resolveHtmlDocAnchorText', () => {
   it('returns text anchors directly and null for doc-level anchors', () => {
     const doc = new DOMParser().parseFromString('<p>unused</p>', 'text/html')
