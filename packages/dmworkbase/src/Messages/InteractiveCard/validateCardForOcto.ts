@@ -15,8 +15,9 @@ import { RenderBudget } from "./guards";
  *
  * 注意分工（与整卡降级区分）：
  *   - Action.OpenUrl / selectAction 的 url 非法（javascript: 等）→ **整卡降级**（本函数 ok:false）；
- *   - Image.url / backgroundImage / iconUrl 非 https（混合内容）→ **不在此降级**，属 per-element
- *     处理（喂 SDK 前对 card 树做 URL 消毒，见 S4），本函数视其结构合法。
+ *   - Image.url / backgroundImage / iconUrl 不在图片面白名单（非 https 且非受限内联 SVG
+ *     data URL）→ **不在此降级**，属 per-element 处理（喂 SDK 前对 card 树做 URL 消毒，见 S4），
+ *     本函数视其结构合法。
  */
 
 export interface ValidateOptions {

@@ -1,9 +1,14 @@
-// sanitizeCardTree：图片类 URL https-only 消毒（喂 SDK 前）。不可变、不动 Action.OpenUrl.url。
+// sanitizeCardTree：图片面 URL 白名单消毒（喂 SDK 前）。不可变、不动 Action.OpenUrl.url。
 
 import { describe, expect, it } from "vitest";
 import { sanitizeCardTree } from "../sdk/sanitizeCardTree";
 
-describe("sanitizeCardTree — 图片面 https-only", () => {
+/** 模板内联图标（受限 data URL 白名单，详见 inlineImageUrl.test.ts）。 */
+const SAFE_SVG_DATA_URL = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg"><path d="m6 9l6 6l6-6"/></svg>'
+)}`;
+
+describe("sanitizeCardTree — 图片面白名单（https + 内联 SVG）", () => {
   it("Image.url 非 https → 剥除；https → 保留", () => {
     const httpImg = sanitizeCardTree({
       type: "AdaptiveCard",
@@ -19,19 +24,30 @@ describe("sanitizeCardTree — 图片面 https-only", () => {
     expect(httpsImg.body[0].url).toBe("https://cdn/a.png");
   });
 
-  it("data:/javascript: Image.url → 剥除（无 scheme 逃逸）", () => {
+  it("受限 SVG data URL 保留；不合白名单的 data:/javascript: → 剥除", () => {
     const out = sanitizeCardTree({
       type: "AdaptiveCard",
       body: [
-        { type: "Image", url: "data:image/svg+xml,<svg/>" },
+        { type: "Image", url: SAFE_SVG_DATA_URL },
+        { type: "Image", url: "data:text/html,%3Ch1%3Ex%3C%2Fh1%3E" },
+        { type: "Image", url: "data:image/png;base64,iVBORw0KGgo=" },
+        {
+          type: "Image",
+          url: `data:image/svg+xml,${encodeURIComponent(
+            '<svg onload="alert(1)"/>'
+          )}`,
+        },
         { type: "Image", url: "javascript:alert(1)" },
       ],
     }) as any;
-    expect(out.body[0].url).toBeUndefined();
-    expect(out.body[1].url).toBeUndefined();
+    expect(out.body[0].url).toBe(SAFE_SVG_DATA_URL); // 内联图标照渲
+    expect(out.body[1].url).toBeUndefined(); // text/html
+    expect(out.body[2].url).toBeUndefined(); // 位图 data URL（服务端未开）
+    expect(out.body[3].url).toBeUndefined(); // 带事件属性的 SVG
+    expect(out.body[4].url).toBeUndefined(); // javascript:
   });
 
-  it("backgroundImage 字符串与 {url} 两形 → 非 https 剥除、https 保留", () => {
+  it("backgroundImage 字符串与 {url} 两形 → 不合白名单剥除、合规保留", () => {
     const out = sanitizeCardTree({
       type: "AdaptiveCard",
       backgroundImage: "http://evil/bg.png",
@@ -42,14 +58,23 @@ describe("sanitizeCardTree — 图片面 https-only", () => {
           backgroundImage: { url: "http://evil/bg2.png", fillMode: "cover" },
           columns: [],
         },
+        {
+          type: "Container",
+          items: [],
+          backgroundImage: { url: SAFE_SVG_DATA_URL, fillMode: "repeat" },
+        },
       ],
     }) as any;
     expect(out.backgroundImage).toBeUndefined(); // 根 http 背景剥除
     expect(out.body[0].backgroundImage).toBe("https://cdn/bg.png"); // https 字符串保留
     expect(out.body[1].backgroundImage).toBeUndefined(); // {url} http 剥除
+    expect(out.body[2].backgroundImage).toEqual({
+      url: SAFE_SVG_DATA_URL,
+      fillMode: "repeat",
+    }); // {url} 内联 SVG 保留
   });
 
-  it("Action.*.iconUrl 非 https → 剥除；但 Action.OpenUrl.url（导航面）不动", () => {
+  it("Action.*.iconUrl 非白名单 → 剥除；但 Action.OpenUrl.url（导航面）不动", () => {
     const out = sanitizeCardTree({
       type: "AdaptiveCard",
       body: [{ type: "TextBlock", text: "x" }],
@@ -65,11 +90,17 @@ describe("sanitizeCardTree — 图片面 https-only", () => {
           id: "ok",
           iconUrl: "https://cdn/icon.png", // https 图标保留
         },
+        {
+          type: "Action.Submit",
+          id: "inline",
+          iconUrl: SAFE_SVG_DATA_URL, // 内联 SVG 图标保留
+        },
       ],
     }) as any;
     expect(out.actions[0].url).toBe("http://example.com/page"); // 导航 url 不动
     expect(out.actions[0].iconUrl).toBeUndefined(); // icon http 剥除
     expect(out.actions[1].iconUrl).toBe("https://cdn/icon.png");
+    expect(out.actions[2].iconUrl).toBe(SAFE_SVG_DATA_URL);
   });
 
   it("嵌套（Container>Image）也被消毒", () => {
@@ -136,7 +167,7 @@ describe("sanitizeCardTree — 剥除 fallback / requires（SDK 渲染面收敛�
     expect(out.body[0].items[0].fallback).toBeUndefined();
   });
 
-  it("fallback:\"drop\" 字符串形也被剥除", () => {
+  it('fallback:"drop" 字符串形也被剥除', () => {
     const out = sanitizeCardTree({
       type: "AdaptiveCard",
       body: [{ type: "Image", url: "https://cdn/a.png", fallback: "drop" }],
