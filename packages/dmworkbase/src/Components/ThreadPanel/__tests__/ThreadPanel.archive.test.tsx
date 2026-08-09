@@ -34,6 +34,7 @@ vi.mock("../../../App", () => ({
         threadGet: hoisted.threadGet,
         threadList: hoisted.threadList,
         channelFiles: vi.fn(),
+        subscriber: vi.fn(() => Promise.resolve(undefined)),
       },
     },
     loginInfo: { uid: "owner-uid" },
@@ -81,6 +82,10 @@ vi.mock("wukongimjssdk", () => {
         fetchChannelInfo: hoisted.fetchChannelInfo,
         setChannleInfoForCache: hoisted.setChannleInfoForCache,
         notifyListeners: hoisted.notifyListeners,
+        addSubscriberChangeListener: vi.fn(),
+        removeSubscriberChangeListener: vi.fn(),
+        notifySubscribeChangeListeners: vi.fn(),
+        subscribeCacheMap: new Map(),
       },
     }),
   };

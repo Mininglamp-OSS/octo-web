@@ -363,6 +363,11 @@ export class ChannelSettingVM extends ProviderListener {
     reloadSubscribers() {
         if(this.channel.channelType !== ChannelTypePerson) {
             this.subscribers = getCurrentImChannelSubscribers(this.channel)
+            // 先清空再重建：当前用户若已被移出刷新后的名册（被踢/名册为空），旧的
+            // subscriberOfMe 不能残留，否则 canRenameGroup/isManagerOrCreatorOfMe 会
+            // 对已离群用户继续返回 true（stale allow，与 fail-closed 相悖）。
+            this.subscriberOfMe = undefined
+            this.routeData.subscriberOfMe = undefined
             if(this.subscribers && this.subscribers.length>0) {
                 for (const subscriber of this.subscribers) {
                     subscriber.channel = this.channel

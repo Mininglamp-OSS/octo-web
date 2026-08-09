@@ -38,13 +38,18 @@ vi.mock("../../App", () => ({
 }));
 
 import { canManageThread, canRenameGroup, canRenameThread } from "../threadPermission";
-import { GroupRole } from "../Const";
+import { GroupRole, SubscriberStatus } from "../Const";
 
 const GROUP_NO = "g1";
 const GROUP_KEY = `${GROUP_NO}-2`;
 
 function setGroupMembers(
-  members: Array<{ uid: string; role?: number; orgData?: { robot?: number } }>
+  members: Array<{
+    uid: string;
+    role?: number;
+    status?: number;
+    orgData?: { robot?: number };
+  }>
 ) {
   subscribesByKey.set(GROUP_KEY, members);
 }
@@ -103,7 +108,8 @@ describe("canManageThread", () => {
 });
 
 // WS-23：群/子区改名放开给普通成员（服务端 octo-server #542）。前端 gate 从
-// manager-only / 创建者口径改为「活跃人类成员即可」，只挡龙虾（orgData.robot === 1）。
+// manager-only / 创建者口径改为「活跃人类成员即可」，只挡龙虾（orgData.robot === 1）
+// 与黑名单（status === blacklist）。
 describe("canRenameGroup (group rename gate, WS-23)", () => {
   it("allows an ordinary active member to rename the group", () => {
     expect(
@@ -120,9 +126,25 @@ describe("canRenameGroup (group rename gate, WS-23)", () => {
     ).toBe(true);
   });
 
+  it("allows a member record with no orgData or with robot: 0", () => {
+    expect(canRenameGroup({ uid: "me", orgData: {} } as any)).toBe(true);
+    expect(
+      canRenameGroup({ uid: "me", orgData: { robot: 0 } } as any)
+    ).toBe(true);
+  });
+
   it("blocks a robot (lobster) member", () => {
     expect(
       canRenameGroup({ uid: "bot", orgData: { robot: 1 } } as any)
+    ).toBe(false);
+  });
+
+  it("blocks a blacklisted member", () => {
+    expect(
+      canRenameGroup({
+        uid: "me",
+        status: SubscriberStatus.blacklist,
+      } as any)
     ).toBe(false);
   });
 
@@ -132,8 +154,9 @@ describe("canRenameGroup (group rename gate, WS-23)", () => {
   });
 });
 
-// WS-23：子区改名 gate 也放开——任何父群活跃人类成员即可，创建者天然在父群成员列表内。
-// 从父群订阅解析成员；父群缓存未热 → false（降级，安全）。
+// WS-23：子区改名 gate 也放开——任何父群活跃人类成员即可。创建者走 cache-independent
+// 快路径（thread.creator_uid），不依赖父群订阅缓存；其余成员从父群订阅解析，父群缓存
+// 未热且非创建者 → false（降级，安全）。
 describe("canRenameThread (thread rename gate, WS-23)", () => {
   beforeEach(() => {
     subscribesByKey.clear();
@@ -149,8 +172,25 @@ describe("canRenameThread (thread rename gate, WS-23)", () => {
     expect(canRenameThread(GROUP_NO)).toBe(true);
   });
 
+  it("allows the thread creator even when the parent-group cache is cold", () => {
+    // 创建者快路径与父群订阅缓存无关：缓存为空也放行（超级群父群冷缓存回归防护）
+    expect(canRenameThread(GROUP_NO, { creator_uid: "me" })).toBe(true);
+  });
+
+  it("does not treat a non-creator as creator via the shortcut", () => {
+    // 非创建者且父群缓存冷 → 落到成员判定 → false（不被快路径误放）
+    expect(canRenameThread(GROUP_NO, { creator_uid: "someone-else" })).toBe(
+      false
+    );
+  });
+
   it("blocks a robot (lobster) parent-group member", () => {
     setGroupMembers([{ uid: "me", orgData: { robot: 1 } }]);
+    expect(canRenameThread(GROUP_NO)).toBe(false);
+  });
+
+  it("blocks a blacklisted parent-group member", () => {
+    setGroupMembers([{ uid: "me", status: SubscriberStatus.blacklist }]);
     expect(canRenameThread(GROUP_NO)).toBe(false);
   });
 

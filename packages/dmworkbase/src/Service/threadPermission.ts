@@ -1,8 +1,13 @@
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
-import { GroupRole } from "./Const";
+import { GroupRole, SubscriberStatus } from "./Const";
 import { ThreadStatus } from "./Thread";
 import WKApp from "../App";
-import { getCurrentImChannelSubscribers } from "../im-runtime/currentChannelRuntime";
+import {
+  getCurrentImChannelSubscribers,
+  getCurrentImChannelSubscribersCacheRaw,
+  notifyCurrentImSubscriberChangeListeners,
+  setCurrentImChannelSubscribersCache,
+} from "../im-runtime/currentChannelRuntime";
 
 /**
  * 当前登录用户在指定群是否为群主 / 管理员 —— 子区所有权限判定的共同底座（#451 review）。
@@ -68,19 +73,27 @@ export function isParentGroupManager(groupNo: string | undefined): boolean {
 }
 
 /**
- * 群名 / 子区名改名的「明显不该改」粗过滤：登录用户在该群的成员记录若是龙虾（robot），
- * 前端直接拒绝；其余活跃成员一律放行，最终由服务端裁决。
+ * 群名 / 子区名改名的「明显不该改」粗过滤：登录用户在该群的成员记录若是龙虾（robot）
+ * 或黑名单（blacklist）成员，前端直接拒绝；其余活跃成员一律放行，最终由服务端裁决。
  *
  * 与服务端放开口径对齐（octo-server #542：仅改 name 的活跃人类成员放行，龙虾 / 外部
- * 成员仍拒）。前端不重复实现完整权限矩阵——外部 / 黑名单成员放行到弹窗后由服务端返回
- * 错误、经调用点的 Toast.error(err.msg) 呈现；这里只挡住明显非人类的龙虾。
+ * 成员仍拒）。前端不重复实现完整权限矩阵——外部成员放行到弹窗后由服务端返回错误、经
+ * 调用点的 Toast.error(err.msg) 呈现；这里只挡住明显非人类的龙虾与已被拉黑的成员，
+ * 保证名字里的「活跃成员」与实际判定一致（黑名单成员 subscriberOfMe 仍可能残留，见
+ * ChannelSetting/vm reloadSubscribers）。
  *
  * member 为空（非成员 / 订阅缓存未热）时返回 false，降级为不可改（fail-closed，安全）。
  */
 function isRenamableMember(
-  member: { orgData?: { robot?: number } } | null | undefined
+  member:
+    | { orgData?: { robot?: number }; status?: number }
+    | null
+    | undefined
 ): boolean {
   if (!member) {
+    return false;
+  }
+  if (member.status === SubscriberStatus.blacklist) {
     return false;
   }
   return member.orgData?.robot !== 1;
@@ -106,20 +119,91 @@ export function canRenameGroup(
  *
  * 服务端放开后（octo-server #542），任何父群活跃人类成员都可改子区名，前端 gate 与之
  * 对齐——不再走 {@link canManageThread}（创建者 / 群主 / 管理员）的收紧口径，而是判断
- * 登录用户是否为父群活跃成员（含创建者，创建者必然在父群成员列表内）。
+ * 登录用户是否为父群活跃成员（非龙虾 / 非黑名单）。
  *
- * 角色 / 成员必须从【父群】订阅解析：子区频道成员从未被同步，读子区缓存会让普通成员
- * 恒为 false。父群订阅未热时 getSubscribes 返回空 → false（降级，安全）。改名不像归档
- * 那样有状态门槛（Active/Archived），所以这里不做 status 过滤。
+ * 创建者快路径（cache-independent）：`thread.creator_uid` 来自 channelInfo.orgData.thread，
+ * 与父群订阅缓存无关。超级群父群的成员缓存可能从未写入 / 只有第一页（Conversation/vm
+ * 只取首页），若无此快路径，连创建者都会因不在缓存里而看不到改名入口（#283 类回归）。
+ * 群主 / 管理员 / 普通成员的冷缓存兜底由 {@link ensureRenameMemberResolved} 按需补齐。
+ *
+ * 成员必须从【父群】订阅解析：子区频道成员从未被同步，读子区缓存会让普通成员恒为 false。
+ * 父群订阅未热且非创建者时返回 false（降级，安全）。改名不像归档那样有状态门槛
+ * （Active/Archived），所以这里不做 thread status 过滤。
  */
-export function canRenameThread(groupNo: string | undefined): boolean {
+export function canRenameThread(
+  groupNo: string | undefined,
+  thread?: { creator_uid?: string } | null
+): boolean {
   if (!groupNo) {
     return false;
+  }
+  if (thread?.creator_uid && thread.creator_uid === WKApp.loginInfo.uid) {
+    return true;
   }
   const groupChannel = new Channel(groupNo, ChannelTypeGroup);
   const subscribers = getCurrentImChannelSubscribers(groupChannel);
   const me = subscribers?.find((s) => s.uid === WKApp.loginInfo.uid);
   return isRenamableMember(me);
+}
+
+const renameSelfResolveInFlight = new Set<string>();
+const renameSelfResolveAttempted = new Set<string>();
+
+/**
+ * 冷缓存兜底：{@link canRenameThread} 依赖【父群】订阅缓存判断当前用户是否活跃成员，
+ * 但超级群父群的成员缓存可能从未写入 / 只有第一页（Conversation/vm 只取首页；
+ * ChannelSetting/vm 只同步子区自身频道）。那样即便是群主 / 管理员 / 普通成员，改名入口
+ * 也会因 `me` 不在缓存里而消失。
+ *
+ * 这里在缓存缺失当前用户时按需拉取单个成员（GET groups/{id}/members/{uid}），命中则并入
+ * 父群订阅缓存并通知订阅变更监听器触发重渲染，让改名入口在解析完成后出现；未命中（确实
+ * 非成员）保持 fail-closed。best-effort：每个 (群, 用户) 仅尝试一次、并发去重、失败静默
+ * （不阻塞渲染、不打扰用户）。由渲染侧（buildThreadInfoSection / ThreadPanel）调用，保持
+ * {@link canRenameThread} 本身为纯函数。
+ */
+export function ensureRenameMemberResolved(groupNo: string | undefined): void {
+  if (!groupNo) {
+    return;
+  }
+  const uid = WKApp.loginInfo.uid;
+  if (!uid) {
+    return;
+  }
+  const key = `${groupNo}:${uid}`;
+  if (
+    renameSelfResolveAttempted.has(key) ||
+    renameSelfResolveInFlight.has(key)
+  ) {
+    return;
+  }
+  const groupChannel = new Channel(groupNo, ChannelTypeGroup);
+  const cached = getCurrentImChannelSubscribers(groupChannel);
+  if (cached?.some((s) => s.uid === uid)) {
+    return;
+  }
+  renameSelfResolveInFlight.add(key);
+  void (async () => {
+    try {
+      const member = await WKApp.dataSource.channelDataSource.subscriber(
+        groupChannel,
+        uid
+      );
+      if (!member) {
+        return;
+      }
+      const raw = getCurrentImChannelSubscribersCacheRaw(groupChannel) || [];
+      if (raw.some((s: { uid?: string }) => s.uid === uid)) {
+        return;
+      }
+      setCurrentImChannelSubscribersCache(groupChannel, [...raw, member]);
+      notifyCurrentImSubscriberChangeListeners(groupChannel);
+    } catch {
+      // best-effort：解析失败不影响 gate（保持 fail-closed），不打扰用户
+    } finally {
+      renameSelfResolveInFlight.delete(key);
+      renameSelfResolveAttempted.add(key);
+    }
+  })();
 }
 
 /**

@@ -9,7 +9,7 @@ import RouteContext from "../../Service/Context";
 import { THREAD_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import { Row, Section } from "../../Service/Section";
 import { parseThreadChannelId, ThreadStatus } from "../../Service/Thread";
-import { canRenameThread } from "../../Service/threadPermission";
+import { canRenameThread, ensureRenameMemberResolved } from "../../Service/threadPermission";
 import { isChannelDisbanded } from "../../Utils/groupDisband";
 import { updateChannelSettingThreadName } from "../../bridge/channelSetting/channelSettingActions";
 import {
@@ -38,9 +38,16 @@ export function buildThreadInfoSection(
   const thread = channelInfo?.orgData?.thread as any;
   const threadName = channelInfo?.title;
   // 服务端放开后（octo-server #542）任何父群活跃人类成员都可改子区名。
-  // canRenameThread 只判「登录用户是否父群活跃成员（非龙虾）」，不再收紧到
-  // 创建者/群主/管理员。与 ThreadPanel「更多菜单 → Edit name」同口径。
-  const canEdit = canRenameThread(threadInfo?.groupNo);
+  // canRenameThread 判「登录用户是否父群活跃成员（非龙虾/非黑名单）」，并对创建者走
+  // cache-independent 快路径；不再收紧到创建者/群主/管理员。父群解散后与 ThreadPanel
+  // 「更多菜单」isThreadMenuWritable 对齐一律隐藏（原先设置页解散后仍可改，形成一处
+  // 可见一处不可见的撕裂）。
+  const canEdit = !disbanded && canRenameThread(threadInfo?.groupNo, thread);
+  // 冷缓存兜底：超级群父群成员缓存可能从未写入/只有第一页，按需补齐当前用户记录，
+  // 解析命中后经订阅变更监听触发重渲染，让群主/管理员/普通成员的改名入口出现。
+  if (threadInfo && !disbanded) {
+    ensureRenameMemberResolved(threadInfo.groupNo);
+  }
   const statusTitle =
     thread?.status === ThreadStatus.Archived
       ? t("base.module.thread.status.archived")
@@ -63,10 +70,11 @@ export function buildThreadInfoSection(
         maxCount: THREAD_NAME_MAX_LENGTH,
         onStartEdit: () => {
           if (!threadInfo) return false;
-          // 服务端放开后（octo-server #542）任何父群活跃人类成员都可改子区名，
-          // 前端只挡龙虾/非成员（canRenameThread 粗过滤）；失败提示以服务端返回
-          // 错误为准（下方 Toast.error），不做前置 Toast 拒绝。
+          // 放开后普通成员一般可改；走到这里多为龙虾/黑名单/非成员或父群已解散。
+          // 给中性反馈，避免「可点击但无任何反应」的 dead click；服务端裁决的错误
+          // 文案仍由 onSave 的 Toast.error 呈现。
           if (!canEdit) {
+            Toast.info(t("base.module.channelSettings.renameUnavailable"));
             return false;
           }
           return true;
