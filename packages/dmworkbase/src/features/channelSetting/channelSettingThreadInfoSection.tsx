@@ -9,7 +9,6 @@ import RouteContext from "../../Service/Context";
 import { THREAD_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import { Row, Section } from "../../Service/Section";
 import { parseThreadChannelId, ThreadStatus } from "../../Service/Thread";
-import { canRenameThread, ensureRenameMemberResolved } from "../../Service/threadPermission";
 import { isChannelDisbanded } from "../../Utils/groupDisband";
 import { updateChannelSettingThreadName } from "../../bridge/channelSetting/channelSettingActions";
 import {
@@ -37,17 +36,11 @@ export function buildThreadInfoSection(
     isChannelDisbanded(new Channel(threadInfo.groupNo, ChannelTypeGroup));
   const thread = channelInfo?.orgData?.thread as any;
   const threadName = channelInfo?.title;
-  // 服务端放开后（octo-server #542）任何父群活跃人类成员都可改子区名。
-  // canRenameThread 判「登录用户是否父群活跃人类成员（非龙虾/非黑名单）」，创建者不享受
-  // 短路、同样走成员记录 + isRenamableMember；不再收紧到创建者/群主/管理员。父群解散后与
-  // ThreadPanel「更多菜单」isThreadMenuWritable 对齐一律隐藏（原先设置页解散后仍可改，
-  // 形成一处可见一处不可见的撕裂）。
-  const canEdit = !disbanded && canRenameThread(threadInfo?.groupNo);
-  // 冷缓存兜底：超级群父群成员缓存可能从未写入/只有第一页，按需补齐当前用户自己的成员记录
-  // （含创建者），解析命中后经订阅变更监听触发重渲染，让改名入口出现。
-  if (threadInfo && !disbanded) {
-    ensureRenameMemberResolved(threadInfo.groupNo);
-  }
+  // 改名走「服务端为唯一权威」（WS-23）：前端不再用父群订阅缓存前置判定谁能改子区名
+  // （客户端只持有部分 roster，超级群父群仅缓存首页，任何本地 gate 都会误判合法成员）。
+  // 唯一保留的是纯 UI 状态：父群解散后不可改，与 ThreadPanel「更多菜单」isThreadMenuWritable
+  // 对齐（两处一致）；其余交由服务端裁决，错误经下方 onSave 的 Toast.error 呈现。
+  const canEdit = !disbanded;
   const statusTitle =
     thread?.status === ThreadStatus.Archived
       ? t("base.module.thread.status.archived")
@@ -70,9 +63,8 @@ export function buildThreadInfoSection(
         maxCount: THREAD_NAME_MAX_LENGTH,
         onStartEdit: () => {
           if (!threadInfo) return false;
-          // 放开后普通成员一般可改；走到这里多为龙虾/黑名单/非成员或父群已解散。
-          // 给中性反馈，避免「可点击但无任何反应」的 dead click；服务端裁决的错误
-          // 文案仍由 onSave 的 Toast.error 呈现。
+          // 唯一的前端拦截是父群已解散（纯 UI 状态，与 ThreadPanel 一致）——给一句诚实的
+          // 「现在无法改名」，不承诺稍后重试。其余成员一律放行，交服务端裁决 + onSave 的 Toast.error。
           if (!canEdit) {
             Toast.info(t("base.module.channelSettings.renameUnavailable"));
             return false;

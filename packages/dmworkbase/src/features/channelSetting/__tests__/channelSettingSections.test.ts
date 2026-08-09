@@ -67,9 +67,6 @@ vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
 }));
 
 vi.mock("../../../Service/threadPermission", () => ({
-  canRenameGroup: vi.fn(() => true),
-  canRenameThread: vi.fn(() => true),
-  ensureRenameMemberResolved: vi.fn(),
   isParentGroupManager: vi.fn(() => true),
   shouldShowThreadArchiveAction: vi.fn(() => true),
 }));

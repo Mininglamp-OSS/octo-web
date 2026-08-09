@@ -28,8 +28,6 @@ import { Conversation } from "../Conversation";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import {
   canManageThread,
-  canRenameThread,
-  ensureRenameMemberResolved,
   isParentGroupManager,
 } from "../../Service/threadPermission";
 import ChannelWebhookPanel from "../ChannelWebhook";
@@ -77,7 +75,6 @@ import {
   fetchImChannelInfo,
   getImChannelInfo,
 } from "../../im-runtime/channelRuntime";
-import { addCurrentImSubscriberChangeListener } from "../../im-runtime/currentChannelRuntime";
 import "./index.css";
 
 /**
@@ -240,7 +237,6 @@ export default class ThreadPanel extends Component<
   /** 组件是否已卸载，撤销 Toast 渲染在全局 portal，卸载后回调需短路 */
   private isUnmounted = false;
   private _unsubscribeRemoteConfig?: () => void;
-  private _unsubscribeSubscriberChange?: () => void;
 
   constructor(props: ThreadPanelProps) {
     super(props);
@@ -304,21 +300,12 @@ export default class ThreadPanel extends Component<
         if (!this.isUnmounted) this.forceUpdate();
       }
     );
-    // 父群订阅缓存变更（含 ensureRenameMemberResolved 的按需补齐命中）后重渲染，
-    // 让改名入口在冷缓存解析完成后出现。
-    this._unsubscribeSubscriberChange = addCurrentImSubscriberChangeListener(
-      () => {
-        if (!this.isUnmounted) this.forceUpdate();
-      }
-    );
   }
 
   componentWillUnmount() {
     this.isUnmounted = true;
     this._unsubscribeRemoteConfig?.();
     this._unsubscribeRemoteConfig = undefined;
-    this._unsubscribeSubscriberChange?.();
-    this._unsubscribeSubscriberChange = undefined;
     document.removeEventListener("mousemove", this.onPanelDragMove);
     document.removeEventListener("mouseup", this.onPanelDragEnd);
     if (this.state.isDragging) {
@@ -756,8 +743,9 @@ export default class ThreadPanel extends Component<
 
   // 父群解散后「更多菜单」写入口（改名 / 归档 / 取消归档）一律只读隐藏，与创建
   // 子区按钮的 isChannelDisbanded guard 对齐。改名与归档两个 gate 共用这道
-  // ThreadPanel 本地前置。注：改名能力本身在后端解散后仍解禁、右侧面板「子区名称」
-  // 行仍可改（企业微信式低风险写）；这里只是收敛 ThreadPanel 菜单入口。
+  // ThreadPanel 本地前置。注：右侧设置页「子区名称」行现已与此对齐——父群解散后同样不可改
+  // （channelSettingThreadInfoSection 的 canEdit = !disbanded），两处一致，不再有
+  // 「一处可改一处不可改」的撕裂。
   private isThreadMenuWritable(): boolean {
     if (!this.props.groupNo) return false;
     return !isChannelDisbanded(
@@ -773,16 +761,13 @@ export default class ThreadPanel extends Component<
     return canManageThread(thread, this.props.groupNo!);
   }
 
-  // 改名 gate：WS-23 放开后与右侧设置页「子区名称」行同口径（canRenameThread）——
-  // 任何父群活跃人类成员即可改名，不再收紧到 creator/owner/manager。归档 gate 仍走
-  // canManageThread；两者在此拆开，避免出现「设置页能改、ThreadPanel 更多菜单不能改」
-  // 的 split-brain（threadPermission.ts 文档强调要避免的一处可见、一处不可见）。
+  // 改名 gate：WS-23 改名走「服务端为唯一权威」——前端不再用父群订阅缓存前置判定谁能改名
+  // （客户端只持有部分 roster，任何本地 gate 都会误判合法成员，反复触发 review 回归）。
+  // 这里只保留纯 UI 状态判定：父群未解散即显示「Edit name」入口（与右侧设置页 canEdit=!disbanded
+  // 同口径），保存时由服务端裁决、错误经 handleEditThread 的 Toast.error 呈现。归档仍走
+  // canManageThread（父群角色），两者在此拆开。
   private canRenameThreadInPanel(): boolean {
-    if (!this.isThreadMenuWritable()) return false;
-    // 冷缓存兜底：超级群父群成员缓存可能未热，按需补齐当前用户自己的成员记录（含创建者），
-    // 命中后经订阅变更监听触发本面板重渲染。创建者不享受短路，同样走成员记录 + isRenamableMember。
-    ensureRenameMemberResolved(this.props.groupNo);
-    return canRenameThread(this.props.groupNo);
+    return this.isThreadMenuWritable();
   }
 
   private handleEditThread = () => {

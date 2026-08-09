@@ -688,7 +688,7 @@
   "module.channelSettings.groupNamePlaceholder": "Group name",
   "module.channelSettings.groupNotice": "Group announcement",
   "module.channelSettings.groupNoticeOnlyManager": "Only managers can change the group announcement.",
-  "module.channelSettings.renameUnavailable": "Renaming isn't available right now. Please try again shortly.",
+  "module.channelSettings.renameUnavailable": "You can't rename this right now.",
   "module.channelSettings.ownerLeaveBlockedContent": "You are the current owner. Transfer ownership to another member before leaving this group.",
   "module.channelSettings.ownerLeaveBlockedTitle": "Transfer ownership first",
   "module.channelSettings.groupQrCard": "Group QR code card",

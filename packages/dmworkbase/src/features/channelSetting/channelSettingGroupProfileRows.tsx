@@ -10,7 +10,6 @@ import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { ChannelField } from "../../Service/DataSource/DataSource";
 import { GROUP_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import { Row } from "../../Service/Section";
-import { canRenameGroup } from "../../Service/threadPermission";
 import { updateChannelSettingField } from "../../bridge/channelSetting/channelSettingActions";
 import { t } from "../../i18n";
 import {
@@ -55,17 +54,9 @@ export function buildGroupProfileRows({
         displayValue: groupName,
         placeholder: t("base.module.channelSettings.groupNamePlaceholder"),
         maxCount: GROUP_NAME_MAX_LENGTH,
-        onStartEdit: () => {
-          // 服务端放开后（octo-server #542）任何活跃人类成员都可改群名，
-          // 前端只挡龙虾/黑名单（canRenameGroup 粗过滤），外部成员放到弹窗
-          // 后由服务端裁决、经下方 Toast.error(err.msg) 呈现。走到 false 分支多为
-          // 龙虾/黑名单/非成员——给中性反馈，避免「可点击但无任何反应」的 dead click。
-          if (!canRenameGroup(data.subscriberOfMe)) {
-            Toast.info(t("base.module.channelSettings.renameUnavailable"));
-            return false;
-          }
-          return true;
-        },
+        // 改名走「服务端为唯一权威」（WS-23）：前端不再前置判定谁能改群名——客户端只持有
+        // 部分 roster（超级群父群仅缓存首页），任何本地 gate 都会对不在缓存里的合法成员误判。
+        // 名字行对成员一律可编辑，龙虾/黑名单/外部成员由服务端拒绝并经下方 Toast.error 呈现。
         onSave: (value: string) =>
           updateChannelSettingField({
             channel,
