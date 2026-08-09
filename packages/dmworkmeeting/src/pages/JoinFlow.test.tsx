@@ -91,6 +91,28 @@ describe('JoinFlow orchestration (§7)', () => {
     await waitFor(() => expect((screen.getByLabelText(/6/i) as HTMLInputElement).disabled).toBe(false));
   });
 
+  it('finalize returning MEETING_PASSWORD_REQUIRED (SHOW_PASSWORD_CHALLENGE) returns to the challenge, not Blocked', async () => {
+    asMock(MeetingApiClient.evaluate).mockResolvedValue({ eligible: true, meetingId: 'm1', passwordRequired: false });
+    asMock(MeetingApiClient.finalize).mockRejectedValue(
+      httpErr(428, 'MEETING_PASSWORD_REQUIRED', { password_challenge_id: 'c2' }),
+    );
+    render(<JoinFlow source="number" meetingNumber="123" autoStart />);
+    fireEvent.click(await screen.findByText(T.join));
+    // Back on the challenge form (not a Blocked view).
+    expect(await screen.findByText(T.challenge)).toBeInTheDocument();
+    expect(document.querySelector('[data-code="MEETING_PASSWORD_REQUIRED"]')).toBeNull();
+  });
+
+  it('finalize MEETING_PASSWORD_REQUIRED WITHOUT a challenge id fails closed (blocked), not challenge', async () => {
+    asMock(MeetingApiClient.evaluate).mockResolvedValue({ eligible: true, meetingId: 'm1', passwordRequired: false });
+    asMock(MeetingApiClient.finalize).mockRejectedValue(httpErr(428, 'MEETING_PASSWORD_REQUIRED'));
+    render(<JoinFlow source="number" meetingNumber="123" autoStart />);
+    fireEvent.click(await screen.findByText(T.join));
+    // Fail-closed: no challenge id → blocked (INTERNAL), never a bare challenge.
+    await waitFor(() => expect(document.querySelector('[data-code="MEETING_INTERNAL"]')).not.toBeNull());
+    expect(screen.queryByText(T.challenge)).toBeNull();
+  });
+
   it('ENDED at evaluate → terminal', async () => {
     asMock(MeetingApiClient.evaluate).mockRejectedValue(httpErr(410, 'MEETING_ENDED'));
     render(<JoinFlow source="number" meetingNumber="123" autoStart />);

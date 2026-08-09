@@ -10,7 +10,7 @@ import {
   type CooldownState,
 } from '../logic/password';
 import { classifyFailure } from '../service/failClosed';
-import { MeetingErrorCode } from '../service/errors';
+import { directiveForCode, MeetingErrorCode } from '../service/errors';
 import PasswordChallenge from '../components/PasswordChallenge';
 import DevicePreview from '../components/DevicePreview';
 import Terminal, { reasonForCode, type TerminalReason } from '../components/Terminal';
@@ -237,14 +237,33 @@ export default function JoinFlow(props: JoinFlowProps) {
       dispatch({ type: 'FINALIZE_SUCCESS' });
     } catch (err) {
       const code = classifyFailure(err).code;
-      const wire = (err as { response?: { data?: { retry_after?: number } } }).response?.data;
-      if (code === MeetingErrorCode.LIVEKIT_UNAVAILABLE) {
+      const wire = (err as { response?: { data?: { retry_after?: number; password_challenge_id?: string } } }).response?.data;
+      // Branch on the directive ACTION, not the raw code, so a step-1 recheck
+      // that now requires a password (SHOW_PASSWORD_CHALLENGE) returns to the
+      // challenge instead of dead-ending in Blocked (FD-32).
+      const action = code ? directiveForCode(code).action : undefined;
+      if (action === 'RETRY_FINALIZE') {
         setRetryAfter(wire?.retry_after); // keep PreJoin + token, reuse SAME finalize key on retry
         dispatch({ type: 'FINALIZE_LIVEKIT_UNAVAILABLE' });
-      } else if (code === MeetingErrorCode.PASSWORD_PASS_EXPIRED) {
+      } else if (action === 'RESTART_CHALLENGE') {
+        // pass_token expired → restart the challenge (new logical op → new key).
         passTokenRef.current = undefined;
-        finalizeKeyRef.current = newIdempotencyKey(); // restart = new logical op → new key
+        finalizeKeyRef.current = newIdempotencyKey();
         dispatch({ type: 'FINALIZE_PASS_EXPIRED' });
+      } else if (action === 'SHOW_PASSWORD_CHALLENGE') {
+        // Meeting now requires a password at finalize. Require a fresh challenge
+        // id; clear the stale pass token; rotate the key; return to challenge.
+        const cid = wire?.password_challenge_id;
+        if (!cid) {
+          failClosedInternal();
+          return;
+        }
+        passTokenRef.current = undefined;
+        finalizeKeyRef.current = newIdempotencyKey();
+        setChallengeId(cid);
+        setCooldown(clearedCooldownState());
+        setLastInvalid(false);
+        dispatch({ type: 'FINALIZE_PASSWORD_REQUIRED' });
       } else if (code) {
         setErrorCode(code);
         dispatch({ type: 'FINALIZE_STEP1', code }); // FD-32: terminal or blocked per directive

@@ -32,6 +32,7 @@ export type MeetingUiEvent =
   | { type: 'FINALIZE_SUCCESS' }
   | { type: 'FINALIZE_LIVEKIT_UNAVAILABLE' } // stay in prejoin, retry
   | { type: 'FINALIZE_PASS_EXPIRED' } // restart challenge
+  | { type: 'FINALIZE_PASSWORD_REQUIRED' } // step-1 recheck now requires a password → challenge
   | { type: 'FINALIZE_STEP1'; code: MeetingErrorCode } // predicate changed → terminal or specific state
   | { type: 'BLOCKED'; code: MeetingErrorCode } // recoverable non-terminal error
   | { type: 'RETRY' } // leave blocked → re-evaluate
@@ -87,6 +88,8 @@ export function nextMeetingState(state: MeetingUiState, event: MeetingUiEvent): 
       return 'prejoin'; // keep PreJoin + pass_token; retry finalize
     case 'FINALIZE_PASS_EXPIRED':
       return 'challenge'; // restart challenge
+    case 'FINALIZE_PASSWORD_REQUIRED':
+      return 'challenge'; // step-1 recheck now requires a password
     case 'FINALIZE_STEP1':
       return isTerminalCode(event.code) ? 'terminal' : 'blocked';
     case 'BLOCKED':

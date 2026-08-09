@@ -56,6 +56,10 @@ describe('UI state machine (§7)', () => {
     expect(nextMeetingState('finalizing', { type: 'FINALIZE_PASS_EXPIRED' })).toBe('challenge');
   });
 
+  it('finalize step-1 recheck that now requires a password → back to challenge', () => {
+    expect(nextMeetingState('finalizing', { type: 'FINALIZE_PASSWORD_REQUIRED' })).toBe('challenge');
+  });
+
   it('finalize step-1 recheck (FD-32): terminal code → terminal, recoverable code → blocked', () => {
     expect(nextMeetingState('finalizing', { type: 'FINALIZE_STEP1', code: MeetingErrorCode.REMOVED })).toBe('terminal');
     expect(nextMeetingState('finalizing', { type: 'FINALIZE_STEP1', code: MeetingErrorCode.LOCKED })).toBe('blocked');
