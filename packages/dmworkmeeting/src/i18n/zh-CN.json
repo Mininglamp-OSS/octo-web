@@ -14,6 +14,22 @@
     "numberPlaceholder": "请输入会议号",
     "submit": "继续"
   },
+  "form": {
+    "titleLabel": "标题",
+    "startLabel": "开始时间",
+    "enablePassword": "入会需要密码",
+    "save": "保存",
+    "createNow": "立即开始",
+    "editTitle": "编辑会议",
+    "cancelMeeting": "取消会议"
+  },
+  "detail": {
+    "number": "会议号",
+    "copyNumber": "复制会议号",
+    "copyLink": "复制入会链接",
+    "copied": "已复制",
+    "edit": "编辑"
+  },
   "challenge": {
     "title": "输入会议密码",
     "inputLabel": "6 位数字密码",
@@ -36,6 +52,7 @@
     "stopShare": "停止共享",
     "reconnecting": "重新连接中…",
     "participants": "成员",
+    "mediaUnavailable": "媒体未连接",
     "role": { "host": "主持人", "cohost": "联席主持", "member": "成员" },
     "promoteCohost": "设为联席主持"
   },
@@ -47,6 +64,7 @@
     "left": "你已离开会议",
     "noShow": "无人加入，会议已结束",
     "emptyTimeout": "会议因空房已结束",
+    "authRequired": "请重新登录",
     "backHome": "返回会议列表"
   },
   "service": {

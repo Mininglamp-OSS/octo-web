@@ -39,16 +39,25 @@ import {
 } from './adapter';
 import { MeetingErrorCode, isMeetingErrorCode } from './errors';
 
-/** Error thrown for a non-2xx response. Shaped so classifyFailure /
- * extractCanonicalError read `.response.status` / `.response.data` unchanged. */
+/** Error thrown for a non-2xx response, or a 2xx whose body is not a JSON
+ * object. Shaped so classifyFailure / extractCanonicalError read
+ * `.response.status` / `.response.data` unchanged. `nonObjectBody` marks the
+ * SPA-fallback case (200 + index.html) so it fails closed as "feature not
+ * enabled" rather than being trusted (fail-open). */
 export class MeetingHttpError extends Error {
   response: { status: number; data?: WireError };
-  constructor(status: number, data?: WireError) {
-    super(data?.code ?? `HTTP ${status}`);
+  nonObjectBody?: boolean;
+  constructor(status: number, data?: WireError, nonObjectBody?: boolean) {
+    super(data?.code ?? (nonObjectBody ? 'non-object body' : `HTTP ${status}`));
     this.name = 'MeetingHttpError';
     this.response = { status, data };
+    this.nonObjectBody = nonObjectBody;
   }
 }
+
+/** Default per-request timeout, matching the shared APIClient's 20s guard so a
+ * gateway that connects but never answers cannot pin the UI on a busy screen. */
+export const MEETING_REQUEST_TIMEOUT_MS = 20_000;
 
 /**
  * Web keeps a relative apiURL ("/api/v1/") → same-origin (empty base). In
@@ -94,10 +103,19 @@ function buildQuery(params?: Record<string, unknown>): string {
   return q ? `?${q}` : '';
 }
 
+/** Compose a caller signal with a timeout signal so a hung gateway aborts. */
+function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
+  const anyOf = (AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal }).any;
+  const timeout = (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout;
+  const timeoutSignal = timeout ? timeout(ms) : undefined;
+  if (signal && timeoutSignal && anyOf) return anyOf([signal, timeoutSignal]);
+  return signal ?? timeoutSignal ?? new AbortController().signal;
+}
+
 async function request<T>(
   method: Method,
   path: string,
-  opts: { body?: unknown; params?: Record<string, unknown>; write?: WriteOpts; signal?: AbortSignal } = {},
+  opts: { body?: unknown; params?: Record<string, unknown>; write?: WriteOpts; signal?: AbortSignal; expectObject?: boolean } = {},
 ): Promise<T> {
   const base = resolveMeetingBaseURL(WKApp.apiClient?.config?.apiURL);
   const url = `${base}${MEETING_API_BASE}${path}${buildQuery(opts.params)}`;
@@ -116,7 +134,7 @@ async function request<T>(
     method,
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-    signal: opts.signal ?? opts.write?.signal,
+    signal: withTimeout(opts.signal ?? opts.write?.signal, MEETING_REQUEST_TIMEOUT_MS),
   });
 
   const raw = await resp.text();
@@ -143,10 +161,20 @@ async function request<T>(
   }
 
   // Backend may wrap responses in {code,message,data}; unwrap .data when present.
-  if (parsed && typeof parsed === 'object' && 'data' in (parsed as Record<string, unknown>)) {
-    return (parsed as Record<string, unknown>).data as T;
+  const unwrapped =
+    parsed && typeof parsed === 'object' && 'data' in (parsed as Record<string, unknown>)
+      ? (parsed as Record<string, unknown>).data
+      : parsed;
+
+  // Fail closed: a 2xx whose body is not a JSON object is almost always an SPA
+  // index.html fallback for an unmounted gateway route. Trusting it would walk
+  // the user into PreJoin on garbage (fail-open); instead treat it as
+  // "feature not enabled". Only enforced for endpoints that decode an object
+  // (void endpoints legitimately return an empty body).
+  if (opts.expectObject && (unwrapped === null || typeof unwrapped !== 'object')) {
+    throw new MeetingHttpError(resp.status, undefined, true);
   }
-  return parsed as T;
+  return unwrapped as T;
 }
 
 export const MeetingApiClient = {
@@ -157,26 +185,27 @@ export const MeetingApiClient = {
     const data = await request<unknown>('GET', MeetingEndpoint.list, {
       params: { view, page_size: opts?.pageSize, page_token: opts?.pageToken },
       signal: opts?.signal,
+      expectObject: true,
     });
     return decodeList(data as never);
   },
 
   async getMeeting(id: string, signal?: AbortSignal): Promise<Meeting> {
-    return decodeMeeting((await request<unknown>('GET', MeetingEndpoint.get(id), { signal })) as never);
+    return decodeMeeting((await request<unknown>('GET', MeetingEndpoint.get(id), { signal, expectObject: true })) as never);
   },
 
   async quickCreate(req: QuickCreateRequest, opts: WriteOpts): Promise<Meeting> {
-    const data = await request<unknown>('POST', MeetingEndpoint.quickCreate, { body: toSnakeDeep(req), write: opts });
+    const data = await request<unknown>('POST', MeetingEndpoint.quickCreate, { body: toSnakeDeep(req), write: opts, expectObject: true });
     return decodeMeeting(data as never);
   },
 
   async scheduleCreate(req: ScheduleCreateRequest, opts?: WriteOpts): Promise<Meeting> {
-    const data = await request<unknown>('POST', MeetingEndpoint.create, { body: toSnakeDeep(req), write: opts });
+    const data = await request<unknown>('POST', MeetingEndpoint.create, { body: toSnakeDeep(req), write: opts, expectObject: true });
     return decodeMeeting(data as never);
   },
 
   async patchMeeting(id: string, patchBody: Partial<ScheduleCreateRequest>, opts: WriteOpts): Promise<Meeting> {
-    const data = await request<unknown>('PATCH', MeetingEndpoint.patch(id), { body: toSnakeDeep(patchBody), write: opts });
+    const data = await request<unknown>('PATCH', MeetingEndpoint.patch(id), { body: toSnakeDeep(patchBody), write: opts, expectObject: true });
     return decodeMeeting(data as never);
   },
 
@@ -185,17 +214,17 @@ export const MeetingApiClient = {
   },
 
   async evaluate(req: AdmissionEvaluateRequest, signal?: AbortSignal): Promise<AdmissionEvaluateResult> {
-    const data = await request<unknown>('POST', MeetingEndpoint.evaluate, { body: encodeEvaluate(req), write: { signal } });
+    const data = await request<unknown>('POST', MeetingEndpoint.evaluate, { body: encodeEvaluate(req), write: { signal }, expectObject: true });
     return decodeEvaluate(data as never);
   },
 
   async verifyPassword(req: PasswordVerifyRequest, signal?: AbortSignal): Promise<PasswordVerifyResult> {
-    const data = await request<unknown>('POST', MeetingEndpoint.passwordVerify, { body: encodePasswordVerify(req), write: { signal } });
+    const data = await request<unknown>('POST', MeetingEndpoint.passwordVerify, { body: encodePasswordVerify(req), write: { signal }, expectObject: true });
     return decodePasswordVerify(data as never);
   },
 
   async finalize(req: AdmissionFinalizeRequest, opts?: WriteOpts): Promise<AdmissionFinalizeResult> {
-    const data = await request<unknown>('POST', MeetingEndpoint.finalize, { body: encodeFinalize(req), write: opts });
+    const data = await request<unknown>('POST', MeetingEndpoint.finalize, { body: encodeFinalize(req), write: opts, expectObject: true });
     return decodeFinalize(data as never);
   },
 

@@ -27,15 +27,22 @@ export const initialCooldownState = (): CooldownState => ({
 
 /**
  * Reduce a wrong-password result. `attemptsRemaining` and `retryAtMs` come from
- * the server; when the server reports 0 remaining (the 5th failure) we enter
- * cooldown. A pure reducer so PW-1..4 (retriable) and PW-4→cooldown are exact.
+ * the server. Fail-safe against a provisional contract: we only enter cooldown
+ * when we can actually time it out (a `retryAtMs` is present) — a cooldown with
+ * no retry time would leave the input disabled forever behind a frozen "0s"
+ * countdown. A missing `attemptsRemaining` is treated as "unknown, stay on the
+ * challenge" rather than 0. A pure reducer so PW-1..4 and the absent-field
+ * shapes are exact.
  */
 export function reduceWrongPassword(
-  server: { attemptsRemaining: number; retryAtMs?: number; cooldown?: boolean },
+  server: { attemptsRemaining?: number; retryAtMs?: number; cooldown?: boolean },
 ): CooldownState {
-  const inCooldown = server.cooldown === true || server.attemptsRemaining <= 0;
+  const remaining = typeof server.attemptsRemaining === 'number' ? Math.max(0, server.attemptsRemaining) : undefined;
+  const wantsCooldown = server.cooldown === true || (remaining !== undefined && remaining <= 0);
+  // Never wedge: cooldown requires a retry time we can count down to.
+  const inCooldown = wantsCooldown && server.retryAtMs !== undefined;
   return {
-    attemptsRemaining: Math.max(0, server.attemptsRemaining),
+    attemptsRemaining: remaining ?? MAX_PASSWORD_ATTEMPTS - 1,
     inCooldown,
     retryAtMs: inCooldown ? server.retryAtMs : undefined,
   };

@@ -108,7 +108,7 @@ export interface AdmissionFinalizeRequest {
   meetingId: string;
   source: AdmissionSource;
   passwordPassToken?: string;
-  deviceIdHash: string;
+  deviceIdHash?: string;
   version?: number; // If-Match carrier for rejoin reconcile
 }
 

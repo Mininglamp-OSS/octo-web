@@ -26,12 +26,11 @@ describe('feature flag gating (#5, §14)', () => {
     expect(__registered.menus).toHaveLength(0);
   });
 
-  it('when ON, init registers the meeting routes and menu', () => {
+  it('when ON, init registers the single /meeting route and menu', () => {
     WKApp.config = { meetingFeatureEnabled: true };
     new MeetingModule().init();
-    expect(__registered.routes).toEqual(
-      expect.arrayContaining(['/meeting', '/meeting/quick', '/meeting/schedule', '/meeting/join']),
-    );
+    // Only the menu route is registered; MeetingRoot owns sub-view routing.
+    expect(__registered.routes).toEqual(['/meeting']);
     expect(__registered.menus).toContain('meeting');
   });
 });

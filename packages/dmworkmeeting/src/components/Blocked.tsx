@@ -1,6 +1,6 @@
 import React from 'react';
 import { t } from '@octo/base';
-import { directiveForCode, MeetingErrorCode } from '../service/errors';
+import { directiveForCode, MeetingErrorCode, isMeetingErrorCode } from '../service/errors';
 
 export interface BlockedProps {
   code: MeetingErrorCode;
@@ -17,7 +17,8 @@ export interface BlockedProps {
  * bounded retry when the directive is retriable. Never renders as "ended".
  */
 export default function Blocked({ code, values, onRetry, onBackHome }: BlockedProps) {
-  const directive = directiveForCode(code);
+  // Fail-safe against a snapshot that may add codes not yet in the table.
+  const directive = directiveForCode(isMeetingErrorCode(code) ? code : MeetingErrorCode.INTERNAL);
   return (
     <div className="meeting-blocked" role="alert" aria-live="assertive" data-code={code}>
       <p>{t(directive.i18nKey, values ? { values } : undefined)}</p>

@@ -10,17 +10,18 @@ vi.mock('../service/MeetingApiClient', () => ({
 
 import MeetingHome from './MeetingHome';
 import { MeetingApiClient } from '../service/MeetingApiClient';
-import { __resetWKApp, __routeRightPushes } from '../__mocks__/dmworkBase';
+import { __resetWKApp } from '../__mocks__/dmworkBase';
 
 const asMock = (fn: unknown) => fn as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   __resetWKApp();
   vi.clearAllMocks();
+  window.history.pushState({}, '', '/meeting');
 });
 
 describe('MeetingHome (§4 join-by-list, navigation)', () => {
-  it('lists upcoming meetings and joining one pushes onto the host route stack', async () => {
+  it('lists upcoming meetings and joining one navigates to the join deep link', async () => {
     asMock(MeetingApiClient.listMeetings).mockImplementation(async (view: string) =>
       view === 'upcoming'
         ? { meetings: [{ meetingId: 'm1', title: 'Standup', status: 'scheduled', version: 1, passwordEnabled: false }] }
@@ -29,7 +30,8 @@ describe('MeetingHome (§4 join-by-list, navigation)', () => {
     render(<MeetingHome />);
     const item = await screen.findByText('Standup');
     fireEvent.click(item);
-    await waitFor(() => expect(__routeRightPushes.length).toBeGreaterThan(0));
+    await waitFor(() => expect(window.location.pathname).toBe('/meeting/join'));
+    expect(window.location.search).toContain('meeting_id=m1');
   });
 
   it('renders the fail-closed service view when the gateway route is missing (404 without code)', async () => {

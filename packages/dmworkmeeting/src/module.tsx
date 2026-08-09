@@ -1,24 +1,17 @@
 import React from 'react';
 import type { IModule } from '@octo/base';
 import { i18n, WKApp, Menus, t as translate } from '@octo/base';
-import MeetingHome from './pages/MeetingHome';
-import QuickSetup from './pages/QuickSetup';
-import SchedulePage from './pages/SchedulePage';
-import JoinEntry from './pages/JoinEntry';
-import JoinFlow from './pages/JoinFlow';
+import MeetingRoot from './pages/MeetingRoot';
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
-import { deviceIdHash, parseJoinQuery } from './state/nav';
 
 /**
  * Top-level feature flag (§14): MEETING_FEATURE_ENABLED. Fail-safe / default
  * OFF — the module registers nothing (neither menu nor routes) unless the flag
- * is explicitly true. A misconfigured or absent config therefore hides Meeting
- * entirely rather than exposing a half-wired surface.
+ * is explicitly true, so a misconfigured or absent config hides Meeting entirely.
  */
 export function isMeetingFeatureEnabled(): boolean {
-  const cfg = (WKApp as unknown as { config?: { meetingFeatureEnabled?: boolean } }).config;
-  return cfg?.meetingFeatureEnabled === true;
+  return WKApp.config?.meetingFeatureEnabled === true;
 }
 
 function MeetingMenuIcon({ active }: { active?: boolean }) {
@@ -43,19 +36,10 @@ export class MeetingModule implements IModule {
     // Fail-safe: when the flag is off, register neither routes nor menu.
     if (!isMeetingFeatureEnabled()) return;
 
-    WKApp.route.register('/meeting', () => <MeetingHome />);
-    WKApp.route.register('/meeting/quick', () => <QuickSetup />);
-    WKApp.route.register('/meeting/schedule', () => <SchedulePage />);
-    WKApp.route.register('/meeting/join', (param: { meetingNumber?: string; linkToken?: string }) => {
-      // Prefer an explicit route param; otherwise parse the URL query so a cold
-      // load / back-forward on a deep link still resolves the credential.
-      const fromQuery = parseJoinQuery(typeof window !== 'undefined' ? window.location.search : '');
-      const meetingNumber = param?.meetingNumber ?? fromQuery?.meetingNumber;
-      const linkToken = param?.linkToken ?? fromQuery?.linkToken;
-      const source = linkToken ? 'link' : 'number';
-      if (!meetingNumber && !linkToken) return <JoinEntry />;
-      return <JoinFlow source={source} meetingNumber={meetingNumber} linkToken={linkToken} deviceIdHash={deviceIdHash()} autoStart />;
-    });
+    // Single menu route. The shell renders only the menu's routePath component,
+    // so MeetingRoot owns all `/meeting/*` sub-view routing (deep links +
+    // back/forward) internally — see pages/MeetingRoot.tsx.
+    WKApp.route.register('/meeting', () => <MeetingRoot />);
 
     WKApp.menus.register(
       'meeting',

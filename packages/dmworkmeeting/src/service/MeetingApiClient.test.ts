@@ -132,4 +132,29 @@ describe('error shape', () => {
       expect((err as MeetingHttpError).response.data?.code).toBe('MEETING_VERSION_CONFLICT');
     }
   });
+
+  it('a 2xx whose body is not a JSON object (SPA index.html) fails closed (nonObjectBody)', async () => {
+    stubFetch(200, undefined); // no body
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = (async () => ({
+      ok: true,
+      status: 200,
+      text: async () => '<!doctype html><html></html>',
+    })) as unknown as typeof fetch;
+    try {
+      await MeetingApiClient.evaluate({ source: 'number', meetingNumber: '1' });
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(MeetingHttpError);
+      expect((err as MeetingHttpError).nonObjectBody).toBe(true);
+    }
+  });
+
+  it('a void endpoint tolerates an empty 2xx body', async () => {
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = (async () => ({
+      ok: true,
+      status: 200,
+      text: async () => '',
+    })) as unknown as typeof fetch;
+    await expect(MeetingApiClient.leave('m', { idempotencyKey: 'k' })).resolves.toBeUndefined();
+  });
 });

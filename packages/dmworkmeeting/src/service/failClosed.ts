@@ -52,6 +52,12 @@ export function extractCanonicalError(err: unknown): CanonicalError {
  * gateway route that is simply not mounted (404 without any `code`).
  */
 export function classifyFailure(err: unknown): FailClosedDecision {
+  // A 2xx whose body was not a JSON object (SPA index.html fallback) fails
+  // closed as a missing gateway route rather than being trusted.
+  if ((err as { nonObjectBody?: boolean })?.nonObjectBody) {
+    return { kind: 'gateway-missing' };
+  }
+
   const { code, httpStatus, wire } = extractCanonicalError(err);
 
   // Structured canonical error → route through the error table.

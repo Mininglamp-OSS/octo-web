@@ -2,13 +2,16 @@ import React, { useRef, useState } from 'react';
 import { t } from '@octo/base';
 import { MeetingApiClient, newIdempotencyKey } from '../service/MeetingApiClient';
 import { isValidPasswordFormat } from '../logic/password';
-import { openJoinFlow, deviceIdHash } from '../state/nav';
+import { classifyFailure } from '../service/failClosed';
+import { directiveForCode } from '../service/errors';
+import { openDetail } from '../state/nav';
 
 /**
  * Quick meeting setup (§4). quick-create uses ONE explicit Idempotency-Key
  * reused across retries (N3, FD-11); the key is rotated after a successful
  * create so a subsequent create is a fresh operation. The button single-flights
  * to prevent double submits. Optional 6-digit password validated locally.
+ * On success the creator lands on the meeting detail (credential surface).
  */
 export default function QuickSetup({ onCreated }: { onCreated?: (meetingId: string) => void }) {
   const [title, setTitle] = useState('');
@@ -34,10 +37,12 @@ export default function QuickSetup({ onCreated }: { onCreated?: (meetingId: stri
       );
       idempotencyKeyRef.current = newIdempotencyKey(); // rotate after a successful create
       if (onCreated) onCreated(meeting.meetingId);
-      // Creator proceeds into the admission flow for their new meeting.
-      else openJoinFlow({ source: 'list', meetingId: meeting.meetingId }, deviceIdHash());
-    } catch {
-      setError(t('meeting.error.internal'));
+      else openDetail(meeting.meetingId);
+    } catch (err) {
+      // Route through the same directive mapping as SchedulePage so RATE_LIMITED
+      // / NOT_SAME_SPACE / IDEMPOTENCY_CONFLICT read correctly, not "internal".
+      const code = classifyFailure(err).code;
+      setError(code ? t(directiveForCode(code).i18nKey) : t('meeting.error.internal'));
     } finally {
       setSubmitting(false);
     }
@@ -46,10 +51,13 @@ export default function QuickSetup({ onCreated }: { onCreated?: (meetingId: stri
   return (
     <div className="meeting-quick-setup">
       <h2>{t('meeting.home.quick')}</h2>
-      <input aria-label={t('meeting.home.title')} value={title} onChange={(e) => setTitle(e.target.value)} />
+      <label>
+        {t('meeting.form.titleLabel')}
+        <input value={title} onChange={(e) => setTitle(e.target.value)} />
+      </label>
       <label>
         <input type="checkbox" checked={passwordEnabled} onChange={(e) => setPasswordEnabled(e.target.checked)} />
-        {t('meeting.error.passwordRequired')}
+        {t('meeting.form.enablePassword')}
       </label>
       {passwordEnabled && (
         <input
@@ -61,7 +69,7 @@ export default function QuickSetup({ onCreated }: { onCreated?: (meetingId: stri
         />
       )}
       <button type="button" disabled={submitting} aria-disabled={submitting} onClick={create}>
-        {t('meeting.prejoin.join')}
+        {t('meeting.form.createNow')}
       </button>
       {error && (
         <div role="alert" aria-live="assertive">

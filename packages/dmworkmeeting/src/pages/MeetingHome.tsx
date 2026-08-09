@@ -1,65 +1,80 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { t, WKApp } from '@octo/base';
 import { MeetingApiClient } from '../service/MeetingApiClient';
 import type { Meeting } from '../service/contracts';
 import { classifyFailure } from '../service/failClosed';
 import ServiceUnavailable from '../components/ServiceUnavailable';
-import HistoryDetail from './HistoryDetail';
-import { openQuickSetup, openSchedule, openJoinEntry, openJoinFlow, deviceIdHash } from '../state/nav';
+import { openQuickSetup, openSchedule, openJoinEntry, openJoinFlow, openDetail } from '../state/nav';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
 /**
  * Meeting home: upcoming + history lists with quick / schedule / join entries
- * (§4). Server state is read-only cache; a Space change or auth change clears
- * and refetches. Fail-closed rendering for gateway-missing / service-down.
+ * (§4). Server state is read-only cache; a Space change, auth change, or tab
+ * re-activation clears and refetches. Fail-closed rendering for gateway-missing
+ * / service-down; a generic failure shows an explicit error (never a false
+ * "no meetings").
  */
 export default function MeetingHome() {
   const [upcoming, setUpcoming] = useState<Meeting[]>([]);
   const [history, setHistory] = useState<Meeting[]>([]);
   const [state, setState] = useState<LoadState>('loading');
   const [unavailable, setUnavailable] = useState<'service-unavailable' | 'gateway-missing' | null>(null);
+  // Monotonic guard so a stale-Space in-flight load cannot paint the wrong
+  // Space's meetings if it resolves after a newer load.
+  const loadSeq = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
+  const load = useRef<() => void>(() => {});
+  load.current = () => {
+    controllerRef.current?.abort();
     const controller = new AbortController();
-    const load = async () => {
-      setState('loading');
-      setUnavailable(null);
-      try {
-        const [up, hist] = await Promise.all([
-          MeetingApiClient.listMeetings('upcoming', { signal: controller.signal }),
-          MeetingApiClient.listMeetings('history', { signal: controller.signal }),
-        ]);
+    controllerRef.current = controller;
+    const seq = (loadSeq.current += 1);
+    setState('loading');
+    setUnavailable(null);
+    void Promise.all([
+      MeetingApiClient.listMeetings('upcoming', { signal: controller.signal }),
+      MeetingApiClient.listMeetings('history', { signal: controller.signal }),
+    ])
+      .then(([up, hist]) => {
+        if (seq !== loadSeq.current) return; // superseded by a newer load
         setUpcoming(up.meetings);
         setHistory(hist.meetings);
         setState('ready');
-      } catch (err) {
+      })
+      .catch((err) => {
+        if (seq !== loadSeq.current) return;
         const decision = classifyFailure(err);
         if (decision.kind === 'gateway-missing') setUnavailable('gateway-missing');
         else if (decision.kind === 'service-unavailable') setUnavailable('service-unavailable');
         setState('error');
-      }
+      });
+  };
+
+  useEffect(() => {
+    load.current();
+    const refetch = () => load.current();
+    const onMenuActivated = (menuId: unknown) => {
+      if (menuId === 'meeting') load.current();
     };
-    void load();
-    // Space / auth changes clear and refetch (§5).
-    const onSpaceChanged = () => void load();
-    WKApp.mittBus.on('space-changed', onSpaceChanged);
-    WKApp.mittBus.on('wk:auth-state-changed', onSpaceChanged);
+    WKApp.mittBus.on('space-changed', refetch);
+    WKApp.mittBus.on('wk:auth-state-changed', refetch);
+    // Left panes stay mounted (display toggled); refresh when the tab is re-activated.
+    WKApp.mittBus.on('wk:nav-menu-activated', onMenuActivated);
     return () => {
-      controller.abort();
-      WKApp.mittBus.off('space-changed', onSpaceChanged);
-      WKApp.mittBus.off('wk:auth-state-changed', onSpaceChanged);
+      controllerRef.current?.abort();
+      WKApp.mittBus.off('space-changed', refetch);
+      WKApp.mittBus.off('wk:auth-state-changed', refetch);
+      WKApp.mittBus.off('wk:nav-menu-activated', onMenuActivated);
     };
   }, []);
 
-  const joinFromList = (m: Meeting) => openJoinFlow({ source: 'list', meetingId: m.meetingId }, deviceIdHash());
-  const openHistory = (m: Meeting) => {
-    const w = WKApp as unknown as { routeRight?: { push?: (el: React.ReactElement) => void } };
-    w.routeRight?.push?.(<HistoryDetail meeting={m} />);
-  };
+  const joinFromList = (m: Meeting) => openJoinFlow({ source: 'list', meetingId: m.meetingId });
+  const openMeeting = (m: Meeting) => openDetail(m.meetingId);
 
   if (unavailable) {
-    return <ServiceUnavailable reason={unavailable} onRetry={() => window.location.reload()} />;
+    return <ServiceUnavailable reason={unavailable} onRetry={() => load.current()} />;
   }
 
   return (
@@ -77,18 +92,27 @@ export default function MeetingHome() {
         </button>
       </header>
 
+      {state === 'error' && (
+        <div className="meeting-home-error" role="alert" aria-live="assertive">
+          <p>{t('meeting.error.internal')}</p>
+          <button type="button" onClick={() => load.current()}>
+            {t('meeting.service.retry')}
+          </button>
+        </div>
+      )}
+
       <section aria-label={t('meeting.home.upcoming')}>
         <h2>{t('meeting.home.upcoming')}</h2>
         {state === 'loading' ? (
           <p role="status">…</p>
-        ) : (
+        ) : state === 'ready' ? (
           <MeetingList meetings={upcoming} onSelect={joinFromList} actionLabel={t('meeting.home.join')} />
-        )}
+        ) : null}
       </section>
 
       <section aria-label={t('meeting.home.history')}>
         <h2>{t('meeting.home.history')}</h2>
-        <MeetingList meetings={history} onSelect={openHistory} />
+        {state === 'ready' ? <MeetingList meetings={history} onSelect={openMeeting} /> : null}
       </section>
     </div>
   );

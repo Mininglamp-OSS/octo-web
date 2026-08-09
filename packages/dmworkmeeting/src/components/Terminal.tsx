@@ -9,7 +9,8 @@ export type TerminalReason =
   | 'superseded'
   | 'left'
   | 'noShow'
-  | 'emptyTimeout';
+  | 'emptyTimeout'
+  | 'authRequired';
 
 const CODE_TO_REASON: Partial<Record<MeetingErrorCode, TerminalReason>> = {
   [MeetingErrorCode.ENDED]: 'ended',

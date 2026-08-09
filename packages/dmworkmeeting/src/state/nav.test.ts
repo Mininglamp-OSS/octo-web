@@ -11,6 +11,9 @@ describe('parseJoinQuery — cold-load / back-forward deep links (#3, §4)', () 
   it('accepts the short ?number= alias', () => {
     expect(parseJoinQuery('?number=555')).toEqual({ source: 'number', meetingNumber: '555' });
   });
+  it('extracts meeting_id (source=list) for join-by-list deep links', () => {
+    expect(parseJoinQuery('?meeting_id=abc')).toEqual({ source: 'list', meetingId: 'abc' });
+  });
   it('prefers link_token over number when both present', () => {
     expect(parseJoinQuery('?link_token=t&meeting_number=1')).toEqual({ source: 'link', linkToken: 't' });
   });

@@ -44,6 +44,21 @@ describe('cooldown reducer (FD-28, PW-1..4)', () => {
     expect(MAX_PASSWORD_ATTEMPTS).toBe(5);
     expect(initialCooldownState().attemptsRemaining).toBe(4);
   });
+
+  it('never wedges: 0 remaining WITHOUT retry_at does NOT enter cooldown', () => {
+    const s = reduceWrongPassword({ attemptsRemaining: 0 });
+    expect(s.inCooldown).toBe(false);
+  });
+
+  it('absent attempts_remaining is treated as unknown (stay on challenge, no cooldown)', () => {
+    const s = reduceWrongPassword({});
+    expect(s.inCooldown).toBe(false);
+  });
+
+  it('cooldown flag WITHOUT retry_at does not wedge (cannot count down)', () => {
+    const s = reduceWrongPassword({ cooldown: true });
+    expect(s.inCooldown).toBe(false);
+  });
 });
 
 describe('cooldown clock (deterministic, 5 min)', () => {

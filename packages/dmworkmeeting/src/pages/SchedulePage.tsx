@@ -13,14 +13,32 @@ export interface SchedulePageProps {
   onCancelled?: () => void;
 }
 
+// A `datetime-local` input yields local wall-clock "YYYY-MM-DDTHH:mm". Convert
+// a stored UTC ISO string into that local form for prefill, and convert the
+// local input back to a UTC ISO instant for the wire (contract: UTC ISO-8601).
+function isoToLocalInput(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function localInputToIso(local: string): string | null {
+  if (!local) return null;
+  const d = new Date(local); // parsed in local time
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 /**
  * Schedule / edit / cancel (§4, FD-08/FD-12). Edits are optimistic-concurrency
  * guarded with If-Match=version; a MEETING_VERSION_CONFLICT surfaces a refetch
  * prompt. Password edits are disabled once the meeting is live (IMMUTABLE).
+ * Times are sent as UTC ISO-8601 (the input is local wall-clock).
  */
 export default function SchedulePage({ existing, onSaved, onCancelled }: SchedulePageProps) {
   const [title, setTitle] = useState(existing?.title ?? '');
-  const [startAt, setStartAt] = useState('');
+  const [startAt, setStartAt] = useState(isoToLocalInput(existing?.scheduledStartAt));
   const [passwordEnabled, setPasswordEnabled] = useState(Boolean(existing?.passwordEnabled));
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -31,7 +49,9 @@ export default function SchedulePage({ existing, onSaved, onCancelled }: Schedul
 
   const save = async () => {
     if (submitting) return;
-    if (!existing && !startAt) {
+    // Editing may keep the existing time; a new schedule must provide one.
+    const startIso = startAt ? localInputToIso(startAt) : existing?.scheduledStartAt ?? null;
+    if (!startIso) {
       setError(t('meeting.error.timeInvalid'));
       return;
     }
@@ -48,15 +68,16 @@ export default function SchedulePage({ existing, onSaved, onCancelled }: Schedul
           existing.meetingId,
           {
             title,
-            scheduledStartAt: startAt || existing.scheduledStartAt || '',
+            scheduledStartAt: startIso,
             passwordEnabled: passwordLocked ? undefined : passwordEnabled,
             password: passwordLocked || !passwordEnabled ? undefined : password || undefined,
           },
           { ifMatch: existing.version, idempotencyKey: idempotencyKeyRef.current },
         );
+        idempotencyKeyRef.current = newIdempotencyKey(); // rotate after a successful edit
       } else {
         meeting = await MeetingApiClient.scheduleCreate(
-          { title, scheduledStartAt: startAt, passwordEnabled, password: passwordEnabled ? password : undefined },
+          { title, scheduledStartAt: startIso, passwordEnabled, password: passwordEnabled ? password : undefined },
           { idempotencyKey: idempotencyKeyRef.current },
         );
         idempotencyKeyRef.current = newIdempotencyKey(); // rotate after a successful create
@@ -87,13 +108,13 @@ export default function SchedulePage({ existing, onSaved, onCancelled }: Schedul
 
   return (
     <div className="meeting-schedule">
-      <h2>{t('meeting.home.schedule')}</h2>
+      <h2>{existing ? t('meeting.form.editTitle') : t('meeting.home.schedule')}</h2>
       <label>
-        {t('meeting.home.title')}
+        {t('meeting.form.titleLabel')}
         <input value={title} onChange={(e) => setTitle(e.target.value)} />
       </label>
       <label>
-        {t('meeting.home.upcoming')}
+        {t('meeting.form.startLabel')}
         <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
       </label>
       <label>
@@ -104,7 +125,7 @@ export default function SchedulePage({ existing, onSaved, onCancelled }: Schedul
           aria-disabled={passwordLocked}
           onChange={(e) => setPasswordEnabled(e.target.checked)}
         />
-        {t('meeting.error.passwordRequired')}
+        {t('meeting.form.enablePassword')}
       </label>
       {passwordEnabled && !passwordLocked && (
         <input
@@ -117,11 +138,11 @@ export default function SchedulePage({ existing, onSaved, onCancelled }: Schedul
       )}
       <div className="meeting-schedule-actions">
         <button type="button" disabled={submitting} onClick={save}>
-          {t('meeting.join.submit')}
+          {t('meeting.form.save')}
         </button>
         {existing && (
           <button type="button" disabled={submitting} onClick={cancel}>
-            {t('meeting.terminal.cancelled')}
+            {t('meeting.form.cancelMeeting')}
           </button>
         )}
       </div>

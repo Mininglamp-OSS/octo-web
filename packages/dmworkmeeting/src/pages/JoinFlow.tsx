@@ -10,16 +10,17 @@ import {
   type CooldownState,
 } from '../logic/password';
 import { classifyFailure } from '../service/failClosed';
-import { directiveForCode, MeetingErrorCode } from '../service/errors';
+import { MeetingErrorCode } from '../service/errors';
 import PasswordChallenge from '../components/PasswordChallenge';
 import DevicePreview from '../components/DevicePreview';
-import Terminal, { reasonForCode } from '../components/Terminal';
+import Terminal, { reasonForCode, type TerminalReason } from '../components/Terminal';
 import Blocked from '../components/Blocked';
 import ServiceUnavailable from '../components/ServiceUnavailable';
 import RoomView from './RoomView';
 import { connectRoom, type LiveKitRoomHandle } from '../state/livekitRoom';
 import { useCooldownClock } from '../state/useCooldownClock';
-import { backToHome } from '../state/nav';
+import { emitMeetingTelemetry } from '../state/telemetry';
+import { backToHome, deviceIdHash } from '../state/nav';
 
 export interface JoinFlowProps {
   /** Deep-link inputs; only ONE credential is ever supplied (§4). */
@@ -27,7 +28,6 @@ export interface JoinFlowProps {
   meetingId?: string;
   meetingNumber?: string;
   linkToken?: string;
-  deviceIdHash: string;
   /** Begin evaluate immediately on mount (used when navigated with a credential). */
   autoStart?: boolean;
 }
@@ -38,7 +38,7 @@ export interface JoinFlowProps {
  * consumed only on successful finalize; LIVEKIT_UNAVAILABLE keeps PreJoin and
  * retries with the SAME idempotency key; step-1 recheck at finalize (FD-32) →
  * terminal or blocked; every other canonical error → blocked/serviceUnavailable
- * (never a hang, never a false "ended").
+ * (never a hang, never a silent no-op, never a false "ended").
  */
 export default function JoinFlow(props: JoinFlowProps) {
   const [state, setState] = useState<MeetingUiState>('idle');
@@ -46,6 +46,7 @@ export default function JoinFlow(props: JoinFlowProps) {
   const [challengeId, setChallengeId] = useState<string>();
   const [errorCode, setErrorCode] = useState<MeetingErrorCode>();
   const [errorValues, setErrorValues] = useState<Record<string, string | number>>();
+  const [terminalReason, setTerminalReason] = useState<TerminalReason>();
   const [serviceKind, setServiceKind] = useState<'service-unavailable' | 'gateway-missing'>();
   const [retryAfter, setRetryAfter] = useState<number>();
   const [cooldown, setCooldown] = useState<CooldownState>(initialCooldownState());
@@ -54,25 +55,35 @@ export default function JoinFlow(props: JoinFlowProps) {
   // Memory-only pass token — never persisted (§8).
   const passTokenRef = useRef<string | undefined>(undefined);
   // ONE explicit Idempotency-Key reused across finalize retries; rotated on
-  // success so a later finalize is a fresh operation (#6, N3, FD-11).
+  // success AND on a pass-token restart (both are new logical operations) (#6).
   const finalizeKeyRef = useRef<string>(newIdempotencyKey());
   // LiveKit media handle + the finalize result that seeds the room.
   const [room, setRoom] = useState<AdmissionFinalizeResult | undefined>();
+  const [mediaConnected, setMediaConnected] = useState(false);
   const roomHandleRef = useRef<LiveKitRoomHandle | null>(null);
+  // Abort in-flight requests on unmount.
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
+  const freshSignal = () => {
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    return abortRef.current.signal;
+  };
 
   const dispatch = useCallback((event: Parameters<typeof nextMeetingState>[1]) => {
     setState((prev: MeetingUiState) => nextMeetingState(prev, event));
   }, []);
 
   // Route every failure to a defined UI state — no branch may leave the flow
-  // hanging on a spinner (#4).
+  // hanging on a spinner.
   const handleFailure = useCallback(
     (err: unknown) => {
       const decision = classifyFailure(err);
       const wire = (err as { response?: { data?: Record<string, unknown> } }).response?.data;
       switch (decision.kind) {
         case 'auth':
-          // 401 auth: the client already logged out; park terminal.
+          // 401 auth: the client already logged out; park terminal with an auth message.
+          setTerminalReason('authRequired');
           dispatch({ type: 'AUTH_REQUIRED' });
           return;
         case 'gateway-missing':
@@ -98,7 +109,7 @@ export default function JoinFlow(props: JoinFlowProps) {
           return;
         }
         default:
-          // Network / unknown → recoverable internal error, retry allowed.
+          // Network / timeout / unknown → recoverable internal error, retry allowed.
           setErrorCode(MeetingErrorCode.INTERNAL);
           dispatch({ type: 'BLOCKED', code: MeetingErrorCode.INTERNAL });
       }
@@ -106,25 +117,47 @@ export default function JoinFlow(props: JoinFlowProps) {
     [dispatch],
   );
 
+  // A malformed-but-2xx evaluate (or one missing required fields) must fail
+  // closed rather than walking the user into PreJoin on garbage.
+  const failClosedInternal = useCallback(() => {
+    setErrorCode(MeetingErrorCode.INTERNAL);
+    dispatch({ type: 'BLOCKED', code: MeetingErrorCode.INTERNAL });
+  }, [dispatch]);
+
   const runEvaluate = useCallback(async () => {
     setErrorCode(undefined);
     setErrorValues(undefined);
     dispatch({ type: 'START_EVALUATE' });
     try {
-      const r = await MeetingApiClient.evaluate({
-        source: props.source,
-        meetingId: props.meetingId,
-        meetingNumber: props.meetingNumber,
-        linkToken: props.linkToken,
-        deviceIdHash: props.deviceIdHash,
-      });
+      const r = await MeetingApiClient.evaluate(
+        {
+          source: props.source,
+          meetingId: props.meetingId,
+          meetingNumber: props.meetingNumber,
+          linkToken: props.linkToken,
+          deviceIdHash: deviceIdHash(),
+        },
+        freshSignal(),
+      );
+      // Fail closed on an unusable verdict (never dispatch ELIGIBLE blindly).
+      if (r.eligible !== true) {
+        failClosedInternal();
+        return;
+      }
+      const passwordRequired = Boolean(r.passwordRequired);
+      if (passwordRequired && !r.passwordChallengeId) {
+        failClosedInternal();
+        return;
+      }
       if (r.meetingId) setMeetingId(r.meetingId);
       if (r.passwordChallengeId) setChallengeId(r.passwordChallengeId);
-      dispatch({ type: 'EVALUATE_ELIGIBLE', passwordRequired: Boolean(r.passwordRequired) });
+      emitMeetingTelemetry({ kind: 'admission_evaluate', source: props.source, outcome: 'eligible' });
+      dispatch({ type: 'EVALUATE_ELIGIBLE', passwordRequired });
     } catch (err) {
       handleFailure(err);
     }
-  }, [dispatch, handleFailure, props.deviceIdHash, props.linkToken, props.meetingId, props.meetingNumber, props.source]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, failClosedInternal, handleFailure, props.linkToken, props.meetingId, props.meetingNumber, props.source]);
 
   useEffect(() => {
     if (props.autoStart) void runEvaluate();
@@ -133,12 +166,20 @@ export default function JoinFlow(props: JoinFlowProps) {
 
   const submitPassword = useCallback(
     async (password: string) => {
-      if (!meetingId || !challengeId) return;
+      // Should not happen (challenge is only shown once these are set), but a
+      // missing id must surface an error rather than silently no-op.
+      if (!meetingId || !challengeId) {
+        failClosedInternal();
+        return;
+      }
       setSubmitting(true);
       setLastInvalid(false);
       dispatch({ type: 'SUBMIT_PASSWORD' });
       try {
-        const r = await MeetingApiClient.verifyPassword({ meetingId, passwordChallengeId: challengeId, password });
+        const r = await MeetingApiClient.verifyPassword(
+          { meetingId, passwordChallengeId: challengeId, password },
+          freshSignal(),
+        );
         passTokenRef.current = r.passwordPassToken;
         setCooldown(clearedCooldownState());
         dispatch({ type: 'PASSWORD_PASS' });
@@ -147,14 +188,15 @@ export default function JoinFlow(props: JoinFlowProps) {
         const wire = (err as { response?: { data?: { attempts_remaining?: number; retry_at?: string } } }).response?.data;
         if (code === MeetingErrorCode.PASSWORD_INVALID) {
           const next = reduceWrongPassword({
-            attemptsRemaining: wire?.attempts_remaining ?? 0,
+            attemptsRemaining: wire?.attempts_remaining,
             retryAtMs: wire?.retry_at ? Date.parse(wire.retry_at) : undefined,
           });
           setCooldown(next);
           setLastInvalid(true);
           dispatch({ type: 'PASSWORD_INVALID', enteringCooldown: next.inCooldown });
         } else if (code === MeetingErrorCode.PASSWORD_COOLDOWN) {
-          setCooldown({ attemptsRemaining: 0, inCooldown: true, retryAtMs: wire?.retry_at ? Date.parse(wire.retry_at) : undefined });
+          const retryAtMs = wire?.retry_at ? Date.parse(wire.retry_at) : undefined;
+          setCooldown({ attemptsRemaining: 0, inCooldown: true, retryAtMs });
           dispatch({ type: 'PASSWORD_INVALID', enteringCooldown: true });
         } else if (code === MeetingErrorCode.PASSWORD_FORMAT_INVALID) {
           dispatch({ type: 'PASSWORD_FORMAT_INVALID' }); // not counted
@@ -165,11 +207,14 @@ export default function JoinFlow(props: JoinFlowProps) {
         setSubmitting(false);
       }
     },
-    [challengeId, dispatch, handleFailure, meetingId],
+    [challengeId, dispatch, failClosedInternal, handleFailure, meetingId],
   );
 
   const runFinalize = useCallback(async () => {
-    if (!meetingId) return;
+    if (!meetingId) {
+      failClosedInternal();
+      return;
+    }
     dispatch({ type: 'START_FINALIZE' });
     try {
       const result = await MeetingApiClient.finalize(
@@ -177,23 +222,25 @@ export default function JoinFlow(props: JoinFlowProps) {
           meetingId,
           source: props.source,
           passwordPassToken: passTokenRef.current,
-          deviceIdHash: props.deviceIdHash,
+          deviceIdHash: deviceIdHash(),
         },
-        { idempotencyKey: finalizeKeyRef.current },
+        { idempotencyKey: finalizeKeyRef.current, signal: freshSignal() },
       );
       passTokenRef.current = undefined; // consumed exactly once on success
       finalizeKeyRef.current = newIdempotencyKey(); // rotate after success
       setRoom(result); // carries livekit_url / token / segment_id / role
+      emitMeetingTelemetry({ kind: 'finalize', outcome: 'success' });
       dispatch({ type: 'FINALIZE_SUCCESS' });
     } catch (err) {
       const code = classifyFailure(err).code;
       const wire = (err as { response?: { data?: { retry_after?: number } } }).response?.data;
       if (code === MeetingErrorCode.LIVEKIT_UNAVAILABLE) {
-        setRetryAfter(wire?.retry_after); // keep PreJoin + token, reuse same finalize key on retry
+        setRetryAfter(wire?.retry_after); // keep PreJoin + token, reuse SAME finalize key on retry
         dispatch({ type: 'FINALIZE_LIVEKIT_UNAVAILABLE' });
       } else if (code === MeetingErrorCode.PASSWORD_PASS_EXPIRED) {
         passTokenRef.current = undefined;
-        dispatch({ type: 'FINALIZE_PASS_EXPIRED' }); // restart challenge
+        finalizeKeyRef.current = newIdempotencyKey(); // restart = new logical op → new key
+        dispatch({ type: 'FINALIZE_PASS_EXPIRED' });
       } else if (code) {
         setErrorCode(code);
         dispatch({ type: 'FINALIZE_STEP1', code }); // FD-32: terminal or blocked per directive
@@ -201,7 +248,8 @@ export default function JoinFlow(props: JoinFlowProps) {
         handleFailure(err);
       }
     }
-  }, [dispatch, handleFailure, meetingId, props.deviceIdHash, props.source]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, failClosedInternal, handleFailure, meetingId, props.source]);
 
   const { remainingSeconds: cooldownSeconds } = useCooldownClock(cooldown, () => {
     setCooldown(clearedCooldownState());
@@ -209,13 +257,15 @@ export default function JoinFlow(props: JoinFlowProps) {
     dispatch({ type: 'COOLDOWN_EXPIRED' });
   });
 
-  // Connect the media room once finalize succeeds (media layer is a lazy,
-  // React-17-safe seam; connectRoom resolves null if the SDK is absent, so the
-  // room still renders). Disconnect on leave/unmount to release tracks.
+  // Connect the media room once finalize succeeds. connectRoom resolves null if
+  // the SDK is absent or a connection fails; we track the real outcome so the
+  // room UI does not present itself as connected when it is not (honest
+  // serviceAvailable — blocker #5).
   useEffect(() => {
     if (!room) return undefined;
     let handle: LiveKitRoomHandle | null = null;
     let cancelled = false;
+    setMediaConnected(false);
     void connectRoom({ url: room.livekitUrl, token: room.livekitToken }).then((h) => {
       if (cancelled) {
         void h?.disconnect();
@@ -223,6 +273,7 @@ export default function JoinFlow(props: JoinFlowProps) {
       }
       handle = h;
       roomHandleRef.current = h;
+      setMediaConnected(h !== null);
     });
     return () => {
       cancelled = true;
@@ -242,6 +293,7 @@ export default function JoinFlow(props: JoinFlowProps) {
         // Leaving is best-effort; the server reconciles via segment/leave_at.
       }
     }
+    setTerminalReason('left');
     dispatch({ type: 'LEFT' });
   }, [dispatch, meetingId]);
 
@@ -266,7 +318,7 @@ export default function JoinFlow(props: JoinFlowProps) {
     return <ServiceUnavailable reason={serviceKind ?? 'service-unavailable'} retryAfter={retryAfter} onRetry={runEvaluate} />;
   }
   if (state === 'terminal') {
-    return <Terminal reason={errorCode ? reasonForCode(errorCode) : 'ended'} onBackHome={backToHome} />;
+    return <Terminal reason={terminalReason ?? (errorCode ? reasonForCode(errorCode) : 'ended')} onBackHome={backToHome} />;
   }
   if (state === 'blocked') {
     return (
@@ -311,10 +363,14 @@ export default function JoinFlow(props: JoinFlowProps) {
     const self: Participant = { uid: selfUid, role: room.role };
     return (
       <RoomView
+        meetingId={meetingId ?? ''}
         participants={[self]}
         viewerRole={room.role}
         reconnecting={state === 'reconnecting'}
-        serviceAvailable
+        // Honest: controls stay greyed until the media handle is actually
+        // connected; a null connection surfaces the media-unavailable notice.
+        serviceAvailable={mediaConnected}
+        mediaUnavailable={!mediaConnected}
         canShare={room.role !== 'member'}
         onLeave={() => void leaveRoom()}
       />

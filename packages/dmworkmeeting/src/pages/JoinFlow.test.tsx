@@ -36,7 +36,7 @@ describe('JoinFlow orchestration (§7)', () => {
   it('eligible without password → PreJoin → finalize success (reuses explicit idempotency key)', async () => {
     asMock(MeetingApiClient.evaluate).mockResolvedValue({ eligible: true, meetingId: 'm1', passwordRequired: false });
     asMock(MeetingApiClient.finalize).mockResolvedValue({ livekitUrl: 'wss://x', livekitToken: 'tok', segmentId: 's', role: 'member' });
-    render(<JoinFlow source="number" meetingNumber="123" deviceIdHash="d" autoStart />);
+    render(<JoinFlow source="number" meetingNumber="123" autoStart />);
 
     fireEvent.click(await screen.findByText(T.join));
     await waitFor(() => expect(MeetingApiClient.finalize).toHaveBeenCalled());
@@ -52,13 +52,13 @@ describe('JoinFlow orchestration (§7)', () => {
       passwordRequired: true,
       passwordChallengeId: 'c1',
     });
-    render(<JoinFlow source="number" meetingNumber="123" deviceIdHash="d" autoStart />);
+    render(<JoinFlow source="number" meetingNumber="123" autoStart />);
     expect(await screen.findByText(T.challenge)).toBeInTheDocument();
   });
 
   it('LOCKED at evaluate → blocked (recoverable), not a hang and not "ended"', async () => {
     asMock(MeetingApiClient.evaluate).mockRejectedValue(httpErr(423, 'MEETING_LOCKED'));
-    render(<JoinFlow source="number" meetingNumber="123" deviceIdHash="d" autoStart />);
+    render(<JoinFlow source="number" meetingNumber="123" autoStart />);
     expect(await screen.findByText(T.locked)).toBeInTheDocument();
     expect(screen.queryByText(T.ended)).toBeNull();
     // rendered as the blocked view, keyed by code
@@ -68,7 +68,7 @@ describe('JoinFlow orchestration (§7)', () => {
   it('LIVEKIT_UNAVAILABLE at finalize keeps PreJoin, does not go to challenge', async () => {
     asMock(MeetingApiClient.evaluate).mockResolvedValue({ eligible: true, meetingId: 'm1', passwordRequired: false });
     asMock(MeetingApiClient.finalize).mockRejectedValue(httpErr(503, 'MEETING_LIVEKIT_UNAVAILABLE', { retry_after: 5 }));
-    render(<JoinFlow source="number" meetingNumber="123" deviceIdHash="d" autoStart />);
+    render(<JoinFlow source="number" meetingNumber="123" autoStart />);
     fireEvent.click(await screen.findByText(T.join));
     await waitFor(() => expect(MeetingApiClient.finalize).toHaveBeenCalled());
     expect(await screen.findByText(T.join)).toBeInTheDocument(); // still PreJoin
@@ -77,7 +77,7 @@ describe('JoinFlow orchestration (§7)', () => {
 
   it('ENDED at evaluate → terminal', async () => {
     asMock(MeetingApiClient.evaluate).mockRejectedValue(httpErr(410, 'MEETING_ENDED'));
-    render(<JoinFlow source="number" meetingNumber="123" deviceIdHash="d" autoStart />);
+    render(<JoinFlow source="number" meetingNumber="123" autoStart />);
     expect(await screen.findByText(T.ended)).toBeInTheDocument();
   });
 });
