@@ -779,11 +779,10 @@ export default class ThreadPanel extends Component<
   // 的 split-brain（threadPermission.ts 文档强调要避免的一处可见、一处不可见）。
   private canRenameThreadInPanel(): boolean {
     if (!this.isThreadMenuWritable()) return false;
-    const thread = this.state.vmState.thread;
-    // 冷缓存兜底：超级群父群成员缓存可能未热，按需补齐当前用户（命中后经订阅变更
-    // 监听触发本面板重渲染）。创建者走 cache-independent 快路径，无需等待解析。
+    // 冷缓存兜底：超级群父群成员缓存可能未热，按需补齐当前用户自己的成员记录（含创建者），
+    // 命中后经订阅变更监听触发本面板重渲染。创建者不享受短路，同样走成员记录 + isRenamableMember。
     ensureRenameMemberResolved(this.props.groupNo);
-    return canRenameThread(this.props.groupNo, thread);
+    return canRenameThread(this.props.groupNo);
   }
 
   private handleEditThread = () => {

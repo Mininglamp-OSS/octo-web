@@ -119,26 +119,21 @@ export function canRenameGroup(
  *
  * 服务端放开后（octo-server #542），任何父群活跃人类成员都可改子区名，前端 gate 与之
  * 对齐——不再走 {@link canManageThread}（创建者 / 群主 / 管理员）的收紧口径，而是判断
- * 登录用户是否为父群活跃成员（非龙虾 / 非黑名单）。
+ * 登录用户是否为父群活跃人类成员（非龙虾 / 非黑名单）。
  *
- * 创建者快路径（cache-independent）：`thread.creator_uid` 来自 channelInfo.orgData.thread，
- * 与父群订阅缓存无关。超级群父群的成员缓存可能从未写入 / 只有第一页（Conversation/vm
- * 只取首页），若无此快路径，连创建者都会因不在缓存里而看不到改名入口（#283 类回归）。
- * 群主 / 管理员 / 普通成员的冷缓存兜底由 {@link ensureRenameMemberResolved} 按需补齐。
+ * 口径统一：创建者不享受任何短路——若创建者本身是龙虾 / 黑名单成员，同样必须被挡下，
+ * 与「only active human members may rename」及 canRenameGroup / isRenamableMember 完全一致。
+ * 因此创建者与群主 / 管理员 / 普通成员一样，都从【父群】成员记录 + isRenamableMember 判定。
  *
  * 成员必须从【父群】订阅解析：子区频道成员从未被同步，读子区缓存会让普通成员恒为 false。
- * 父群订阅未热且非创建者时返回 false（降级，安全）。改名不像归档那样有状态门槛
- * （Active/Archived），所以这里不做 thread status 过滤。
+ * 父群订阅未热时（含创建者）返回 false（降级，安全）；冷缓存兜底统一由
+ * {@link ensureRenameMemberResolved} 按需补齐当前用户自己的成员记录（含创建者），
+ * 命中后经订阅变更重渲染放行。改名不像归档那样有状态门槛（Active/Archived），
+ * 所以这里不做 thread status 过滤。
  */
-export function canRenameThread(
-  groupNo: string | undefined,
-  thread?: { creator_uid?: string } | null
-): boolean {
+export function canRenameThread(groupNo: string | undefined): boolean {
   if (!groupNo) {
     return false;
-  }
-  if (thread?.creator_uid && thread.creator_uid === WKApp.loginInfo.uid) {
-    return true;
   }
   const groupChannel = new Channel(groupNo, ChannelTypeGroup);
   const subscribers = getCurrentImChannelSubscribers(groupChannel);

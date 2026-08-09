@@ -173,9 +173,10 @@ describe("canRenameGroup (group rename gate, WS-23)", () => {
   });
 });
 
-// WS-23：子区改名 gate 也放开——任何父群活跃人类成员即可。创建者走 cache-independent
-// 快路径（thread.creator_uid），不依赖父群订阅缓存；其余成员从父群订阅解析，父群缓存
-// 未热且非创建者 → false（降级，安全）。
+// WS-23：子区改名 gate 也放开——任何父群活跃人类成员即可。口径统一：创建者不享受短路，
+// 与群主 / 管理员 / 普通成员一样从父群成员记录 + isRenamableMember 判定，因此创建者若是
+// 龙虾 / 黑名单同样被挡。父群缓存未热 → false（降级，安全），冷缓存兜底由
+// ensureRenameMemberResolved 按需补齐（含创建者，见下方 wiring 测试）。
 describe("canRenameThread (thread rename gate, WS-23)", () => {
   beforeEach(() => {
     subscribesByKey.clear();
@@ -191,16 +192,22 @@ describe("canRenameThread (thread rename gate, WS-23)", () => {
     expect(canRenameThread(GROUP_NO)).toBe(true);
   });
 
-  it("allows the thread creator even when the parent-group cache is cold", () => {
-    // 创建者快路径与父群订阅缓存无关：缓存为空也放行（超级群父群冷缓存回归防护）
-    expect(canRenameThread(GROUP_NO, { creator_uid: "me" })).toBe(true);
+  it("allows the thread creator once their parent-group member record is present", () => {
+    // 创建者不享受短路，但作为父群活跃人类成员一样放行（含创建者）
+    setGroupMembers([{ uid: "me", role: GroupRole.normal }]);
+    expect(canRenameThread(GROUP_NO)).toBe(true);
   });
 
-  it("does not treat a non-creator as creator via the shortcut", () => {
-    // 非创建者且父群缓存冷 → 落到成员判定 → false（不被快路径误放）
-    expect(canRenameThread(GROUP_NO, { creator_uid: "someone-else" })).toBe(
-      false
-    );
+  it("blocks a thread creator who is a robot (no creator short-circuit)", () => {
+    // 创建者本身是龙虾：不得因创建者身份绕过 human-only 口径
+    setGroupMembers([{ uid: "me", orgData: { robot: 1 } }]);
+    expect(canRenameThread(GROUP_NO)).toBe(false);
+  });
+
+  it("blocks a thread creator who is blacklisted (no creator short-circuit)", () => {
+    // 创建者被拉黑：同样必须挡下，与新增 denial 口径一致
+    setGroupMembers([{ uid: "me", status: SubscriberStatus.blacklist }]);
+    expect(canRenameThread(GROUP_NO)).toBe(false);
   });
 
   it("blocks a robot (lobster) parent-group member", () => {

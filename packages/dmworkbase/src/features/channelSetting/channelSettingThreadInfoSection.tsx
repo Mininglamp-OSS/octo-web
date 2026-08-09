@@ -38,13 +38,13 @@ export function buildThreadInfoSection(
   const thread = channelInfo?.orgData?.thread as any;
   const threadName = channelInfo?.title;
   // 服务端放开后（octo-server #542）任何父群活跃人类成员都可改子区名。
-  // canRenameThread 判「登录用户是否父群活跃成员（非龙虾/非黑名单）」，并对创建者走
-  // cache-independent 快路径；不再收紧到创建者/群主/管理员。父群解散后与 ThreadPanel
-  // 「更多菜单」isThreadMenuWritable 对齐一律隐藏（原先设置页解散后仍可改，形成一处
-  // 可见一处不可见的撕裂）。
-  const canEdit = !disbanded && canRenameThread(threadInfo?.groupNo, thread);
-  // 冷缓存兜底：超级群父群成员缓存可能从未写入/只有第一页，按需补齐当前用户记录，
-  // 解析命中后经订阅变更监听触发重渲染，让群主/管理员/普通成员的改名入口出现。
+  // canRenameThread 判「登录用户是否父群活跃人类成员（非龙虾/非黑名单）」，创建者不享受
+  // 短路、同样走成员记录 + isRenamableMember；不再收紧到创建者/群主/管理员。父群解散后与
+  // ThreadPanel「更多菜单」isThreadMenuWritable 对齐一律隐藏（原先设置页解散后仍可改，
+  // 形成一处可见一处不可见的撕裂）。
+  const canEdit = !disbanded && canRenameThread(threadInfo?.groupNo);
+  // 冷缓存兜底：超级群父群成员缓存可能从未写入/只有第一页，按需补齐当前用户自己的成员记录
+  // （含创建者），解析命中后经订阅变更监听触发重渲染，让改名入口出现。
   if (threadInfo && !disbanded) {
     ensureRenameMemberResolved(threadInfo.groupNo);
   }
