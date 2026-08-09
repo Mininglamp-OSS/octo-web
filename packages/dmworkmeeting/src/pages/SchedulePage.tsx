@@ -55,9 +55,14 @@ export default function SchedulePage({ existing, onSaved, onCancelled }: Schedul
       setError(t('meeting.error.timeInvalid'));
       return;
     }
-    if (passwordEnabled && !passwordLocked && password && !isValidPasswordFormat(password)) {
-      setError(t('meeting.error.passwordFormatInvalid'));
-      return;
+    // A new password-protected meeting must supply a valid 6-digit password.
+    // On edit, an empty field means "leave the existing password unchanged".
+    if (passwordEnabled && !passwordLocked) {
+      const mustHavePassword = !existing;
+      if ((mustHavePassword || password) && !isValidPasswordFormat(password)) {
+        setError(t('meeting.error.passwordFormatInvalid'));
+        return;
+      }
     }
     setSubmitting(true);
     setError(undefined);

@@ -55,8 +55,8 @@ export default function MeetingHome() {
   useEffect(() => {
     load.current();
     const refetch = () => load.current();
-    const onMenuActivated = (menuId: unknown) => {
-      if (menuId === 'meeting') load.current();
+    const onMenuActivated = (payload: unknown) => {
+      if ((payload as { menuId?: string })?.menuId === 'meeting') load.current();
     };
     WKApp.mittBus.on('space-changed', refetch);
     WKApp.mittBus.on('wk:auth-state-changed', refetch);

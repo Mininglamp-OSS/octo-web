@@ -168,8 +168,11 @@ export default defineConfig(({ mode }) => {
             env.VITE_MEETING_API_URL || apiOrigin || "http://localhost:8080",
           changeOrigin: true,
           secure: false,
+          // The client calls /meeting/api/v1/v1/... (BASE + canonical /v1 path).
+          // A standalone service serves /v1/...; strip the FULL /meeting/api/v1
+          // prefix so the local target receives /v1/... (not /api/v1/v1/...).
           rewrite: env.VITE_MEETING_API_URL
-            ? (path: string) => path.replace(/^\/meeting/, "")
+            ? (path: string) => path.replace(/^\/meeting\/api\/v1/, "")
             : undefined,
         },
         // Marketplace (MCP catalog) API — must be before the general /api/ rule.

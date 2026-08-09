@@ -75,6 +75,22 @@ describe('JoinFlow orchestration (§7)', () => {
     expect(screen.queryByText(T.challenge)).toBeNull();
   });
 
+  it('PASSWORD_COOLDOWN without a parsable retry_at stays on the challenge (no permanent wedge)', async () => {
+    asMock(MeetingApiClient.evaluate).mockResolvedValue({
+      eligible: true,
+      meetingId: 'm1',
+      passwordRequired: true,
+      passwordChallengeId: 'c1',
+    });
+    asMock(MeetingApiClient.verifyPassword).mockRejectedValue(httpErr(429, 'MEETING_PASSWORD_COOLDOWN'));
+    render(<JoinFlow source="number" meetingNumber="123" autoStart />);
+    const input = (await screen.findByLabelText(/6/i)) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '000000' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    // Input must NOT be permanently disabled — the challenge stays usable.
+    await waitFor(() => expect((screen.getByLabelText(/6/i) as HTMLInputElement).disabled).toBe(false));
+  });
+
   it('ENDED at evaluate → terminal', async () => {
     asMock(MeetingApiClient.evaluate).mockRejectedValue(httpErr(410, 'MEETING_ENDED'));
     render(<JoinFlow source="number" meetingNumber="123" autoStart />);

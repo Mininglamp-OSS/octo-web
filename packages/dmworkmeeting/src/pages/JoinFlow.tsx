@@ -187,17 +187,21 @@ export default function JoinFlow(props: JoinFlowProps) {
         const code = classifyFailure(err).code;
         const wire = (err as { response?: { data?: { attempts_remaining?: number; retry_at?: string } } }).response?.data;
         if (code === MeetingErrorCode.PASSWORD_INVALID) {
+          const parsed = wire?.retry_at ? Date.parse(wire.retry_at) : undefined;
           const next = reduceWrongPassword({
             attemptsRemaining: wire?.attempts_remaining,
-            retryAtMs: wire?.retry_at ? Date.parse(wire.retry_at) : undefined,
+            retryAtMs: parsed !== undefined && !Number.isNaN(parsed) ? parsed : undefined,
           });
           setCooldown(next);
           setLastInvalid(true);
           dispatch({ type: 'PASSWORD_INVALID', enteringCooldown: next.inCooldown });
         } else if (code === MeetingErrorCode.PASSWORD_COOLDOWN) {
           const retryAtMs = wire?.retry_at ? Date.parse(wire.retry_at) : undefined;
-          setCooldown({ attemptsRemaining: 0, inCooldown: true, retryAtMs });
-          dispatch({ type: 'PASSWORD_INVALID', enteringCooldown: true });
+          // Route through the reducer so a cooldown without a (parsable)
+          // retry_at does NOT wedge the input — it stays on the challenge.
+          const next = reduceWrongPassword({ cooldown: true, retryAtMs: Number.isNaN(retryAtMs) ? undefined : retryAtMs });
+          setCooldown(next);
+          dispatch({ type: 'PASSWORD_INVALID', enteringCooldown: next.inCooldown });
         } else if (code === MeetingErrorCode.PASSWORD_FORMAT_INVALID) {
           dispatch({ type: 'PASSWORD_FORMAT_INVALID' }); // not counted
         } else {
