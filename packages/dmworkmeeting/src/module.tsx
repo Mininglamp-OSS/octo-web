@@ -3,17 +3,22 @@ import type { IModule } from '@octo/base';
 import { i18n, WKApp, Menus, t as translate } from '@octo/base';
 import MeetingHome from './pages/MeetingHome';
 import QuickSetup from './pages/QuickSetup';
+import SchedulePage from './pages/SchedulePage';
+import JoinEntry from './pages/JoinEntry';
 import JoinFlow from './pages/JoinFlow';
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
-import type { AdmissionSource } from './service/contracts';
+import { deviceIdHash, parseJoinQuery } from './state/nav';
 
-// Top-level feature flag (§14): MEETING_FEATURE_ENABLED. When off, the menu is
-// hidden. Read from the injected runtime config; default enabled so the module
-// registers routes but the menu factory can hide the entry.
-function isMeetingFeatureEnabled(): boolean {
+/**
+ * Top-level feature flag (§14): MEETING_FEATURE_ENABLED. Fail-safe / default
+ * OFF — the module registers nothing (neither menu nor routes) unless the flag
+ * is explicitly true. A misconfigured or absent config therefore hides Meeting
+ * entirely rather than exposing a half-wired surface.
+ */
+export function isMeetingFeatureEnabled(): boolean {
   const cfg = (WKApp as unknown as { config?: { meetingFeatureEnabled?: boolean } }).config;
-  return cfg?.meetingFeatureEnabled !== false;
+  return cfg?.meetingFeatureEnabled === true;
 }
 
 function MeetingMenuIcon({ active }: { active?: boolean }) {
@@ -26,27 +31,30 @@ function MeetingMenuIcon({ active }: { active?: boolean }) {
   );
 }
 
-/** Best-effort per-device hash used for reconnect grace / superseded detection
- * (§9, B-3). Never a security identity; the server owns the authoritative
- * segment/leave_at. */
-function deviceIdHash(): string {
-  const w = WKApp as unknown as { shared?: { deviceId?: string } };
-  return w.shared?.deviceId ?? 'web';
-}
-
 export class MeetingModule implements IModule {
   id(): string {
     return 'MeetingModule';
   }
 
   init(): void {
+    // i18n namespace is safe to register unconditionally.
     i18n.registerNamespace('meeting', { 'zh-CN': zhCN, 'en-US': enUS });
+
+    // Fail-safe: when the flag is off, register neither routes nor menu.
+    if (!isMeetingFeatureEnabled()) return;
 
     WKApp.route.register('/meeting', () => <MeetingHome />);
     WKApp.route.register('/meeting/quick', () => <QuickSetup />);
+    WKApp.route.register('/meeting/schedule', () => <SchedulePage />);
     WKApp.route.register('/meeting/join', (param: { meetingNumber?: string; linkToken?: string }) => {
-      const source: AdmissionSource = param?.linkToken ? 'link' : 'number';
-      return <JoinFlow source={source} meetingNumber={param?.meetingNumber} linkToken={param?.linkToken} deviceIdHash={deviceIdHash()} />;
+      // Prefer an explicit route param; otherwise parse the URL query so a cold
+      // load / back-forward on a deep link still resolves the credential.
+      const fromQuery = parseJoinQuery(typeof window !== 'undefined' ? window.location.search : '');
+      const meetingNumber = param?.meetingNumber ?? fromQuery?.meetingNumber;
+      const linkToken = param?.linkToken ?? fromQuery?.linkToken;
+      const source = linkToken ? 'link' : 'number';
+      if (!meetingNumber && !linkToken) return <JoinEntry />;
+      return <JoinFlow source={source} meetingNumber={meetingNumber} linkToken={linkToken} deviceIdHash={deviceIdHash()} autoStart />;
     });
 
     WKApp.menus.register(

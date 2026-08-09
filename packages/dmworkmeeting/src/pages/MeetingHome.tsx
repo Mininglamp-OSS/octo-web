@@ -4,6 +4,8 @@ import { MeetingApiClient } from '../service/MeetingApiClient';
 import type { Meeting } from '../service/contracts';
 import { classifyFailure } from '../service/failClosed';
 import ServiceUnavailable from '../components/ServiceUnavailable';
+import HistoryDetail from './HistoryDetail';
+import { openQuickSetup, openSchedule, openJoinEntry, openJoinFlow, deviceIdHash } from '../state/nav';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -50,7 +52,11 @@ export default function MeetingHome() {
     };
   }, []);
 
-  const go = (path: string) => window.history.pushState({}, '', path);
+  const joinFromList = (m: Meeting) => openJoinFlow({ source: 'list', meetingId: m.meetingId }, deviceIdHash());
+  const openHistory = (m: Meeting) => {
+    const w = WKApp as unknown as { routeRight?: { push?: (el: React.ReactElement) => void } };
+    w.routeRight?.push?.(<HistoryDetail meeting={m} />);
+  };
 
   if (unavailable) {
     return <ServiceUnavailable reason={unavailable} onRetry={() => window.location.reload()} />;
@@ -60,40 +66,55 @@ export default function MeetingHome() {
     <div className="meeting-home">
       <header className="meeting-home-actions">
         <h1>{t('meeting.home.title')}</h1>
-        <button type="button" onClick={() => go('/meeting/quick')}>
+        <button type="button" onClick={openQuickSetup}>
           {t('meeting.home.quick')}
         </button>
-        <button type="button" onClick={() => go('/meeting/schedule')}>
+        <button type="button" onClick={openSchedule}>
           {t('meeting.home.schedule')}
         </button>
-        <button type="button" onClick={() => go('/meeting/join')}>
+        <button type="button" onClick={openJoinEntry}>
           {t('meeting.home.join')}
         </button>
       </header>
 
       <section aria-label={t('meeting.home.upcoming')}>
         <h2>{t('meeting.home.upcoming')}</h2>
-        {state === 'loading' ? <p>…</p> : <MeetingList meetings={upcoming} />}
+        {state === 'loading' ? (
+          <p role="status">…</p>
+        ) : (
+          <MeetingList meetings={upcoming} onSelect={joinFromList} actionLabel={t('meeting.home.join')} />
+        )}
       </section>
 
       <section aria-label={t('meeting.home.history')}>
         <h2>{t('meeting.home.history')}</h2>
-        <MeetingList meetings={history} />
+        <MeetingList meetings={history} onSelect={openHistory} />
       </section>
     </div>
   );
 }
 
-function MeetingList({ meetings }: { meetings: Meeting[] }) {
+function MeetingList({
+  meetings,
+  onSelect,
+  actionLabel,
+}: {
+  meetings: Meeting[];
+  onSelect: (m: Meeting) => void;
+  actionLabel?: string;
+}) {
   if (meetings.length === 0) return <p className="meeting-empty">{t('meeting.home.empty')}</p>;
   return (
     <ul className="meeting-list">
       {meetings.map((m) => (
         <li key={m.meetingId} className="meeting-list-item">
-          <span className="meeting-list-title">{m.title}</span>
-          <span className="meeting-list-status" data-status={m.status}>
-            {m.status}
-          </span>
+          <button type="button" className="meeting-list-open" onClick={() => onSelect(m)}>
+            <span className="meeting-list-title">{m.title}</span>
+            <span className="meeting-list-status" data-status={m.status}>
+              {m.status}
+            </span>
+            {actionLabel && <span className="meeting-list-action">{actionLabel}</span>}
+          </button>
         </li>
       ))}
     </ul>

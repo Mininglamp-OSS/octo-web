@@ -12,10 +12,20 @@ describe('UI state machine (§7)', () => {
     expect(nextMeetingState('evaluating', { type: 'EVALUATE_ELIGIBLE', passwordRequired: false })).toBe('prejoin');
   });
 
-  it('ineligible → terminal', () => {
+  it('ineligible terminal code → terminal; recoverable code → blocked', () => {
     expect(nextMeetingState('evaluating', { type: 'EVALUATE_INELIGIBLE', code: MeetingErrorCode.ENDED })).toBe(
       'terminal',
     );
+    expect(nextMeetingState('evaluating', { type: 'EVALUATE_INELIGIBLE', code: MeetingErrorCode.LOCKED })).toBe(
+      'blocked',
+    );
+    expect(nextMeetingState('evaluating', { type: 'EVALUATE_INELIGIBLE', code: MeetingErrorCode.CREDENTIAL_INVALID })).toBe(
+      'blocked',
+    );
+  });
+
+  it('blocked is recoverable: RETRY → evaluating', () => {
+    expect(nextMeetingState('blocked', { type: 'RETRY' })).toBe('evaluating');
   });
 
   it('challenge: submit → verifying → pass → prejoin', () => {
@@ -46,8 +56,9 @@ describe('UI state machine (§7)', () => {
     expect(nextMeetingState('finalizing', { type: 'FINALIZE_PASS_EXPIRED' })).toBe('challenge');
   });
 
-  it('finalize step-1 recheck (FD-32) → terminal', () => {
-    expect(nextMeetingState('finalizing', { type: 'FINALIZE_STEP1', code: MeetingErrorCode.LOCKED })).toBe('terminal');
+  it('finalize step-1 recheck (FD-32): terminal code → terminal, recoverable code → blocked', () => {
+    expect(nextMeetingState('finalizing', { type: 'FINALIZE_STEP1', code: MeetingErrorCode.REMOVED })).toBe('terminal');
+    expect(nextMeetingState('finalizing', { type: 'FINALIZE_STEP1', code: MeetingErrorCode.LOCKED })).toBe('blocked');
   });
 
   it('room reconnect: SDK disconnect → reconnecting → ok → room', () => {

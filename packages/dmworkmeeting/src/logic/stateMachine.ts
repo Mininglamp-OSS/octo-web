@@ -15,6 +15,7 @@ export type MeetingUiState =
   | 'finalizing'
   | 'room'
   | 'reconnecting'
+  | 'blocked' // recoverable: locked / full / too-early / rate-limited / conflict / network
   | 'terminal' // ended / left / removed / superseded / cancelled / no-show / empty-timeout
   | 'serviceUnavailable';
 
@@ -32,6 +33,8 @@ export type MeetingUiEvent =
   | { type: 'FINALIZE_LIVEKIT_UNAVAILABLE' } // stay in prejoin, retry
   | { type: 'FINALIZE_PASS_EXPIRED' } // restart challenge
   | { type: 'FINALIZE_STEP1'; code: MeetingErrorCode } // predicate changed → terminal or specific state
+  | { type: 'BLOCKED'; code: MeetingErrorCode } // recoverable non-terminal error
+  | { type: 'RETRY' } // leave blocked → re-evaluate
   | { type: 'SDK_DISCONNECT' } // same-endpoint reconnect attempt
   | { type: 'RECONNECT_OK' }
   | { type: 'RECONNECT_EXPIRED' } // >15s / new endpoint → re-evaluate
@@ -62,8 +65,10 @@ export function nextMeetingState(state: MeetingUiState, event: MeetingUiEvent): 
     case 'EVALUATE_ELIGIBLE':
       return event.passwordRequired ? 'challenge' : 'prejoin';
     case 'EVALUATE_INELIGIBLE':
-      // Any ineligible step-1 code renders the corresponding terminal/blocked view.
-      return 'terminal';
+      // Terminal codes (ended/cancelled/removed) end the flow; every other
+      // ineligible code is recoverable and renders the blocked view — it must
+      // never hang or be shown as "ended".
+      return isTerminalCode(event.code) ? 'terminal' : 'blocked';
     case 'SUBMIT_PASSWORD':
       return state === 'challenge' ? 'verifying' : state;
     case 'PASSWORD_PASS':
@@ -83,7 +88,11 @@ export function nextMeetingState(state: MeetingUiState, event: MeetingUiEvent): 
     case 'FINALIZE_PASS_EXPIRED':
       return 'challenge'; // restart challenge
     case 'FINALIZE_STEP1':
-      return 'terminal';
+      return isTerminalCode(event.code) ? 'terminal' : 'blocked';
+    case 'BLOCKED':
+      return 'blocked';
+    case 'RETRY':
+      return 'evaluating';
     case 'SDK_DISCONNECT':
       return state === 'room' ? 'reconnecting' : state;
     case 'RECONNECT_OK':

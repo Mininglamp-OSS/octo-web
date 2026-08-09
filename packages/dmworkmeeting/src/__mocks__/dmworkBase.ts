@@ -83,21 +83,41 @@ export class Menus {
 
 // Spy-friendly logout counter used by client tests.
 export const __logoutCalls = { count: 0 };
+// Registration spies for module gating tests.
+export const __registered = { routes: [] as string[], menus: [] as string[] };
+export const __routeRightPushes: unknown[] = [];
 
 export const WKApp = {
   loginInfo: { token: 'test-token-abc', uid: 'u-self' } as { token?: string; uid?: string },
+  config: { meetingFeatureEnabled: true } as { meetingFeatureEnabled?: boolean },
   shared: {
     currentSpaceId: 'space-123' as string | undefined,
+    deviceId: 'device-hash-test',
     logout: () => {
       __logoutCalls.count += 1;
     },
     registerModule: (_m: IModule) => {},
   },
   apiClient: { config: { apiURL: '/api/v1/' } as { apiURL?: string } },
-  menus: { register: (_id: string, _f: () => Menus | undefined, _sort?: number) => {}, refresh: () => {} },
-  route: { register: (_p: string, _h: (param: unknown) => React.ReactNode) => {} },
+  menus: {
+    register: (id: string, _f: () => Menus | undefined, _sort?: number) => {
+      __registered.menus.push(id);
+    },
+    refresh: () => {},
+  },
+  route: {
+    register: (p: string, _h: (param: unknown) => React.ReactNode) => {
+      __registered.routes.push(p);
+    },
+  },
   routeLeft: { push: () => {}, replaceToRoot: () => {}, popToRoot: () => {} },
-  routeRight: { push: () => {}, replaceToRoot: () => {}, popToRoot: () => {} },
+  routeRight: {
+    push: (el: unknown) => {
+      __routeRightPushes.push(el);
+    },
+    replaceToRoot: () => {},
+    popToRoot: () => {},
+  },
   mittBus: { on: () => {}, off: () => {}, emit: () => {} },
   switchToMenuById: (_id: string) => {},
 };
@@ -106,5 +126,9 @@ export function __resetWKApp() {
   WKApp.loginInfo = { token: 'test-token-abc', uid: 'u-self' };
   WKApp.shared.currentSpaceId = 'space-123';
   WKApp.apiClient = { config: { apiURL: '/api/v1/' } };
+  WKApp.config = { meetingFeatureEnabled: true };
   __logoutCalls.count = 0;
+  __registered.routes = [];
+  __registered.menus = [];
+  __routeRightPushes.length = 0;
 }

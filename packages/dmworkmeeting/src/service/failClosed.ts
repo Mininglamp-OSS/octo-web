@@ -5,9 +5,8 @@
 import type { WireError } from './contracts';
 import { MeetingErrorCode, isMeetingErrorCode } from './errors';
 
-export interface AxiosLikeError {
+export interface HttpLikeError {
   response?: { status?: number; data?: WireError | unknown };
-  isAxiosError?: boolean;
   message?: string;
 }
 
@@ -34,7 +33,7 @@ export interface FailClosedDecision {
 }
 
 export function extractCanonicalError(err: unknown): CanonicalError {
-  const e = err as AxiosLikeError;
+  const e = err as HttpLikeError;
   const status = e?.response?.status;
   const data = e?.response?.data as WireError | undefined;
   const rawCode = data && typeof data === 'object' ? (data as WireError).code : undefined;

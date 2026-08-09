@@ -2,11 +2,13 @@ import React, { useRef, useState } from 'react';
 import { t } from '@octo/base';
 import { MeetingApiClient, newIdempotencyKey } from '../service/MeetingApiClient';
 import { isValidPasswordFormat } from '../logic/password';
+import { openJoinFlow, deviceIdHash } from '../state/nav';
 
 /**
  * Quick meeting setup (§4). quick-create uses ONE explicit Idempotency-Key
- * reused across retries (N3, FD-11); the button single-flights to prevent
- * double submits. Optional 6-digit password validated locally.
+ * reused across retries (N3, FD-11); the key is rotated after a successful
+ * create so a subsequent create is a fresh operation. The button single-flights
+ * to prevent double submits. Optional 6-digit password validated locally.
  */
 export default function QuickSetup({ onCreated }: { onCreated?: (meetingId: string) => void }) {
   const [title, setTitle] = useState('');
@@ -30,7 +32,10 @@ export default function QuickSetup({ onCreated }: { onCreated?: (meetingId: stri
         { title: title || undefined, passwordEnabled, password: passwordEnabled ? password : undefined },
         { idempotencyKey: idempotencyKeyRef.current },
       );
-      onCreated?.(meeting.meetingId);
+      idempotencyKeyRef.current = newIdempotencyKey(); // rotate after a successful create
+      if (onCreated) onCreated(meeting.meetingId);
+      // Creator proceeds into the admission flow for their new meeting.
+      else openJoinFlow({ source: 'list', meetingId: meeting.meetingId }, deviceIdHash());
     } catch {
       setError(t('meeting.error.internal'));
     } finally {
